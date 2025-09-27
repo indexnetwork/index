@@ -11,6 +11,11 @@ export interface VibeCheckResult {
   success: boolean;
   synthesis?: string;
   error?: string;
+  timing?: {
+    startTime: Date;
+    endTime: Date;
+    durationMs: number;
+  };
 }
 
 export interface VibeCheckOptions {
@@ -43,9 +48,23 @@ export async function vibeCheck(
   userData: UserData,
   options: VibeCheckOptions = {}
 ): Promise<VibeCheckResult> {
+  const startTime = new Date();
+  console.log(`🚀 Starting vibe check for ${userData?.name || 'unknown user'} at ${startTime.toISOString()}`);
+  
   try {
     if (!userData || !userData.intents?.length) {
-      return { success: false, error: 'No user data or intents provided' };
+      const endTime = new Date();
+      const durationMs = endTime.getTime() - startTime.getTime();
+      console.log(`❌ Vibe check failed (no data) after ${durationMs}ms`);
+      return { 
+        success: false, 
+        error: 'No user data or intents provided',
+        timing: {
+          startTime,
+          endTime,
+          durationMs
+        }
+      };
     }
 
     const { timeout = 30000, outputFormat = 'markdown', characterLimit } = options;
@@ -95,7 +114,7 @@ SUGGESTED USER: ${userData.name}
 SUGGESTED USER INTRO: ${userData.intro}
 
 INTENT CONTEXTS AND AGENT REASONING:
-${userData.intents.map(intent => `
+${userData.intents.slice(0, 10).map(intent => `
 - Intent Text: ${intent.payload}
 - Intent Link: /intents/${intent.id}
 - Agent Analysis: ${intent.reasons.map(r => r.reasoning).join('; ')}
@@ -145,19 +164,37 @@ ${exampleOutput}
     ]);
 
     const synthesis = (response.content as string).trim();
+    const endTime = new Date();
+    const durationMs = endTime.getTime() - startTime.getTime();
 
-    console.log(`✅ Generated vibe check for ${userData.name}: ${synthesis.length} characters`);
+    console.log(`✅ Generated vibe check for ${userData.name}: ${synthesis.length} characters in ${durationMs}ms`);
+    console.log(`🏁 Vibe check completed at ${endTime.toISOString()}`);
 
     return {
       success: true,
-      synthesis
+      synthesis,
+      timing: {
+        startTime,
+        endTime,
+        durationMs
+      }
     };
 
   } catch (error) {
-    console.error(`❌ Error checking vibe for ${userData.name}:`, error);
+    const endTime = new Date();
+    const durationMs = endTime.getTime() - startTime.getTime();
+    
+    console.error(`❌ Error checking vibe for ${userData?.name || 'unknown user'} after ${durationMs}ms:`, error);
+    console.log(`🏁 Vibe check failed at ${endTime.toISOString()}`);
+    
     return { 
       success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timing: {
+        startTime,
+        endTime,
+        durationMs
+      }
     };
   }
 }
