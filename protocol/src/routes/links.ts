@@ -46,9 +46,6 @@ async function crawlAndStore(userId: string, linkId: string, url: string) {
     const { intentsGenerated } = await processFilesToIntents({
       userId,
       files: [file],
-      textInstruction: `Generate intents based on content from ${url}`,
-      count: 1,
-      summarize: true,
       sourceId: linkId,
       sourceType: 'link',
     });

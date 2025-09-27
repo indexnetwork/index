@@ -3,15 +3,12 @@ import fs from 'fs';
 import db from '../db';
 import { indexLinks, intents, intentIndexes, userIntegrations } from '../schema';
 import { eq, and, isNull } from 'drizzle-orm';
-import { analyzeFolder } from '../../agents/core/intent_inferrer';
-import { summarizeIntent } from '../../agents/core/intent_summarizer';
-import { generateEmbedding } from '../embeddings';
+import { processFilesToIntents, getExistingIntents } from './process-intents';
 import { crawlLinksForIndex } from '../crawl/web_crawler';
 import { Events } from '../events';
 import { config } from '../crawl/config';
 import { log } from '../log';
 import { handlers } from '../integrations';
-import { processFilesToIntents } from './process-intents';
 import { getTempPath } from '../paths';
 
 export type SyncProviderName = 'links' | 'gmail' | 'notion' | 'slack' | 'discord' | 'calendar';
@@ -93,70 +90,37 @@ export const linksProvider: SyncProvider<LinksParams> = {
     let filesImported = 0;
     let skippedUnchanged = 0;
 
-    const baseTempDir = getTempPath('links-temp', `links-${userId}-${Date.now()}`);
-    await fs.promises.mkdir(baseTempDir, { recursive: true });
-    try {
-      let completed = 0;
-      for (const f of crawl.files) {
-        const meta = crawl.urlMap[f.id];
-        if (!meta) continue;
-        const linkRow = byUrl.get(meta.url) || byNorm.get(normalize(meta.url));
-        const tempDir = path.join(baseTempDir, f.id);
-        await fs.promises.mkdir(tempDir, { recursive: true });
-        await fs.promises.writeFile(path.join(tempDir, `${f.id}.md`), f.content);
-        filesImported += 1;
+    // Prepare files with per-file sourceId for batch processing
+    const filesToProcess = crawl.files.map(f => {
+      const meta = crawl.urlMap[f.id];
+      if (!meta) return null;
+      const linkRow = byUrl.get(meta.url) || byNorm.get(normalize(meta.url));
+      return {
+        id: f.id,
+        name: meta.url,
+        content: f.content,
+        lastModified: new Date(),
+        type: 'text/markdown',
+        size: f.content.length,
+        sourceId: linkRow?.id,
+      };
+    }).filter(f => f !== null);
 
-        const result = await analyzeFolder(
-          tempDir,
-          [f.id],
-          `Generate intents based on content from ${meta.url}`,
-          Array.from(existingIntents),
-          [],
-          requestedCount,
-          60000
-        );
-
-        if (result.success && result.intents.length > 0) {
-          const intentData = result.intents[0];
-          if (!existingIntents.has(intentData.payload)) {
-            const summary = await summarizeIntent(intentData.payload);
-            
-            // Generate embedding for semantic search
-            let embedding: number[] | null = null;
-            try {
-              embedding = await generateEmbedding(intentData.payload);
-            } catch (error) {
-              console.error('Failed to generate embedding:', error);
-              // Continue without embedding - it's optional
-            }
-            
-            const inserted = await db.insert(intents).values({
-              payload: intentData.payload,
-              summary: summary || intentData.payload.slice(0, 150),
-              userId,
-              isIncognito: false,
-              embedding: embedding || undefined,
-              sourceId: linkRow?.id,
-              sourceType: 'link',
-            }).returning({ id: intents.id });
-            const intentId = inserted[0].id;
-            // Optionally attach to a specific index using the join table.
-            if (params.indexId) {
-              await db.insert(intentIndexes).values({ intentId, indexId: params.indexId });
-            }
-            existingIntents.add(intentData.payload);
-            if (!skipBrokers) {
-              Events.Intent.onCreated({ intentId, userId, payload: intentData.payload }).catch(() => void 0);
-            }
-            intentsGenerated += 1;
-          }
-        }
-        
-        completed += 1;
-        await update({ progress: { total: crawl.files.length, completed, notes: [`processed ${completed}/${crawl.files.length}`] } });
-      }
-    } finally {
-      await fs.promises.rm(baseTempDir, { recursive: true, force: true });
+    if (filesToProcess.length > 0) {
+      const result = await processFilesToIntents({
+        userId,
+        indexId: params.indexId,
+        files: filesToProcess,
+        sourceType: 'link',
+        perFileMode: true, // Use per-file mode for individual sourceId support
+        existingIntents,
+        onProgress: async (completed, total, note) => {
+          await update({ progress: { completed, total, notes: note ? [note] : [] } });
+        },
+      });
+      
+      intentsGenerated = result.intentsGenerated;
+      filesImported = result.filesImported;
     }
 
     const finishedAt = Date.now();
@@ -211,9 +175,6 @@ export function createIntegrationProvider(type: IntegrationType): SyncProvider<I
         userId: run.userId,
         indexId: params.indexId,
         files,
-        textInstruction: `Generate intents based on content from ${type} integration`,
-        count: 30,
-        summarize: false,
         sourceId: integrationRec.id,
         sourceType: 'integration',
         onProgress: async (completed, total, note) => {

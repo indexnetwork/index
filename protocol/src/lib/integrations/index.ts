@@ -5,6 +5,7 @@ export interface IntegrationFile {
   lastModified: Date;
   type: string;
   size: number;
+  sourceId?: string; // Optional source ID for tracking specific sources (links, files, etc.)
 }
 
 export interface IntegrationHandler {

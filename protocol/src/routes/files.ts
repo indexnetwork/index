@@ -280,8 +280,6 @@ async function generateIntentsForUpload(options: {
   const { intentsGenerated } = await processFilesToIntents({
     userId,
     files: [uploadAsIntegrationFile],
-    textInstruction: `Generate intents based on uploaded file ${fileRecord.name}`,
-    count: 5,
     sourceId: fileRecord.id,
     sourceType: 'file',
   });

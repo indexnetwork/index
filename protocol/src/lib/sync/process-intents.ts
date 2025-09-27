@@ -11,6 +11,48 @@ import { getTempPath } from '../paths';
 
 import type { IntegrationFile } from '../integrations';
 
+// Centralized configuration for intent processing
+const INTENT_PROCESSING_CONFIG = {
+  DEFAULT_COUNT: 5,
+  DEFAULT_TIMEOUT_MS: 60000,
+} as const;
+
+// Generate standardized text instruction based on source type and ID
+function generateTextInstruction(sourceType?: 'file' | 'integration' | 'link', sourceId?: string): string {
+  const baseInstruction = 'Generate intents based on content';
+  
+  switch (sourceType) {
+    case 'integration':
+      return sourceId 
+        ? `${baseInstruction} from integration ${sourceId}`
+        : `${baseInstruction} from integration data`;
+    case 'link':
+      return sourceId 
+        ? `${baseInstruction} from link ${sourceId}`
+        : `${baseInstruction} from crawled web content`;
+    case 'file':
+      return sourceId 
+        ? `${baseInstruction} from file ${sourceId}`
+        : `${baseInstruction} from uploaded files`;
+    default:
+      return baseInstruction;
+  }
+}
+
+// Get appropriate count based on source type
+function getCountForSourceType(sourceType?: 'file' | 'integration' | 'link'): number {
+  switch (sourceType) {
+    case 'integration':
+      return 3; // Reduced for faster iteration
+    case 'link':
+      return 1; // Usually one intent per link
+    case 'file':
+      return 5; // Standard for uploaded files
+    default:
+      return INTENT_PROCESSING_CONFIG.DEFAULT_COUNT;
+  }
+}
+
 export async function getExistingIntents(userId: string, indexId?: string): Promise<Set<string>> {
   if (indexId) {
     const rows = await db
@@ -27,91 +69,175 @@ export async function getExistingIntents(userId: string, indexId?: string): Prom
   return new Set(rows.map((r) => r.payload));
 }
 
+// Helper function to save a single intent to database
+async function saveIntentToDatabase(options: {
+  intentData: any;
+  userId: string;
+  indexId?: string;
+  sourceId?: string;
+  sourceType?: 'file' | 'integration' | 'link';
+  existingIntents: Set<string>;
+}): Promise<number> {
+  const { intentData, userId, indexId, sourceId, sourceType, existingIntents } = options;
+  
+  if (existingIntents.has(intentData.payload)) return 0;
+  
+  const summary = await summarizeIntent(intentData.payload);
+  
+  // Generate embedding for semantic search
+  let embedding: number[] | null = null;
+  try {
+    embedding = await generateEmbedding(intentData.payload);
+  } catch (error) {
+    console.error('Failed to generate embedding:', error);
+    // Continue without embedding - it's optional
+  }
+  
+  const inserted = await db
+    .insert(intents)
+    .values({
+      payload: intentData.payload,
+      userId,
+      isIncognito: false,
+      summary: summary,
+      embedding: embedding || undefined,
+      sourceId,
+      sourceType,
+    })
+    .returning({ id: intents.id });
+  const intentId = inserted[0].id;
+  
+  if (indexId) {
+    await db.insert(intentIndexes).values({ intentId, indexId });
+  }
+  
+  // Trigger centralized intent created event
+  Events.Intent.onCreated({
+    intentId,
+    userId,
+    payload: intentData.payload
+  });
+  
+  existingIntents.add(intentData.payload);
+  return 1;
+}
+
 export async function processFilesToIntents(options: {
   userId: string;
   indexId?: string;
   files: IntegrationFile[];
-  textInstruction: string;
-  count: number;
-  timeoutMs?: number;
-  summarize?: boolean;
   onProgress?: (completed: number, total: number, note?: string) => Promise<void> | void;
-  // Polymorphic source (nullable)
+  // Polymorphic source (nullable) - used when all files share same source
   sourceId?: string;
   sourceType?: 'file' | 'integration' | 'link';
+  // Alternative: per-file processing mode (uses file.sourceId for each file)
+  perFileMode?: boolean;
+  existingIntents?: Set<string>; // For per-file mode
+  // Optional overrides for defaults
+  timeoutMs?: number; // Override default timeout
 }): Promise<{ intentsGenerated: number; filesImported: number }>{
-  const { userId, indexId, files, textInstruction, count, summarize = false, timeoutMs = 60000, onProgress } = options;
+  const { 
+    userId, 
+    indexId, 
+    files, 
+    onProgress, 
+    perFileMode = false,
+    timeoutMs = INTENT_PROCESSING_CONFIG.DEFAULT_TIMEOUT_MS
+  } = options;
   if (!files.length) return { intentsGenerated: 0, filesImported: 0 };
 
-  const baseTempDir = getTempPath('sync', `sync-${userId}-${Date.now()}`);
-  await fs.promises.mkdir(baseTempDir, { recursive: true });
-  try {
-    // Write all files into a single temp folder and call analyze once
-    const fileIds: string[] = [];
+  const existingIntents = options.existingIntents || await getExistingIntents(userId, indexId);
+  const textInstruction = generateTextInstruction(options.sourceType, options.sourceId);
+  const count = getCountForSourceType(options.sourceType);
+  let totalIntentsGenerated = 0;
+
+  if (perFileMode) {
+    // Process each file individually (for per-file sourceId support)
     let completed = 0;
-    for (const f of files) {
-      await fs.promises.writeFile(path.join(baseTempDir, `${f.id}.md`), f.content);
-      fileIds.push(f.id);
-      completed += 1;
-      await onProgress?.(completed, files.length, `saved ${completed}/${files.length}`);
-    }
-
-    const existingIntents = await getExistingIntents(userId, indexId);
-    const result = await analyzeFolder(
-      baseTempDir,
-      fileIds,
-      textInstruction,
-      Array.from(existingIntents),
-      [],
-      Math.max(1, count),
-      timeoutMs
-    );
-
-    let intentsGenerated = 0;
-    if (result.success && result.intents.length > 0) {
-      for (const intentData of result.intents) {
-        if (existingIntents.has(intentData.payload)) continue;
-        const summary = summarize ? await summarizeIntent(intentData.payload) : undefined;
+    for (const file of files) {
+      const baseTempDir = getTempPath('sync', `sync-single-${userId}-${Date.now()}`);
+      await fs.promises.mkdir(baseTempDir, { recursive: true });
+      
+      try {
+        await fs.promises.writeFile(path.join(baseTempDir, `${file.id}.md`), file.content);
         
-        // Generate embedding for semantic search
-        let embedding: number[] | null = null;
-        try {
-          embedding = await generateEmbedding(intentData.payload);
-        } catch (error) {
-          console.error('Failed to generate embedding:', error);
-          // Continue without embedding - it's optional
+        // Generate instruction and count specific to this file
+        const fileInstruction = generateTextInstruction(options.sourceType, file.sourceId || options.sourceId);
+        const fileCount = getCountForSourceType(options.sourceType);
+        
+        const result = await analyzeFolder(
+          baseTempDir,
+          [file.id],
+          fileInstruction,
+          Array.from(existingIntents),
+          [],
+          Math.max(1, fileCount),
+          timeoutMs
+        );
+
+        if (result.success && result.intents.length > 0) {
+          for (const intentData of result.intents) {
+            const saved = await saveIntentToDatabase({
+              intentData,
+              userId,
+              indexId,
+              sourceId: file.sourceId || options.sourceId,
+              sourceType: options.sourceType,
+              existingIntents,
+            });
+            totalIntentsGenerated += saved;
+          }
         }
-        
-        const inserted = await db
-          .insert(intents)
-          .values({
-            payload: intentData.payload,
+      } finally {
+        await fs.promises.rm(baseTempDir, { recursive: true, force: true });
+      }
+      
+      completed += 1;
+      await onProgress?.(completed, files.length, `processed ${completed}/${files.length}`);
+    }
+  } else {
+    // Batch process all files together (more efficient)
+    const baseTempDir = getTempPath('sync', `sync-${userId}-${Date.now()}`);
+    await fs.promises.mkdir(baseTempDir, { recursive: true });
+    
+    try {
+      const fileIds: string[] = [];
+      let completed = 0;
+      for (const f of files) {
+        await fs.promises.writeFile(path.join(baseTempDir, `${f.id}.md`), f.content);
+        fileIds.push(f.id);
+        completed += 1;
+        await onProgress?.(completed, files.length, `saved ${completed}/${files.length}`);
+      }
+
+      const result = await analyzeFolder(
+        baseTempDir,
+        fileIds,
+        textInstruction,
+        Array.from(existingIntents),
+        [],
+        Math.max(1, count),
+        timeoutMs
+      );
+
+      if (result.success && result.intents.length > 0) {
+        for (const intentData of result.intents) {
+          const saved = await saveIntentToDatabase({
+            intentData,
             userId,
-            isIncognito: false,
-            summary: summary,
-            embedding: embedding || undefined,
+            indexId,
             sourceId: options.sourceId,
             sourceType: options.sourceType,
-          })
-          .returning({ id: intents.id });
-        const intentId = inserted[0].id;
-        if (indexId) {
-          await db.insert(intentIndexes).values({ intentId, indexId });
+            existingIntents,
+          });
+          totalIntentsGenerated += saved;
         }
-        
-        // Trigger centralized intent created event
-        Events.Intent.onCreated({
-          intentId,
-          userId,
-          payload: intentData.payload
-        });
-        
-        existingIntents.add(intentData.payload);
-        intentsGenerated += 1;
       }
+    } finally {
+      await fs.promises.rm(baseTempDir, { recursive: true, force: true });
     }
-    return { intentsGenerated, filesImported: files.length };
-  } finally {
-    await fs.promises.rm(baseTempDir, { recursive: true, force: true });
   }
+  
+  return { intentsGenerated: totalIntentsGenerated, filesImported: files.length };
 }
+
