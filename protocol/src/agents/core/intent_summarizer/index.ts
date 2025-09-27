@@ -112,14 +112,3 @@ export async function summarizeIntent(
 
   return result.success ? result.summary || null : null;
 }
-
-/**
- * Batch summarize multiple texts
- */
-export async function summarizeMultiple(
-  texts: string[],
-  options: SummarizeOptions = {}
-): Promise<SummaryResult[]> {
-  const promises = texts.map(text => summarizeText(text, options));
-  return Promise.all(promises);
-} 

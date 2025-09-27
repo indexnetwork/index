@@ -8,8 +8,6 @@ import path from 'path';
 import fs from 'fs';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { processFilesToIntents } from '../lib/sync/process-intents';
-import { privyClient } from '../lib/privy';
-import { users } from '../lib/schema';
 
 const router = Router();
 

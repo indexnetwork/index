@@ -265,9 +265,3 @@ ${concatenatedContent.substring(0, 15000)}${concatenatedContent.length > 15000 ?
     return { success: false, intents: [] };
   }
 }
-
-// Utility functions
-export async function getIntents(folderPath: string, fileIds: string[], textInstruction?: string): Promise<InferredIntent[]> {
-  const result = await analyzeFolder(folderPath, fileIds, textInstruction, [], [], 5, 60000);
-  return result.intents;
-}
