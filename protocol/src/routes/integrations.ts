@@ -5,6 +5,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
 import { userIntegrations } from '../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { runSync } from '../lib/sync/runner';
 // queue removed; API is ack-only
 
 const router = Router();
@@ -187,6 +188,22 @@ router.get('/status/:connectionRequestId',
                 connectedAt: new Date()
               })
               .where(eq(userIntegrations.id, integrationRecord.id));
+
+            // Trigger first sync automatically (fire and forget)
+            try {
+              runSync(integrationRecord.integrationType as any, userId, {});
+              log.info('First sync triggered for new integration', { 
+                userId, 
+                integrationType: integrationRecord.integrationType 
+              });
+            } catch (syncError) {
+              log.error('Failed to trigger first sync', { 
+                userId, 
+                integrationType: integrationRecord.integrationType,
+                error: syncError instanceof Error ? syncError.message : String(syncError)
+              });
+              // Don't fail the connection response if sync fails
+            }
 
             return res.json({ 
               status: 'connected',

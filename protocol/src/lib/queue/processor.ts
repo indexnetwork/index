@@ -5,18 +5,40 @@ import { triggerBrokersOnIntentCreated } from '../../agents/context_brokers/conn
 export class QueueProcessor {
   private isRunning = false;
   private processingInterval: NodeJS.Timeout | null = null;
+  private concurrency: number;
+
+  constructor(concurrency: number = parseInt(process.env.QUEUE_CONCURRENCY || '3')) {
+    this.concurrency = concurrency;
+  }
 
   start(): void {
     if (this.isRunning) return;
     
     this.isRunning = true;
-    console.log('🚀 Queue processor started');
+    console.log(`🚀 Queue processor started with concurrency: ${this.concurrency}`);
     
-    this.processingInterval = setInterval(() => {
-      this.processNextJob().catch(error => {
-        console.error('Queue processor error:', error);
-      });
-    }, 500); // Process every second
+    // Start multiple parallel processing loops
+    for (let i = 0; i < this.concurrency; i++) {
+      this.startWorker(i);
+    }
+  }
+
+  private startWorker(workerId: number): void {
+    const processLoop = async () => {
+      while (this.isRunning) {
+        try {
+          await this.processNextJob(workerId);
+        } catch (error) {
+          console.error(`Queue worker ${workerId} error:`, error);
+        }
+        // Small delay to prevent busy waiting
+        await new Promise(resolve => setTimeout(resolve, parseInt(process.env.QUEUE_POLL_INTERVAL_MS || '100')));
+      }
+    };
+    
+    processLoop().catch(error => {
+      console.error(`Queue worker ${workerId} crashed:`, error);
+    });
   }
 
   stop(): void {
@@ -28,11 +50,12 @@ export class QueueProcessor {
     console.log('🛑 Queue processor stopped');
   }
 
-  private async processNextJob(): Promise<void> {
+  private async processNextJob(workerId?: number): Promise<void> {
     const job = await queue.getNextJob();
     if (!job) return;
 
-    console.log(`🔄 Processing: ${job.action} for intent ${job.data.intentId} (priority: ${job.priority})`);
+    const workerPrefix = workerId !== undefined ? `[W${workerId}] ` : '';
+    console.log(`${workerPrefix}🔄 Processing: ${job.action} for intent ${job.data.intentId} (priority: ${job.priority})`);
     
     try {
       switch (job.action) {
@@ -40,12 +63,12 @@ export class QueueProcessor {
           await this.indexIntent(job);
           break;
         default:
-          console.warn(`Unknown action: ${job.action}`);
+          console.warn(`${workerPrefix}Unknown action: ${job.action}`);
       }
       
-      console.log(`✅ Completed: ${job.action} for intent ${job.data.intentId}`);
+      console.log(`${workerPrefix}✅ Completed: ${job.action} for intent ${job.data.intentId}`);
     } catch (error) {
-      console.error(`❌ Failed: ${job.action} for intent ${job.data.intentId}`, error);
+      console.error(`${workerPrefix}❌ Failed: ${job.action} for intent ${job.data.intentId}`, error);
     }
   }
 

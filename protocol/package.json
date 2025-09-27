@@ -12,7 +12,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "sync-all": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/sync-all.ts"
+    "sync-all": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/sync-all.ts",
+    "queue:status": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/queue-status.ts",
+    "queue:monitor": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/queue-monitor.ts"
   },
   "dependencies": {
     "@composio/core": "^0.1.44",
