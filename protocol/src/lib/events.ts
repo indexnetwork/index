@@ -1,18 +1,11 @@
-import { intentIndexer } from '../agents/core/intent_indexer';
-import { 
-  triggerBrokersOnIntentCreated, 
-  triggerBrokersOnIntentUpdated, 
-  triggerBrokersOnIntentArchived 
-} from '../agents/context_brokers/connector';
-import { addIndexIntentJob } from './queue/llm-queue';
 import db from './db';
 import { intents, indexes, indexMembers } from './schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { 
+  triggerBrokersOnIntentArchived 
+} from '../agents/context_brokers/connector';
+import { addIndexIntentJob } from './queue/llm-queue';
 
-/**
- * Centralized event management system for database operations
- * Manages all triggers for intents, indexes, and related operations
- */
 
 export interface IntentEvent {
   intentId: string;
