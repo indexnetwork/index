@@ -1,7 +1,7 @@
 import db from '../../../lib/db';
 import { intents, intentIndexes, indexes, indexMembers } from '../../../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
-import { evaluateIntentRelevance } from './evaluator';
+import { evaluateIntentAppropriation } from './evaluator';
 
 export interface IntentIndexerResult {
   success: boolean;
@@ -52,17 +52,20 @@ export class IntentIndexer {
       const currentIndexes = await this.getCurrentIndexes(intentId);
       const isCurrentlyAssigned = currentIndexes.includes(indexId);
       
-      // Evaluate relevance
-      const isRelevant = await evaluateIntentRelevance(
+      // Evaluate appropriation
+      const appropriationScore = await evaluateIntentAppropriation(
         intent.payload,
         targetIndex.indexPrompt || '',
         targetIndex.memberPrompt || ''
       );
       
-      if (isRelevant && !isCurrentlyAssigned) {
+      const isAppropriate = appropriationScore > 0.7;
+      console.log(`🔍 Intent ${intentId} appropriation score: ${appropriationScore.toFixed(3)}, is appropriate: ${isAppropriate}`);
+      
+      if (isAppropriate && !isCurrentlyAssigned) {
         await this.indexIntent(intentId, indexId);
         console.log(`✅ Added intent ${intentId} to index ${indexId}`);
-      } else if (!isRelevant && isCurrentlyAssigned) {
+      } else if (!isAppropriate && isCurrentlyAssigned) {
         await this.deIndexIntent(intentId, indexId);
         console.log(`🗑️ Removed intent ${intentId} from index ${indexId}`);
       }
