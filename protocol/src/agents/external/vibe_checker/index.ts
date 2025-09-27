@@ -105,13 +105,11 @@ BAD EXAMPLES (DON'T):
 HYPERLINK POSITIONING RULES:
 - Link descriptive phrases that naturally flow: "UX designers crafting agent interfaces" not "UX designers (link)"
 - Avoid meta descriptions in parentheses like "(link)", "(UX design effort)", "(community manager outreach)"
-- Make links contextual and readable: "early adopters testing discovery systems" not "early adopters seeking early adopters"
+- Make links contextual and readable: "early adopters testing discovery systems" not "early adopters seeking early adopters" but not too long.
 - Position links where they enhance understanding, not interrupt flow`;
 
-    const prompt = `Generate a "What Could Happen Here" collaboration synthesis text.
+    const prompt = `Generate a "What Could Happen Here" (what these two people can do together) collaboration synthesis text.
 
-SUGGESTED USER: ${userData.name}
-SUGGESTED USER INTRO: ${userData.intro}
 
 INTENT CONTEXTS AND AGENT REASONING:
 ${userData.intents.slice(0, 10).map(intent => `
@@ -122,16 +120,23 @@ ${userData.intents.slice(0, 10).map(intent => `
 
 GUIDELINES:
 ${formatInstructions}
+- Be concise. Cut the bullshit, no imaginary things. Be real and practical.
+- Use warm and friendly tone.
+- Dont justify, just share what they can do together.
+
 - Use "You" vs "${userData.name}" context
+- When talking about other, suggested user, use their name ( no surnames) as ${userData.name} and bio as "${userData.intro}"
 - Contextualize user's intents as they wants, thinks, seeks, etc. Dont treat them as a pure database object.
 - Focus on concrete collaboration possibilities
 - When referring to intents, hyperlink key phrases that naturally flow in the text - you must avoid parenthetical meta descriptions like "(link)"
-- Position hyperlinks for optimal readability - link the most descriptive and contextual parts of sentences
-- Use maximum 3 hyperlinks total - only link the most important/relevant intents
-- Write in second person addressing the current user
-- Keep response to maximum 2 paragraphs
+- Position hyperlinks for optimal position in the text - link the most descriptive and contextual parts of sentences.
+- Dont add hyperlinks to the end of paragraph.  Beginning and middle is good.
+- Use at least 2 but maximum 3 hyperlinks total - only link the most important/relevant intents
+- Keep response to maximum 1 paragraph length, but you can add new lines.
+
 ${lengthInstructions}
 - Dont add "What Could Happen Here" title.
+- Dont start with name or intro. 
 
 ------
 ${fewShotExamples}
@@ -158,12 +163,16 @@ ${exampleOutput}
         output_format: outputFormat
       }
     );
+
+    console.log(`Prompt: ${prompt}`);
     const response = await Promise.race([
       vibeCall(prompt),
       timeoutPromise
     ]);
 
     const synthesis = (response.content as string).trim();
+
+    console.log(`Synthesis: ${synthesis}`);
     const endTime = new Date();
     const durationMs = endTime.getTime() - startTime.getTime();
 
