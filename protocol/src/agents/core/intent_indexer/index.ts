@@ -3,14 +3,8 @@ import { intents, intentIndexes, indexes, indexMembers } from '../../../lib/sche
 import { eq, and, isNull } from 'drizzle-orm';
 import { evaluateIntentRelevance } from './evaluator';
 
-// Constants
-const RELEVANCE_THRESHOLD = 0.7;
-const PARALLEL_BATCH_SIZE = 10;
-
 export interface IntentIndexerResult {
   success: boolean;
-  indexedCount: number;
-  deIndexedCount: number;
   error?: string;
 }
 
@@ -21,16 +15,16 @@ interface EligibleIndex {
 }
 
 export class IntentIndexer {
+
   /**
-   * Process a single intent for auto-indexing
+   * Process a specific intent for a specific index (used by queue processor)
    */
-  async processIntent(intentId: string): Promise<IntentIndexerResult> {
+  async processIntentForIndex(intentId: string, indexId: string): Promise<void> {
+    console.log(`🔍 Processing intent ${intentId} for index ${indexId}`);
+    
     try {
-      console.log(`🔍 Processing intent ${intentId} for auto-indexing`);
-      
-      
-      // Get intent details
-      const intent = await db.select({
+      // Get intent and index details
+      const intentData = await db.select({
         id: intents.id,
         payload: intents.payload,
         userId: intents.userId
@@ -38,173 +32,47 @@ export class IntentIndexer {
         .where(eq(intents.id, intentId))
         .limit(1);
         
-      if (intent.length === 0) {
-        return {
-          success: false,
-          indexedCount: 0,
-          deIndexedCount: 0,
-          error: 'Intent not found'
-        };
+      if (intentData.length === 0) {
+        console.error(`Intent ${intentId} not found`);
+        return;
       }
+
+      const intent = intentData[0];
       
-      const intentData = intent[0];
+      // Get the specific index details
+      const indexData = await this.getEligibleIndexes(intent.userId);
+      const targetIndex = indexData.find(idx => idx.id === indexId);
       
-      // Get eligible indexes for this user (auto_assign = true)
-      const eligibleIndexes = await this.getEligibleIndexes(intentData.userId);
-      
-      if (eligibleIndexes.length === 0) {
-        console.log(`📭 No eligible indexes found for user ${intentData.userId}`);
-        return {
-          success: true,
-          indexedCount: 0,
-          deIndexedCount: 0
-        };
+      if (!targetIndex) {
+        console.log(`Index ${indexId} not eligible for user ${intent.userId}`);
+        return;
       }
-      
-      // Get current assignments
+
+      // Check if already assigned
       const currentIndexes = await this.getCurrentIndexes(intentId);
+      const isCurrentlyAssigned = currentIndexes.includes(indexId);
       
-      let indexedCount = 0;
-      let deIndexedCount = 0;
+      // Evaluate relevance
+      const isRelevant = await evaluateIntentRelevance(
+        intent.payload,
+        targetIndex.indexPrompt || '',
+        targetIndex.memberPrompt || ''
+      );
       
-      // Analyze relevance for each eligible index
-      for (const index of eligibleIndexes) {
-        const relevanceScore = await evaluateIntentRelevance(
-          intentData.payload,
-          index.indexPrompt,
-          index.memberPrompt
-        );
-        
-        const shouldIndex = relevanceScore >= RELEVANCE_THRESHOLD;
-        const isCurrentlyIndexed = currentIndexes.includes(index.id);
-        
-        console.log(`📊 Index ${index.id}: relevance=${relevanceScore.toFixed(3)}, shouldIndex=${shouldIndex}, isIndexed=${isCurrentlyIndexed}`);
-        
-        if (shouldIndex && !isCurrentlyIndexed) {
-          await this.indexIntent(intentId, index.id);
-          indexedCount++;
-          console.log(`✅ Indexed intent ${intentId} to index ${index.id}`);
-        } else if (!shouldIndex && isCurrentlyIndexed) {
-          await this.deIndexIntent(intentId, index.id);
-          deIndexedCount++;
-          console.log(`❌ De-indexed intent ${intentId} from index ${index.id}`);
-        }
+      if (isRelevant && !isCurrentlyAssigned) {
+        await this.indexIntent(intentId, indexId);
+        console.log(`✅ Added intent ${intentId} to index ${indexId}`);
+      } else if (!isRelevant && isCurrentlyAssigned) {
+        await this.deIndexIntent(intentId, indexId);
+        console.log(`🗑️ Removed intent ${intentId} from index ${indexId}`);
       }
-      
-      console.log(`🎯 Intent ${intentId} processing complete: +${indexedCount} -${deIndexedCount}`);
-      
-      return {
-        success: true,
-        indexedCount,
-        deIndexedCount
-      };
       
     } catch (error) {
-      console.error(`❌ Error processing intent ${intentId}:`, error);
-      return {
-        success: false,
-        indexedCount: 0,
-        deIndexedCount: 0,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
+      console.error(`Failed to process intent ${intentId} for index ${indexId}:`, error);
     }
   }
-  
-  /**
-   * Process multiple intents in batches (in parallel per batch)
-   */
-  async processBulkIntents(intentIds: string[]): Promise<IntentIndexerResult> {
-    console.log(`🔄 Processing ${intentIds.length} intents in bulk with batches of ${PARALLEL_BATCH_SIZE}`);
-    let totalIndexed = 0;
-    let totalDeIndexed = 0;
-    const errors: string[] = [];
 
-    // Split intentIds into chunks of PARALLEL_BATCH_SIZE
-    const chunks: string[][] = [];
-    for (let i = 0; i < intentIds.length; i += PARALLEL_BATCH_SIZE) {
-      chunks.push(intentIds.slice(i, i + PARALLEL_BATCH_SIZE));
-    }
 
-    console.log(`📦 Split into ${chunks.length} batches`);
-
-    // Process each chunk sequentially, but process intents within each chunk in parallel
-    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-      const chunk = chunks[chunkIndex];
-      console.log(`🔄 Processing batch ${chunkIndex + 1}/${chunks.length} (${chunk.length} intents)`);
-
-      // Process all intents in this chunk in parallel
-      const batchPromises = chunk.map(intentId => this.processIntent(intentId));
-      
-      try {
-        const batchResults = await Promise.all(batchPromises);
-        
-        // Aggregate results from this batch
-        for (const result of batchResults) {
-          if (result.success) {
-            totalIndexed += result.indexedCount;
-            totalDeIndexed += result.deIndexedCount;
-          } else {
-            errors.push(result.error || 'Unknown error');
-          }
-        }
-      } catch (error) {
-        errors.push(`Batch ${chunkIndex + 1} error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    }
-
-    console.log(`✅ Bulk processing complete: +${totalIndexed} -${totalDeIndexed}, ${errors.length} errors`);
-
-    return {
-      success: errors.length === 0,
-      indexedCount: totalIndexed,
-      deIndexedCount: totalDeIndexed,
-      error: errors.length > 0 ? errors.join('; ') : undefined
-    };
-  }
-  /**
-   * Reprocess all intents for a specific user in a specific index (when member settings change)
-   */
-  async reprocessUserIndexIntents(userId: string, indexId: string): Promise<IntentIndexerResult> {
-    console.log(`👤 Reprocessing all intents for user ${userId} in index ${indexId}`);
-    
-    // Get all user's intents
-    const userIntents = await db.select({ id: intents.id })
-      .from(intents)
-      .where(and(
-        eq(intents.userId, userId),
-        isNull(intents.archivedAt) // Only active intents
-      ));
-    
-    const intentIds = userIntents.map((i: { id: string }) => i.id);
-    console.log(`📋 Found ${intentIds.length} intents for user ${userId} in index ${indexId}`);
-    
-    return await this.processBulkIntents(intentIds);
-  }
-  
-  /**
-   * Reprocess all member intents for a specific index (when index prompt changes)
-   */
-  async reprocessIndexIntents(indexId: string): Promise<IntentIndexerResult> {
-    console.log(`📁 Reprocessing all member intents for index ${indexId}`);
-    
-    // Get all intents from users who are members of this index with auto_assign enabled
-    const memberIntents = await db.select({ 
-      intentId: intents.id 
-    })
-      .from(intents)
-      .innerJoin(indexMembers, eq(intents.userId, indexMembers.userId))
-      .where(and(
-        eq(indexMembers.indexId, indexId),
-        eq(indexMembers.autoAssign, true),
-        isNull(intents.archivedAt) // Only active intents
-      ));
-    
-    const intentIds = memberIntents.map((i: { intentId: string }) => i.intentId);
-    console.log(`📋 Found ${intentIds.length} intents from members of index ${indexId}`);
-    
-    return await this.processBulkIntents(intentIds);
-  }
-  
   /**
    * Add intent to index
    */

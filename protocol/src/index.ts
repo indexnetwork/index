@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import 'dotenv/config';
 import { initializeBrokers } from './agents/context_brokers/connector';
+import { queueProcessor } from './lib/queue/processor';
 
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
@@ -75,8 +76,11 @@ app.use('*', (req, res) => {
   try {
     await initializeBrokers();
     console.log('🟢 Context brokers initialized');
+    
+    queueProcessor.start();
+    console.log('🟢 Queue processor started');
   } catch (err) {
-    console.error('🔴 Failed to initialize context brokers:', err);
+    console.error('🔴 Failed to initialize services:', err);
   }
 
   app.listen(PORT, () => {
