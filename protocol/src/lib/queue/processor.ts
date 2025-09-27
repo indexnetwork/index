@@ -16,7 +16,7 @@ export class QueueProcessor {
       this.processNextJob().catch(error => {
         console.error('Queue processor error:', error);
       });
-    }, 1000); // Process every second
+    }, 500); // Process every second
   }
 
   stop(): void {
