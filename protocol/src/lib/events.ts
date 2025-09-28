@@ -2,6 +2,8 @@ import db from './db';
 import { intents, indexes, indexMembers } from './schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { 
+  triggerBrokersOnIntentCreated,
+  triggerBrokersOnIntentUpdated,
   triggerBrokersOnIntentArchived 
 } from '../agents/context_brokers/connector';
 import { addIndexIntentJob } from './queue/llm-queue';
@@ -51,17 +53,22 @@ export class IntentEvents {
         ));
       
       // Queue individual intent-index pairs
-      const queuePromises = eligibleIndexes.map(({ id: indexId }) =>
+      // Priority 8: New intents - HIGHEST priority (user just created intent)
+      // These are time-sensitive user actions that should be processed immediately
+      const indexingPromises = eligibleIndexes.map(({ id: indexId }) =>
         addIndexIntentJob({
           intentId: event.intentId,
           indexId,
-          triggerBrokers: true // New intents need broker processing
+          userId: event.userId, // Include userId for per-user queuing
         }, 8)
       );
       
-      await Promise.all(queuePromises);
+      await Promise.all(indexingPromises);
       
-      console.log(`✅ Queued ${eligibleIndexes.length} intent-index pairs for ${event.intentId}`);
+      // Trigger context brokers - they decide if they want to use queue or not
+      await triggerBrokersOnIntentCreated(event.intentId);
+      
+      console.log(`✅ Queued ${eligibleIndexes.length} intent-index pairs and triggered brokers for ${event.intentId}`);
     } catch (error) {
       console.error(`❌ Failed to queue intent indexing ${event.intentId}:`, error);
     }
@@ -87,17 +94,22 @@ export class IntentEvents {
         ));
       
       // Queue individual intent-index pairs
-      const queuePromises = eligibleIndexes.map(({ id: indexId }) =>
+      // Priority 8: Updated intents - HIGHEST priority (user just modified intent)
+      // These are time-sensitive user actions that should be processed immediately
+      const indexingPromises = eligibleIndexes.map(({ id: indexId }) =>
         addIndexIntentJob({
           intentId: event.intentId,
           indexId,
-          triggerBrokers: true // Updated intents need broker processing
+          userId: event.userId, // Include userId for per-user queuing
         }, 8)
       );
       
-      await Promise.all(queuePromises);
+      await Promise.all(indexingPromises);
       
-      console.log(`✅ Queued ${eligibleIndexes.length} intent-index pairs for ${event.intentId}`);
+      // Trigger context brokers - they decide if they want to use queue or not
+      await triggerBrokersOnIntentUpdated(event.intentId, event.previousStatus);
+      
+      console.log(`✅ Queued ${eligibleIndexes.length} intent-index pairs and triggered brokers for ${event.intentId}`);
     } catch (error) {
       console.error(`❌ Failed to queue intent indexing ${event.intentId}:`, error);
     }
@@ -131,7 +143,8 @@ export class IndexEvents {
     try {
       // Get all intents from members of this index and queue them individually
       const memberIntents = await db.select({ 
-        intentId: intents.id 
+        intentId: intents.id,
+        userId: intents.userId
       })
         .from(intents)
         .innerJoin(indexMembers, eq(intents.userId, indexMembers.userId))
@@ -141,11 +154,14 @@ export class IndexEvents {
           isNull(intents.archivedAt)
         ));
       
-      const queuePromises = memberIntents.map(({ intentId }) => 
+      // Priority 4: Index prompt updates - LOWEST priority (background maintenance)
+      // When an index prompt changes, re-indexing can happen in background
+      // Less urgent than direct user actions (creating/updating intents)
+      const queuePromises = memberIntents.map(({ intentId, userId }) => 
         addIndexIntentJob({
           intentId,
           indexId: event.indexId,
-          triggerBrokers: false // Just re-indexing, no broker processing
+          userId, // Include userId for per-user queuing
         }, 4) // Highest priority
       );
       
@@ -178,11 +194,14 @@ export class MemberEvents {
             isNull(intents.archivedAt)
           ));
         
+        // Priority 6: Member settings updates - MEDIUM priority
+        // When a member's auto-assign changes, their intents need re-indexing
+        // Less urgent than user intent actions but more important than background tasks
         const queuePromises = userIntents.map(({ id: intentId }) => 
           addIndexIntentJob({
             intentId,
             indexId: event.indexId,
-            triggerBrokers: false // Just re-indexing, no broker processing
+            userId: event.userId!, // Include userId for per-user queuing
           }, 6)
         );
         

@@ -1,15 +1,10 @@
-import path from 'path';
-import fs from 'fs';
 import db from '../db';
 import { indexLinks, intents, intentIndexes, userIntegrations } from '../schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { processFilesToIntents, getExistingIntents } from './process-intents';
 import { crawlLinksForIndex } from '../crawl/web_crawler';
-import { Events } from '../events';
-import { config } from '../crawl/config';
 import { log } from '../log';
 import { handlers } from '../integrations';
-import { getTempPath } from '../paths';
 
 export type SyncProviderName = 'links' | 'gmail' | 'notion' | 'slack' | 'discord' | 'calendar';
 
@@ -70,9 +65,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
     const crawl = await crawlLinksForIndex(urls);
 
     const userId = run.userId;
-    const requestedCount = Math.max(1, Math.min(1, params.count ?? 1));
-    const skipBrokers = params.skipBrokers === true || !config.linksSync.triggerBrokers;
-
+    
     // If an indexId is provided, dedupe only against intents already in that index.
     const existingIntentRows = params.indexId
       ? await db
