@@ -1,7 +1,7 @@
 import db from '../db';
 import { indexLinks, intents, intentIndexes, userIntegrations } from '../schema';
 import { eq, and, isNull } from 'drizzle-orm';
-import { processFilesToIntents, getExistingIntents } from './process-intents';
+import { processFilesToIntents } from './process-intents';
 import { crawlLinksForIndex } from '../crawl/web_crawler';
 import { log } from '../log';
 import { handlers } from '../integrations';
@@ -13,7 +13,7 @@ export interface SyncProvider<Params extends Record<string, any> = any> {
   start(run: any, params: Params, update: (patch: any) => Promise<void>): Promise<void>;
 }
 
-type LinksParams = { count?: number; skipBrokers?: boolean; all?: boolean; indexId?: string; linkId?: string };
+type LinksParams = { count?: number; skipBrokers?: boolean; indexId?: string; linkId: string };
 
 export const linksProvider: SyncProvider<LinksParams> = {
   name: 'links',
@@ -32,18 +32,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
       }
       links = singleLink;
     } else {
-      // Handle multiple links sync
-      const allLinks = await db.select().from(indexLinks).where(eq(indexLinks.userId, run.userId));
-      if (allLinks.length === 0) {
-        await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0 } });
-        return;
-      }
-      const processAll = params.all === true;
-      links = processAll ? allLinks : allLinks.filter(l => !l.lastSyncAt);
-      if (links.length === 0) {
-        await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0, note: processAll ? 'nothing-to-do' : 'no-new-links' } });
-        return;
-      }
+      throw new Error('linkId is required for links sync');
     }
 
     const urls = links.map(l => l.url);
@@ -83,11 +72,10 @@ export const linksProvider: SyncProvider<LinksParams> = {
     let filesImported = 0;
     let skippedUnchanged = 0;
 
-    // Prepare files with per-file sourceId for batch processing
+    // Process single link files
     const filesToProcess = crawl.files.map(f => {
       const meta = crawl.urlMap[f.id];
       if (!meta) return null;
-      const linkRow = byUrl.get(meta.url) || byNorm.get(normalize(meta.url));
       return {
         id: f.id,
         name: meta.url,
@@ -95,7 +83,6 @@ export const linksProvider: SyncProvider<LinksParams> = {
         lastModified: new Date(),
         type: 'text/markdown',
         size: f.content.length,
-        sourceId: linkRow?.id,
       };
     }).filter(f => f !== null);
 
@@ -104,8 +91,8 @@ export const linksProvider: SyncProvider<LinksParams> = {
         userId,
         indexId: params.indexId,
         files: filesToProcess,
+        sourceId: params.linkId,
         sourceType: 'link',
-        perFileMode: true, // Use per-file mode for individual sourceId support
         existingIntents,
         onProgress: async (completed, total, note) => {
           await update({ progress: { completed, total, notes: note ? [note] : [] } });

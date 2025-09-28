@@ -127,12 +127,9 @@ export async function processFilesToIntents(options: {
   indexId?: string;
   files: IntegrationFile[];
   onProgress?: (completed: number, total: number, note?: string) => Promise<void> | void;
-  // Polymorphic source (nullable) - used when all files share same source
   sourceId?: string;
   sourceType?: 'file' | 'integration' | 'link';
-  // Alternative: per-file processing mode (uses file.sourceId for each file)
-  perFileMode?: boolean;
-  existingIntents?: Set<string>; // For per-file mode
+  existingIntents?: Set<string>;
   // Optional overrides for defaults
   timeoutMs?: number; // Override default timeout
 }): Promise<{ intentsGenerated: number; filesImported: number }>{
@@ -141,7 +138,6 @@ export async function processFilesToIntents(options: {
     indexId, 
     files, 
     onProgress, 
-    perFileMode = false,
     timeoutMs = INTENT_PROCESSING_CONFIG.DEFAULT_TIMEOUT_MS
   } = options;
   if (!files.length) return { intentsGenerated: 0, filesImported: 0 };
@@ -151,91 +147,45 @@ export async function processFilesToIntents(options: {
   const count = getCountForSourceType(options.sourceType);
   let totalIntentsGenerated = 0;
 
-  if (perFileMode) {
-    // Process each file individually (for per-file sourceId support)
+  // Batch process all files together
+  const baseTempDir = getTempPath('sync', `sync-${userId}-${Date.now()}`);
+  await fs.promises.mkdir(baseTempDir, { recursive: true });
+  
+  try {
+    const fileIds: string[] = [];
     let completed = 0;
-    for (const file of files) {
-      const baseTempDir = getTempPath('sync', `sync-single-${userId}-${Date.now()}`);
-      await fs.promises.mkdir(baseTempDir, { recursive: true });
-      
-      try {
-        await fs.promises.writeFile(path.join(baseTempDir, `${file.id}.md`), file.content);
-        
-        // Generate instruction and count specific to this file
-        const fileInstruction = generateTextInstruction(options.sourceType, file.sourceId || options.sourceId);
-        const fileCount = getCountForSourceType(options.sourceType);
-        
-        const result = await analyzeFolder(
-          baseTempDir,
-          [file.id],
-          fileInstruction,
-          Array.from(existingIntents),
-          [],
-          Math.max(1, fileCount),
-          timeoutMs
-        );
-
-        if (result.success && result.intents.length > 0) {
-          for (const intentData of result.intents) {
-            const saved = await saveIntentToDatabase({
-              intentData,
-              userId,
-              indexId,
-              sourceId: file.sourceId || options.sourceId,
-              sourceType: options.sourceType,
-              existingIntents,
-            });
-            totalIntentsGenerated += saved;
-          }
-        }
-      } finally {
-        await fs.promises.rm(baseTempDir, { recursive: true, force: true });
-      }
-      
+    for (const f of files) {
+      await fs.promises.writeFile(path.join(baseTempDir, `${f.id}.md`), f.content);
+      fileIds.push(f.id);
       completed += 1;
-      await onProgress?.(completed, files.length, `processed ${completed}/${files.length}`);
+      await onProgress?.(completed, files.length, `saved ${completed}/${files.length}`);
     }
-  } else {
-    // Batch process all files together (more efficient)
-    const baseTempDir = getTempPath('sync', `sync-${userId}-${Date.now()}`);
-    await fs.promises.mkdir(baseTempDir, { recursive: true });
-    
-    try {
-      const fileIds: string[] = [];
-      let completed = 0;
-      for (const f of files) {
-        await fs.promises.writeFile(path.join(baseTempDir, `${f.id}.md`), f.content);
-        fileIds.push(f.id);
-        completed += 1;
-        await onProgress?.(completed, files.length, `saved ${completed}/${files.length}`);
-      }
 
-      const result = await analyzeFolder(
-        baseTempDir,
-        fileIds,
-        textInstruction,
-        Array.from(existingIntents),
-        [],
-        Math.max(1, count),
-        timeoutMs
-      );
+    const result = await analyzeFolder(
+      baseTempDir,
+      fileIds,
+      textInstruction,
+      Array.from(existingIntents),
+      [],
+      Math.max(1, count),
+      timeoutMs
+    );
 
-      if (result.success && result.intents.length > 0) {
-        for (const intentData of result.intents) {
-          const saved = await saveIntentToDatabase({
-            intentData,
-            userId,
-            indexId,
-            sourceId: options.sourceId,
-            sourceType: options.sourceType,
-            existingIntents,
-          });
-          totalIntentsGenerated += saved;
-        }
+    if (result.success && result.intents.length > 0) {
+      for (const intentData of result.intents) {
+        const saved = await saveIntentToDatabase({
+          intentData,
+          userId,
+          indexId,
+          sourceId: options.sourceId,
+          sourceType: options.sourceType,
+          existingIntents,
+        });
+        totalIntentsGenerated += saved;
       }
-    } finally {
-      await fs.promises.rm(baseTempDir, { recursive: true, force: true });
     }
+  } finally {
+    await fs.promises.rm(baseTempDir, { recursive: true, force: true });
   }
   
   return { intentsGenerated: totalIntentsGenerated, filesImported: files.length };
