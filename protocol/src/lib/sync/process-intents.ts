@@ -53,15 +53,7 @@ function getCountForSourceType(sourceType?: 'file' | 'integration' | 'link'): nu
   }
 }
 
-export async function getExistingIntents(userId: string, indexId?: string): Promise<Set<string>> {
-  if (indexId) {
-    const rows = await db
-      .select({ payload: intents.payload })
-      .from(intents)
-      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-      .where(and(eq(intentIndexes.indexId, indexId), eq(intents.userId, userId), isNull(intents.archivedAt)));
-    return new Set(rows.map((r) => r.payload));
-  }
+export async function getExistingIntents(userId: string): Promise<Set<string>> {
   const rows = await db
     .select({ payload: intents.payload })
     .from(intents)
@@ -73,12 +65,11 @@ export async function getExistingIntents(userId: string, indexId?: string): Prom
 async function saveIntentToDatabase(options: {
   intentData: any;
   userId: string;
-  indexId?: string;
   sourceId?: string;
   sourceType?: 'file' | 'integration' | 'link';
   existingIntents: Set<string>;
 }): Promise<number> {
-  const { intentData, userId, indexId, sourceId, sourceType, existingIntents } = options;
+  const { intentData, userId, sourceId, sourceType, existingIntents } = options;
   
   if (existingIntents.has(intentData.payload)) return 0;
   
@@ -107,10 +98,6 @@ async function saveIntentToDatabase(options: {
     .returning({ id: intents.id });
   const intentId = inserted[0].id;
   
-  if (indexId) {
-    await db.insert(intentIndexes).values({ intentId, indexId });
-  }
-  
   // Trigger centralized intent created event
   Events.Intent.onCreated({
     intentId,
@@ -124,7 +111,6 @@ async function saveIntentToDatabase(options: {
 
 export async function processFilesToIntents(options: {
   userId: string;
-  indexId?: string;
   files: IntegrationFile[];
   onProgress?: (completed: number, total: number, note?: string) => Promise<void> | void;
   sourceId?: string;
@@ -135,14 +121,13 @@ export async function processFilesToIntents(options: {
 }): Promise<{ intentsGenerated: number; filesImported: number }>{
   const { 
     userId, 
-    indexId, 
     files, 
     onProgress, 
     timeoutMs = INTENT_PROCESSING_CONFIG.DEFAULT_TIMEOUT_MS
   } = options;
   if (!files.length) return { intentsGenerated: 0, filesImported: 0 };
 
-  const existingIntents = options.existingIntents || await getExistingIntents(userId, indexId);
+  const existingIntents = options.existingIntents || await getExistingIntents(userId);
   const textInstruction = generateTextInstruction(options.sourceType, options.sourceId);
   const count = getCountForSourceType(options.sourceType);
   let totalIntentsGenerated = 0;
@@ -176,7 +161,6 @@ export async function processFilesToIntents(options: {
         const saved = await saveIntentToDatabase({
           intentData,
           userId,
-          indexId,
           sourceId: options.sourceId,
           sourceType: options.sourceType,
           existingIntents,

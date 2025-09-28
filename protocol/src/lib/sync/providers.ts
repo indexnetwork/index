@@ -89,7 +89,6 @@ export const linksProvider: SyncProvider<LinksParams> = {
     if (filesToProcess.length > 0) {
       const result = await processFilesToIntents({
         userId,
-        indexId: params.indexId,
         files: filesToProcess,
         sourceId: params.linkId,
         sourceType: 'link',
@@ -153,7 +152,6 @@ export function createIntegrationProvider(type: IntegrationType): SyncProvider<I
 
       const { intentsGenerated, filesImported } = await processFilesToIntents({
         userId: run.userId,
-        indexId: params.indexId,
         files,
         sourceId: integrationRec.id,
         sourceType: 'integration',

@@ -59,7 +59,6 @@ export async function syncIntegration(
     // Process files to intents using centralized function
     const { intentsGenerated } = await processFilesToIntents({
       userId,
-      indexId,
       files,
       sourceId: integration[0].id,
       sourceType: 'integration',

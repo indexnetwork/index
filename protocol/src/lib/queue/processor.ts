@@ -40,7 +40,9 @@ export class QueueProcessor {
     if (this.isRunning) return;
     
     this.isRunning = true;
-    console.log(`🚀 Queue processor started with parallel user processing: ${this.concurrency} workers, max 10 users, 3 workers/user`);
+    const maxUsers = process.env.QUEUE_MAX_USERS || '10';
+    const maxWorkersPerUser = process.env.QUEUE_MAX_WORKERS_PER_USER || '3';
+    console.log(`🚀 Queue processor started with parallel user processing: ${this.concurrency} workers, max ${maxUsers} users, ${maxWorkersPerUser} workers/user`);
     
     // Start job distribution loop instead of individual worker loops
     this.startJobDistribution();
