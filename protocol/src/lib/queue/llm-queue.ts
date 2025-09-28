@@ -25,8 +25,8 @@ export class UserQueueManager {
   private userQueues = new Map<string, PriorityQueue<IndexIntentJobData | BrokerJobData>>();
   private activeUsersSetKey = 'active_user_queues';
   private userWorkers = new Map<string, Set<number>>(); // Track active workers per user
-  private maxUsers = 10; // Max concurrent users
-  private maxWorkersPerUser = 3; // Max workers per user
+  private maxUsers = parseInt(process.env.QUEUE_MAX_USERS || '10'); // Max concurrent users
+  private maxWorkersPerUser = parseInt(process.env.QUEUE_MAX_WORKERS_PER_USER || '3'); // Max workers per user
 
   // Get or create queue for specific user
   getUserQueue(userId: string): PriorityQueue<IndexIntentJobData | BrokerJobData> {
