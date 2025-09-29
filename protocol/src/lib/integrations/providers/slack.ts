@@ -56,17 +56,17 @@ async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<SlackMes
     for (const ch of channels) {
       const channelId = ch.id;
       const channelName = ch.name || ch.id;
-      
-      const messagesResp = await composio.tools.execute('SLACK_GET_CHANNEL_MESSAGES', { 
+      const args: any = { channel: channelId };
+      if (lastSyncAt) args.oldest = (lastSyncAt.getTime() / 1000).toString();
+
+      const history = await composio.tools.execute('SLACK_FETCH_CONVERSATION_HISTORY', { 
         userId, 
         connectedAccountId, 
-        arguments: { channel: channelId, limit: 200 } 
+        arguments: args 
       });
-      const messageList = (messagesResp as any)?.data?.messages || [];
-      messagesTotal += messageList.length;
 
-      for (const msg of messageList) {
-        if (!msg?.ts || !msg?.user) continue;
+        if (!msg?.ts) continue; // Skip invalid messages
+        if (!msg?.user) continue;
         if (msg.bot_id || msg.subtype) continue; // Skip bots
         
         const messageTime = new Date(parseFloat(msg.ts) * 1000);
