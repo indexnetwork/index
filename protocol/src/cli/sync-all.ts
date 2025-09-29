@@ -2,17 +2,10 @@
 import 'dotenv/config';
 import { Command, Option } from 'commander';
 import { runSync } from '../lib/sync';
-import type { SyncProviderName } from '../lib/sync';
 import { setLevel } from '../lib/log';
+import { getSyncProviderNames, getIntegrationNames, type SyncProviderName } from '../lib/integrations/config';
 
-const PROVIDERS: ReadonlyArray<SyncProviderName> = [
-  'links',
-  'gmail',
-  'notion',
-  'slack',
-  'discord',
-  'calendar',
-] as const;
+const PROVIDERS: ReadonlyArray<SyncProviderName> = getSyncProviderNames();
 
 type GlobalOpts = {
   user?: string;
@@ -97,7 +90,7 @@ async function main(): Promise<void> {
     });
 
   // integration helpers
-  for (const p of ['gmail', 'notion', 'slack', 'discord', 'calendar'] as const) {
+  for (const p of getIntegrationNames()) {
     program
       .command(p)
       .description(`Sync from ${p} integration`)

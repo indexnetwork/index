@@ -68,7 +68,6 @@ export async function syncIntegration(
         newUsersCreated = result.newUsersCreated;
       }
     } else {
-      // Traditional file processing for Gmail, Calendar, Notion
       if (handler.fetchFiles) {
         const files = await handler.fetchFiles(userId, lastSyncAt || undefined);
         log.info('Provider files', { count: files.length });
@@ -118,7 +117,7 @@ export async function syncIntegration(
 }
 
 // Queue-based sync functions (from sync/providers.ts and sync/runner.ts)
-export type SyncProviderName = 'links' | 'gmail' | 'notion' | 'slack' | 'discord' | 'calendar';
+import { SyncProviderName, getIntegrationNames } from './integrations/config';
 
 export interface SyncProvider<Params extends Record<string, any> = any> {
   name: SyncProviderName;
@@ -176,11 +175,9 @@ export function createIntegrationProvider(type: string): SyncProvider {
 // Sync runner
 const providers: Record<SyncProviderName, SyncProvider> = {
   links: linksProvider,
-  notion: createIntegrationProvider('notion'),
-  gmail: createIntegrationProvider('gmail'),
-  slack: createIntegrationProvider('slack'),
-  discord: createIntegrationProvider('discord'),
-  calendar: createIntegrationProvider('calendar'),
+  ...Object.fromEntries(
+    getIntegrationNames().map(name => [name, createIntegrationProvider(name)])
+  ) as Record<Exclude<SyncProviderName, 'links'>, SyncProvider>,
 };
 
 export async function runSync(provider: SyncProviderName, userId: string, params: Record<string, any> = {}) {

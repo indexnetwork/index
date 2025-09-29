@@ -8,6 +8,7 @@ import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { Events } from '../lib/events';
 import { checkMultipleIndexesIntentWriteAccess } from '../lib/index-access';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
+import { getDisplayName } from '../lib/integrations/config';
 import { suggestTags } from '../agents/core/intent_tag_suggester';
 import { generateEmbedding } from '../lib/embeddings';
 
@@ -160,20 +161,6 @@ router.get('/library',
         ))
         .orderBy(desc(intents.createdAt));
 
-      const friendlyIntegrationName = (integrationType?: string | null): string => {
-        if (!integrationType) return 'Integration';
-        const map: Record<string, string> = {
-          notion: 'Notion',
-          slack: 'Slack',
-          discord: 'Discord',
-          gmail: 'Gmail',
-          'google-calendar': 'Google Calendar',
-        };
-        return map[integrationType] || integrationType
-          .split('-')
-          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-          .join(' ');
-      };
 
       const intentsBySource = rows.flatMap(row => {
         if (!row.sourceType || !row.sourceId) return [];
@@ -198,8 +185,7 @@ router.get('/library',
             sourceName = 'Link';
           }
         } else {
-          const friendly = friendlyIntegrationName(row.integrationType);
-          sourceName = friendly;
+          sourceName = row.integrationType ? getDisplayName(row.integrationType) : 'Integration';
           sourceValue = row.integrationType || null;
           sourceMeta = row.integrationLastSyncAt ? row.integrationLastSyncAt.toISOString() : null;
         }

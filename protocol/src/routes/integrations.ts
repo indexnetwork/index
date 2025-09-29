@@ -6,6 +6,7 @@ import db from '../lib/db';
 import { userIntegrations } from '../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { runSync } from '../lib/sync';
+import { INTEGRATIONS } from '../lib/integrations/config';
 // queue removed; API is ack-only
 
 const router = Router();
@@ -22,15 +23,13 @@ const initComposio = async () => {
   return composio;
 };
 
-// Supported integrations mapping
-const INTEGRATION_MAPPINGS = {
-  notion: { toolkit: 'NOTION', name: 'Notion' },
-  slack: { toolkit: 'SLACK', name: 'Slack' },
-  discord: { toolkit: 'DISCORDBOT', name: 'Discord' },
-  gmail: { toolkit: 'GMAIL', name: 'Gmail' },
-  calendar: { toolkit: 'GOOGLECALENDAR', name: 'Google Calendar' },
-  linkedin: { toolkit: 'LINKEDIN', name: 'LinkedIn' }
-};
+// Use centralized integration config
+const INTEGRATION_MAPPINGS = Object.fromEntries(
+  Object.entries(INTEGRATIONS).map(([key, config]) => [
+    key, 
+    { toolkit: config.toolkit, name: config.displayName }
+  ])
+);
 
 // Get user's integrations status
 router.get('/',
