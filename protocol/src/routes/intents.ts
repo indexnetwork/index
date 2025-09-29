@@ -4,13 +4,14 @@ import db from '../lib/db';
 import { intents, users, indexes, intentIndexes, intentStakes, agents, files, indexLinks, userIntegrations } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, sql, inArray } from 'drizzle-orm';
-import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { Events } from '../lib/events';
+import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { checkMultipleIndexesIntentWriteAccess } from '../lib/index-access';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { getDisplayName } from '../lib/integrations/config';
 import { suggestTags } from '../agents/core/intent_tag_suggester';
 import { generateEmbedding } from '../lib/embeddings';
+import { IntentService } from '../services/intent-service';
 
 const router = Router();
 
@@ -320,53 +321,16 @@ router.post('/',
         }
       }
 
-      const summary = await summarizeIntent(payload);
-      
-      // Generate embedding for semantic search
-      let embedding: number[] | null = null;
-      try {
-        embedding = await generateEmbedding(payload);
-      } catch (error) {
-        console.error('Failed to generate embedding:', error);
-        // Continue without embedding - it's optional
-      }
-      
-      const newIntent = await db.insert(intents).values({
+      const newIntent = await IntentService.createIntent({
         payload,
-        summary,
+        userId: req.user!.id,
         isIncognito,
-        userId: req.user!.id,
-        embedding: embedding || undefined,
-              }).returning({
-          id: intents.id,
-          payload: intents.payload,
-          summary: intents.summary,
-          isIncognito: intents.isIncognito,
-          createdAt: intents.createdAt,
-          updatedAt: intents.updatedAt,
-          userId: intents.userId
-        });
-
-      // Associate with indexes if provided
-      if (indexIds.length > 0) {
-        await db.insert(intentIndexes).values(
-          indexIds.map((indexId: string) => ({
-            intentId: newIntent[0].id,
-            indexId: indexId
-          }))
-        );
-      }
-
-      // Trigger centralized intent created event
-      Events.Intent.onCreated({
-        intentId: newIntent[0].id,
-        userId: req.user!.id,
-        payload: newIntent[0].payload
+        indexIds
       });
 
       return res.status(201).json({
         message: 'Intent created successfully',
-        intent: newIntent[0]
+        intent: newIntent
       });
     } catch (error) {
       console.error('Create intent error:', error);

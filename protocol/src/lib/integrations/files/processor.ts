@@ -3,7 +3,7 @@ import path from 'path';
 import { analyzeFolder } from '../../../agents/core/intent_inferrer';
 import { getTempPath } from '../../paths';
 import type { IntegrationFile } from '../index';
-import { getExistingIntents, saveIntent } from '../../intent-utils';
+import { IntentService } from '../../../services/intent-service';
 
 export async function processFiles(
   userId: string,
@@ -16,7 +16,7 @@ export async function processFiles(
     return { intentsGenerated: 0, filesImported: 0 };
   }
 
-  const existingIntents = await getExistingIntents(userId);
+  const existingIntents = await IntentService.getUserIntents(userId);
   const count = sourceType === 'link' ? 1 : 5; // 1 for links, 5 for files
   
   const tempDir = getTempPath('sync', `${userId}-${Date.now()}`);
@@ -38,7 +38,6 @@ export async function processFiles(
       fileIds,
       'Generate intents based on content',
       Array.from(existingIntents),
-      [],
       count,
       60000
     );
@@ -47,7 +46,12 @@ export async function processFiles(
     if (result.success) {
       for (const intentData of result.intents) {
         if (!existingIntents.has(intentData.payload)) {
-          await saveIntent(intentData.payload, userId, sourceId);
+          await IntentService.createIntent({
+            payload: intentData.payload,
+            userId,
+            sourceId,
+            sourceType
+          });
           intentsGenerated++;
           existingIntents.add(intentData.payload);
         }

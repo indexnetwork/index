@@ -15,7 +15,7 @@ import { getClient } from '../composio';
 import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
 import { saveUser } from '../../user-utils';
-import { getExistingIntents, saveIntent } from '../../intent-utils';
+import { IntentService } from '../../../services/intent-service';
 
 // Return raw Notion pages as objects
 async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<NotionPage[]> {
@@ -167,7 +167,7 @@ export async function processNotionPages(
       usersProcessed++;
 
       // Generate intents for this user
-      const existingIntents = await getExistingIntents(createdUser.id);
+      const existingIntents = await IntentService.getUserIntents(createdUser.id);
       
       const result = await analyzeObjects(
         userPages,
@@ -180,7 +180,12 @@ export async function processNotionPages(
       if (result.success) {
         for (const intentData of result.intents) {
           if (!existingIntents.has(intentData.payload)) {
-            await saveIntent(intentData.payload, createdUser.id, sourceId);
+            await IntentService.createIntent({
+              payload: intentData.payload,
+              userId: createdUser.id,
+              sourceId,
+              sourceType: 'integration'
+            });
             totalIntentsGenerated++;
             existingIntents.add(intentData.payload);
           }
