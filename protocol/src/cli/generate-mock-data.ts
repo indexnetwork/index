@@ -192,17 +192,16 @@ const AUDIENCE_TOPICS = {
   'neural network experts': [{ base: 'machine learning' }],
 } as const satisfies Record<string, readonly TopicBlueprint[]>;
 
-const intentAudiences = Object.keys(AUDIENCE_TOPICS) as (keyof typeof AUDIENCE_TOPICS)[];
+const intentAudienceEntries = Object.entries(AUDIENCE_TOPICS) as readonly [
+  string,
+  readonly TopicBlueprint[],
+][];
 
 function getRandomItem<T>(items: readonly T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function buildIntent(
-  template: IntentTemplate,
-  audience: keyof typeof AUDIENCE_TOPICS,
-  topic: TopicBlueprint,
-): string {
+function buildIntent(template: IntentTemplate, audience: string, topic: TopicBlueprint): string {
   const nounOverrides = topic.overrides ?? {};
   const nouns = {
     ...DEFAULT_INTENT_NOUNS,
@@ -212,9 +211,9 @@ function buildIntent(
 }
 
 function getRandomIntentPayload(): string {
-  const audience = getRandomItem(intentAudiences);
-  const topic = getRandomItem(AUDIENCE_TOPICS[audience]);
+  const [audience, topics] = getRandomItem(intentAudienceEntries);
   const template = getRandomItem(INTENT_TEMPLATES);
+  const topic = getRandomItem(topics);
   return buildIntent(template, audience, topic);
 }
 
