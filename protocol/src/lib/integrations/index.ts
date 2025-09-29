@@ -9,51 +9,10 @@ export interface IntegrationFile {
   metadata?: any; // Optional metadata for provider-specific data (e.g., original message data)
 }
 
-// Separate object types for each integration
-export interface DiscordMessage {
-  id: string;
-  content: string;
-  author: {
-    id: string;
-    username: string;
-    global_name?: string;
-  };
-  timestamp: string;
-  edited_timestamp?: string;
-  channel_id: string;
-  channel_name: string;
-  embeds?: any[];
-  attachments?: any[];
-}
 
-export interface SlackMessage {
-  ts: string;
-  text: string;
-  user: string;
-  username?: string;
-  real_name?: string;
-  display_name?: string;
-  channel_id: string;
-  channel_name: string;
-  bot_id?: string;
-  subtype?: string;
-}
-
-export interface NotionPage {
-  id: string;
-  title: string;
-  content: string;
-  created_time: string;
-  last_edited_time: string;
-  created_by: {
-    id: string;
-    name?: string;
-  };
-}
-
-export interface IntegrationHandler {
+export interface IntegrationHandler<T = any> {
   fetchFiles?(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]>;
-  fetchObjects?(userId: string, lastSyncAt?: Date): Promise<DiscordMessage[] | SlackMessage[] | NotionPage[]>;
+  fetchObjects?(userId: string, lastSyncAt?: Date): Promise<T[]>;
 }
 
 import { notionHandler } from './providers/notion';
@@ -62,9 +21,9 @@ import { discordHandler } from './providers/discord';
 import { googleCalendarHandler } from './providers/googlecalendar';
 import { gmailHandler } from './providers/gmail';
 
-export { notionHandler, processNotionPages } from './providers/notion';
-export { slackHandler } from './providers/slack';
-export { discordHandler } from './providers/discord';
+export { notionHandler, processNotionPages, type NotionPage } from './providers/notion';
+export { slackHandler, type SlackMessage } from './providers/slack';
+export { discordHandler, type DiscordMessage } from './providers/discord';
 export { googleCalendarHandler } from './providers/googlecalendar';
 export { gmailHandler } from './providers/gmail';
 

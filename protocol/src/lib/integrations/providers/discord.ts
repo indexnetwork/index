@@ -1,4 +1,20 @@
-import type { IntegrationHandler, DiscordMessage } from '../index';
+import type { IntegrationHandler } from '../index';
+
+export interface DiscordMessage {
+  id: string;
+  content: string;
+  author: {
+    id: string;
+    username: string;
+    global_name?: string;
+  };
+  timestamp: string;
+  edited_timestamp?: string;
+  channel_id: string;
+  channel_name: string;
+  embeds?: any[];
+  attachments?: any[];
+}
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
@@ -259,4 +275,4 @@ export function extractDiscordUsers(messages: any[]) {
   return Array.from(userMap.values());
 }
 
-export const discordHandler: IntegrationHandler = { fetchObjects };
+export const discordHandler: IntegrationHandler<DiscordMessage> = { fetchObjects };

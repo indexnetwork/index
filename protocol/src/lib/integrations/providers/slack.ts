@@ -1,4 +1,17 @@
-import type { IntegrationHandler, SlackMessage } from '../index';
+import type { IntegrationHandler } from '../index';
+
+export interface SlackMessage {
+  ts: string;
+  text: string;
+  user: string;
+  username?: string;
+  real_name?: string;
+  display_name?: string;
+  channel_id: string;
+  channel_name: string;
+  bot_id?: string;
+  subtype?: string;
+}
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
@@ -185,4 +198,4 @@ export function extractSlackUsers(messages: any[]) {
   return Array.from(userMap.values());
 }
 
-export const slackHandler: IntegrationHandler = { fetchObjects };
+export const slackHandler: IntegrationHandler<SlackMessage> = { fetchObjects };

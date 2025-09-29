@@ -1,4 +1,16 @@
-import type { IntegrationHandler, NotionPage } from '../index';
+import type { IntegrationHandler } from '../index';
+
+export interface NotionPage {
+  id: string;
+  title: string;
+  content: string;
+  created_time: string;
+  last_edited_time: string;
+  created_by: {
+    id: string;
+    name?: string;
+  };
+}
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
@@ -206,4 +218,4 @@ export function extractNotionUsers(pages: any[]) {
   return Array.from(userMap.values());
 }
 
-export const notionHandler: IntegrationHandler = { fetchObjects };
+export const notionHandler: IntegrationHandler<NotionPage> = { fetchObjects };
