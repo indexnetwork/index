@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import 'dotenv/config';
 import { Command, Option } from 'commander';
-import { runSync } from '../lib/sync/runner';
-import type { SyncProviderName } from '../lib/sync/providers';
+import { runSync } from '../lib/sync';
+import type { SyncProviderName } from '../lib/sync';
 import { setLevel } from '../lib/log';
 
 const PROVIDERS: ReadonlyArray<SyncProviderName> = [

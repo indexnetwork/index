@@ -5,7 +5,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
 import { userIntegrations } from '../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
-import { runSync } from '../lib/sync/runner';
+import { runSync } from '../lib/sync';
 // queue removed; API is ack-only
 
 const router = Router();

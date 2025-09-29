@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { runSync } from '../lib/sync/runner';
+import { runSync } from '../lib/sync';
 
 const router = Router();
 

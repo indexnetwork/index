@@ -1,23 +1,24 @@
-import type { IntegrationHandler, IntegrationFile } from '../index';
-import { getClient } from '../core/composio';
+import type { IntegrationHandler, DiscordMessage } from '../index';
+import { getClient } from '../composio';
 import { log } from '../../log';
-import { withRetry, concurrencyLimit, mapDiscordMessageToFile } from '../core/util';
+import { analyzeObjects } from '../../../agents/core/intent_inferrer';
+import { createPrivyUsers } from '../../user-utils';
+import { getExistingIntents, saveIntent } from '../../../lib/intent-utils';
 
-async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
+
+// Shared function to get raw Discord messages
+async function fetchDiscordMessages(userId: string, lastSyncAt?: Date): Promise<any[]> {
   try {
     log.info('Discord sync start', { userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
 
-    const connectedAccounts = await withRetry(() => composio.connectedAccounts.list({
+    const connectedAccounts = await composio.connectedAccounts.list({
       userIds: [userId],
       toolkitSlugs: ['discordbot'],
-    }));
+    });
 
     const account = connectedAccounts?.items?.[0];
-    if (!account) {
-      // No connected accounts; nothing to do
-      return [];
-    }
+    if (!account) return [];
     const connectedAccountId = account.id;
 
     // Get guild information from the connected account data
@@ -30,17 +31,16 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
     // Fetch channels from the guild
     const channels: Array<{ id: string; name?: string }> = [];
     
-    const guildChannels = await withRetry(() => composio.tools.execute('DISCORDBOT_LIST_GUILD_CHANNELS', {
+    const guildChannels = await composio.tools.execute('DISCORDBOT_LIST_GUILD_CHANNELS', {
       userId,
       connectedAccountId,
       arguments: { guild_id: guild.id }
-    }));
+    });
 
     // Parse channels directly from API response
     const channelList = (guildChannels as any)?.data?.details || [];
     for (const ch of channelList) {
       // Only include text channels (type 0) and news channels (type 5)
-      // Skip voice channels (type 2) and category channels (type 4)
       if (ch?.id && (ch.type === 0 || ch.type === 5)) {
         channels.push({ id: ch.id, name: ch.name });
       }
@@ -49,81 +49,214 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
     log.info('Discord channels', { count: channels.length });
     if (!channels.length) return [];
 
-    const limit = concurrencyLimit(6);
-    const files: IntegrationFile[] = [];
+    const allMessages: any[] = [];
     let messagesTotal = 0;
 
-    const tasks = channels.map((ch) => limit(async () => {
+    for (const ch of channels) {
       const channelId = ch.id;
       const channelName = ch.name || ch.id;
       const args: any = { channel_id: channelId, limit: 100 };
       
       // Add after timestamp filter if lastSyncAt is provided
       if (lastSyncAt) {
-        // Discord uses snowflake IDs which include timestamp
-        // Convert timestamp to Discord snowflake format for filtering
         const timestampMs = lastSyncAt.getTime();
         const discordEpoch = 1420070400000; // Discord epoch (2015-01-01)
         const snowflake = ((timestampMs - discordEpoch) << 22).toString();
         args.after = snowflake;
       }
 
-      const messages = await withRetry(
-        () => composio.tools.execute('DISCORDBOT_LIST_MESSAGES', { 
-          userId, 
-          connectedAccountId, 
-          arguments: args 
-        }),
-        { retries: 3 }
-      );
+      const messages = await composio.tools.execute('DISCORDBOT_LIST_MESSAGES', { 
+        userId, 
+        connectedAccountId,
+        arguments: args
+      });
 
-      // Parse messages directly from the API response
       const messageList = messages?.data?.details || [];
       messagesTotal += messageList.length;
 
       for (const msg of messageList) {
-        // Debug logging to understand message structure
-        log.info('Discord message received', { 
-          id: msg?.id, 
-          hasContent: !!msg?.content, 
-          contentLength: msg?.content?.length || 0,
-          author: msg?.author?.username,
-          timestamp: msg?.timestamp,
-          type: msg?.type
-        });
-        
         if (!msg?.id || !msg?.timestamp) continue; // Skip invalid messages
+        if (msg.type && msg.type !== 0) continue; // Skip system messages
         
-        // Skip only system messages (type 0 = DEFAULT, others are system messages)
-        if (msg.type && msg.type !== 0) {
-          continue;
-        }
+        // Add channel info to message
+        msg.channel_id = channelId;
+        msg.channel_name = channelName;
         
-        // Log messages with empty content for debugging
-        if (!msg.content || msg.content.trim() === '') {
-          log.warn('Discord message has empty content - may need MESSAGE_CONTENT intent', {
-            messageId: msg.id,
-            authorId: msg.author?.id,
-            hasEmbeds: !!(msg.embeds && msg.embeds.length > 0),
-            hasAttachments: !!(msg.attachments && msg.attachments.length > 0)
-          });
-        }
-        
-        const file = mapDiscordMessageToFile(channelId, channelName, msg);
-        if (!lastSyncAt || file.lastModified > lastSyncAt) {
-          files.push(file);
+        // Filter by lastSyncAt
+        const messageTime = new Date(msg.edited_timestamp || msg.timestamp);
+        if (!lastSyncAt || messageTime > lastSyncAt) {
+          allMessages.push(msg);
         }
       }
-    }));
-
-    await Promise.all(tasks);
-    log.info('Discord messages', { total: messagesTotal });
-    log.info('Discord sync done', { userId, files: files.length });
-    return files;
+    }
+    log.info('Discord messages', { total: messagesTotal, filtered: allMessages.length });
+    return allMessages;
   } catch (error) {
     log.error('Discord sync error', { userId, error: (error as Error).message });
     return [];
   }
 }
 
-export const discordHandler: IntegrationHandler = { fetchFiles };
+// Return raw Discord messages as objects
+async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<DiscordMessage[]> {
+  const messages = await fetchDiscordMessages(userId, lastSyncAt);
+  const discordMessages: DiscordMessage[] = [];
+  
+  for (const msg of messages) {
+    // Extract content from various sources
+    let content = msg.content || '';
+    
+    // If main content is empty, try to extract from embeds
+    if (!content && msg.embeds && msg.embeds.length > 0) {
+      const embedTexts: string[] = [];
+      for (const embed of msg.embeds) {
+        if (embed.title) embedTexts.push(`**${embed.title}**`);
+        if (embed.description) embedTexts.push(embed.description);
+        if (embed.fields) {
+          for (const field of embed.fields) {
+            embedTexts.push(`**${field.name}:** ${field.value}`);
+          }
+        }
+      }
+      if (embedTexts.length > 0) {
+        content = embedTexts.join('\n\n');
+      }
+    }
+    
+    // Add attachment information if available
+    if (msg.attachments && msg.attachments.length > 0) {
+      const attachmentsList = msg.attachments.map((att: any) => 
+        `- [${att.filename}](${att.url}) (${att.size} bytes)`
+      ).join('\n');
+      content += content ? `\n\n**Attachments:**\n${attachmentsList}` : `**Attachments:**\n${attachmentsList}`;
+    }
+    
+    if (!content) {
+      content = '*[Message content unavailable - Discord bot may need MESSAGE_CONTENT intent]*';
+    }
+    
+    discordMessages.push({
+      id: msg.id,
+      content,
+      author: {
+        id: msg.author?.id || 'unknown',
+        username: msg.author?.username || 'unknown',
+        global_name: msg.author?.global_name
+      },
+      timestamp: msg.timestamp,
+      edited_timestamp: msg.edited_timestamp,
+      channel_id: msg.channel_id,
+      channel_name: msg.channel_name,
+      embeds: msg.embeds,
+      attachments: msg.attachments
+    });
+  }
+  
+  log.info('Discord objects sync done', { userId, objects: discordMessages.length });
+  return discordMessages;
+}
+
+// Process Discord messages to generate intents per user
+export async function processDiscordMessages(
+  messages: DiscordMessage[],
+  sourceId: string
+): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
+  if (!messages.length) {
+    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+  }
+
+  // Using static imports from top of file
+
+  log.info('Processing Discord messages', { count: messages.length });
+
+  // Extract and create users
+  const extractedUsers = extractDiscordUsers(messages);
+  const uniqueUsers = Array.from(new Map(extractedUsers.map((u: any) => [u.providerId, u])).values());
+  
+  if (!uniqueUsers.length) {
+    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+  }
+  
+  const createdUsers = await createPrivyUsers(uniqueUsers as any);
+  const newUsersCreated = createdUsers.filter((u: any) => u.isNewUser).length;
+
+  // Group messages by Discord user ID
+  const messagesByUser = new Map<string, DiscordMessage[]>();
+  for (const message of messages) {
+    const userId = message.author.id;
+    if (!messagesByUser.has(userId)) {
+      messagesByUser.set(userId, []);
+    }
+    messagesByUser.get(userId)!.push(message);
+  }
+
+  let totalIntentsGenerated = 0;
+
+  // Generate intents for each user
+  for (const createdUser of createdUsers) {
+    const extractedUser = uniqueUsers.find((u: any) => u.email === createdUser.email);
+    if (!extractedUser) continue;
+
+    const userMessages = messagesByUser.get((extractedUser as any).providerId) || [];
+    if (!userMessages.length) continue;
+
+    const existingIntents = await getExistingIntents(createdUser.id);
+    
+    const result = await analyzeObjects(
+      userMessages,
+      `Generate intents for Discord user "${createdUser.name}" based on their messages`,
+      Array.from(existingIntents),
+      3,
+      60000
+    );
+
+    if (result.success) {
+      for (const intentData of result.intents) {
+        if (!existingIntents.has(intentData.payload)) {
+          await saveIntent(intentData.payload, createdUser.id, sourceId);
+          totalIntentsGenerated++;
+          existingIntents.add(intentData.payload);
+        }
+      }
+    }
+  }
+
+  log.info('Discord processing complete', { 
+    intentsGenerated: totalIntentsGenerated,
+    usersProcessed: createdUsers.length,
+    newUsersCreated
+  });
+
+  return { 
+    intentsGenerated: totalIntentsGenerated, 
+    usersProcessed: createdUsers.length,
+    newUsersCreated
+  };
+}
+
+// Extract Discord users from messages
+export function extractDiscordUsers(messages: any[]) {
+  const userMap = new Map();
+  
+  for (const message of messages) {
+    const author = message.author;
+    if (!author?.id || !author?.username || author.bot) continue;
+    
+    const userId = author.id;
+    if (userMap.has(userId)) continue;
+    
+    const email = `${author.username.toLowerCase().replace(/[^a-z0-9]/g, '')}+discord-${userId}@discord.index.app`;
+    const name = author.global_name || author.display_name || author.username || `Discord User ${userId}`;
+    
+    userMap.set(userId, {
+      email,
+      name,
+      provider: 'discord',
+      providerId: userId
+    });
+  }
+  
+  return Array.from(userMap.values());
+}
+
+export const discordHandler: IntegrationHandler = { fetchObjects };
