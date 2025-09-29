@@ -1,9 +1,9 @@
-import db from './db';
-import { users, intents, intentStakes } from './schema';
+import db from '../db';
+import { users, intents, intentStakes } from '../schema';
 import { eq, sql, and } from 'drizzle-orm';
 import { sendEmail } from './email';
 import { connectionRequestTemplate, connectionAcceptedTemplate, connectionDeclinedTemplate } from './email-templates';
-import { synthesizeVibeCheck, synthesizeIntro } from './synthesis';
+import { synthesizeVibeCheck, synthesizeIntro } from '../synthesis';
 
 async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise<boolean> {
   const [user1Intents, user2Intents] = await Promise.all([
