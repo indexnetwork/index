@@ -134,123 +134,88 @@ const mockUsers: readonly MockUser[] = PRIVY_TEST_ACCOUNTS.map((account) => ({
 
 const userLinkCache = new Map<string, string>();
 
-const staticIntents: readonly string[] = [
-  'Looking for AI researchers to collaborate on machine learning model optimization projects.',
-  'Seeking AI researchers to partner on machine learning model optimization initiatives.',
-  'Connecting with AI researchers for machine learning model optimization collaborations.',
-  'Partnering with AI researchers on machine learning model optimization developments.',
-  'Targeting AI researchers for machine learning model optimization partnerships.',
-  'Reaching out to AI researchers about machine learning model optimization projects.',
-  'Looking for AI specialists to collaborate on machine learning optimization research.',
-  'Seeking AI specialists to partner on machine learning optimization initiatives.',
-  'Connecting with AI specialists for machine learning optimization collaborations.',
-  'Partnering with AI specialists on machine learning optimization developments.',
-  'Targeting AI specialists for machine learning optimization partnerships.',
-  'Reaching out to AI specialists about machine learning optimization projects.',
-  'Looking for AI experts to collaborate on machine learning model research.',
-  'Seeking AI experts to partner on machine learning model initiatives.',
-  'Connecting with AI experts for machine learning model collaborations.',
-  'Partnering with AI experts on machine learning model developments.',
-  'Targeting AI experts for machine learning model partnerships.',
-  'Reaching out to AI experts about machine learning model projects.',
-  'Looking for machine learning researchers to collaborate on AI optimization projects.',
-  'Seeking machine learning researchers to partner on AI optimization initiatives.',
-  'Connecting with machine learning researchers for AI optimization collaborations.',
-  'Partnering with machine learning researchers on AI optimization developments.',
-  'Targeting machine learning researchers for AI optimization partnerships.',
-  'Reaching out to machine learning researchers about AI optimization projects.',
-  'Looking for machine learning specialists to collaborate on AI model projects.',
-  'Seeking machine learning specialists to partner on AI model initiatives.',
-  'Connecting with machine learning specialists for AI model collaborations.',
-  'Partnering with machine learning specialists on AI model developments.',
-  'Targeting machine learning specialists for AI model partnerships.',
-  'Reaching out to machine learning specialists about AI model projects.',
-  'Looking for machine learning experts to collaborate on AI research projects.',
-  'Seeking machine learning experts to partner on AI research initiatives.',
-  'Connecting with machine learning experts for AI research collaborations.',
-  'Partnering with machine learning experts on AI research developments.',
-  'Targeting machine learning experts for AI research partnerships.',
-  'Reaching out to machine learning experts about AI research projects.',
-  'Looking for AI researchers to collaborate on deep learning optimization projects.',
-  'Seeking AI researchers to partner on deep learning optimization initiatives.',
-  'Connecting with AI researchers for deep learning optimization collaborations.',
-  'Partnering with AI researchers on deep learning optimization developments.',
-  'Targeting AI researchers for deep learning optimization partnerships.',
-  'Reaching out to AI researchers about deep learning optimization projects.',
-  'Looking for AI specialists to collaborate on deep learning model projects.',
-  'Seeking AI specialists to partner on deep learning model initiatives.',
-  'Connecting with AI specialists for deep learning model collaborations.',
-  'Partnering with AI specialists on deep learning model developments.',
-  'Targeting AI specialists for deep learning model partnerships.',
-  'Reaching out to AI specialists about deep learning model projects.',
-  'Looking for AI experts to collaborate on neural network optimization projects.',
-  'Seeking AI experts to partner on neural network optimization initiatives.',
-  'Connecting with AI experts for neural network optimization collaborations.',
-  'Partnering with AI experts on neural network optimization developments.',
-  'Targeting AI experts for neural network optimization partnerships.',
-  'Reaching out to AI experts about neural network optimization projects.',
-  'Looking for deep learning researchers to collaborate on AI optimization projects.',
-  'Seeking deep learning researchers to partner on AI optimization initiatives.',
-  'Connecting with deep learning researchers for AI optimization collaborations.',
-  'Partnering with deep learning researchers on AI optimization developments.',
-  'Targeting deep learning researchers for AI optimization partnerships.',
-  'Reaching out to deep learning researchers about AI optimization projects.',
-  'Looking for deep learning specialists to collaborate on machine learning projects.',
-  'Seeking deep learning specialists to partner on machine learning initiatives.',
-  'Connecting with deep learning specialists for machine learning collaborations.',
-  'Partnering with deep learning specialists on machine learning developments.',
-  'Targeting deep learning specialists for machine learning partnerships.',
-  'Reaching out to deep learning specialists about machine learning projects.',
-  'Looking for deep learning experts to collaborate on AI model projects.',
-  'Seeking deep learning experts to partner on AI model initiatives.',
-  'Connecting with deep learning experts for AI model collaborations.',
-  'Partnering with deep learning experts on AI model developments.',
-  'Targeting deep learning experts for AI model partnerships.',
-  'Reaching out to deep learning experts about AI model projects.',
-  'Looking for neural network researchers to collaborate on optimization projects.',
-  'Seeking neural network researchers to partner on optimization initiatives.',
-  'Connecting with neural network researchers for optimization collaborations.',
-  'Partnering with neural network researchers on optimization developments.',
-  'Targeting neural network researchers for optimization partnerships.',
-  'Reaching out to neural network researchers about optimization projects.',
-  'Looking for neural network specialists to collaborate on AI projects.',
-  'Seeking neural network specialists to partner on AI initiatives.',
-  'Connecting with neural network specialists for AI collaborations.',
-  'Partnering with neural network specialists on AI developments.',
-  'Targeting neural network specialists for AI partnerships.',
-  'Reaching out to neural network specialists about AI projects.',
-  'Looking for neural network experts to collaborate on machine learning projects.',
-  'Seeking neural network experts to partner on machine learning initiatives.',
-  'Connecting with neural network experts for machine learning collaborations.',
-  'Partnering with neural network experts on machine learning developments.',
-  'Targeting neural network experts for machine learning partnerships.',
-  'Reaching out to neural network experts about machine learning projects.',
-  'Looking for AI researchers to collaborate on algorithm optimization projects.',
-  'Seeking AI researchers to partner on algorithm optimization initiatives.',
-  'Connecting with AI researchers for algorithm optimization collaborations.',
-  'Partnering with AI researchers on algorithm optimization developments.',
-  'Targeting AI researchers for algorithm optimization partnerships.',
-  'Reaching out to AI researchers about algorithm optimization projects.',
-  'Looking for AI specialists to collaborate on algorithm development projects.',
-  'Seeking AI specialists to partner on algorithm development initiatives.',
-  'Connecting with AI specialists for algorithm development collaborations.',
-  'Partnering with AI specialists on algorithm development developments.',
-  'Targeting AI specialists for algorithm development partnerships.',
-  'Reaching out to AI specialists about algorithm development projects.',
-  'Looking for AI experts to collaborate on computational optimization projects.',
-  'Seeking AI experts to partner on computational optimization initiatives.',
-  'Connecting with AI experts for computational optimization collaborations.',
-  'Partnering with AI experts on computational optimization developments.',
-  'Targeting AI experts for computational optimization partnerships.',
-  'Reaching out to AI experts about computational optimization projects.',
-];
+const DEFAULT_INTENT_NOUNS = {
+  collaborate: 'projects',
+  partner: 'initiatives',
+  connect: 'collaborations',
+  build: 'developments',
+  target: 'partnerships',
+  outreach: 'projects',
+} as const;
+
+type TemplateKey = keyof typeof DEFAULT_INTENT_NOUNS;
+
+type IntentTemplate = {
+  prefix: string;
+  joiner: string;
+  nounKey: TemplateKey;
+};
+
+type TopicBlueprint = {
+  base: string;
+  overrides?: Partial<Record<TemplateKey, string>>;
+};
+
+const INTENT_TEMPLATES = [
+  { prefix: 'Looking for', joiner: 'to collaborate on', nounKey: 'collaborate' },
+  { prefix: 'Seeking', joiner: 'to partner on', nounKey: 'partner' },
+  { prefix: 'Connecting with', joiner: 'for', nounKey: 'connect' },
+  { prefix: 'Partnering with', joiner: 'on', nounKey: 'build' },
+  { prefix: 'Targeting', joiner: 'for', nounKey: 'target' },
+  { prefix: 'Reaching out to', joiner: 'about', nounKey: 'outreach' },
+] as const satisfies readonly IntentTemplate[];
+
+const AUDIENCE_TOPICS = {
+  'AI researchers': [
+    { base: 'machine learning model optimization' },
+    { base: 'deep learning optimization' },
+    { base: 'algorithm optimization' },
+  ],
+  'AI specialists': [
+    { base: 'machine learning optimization', overrides: { collaborate: 'research' } },
+    { base: 'deep learning model' },
+    { base: 'algorithm development' },
+  ],
+  'AI experts': [
+    { base: 'machine learning model', overrides: { collaborate: 'research' } },
+    { base: 'neural network optimization' },
+    { base: 'computational optimization' },
+  ],
+  'machine learning researchers': [{ base: 'AI optimization' }],
+  'machine learning specialists': [{ base: 'AI model' }],
+  'machine learning experts': [{ base: 'AI research' }],
+  'deep learning researchers': [{ base: 'AI optimization' }],
+  'deep learning specialists': [{ base: 'machine learning' }],
+  'deep learning experts': [{ base: 'AI model' }],
+  'neural network researchers': [{ base: 'optimization' }],
+  'neural network specialists': [{ base: 'AI' }],
+  'neural network experts': [{ base: 'machine learning' }],
+} as const satisfies Record<string, readonly TopicBlueprint[]>;
+
+const intentAudiences = Object.keys(AUDIENCE_TOPICS) as (keyof typeof AUDIENCE_TOPICS)[];
 
 function getRandomItem<T>(items: readonly T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function getRandomStaticIntent(): string {
-  return getRandomItem(staticIntents);
+function buildIntent(
+  template: IntentTemplate,
+  audience: keyof typeof AUDIENCE_TOPICS,
+  topic: TopicBlueprint,
+): string {
+  const nounOverrides = topic.overrides ?? {};
+  const nouns = {
+    ...DEFAULT_INTENT_NOUNS,
+    ...nounOverrides,
+  } as Record<TemplateKey, string>;
+  return `${template.prefix} ${audience} ${template.joiner} ${topic.base} ${nouns[template.nounKey]}.`;
+}
+
+function getRandomIntentPayload(): string {
+  const audience = getRandomItem(intentAudiences);
+  const topic = getRandomItem(AUDIENCE_TOPICS[audience]);
+  const template = getRandomItem(INTENT_TEMPLATES);
+  return buildIntent(template, audience, topic);
 }
 
 async function ensurePrivyIdentity(email: string): Promise<string> {
@@ -449,7 +414,7 @@ async function createIntentsForUser(user: User): Promise<GeneratedIntent[]> {
   const intentsForUser: GeneratedIntent[] = [];
 
   for (let i = 0; i < INTENTS_PER_USER; i += 1) {
-    const payload = getRandomStaticIntent();
+    const payload = getRandomIntentPayload();
     const intent = await createIntent(user, payload);
     intentsForUser.push(intent);
 
@@ -597,4 +562,3 @@ async function main(): Promise<void> {
 }
 
 void main();
-
