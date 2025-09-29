@@ -13,4 +13,8 @@ if (process.env.NODE_ENV === 'development') {
   globalThis.__db = db;
 }
 
-export default db; 
+export async function closeDb(): Promise<void> {
+  await client.end({ timeout: 5 });
+}
+
+export default db;
