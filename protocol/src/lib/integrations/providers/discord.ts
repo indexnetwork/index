@@ -18,7 +18,7 @@ export interface DiscordMessage {
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
-import { createPrivyUsers } from '../../user-utils';
+import { saveUser } from '../../user-utils';
 import { getExistingIntents, saveIntent } from '../../../lib/intent-utils';
 
 
@@ -185,18 +185,7 @@ export async function processDiscordMessages(
 
   log.info('Processing Discord messages', { count: messages.length });
 
-  // Extract and create users
-  const extractedUsers = extractDiscordUsers(messages);
-  const uniqueUsers = Array.from(new Map(extractedUsers.map((u: any) => [u.providerId, u])).values());
-  
-  if (!uniqueUsers.length) {
-    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
-  }
-  
-  const createdUsers = await createPrivyUsers(uniqueUsers as any);
-  const newUsersCreated = createdUsers.filter((u: any) => u.isNewUser).length;
-
-  // Group messages by Discord user ID
+  // Group messages by Discord user ID first
   const messagesByUser = new Map<string, DiscordMessage[]>();
   for (const message of messages) {
     const userId = message.author.id;
@@ -207,72 +196,72 @@ export async function processDiscordMessages(
   }
 
   let totalIntentsGenerated = 0;
+  let usersProcessed = 0;
+  let newUsersCreated = 0;
 
-  // Generate intents for each user
-  for (const createdUser of createdUsers) {
-    const extractedUser = uniqueUsers.find((u: any) => u.email === createdUser.email);
-    if (!extractedUser) continue;
-
-    const userMessages = messagesByUser.get((extractedUser as any).providerId) || [];
+  // Process each user individually
+  for (const [discordUserId, userMessages] of messagesByUser) {
     if (!userMessages.length) continue;
 
-    const existingIntents = await getExistingIntents(createdUser.id);
-    
-    const result = await analyzeObjects(
-      userMessages,
-      `Generate intents for Discord user "${createdUser.name}" based on their messages`,
-      Array.from(existingIntents),
-      3,
-      60000
-    );
+    // Extract user info from the first message
+    const firstMessage = userMessages[0];
+    const extractedUser = {
+      email: `${firstMessage.author.username}@discord.local`,
+      name: firstMessage.author.global_name || firstMessage.author.username,
+      provider: 'discord' as const,
+      providerId: firstMessage.author.id
+    };
 
-    if (result.success) {
-      for (const intentData of result.intents) {
-        if (!existingIntents.has(intentData.payload)) {
-          await saveIntent(intentData.payload, createdUser.id, sourceId);
-          totalIntentsGenerated++;
-          existingIntents.add(intentData.payload);
+    try {
+      // Save user individually
+      const createdUser = await saveUser(extractedUser);
+      if (createdUser.isNewUser) {
+        newUsersCreated++;
+      }
+      usersProcessed++;
+
+      // Generate intents for this user
+      const existingIntents = await getExistingIntents(createdUser.id);
+      
+      const result = await analyzeObjects(
+        userMessages,
+        `Generate intents for Discord user "${createdUser.name}" based on their messages`,
+        Array.from(existingIntents),
+        3,
+        60000
+      );
+
+      if (result.success) {
+        for (const intentData of result.intents) {
+          if (!existingIntents.has(intentData.payload)) {
+            await saveIntent(intentData.payload, createdUser.id, sourceId);
+            totalIntentsGenerated++;
+            existingIntents.add(intentData.payload);
+          }
         }
       }
+    } catch (error) {
+      log.error('Failed to process Discord user', {
+        discordUserId,
+        username: firstMessage.author.username,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      // Continue processing other users even if one fails
     }
   }
 
   log.info('Discord processing complete', { 
     intentsGenerated: totalIntentsGenerated,
-    usersProcessed: createdUsers.length,
+    usersProcessed,
     newUsersCreated
   });
 
   return { 
     intentsGenerated: totalIntentsGenerated, 
-    usersProcessed: createdUsers.length,
+    usersProcessed,
     newUsersCreated
   };
 }
 
-// Extract Discord users from messages
-export function extractDiscordUsers(messages: any[]) {
-  const userMap = new Map();
-  
-  for (const message of messages) {
-    const author = message.author;
-    if (!author?.id || !author?.username || author.bot) continue;
-    
-    const userId = author.id;
-    if (userMap.has(userId)) continue;
-    
-    const email = `${author.username.toLowerCase().replace(/[^a-z0-9]/g, '')}+discord-${userId}@discord.index.app`;
-    const name = author.global_name || author.display_name || author.username || `Discord User ${userId}`;
-    
-    userMap.set(userId, {
-      email,
-      name,
-      provider: 'discord',
-      providerId: userId
-    });
-  }
-  
-  return Array.from(userMap.values());
-}
 
 export const discordHandler: IntegrationHandler<DiscordMessage> = { fetchObjects };

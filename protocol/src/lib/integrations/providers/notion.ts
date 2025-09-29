@@ -14,7 +14,7 @@ export interface NotionPage {
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
-import { createPrivyUsers } from '../../user-utils';
+import { saveUser } from '../../user-utils';
 import { getExistingIntents, saveIntent } from '../../intent-utils';
 
 // Return raw Notion pages as objects
@@ -131,18 +131,7 @@ export async function processNotionPages(
 
   log.info('Processing Notion pages', { count: pages.length });
 
-  // Extract and create users
-  const extractedUsers = extractNotionUsers(pages);
-  const uniqueUsers = Array.from(new Map(extractedUsers.map((u: any) => [u.providerId, u])).values());
-  
-  if (!uniqueUsers.length) {
-    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
-  }
-  
-  const createdUsers = await createPrivyUsers(uniqueUsers as any);
-  const newUsersCreated = createdUsers.filter((u: any) => u.isNewUser).length;
-
-  // Group pages by Notion user ID
+  // Group pages by Notion user ID first
   const pagesByUser = new Map<string, NotionPage[]>();
   for (const page of pages) {
     const userId = page.created_by.id;
@@ -153,45 +142,69 @@ export async function processNotionPages(
   }
 
   let totalIntentsGenerated = 0;
+  let usersProcessed = 0;
+  let newUsersCreated = 0;
 
-  // Generate intents for each user
-  for (const createdUser of createdUsers) {
-    const extractedUser = uniqueUsers.find((u: any) => u.email === createdUser.email);
-    if (!extractedUser) continue;
-
-    const userPages = pagesByUser.get((extractedUser as any).providerId) || [];
+  // Process each user individually
+  for (const [notionUserId, userPages] of pagesByUser) {
     if (!userPages.length) continue;
 
-    const existingIntents = await getExistingIntents(createdUser.id);
-    
-    const result = await analyzeObjects(
-      userPages,
-      `Generate intents for Notion user "${createdUser.name}" based on their pages`,
-      Array.from(existingIntents),
-      3,
-      60000
-    );
+    // Extract user info from the first page
+    const firstPage = userPages[0];
+    const extractedUser = {
+      email: `${firstPage.created_by.name || notionUserId}@notion.local`,
+      name: firstPage.created_by.name || notionUserId,
+      provider: 'notion' as const,
+      providerId: notionUserId
+    };
 
-    if (result.success) {
-      for (const intentData of result.intents) {
-        if (!existingIntents.has(intentData.payload)) {
-          await saveIntent(intentData.payload, createdUser.id, sourceId);
-          totalIntentsGenerated++;
-          existingIntents.add(intentData.payload);
+    try {
+      // Save user individually
+      const createdUser = await saveUser(extractedUser);
+      if (createdUser.isNewUser) {
+        newUsersCreated++;
+      }
+      usersProcessed++;
+
+      // Generate intents for this user
+      const existingIntents = await getExistingIntents(createdUser.id);
+      
+      const result = await analyzeObjects(
+        userPages,
+        `Generate intents for Notion user "${createdUser.name}" based on their pages`,
+        Array.from(existingIntents),
+        3,
+        60000
+      );
+
+      if (result.success) {
+        for (const intentData of result.intents) {
+          if (!existingIntents.has(intentData.payload)) {
+            await saveIntent(intentData.payload, createdUser.id, sourceId);
+            totalIntentsGenerated++;
+            existingIntents.add(intentData.payload);
+          }
         }
       }
+    } catch (error) {
+      log.error('Failed to process Notion user', {
+        notionUserId,
+        name: firstPage.created_by.name,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      // Continue processing other users even if one fails
     }
   }
 
   log.info('Notion processing complete', { 
     intentsGenerated: totalIntentsGenerated,
-    usersProcessed: createdUsers.length,
+    usersProcessed,
     newUsersCreated
   });
 
   return { 
     intentsGenerated: totalIntentsGenerated, 
-    usersProcessed: createdUsers.length,
+    usersProcessed,
     newUsersCreated
   };
 }

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import db from './db';
 import { userIntegrations, indexLinks } from './schema';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -140,7 +141,7 @@ export const linksProvider: SyncProvider<{ linkId: string }> = {
     const link = singleLink[0];
     const crawlResult = await crawlLinksForIndex([link.url]);
     
-    if (crawlResult.success && crawlResult.files.length > 0) {
+    if (crawlResult.files.length > 0) {
       const result = await processFiles(
         run.userId,
         crawlResult.files,
