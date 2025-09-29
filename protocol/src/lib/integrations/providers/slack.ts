@@ -65,6 +65,12 @@ async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<SlackMes
         arguments: args 
       });
 
+      
+      // Parse messages directly from API response
+      const messages = (history as any)?.data?.messages || [];
+      messagesTotal += messages.length;
+      
+      for (const msg of messages) {
         if (!msg?.ts) continue; // Skip invalid messages
         if (!msg?.user) continue;
         if (msg.bot_id || msg.subtype) continue; // Skip bots
