@@ -27,7 +27,9 @@ export class IntentIndexer {
       const intentData = await db.select({
         id: intents.id,
         payload: intents.payload,
-        userId: intents.userId
+        userId: intents.userId,
+        sourceType: intents.sourceType,
+        sourceId: intents.sourceId
       }).from(intents)
         .where(eq(intents.id, intentId))
         .limit(1);
@@ -56,7 +58,9 @@ export class IntentIndexer {
       const appropriationScore = await evaluateIntentAppropriation(
         intent.payload,
         targetIndex.indexPrompt || '',
-        targetIndex.memberPrompt || ''
+        targetIndex.memberPrompt || '',
+        intent.sourceType,
+        intent.sourceId
       );
       
       const isAppropriate = appropriationScore > 0.7;

@@ -264,7 +264,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
                         id="prompt"
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="e.g., Share my AI-related intents like research papers and projects, but keep personal details private..."
+                        placeholder="e.g., Share my Slack intents about AI research, include my calendar meetings about collaboration, but keep personal Notion notes private..."
                         className="w-full text-[#333] resize-none h-25 text-sm font-ibm-plex-mono outline-none bg-transparent"
                       />
                       
