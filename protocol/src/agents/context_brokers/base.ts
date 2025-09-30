@@ -97,7 +97,7 @@ export abstract class BaseContextBroker {
    * Find semantically related intents using vector similarity search
    */
   protected async findSemanticallyRelatedIntents(currentIntent: any): Promise<any[]> {
-    console.log('Finding semantically related intents for:', currentIntent);
+    console.log('Finding semantically related intents for:', currentIntent.id);
     
     try {
       // Generate embedding for current intent if it doesn't have one
