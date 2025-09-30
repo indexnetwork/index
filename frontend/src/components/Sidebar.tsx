@@ -175,7 +175,7 @@ export default function Sidebar() {
               });
 
               // 2. Configure Index (if user is owner)
-              const isOwner = currentUser && index.fullIndex && index.fullIndex.user && currentUser.id === index.fullIndex.user.id;
+              const isOwner = currentUser && index.fullIndex?.user && currentUser.id === index.fullIndex.user.id;
               if (isOwner) {
                 contextMenuItems.push({
                   id: 'index-settings',
