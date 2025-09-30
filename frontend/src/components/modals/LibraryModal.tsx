@@ -11,6 +11,7 @@ import { useAPI } from "@/contexts/APIContext";
 import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
+import { INTEGRATIONS, IntegrationName, getIntegrationsList } from "@/config/integrations";
 
 type Props = {
   open: boolean;
@@ -63,9 +64,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     archiveIntents: boolean;
   } | null>(null);
   const relatedIntentCount = confirm?.intentIds.length ?? 0;
-  type IntegrationId = 'notion' | 'slack' | 'discord' | 'calendar' | 'gmail';
-  const [integrations, setIntegrations] = useState<Array<{ id: IntegrationId; name: string; connected: boolean }>>([]);
-  const [pendingIntegration, setPendingIntegration] = useState<null | IntegrationId>(null);
+  const [integrations, setIntegrations] = useState<Array<{ id: IntegrationName; name: string; connected: boolean }>>([]);
+  const [pendingIntegration, setPendingIntegration] = useState<null | IntegrationName>(null);
   
   // Source filtering state - now supports multiple sources
   const [activeSourceFilters, setActiveSourceFilters] = useState<Set<string>>(new Set());
@@ -273,27 +273,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const loadIntegrations = useCallback(async () => {
     try {
       const res = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>(`/integrations`);
-      const wanted: Array<IntegrationId> = ['notion','slack','discord','calendar','gmail'];
-      const items: Array<{ id: IntegrationId; name: string; connected: boolean }> = wanted.map(id => {
-        const found = res.integrations?.find(i => i.id === id);
-        const friendlyName: Record<IntegrationId, string> = {
-          notion: 'Notion',
-          slack: 'Slack',
-          discord: 'Discord',
-          'calendar': 'Google Calendar',
-          gmail: 'Gmail',
+      const items = getIntegrationsList().map(item => {
+        const found = res.integrations?.find(i => i.id === item.id);
+        return { 
+          id: item.id, 
+          name: found?.name ?? item.name, 
+          connected: !!found?.connected 
         };
-        return { id, name: found?.name ?? friendlyName[id], connected: !!found?.connected };
       });
       setIntegrations(items);
     } catch {
-      setIntegrations([
-        { id: 'notion', name: 'Notion', connected: false },
-        { id: 'slack', name: 'Slack', connected: false },
-        { id: 'discord', name: 'Discord', connected: false },
-        { id: 'calendar', name: 'Google Calendar', connected: false },
-        { id: 'gmail', name: 'Gmail', connected: false },
-      ]);
+      setIntegrations(getIntegrationsList());
     }
   }, [api]);
 
@@ -370,7 +360,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [handleJumpToSources]);
 
 
-  const toggleIntegration = useCallback(async (id: IntegrationId) => {
+  const toggleIntegration = useCallback(async (id: IntegrationName) => {
     const item = integrations.find(i => i.id === id);
     if (!item) return;
     try {
@@ -670,7 +660,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-3">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={`/integrations/${it.id === 'calendar' ? 'google-calendar' : it.id}.png`} width={20} height={20} alt="" />
+                          <img src={`/integrations/${it.id}.png`} width={20} height={20} alt="" />
                           <span className="text-xs font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
                           {it.connected && isFiltered && intentCount > 0 && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#E6F2FF] text-[#005BBF] font-ibm-plex-mono">

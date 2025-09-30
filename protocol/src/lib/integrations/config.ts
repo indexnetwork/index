@@ -5,11 +5,9 @@ export interface IntegrationConfig {
 }
 
 export const INTEGRATIONS = {
-  gmail: { name: 'gmail', displayName: 'Gmail', toolkit: 'GMAIL' },
   notion: { name: 'notion', displayName: 'Notion', toolkit: 'NOTION' },
   slack: { name: 'slack', displayName: 'Slack', toolkit: 'SLACK' },
   discord: { name: 'discord', displayName: 'Discord', toolkit: 'DISCORDBOT' },
-  calendar: { name: 'calendar', displayName: 'Google Calendar', toolkit: 'GOOGLECALENDAR' },
   linkedin: { name: 'linkedin', displayName: 'LinkedIn', toolkit: 'LINKEDIN' },
 } as const;
 

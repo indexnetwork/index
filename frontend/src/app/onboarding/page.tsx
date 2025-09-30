@@ -12,12 +12,13 @@ import { getAvatarUrl } from "@/lib/file-utils";
 import { useNotifications } from "@/contexts/NotificationContext";
 import ClientLayout from "@/components/ClientLayout";
 import { useIndexService } from "@/services/indexes";
+import { INTEGRATIONS, IntegrationName, getIntegrationsList } from "@/config/integrations";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
 type OnboardingFlow = 'flow_1' | 'flow_2';
 
 interface IntegrationState {
-  id: 'notion' | 'slack' | 'discord' | 'calendar' | 'gmail';
+  id: IntegrationName;
   name: string;
   connected: boolean;
 }
@@ -41,13 +42,7 @@ export default function OnboardingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Connections step states
-  const [integrations, setIntegrations] = useState<IntegrationState[]>([
-    { id: 'notion', name: 'Notion', connected: false },
-    { id: 'slack', name: 'Slack', connected: false },
-    { id: 'discord', name: 'Discord', connected: false },
-    { id: 'calendar', name: 'Google Calendar', connected: false },
-    { id: 'gmail', name: 'Gmail', connected: false },
-  ]);
+  const [integrations, setIntegrations] = useState<IntegrationState[]>(getIntegrationsList());
   const [pendingIntegration, setPendingIntegration] = useState<string | null>(null);
 
   // Library step states
@@ -84,13 +79,7 @@ export default function OnboardingPage() {
       const integrationsFromAPI = response.integrations || [];
       
       // Default integrations with proper names
-      const defaultIntegrations: IntegrationState[] = [
-        { id: 'notion', name: 'Notion', connected: false },
-        { id: 'slack', name: 'Slack', connected: false },
-        { id: 'discord', name: 'Discord', connected: false },
-        { id: 'calendar', name: 'Calendar', connected: false },
-        { id: 'gmail', name: 'Gmail', connected: false },
-      ];
+      const defaultIntegrations = getIntegrationsList();
       
       // Map API response to our local state format
       const updatedIntegrations = defaultIntegrations.map(integration => {
@@ -486,7 +475,7 @@ export default function OnboardingPage() {
                   <div className="flex items-center justify-between mb-0">
                     <div className="flex items-center gap-3">
                       <Image 
-                        src={`/integrations/${integration.id === 'calendar' ? 'google-calendar' : integration.id}.png`} 
+                        src={`/integrations/${integration.id}.png`} 
                         width={24} 
                         height={24} 
                         alt={integration.name}

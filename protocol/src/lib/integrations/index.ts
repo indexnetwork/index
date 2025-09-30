@@ -18,21 +18,15 @@ export interface IntegrationHandler<T = any> {
 import { notionHandler } from './providers/notion';
 import { slackHandler } from './providers/slack';
 import { discordHandler } from './providers/discord';
-import { googleCalendarHandler } from './providers/googlecalendar';
-import { gmailHandler } from './providers/gmail';
 
 export { notionHandler, processNotionPages, type NotionPage } from './providers/notion';
 export { slackHandler, type SlackMessage } from './providers/slack';
 export { discordHandler, type DiscordMessage } from './providers/discord';
-export { googleCalendarHandler } from './providers/googlecalendar';
-export { gmailHandler } from './providers/gmail';
 
 const registry: Record<string, IntegrationHandler> = {
   notion: notionHandler,
   slack: slackHandler,
   discord: discordHandler,
-  calendar: googleCalendarHandler,
-  gmail: gmailHandler,
 };
 
 export const handlers = registry;
