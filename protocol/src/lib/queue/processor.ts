@@ -261,16 +261,16 @@ export class QueueProcessor {
   }
 
   private async processBrokerJob(job: BrokerJob): Promise<void> {
-    const { currentIntentId, relatedIntentId, brokerType } = job.data;
+    const { intentId, relatedIntentId, brokerType } = job.data;
     
     switch (brokerType) {
       case 'semantic_relevancy':
         if (!relatedIntentId) {
-          console.error(`Semantic relevancy job missing relatedIntentId: ${currentIntentId}`);
+          console.error(`Semantic relevancy job missing relatedIntentId: ${intentId}`);
           return;
         }
         // Process specific intent pair
-        await this.semanticBroker.processIntentPair(currentIntentId, relatedIntentId);
+        await this.semanticBroker.processIntentPair(intentId, relatedIntentId);
         break;
       default:
         console.warn(`Unknown broker type: ${brokerType}`);

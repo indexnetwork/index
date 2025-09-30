@@ -9,7 +9,7 @@ export interface IndexIntentJobData {
 }
 
 export interface BrokerJobData {
-  currentIntentId: string;
+  intentId: string; // Changed from currentIntentId for consistency
   relatedIntentId: string; // Required - we only queue pair processing jobs
   userId: string;
   brokerType: 'semantic_relevancy' | 'other';
@@ -69,7 +69,7 @@ export class UserQueueManager {
         data
       },
       // Custom ID generator for broker jobs
-      (job) => `${job.action}_${job.data.currentIntentId}_${job.data.relatedIntentId}_${Date.now()}`
+      (job) => `${job.action}_${job.data.intentId}_${job.data.relatedIntentId}_${Date.now()}`
     );
   }
 
