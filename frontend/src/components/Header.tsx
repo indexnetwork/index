@@ -169,7 +169,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
             <div className="relative mr-2 cursor-pointer">
               <Image 
                 src="/logo-black.svg" 
-                alt="Index Protocol" 
+                alt="Index Network" 
                 width={100} 
                 height={36}
                 className="object-contain"
@@ -206,7 +206,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
             <div className="relative mr-2 cursor-pointer">
               <Image 
                 src="/logo-black.svg" 
-                alt="Index Protocol" 
+                alt="Index Network" 
                 width={100} 
                 height={36}
                 className="object-contain"
