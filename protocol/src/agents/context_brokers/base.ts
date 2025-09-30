@@ -97,7 +97,7 @@ export abstract class BaseContextBroker {
    * Find semantically related intents using vector similarity search
    */
   protected async findSemanticallyRelatedIntents(currentIntent: any): Promise<any[]> {
-    console.log('Finding semantically related intents for:', currentIntent);
+    console.log('Finding semantically related intents for:', currentIntent.id);
     
     try {
       // Generate embedding for current intent if it doesn't have one
@@ -132,7 +132,7 @@ export abstract class BaseContextBroker {
         .orderBy(sql`${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`)
         .limit(10);
 
-      console.log(`Found ${similarIntents.length} similar intents using vector search`, similarIntents);
+      console.log(`Found ${similarIntents.length} similar intents using vector search`);
 
       // Filter by similarity threshold (equivalent to 0.7 LLM score)
       const relatedIntents = similarIntents

@@ -50,8 +50,6 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
           return;
         }
         
-        console.log('📝 Queueing pair processing:', [currentIntentId, relatedIntentId]);
-        
         // Queue individual pair processing job
         await addBrokerJob({
           intentId: currentIntentId,
