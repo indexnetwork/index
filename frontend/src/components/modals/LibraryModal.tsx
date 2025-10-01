@@ -11,7 +11,7 @@ import { useAPI } from "@/contexts/APIContext";
 import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
-import { INTEGRATIONS, IntegrationName, getIntegrationsList } from "@/config/integrations";
+import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 
 type Props = {
   open: boolean;

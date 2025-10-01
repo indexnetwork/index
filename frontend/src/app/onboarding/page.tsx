@@ -13,7 +13,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
 import { useIndexService } from "@/services/indexes";
-import { INTEGRATIONS, IntegrationName, getIntegrationsList } from "@/config/integrations";
+import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
 type OnboardingFlow = 'flow_1' | 'flow_2';
@@ -297,7 +297,7 @@ export default function OnboardingPage() {
     } finally {
       setPendingIntegration(null);
     }
-  }, [api, integrations, success, error, loadIntegrations]);
+  }, [api, integrations, success, error, loadIntegrations, createdIndex?.id]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
