@@ -5,12 +5,11 @@ import Image from "next/image";
 import { UserPlus, LogIn, Settings, Blocks, Library, Plus } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { useAuthenticatedAPI } from '@/lib/api';
-import { User, APIResponse } from '@/lib/types';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { useIndexes } from '@/contexts/APIContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 import LibraryModal from '@/components/modals/LibraryModal';
 import CreateIndexModal from '@/components/modals/CreateIndexModal';
@@ -26,14 +25,12 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
   const searchParams = useSearchParams();
   const router = useRouter();
   const { login, logout, authenticated, ready } = usePrivy();
+  const { user, userLoading, refetchUser } = useAuthContext();
   const [isAlpha, setIsAlpha] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [libraryModalOpen, setLibraryModalOpen] = useState(false);
   const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [userLoading, setUserLoading] = useState(false);
-  const api = useAuthenticatedAPI();
   const indexesService = useIndexes();
   const { addIndex } = useIndexesState();
   const { success, error } = useNotifications();
@@ -58,34 +55,22 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
     }
   }, [alphaParam, pathname]);
 
-  // Memoize user fetch function to prevent recreation on every render
-  const fetchUser = useCallback(async () => {
-    if (!authenticated || userLoading) return;
-    
-    setUserLoading(true);
-    try {
-      const response = await api.get<APIResponse<User>>('/auth/me');
-      if (response.user) {
-        setUser(response.user);
-        
-        // Check if user needs onboarding (empty intro)
-        if (!response.user.intro || response.user.intro.trim() === '') {
-          // Redirect to onboarding page instead of showing modal
-          router.push('/onboarding');
-        } else {
-          try {
-            localStorage.setItem('onboarding_completed', Date.now().toString());
-          } catch (error) {
-            console.warn('Failed to store onboarding completion:', error);
-          }
+  // Handle onboarding check when user data is available
+  useEffect(() => {
+    if (user && authenticated) {
+      // Check if user needs onboarding (empty intro)
+      if (!user.intro || user.intro.trim() === '') {
+        // Redirect to onboarding page instead of showing modal
+        router.push('/onboarding');
+      } else {
+        try {
+          localStorage.setItem('onboarding_completed', Date.now().toString());
+        } catch (error) {
+          console.warn('Failed to store onboarding completion:', error);
         }
       }
-    } catch (error) {
-      console.error('Failed to fetch user:', error);
-    } finally {
-      setUserLoading(false);
     }
-  }, [authenticated, api, userLoading, router]);
+  }, [user, authenticated, router]);
 
   const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => {
     try {
@@ -105,12 +90,6 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
     }
   }, [indexesService, addIndex, success, error]);
 
-  // Fetch user data when authenticated and ready
-  useEffect(() => {
-    if (ready && authenticated && !user && !userLoading) {
-      fetchUser();
-    }
-  }, [ready, authenticated, user, userLoading, fetchUser]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -364,7 +343,10 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
         open={profileModalOpen}
         onOpenChange={setProfileModalOpen}
         user={user}
-        onUserUpdate={setUser}
+        onUserUpdate={async () => {
+          // Refetch user data from AuthContext
+          await refetchUser();
+        }}
       />
 
       {/* Library Modal */}

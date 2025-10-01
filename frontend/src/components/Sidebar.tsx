@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
-import { Index as IndexType, User } from '@/lib/types';
-import { useAuthenticatedAPI } from '@/lib/api';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { Index as IndexType } from '@/lib/types';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
 import OwnerSettingsModal from '@/components/modals/OwnerSettingsModal';
 import ContextMenu from '@/components/ContextMenu';
@@ -20,30 +20,14 @@ interface IndexItem {
 
 export default function Sidebar() {
   const { indexes: rawIndexes, loading } = useIndexesState();
+  const { user: currentUser } = useAuthContext();
   const [indexes, setIndexes] = useState<IndexItem[]>([]);
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
   const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
   const [ownerSettingsIndex, setOwnerSettingsIndex] = useState<IndexType | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const { setSelectedIndexIds } = useIndexFilter();
-  const api = useAuthenticatedAPI();
   
-  // Fetch current user on mount
-  useEffect(() => {
-    const fetchCurrentUser = async () => {
-      try {
-        const response = await api.get<{ user: User }>('/auth/me');
-        if (response.user) {
-          setCurrentUser(response.user);
-        }
-      } catch (error) {
-        console.error('Failed to fetch current user:', error);
-      }
-    };
-    
-    fetchCurrentUser();
-  }, [api]);
   
   // Transform raw indexes into sidebar items whenever rawIndexes changes
   useEffect(() => {

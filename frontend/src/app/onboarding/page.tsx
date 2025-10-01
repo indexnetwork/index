@@ -10,6 +10,7 @@ import { User, AvatarUploadResponse, APIResponse } from "@/lib/types";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
 import { useIndexService } from "@/services/indexes";
 import { INTEGRATIONS, IntegrationName, getIntegrationsList } from "@/config/integrations";
@@ -25,7 +26,6 @@ interface IntegrationState {
 
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('profile');
-  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [currentFlow, setCurrentFlow] = useState<OnboardingFlow>('flow_1');
   const router = useRouter();
@@ -33,6 +33,7 @@ export default function OnboardingPage() {
   const api = useAuthenticatedAPI();
   const indexService = useIndexService();
   const { success, error } = useNotifications();
+  const { user, refetchUser } = useAuthContext();
 
   // Profile step states
   const [name, setName] = useState('');
@@ -107,30 +108,17 @@ export default function OnboardingPage() {
     }
   }, [searchParams]);
 
+  // Initialize form fields when user data is available
   React.useEffect(() => {
-    // Fetch user data on load
-    const fetchUser = async () => {
-      try {
-        const response = await api.get<APIResponse<User>>('/auth/me');
-        if (response.user) {
-          setUser(response.user);
-          setName(response.user.name || '');
-          setIntro(response.user.intro || '');
-        }
-      } catch (error) {
-        console.error('Failed to fetch user:', error);
-      }
-    };
+    if (user) {
+      setName(user.name || '');
+      setIntro(user.intro || '');
+    }
+  }, [user]);
 
-    const loadData = async () => {
-      await Promise.all([
-        fetchUser(),
-        loadIntegrations()
-      ]);
-    };
-
-    loadData();
-  }, [api, loadIntegrations]);
+  React.useEffect(() => {
+    loadIntegrations();
+  }, [loadIntegrations]);
 
   const uploadAvatar = async (file: File): Promise<string> => {
     const result = await api.uploadFile<AvatarUploadResponse>('/upload/avatar', file, undefined, 'avatar');
@@ -200,7 +188,8 @@ export default function OnboardingPage() {
       });
       
       if (response.user) {
-        setUser(response.user);
+        // Refetch user data in AuthContext to keep it in sync
+        await refetchUser();
         setCurrentStep(getNextStep('profile'));
       }
     } catch (err) {
@@ -475,7 +464,7 @@ export default function OnboardingPage() {
                   <div className="flex items-center justify-between mb-0">
                     <div className="flex items-center gap-3">
                       <Image 
-                        src={`/integrations/${integration.id}.png`} 
+                        src={`/integrations/${integration.id}.png?3`} 
                         width={24} 
                         height={24} 
                         alt={integration.name}
@@ -496,8 +485,13 @@ export default function OnboardingPage() {
                       />
                       {pendingIntegration === integration.id && (
                         <span className="absolute inset-0 grid place-items-center">
-                          <span className="h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                        </span>
+                        <span
+                          className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
+                          style={{
+                            marginLeft: integration.connected ? "-20px" : "20px"
+                          }}
+                        />
+                      </span>
                       )}
                     </button>
                   </div>
