@@ -20,6 +20,7 @@ import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
 import { saveUser } from '../../user-utils';
 import { IntentService } from '../../../services/intent-service';
+import { ensureIndexMembership } from '../membership-utils';
 
 
 // Shared function to get raw Discord messages
@@ -219,6 +220,9 @@ export async function processDiscordMessages(
         newUsersCreated++;
       }
       usersProcessed++;
+
+      // Add user as index member if not already a member
+      await ensureIndexMembership(createdUser.id, integration.indexId);
 
       // Generate intents for this user
       const existingIntents = await IntentService.getUserIntents(createdUser.id);

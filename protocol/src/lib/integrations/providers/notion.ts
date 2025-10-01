@@ -16,6 +16,8 @@ import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
 import { saveUser } from '../../user-utils';
 import { IntentService } from '../../../services/intent-service';
+import { ensureIndexMembership } from '../membership-utils';
+
 
 // Return raw Notion pages as objects
 async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<NotionPage[]> {
@@ -165,6 +167,9 @@ export async function processNotionPages(
         newUsersCreated++;
       }
       usersProcessed++;
+
+      // Add user as index member if not already a member
+      await ensureIndexMembership(createdUser.id, integration.indexId);
 
       // Generate intents for this user
       const existingIntents = await IntentService.getUserIntents(createdUser.id);

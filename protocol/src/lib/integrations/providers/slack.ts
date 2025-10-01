@@ -4,6 +4,7 @@ import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
 import { resolveSlackUser } from '../../user-utils';
 import { IntentService } from '../../../services/intent-service';
+import { ensureIndexMembership } from '../membership-utils';
 
 // Constants
 const CHANNEL_LIMIT = 200;
@@ -280,6 +281,9 @@ export async function processSlackMessages(
         userId: userResolved.id,
         isNewUser: userResolved.isNewUser
       });
+
+      // Add user as index member if not already a member
+      await ensureIndexMembership(userResolved.id, integration.indexId);
 
       // Generate intents for this user
       const existingIntents = await IntentService.getUserIntents(userResolved.id);
