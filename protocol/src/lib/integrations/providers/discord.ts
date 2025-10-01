@@ -175,7 +175,7 @@ async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<DiscordM
 // Process Discord messages to generate intents per user
 export async function processDiscordMessages(
   messages: DiscordMessage[],
-  sourceId: string
+  integration: { id: string; indexId: string }
 ): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
   if (!messages.length) {
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
@@ -237,8 +237,9 @@ export async function processDiscordMessages(
             await IntentService.createIntent({
               payload: intentData.payload,
               userId: createdUser.id,
-              sourceId,
-              sourceType: 'integration'
+              sourceId: integration.id,
+              sourceType: 'integration',
+              indexIds: [integration.indexId]
             });
             totalIntentsGenerated++;
             existingIntents.add(intentData.payload);

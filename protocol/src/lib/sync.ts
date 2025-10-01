@@ -6,6 +6,7 @@ import { log } from './log';
 import { handlers } from './integrations';
 import { processDiscordMessages } from './integrations/providers/discord';
 import { processSlackMessages } from './integrations/providers/slack';
+import { processNotionPages } from './integrations/providers/notion';
 import { processFiles } from './integrations/files/processor';
 import { crawlLinksForIndex } from './crawl/web_crawler';
 
@@ -54,7 +55,7 @@ export async function syncIntegration(
     if (integrationType === 'discord') {
       if (handler.fetchObjects) {
         const messages = await handler.fetchObjects(userId, lastSyncAt || undefined);
-        const result = await processDiscordMessages(messages as any, integration[0].id);
+        const result = await processDiscordMessages(messages as any, integration[0]);
         intentsGenerated = result.intentsGenerated;
         usersProcessed = result.usersProcessed;
         newUsersCreated = result.newUsersCreated;
@@ -62,7 +63,15 @@ export async function syncIntegration(
     } else if (integrationType === 'slack') {
       if (handler.fetchObjects) {
         const messages = await handler.fetchObjects(userId, lastSyncAt || undefined);
-        const result = await processSlackMessages(messages as any, integration[0].id);
+        const result = await processSlackMessages(messages as any, integration[0]);
+        intentsGenerated = result.intentsGenerated;
+        usersProcessed = result.usersProcessed;
+        newUsersCreated = result.newUsersCreated;
+      }
+    } else if (integrationType === 'notion') {
+      if (handler.fetchObjects) {
+        const pages = await handler.fetchObjects(userId, lastSyncAt || undefined);
+        const result = await processNotionPages(pages as any, integration[0]);
         intentsGenerated = result.intentsGenerated;
         usersProcessed = result.usersProcessed;
         newUsersCreated = result.newUsersCreated;
@@ -79,7 +88,7 @@ export async function syncIntegration(
           return { success: true, filesImported: 0, intentsGenerated: 0 };
         }
 
-        const result = await processFiles(userId, files, integration[0].id, 'integration');
+        const result = await processFiles(userId, files, integration[0], 'integration');
         intentsGenerated = result.intentsGenerated;
       }
     }

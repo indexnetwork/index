@@ -113,6 +113,7 @@ export const userIntegrations = pgTable('integrations', {
   redirectUrl: text('redirect_url'),
   connectedAt: timestamp('connected_at'),
   lastSyncAt: timestamp('last_sync_at'),
+  indexId: uuid('index_id').notNull().references(() => indexes.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at')
@@ -155,6 +156,7 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
 export const indexesRelations = relations(indexes, ({ many }) => ({
   members: many(indexMembers),
   intents: many(intentIndexes),
+  integrations: many(userIntegrations),
 }));
 
 
@@ -243,6 +245,17 @@ export const userConnectionEventsRelations = relations(userConnectionEvents, ({ 
   }),
 }));
 
+export const userIntegrationsRelations = relations(userIntegrations, ({ one }) => ({
+  user: one(users, {
+    fields: [userIntegrations.userId],
+    references: [users.id],
+  }),
+  index: one(indexes, {
+    fields: [userIntegrations.indexId],
+    references: [indexes.id],
+  }),
+}));
+
 // Export types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -260,3 +273,5 @@ export type IntentStake = typeof intentStakes.$inferSelect;
 export type NewIntentStake = typeof intentStakes.$inferInsert;
 export type UserConnectionEvent = typeof userConnectionEvents.$inferSelect;
 export type NewUserConnectionEvent = typeof userConnectionEvents.$inferInsert;
+export type UserIntegration = typeof userIntegrations.$inferSelect;
+export type NewUserIntegration = typeof userIntegrations.$inferInsert;

@@ -123,7 +123,7 @@ function extractTitle(item: any): string {
 // Process Notion pages to generate intents per user
 export async function processNotionPages(
   pages: NotionPage[],
-  sourceId: string
+  integration: { id: string; indexId: string }
 ): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
   if (!pages.length) {
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
@@ -183,8 +183,9 @@ export async function processNotionPages(
             await IntentService.createIntent({
               payload: intentData.payload,
               userId: createdUser.id,
-              sourceId,
-              sourceType: 'integration'
+              sourceId: integration.id,
+              sourceType: 'integration',
+              indexIds: [integration.indexId]
             });
             totalIntentsGenerated++;
             existingIntents.add(intentData.payload);

@@ -55,6 +55,7 @@ router.get('/',
           connected: !!integration,
           connectedAt: integration?.connectedAt,
           lastSyncAt: integration?.lastSyncAt,
+          indexId: integration?.indexId || null,
         };
       });
 
@@ -70,7 +71,8 @@ router.get('/',
 router.post('/connect/:integrationType',
   authenticatePrivy,
   [
-    param('integrationType').isIn(Object.keys(INTEGRATION_MAPPINGS)).withMessage('Invalid integration type')
+    param('integrationType').isIn(Object.keys(INTEGRATION_MAPPINGS)).withMessage('Invalid integration type'),
+    body('indexId').isUUID().withMessage('Index ID is required and must be valid UUID')
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -81,7 +83,24 @@ router.post('/connect/:integrationType',
 
       const userId = req.user!.id;
       const integrationType = req.params.integrationType;
+      const { indexId } = req.body;
       const integrationConfig = INTEGRATION_MAPPINGS[integrationType as keyof typeof INTEGRATION_MAPPINGS];
+
+      // Validate indexId (now required)
+      const { indexes, indexMembers } = await import('../lib/schema');
+      const indexExists = await db.select({ id: indexes.id })
+        .from(indexes)
+        .innerJoin(indexMembers, eq(indexes.id, indexMembers.indexId))
+        .where(and(
+          eq(indexes.id, indexId),
+          eq(indexMembers.userId, userId),
+          isNull(indexes.deletedAt)
+        ))
+        .limit(1);
+
+      if (indexExists.length === 0) {
+        return res.status(404).json({ error: 'Index not found or access denied' });
+      }
 
       // Check if already connected
       const existing = await db.select()
@@ -107,7 +126,8 @@ router.post('/connect/:integrationType',
         integrationType,
         connectionRequestId: connectionRequest.id,
         status: 'pending',
-        redirectUrl: connectionRequest.redirectUrl
+        redirectUrl: connectionRequest.redirectUrl,
+        indexId
       });
 
       return res.json({
@@ -190,10 +210,12 @@ router.get('/status/:connectionRequestId',
 
             // Trigger first sync automatically (fire and forget)
             try {
-              runSync(integrationRecord.integrationType as any, userId, {});
+              const syncParams = integrationRecord.indexId ? { indexId: integrationRecord.indexId } : {};
+              runSync(integrationRecord.integrationType as any, userId, syncParams);
               log.info('First sync triggered for new integration', { 
                 userId, 
-                integrationType: integrationRecord.integrationType 
+                integrationType: integrationRecord.integrationType,
+                indexId: integrationRecord.indexId
               });
             } catch (syncError) {
               log.error('Failed to trigger first sync', { 

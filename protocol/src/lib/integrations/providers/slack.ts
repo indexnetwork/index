@@ -232,7 +232,7 @@ async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<SlackMes
 // Process Slack messages to generate intents per user
 export async function processSlackMessages(
   messages: SlackMessage[],
-  sourceId: string
+  integration: { id: string; indexId: string }
 ): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
   if (!messages.length) {
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
@@ -298,8 +298,9 @@ export async function processSlackMessages(
             await IntentService.createIntent({
               payload: intentData.payload,
               userId: userResolved.id,
-              sourceId,
-              sourceType: 'integration'
+              sourceId: integration.id,
+              sourceType: 'integration',
+              indexIds: [integration.indexId]
             });
             totalIntentsGenerated++;
             existingIntents.add(intentData.payload);

@@ -8,13 +8,17 @@ import { IntentService } from '../../../services/intent-service';
 export async function processFiles(
   userId: string,
   files: IntegrationFile[],
-  sourceId: string,
+  source: { id: string; indexId?: string } | string,
   sourceType: 'file' | 'integration' | 'link' = 'file',
   onProgress?: (completed: number, total: number, note?: string) => Promise<void> | void
 ): Promise<{ intentsGenerated: number; filesImported: number }> {
   if (!files.length) {
     return { intentsGenerated: 0, filesImported: 0 };
   }
+
+  // Handle both integration object and string sourceId
+  const sourceId = typeof source === 'string' ? source : source.id;
+  const indexId = typeof source === 'object' ? source.indexId : undefined;
 
   const existingIntents = await IntentService.getUserIntents(userId);
   const count = sourceType === 'link' ? 1 : 5; // 1 for links, 5 for files
@@ -50,7 +54,8 @@ export async function processFiles(
             payload: intentData.payload,
             userId,
             sourceId,
-            sourceType
+            sourceType,
+            indexIds: indexId ? [indexId] : []
           });
           intentsGenerated++;
           existingIntents.add(intentData.payload);
