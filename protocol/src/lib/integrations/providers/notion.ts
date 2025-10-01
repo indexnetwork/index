@@ -1,4 +1,5 @@
 import type { IntegrationHandler } from '../index';
+import { resolveNotionUser } from '../../user-utils';
 
 export interface NotionPage {
   id: string;
@@ -14,7 +15,6 @@ export interface NotionPage {
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
-import { saveUser } from '../../user-utils';
 import { IntentService } from '../../../services/intent-service';
 import { ensureIndexMembership } from '../membership-utils';
 
@@ -153,16 +153,20 @@ export async function processNotionPages(
 
     // Extract user info from the first page
     const firstPage = userPages[0];
-    const extractedUser = {
-      email: `${firstPage.created_by.name || notionUserId}@notion.local`,
-      name: firstPage.created_by.name || notionUserId,
-      provider: 'notion' as const,
-      providerId: notionUserId
-    };
 
     try {
-      // Save user individually
-      const createdUser = await saveUser(extractedUser);
+      // Save user individually using the Notion resolver
+      const createdUser = await resolveNotionUser(
+        `${firstPage.created_by.name || notionUserId}@notion.local`,
+        notionUserId,
+        firstPage.created_by.name || notionUserId
+      );
+      
+      if (!createdUser) {
+        console.error(`Failed to resolve Notion user: ${notionUserId}`);
+        continue;
+      }
+      
       if (createdUser.isNewUser) {
         newUsersCreated++;
       }

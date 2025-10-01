@@ -51,7 +51,7 @@ export class UserQueueManager {
         data
       },
       // Custom ID generator for intent jobs
-      (job) => `${job.action}_${job.data.intentId}_${job.data.indexId}_${Date.now()}`
+      (job) => `${job.action}_${job.data.intentId}_${(job.data as IndexIntentJobData).indexId}_${Date.now()}`
     );
   }
 
@@ -69,7 +69,7 @@ export class UserQueueManager {
         data
       },
       // Custom ID generator for broker jobs
-      (job) => `${job.action}_${job.data.intentId}_${job.data.relatedIntentId}_${Date.now()}`
+      (job) => `${job.action}_${job.data.intentId}_${(job.data as BrokerJobData).relatedIntentId}_${Date.now()}`
     );
   }
 

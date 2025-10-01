@@ -1,4 +1,5 @@
 import type { IntegrationHandler } from '../index';
+import { resolveDiscordUser } from '../../user-utils';
 
 export interface DiscordMessage {
   id: string;
@@ -18,7 +19,6 @@ export interface DiscordMessage {
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { analyzeObjects } from '../../../agents/core/intent_inferrer';
-import { saveUser } from '../../user-utils';
 import { IntentService } from '../../../services/intent-service';
 import { ensureIndexMembership } from '../membership-utils';
 
@@ -206,16 +206,19 @@ export async function processDiscordMessages(
 
     // Extract user info from the first message
     const firstMessage = userMessages[0];
-    const extractedUser = {
-      email: `${firstMessage.author.username}@discord.local`,
-      name: firstMessage.author.global_name || firstMessage.author.username,
-      provider: 'discord' as const,
-      providerId: firstMessage.author.id
-    };
-
     try {
-      // Save user individually
-      const createdUser = await saveUser(extractedUser);
+      // Save user individually using the Discord resolver
+      const createdUser = await resolveDiscordUser(
+        `${firstMessage.author.username}@discord.local`,
+        firstMessage.author.id,
+        firstMessage.author.global_name || firstMessage.author.username
+      );
+      
+      if (!createdUser) {
+        console.error(`Failed to resolve Discord user: ${firstMessage.author.username}`);
+        continue;
+      }
+      
       if (createdUser.isNewUser) {
         newUsersCreated++;
       }
