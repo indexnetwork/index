@@ -3,7 +3,7 @@ import { log } from '../lib/log';
 import { body, param, query, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
-import { userIntegrations } from '../lib/schema';
+import { userIntegrations, indexes, indexMembers } from '../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { runSync } from '../lib/sync';
 import { INTEGRATIONS } from '../lib/integrations/config';
@@ -87,7 +87,6 @@ router.post('/connect/:integrationType',
       const integrationConfig = INTEGRATION_MAPPINGS[integrationType as keyof typeof INTEGRATION_MAPPINGS];
 
       // Validate indexId (now required)
-      const { indexes, indexMembers } = await import('../lib/schema');
       const indexExists = await db.select({ id: indexes.id })
         .from(indexes)
         .innerJoin(indexMembers, eq(indexes.id, indexMembers.indexId))

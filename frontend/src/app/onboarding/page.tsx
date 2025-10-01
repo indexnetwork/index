@@ -108,13 +108,43 @@ export default function OnboardingPage() {
     }
   }, [searchParams]);
 
-  // Initialize form fields when user data is available
+  // Initialize form fields when user data is available and determine starting step
   React.useEffect(() => {
     if (user) {
       setName(user.name || '');
       setIntro(user.intro || '');
+      
+      // Check if we should skip steps based on user state and localStorage
+      // Order: intro first, index second, integrations third
+      const storedIndexId = localStorage.getItem('onboarding_created_index_id');
+      
+      if (currentFlow === 'flow_2') {
+        // In flow_2: profile -> create_index -> connections -> invite_members
+        if (!user.intro) {
+          // Start with profile step if intro not filled
+          setCurrentStep('profile');
+        } else if (!storedIndexId) {
+          // Intro filled but no index created yet - go to create_index
+          setCurrentStep('create_index');
+        } else {
+          // Both intro filled and index created - go to connections (integrations)
+          setCurrentStep('connections');
+        }
+        
+        // If storedIndexId exists, we know an index was created (but don't restore full state)
+        // The actual index data will be fetched from API if needed
+      } else {
+        // In flow_1: profile -> connections -> join_indexes
+        if (!user.intro) {
+          // Start with profile step if intro not filled
+          setCurrentStep('profile');
+        } else {
+          // Intro filled - go to connections
+          setCurrentStep('connections');
+        }
+      }
     }
-  }, [user]);
+  }, [user, currentFlow]);
 
   React.useEffect(() => {
     loadIntegrations();
@@ -213,7 +243,17 @@ export default function OnboardingPage() {
         success(`${item.name} disconnected`);
       } else {
         const popup = typeof window !== 'undefined' ? window.open('', `oauth_${id}`, 'width=560,height=720') : null;
-        const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`);
+        
+        // Get indexId from localStorage or createdIndex state
+        const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
+        
+        // indexId is required by the backend API
+        if (!indexId) {
+          error('Index ID is required to connect integrations');
+          return;
+        }
+        
+        const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`, { indexId });
         const redirect = res.redirectUrl;
         const reqId = res.connectionRequestId;
         
@@ -309,11 +349,16 @@ export default function OnboardingPage() {
       
       const response = await indexService.createIndex(createRequest);
       
-      setCreatedIndex({
+      const indexData = {
         id: response.id,
         name: response.title,
         inviteCode: response.permissions?.invitationLink?.code
-      });
+      };
+      
+      setCreatedIndex(indexData);
+      
+      // Store only indexId in localStorage for future onboarding sessions
+      localStorage.setItem('onboarding_created_index_id', indexData.id);
       
       success('Index created successfully!');
       setCurrentStep(getNextStep('create_index'));
@@ -349,8 +394,12 @@ export default function OnboardingPage() {
   const handleCompleteOnboarding = async () => {
     try {
       setIsLoading(true);
-      // Mark onboarding as completed
+      // Mark onboarding as completed and clean up temporary data
       localStorage.setItem('onboarding_completed', Date.now().toString());
+      
+      // Clean up onboarding-specific localStorage items
+      localStorage.removeItem('onboarding_created_index_id');
+      
       router.push('/inbox');
     } catch (error) {
       console.error('Error completing onboarding:', error);
