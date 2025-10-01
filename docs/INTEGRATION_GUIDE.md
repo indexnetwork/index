@@ -1,9 +1,9 @@
 
-# **Index Protocol Integration Guide**
+# **Index Network Integration Guide**
 
 ## **Overview**
 
-Index Protocol provides two main integration patterns for discovering and matching users based on their intents and context:
+Index Network provides two main integration patterns for discovering and matching users based on their intents and context:
 
 1. **VibeCheck** – Analyze compatibility between a user and an existing index.
 2. **MatchList** – Create intents and discover matches within a shared index.

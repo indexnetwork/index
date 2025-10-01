@@ -1,5 +1,5 @@
 import type { IntegrationHandler, IntegrationFile } from '../index';
-import { getClient } from '../core/composio';
+import { getClient } from '../composio';
 import { log } from '../../log';
 
 function toIsoDate(d: Date) {

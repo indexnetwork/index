@@ -1,16 +1,67 @@
 import { traceableLlm } from '../../../lib/agents';
+import db from '../../../lib/db';
+import { files, indexLinks, userIntegrations } from '../../../lib/schema';
+import { eq } from 'drizzle-orm';
+import { getDisplayName } from '../../../lib/integrations/config';
+
+async function getIntentSourceName(sourceType: string | null, sourceId: string | null): Promise<string> {
+  if (!sourceType || !sourceId) {
+    return '';
+  }
+
+  try {
+    if (sourceType === 'file') {
+      const fileData = await db.select({ name: files.name })
+        .from(files)
+        .where(eq(files.id, sourceId))
+        .limit(1);
+      return fileData[0]?.name ? `file: ${fileData[0].name}` : 'file';
+    } else if (sourceType === 'link') {
+      const linkData = await db.select({ url: indexLinks.url })
+        .from(indexLinks)
+        .where(eq(indexLinks.id, sourceId))
+        .limit(1);
+      if (linkData[0]?.url) {
+        try {
+          const url = new URL(linkData[0].url);
+          return `link: ${url.hostname}`;
+        } catch {
+          return `link: ${linkData[0].url}`;
+        }
+      }
+      return 'link';
+    } else if (sourceType === 'integration') {
+      const integrationData = await db.select({ integrationType: userIntegrations.integrationType })
+        .from(userIntegrations)
+        .where(eq(userIntegrations.id, sourceId))
+        .limit(1);
+      const integrationType = integrationData[0]?.integrationType;
+      if (integrationType) {
+        const displayName = getDisplayName(integrationType);
+        return `${displayName} integration`;
+      }
+      return 'integration';
+    }
+  } catch (error) {
+    console.warn(`Failed to get source name for ${sourceType}:${sourceId}:`, error);
+  }
+
+  return sourceType;
+}
 
 /**
  * Evaluate appropriation against index prompt only
  */
 async function evaluateIndexAppropriation(
   intentPayload: string,
-  indexPrompt: string
+  indexPrompt: string,
+  sourceName?: string
 ): Promise<number> {
+  const sourceInfo = sourceName ? `\n\nINTENT SOURCE:\n${sourceName}` : '';
   const prompt = `You are an intent appropriation evaluator that determines how well an intent matches an index purpose.
 
 INTENT TO EVALUATE:
-${intentPayload}
+${intentPayload}${sourceInfo}
 
 INDEX PURPOSE:
 ${indexPrompt}
@@ -55,12 +106,14 @@ Return only the numeric score (e.g., 0.85):`;
  */
 async function evaluateMemberAppropriation(
   intentPayload: string,
-  memberPrompt: string
+  memberPrompt: string,
+  sourceName?: string
 ): Promise<number> {
+  const sourceInfo = sourceName ? `\n\nINTENT SOURCE:\n${sourceName}` : '';
   const prompt = `You are an intent appropriation evaluator that determines how well an intent matches a member's sharing focus.
 
 INTENT TO EVALUATE:
-${intentPayload}
+${intentPayload}${sourceInfo}
 
 MEMBER SHARING FOCUS:
 ${memberPrompt}
@@ -108,10 +161,15 @@ Return only the numeric score (e.g., 0.85):`;
 export async function evaluateIntentAppropriation(
   intentPayload: string,
   indexPrompt: string | null,
-  memberPrompt: string | null
+  memberPrompt: string | null,
+  sourceType?: string | null,
+  sourceId?: string | null
 ): Promise<number> {
   try {
     const QUALIFICATION_THRESHOLD = 0.7;
+    
+    // Get source name for context
+    const sourceName = await getIntentSourceName(sourceType || null, sourceId || null);
     
     // If no prompts available, return 0 appropriation
     if (!indexPrompt && !memberPrompt) {
@@ -120,7 +178,7 @@ export async function evaluateIntentAppropriation(
     
     // If only member prompt available (no index prompt), evaluate it directly
     if (!indexPrompt && memberPrompt) {
-      const memberScore = await evaluateMemberAppropriation(intentPayload, memberPrompt);
+      const memberScore = await evaluateMemberAppropriation(intentPayload, memberPrompt, sourceName);
       console.log(`📊 Member appropriation score (index prompt not available): ${memberScore.toFixed(3)}`);
       return memberScore;
     }
@@ -128,7 +186,7 @@ export async function evaluateIntentAppropriation(
     // Evaluate index prompt first (if available)
     let indexScore = 0.0;
     if (indexPrompt) {
-      indexScore = await evaluateIndexAppropriation(intentPayload, indexPrompt);
+      indexScore = await evaluateIndexAppropriation(intentPayload, indexPrompt, sourceName);
       console.log(`📊 Index appropriation score: ${indexScore.toFixed(3)}`);
       
       // If index prompt doesn't qualify, return early without evaluating member prompt
@@ -141,7 +199,7 @@ export async function evaluateIntentAppropriation(
     // Index prompt qualified, now evaluate member prompt (if available)
     let memberScore = 0.0;
     if (memberPrompt) {
-      memberScore = await evaluateMemberAppropriation(intentPayload, memberPrompt);
+      memberScore = await evaluateMemberAppropriation(intentPayload, memberPrompt, sourceName);
       console.log(`📊 Member appropriation score: ${memberScore.toFixed(3)}`);
       
       // Both scores must be separately > 0.7

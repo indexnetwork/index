@@ -10,21 +10,22 @@ import { User, AvatarUploadResponse, APIResponse } from "@/lib/types";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
 import { useIndexService } from "@/services/indexes";
+import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
 type OnboardingFlow = 'flow_1' | 'flow_2';
 
 interface IntegrationState {
-  id: 'notion' | 'slack' | 'discord' | 'calendar' | 'gmail';
+  id: IntegrationName;
   name: string;
   connected: boolean;
 }
 
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('profile');
-  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [currentFlow, setCurrentFlow] = useState<OnboardingFlow>('flow_1');
   const router = useRouter();
@@ -32,6 +33,7 @@ export default function OnboardingPage() {
   const api = useAuthenticatedAPI();
   const indexService = useIndexService();
   const { success, error } = useNotifications();
+  const { user, refetchUser } = useAuthContext();
 
   // Profile step states
   const [name, setName] = useState('');
@@ -41,13 +43,7 @@ export default function OnboardingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Connections step states
-  const [integrations, setIntegrations] = useState<IntegrationState[]>([
-    { id: 'notion', name: 'Notion', connected: false },
-    { id: 'slack', name: 'Slack', connected: false },
-    { id: 'discord', name: 'Discord', connected: false },
-    { id: 'calendar', name: 'Google Calendar', connected: false },
-    { id: 'gmail', name: 'Gmail', connected: false },
-  ]);
+  const [integrations, setIntegrations] = useState<IntegrationState[]>(getIntegrationsList());
   const [pendingIntegration, setPendingIntegration] = useState<string | null>(null);
 
   // Library step states
@@ -84,13 +80,7 @@ export default function OnboardingPage() {
       const integrationsFromAPI = response.integrations || [];
       
       // Default integrations with proper names
-      const defaultIntegrations: IntegrationState[] = [
-        { id: 'notion', name: 'Notion', connected: false },
-        { id: 'slack', name: 'Slack', connected: false },
-        { id: 'discord', name: 'Discord', connected: false },
-        { id: 'calendar', name: 'Calendar', connected: false },
-        { id: 'gmail', name: 'Gmail', connected: false },
-      ];
+      const defaultIntegrations = getIntegrationsList();
       
       // Map API response to our local state format
       const updatedIntegrations = defaultIntegrations.map(integration => {
@@ -118,30 +108,47 @@ export default function OnboardingPage() {
     }
   }, [searchParams]);
 
+  // Initialize form fields when user data is available and determine starting step
   React.useEffect(() => {
-    // Fetch user data on load
-    const fetchUser = async () => {
-      try {
-        const response = await api.get<APIResponse<User>>('/auth/me');
-        if (response.user) {
-          setUser(response.user);
-          setName(response.user.name || '');
-          setIntro(response.user.intro || '');
+    if (user) {
+      setName(user.name || '');
+      setIntro(user.intro || '');
+      
+      // Check if we should skip steps based on user state and localStorage
+      // Order: intro first, index second, integrations third
+      const storedIndexId = localStorage.getItem('onboarding_created_index_id');
+      
+      if (currentFlow === 'flow_2') {
+        // In flow_2: profile -> create_index -> connections -> invite_members
+        if (!user.intro) {
+          // Start with profile step if intro not filled
+          setCurrentStep('profile');
+        } else if (!storedIndexId) {
+          // Intro filled but no index created yet - go to create_index
+          setCurrentStep('create_index');
+        } else {
+          // Both intro filled and index created - go to connections (integrations)
+          setCurrentStep('connections');
         }
-      } catch (error) {
-        console.error('Failed to fetch user:', error);
+        
+        // If storedIndexId exists, we know an index was created (but don't restore full state)
+        // The actual index data will be fetched from API if needed
+      } else {
+        // In flow_1: profile -> connections -> join_indexes
+        if (!user.intro) {
+          // Start with profile step if intro not filled
+          setCurrentStep('profile');
+        } else {
+          // Intro filled - go to connections
+          setCurrentStep('connections');
+        }
       }
-    };
+    }
+  }, [user, currentFlow]);
 
-    const loadData = async () => {
-      await Promise.all([
-        fetchUser(),
-        loadIntegrations()
-      ]);
-    };
-
-    loadData();
-  }, [api, loadIntegrations]);
+  React.useEffect(() => {
+    loadIntegrations();
+  }, [loadIntegrations]);
 
   const uploadAvatar = async (file: File): Promise<string> => {
     const result = await api.uploadFile<AvatarUploadResponse>('/upload/avatar', file, undefined, 'avatar');
@@ -211,7 +218,8 @@ export default function OnboardingPage() {
       });
       
       if (response.user) {
-        setUser(response.user);
+        // Refetch user data in AuthContext to keep it in sync
+        await refetchUser();
         setCurrentStep(getNextStep('profile'));
       }
     } catch (err) {
@@ -235,7 +243,17 @@ export default function OnboardingPage() {
         success(`${item.name} disconnected`);
       } else {
         const popup = typeof window !== 'undefined' ? window.open('', `oauth_${id}`, 'width=560,height=720') : null;
-        const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`);
+        
+        // Get indexId from localStorage or createdIndex state
+        const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
+        
+        // indexId is required by the backend API
+        if (!indexId) {
+          error('Index ID is required to connect integrations');
+          return;
+        }
+        
+        const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`, { indexId });
         const redirect = res.redirectUrl;
         const reqId = res.connectionRequestId;
         
@@ -279,7 +297,7 @@ export default function OnboardingPage() {
     } finally {
       setPendingIntegration(null);
     }
-  }, [api, integrations, success, error, loadIntegrations]);
+  }, [api, integrations, success, error, loadIntegrations, createdIndex?.id]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
@@ -331,11 +349,16 @@ export default function OnboardingPage() {
       
       const response = await indexService.createIndex(createRequest);
       
-      setCreatedIndex({
+      const indexData = {
         id: response.id,
         name: response.title,
         inviteCode: response.permissions?.invitationLink?.code
-      });
+      };
+      
+      setCreatedIndex(indexData);
+      
+      // Store only indexId in localStorage for future onboarding sessions
+      localStorage.setItem('onboarding_created_index_id', indexData.id);
       
       success('Index created successfully!');
       setCurrentStep(getNextStep('create_index'));
@@ -371,8 +394,12 @@ export default function OnboardingPage() {
   const handleCompleteOnboarding = async () => {
     try {
       setIsLoading(true);
-      // Mark onboarding as completed
+      // Mark onboarding as completed and clean up temporary data
       localStorage.setItem('onboarding_completed', Date.now().toString());
+      
+      // Clean up onboarding-specific localStorage items
+      localStorage.removeItem('onboarding_created_index_id');
+      
       router.push('/inbox');
     } catch (error) {
       console.error('Error completing onboarding:', error);
@@ -486,7 +513,7 @@ export default function OnboardingPage() {
                   <div className="flex items-center justify-between mb-0">
                     <div className="flex items-center gap-3">
                       <Image 
-                        src={`/integrations/${integration.id === 'calendar' ? 'google-calendar' : integration.id}.png`} 
+                        src={`/integrations/${integration.id}.png?3`} 
                         width={24} 
                         height={24} 
                         alt={integration.name}
@@ -507,8 +534,13 @@ export default function OnboardingPage() {
                       />
                       {pendingIntegration === integration.id && (
                         <span className="absolute inset-0 grid place-items-center">
-                          <span className="h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                        </span>
+                        <span
+                          className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
+                          style={{
+                            marginLeft: integration.connected ? "-20px" : "20px"
+                          }}
+                        />
+                      </span>
                       )}
                     </button>
                   </div>

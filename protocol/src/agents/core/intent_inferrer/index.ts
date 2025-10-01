@@ -119,6 +119,145 @@ async function loadFilesInParallel(filePaths: string[]): Promise<Array<{ filePat
 }
 
 /**
+ * Core intent analysis function that works with any content
+ */
+async function analyzeContent(
+  content: string,
+  itemCount: number,
+  textInstruction?: string,
+  existingIntents: string[] = [],
+  count: number = 5,
+  timeoutMs: number = 60000
+): Promise<IntentInferenceResult> {
+  try {
+    if (!content.trim()) {
+      console.log('📄 No content to analyze');
+      return { success: true, intents: [] };
+    }
+
+    console.log(`📋 Analyzing ${content.length} characters from ${itemCount} items`);
+
+    // Generate intents using Zod schema
+    const IntentSchema = z.object({
+      intents: z.array(z.object({
+        payload: z.string().describe("Specific intent describing what information the user is looking for"),
+        confidence: z.number().min(0.6).max(1.0).describe("Confidence score between 0.6 and 1.0")
+      })).min(count).max(count).describe(`Array of ${count} high-quality intent objects`)
+    });
+
+    // Build context about existing intents to avoid duplicates
+    const existingContext = [];
+    if (existingIntents.length > 0) {
+      existingContext.push(`EXISTING USER INTENTS (do not duplicate these):\n${existingIntents.map(intent => `- ${intent}`).join('\n')}`);
+    }
+
+    // Use text instruction as guidance if provided
+    const instructionText = textInstruction ? `\n\nUSER INSTRUCTION: ${textInstruction}\nUse this instruction to guide how you analyze the content and what types of intents to generate.\n` : '';
+
+    const prompt = `You are analyzing content from ${itemCount} items and generating ${count} new intents.${instructionText}
+
+${existingContext.length > 0 ? existingContext.join('\n\n') + '\n\n' : ''}REQUIREMENTS:
+- Generate ${count} completely NEW intents that are different from any existing intents or suggestions listed above
+- Analyze the content to identify the primary target audience and their needs
+- Prioritize generating many intents for the most likely target audience, but also add few for secondary target audiences
+- Start with most important intents
+- Make each intent specific and actionable
+
+For example:
+If I uploaded a pitch deck, I would most likely want to generate intents for VCs, angel investors, and other investors. so 3 investor intent, 1 partnership, 1 early customer.
+If I uploaded a research paper, I would want to generate intents to find other researchers, and other people looking for research.
+If I uploaded a job posting, I would want to find candidates, and other people looking for jobs.
+
+Examples intents:
+- "Looking for early-stage investors interested in AI and machine learning startups with strong technical backgrounds and experience in scaling deep tech companies"
+- "Seeking venture capital firms focused on technology and innovation investments, particularly those with a track record of backing Series A and B rounds in emerging markets"
+- "Connecting with angel investors who support emerging tech companies and have expertise in product-market fit validation and go-to-market strategy development"
+- "Targeting partnerships with developers and technical teams for platform integration, specifically those working on enterprise SaaS solutions and API-first architectures"
+- "Reaching out to community managers and network leaders for collaboration opportunities, particularly those building developer communities and technical talent networks in emerging tech hubs"
+
+CONTENT:
+${content.substring(0, 15000)}${content.length > 15000 ? '\n...[content truncated for processing]' : ''}
+
+`;
+
+    // Set up timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Intent generation timeout')), timeoutMs);
+    });
+
+    const intentInferCall = traceableStructuredLlm(
+      "intent-inferrer",
+      ["structured-output"],
+      {
+        items_processed: itemCount,
+        existing_intents_count: existingIntents.length,
+        requested_count: count
+      }
+    );
+    const response = await Promise.race([
+      intentInferCall(prompt, IntentSchema),
+      timeoutPromise
+    ]);
+
+    console.log(`✅ Generated ${response.intents.length} intents`);
+
+    return {
+      success: true,
+      intents: response.intents
+    };
+
+  } catch (error) {
+    console.error('❌ Error analyzing content:', error);
+    return { success: false, intents: [] };
+  }
+}
+
+/**
+ * Analyze objects directly and generate intents (efficient for integrations)
+ */
+export async function analyzeObjects(
+  objects: any[],
+  textInstruction?: string,
+  existingIntents: string[] = [],
+  count: number = 5,
+  timeoutMs: number = 60000
+): Promise<IntentInferenceResult> {
+  if (!objects.length) {
+    return { success: true, intents: [] };
+  }
+
+  console.log(`📄 Processing ${objects.length} objects`);
+
+  // Build concatenated content from objects
+  let concatenatedContent = '';
+  let processedObjects = 0;
+  
+  for (const obj of objects) {
+    if (obj && typeof obj === 'object') {
+      // Convert object to readable format
+      const objContent = typeof obj.content === 'string' 
+        ? obj.content 
+        : JSON.stringify(obj, null, 2);
+      
+      if (objContent.trim().length > 0) {
+        const objName = obj.name || obj.id || `object-${processedObjects + 1}`;
+        concatenatedContent += `=== ${objName} ===\n${objContent.substring(0, 5000)}\n\n`;
+        processedObjects++;
+      }
+    }
+  }
+
+  return analyzeContent(
+    concatenatedContent,
+    processedObjects,
+    textInstruction,
+    existingIntents,
+    count,
+    timeoutMs
+  );
+}
+
+/**
  * Analyze files in a folder and generate intents
  */
 export async function analyzeFolder(
@@ -126,7 +265,6 @@ export async function analyzeFolder(
   fileIds: string[],
   textInstruction?: string,
   existingIntents: string[] = [],
-  existingSuggestions: string[] = [],
   count: number = 5,
   timeoutMs: number = 60000
 ): Promise<IntentInferenceResult> {
@@ -185,80 +323,14 @@ export async function analyzeFolder(
       return { success: true, intents: [] };
     }
 
-    console.log(`📋 Concatenated ${concatenatedContent.length} characters from ${processedFiles} files`);
-
-    // Generate intents using Zod schema
-    const IntentSchema = z.object({
-      intents: z.array(z.object({
-        payload: z.string().describe("Specific intent describing what information the user is looking for"),
-        confidence: z.number().min(0.6).max(1.0).describe("Confidence score between 0.6 and 1.0")
-      })).min(count).max(count).describe(`Array of ${count} high-quality intent objects`)
-    });
-
-    // Build context about existing intents and suggestions to avoid duplicates
-    const existingContext = [];
-    if (existingIntents.length > 0) {
-      existingContext.push(`EXISTING USER INTENTS (do not duplicate these):\n${existingIntents.map(intent => `- ${intent}`).join('\n')}`);
-    }
-    if (existingSuggestions.length > 0) {
-      existingContext.push(`EXISTING SUGGESTIONS (do not duplicate these):\n${existingSuggestions.map(suggestion => `- ${suggestion}`).join('\n')}`);
-    }
-
-    // Use text instruction as guidance if provided
-    const instructionText = textInstruction ? `\n\nUSER INSTRUCTION: ${textInstruction}\nUse this instruction to guide how you analyze the content and what types of intents to generate.\n` : '';
-
-    const prompt = `You are analyzing a collection of ${processedFiles} files and generating ${count} new intents.${instructionText}
-
-${existingContext.length > 0 ? existingContext.join('\n\n') + '\n\n' : ''}REQUIREMENTS:
-- Generate ${count} completely NEW intents that are different from any existing intents or suggestions listed above
-- Analyze the content to identify the primary target audience and their needs
-- Prioritize generating many intents for the most likely target audience, but also add few for secondary target audiences
-- Start with most important intents
-- Make each intent specific and actionable
-
-For example:
-If I uploaded a pitch deck, I would most likely want to generate intents for VCs, angel investors, and other investors. so 3 investor intent, 1 partnership, 1 early customer.
-If I uploaded a research paper, I would want to generate intents to find other researchers, and other people looking for research.
-If I uploaded a job posting, I would want to find candidates, and other people looking for jobs.
-
-Examples intents:
-- "Looking for early-stage investors interested in AI and machine learning startups with strong technical backgrounds and experience in scaling deep tech companies"
-- "Seeking venture capital firms focused on technology and innovation investments, particularly those with a track record of backing Series A and B rounds in emerging markets"
-- "Connecting with angel investors who support emerging tech companies and have expertise in product-market fit validation and go-to-market strategy development"
-- "Targeting partnerships with developers and technical teams for platform integration, specifically those working on enterprise SaaS solutions and API-first architectures"
-- "Reaching out to community managers and network leaders for collaboration opportunities, particularly those building developer communities and technical talent networks in emerging tech hubs"
-
-CONTENT:
-${concatenatedContent.substring(0, 15000)}${concatenatedContent.length > 15000 ? '\n...[content truncated for processing]' : ''}
-
-`;
-
-    // Set up timeout
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Intent generation timeout')), timeoutMs);
-    });
-
-    const intentInferCall = traceableStructuredLlm(
-      "intent-inferrer",
-      ["structured-output"],
-      {
-        files_processed: processedFiles,
-        existing_intents_count: existingIntents.length,
-        existing_suggestions_count: existingSuggestions.length,
-        requested_count: count
-      }
+    return analyzeContent(
+      concatenatedContent,
+      processedFiles,
+      textInstruction,
+      existingIntents,
+      count,
+      timeoutMs
     );
-    const response = await Promise.race([
-      intentInferCall(prompt, IntentSchema),
-      timeoutPromise
-    ]);
-
-    console.log(`✅ Generated ${response.intents.length} intents`);
-
-    return {
-      success: true,
-      intents: response.intents
-    };
 
   } catch (error) {
     console.error('❌ Error analyzing folder:', error);

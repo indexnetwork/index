@@ -1,7 +1,7 @@
 import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json } from 'drizzle-orm/pg-core';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Schema Extension for Index Protocol with IEEE P7012 Compliance + Examples
+// Schema Extension for Index Network with IEEE P7012 Compliance + Examples
 // Focus: Minimal but sufficient fields to support private file matching,
 // broker trust, reasoning visibility, and informed negotiation.
 // Inspired by: IEEE P7012:2025 (sections 3.3, 6.3.x, 7.1.x)

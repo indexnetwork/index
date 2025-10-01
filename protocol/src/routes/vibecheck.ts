@@ -261,7 +261,6 @@ router.post('/intent-suggestion',
           fileIds, 
           payload, // textInstruction
           [], // existingIntents
-          [], // existingSuggestions
           5, // count
           30000 // timeoutMs
         );

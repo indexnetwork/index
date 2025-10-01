@@ -10,7 +10,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc } from 'drizzle-orm';
 import { getUploadsPath } from '../lib/paths';
 import { processUploadedFiles } from '../lib/file-processing';
-import { processFilesToIntents } from '../lib/sync/process-intents';
+import { processFiles } from '../lib/integrations/files/processor';
 import type { IntegrationFile } from '../lib/integrations';
 
 // Extend the Request interface to include generatedFileId
@@ -277,12 +277,12 @@ async function generateIntentsForUpload(options: {
     size: multerFile.size,
   };
 
-  const { intentsGenerated } = await processFilesToIntents({
+  const { intentsGenerated } = await processFiles(
     userId,
-    files: [uploadAsIntegrationFile],
-    sourceId: fileRecord.id,
-    sourceType: 'file',
-  });
+    [uploadAsIntegrationFile],
+    fileRecord.id,
+    'file'
+  );
 
   console.log(`🤖 Intent generation complete for ${fileRecord.id}: generated ${intentsGenerated}`);
 }

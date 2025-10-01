@@ -13,9 +13,8 @@ import {
   validateOwnershipChange,
   EVERYONE_USER_ID
 } from '../lib/index-access';
-import { summarizeIntent } from '../agents/core/intent_summarizer';
-import { generateEmbedding } from '../lib/embeddings';
 import { Events } from '../lib/events';
+import { IntentService } from '../services/intent-service';
 // Removed intent-filtering import - using existing suggestions system
 import crypto from 'crypto';
 
@@ -1219,49 +1218,16 @@ router.post('/share/:code/intents',
         return res.status(403).json({ error: 'Shared index does not allow intent creation' });
       }
 
-      const summary = await summarizeIntent(payload);
-      
-      // Generate embedding for semantic search
-      let embedding: number[] | null = null;
-      try {
-        embedding = await generateEmbedding(payload);
-      } catch (error) {
-        console.error('Failed to generate embedding:', error);
-        // Continue without embedding - it's optional
-      }
-      
-      const newIntent = await db.insert(intents).values({
+      const newIntent = await IntentService.createIntent({
         payload,
-        summary,
+        userId: req.user!.id,
         isIncognito,
-        userId: req.user!.id,
-        embedding: embedding || undefined,
-      }).returning({
-        id: intents.id,
-        payload: intents.payload,
-        summary: intents.summary,
-        isIncognito: intents.isIncognito,
-        createdAt: intents.createdAt,
-        updatedAt: intents.updatedAt,
-        userId: intents.userId
-      });
-
-      // Associate with the shared index
-      await db.insert(intentIndexes).values({
-        intentId: newIntent[0].id,
-        indexId: sharedIndexData.id
-      });
-
-      // Trigger centralized intent created event
-      Events.Intent.onCreated({
-        intentId: newIntent[0].id,
-        userId: req.user!.id,
-        payload: newIntent[0].payload
+        indexIds: [sharedIndexData.id]
       });
 
       return res.status(201).json({
         message: 'Intent created successfully via shared index',
-        intent: newIntent[0]
+        intent: newIntent
       });
     } catch (error) {
       console.error('Create intent via share code error:', error);

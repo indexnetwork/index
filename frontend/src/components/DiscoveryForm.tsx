@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 interface DiscoveryFormProps {
   onRequestsClick: () => void;
@@ -14,7 +14,7 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea
-  const autoResize = () => {
+  const autoResize = useCallback(() => {
     if (inputRef.current) {
       if (inputFocused) {
         // When dropdown is open, allow growth up to ~10 lines
@@ -29,7 +29,7 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
         inputRef.current.style.overflowY = 'hidden';
       }
     }
-  };
+  }, [inputFocused]);
 
   // Update textarea when focus state or content changes
   useEffect(() => {

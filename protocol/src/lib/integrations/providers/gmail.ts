@@ -1,7 +1,6 @@
 import type { IntegrationHandler, IntegrationFile } from '../index';
-import { getClient } from '../core/composio';
+import { getClient } from '../composio';
 import { log } from '../../log';
-import { withRetry } from '../core/util';
 
 type GmailMessage = {
   id?: string;
@@ -39,13 +38,13 @@ function fname(s: string, fallback: string) {
 async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
   try {
     const composio = await getClient();
-    const accs = await withRetry(() => composio.connectedAccounts.list({ userIds: [userId], toolkitSlugs: ['gmail'] }));
+    const accs = await composio.connectedAccounts.list({ userIds: [userId], toolkitSlugs: ['gmail'] });
     const acc = (accs as any)?.items?.[0];
     if (!acc) return [];
 
     const query = ['in:sent', lastSyncAt ? after(lastSyncAt) : undefined].filter(Boolean).join(' ');
     const args: any = { user_id: 'me', query, max_results: 100, include_payload: true, ids_only: false };
-    const resp = await withRetry(() => composio.tools.execute('GMAIL_FETCH_EMAILS', { userId, connectedAccountId: acc.id, arguments: args }));
+    const resp = await composio.tools.execute('GMAIL_FETCH_EMAILS', { userId, connectedAccountId: acc.id, arguments: args });
     const data = (resp as any)?.data ?? resp;
     const messages: GmailMessage[] = data?.messages || data?.details?.messages || data?.items || [];
     if (!Array.isArray(messages) || !messages.length) return [];

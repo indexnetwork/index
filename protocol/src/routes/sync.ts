@@ -1,14 +1,15 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { runSync } from '../lib/sync/runner';
+import { runSync } from '../lib/sync';
+import { getSyncProviderNames } from '../lib/integrations/config';
 
 const router = Router();
 
 router.post('/now',
   authenticatePrivy,
   [
-    body('provider').isString().isIn(['links','gmail','notion','slack','discord','calendar']),
+    body('provider').isString().isIn(getSyncProviderNames()),
     body('params').optional().isObject(),
   ],
   async (req: AuthRequest, res: Response) => {
