@@ -44,6 +44,7 @@ export default function OnboardingPage() {
 
   // Connections step states
   const [integrations, setIntegrations] = useState<IntegrationState[]>(getIntegrationsList());
+  const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
   const [pendingIntegration, setPendingIntegration] = useState<string | null>(null);
 
   // Library step states
@@ -92,9 +93,11 @@ export default function OnboardingPage() {
       });
       
       setIntegrations(updatedIntegrations);
+      setIntegrationsLoaded(true);
     } catch (error) {
       console.error('Failed to fetch integrations:', error);
       // Keep default state if API fails
+      setIntegrationsLoaded(true);
     }
   }, [api]);
 
@@ -520,29 +523,34 @@ export default function OnboardingPage() {
                       />
                       <span className="font-small text-black font-ibm-plex-mono text-[14px]">{integration.name}</span>
                     </div>
-                    <button
-                      onClick={() => toggleIntegration(integration.id)}
-                      disabled={pendingIntegration === integration.id}
-                      className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${
-                        integration.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                      } ${pendingIntegration === integration.id ? 'opacity-70' : ''}`}
-                    >
-                      <span
-                        className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
-                          integration.connected ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                      {pendingIntegration === integration.id && (
-                        <span className="absolute inset-0 grid place-items-center">
+                    {!integrationsLoaded ? (
+                      // Show loading placeholder for toggle only
+                      <div className="w-11 h-6 bg-[#F5F5F5] rounded-full animate-pulse" />
+                    ) : (
+                      <button
+                        onClick={() => toggleIntegration(integration.id)}
+                        disabled={pendingIntegration === integration.id}
+                        className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${
+                          integration.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                        } ${pendingIntegration === integration.id ? 'opacity-70' : ''}`}
+                      >
                         <span
-                          className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
-                          style={{
-                            marginLeft: integration.connected ? "-20px" : "20px"
-                          }}
+                          className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
+                            integration.connected ? 'translate-x-5' : 'translate-x-0'
+                          }`}
                         />
-                      </span>
-                      )}
-                    </button>
+                        {pendingIntegration === integration.id && (
+                          <span className="absolute inset-0 grid place-items-center">
+                          <span
+                            className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
+                            style={{
+                              marginLeft: integration.connected ? "-20px" : "20px"
+                            }}
+                          />
+                        </span>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
