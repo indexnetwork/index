@@ -1386,6 +1386,70 @@ router.get('/:id/member-intents',
   }
 );
 
+// Get index summary for onboarding
+router.get('/:id/summary',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      // Check if user is the owner of the index
+      const ownerCheck = await db.select({
+        userId: indexMembers.userId
+      }).from(indexMembers)
+        .where(and(
+          eq(indexMembers.indexId, id),
+          eq(indexMembers.userId, req.user!.id),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        ))
+        .limit(1);
+
+      if (ownerCheck.length === 0) {
+        return res.status(403).json({ error: 'Only index owners can view summary' });
+      }
+
+      // Get member count
+      const [memberCountResult] = await db.select({ count: count() })
+        .from(indexMembers)
+        .where(eq(indexMembers.indexId, id));
+
+      // Get total intent count
+      const [intentCountResult] = await db.select({ count: count() })
+        .from(intentIndexes)
+        .where(eq(intentIndexes.indexId, id));
+
+      // Get example intents (recent ones, limit 10)
+      const exampleIntentsResult = await db.select({
+        payload: intents.payload
+      }).from(intents)
+        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+        .where(and(
+          eq(intentIndexes.indexId, id),
+          isNull(intents.archivedAt)
+        ))
+        .orderBy(desc(intents.createdAt))
+        .limit(5);
+
+      const summary = {
+        memberCount: memberCountResult.count,
+        totalIntents: intentCountResult.count,
+        exampleIntents: exampleIntentsResult.map(intent => intent.payload)
+      };
+
+      return res.json(summary);
+    } catch (error) {
+      console.error('Get index summary error:', error);
+      return res.status(500).json({ error: 'Failed to fetch index summary' });
+    }
+  }
+);
+
 // Add intent to index (works for both owners and members)
 router.post('/:id/member-intents/:intentId',
   authenticatePrivy,

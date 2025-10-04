@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, ChangeEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,6 +14,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
 import { useIndexService } from "@/services/indexes";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
+import LibraryModal from "@/components/modals/LibraryModal";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
 type OnboardingFlow = 'flow_1' | 'flow_2';
@@ -72,10 +73,15 @@ export default function OnboardingPage() {
 
   // Invite members step states
   const [inviteMethod, setInviteMethod] = useState<'automatic' | 'link' | null>(null);
-  const [networkParticipants] = useState(523); // Mock data as shown in the images
+
+  const [exampleUserIntents, setExampleUserIntents] = useState<string[]>([]);
+  const [memberCount, setMemberCount] = useState(0);
+  const [totalIntents, setTotalIntents] = useState(0);
+  const [summaryLoaded, setSummaryLoaded] = useState(false);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
 
   // Load integrations status
-  const loadIntegrations = React.useCallback(async () => {
+  const loadIntegrations = useCallback(async () => {
     try {
       const response = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>('/integrations');
       const integrationsFromAPI = response.integrations || [];
@@ -101,6 +107,55 @@ export default function OnboardingPage() {
     }
   }, [api]);
 
+  // Load index summary for invite members step
+  const loadIndexSummary = useCallback(async () => {
+    try {
+      setSummaryLoaded(false);
+      
+      // Get indexId from localStorage or createdIndex state
+      const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
+      
+      if (!indexId) {
+        // Fallback to mock data if no index ID
+        setExampleUserIntents([
+          'Builders of crypto apps that care about user experience',
+          'New York founders hiring founding engineers, PMs, or designers',
+          'People working on small/medium projects with user-minded values',
+          'GPU, AI model, or new-cloud founders & execs',
+          'People building AI tools that connect others with relevant data'
+        ]);
+        setMemberCount(255);
+        setTotalIntents(20166);
+        setSummaryLoaded(true);
+        return;
+      }
+
+      const response = await api.get<{
+        exampleIntents: string[];
+        memberCount: number;
+        totalIntents: number;
+      }>(`/indexes/${indexId}/summary`);
+      
+      setExampleUserIntents(response.exampleIntents || []);
+      setMemberCount(response.memberCount || 0);
+      setTotalIntents(response.totalIntents || 0);
+      setSummaryLoaded(true);
+    } catch (error) {
+      console.error('Failed to fetch index summary:', error);
+      // Fallback to mock data
+      setExampleUserIntents([
+        'Builders of crypto apps that care about user experience',
+        'New York founders hiring founding engineers, PMs, or designers',
+        'People working on small/medium projects with user-minded values',
+        'GPU, AI model, or new-cloud founders & execs',
+        'People building AI tools that connect others with relevant data'
+      ]);
+      setMemberCount(255);
+      setTotalIntents(20166);
+      setSummaryLoaded(true);
+    }
+  }, [api, createdIndex?.id]);
+
   // Detect flow from query string
   useEffect(() => {
     const flow = searchParams.get('flow');
@@ -112,7 +167,7 @@ export default function OnboardingPage() {
   }, [searchParams]);
 
   // Initialize form fields when user data is available and determine starting step
-  React.useEffect(() => {
+  useEffect(() => {
     if (user) {
       setName(user.name || '');
       setIntro(user.intro || '');
@@ -149,16 +204,23 @@ export default function OnboardingPage() {
     }
   }, [user, currentFlow]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadIntegrations();
   }, [loadIntegrations]);
+
+  // Load index summary when reaching invite_members step
+  useEffect(() => {
+    if (currentStep === 'invite_members' && !summaryLoaded) {
+      loadIndexSummary();
+    }
+  }, [currentStep, summaryLoaded, loadIndexSummary]);
 
   const uploadAvatar = async (file: File): Promise<string> => {
     const result = await api.uploadFile<AvatarUploadResponse>('/upload/avatar', file, undefined, 'avatar');
     return result.avatarFilename;
   };
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setAvatarFile(file);
@@ -376,21 +438,13 @@ export default function OnboardingPage() {
   const handleInviteMembers = async () => {
     if (inviteMethod === 'automatic') {
       // In a real implementation, this would send invites
-      success('Invitations will be sent to your network!');
+      success('Invitations will be sent!');
     } else if (inviteMethod === 'link') {
+      success('Invite link copied to clipboard!');
       if (createdIndex?.inviteCode) {
-        // Copy invite link to clipboard
-        const inviteLink = `${window.location.origin}/invite/${createdIndex.inviteCode}`;
+        const inviteLink = `${window.location.origin}/l/${createdIndex.inviteCode}`;
         await navigator.clipboard.writeText(inviteLink);
-        success('Invite link copied to clipboard!');
       }
-    }
-    
-    // In flow_2, invite_members is the final step
-    if (currentFlow === 'flow_2') {
-      handleCompleteOnboarding();
-    } else {
-      setCurrentStep(getNextStep('invite_members'));
     }
   };
 
@@ -415,7 +469,7 @@ export default function OnboardingPage() {
     switch (currentStep) {
       case 'profile':
         return (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-3xl mx-auto">
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Tell us who you are.</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
@@ -500,7 +554,7 @@ export default function OnboardingPage() {
 
       case 'connections':
         return (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-3xl mx-auto">
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Connect your accounts</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
@@ -693,6 +747,11 @@ export default function OnboardingPage() {
                   placeholder="Enter your name"
                   value={indexName}
                   onChange={(e) => setIndexName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && indexName.trim() && !isLoading) {
+                      handleCreateIndex();
+                    }
+                  }}
                   className="w-full"
                 />
               </div>
@@ -770,23 +829,70 @@ export default function OnboardingPage() {
 
       case 'invite_members':
         return (
-          <div className="max-w-2xl mx-auto">
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Invite your network.</h1>
-              <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
-                We found <strong>{networkParticipants} participants</strong> from your existing network. You can invite them automatically, or share a link to invite on your own.
+          <div className="max-w-3xl mx-auto" >
+            <div className="mb-2">
+              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">You're all set—here's a quick snapshot.</h1>
+              <p className="text-black text-[14px] font-ibm-plex-mono mb-2">
+                Here are <strong>your intents</strong> from your connected sources. You can{' '}
+                <button
+                  type="button"
+                  onClick={() => loadIndexSummary()}
+                  className="inline p-0 m-0 align-baseline text-black italic underline hover:opacity-80 font-ibm-plex-mono text-[14px] bg-transparent border-0 cursor-pointer"
+                  style={{ display: 'inline', background: 'none' }}
+                >
+                  edit or add more
+                </button>{' '}
+                anytime.
               </p>
             </div>
 
-            <div className="flex justify-between items-start gap-8 mt-8">
-              {/* Left side - Invite method buttons */}
-              <div className="flex gap-4">
+            {/* Intent tags */}
+            <div className="space-y-1.5 mb-4">
+              {summaryLoaded ? (
+                exampleUserIntents.map((intent, index) => (
+                  <span
+                    key={index}
+                    className="inline-block text-left px-2 py-1 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm"
+                  >
+                    <span className="text-[#1976D2] text-[13px] font-ibm-plex-mono">
+                      {intent}
+                    </span>
+                  </span>
+                ))
+              ) : (
+                // Loading placeholders
+                Array.from({ length: 5 }).map((_, index) => (
+                  <div key={index} className="px-2 py-2.5  bg-[#F5F5F5] rounded-sm animate-pulse mb-1.5">
+                    <div className="h-[13px] bg-[#E0E0E0] rounded" style={{ width: `${Math.random() * 200 + 200}px` }}></div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            
+
+            {/* Member invitation section */}
+            <div className="mt-6 mb-8">
+            {summaryLoaded ? (
+                <p className="text-black text-[14px] font-ibm-plex-mono mt-4 mb-1">
+                  Your community now has <strong>{memberCount.toLocaleString()} members</strong> with <strong>{totalIntents.toLocaleString()} intents</strong> shared.
+                </p>
+              ) : (
+                <div className="mb-6">
+                  <div className="h-5 bg-[#F5F5F5] rounded animate-pulse w-96"></div>
+                </div>
+              )}
+              <p className="text-black text-[14px] font-ibm-plex-mono mb-4">
+                Now, invite others in your community to add their intents! The more intents people share, the easier it becomes to discover each other and connect at the right moment.
+              </p>
+              
+              <div className="flex gap-3">
                 <Button
                   onClick={() => {
                     setInviteMethod('automatic');
                     handleInviteMembers();
                   }}
-                  className="px-6 py-4 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
+                  className="bg-[#1976D2] text-white hover:bg-[#1565C0] font-ibm-plex-mono"
                 >
                   Invite Automatically
                 </Button>
@@ -795,28 +901,27 @@ export default function OnboardingPage() {
                     setInviteMethod('link');
                     handleInviteMembers();
                   }}
-                  className="px-6 py-4 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
+                  variant="outline" className="font-ibm-plex-mono"
                 >
-                  Copy Invite Link
+                  Copy invite link
                 </Button>
               </div>
+            </div>
 
-              {/* Right side - Navigation buttons */}
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setCurrentStep(getPreviousStep('invite_members'))}
-                  className="border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
-                >
-                  Back
-                </Button>
-                <Button
-                  onClick={handleCompleteOnboarding}
-                  className="bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
-                >
-                  Finish
-                </Button>
-              </div>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setCurrentStep(getPreviousStep('invite_members'))}
+                className="flex-1 border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
+              >
+                Back
+              </Button>
+              <Button
+                onClick={handleCompleteOnboarding}
+                className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
+              >
+                Complete setup
+              </Button>
             </div>
           </div>
         );
@@ -896,6 +1001,18 @@ export default function OnboardingPage() {
           {renderStepContent()}
         </div>
       </div>
+      
+      {/* Library Modal */}
+      <LibraryModal
+        open={showLibraryModal}
+        onOpenChange={setShowLibraryModal}
+        onChanged={() => {
+          // Optionally refresh index summary when library changes
+          if (currentStep === 'invite_members') {
+            loadIndexSummary(); 
+          }
+        }}
+      />
     </ClientLayout>
   );
 }

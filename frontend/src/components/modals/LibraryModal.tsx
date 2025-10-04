@@ -65,6 +65,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   } | null>(null);
   const relatedIntentCount = confirm?.intentIds.length ?? 0;
   const [integrations, setIntegrations] = useState<Array<{ id: IntegrationName; name: string; connected: boolean }>>([]);
+  const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
   const [pendingIntegration, setPendingIntegration] = useState<null | IntegrationName>(null);
   
   // Source filtering state - now supports multiple sources
@@ -272,18 +273,27 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   // Integrations (compact section)
   const loadIntegrations = useCallback(async () => {
     try {
-      const res = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>(`/integrations`);
-      const items = getIntegrationsList().map(item => {
-        const found = res.integrations?.find(i => i.id === item.id);
-        return { 
-          id: item.id, 
-          name: found?.name ?? item.name, 
-          connected: !!found?.connected 
+      const response = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>('/integrations');
+      const integrationsFromAPI = response.integrations || [];
+      
+      // Default integrations with proper names
+      const defaultIntegrations = getIntegrationsList();
+      
+      // Map API response to our local state format
+      const updatedIntegrations = defaultIntegrations.map(integration => {
+        const apiIntegration = integrationsFromAPI.find(i => i.id === integration.id);
+        return {
+          ...integration,
+          connected: apiIntegration?.connected || false
         };
       });
-      setIntegrations(items);
-    } catch {
-      setIntegrations(getIntegrationsList());
+      
+      setIntegrations(updatedIntegrations);
+      setIntegrationsLoaded(true);
+    } catch (error) {
+      console.error('Failed to fetch integrations:', error);
+      // Keep default state if API fails
+      setIntegrationsLoaded(true);
     }
   }, [api]);
 
@@ -667,7 +677,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               {intentCount}
                             </span>
                           )}
-                          {it.connected && (
+                          {integrationsLoaded && it.connected && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -692,21 +702,25 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           )}
                         </span>
                         <div className="flex items-center gap-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleIntegration(it.id);
-                            }}
-                            disabled={pendingIntegration === it.id}
-                            className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                              it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                            } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
-                            aria-pressed={it.connected}
-                            aria-busy={pendingIntegration === it.id}
-                            aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
-                          >
-                            <span
-                              className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
+                          {!integrationsLoaded ? (
+                            // Show loading placeholder for toggle only
+                            <div className="w-11 h-6 bg-[#F5F5F5] rounded-full animate-pulse" />
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleIntegration(it.id);
+                              }}
+                              disabled={pendingIntegration === it.id}
+                              className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                                it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                              } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
+                              aria-pressed={it.connected}
+                              aria-busy={pendingIntegration === it.id}
+                              aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
+                            >
+                              <span
+                                className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
                               style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
                             />
                             {pendingIntegration === it.id && (
@@ -715,6 +729,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               </span>
                             )}
                           </button>
+                          )}
                         </div>
                       </div>
                     </div>
