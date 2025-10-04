@@ -37,15 +37,15 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/forms": "^0.5.10",
-    "@tailwindcss/postcss": "^4",
-    "@tailwindcss/typography": "^0.5.16",
+    "@tailwindcss/postcss": "^4.1.14",
+    "@tailwindcss/typography": "^0.5.19",
     "@types/cors": "^2.8.17",
     "@types/node": "^20.17.44",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.3.0",
-    "tailwindcss": "^4",
+    "tailwindcss": "^4.1.14",
     "typescript": "^5"
   },
   "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72"
