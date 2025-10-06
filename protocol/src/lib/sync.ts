@@ -147,7 +147,13 @@ export const linksProvider: SyncProvider<{ linkId: string }> = {
     }
 
     const link = singleLink[0];
-    const crawlResult = await crawlLinksForIndex([link.url]);
+    let crawlResult;
+    try {
+      crawlResult = await crawlLinksForIndex([link.url]);
+    } catch (error) {
+      await update({ stats: { filesImported: 0, intentsGenerated: 0, error: error instanceof Error ? error.message : String(error) } });
+      return;
+    }
     
     if (crawlResult.files.length > 0) {
       const result = await processFiles(
