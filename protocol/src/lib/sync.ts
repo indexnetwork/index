@@ -51,6 +51,7 @@ export async function syncIntegration(
     let intentsGenerated = 0;
     let usersProcessed = 0;
     let newUsersCreated = 0;
+    let filesImported = 0;
     
     if (integrationType === 'discord') {
       if (handler.fetchObjects) {
@@ -90,6 +91,7 @@ export async function syncIntegration(
 
         const result = await processFiles(userId, files, integration[0], 'integration');
         intentsGenerated = result.intentsGenerated;
+        filesImported = result.filesImported;
       }
     }
 
@@ -108,7 +110,7 @@ export async function syncIntegration(
 
     return {
       success: true,
-      filesImported: 0,
+      filesImported,
       intentsGenerated,
       usersProcessed,
       newUsersCreated,
@@ -156,13 +158,18 @@ export const linksProvider: SyncProvider<{ linkId: string }> = {
     }
     
     if (crawlResult.files.length > 0) {
-      const result = await processFiles(
-        run.userId,
-        crawlResult.files,
-        params.linkId,
-        'link'
-      );
-      await update({ stats: { filesImported: result.filesImported, intentsGenerated: result.intentsGenerated } });
+      try {
+        const result = await processFiles(
+          run.userId,
+          crawlResult.files,
+          params.linkId,
+          'link'
+        );
+        await update({ stats: { filesImported: result.filesImported, intentsGenerated: result.intentsGenerated } });
+      } catch (error) {
+        await update({ stats: { filesImported: 0, intentsGenerated: 0, error: error instanceof Error ? error.message : String(error) } });
+        return;
+      }
     } else {
       await update({ stats: { filesImported: 0, intentsGenerated: 0 } });
     }
@@ -180,7 +187,8 @@ export function createIntegrationProvider(type: string): SyncProvider {
           filesImported: result.filesImported, 
           intentsGenerated: result.intentsGenerated,
           usersProcessed: result.usersProcessed,
-          newUsersCreated: result.newUsersCreated
+          newUsersCreated: result.newUsersCreated,
+          error: result.error
         } 
       });
     },
