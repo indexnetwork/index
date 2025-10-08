@@ -732,69 +732,81 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                             : 'border-black bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-black'
                       }`}
                       onClick={() => it.connected && handleSourceFilter(it.type)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-3">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={`/integrations/${it.type}.png`} width={20} height={20} alt="" />
-                          <span className="text-xs font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
-                          {it.connected && isFiltered && intentCount > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#E6F2FF] text-[#005BBF] font-ibm-plex-mono">
-                              {intentCount}
-                            </span>
-                          )}
-                          {integrationsLoaded && it.connected && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSyncIntegration(it.type);
-                              }}
-                              disabled={syncingIntegrations.has(it.type)}
-                              className="group p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                              aria-label={`Sync ${it.name}`}
-                            >
-                              {syncingIntegrations.has(it.type) ? (
-                                <div className="w-[14px] h-[14px] flex items-center justify-center">
-                                  <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
-                                </div>
-                              ) : (
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
-                                  <polyline points="23 4 23 10 17 10"></polyline>
-                                  <polyline points="1 20 1 14 7 14"></polyline>
-                                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                                </svg>
-                              )}
-                            </button>
-                          )}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          {!integrationsLoaded ? (
-                            // Show loading placeholder for toggle only
-                            <div className="w-11 h-6 bg-[#F5F5F5] rounded-full animate-pulse" />
-                          ) : it.connected ? (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDisconnectIntegration(it.type);
-                              }}
-                              disabled={pendingIntegration === it.type}
-                              className="px-2 py-1 text-xs bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50 font-ibm-plex-mono"
-                            >
-                              {pendingIntegration === it.type ? 'Disconnecting...' : 'Disconnect'}
-                            </button>
-                          ) : (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setConfigureIntegration({ type: it.type, name: it.name });
-                              }}
-                              className="px-2 py-1 text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100 font-ibm-plex-mono"
-                            >
-                              Connect
-                            </button>
-                          )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={`/integrations/${it.type}.png`} width={20} height={20} alt="" />
+                            <span className="text-xs font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
+                            {it.connected && intentCount > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#E6F2FF] text-[#005BBF] font-ibm-plex-mono">
+                                {intentCount}
+                              </span>
+                            )}
+                            {integrationsLoaded && it.connected && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSyncIntegration(it.type);
+                                }}
+                                disabled={syncingIntegrations.has(it.type)}
+                                className="group p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                                aria-label={`Sync ${it.name}`}
+                              >
+                                {syncingIntegrations.has(it.type) ? (
+                                  <div className="w-[14px] h-[14px] flex items-center justify-center">
+                                    <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
+                                  </div>
+                                ) : (
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <polyline points="1 20 1 14 7 14"></polyline>
+                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                  </svg>
+                                )}
+                              </button>
+                            )}
+                          </span>
+                          <div className="flex items-center">
+                            {!integrationsLoaded ? (
+                              <div className="w-11 h-6 bg-[#F5F5F5] rounded-full animate-pulse" />
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (it.connected) {
+                                    handleDisconnectIntegration(it.type);
+                                  } else {
+                                    setConfigureIntegration({ type: it.type, name: it.name });
+                                  }
+                                }}
+                                disabled={pendingIntegration === it.type}
+                                className={`relative h-6 w-11 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                                  it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                                } ${pendingIntegration === it.type ? 'opacity-70' : ''}`}
+                                aria-pressed={it.connected}
+                                aria-busy={pendingIntegration === it.type}
+                                aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
+                              >
+                                <span
+                                  className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
+                                    it.connected ? 'translate-x-5' : 'translate-x-0'
+                                  }`}
+                                />
+                                {pendingIntegration === it.type && (
+                                  <span className="absolute inset-0 grid place-items-center">
+                                    <span
+                                      className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
+                                      style={{
+                                        marginLeft: it.connected ? "-20px" : "20px"
+                                      }}
+                                    />
+                                  </span>
+                                )}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
                     </div>
                   );
                 })}
