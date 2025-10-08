@@ -1414,17 +1414,22 @@ router.get('/:id/summary',
         return res.status(403).json({ error: 'Only index owners can view summary' });
       }
 
-      // Get member count
-      const [memberCountResult] = await db.select({ count: count() })
-        .from(indexMembers)
-        .where(eq(indexMembers.indexId, id));
+      // Get all members
+      const membersResult = await db.select({
+        userId: users.id,
+        userName: users.name,
+        userAvatar: users.avatar
+      }).from(indexMembers)
+        .innerJoin(users, eq(indexMembers.userId, users.id))
+        .where(eq(indexMembers.indexId, id))
+        .orderBy(desc(indexMembers.createdAt));
 
       // Get total intent count
       const [intentCountResult] = await db.select({ count: count() })
         .from(intentIndexes)
         .where(eq(intentIndexes.indexId, id));
 
-      // Get example intents (recent ones, limit 10)
+      // Get example intents (recent ones, limit 5)
       const exampleIntentsResult = await db.select({
         payload: intents.payload
       }).from(intents)
@@ -1437,9 +1442,13 @@ router.get('/:id/summary',
         .limit(5);
 
       const summary = {
-        memberCount: memberCountResult.count,
         totalIntents: intentCountResult.count,
-        exampleIntents: exampleIntentsResult.map(intent => intent.payload)
+        exampleIntents: exampleIntentsResult.map(intent => intent.payload),
+        members: membersResult.map(member => ({
+          id: member.userId,
+          name: member.userName,
+          avatar: member.userAvatar
+        }))
       };
 
       return res.json(summary);
