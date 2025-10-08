@@ -1,5 +1,6 @@
 import type { IntegrationHandler } from '../index';
 import { resolveNotionUser } from '../../user-utils';
+import { getIntegrationById } from '../integration-utils';
 
 export interface NotionPage {
   id: string;
@@ -20,18 +21,25 @@ import { ensureIndexMembership } from '../membership-utils';
 
 
 // Return raw Notion pages as objects
-async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<NotionPage[]> {
+async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<NotionPage[]> {
   try {
-    log.info('Notion objects sync start', { userId, lastSyncAt: lastSyncAt?.toISOString() });
+    const integration = await getIntegrationById(integrationId);
+    if (!integration) {
+      log.error('Integration not found', { integrationId });
+      return [];
+    }
+
+    if (!integration.connectedAccountId) {
+      log.error('No connected account ID found for integration', { integrationId });
+      return [];
+    }
+
+    log.info('Notion objects sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
-    const connectedAccounts = await composio.connectedAccounts.list({ userIds: [userId], toolkitSlugs: ['notion'] });
-    const account = connectedAccounts?.items?.[0];
-    if (!account) return [];
-    const connectedAccountId = account.id;
+    const connectedAccountId = integration.connectedAccountId;
 
     // Search pages sorted by last_edited_time desc
     const search = await composio.tools.execute('NOTION_SEARCH_NOTION_PAGE', {
-      userId,
       connectedAccountId,
       arguments: {
         query: '',
@@ -53,7 +61,6 @@ async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<NotionPa
 
       try {
         const blocksResp = await composio.tools.execute('NOTION_FETCH_BLOCK_CONTENTS', {
-          userId,
           connectedAccountId,
           arguments: { block_id: item.id, page_size: 100 },
         });
@@ -79,10 +86,10 @@ async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<NotionPa
       }
     }
 
-    log.info('Notion objects sync done', { userId, objects: allPages.length });
+    log.info('Notion objects sync done', { integrationId, objects: allPages.length });
     return allPages;
   } catch (error) {
-    log.error('Notion objects sync error', { userId, error: (error as Error).message });
+    log.error('Notion objects sync error', { integrationId, error: (error as Error).message });
     return [];
   }
 }
@@ -246,4 +253,7 @@ export function extractNotionUsers(pages: any[]) {
   return Array.from(userMap.values());
 }
 
-export const notionHandler: IntegrationHandler<NotionPage> = { fetchObjects };
+export const notionHandler: IntegrationHandler<NotionPage> = { 
+  fetchObjects,
+  processObjects: processNotionPages
+};

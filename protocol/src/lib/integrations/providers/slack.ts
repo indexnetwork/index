@@ -5,6 +5,7 @@ import { analyzeObjects } from '../../../agents/core/intent_inferrer';
 import { resolveSlackUser } from '../../user-utils';
 import { IntentService } from '../../../services/intent-service';
 import { ensureIndexMembership } from '../membership-utils';
+import { getIntegrationById } from '../integration-utils';
 
 // Constants
 const CHANNEL_LIMIT = 200;
@@ -106,24 +107,26 @@ async function resolveUserForMessage(
 }
 
 // Return raw Slack messages as objects
-async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<SlackMessage[]> {
+async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<SlackMessage[]> {
   try {
-    log.info('Slack objects sync start', { userId, lastSyncAt: lastSyncAt?.toISOString() });
+    const integration = await getIntegrationById(integrationId);
+    if (!integration) {
+      log.error('Integration not found', { integrationId });
+      return [];
+    }
+
+    if (!integration.connectedAccountId) {
+      log.error('No connected account ID found for integration', { integrationId });
+      return [];
+    }
+
+    log.info('Slack objects sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
-
-    const connectedAccounts = await composio.connectedAccounts.list({
-      userIds: [userId],
-      toolkitSlugs: ['slack'],
-    });
-
-    const account = connectedAccounts?.items?.[0];
-    if (!account) return [];
-    const connectedAccountId = account.id;
+    const connectedAccountId = integration.connectedAccountId;
 
     // Fetch channels
     const channels: SlackChannel[] = [];
     const channelsResp = await composio.tools.execute('SLACK_LIST_ALL_CHANNELS', { 
-      userId, 
       connectedAccountId, 
       arguments: { limit: CHANNEL_LIMIT } 
     }) as SlackApiResponse;
@@ -147,7 +150,6 @@ async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<SlackMes
       
       do {
         const usersResp = await composio.tools.execute('SLACK_LIST_ALL_USERS', {
-          userId,
           connectedAccountId,
           arguments: { 
             limit: USER_LIMIT,
@@ -187,7 +189,6 @@ async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<SlackMes
       if (lastSyncAt) args.oldest = (lastSyncAt.getTime() / 1000).toString();
 
       const history = await composio.tools.execute('SLACK_FETCH_CONVERSATION_HISTORY', { 
-        userId, 
         connectedAccountId, 
         arguments: args 
       }) as SlackApiResponse;
@@ -222,10 +223,10 @@ async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<SlackMes
         });
       }
     }
-    log.info('Slack objects sync done', { userId, objects: allMessages.length, total: messagesTotal });
+    log.info('Slack objects sync done', { integrationId, objects: allMessages.length, total: messagesTotal });
     return allMessages;
   } catch (error) {
-    log.error('Slack objects sync error', { userId, error: (error as Error).message });
+    log.error('Slack objects sync error', { integrationId, error: (error as Error).message });
     return [];
   }
 }
@@ -359,4 +360,7 @@ function isValidMessage(msg: any, lastSyncAt?: Date): boolean {
   return true;
 }
 
-export const slackHandler: IntegrationHandler<SlackMessage> = { fetchObjects };
+export const slackHandler: IntegrationHandler<SlackMessage> = { 
+  fetchObjects,
+  processObjects: processSlackMessages
+};

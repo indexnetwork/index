@@ -30,12 +30,12 @@ export function createSyncService(api: ReturnType<typeof useAuthenticatedAPI>) {
       return this.syncNow('links', { ...params, linkId });
     },
 
-    // Sync specific integration
+    // Sync specific integration using integrationId
     async syncIntegration(
       integrationType: SyncProviderName,
-      params?: SyncParams
+      integrationId: string
     ): Promise<SyncResponse> {
-      return this.syncNow(integrationType, params);
+      return this.syncNow(integrationType, { integrationId });
     }
   };
 }

@@ -1,6 +1,7 @@
 import type { IntegrationHandler, IntegrationFile } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
+import { getIntegrationById } from '../integration-utils';
 
 type GmailMessage = {
   id?: string;
@@ -35,16 +36,26 @@ function fname(s: string, fallback: string) {
   return base.replace(/[\/:*?"<>|\n\r\t]/g, '-').slice(0, 120);
 }
 
-async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
+async function fetchFiles(integrationId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
   try {
+    const integration = await getIntegrationById(integrationId);
+    if (!integration) {
+      log.error('Integration not found', { integrationId });
+      return [];
+    }
+
+    if (!integration.connectedAccountId) {
+      log.error('No connected account ID found for integration', { integrationId });
+      return [];
+    }
+
+    log.info('Gmail sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
-    const accs = await composio.connectedAccounts.list({ userIds: [userId], toolkitSlugs: ['gmail'] });
-    const acc = (accs as any)?.items?.[0];
-    if (!acc) return [];
+    const connectedAccountId = integration.connectedAccountId;
 
     const query = ['in:sent', lastSyncAt ? after(lastSyncAt) : undefined].filter(Boolean).join(' ');
     const args: any = { user_id: 'me', query, max_results: 100, include_payload: true, ids_only: false };
-    const resp = await composio.tools.execute('GMAIL_FETCH_EMAILS', { userId, connectedAccountId: acc.id, arguments: args });
+    const resp = await composio.tools.execute('GMAIL_FETCH_EMAILS', { connectedAccountId, arguments: args });
     const data = (resp as any)?.data ?? resp;
     const messages: GmailMessage[] = data?.messages || data?.details?.messages || data?.items || [];
     if (!Array.isArray(messages) || !messages.length) return [];
@@ -71,10 +82,10 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
       };
       if (!lastSyncAt || file.lastModified > lastSyncAt) files.push(file);
     }
-    log.info('gmail: done', { userId, files: files.length });
+    log.info('Gmail sync done', { integrationId, files: files.length });
     return files;
-  } catch (e) {
-    log.error('gmail: error', { userId, error: (e as Error).message });
+  } catch (error) {
+    log.error('Gmail sync error', { integrationId, error: (error as Error).message });
     return [];
   }
 }

@@ -8,10 +8,11 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import ReactMarkdown from 'react-markdown';
 import { useAPI } from "@/contexts/APIContext";
+import { useIndexFilter } from "@/contexts/IndexFilterContext";
 import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
-import { IntegrationName, getIntegrationsList } from "@/config/integrations";
+import { IntegrationName } from "@/config/integrations";
 
 type Props = {
   open: boolean;
@@ -35,6 +36,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
   const { syncService } = useAPI();
+  const { selectedIndexIds } = useIndexFilter();
   const [isUploading, setIsUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -64,7 +66,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     archiveIntents: boolean;
   } | null>(null);
   const relatedIntentCount = confirm?.intentIds.length ?? 0;
-  const [integrations, setIntegrations] = useState<Array<{ id: IntegrationName; name: string; connected: boolean }>>([]);
+  const [integrations, setIntegrations] = useState<Array<{ 
+    id: string | null;           // The actual integration UUID
+    type: IntegrationName;       // The integration type (slack, discord, etc.)
+    name: string; 
+    connected: boolean;
+    indexId?: string | null;
+  }>>([]);
   const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
   const [pendingIntegration, setPendingIntegration] = useState<null | IntegrationName>(null);
   
@@ -273,18 +281,33 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   // Integrations (compact section)
   const loadIntegrations = useCallback(async () => {
     try {
-      const response = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>('/integrations');
-      const integrationsFromAPI = response.integrations || [];
+      const response = await api.get<{ 
+        integrations: Array<{ 
+          id: string; // integrationId (UUID)
+          type: string; // integration type (slack, discord, etc.)
+          name: string; 
+          connected: boolean; 
+          indexId?: string | null;
+        }>;
+        availableTypes: Array<{
+          type: string;
+          name: string;
+          toolkit: string;
+        }>;
+      }>('/integrations');
       
-      // Default integrations with proper names
-      const defaultIntegrations = getIntegrationsList();
+      const connectedIntegrations = response.integrations || [];
+      const availableTypes = response.availableTypes || [];
       
-      // Map API response to our local state format
-      const updatedIntegrations = defaultIntegrations.map(integration => {
-        const apiIntegration = integrationsFromAPI.find(i => i.id === integration.id);
+      // Create integration state combining connected and available types
+      const updatedIntegrations = availableTypes.map(availableType => {
+        const connectedIntegration = connectedIntegrations.find(i => i.type === availableType.type);
         return {
-          ...integration,
-          connected: apiIntegration?.connected || false
+          id: connectedIntegration?.id || null, // The actual UUID
+          type: availableType.type as IntegrationName, // The integration type
+          name: availableType.name,
+          connected: !!connectedIntegration,
+          indexId: connectedIntegration?.indexId || null
         };
       });
       
@@ -370,51 +393,56 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [handleJumpToSources]);
 
 
-  const toggleIntegration = useCallback(async (id: IntegrationName) => {
-    const item = integrations.find(i => i.id === id);
+  const toggleIntegration = useCallback(async (type: IntegrationName) => {
+    const item = integrations.find(i => i.type === type);
     if (!item) return;
     try {
-      setPendingIntegration(id);
-      if (item.connected) {
-        await api.delete(`/integrations/${id}`);
-        setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: false } : x));
+      setPendingIntegration(type);
+      if (item.connected && item.id) {
+        // Disconnect using integration UUID
+        await api.delete(`/integrations/${item.id}`);
+        setIntegrations(prev => prev.map(x => x.type === type ? { ...x, connected: false, id: null } : x));
         success(`${item.name} disconnected`);
       } else {
-        const popup = typeof window !== 'undefined' ? window.open('', `oauth_${id}`, 'width=560,height=720') : null;
-        const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`);
+        const popup = typeof window !== 'undefined' ? window.open('', `oauth_${type}`, 'width=560,height=720') : null;
+        const res = await api.post<{ redirectUrl?: string; integrationId?: string }>(`/integrations/connect/${type}`, { indexId: selectedIndexIds[0] });
         const redirect = res.redirectUrl;
-        const reqId = res.connectionRequestId;
+        const integrationId = res.integrationId;
         if (popup && redirect) {
           popup.location.href = redirect;
         } else if (redirect) {
           window.location.href = redirect;
           return;
         }
-        if (reqId) {
+        if (integrationId) {
           const started = Date.now();
+          
           const poll = setInterval(async () => {
             if (popup && popup.closed) {
               clearInterval(poll);
               return;
             }
+            
             try {
-              const s = await api.get<{ status: 'pending' | 'connected'; connectedAt?: string }>(`/integrations/status/${reqId}`);
+              const s = await api.get<{ status: 'pending' | 'connected'; connectedAt?: string }>(
+                `/integrations/${integrationId}/status`
+              );
+              
               if (s.status === 'connected') {
                 clearInterval(poll);
                 if (popup && !popup.closed) popup.close();
-                setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: true } : x));
+                setIntegrations(prev => prev.map(x => x.type === type ? { ...x, connected: true, id: integrationId } : x));
                 // Auto-filter the newly connected integration
-                setActiveSourceFilters(prev => new Set([...prev, id]));
+                setActiveSourceFilters(prev => new Set([...prev, type]));
                 success(`${item.name} connected`);
               }
               if (Date.now() - started > 90000) {
                 clearInterval(poll);
                 if (popup && !popup.closed) popup.close();
+                error('Connection timeout - please try again');
               }
-            } catch {
-              clearInterval(poll);
-              if (popup && !popup.closed) popup.close();
-              error(`Failed to complete ${item.name} connection`);
+            } catch (err) {
+              console.error('Error checking connection status:', err);
             }
           }, 1500);
         }
@@ -424,17 +452,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } finally {
       setPendingIntegration(null);
     }
-  }, [api, integrations, success, error]);
+  }, [api, integrations, success, error, selectedIndexIds]);
 
-  const handleSourceFilter = useCallback((integrationId: string) => {
+  const handleSourceFilter = useCallback((integrationType: string) => {
     setActiveSourceFilters(prev => {
       const next = new Set(prev);
-      if (next.has(integrationId)) {
+      if (next.has(integrationType)) {
         // If already filtering by this source, remove it
-        next.delete(integrationId);
+        next.delete(integrationType);
       } else {
         // Add this source to the filter
-        next.add(integrationId);
+        next.add(integrationType);
       }
       return next;
     });
@@ -497,7 +525,15 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const handleSyncIntegration = useCallback(async (integrationType: string) => {
     try {
       setSyncingIntegrations(prev => new Set([...prev, integrationType]));
-      await syncService.syncIntegration(integrationType as SyncProviderName);
+      
+      // Find the connected integration for this type
+      const connectedIntegration = integrations.find(i => i.type === integrationType && i.connected);
+      if (!connectedIntegration?.id) {
+        error(`${integrationType} is not connected`);
+        return;
+      }
+      
+      await syncService.syncIntegration(integrationType as SyncProviderName, connectedIntegration.id);
       success(`${integrationType.charAt(0).toUpperCase() + integrationType.slice(1)} sync started`);
     } catch {
       error(`Failed to sync ${integrationType}`);
@@ -509,7 +545,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
         return next;
       });
     }
-  }, [syncService, success, error, loadLibraryIntents]);
+  }, [syncService, integrations, success, error, loadLibraryIntents]);
 
   const totalIntentCount = libraryIntents.length;
   const displayedIntentCount = (isSelectionFiltering || isSourceFiltering) ? visibleIntents.length : totalIntentCount;
@@ -647,15 +683,15 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
               <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-3">
                 {integrations.map((it) => {
-                  const isFiltered = activeSourceFilters.has(it.id);
+                  const isFiltered = activeSourceFilters.has(it.type);
                   // Count intents from this integration that are currently visible in the filtered results
                   const intentCount = it.connected ? visibleIntents.filter(intent => 
-                    intent.sourceType === 'integration' && intent.sourceValue === it.id
+                    intent.sourceType === 'integration' && intent.sourceValue === it.type
                   ).length : 0;
                   
                   return (
                     <div 
-                      key={it.id} 
+                      key={it.type} 
                       className={`flex flex-col gap-2 border border-black border-b-2 rounded-none px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${
                         it.connected ? 'cursor-pointer' : 'cursor-default'
                       } ${
@@ -665,12 +701,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                             ? 'border-black bg-[#F8F9FA] hover:bg-[#F0F0F0] hover:border-black'
                             : 'border-black bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-black'
                       }`}
-                      onClick={() => it.connected && handleSourceFilter(it.id)}
+                      onClick={() => it.connected && handleSourceFilter(it.type)}
                     >
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-3">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={`/integrations/${it.id}.png`} width={20} height={20} alt="" />
+                          <img src={`/integrations/${it.type}.png`} width={20} height={20} alt="" />
                           <span className="text-xs font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
                           {it.connected && isFiltered && intentCount > 0 && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#E6F2FF] text-[#005BBF] font-ibm-plex-mono">
@@ -681,13 +717,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleSyncIntegration(it.id);
+                                handleSyncIntegration(it.type);
                               }}
-                              disabled={syncingIntegrations.has(it.id)}
+                              disabled={syncingIntegrations.has(it.type)}
                               className="group p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                               aria-label={`Sync ${it.name}`}
                             >
-                              {syncingIntegrations.has(it.id) ? (
+                              {syncingIntegrations.has(it.type) ? (
                                 <div className="w-[14px] h-[14px] flex items-center justify-center">
                                   <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
                                 </div>
@@ -709,14 +745,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleIntegration(it.id);
+                                toggleIntegration(it.type);
                               }}
-                              disabled={pendingIntegration === it.id}
+                              disabled={pendingIntegration === it.type}
                               className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
                                 it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                              } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
+                              } ${pendingIntegration === it.type ? 'opacity-70' : ''}`}
                               aria-pressed={it.connected}
-                              aria-busy={pendingIntegration === it.id}
+                              aria-busy={pendingIntegration === it.type}
                               aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
                             >
                               <span

@@ -85,10 +85,11 @@ class APIClient {
   }
 
   // GET request
-  async get<T>(endpoint: string, accessToken?: string): Promise<T> {
+  async get<T>(endpoint: string, accessToken?: string, options?: { signal?: AbortSignal }): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'GET',
       accessToken,
+      signal: options?.signal,
     });
   }
 
@@ -218,8 +219,8 @@ export function useAuthenticatedAPI() {
   }, [ready, getAccessToken]);
 
   return useMemo(() => ({
-    get: <T>(endpoint: string) =>
-      makeAuthenticatedRequest<T>((token) => apiClient.get<T>(endpoint, token)),
+    get: <T>(endpoint: string, options?: { signal?: AbortSignal }) =>
+      makeAuthenticatedRequest<T>((token) => apiClient.get<T>(endpoint, token, options)),
     
     post: <T>(endpoint: string, data?: unknown) =>
       makeAuthenticatedRequest<T>((token) => apiClient.post<T>(endpoint, data, token)),

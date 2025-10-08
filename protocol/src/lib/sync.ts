@@ -21,18 +21,16 @@ interface SyncResult {
 
 // Main sync function - handles all integration types
 export async function syncIntegration(
-  userId: string,
-  integrationType: string
+  integrationId: string
 ): Promise<SyncResult> {
   try {
-    log.info('Integration sync start', { userId, integrationType });
+    log.info('Integration sync start', { integrationId });
 
     // Get integration record
     const integration = await db.select()
       .from(userIntegrations)
       .where(and(
-        eq(userIntegrations.userId, userId),
-        eq(userIntegrations.integrationType, integrationType),
+        eq(userIntegrations.id, integrationId),
         eq(userIntegrations.status, 'connected'),
         isNull(userIntegrations.deletedAt)
       ))
@@ -42,7 +40,7 @@ export async function syncIntegration(
       return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Integration not connected' };
     }
 
-    const { lastSyncAt } = integration[0];
+    const { lastSyncAt, integrationType } = integration[0];
     const handler = handlers[integrationType];
     if (!handler) {
       return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Unsupported integration type' };
@@ -52,45 +50,32 @@ export async function syncIntegration(
     let usersProcessed = 0;
     let newUsersCreated = 0;
     
-    if (integrationType === 'discord') {
-      if (handler.fetchObjects) {
-        const messages = await handler.fetchObjects(userId, lastSyncAt || undefined);
-        const result = await processDiscordMessages(messages as any, integration[0]);
-        intentsGenerated = result.intentsGenerated;
-        usersProcessed = result.usersProcessed;
-        newUsersCreated = result.newUsersCreated;
+    // Generic sync logic - works with any provider
+    if (handler.fetchObjects && handler.processObjects) {
+      // Object-based providers (Discord, Slack, Notion)
+      const objects = await handler.fetchObjects(integrationId, lastSyncAt || undefined);
+      const result = await handler.processObjects(objects, integration[0]);
+      
+      intentsGenerated = result.intentsGenerated;
+      usersProcessed = result.usersProcessed;
+      newUsersCreated = result.newUsersCreated;
+      
+    } else if (handler.fetchFiles) {
+      // File-based providers (Gmail, Google Calendar)
+      const files = await handler.fetchFiles(integrationId, lastSyncAt || undefined);
+      log.info('Provider files', { count: files.length });
+
+      if (files.length === 0) {
+        await db.update(userIntegrations)
+          .set({ lastSyncAt: new Date() })
+          .where(eq(userIntegrations.id, integration[0].id));
+        return { success: true, filesImported: 0, intentsGenerated: 0 };
       }
-    } else if (integrationType === 'slack') {
-      if (handler.fetchObjects) {
-        const messages = await handler.fetchObjects(userId, lastSyncAt || undefined);
-        const result = await processSlackMessages(messages as any, integration[0]);
-        intentsGenerated = result.intentsGenerated;
-        usersProcessed = result.usersProcessed;
-        newUsersCreated = result.newUsersCreated;
-      }
-    } else if (integrationType === 'notion') {
-      if (handler.fetchObjects) {
-        const pages = await handler.fetchObjects(userId, lastSyncAt || undefined);
-        const result = await processNotionPages(pages as any, integration[0]);
-        intentsGenerated = result.intentsGenerated;
-        usersProcessed = result.usersProcessed;
-        newUsersCreated = result.newUsersCreated;
-      }
+
+      const result = await processFiles(integration[0].userId, files, integration[0], 'integration');
+      intentsGenerated = result.intentsGenerated;
     } else {
-      if (handler.fetchFiles) {
-        const files = await handler.fetchFiles(userId, lastSyncAt || undefined);
-        log.info('Provider files', { count: files.length });
-
-        if (files.length === 0) {
-          await db.update(userIntegrations)
-            .set({ lastSyncAt: new Date() })
-            .where(eq(userIntegrations.id, integration[0].id));
-          return { success: true, filesImported: 0, intentsGenerated: 0 };
-        }
-
-        const result = await processFiles(userId, files, integration[0], 'integration');
-        intentsGenerated = result.intentsGenerated;
-      }
+      throw new Error(`Provider ${integrationType} has no valid sync methods`);
     }
 
     // Update sync timestamp
@@ -99,8 +84,9 @@ export async function syncIntegration(
       .where(eq(userIntegrations.id, integration[0].id));
 
     log.info('Integration sync done', { 
-      userId, 
-      integrationType, 
+      integrationId,
+      userId: integration[0].userId, 
+      integrationType: integration[0].integrationType, 
       intentsGenerated, 
       usersProcessed, 
       newUsersCreated
@@ -115,7 +101,7 @@ export async function syncIntegration(
     };
 
   } catch (error) {
-    log.error('Integration sync error', { userId, integrationType, error: error instanceof Error ? error.message : String(error) });
+    log.error('Integration sync error', { integrationId, error: error instanceof Error ? error.message : String(error) });
     return {
       success: false,
       filesImported: 0,
@@ -168,7 +154,12 @@ export function createIntegrationProvider(type: string): SyncProvider {
   return {
     name: type as SyncProviderName,
     async start(run, params, update) {
-      const result = await syncIntegration(run.userId, type);
+      // Use the integrationId directly from params
+      if (!params.integrationId) {
+        throw new Error(`integrationId is required for ${type} sync`);
+      }
+
+      const result = await syncIntegration(params.integrationId);
       await update({ 
         stats: { 
           filesImported: result.filesImported, 

@@ -11,8 +11,9 @@ export interface IntegrationFile {
 
 
 export interface IntegrationHandler<T = any> {
-  fetchFiles?(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]>;
-  fetchObjects?(userId: string, lastSyncAt?: Date): Promise<T[]>;
+  fetchFiles?(integrationId: string, lastSyncAt?: Date): Promise<IntegrationFile[]>;
+  fetchObjects?(integrationId: string, lastSyncAt?: Date): Promise<T[]>;
+  processObjects?(objects: T[], integration: { id: string; indexId: string }): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }>;
 }
 
 import { notionHandler } from './providers/notion';

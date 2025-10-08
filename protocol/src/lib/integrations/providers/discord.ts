@@ -1,5 +1,6 @@
 import type { IntegrationHandler } from '../index';
 import { resolveDiscordUser } from '../../user-utils';
+import { getIntegrationById } from '../integration-utils';
 
 export interface DiscordMessage {
   id: string;
@@ -24,24 +25,37 @@ import { ensureIndexMembership } from '../membership-utils';
 
 
 // Shared function to get raw Discord messages
-async function fetchDiscordMessages(userId: string, lastSyncAt?: Date): Promise<any[]> {
+async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): Promise<any[]> {
   try {
-    log.info('Discord sync start', { userId, lastSyncAt: lastSyncAt?.toISOString() });
+    const integration = await getIntegrationById(integrationId);
+    if (!integration) {
+      log.error('Integration not found', { integrationId });
+      return [];
+    }
+
+    if (!integration.connectedAccountId) {
+      log.error('No connected account ID found for integration', { integrationId });
+      return [];
+    }
+
+    log.info('Discord sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
+    const connectedAccountId = integration.connectedAccountId;
 
-    const connectedAccounts = await composio.connectedAccounts.list({
-      userIds: [userId],
-      toolkitSlugs: ['discordbot'],
+    // Get the connected account details by listing with the specific ID
+    const accounts = await composio.connectedAccounts.list({
+      connectedAccountIds: [connectedAccountId]
     });
-
-    const account = connectedAccounts?.items?.[0];
-    if (!account) return [];
-    const connectedAccountId = account.id;
+    const account = accounts?.items?.[0];
+    if (!account) {
+      log.error('Connected account not found', { connectedAccountId, integrationId });
+      return [];
+    }
 
     // Get guild information from the connected account data
     const guild = account.data?.guild;
     if (!guild?.id) {
-      log.info('No guild found in connected account', { userId });
+      log.info('No guild found in connected account', { integrationId });
       return [];
     }
 
@@ -49,7 +63,6 @@ async function fetchDiscordMessages(userId: string, lastSyncAt?: Date): Promise<
     const channels: Array<{ id: string; name?: string }> = [];
     
     const guildChannels = await composio.tools.execute('DISCORDBOT_LIST_GUILD_CHANNELS', {
-      userId,
       connectedAccountId,
       arguments: { guild_id: guild.id }
     });
@@ -83,7 +96,6 @@ async function fetchDiscordMessages(userId: string, lastSyncAt?: Date): Promise<
       }
 
       const messages = await composio.tools.execute('DISCORDBOT_LIST_MESSAGES', { 
-        userId, 
         connectedAccountId,
         arguments: args
       });
@@ -109,14 +121,14 @@ async function fetchDiscordMessages(userId: string, lastSyncAt?: Date): Promise<
     log.info('Discord messages', { total: messagesTotal, filtered: allMessages.length });
     return allMessages;
   } catch (error) {
-    log.error('Discord sync error', { userId, error: (error as Error).message });
+    log.error('Discord sync error', { integrationId, error: (error as Error).message });
     return [];
   }
 }
 
 // Return raw Discord messages as objects
-async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<DiscordMessage[]> {
-  const messages = await fetchDiscordMessages(userId, lastSyncAt);
+async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<DiscordMessage[]> {
+  const messages = await fetchDiscordMessages(integrationId, lastSyncAt);
   const discordMessages: DiscordMessage[] = [];
   
   for (const msg of messages) {
@@ -169,7 +181,7 @@ async function fetchObjects(userId: string, lastSyncAt?: Date): Promise<DiscordM
     });
   }
   
-  log.info('Discord objects sync done', { userId, objects: discordMessages.length });
+  log.info('Discord objects sync done', { integrationId, objects: discordMessages.length });
   return discordMessages;
 }
 
@@ -277,4 +289,7 @@ export async function processDiscordMessages(
 }
 
 
-export const discordHandler: IntegrationHandler<DiscordMessage> = { fetchObjects };
+export const discordHandler: IntegrationHandler<DiscordMessage> = { 
+  fetchObjects,
+  processObjects: processDiscordMessages
+};

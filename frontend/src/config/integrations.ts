@@ -15,9 +15,11 @@ export type IntegrationName = keyof typeof INTEGRATIONS;
 
 // Get array of integration configs for UI display
 export const getIntegrationsList = () => {
-  return Object.entries(INTEGRATIONS).map(([id, config]) => ({
-    id: id as IntegrationName,
+  return Object.entries(INTEGRATIONS).map(([type, config]) => ({
+    id: null, // Will be set when connected
+    type: type as IntegrationName,
     name: config.displayName,
-    connected: false // Default, will be updated from API
+    connected: false, // Default, will be updated from API
+    indexId: null
   }));
 };

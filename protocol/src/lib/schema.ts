@@ -108,7 +108,7 @@ export const userIntegrations = pgTable('integrations', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   integrationType: varchar('integration_type', { length: 50 }).notNull(),
-  connectionRequestId: varchar('connection_request_id', { length: 255 }),
+  connectedAccountId: varchar('connected_account_id', { length: 255 }),
   status: varchar('status', { length: 20 }).notNull().default('pending'),
   redirectUrl: text('redirect_url'),
   connectedAt: timestamp('connected_at'),

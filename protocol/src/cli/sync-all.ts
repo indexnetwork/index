@@ -4,6 +4,9 @@ import { Command, Option } from 'commander';
 import { runSync } from '../lib/sync';
 import { setLevel } from '../lib/log';
 import { getSyncProviderNames, getIntegrationNames, type SyncProviderName } from '../lib/integrations/config';
+import db from '../lib/db';
+import { userIntegrations } from '../lib/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 
 const PROVIDERS: ReadonlyArray<SyncProviderName> = getSyncProviderNames();
 
@@ -99,7 +102,40 @@ async function main(): Promise<void> {
         const merged: IntegrationOpts = { ...root, ...subOpts };
         const userId = resolveUserId(merged);
         if (merged.json || merged.silent) setLevel('error');
-        const params: Record<string, any> = { indexId: merged.index };
+        
+        if (!merged.index) {
+          const error = 'Index ID is required for integration sync';
+          if (merged.json) {
+            console.log(JSON.stringify({ ok: false, error }));
+          } else {
+            console.error(error);
+          }
+          process.exit(1);
+        }
+        
+        // Find the integration ID for this user, index, and type
+        const integration = await db.select({ id: userIntegrations.id })
+          .from(userIntegrations)
+          .where(and(
+            eq(userIntegrations.userId, userId),
+            eq(userIntegrations.indexId, merged.index),
+            eq(userIntegrations.integrationType, p),
+            eq(userIntegrations.status, 'connected'),
+            isNull(userIntegrations.deletedAt)
+          ))
+          .limit(1);
+
+        if (integration.length === 0) {
+          const error = `No connected integration found for type: ${p}`;
+          if (merged.json) {
+            console.log(JSON.stringify({ ok: false, error }));
+          } else {
+            console.error(error);
+          }
+          process.exit(1);
+        }
+
+        const params: Record<string, any> = { integrationId: integration[0].id };
         const result = await runSync(p, userId, params);
         printResult(result, merged);
       });

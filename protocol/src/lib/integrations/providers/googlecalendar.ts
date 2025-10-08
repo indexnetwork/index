@@ -1,6 +1,7 @@
 import type { IntegrationHandler, IntegrationFile } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
+import { getIntegrationById } from '../integration-utils';
 
 function toIsoDate(d: Date) {
   return d.toISOString();
@@ -58,19 +59,22 @@ function mapEventToFile(calendarId: string, calendarSummary: string, ev: any): I
   };
 }
 
-async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
+async function fetchFiles(integrationId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
   try {
-    log.info('GoogleCalendar sync start', { userId, lastSyncAt: lastSyncAt?.toISOString() });
+    const integration = await getIntegrationById(integrationId);
+    if (!integration) {
+      log.error('Integration not found', { integrationId });
+      return [];
+    }
+
+    if (!integration.connectedAccountId) {
+      log.error('No connected account ID found for integration', { integrationId });
+      return [];
+    }
+
+    log.info('GoogleCalendar sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
-
-    const connectedAccounts = await composio.connectedAccounts.list({
-      userIds: [userId],
-      toolkitSlugs: ['googlecalendar'],
-    });
-
-    const account = (connectedAccounts as any)?.items?.[0];
-    if (!account) return [];
-    const connectedAccountId = account.id;
+    const connectedAccountId = integration.connectedAccountId;
 
     // Strategy: list primary calendar events within a time window
     const { timeMin, timeMax } = clampWindow(lastSyncAt);
@@ -84,7 +88,6 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
     if (timeMax) args.timeMax = timeMax;
 
     const resp = await composio.tools.execute('GOOGLECALENDAR_EVENTS_LIST', {
-      userId,
       connectedAccountId,
       arguments: args,
     });
@@ -104,10 +107,10 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
       if (!lastSyncAt || file.lastModified > lastSyncAt) files.push(file);
     }
 
-    log.info('GoogleCalendar sync done', { userId, files: files.length });
+    log.info('GoogleCalendar sync done', { integrationId, files: files.length });
     return files;
   } catch (error) {
-    log.error('GoogleCalendar sync error', { userId, error: (error as Error).message });
+    log.error('GoogleCalendar sync error', { integrationId, error: (error as Error).message });
     return [];
   }
 }

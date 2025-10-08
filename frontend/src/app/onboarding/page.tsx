@@ -13,6 +13,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
 import { useIndexService } from "@/services/indexes";
+import { useIntegrationsService } from "@/services/integrations";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import LibraryModal from "@/components/modals/LibraryModal";
 
@@ -20,9 +21,11 @@ type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_membe
 type OnboardingFlow = 'flow_1' | 'flow_2';
 
 interface IntegrationState {
-  id: IntegrationName;
+  id: string | null;           // The actual integration UUID
+  type: IntegrationName;       // The integration type (slack, discord, etc.)
   name: string;
   connected: boolean;
+  indexId?: string | null;
 }
 
 export default function OnboardingPage() {
@@ -33,6 +36,7 @@ export default function OnboardingPage() {
   const searchParams = useSearchParams();
   const api = useAuthenticatedAPI();
   const indexService = useIndexService();
+  const integrationsService = useIntegrationsService();
   const { success, error } = useNotifications();
   const { user, refetchUser } = useAuthContext();
 
@@ -44,7 +48,7 @@ export default function OnboardingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Connections step states
-  const [integrations, setIntegrations] = useState<IntegrationState[]>(getIntegrationsList());
+  const [integrations, setIntegrations] = useState<IntegrationState[]>([]);
   const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
   const [pendingIntegration, setPendingIntegration] = useState<string | null>(null);
 
@@ -74,27 +78,55 @@ export default function OnboardingPage() {
   // Invite members step states
   const [inviteMethod, setInviteMethod] = useState<'automatic' | 'link' | null>(null);
 
-  const [exampleUserIntents, setExampleUserIntents] = useState<string[]>([]);
-  const [memberCount, setMemberCount] = useState(0);
+  const [recentUserIntents, setRecentUserIntents] = useState<string[]>([]);
+  const [, setMemberCount] = useState(0);
   const [totalIntents, setTotalIntents] = useState(0);
+  const [members, setMembers] = useState<Array<{ id: string; name: string; avatar: string | null }>>([]);
   const [summaryLoaded, setSummaryLoaded] = useState(false);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
 
   // Load integrations status
   const loadIntegrations = useCallback(async () => {
     try {
-      const response = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>('/integrations');
-      const integrationsFromAPI = response.integrations || [];
+      // Determine if we should filter by indexId
+      let url = '/integrations';
       
-      // Default integrations with proper names
-      const defaultIntegrations = getIntegrationsList();
+      if (currentFlow === 'flow_2') {
+        // In flow_2, we need to filter by indexId
+        const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
+        if (indexId) {
+          url = `/integrations?indexId=${indexId}`;
+        }
+      }
+      // In flow_1, we don't filter by indexId (show all integrations)
       
-      // Map API response to our local state format
-      const updatedIntegrations = defaultIntegrations.map(integration => {
-        const apiIntegration = integrationsFromAPI.find(i => i.id === integration.id);
+      const response = await api.get<{ 
+        integrations: Array<{ 
+          id: string; // integrationId (UUID)
+          type: string; // integration type (slack, discord, etc.)
+          name: string; 
+          connected: boolean; 
+          indexId?: string | null;
+        }>;
+        availableTypes: Array<{
+          type: string;
+          name: string;
+          toolkit: string;
+        }>;
+      }>(url);
+      
+      const connectedIntegrations = response.integrations || [];
+      const availableTypes = response.availableTypes || [];
+      
+      // Create integration state combining connected and available types
+      const updatedIntegrations = availableTypes.map(availableType => {
+        const connectedIntegration = connectedIntegrations.find(i => i.type === availableType.type);
         return {
-          ...integration,
-          connected: apiIntegration?.connected || false
+          id: connectedIntegration?.id || null, // The actual UUID
+          type: availableType.type as IntegrationName, // The integration type
+          name: availableType.name,
+          connected: !!connectedIntegration,
+          indexId: connectedIntegration?.indexId || null
         };
       });
       
@@ -102,10 +134,11 @@ export default function OnboardingPage() {
       setIntegrationsLoaded(true);
     } catch (error) {
       console.error('Failed to fetch integrations:', error);
-      // Keep default state if API fails
+      // Fallback to default integrations if API fails
+      setIntegrations(getIntegrationsList());
       setIntegrationsLoaded(true);
     }
-  }, [api]);
+  }, [api, currentFlow, createdIndex?.id]);
 
   // Load index summary for invite members step
   const loadIndexSummary = useCallback(async () => {
@@ -116,42 +149,28 @@ export default function OnboardingPage() {
       const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
       
       if (!indexId) {
-        // Fallback to mock data if no index ID
-        setExampleUserIntents([
-          'Builders of crypto apps that care about user experience',
-          'New York founders hiring founding engineers, PMs, or designers',
-          'People working on small/medium projects with user-minded values',
-          'GPU, AI model, or new-cloud founders & execs',
-          'People building AI tools that connect others with relevant data'
-        ]);
-        setMemberCount(255);
-        setTotalIntents(20166);
-        setSummaryLoaded(true);
+        setCurrentStep('create_index');
         return;
       }
 
       const response = await api.get<{
         exampleIntents: string[];
-        memberCount: number;
         totalIntents: number;
+        members: Array<{ id: string; name: string; avatar: string | null }>;
       }>(`/indexes/${indexId}/summary`);
       
-      setExampleUserIntents(response.exampleIntents || []);
-      setMemberCount(response.memberCount || 0);
+      setRecentUserIntents(response.exampleIntents || []);
+      setMembers(response.members || []);
+      setMemberCount(response.members?.length || 0);
       setTotalIntents(response.totalIntents || 0);
       setSummaryLoaded(true);
     } catch (error) {
       console.error('Failed to fetch index summary:', error);
       // Fallback to mock data
-      setExampleUserIntents([
-        'Builders of crypto apps that care about user experience',
-        'New York founders hiring founding engineers, PMs, or designers',
-        'People working on small/medium projects with user-minded values',
-        'GPU, AI model, or new-cloud founders & execs',
-        'People building AI tools that connect others with relevant data'
-      ]);
-      setMemberCount(255);
-      setTotalIntents(20166);
+      setRecentUserIntents([ ]);
+      setMemberCount(0);
+      setTotalIntents(0);
+      setMembers([]);
       setSummaryLoaded(true);
     }
   }, [api, createdIndex?.id]);
@@ -204,9 +223,22 @@ export default function OnboardingPage() {
     }
   }, [user, currentFlow]);
 
+  // Load integrations when appropriate
   useEffect(() => {
-    loadIntegrations();
-  }, [loadIntegrations]);
+    // Only load integrations when on connections step
+    if (currentStep === 'connections') {
+      // For flow_1, always load (no indexId needed)
+      // For flow_2, only load if we have an indexId
+      if (currentFlow === 'flow_1') {
+        loadIntegrations();
+      } else if (currentFlow === 'flow_2') {
+        const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
+        if (indexId) {
+          loadIntegrations();
+        }
+      }
+    }
+  }, [currentStep, currentFlow, loadIntegrations, createdIndex?.id]);
 
   // Load index summary when reaching invite_members step
   useEffect(() => {
@@ -295,19 +327,20 @@ export default function OnboardingPage() {
     }
   };
 
-  const toggleIntegration = useCallback(async (id: string) => {
-    const item = integrations.find(i => i.id === id);
+  const toggleIntegration = useCallback(async (type: string) => {
+    const item = integrations.find(i => i.type === type);
     if (!item) return;
     
     try {
-      setPendingIntegration(id);
-      if (item.connected) {
-        await api.delete(`/integrations/${id}`);
+      setPendingIntegration(type);
+      if (item.connected && item.id) {
+        // Disconnect using integration UUID
+        await integrationsService.disconnectIntegration(item.id);
         // Refresh integrations from API to get real status
         await loadIntegrations();
         success(`${item.name} disconnected`);
       } else {
-        const popup = typeof window !== 'undefined' ? window.open('', `oauth_${id}`, 'width=560,height=720') : null;
+        const popup = typeof window !== 'undefined' ? window.open('', `oauth_${type}`, 'width=560,height=720') : null;
         
         // Get indexId from localStorage or createdIndex state
         const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
@@ -318,9 +351,9 @@ export default function OnboardingPage() {
           return;
         }
         
-        const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`, { indexId });
+        const res = await integrationsService.connectIntegration(type, { indexId });
         const redirect = res.redirectUrl;
-        const reqId = res.connectionRequestId;
+        const integrationId = res.integrationId;
         
         if (popup && redirect) {
           popup.location.href = redirect;
@@ -329,15 +362,19 @@ export default function OnboardingPage() {
           return;
         }
         
-        if (reqId) {
+        if (integrationId) {
           const started = Date.now();
+          
           const poll = setInterval(async () => {
             if (popup && popup.closed) {
               clearInterval(poll);
               return;
             }
+            
             try {
-              const s = await api.get<{ status: 'pending' | 'connected'; connectedAt?: string }>(`/integrations/status/${reqId}`);
+              // Use the new status endpoint with integrationId
+              const s = await integrationsService.getIntegrationStatus(integrationId);
+              
               if (s.status === 'connected') {
                 clearInterval(poll);
                 if (popup && !popup.closed) popup.close();
@@ -348,11 +385,10 @@ export default function OnboardingPage() {
               if (Date.now() - started > 90000) {
                 clearInterval(poll);
                 if (popup && !popup.closed) popup.close();
+                error('Connection timeout - please try again');
               }
-            } catch {
-              clearInterval(poll);
-              if (popup && !popup.closed) popup.close();
-              error(`Failed to complete ${item.name} connection`);
+            } catch (err) {
+              console.error('Error checking connection status:', err);
             }
           }, 1500);
         }
@@ -362,7 +398,7 @@ export default function OnboardingPage() {
     } finally {
       setPendingIntegration(null);
     }
-  }, [api, integrations, success, error, loadIntegrations, createdIndex?.id]);
+  }, [integrationsService, integrations, success, error, loadIntegrations, createdIndex?.id]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
@@ -566,11 +602,11 @@ export default function OnboardingPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
               {integrations.map((integration) => (
-                <div key={integration.id} className="border border-b-2 border-[#000] p-4 bg-white">
+                <div key={integration.type} className="border border-b-2 border-[#000] p-4 bg-white">
                   <div className="flex items-center justify-between mb-0">
                     <div className="flex items-center gap-3">
                       <Image 
-                        src={`/integrations/${integration.id}.png?3`} 
+                        src={`/integrations/${integration.type}.png?3`} 
                         width={24} 
                         height={24} 
                         alt={integration.name}
@@ -582,18 +618,18 @@ export default function OnboardingPage() {
                       <div className="w-11 h-6 bg-[#F5F5F5] rounded-full animate-pulse" />
                     ) : (
                       <button
-                        onClick={() => toggleIntegration(integration.id)}
-                        disabled={pendingIntegration === integration.id}
+                        onClick={() => toggleIntegration(integration.type)}
+                        disabled={pendingIntegration === integration.type}
                         className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${
                           integration.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                        } ${pendingIntegration === integration.id ? 'opacity-70' : ''}`}
+                        } ${pendingIntegration === integration.type ? 'opacity-70' : ''}`}
                       >
                         <span
                           className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
                             integration.connected ? 'translate-x-5' : 'translate-x-0'
                           }`}
                         />
-                        {pendingIntegration === integration.id && (
+                        {pendingIntegration === integration.type && (
                           <span className="absolute inset-0 grid place-items-center">
                           <span
                             className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
@@ -849,7 +885,7 @@ export default function OnboardingPage() {
             {/* Intent tags */}
             <div className="space-y-1.5 mb-4">
               {summaryLoaded ? (
-                exampleUserIntents.map((intent, index) => (
+                recentUserIntents.map((intent, index) => (
                   <span
                     key={index}
                     className="inline-block text-left px-2 py-1 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm"
@@ -872,14 +908,56 @@ export default function OnboardingPage() {
             
 
             {/* Member invitation section */}
-            <div className="mt-6 mb-8">
+            <div className="mt-6 mb-12">
             {summaryLoaded ? (
-                <p className="text-black text-[14px] font-ibm-plex-mono mt-4 mb-1">
-                  Your community now has <strong>{memberCount.toLocaleString()} members</strong> with <strong>{totalIntents.toLocaleString()} intents</strong> shared.
-                </p>
+                <div className="mt-4">
+                  {/* Avatar grid */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-black text-[14px] font-ibm-plex-mono">
+                      We found
+                    </span>                    
+                    <div className="flex">
+                      {members.slice(0, 4).map((member) => (
+                        <div key={member.id} className="w-8 h-8 rounded-full border-2 border-white bg-[#F5F5F5] flex items-center justify-center overflow-hidden">
+                          {member.avatar ? (
+                            <Image 
+                              src={getAvatarUrl({ avatar: member.avatar } as User)} 
+                              alt={member.name}
+                              width={32}
+                              height={32}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#888]">
+                              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                              <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                          )}
+                        </div>
+                      ))}
+                      {members.length > 4 && (
+                        <div className="w-8 h-8 rounded-full bg-[#E0E0E0] border-2 border-white flex items-center justify-center text-xs font-ibm-plex-mono text-[#666]">
+                          +{members.length - 4}
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-black text-[14px] font-ibm-plex-mono">
+                      members sharing <strong>{totalIntents.toLocaleString()}</strong> intents.
+                    </span>
+                  </div>
+                </div>
               ) : (
-                <div className="mb-6">
-                  <div className="h-5 bg-[#F5F5F5] rounded animate-pulse w-96"></div>
+                <div className="mt-4 mb-4">
+                  {/* Loading avatar grid */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex -space-x-2">
+                      {Array.from({ length: 4 }).map((_, index) => (
+                        <div key={index} className="w-8 h-8 rounded-full border-2 border-white bg-[#F5F5F5] animate-pulse"></div>
+                      ))}
+                      <div className="w-8 h-8 rounded-full bg-[#E0E0E0] border-2 border-white animate-pulse"></div>
+                    </div>
+                    <div className="h-5 bg-[#F5F5F5] rounded animate-pulse w-64"></div>
+                  </div>
                 </div>
               )}
               <p className="text-black text-[14px] font-ibm-plex-mono mb-4">
