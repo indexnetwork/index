@@ -29,8 +29,16 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
       return res.status(401).json({ error: 'Invalid access token' });
     }
 
+    console.log('Claims userId:', claims.userId);
+
+    // Validate userId before making Privy API call
+    if (!claims.userId || typeof claims.userId !== 'string') {
+      console.error('Invalid userId in claims:', claims.userId);
+      return res.status(401).json({ error: 'Invalid user ID in token' });
+    }
+
     // Get user details from Privy
-    const privyUser = await privyClient.getUser(claims.userId);
+    const privyUser = await privyClient.getUserById(claims.userId);
 
     // console.log('privyUser', privyUser);
     // Find or create user in our database
@@ -142,6 +150,17 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
     return next();
   } catch (error) {
     console.error('Privy authentication error:', error);
+    
+    // Log additional error details for debugging
+    if (error && typeof error === 'object') {
+      console.error('Error details:', {
+        message: (error as any).message,
+        cause: (error as any).cause,
+        type: (error as any).type,
+        stack: (error as any).stack
+      });
+    }
+    
     return res.status(403).json({ error: 'Invalid or expired access token' });
   }
 };
