@@ -72,7 +72,7 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
 // Get Privy user from their service (for debugging/admin)
 router.get('/privy-user', authenticatePrivy, async (req: AuthRequest, res: Response) => {
   try {
-    const privyUser = await privyClient.getUser(req.user!.privyId);
+    const privyUser = await privyClient.getUserById(req.user!.privyId);
     return res.json({ privyUser });
   } catch (error) {
     console.error('Get Privy user error:', error);
