@@ -111,25 +111,19 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     const linkUrlById = new Map(links.map(l => [l.id, l.url]));
 
     const selectedFileIds = new Set<string>();
-    const selectedFileNames = new Set<string>();
     const selectedLinkIds = new Set<string>();
-    const selectedLinkUrls = new Set<string>();
 
     selectedIds.forEach(token => {
       if (token.startsWith('f-')) {
         const id = token.slice(2);
         selectedFileIds.add(id);
-        const name = fileLabelById.get(id);
-        if (name) selectedFileNames.add(name);
       } else if (token.startsWith('l-')) {
         const id = token.slice(2);
         selectedLinkIds.add(id);
-        const url = linkUrlById.get(id);
-        if (url) selectedLinkUrls.add(url);
       }
     });
 
-    const selectionActive = selectedFileIds.size > 0 || selectedLinkIds.size > 0 || selectedFileNames.size > 0 || selectedLinkUrls.size > 0;
+    const selectionActive = selectedFileIds.size > 0 || selectedLinkIds.size > 0;
     const sourceFilterActive = activeSourceFilters.size > 0;
 
     // If no filtering is active, show all intents
@@ -146,14 +140,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       // Check file/link selection filtering
       const matchesFile = intent.sourceType === 'file' && (
         (intent.sourceId && selectedFileIds.has(intent.sourceId)) ||
-        (intent.sourceName && selectedFileNames.has(intent.sourceName)) ||
         (intent.sourceValue && selectedFileIds.has(intent.sourceValue))
       );
 
       const matchesLink = intent.sourceType === 'link' && (
         (intent.sourceId && selectedLinkIds.has(intent.sourceId)) ||
-        (intent.sourceValue && selectedLinkUrls.has(intent.sourceValue)) ||
-        (intent.sourceName && selectedLinkUrls.has(intent.sourceName))
+        (intent.sourceValue && selectedLinkIds.has(intent.sourceValue))
       );
 
       const matchesSource = intent.sourceType === 'integration' && intent.sourceValue && activeSourceFilters.has(intent.sourceValue);
@@ -460,7 +452,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               clearInterval(poll);
               if (popup && !popup.closed) popup.close();
               setIntegrations(prev => prev.map(x => x.type === type ? { ...x, connected: true, id: integrationId } : x));
-              setActiveSourceFilters(prev => new Set([...prev, type]));
+              // Reset all filters and only select the newly connected integration
+              setActiveSourceFilters(new Set([type]));
+              setSelectedIds(new Set());
               success(`${item.name} connected`);
               setPendingIntegration(null);
               setConfigureIntegration(null);
@@ -509,12 +503,15 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       }));
       
       onChanged?.();
+      
+      // Reset all filters and only select the newly uploaded files
+      const newFileIds = uploadedFiles.map(file => `f-${file.id}`);
+      setSelectedIds(new Set(newFileIds));
+      setActiveSourceFilters(new Set());
+
       await loadLists();
       await loadLibraryIntents();
       
-      // Auto-select the newly uploaded files
-      const newFileIds = uploadedFiles.map(file => `f-${file.id}`);
-      setSelectedIds(prev => new Set([...prev, ...newFileIds]));
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -535,13 +532,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       const res = await api.post<{ link: { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string } }>(`/links`, { url: normalizedUrl });
       setLinkUrl("");
       onChanged?.();
+
+      if (res.link?.id) {
+        setSelectedIds(new Set([`l-${res.link.id}`]));
+        setActiveSourceFilters(new Set());
+      }      
       await loadLists();
       await loadLibraryIntents();
       
-      // Auto-select the newly added link
-      if (res.link?.id) {
-        setSelectedIds(prev => new Set([...prev, `l-${res.link.id}`]));
-      }
+      // Reset all filters and only select the newly added link
+
       
       success('Link added successfully');
     } catch {
@@ -715,7 +715,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 {integrations.map((it) => {
                   const isFiltered = activeSourceFilters.has(it.type);
                   // Count intents from this integration that are currently visible in the filtered results
-                  const intentCount = it.connected ? visibleIntents.filter(intent => 
+                  const intentCount = it.connected ? libraryIntents.filter(intent => 
                     intent.sourceType === 'integration' && intent.sourceValue === it.type
                   ).length : 0;
                   
@@ -911,7 +911,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
             {/* Library items */}
             <section className="pr-2">
-              <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pb-8">
+              <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto">
                 {(() => {
                   type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: { id: string; name?: string; url?: string; type?: string; createdAt?: string; lastSyncAt?: string | null } };
                   const map: RecentItem[] = [
@@ -1032,7 +1032,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 })()}
               </div>
             </section>
-              </div>
+            </div>
             </div>
             <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} pr-3 lg:flex lg:flex-col w-full flex-shrink-0 bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-x-hidden ease-out ${showIntentsPanel ? 'lg:opacity-100 lg:w-[340px] transition-all duration-150' : 'lg:opacity-0 lg:pointer-events-none lg:w-0 lg:overflow-hidden transition-none'}`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3 pr-3">
