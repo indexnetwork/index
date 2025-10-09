@@ -39,6 +39,12 @@ const nextConfig: NextConfig = {
         hostname: 'api.dicebear.com',
         port: '',
         pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'avatars.slack-edge.com',
+        port: '',
+        pathname: '/**',
       }
     ],
   },

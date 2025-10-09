@@ -161,6 +161,7 @@ ${existingContext.length > 0 ? existingContext.join('\n\n') + '\n\n' : ''}REQUIR
 - Analyze the content to identify the primary target audience and their needs
 - Prioritize generating many intents for the most likely target audience, but also add few for secondary target audiences
 - Start with most important intents
+- Strip out any personal information, names, etc.
 - Make each intent specific and actionable
 
 For example:

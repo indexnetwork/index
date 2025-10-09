@@ -78,7 +78,7 @@ export default function OnboardingPage() {
   // Invite members step states
   const [inviteMethod, setInviteMethod] = useState<'automatic' | 'link' | null>(null);
 
-  const [recentUserIntents, setRecentUserIntents] = useState<string[]>([]);
+  const [recentUserIntents, setRecentUserIntents] = useState<Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }>>([]);
   const [, setMemberCount] = useState(0);
   const [totalIntents, setTotalIntents] = useState(0);
   const [members, setMembers] = useState<Array<{ id: string; name: string; avatar: string | null }>>([]);
@@ -154,7 +154,7 @@ export default function OnboardingPage() {
       }
 
       const response = await api.get<{
-        exampleIntents: string[];
+        exampleIntents: Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }>;
         totalIntents: number;
         members: Array<{ id: string; name: string; avatar: string | null }>;
       }>(`/indexes/${indexId}/summary`);
@@ -887,11 +887,11 @@ export default function OnboardingPage() {
               {summaryLoaded ? (
                 recentUserIntents.map((intent, index) => (
                   <span
-                    key={index}
+                    key={intent.id}
                     className="inline-block text-left px-2 py-1 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm"
                   >
                     <span className="text-[#1976D2] text-[13px] font-ibm-plex-mono">
-                      {intent}
+                      {intent.summary || intent.payload}
                     </span>
                   </span>
                 ))
@@ -912,56 +912,30 @@ export default function OnboardingPage() {
             {summaryLoaded ? (
                 <div className="mt-4">
                   {/* Avatar grid */}
-                  <div className="flex items-center gap-3">
+                  <div>
                     <span className="text-black text-[14px] font-ibm-plex-mono">
-                      We found
-                    </span>                    
-                    <div className="flex">
-                      {members.slice(0, 4).map((member) => (
-                        <div key={member.id} className="w-8 h-8 rounded-full border-2 border-white bg-[#F5F5F5] flex items-center justify-center overflow-hidden">
-                          {member.avatar ? (
-                            <Image 
-                              src={getAvatarUrl({ avatar: member.avatar } as User)} 
-                              alt={member.name}
-                              width={32}
-                              height={32}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#888]">
-                              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                              <circle cx="12" cy="7" r="4"></circle>
-                            </svg>
-                          )}
-                        </div>
+                      We found {members.slice(0, 3).map((member, index) => (
+                        <span key={member.id}>
+                          <strong>{member.name}</strong>
+                          {index < Math.min(3, members.length) - 1 && index < 2 ? ', ' : ''}
+                        </span>
                       ))}
-                      {members.length > 4 && (
-                        <div className="w-8 h-8 rounded-full bg-[#E0E0E0] border-2 border-white flex items-center justify-center text-xs font-ibm-plex-mono text-[#666]">
-                          +{members.length - 4}
-                        </div>
-                      )}
-                    </div>
-                    <span className="text-black text-[14px] font-ibm-plex-mono">
-                      members sharing <strong>{totalIntents.toLocaleString()}</strong> intents.
+                      {members.length > 3 && (
+                        <span> and <strong>{members.length - 3} more members</strong></span>
+                      )}  sharing <strong>{totalIntents.toLocaleString()}</strong> intents.
                     </span>
                   </div>
                 </div>
               ) : (
                 <div className="mt-4 mb-4">
-                  {/* Loading avatar grid */}
+                  {/* Loading state */}
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="flex -space-x-2">
-                      {Array.from({ length: 4 }).map((_, index) => (
-                        <div key={index} className="w-8 h-8 rounded-full border-2 border-white bg-[#F5F5F5] animate-pulse"></div>
-                      ))}
-                      <div className="w-8 h-8 rounded-full bg-[#E0E0E0] border-2 border-white animate-pulse"></div>
-                    </div>
                     <div className="h-5 bg-[#F5F5F5] rounded animate-pulse w-64"></div>
                   </div>
                 </div>
               )}
               <p className="text-black text-[14px] font-ibm-plex-mono mb-4">
-                Now, invite others in your community to add their intents! The more intents people share, the easier it becomes to discover each other and connect at the right moment.
+                Now, invite them to add their intents! The more intents people share, the easier it becomes to discover each other and connect at the right moment.
               </p>
               
               <div className="flex gap-3">

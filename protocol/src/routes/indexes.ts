@@ -1429,9 +1429,14 @@ router.get('/:id/summary',
         .from(intentIndexes)
         .where(eq(intentIndexes.indexId, id));
 
-      // Get example intents (recent ones, limit 5)
+      // Get example intents (recent ones, limit 5) - full intent objects
       const exampleIntentsResult = await db.select({
-        payload: intents.payload
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        isIncognito: intents.isIncognito,
+        createdAt: intents.createdAt,
+        updatedAt: intents.updatedAt
       }).from(intents)
         .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
         .where(and(
@@ -1443,7 +1448,7 @@ router.get('/:id/summary',
 
       const summary = {
         totalIntents: intentCountResult.count,
-        exampleIntents: exampleIntentsResult.map(intent => intent.payload),
+        exampleIntents: exampleIntentsResult,
         members: membersResult.map(member => ({
           id: member.userId,
           name: member.userName,

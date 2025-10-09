@@ -11,6 +11,7 @@ export interface ExtractedUser {
   provider: IntegrationName;
   providerId: string;
   privyId: string;
+  avatar?: string;
 }
 
 export interface CreatedUser {
@@ -65,7 +66,7 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
         email: extractedUser.email,
         name: extractedUser.name,
         intro: null,
-        avatar: null
+        avatar: extractedUser.avatar || null
       })
       .returning({
         id: users.id,
@@ -127,7 +128,7 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
 
 // User resolver functions for different integration providers - always return user object
 
-export async function resolveSlackUser(email: string, slackUserId: string, name: string): Promise<CreatedUser | undefined> {
+export async function resolveSlackUser(email: string, slackUserId: string, name: string, avatar?: string): Promise<CreatedUser | undefined> {
   try {
     // Try to find existing user by email first
     const existingUser = await db
@@ -135,15 +136,63 @@ export async function resolveSlackUser(email: string, slackUserId: string, name:
         id: users.id,
         privyId: users.privyId,
         email: users.email,
-        name: users.name
+        name: users.name,
+        avatar: users.avatar
       })
       .from(users)
       .where(eq(users.email, email))
       .limit(1);
     
     if (existingUser.length > 0) {
-      // User exists, return existing user data
+      // User exists, check if we need to update avatar or name
       const user = existingUser[0];
+      
+      // Check if we need to update empty fields
+      const needsUpdate = (!user.name || user.name.trim() === '') || 
+                         (avatar && !user.avatar);
+      
+      if (needsUpdate) {
+        const updateData: any = {};
+        if (!user.name || user.name.trim() === '') {
+          updateData.name = name;
+        }
+        if (avatar && !user.avatar) {
+          updateData.avatar = avatar;
+        }
+        
+        if (Object.keys(updateData).length > 0) {
+          updateData.updatedAt = new Date();
+          
+          const updatedUser = await db
+            .update(users)
+            .set(updateData)
+            .where(eq(users.id, user.id))
+            .returning({
+              id: users.id,
+              privyId: users.privyId,
+              email: users.email,
+              name: users.name
+            });
+          
+          if (updatedUser.length > 0) {
+            log.info('Updated existing Slack user with missing data', { 
+              email, 
+              slackUserId, 
+              userId: user.id,
+              updatedFields: Object.keys(updateData)
+            });
+            
+            return {
+              id: updatedUser[0].id,
+              privyId: updatedUser[0].privyId,
+              email: updatedUser[0].email,
+              name: updatedUser[0].name,
+              isNewUser: false
+            };
+          }
+        }
+      }
+      
       log.info('Slack user already exists', { email, slackUserId, userId: user.id });
       
       return {
@@ -177,7 +226,8 @@ export async function resolveSlackUser(email: string, slackUserId: string, name:
       name,
       provider: 'slack',
       providerId: slackUserId,
-      privyId: privyUser.id
+      privyId: privyUser.id,
+      avatar
     });
     
     return createdUser;

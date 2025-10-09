@@ -44,6 +44,14 @@ interface SlackUser {
     real_name?: string;
     display_name?: string;
     email?: string;
+    image_24?: string;
+    image_32?: string;
+    image_48?: string;
+    image_72?: string;
+    image_192?: string;
+    image_512?: string;
+    image_1024?: string;
+    image_original?: string;
   };
 }
 
@@ -60,51 +68,6 @@ interface SlackApiResponse {
   };
 }
 
-/**
- * Helper function to resolve user information for a Slack message
- */
-async function resolveUserForMessage(
-  msg: any, 
-  userMap: Map<string, SlackUser>
-): Promise<SlackMessage['user_resolved'] | null> {
-  try {
-    const userProfile = userMap.get(msg.user);
-    if (!userProfile?.profile?.email) {
-      log.debug('No email found for user, skipping message', { 
-        slackUserId: msg.user, 
-        messageTs: msg.ts 
-      });
-      return null;
-    }
-
-    // Simplified name resolution with fallback chain
-    const name = userProfile.real_name || 
-                 userProfile.profile.real_name || 
-                 userProfile.profile.display_name || 
-                 msg.real_name || 
-                 msg.display_name || 
-                 msg.username || 
-                 msg.user;
-    
-    const resolvedUser = await resolveSlackUser(userProfile.profile.email, msg.user, name);
-    if (!resolvedUser) {
-      return null;
-    }
-
-    return {
-      id: resolvedUser.id,
-      name: resolvedUser.name,
-      email: resolvedUser.email,
-      isNewUser: resolvedUser.isNewUser
-    };
-  } catch (error) {
-    log.error('Failed to resolve user for message', { 
-      slackUserId: msg.user, 
-      error: error instanceof Error ? error.message : String(error)
-    });
-    return null;
-  }
-}
 
 // Return raw Slack messages as objects
 async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<SlackMessage[]> {
@@ -140,7 +103,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
     log.info('Slack channels', { count: channels.length });
     if (!channels.length) return [];
 
-    // Fetch all users from Slack workspace
+    // Step 1: Fetch all users from Slack workspace first
     const userMap = new Map<string, SlackUser>();
     try {
       log.info('Fetching all Slack users');
@@ -178,7 +141,59 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
     } catch (error) {
       log.error('Failed to fetch Slack users', { error: (error as Error).message });
     }
+
+    // Step 2: Process and resolve all users first
+    const resolvedUsers = new Map<string, SlackMessage['user_resolved']>();
+    log.info('Processing users first');
     
+    for (const [slackUserId, userProfile] of userMap) {
+      if (!userProfile?.profile?.email) {
+        log.debug('No email found for user, skipping', { slackUserId });
+        continue;
+      }
+
+      try {
+        // Simplified name resolution with fallback chain
+        const name = userProfile.real_name || 
+                     userProfile.profile.real_name || 
+                     userProfile.profile.display_name || 
+                     slackUserId;
+        
+        // Extract avatar URL from Slack profile (use original image only)
+        const avatar = userProfile.profile.image_original;
+        
+        const resolvedUser = await resolveSlackUser(userProfile.profile.email, slackUserId, name, avatar);
+        if (resolvedUser) {
+          const userResolvedData = {
+            id: resolvedUser.id,
+            name: resolvedUser.name,
+            email: resolvedUser.email,
+            isNewUser: resolvedUser.isNewUser
+          };
+          
+          resolvedUsers.set(slackUserId, userResolvedData);
+          
+          // Ensure index membership immediately after resolving user
+          await ensureIndexMembership(resolvedUser.id, integration.indexId);
+          
+          log.debug('User resolved and added to index', { 
+            slackUserId, 
+            userId: resolvedUser.id, 
+            email: resolvedUser.email,
+            isNewUser: resolvedUser.isNewUser
+          });
+        }
+      } catch (error) {
+        log.error('Failed to resolve user', { 
+          slackUserId, 
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+    
+    log.info('Users processed', { resolvedCount: resolvedUsers.size });
+    
+    // Step 3: Now fetch and process messages
     const allMessages: SlackMessage[] = [];
     let messagesTotal = 0;
     
@@ -202,9 +217,13 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
           continue;
         }
         
-        // Resolve user information
-        const userResolved = await resolveUserForMessage(msg, userMap);
+        // Get pre-resolved user information
+        const userResolved = resolvedUsers.get(msg.user);
         if (!userResolved) {
+          log.debug('No resolved user found for message', { 
+            slackUserId: msg.user, 
+            messageTs: msg.ts 
+          });
           continue;
         }
         
@@ -282,9 +301,6 @@ export async function processSlackMessages(
         userId: userResolved.id,
         isNewUser: userResolved.isNewUser
       });
-
-      // Add user as index member if not already a member
-      await ensureIndexMembership(userResolved.id, integration.indexId);
 
       // Generate intents for this user
       const existingIntents = await IntentService.getUserIntents(userResolved.id);

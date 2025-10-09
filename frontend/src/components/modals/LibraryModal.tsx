@@ -910,8 +910,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
 
             {/* Library items */}
-            <section className="pr-2">
-              <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto">
+            <section>
+              <div className="pt-3 flex-1 pr-3 space-y-2 p-3 pt-0 overflow-y-scroll max-h-[45vh] sm:h-[400px]">
                 {(() => {
                   type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: { id: string; name?: string; url?: string; type?: string; createdAt?: string; lastSyncAt?: string | null } };
                   const map: RecentItem[] = [
