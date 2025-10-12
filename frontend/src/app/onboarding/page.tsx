@@ -83,6 +83,11 @@ export default function OnboardingPage() {
   const [totalIntents, setTotalIntents] = useState(0);
   const [members, setMembers] = useState<Array<{ id: string; name: string; avatar: string | null }>>([]);
   const [summaryLoaded, setSummaryLoaded] = useState(false);
+  
+  // Memoized display values to prevent glitching during reloads
+  const [displayIntents, setDisplayIntents] = useState<Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }>>([]);
+  const [displayMembers, setDisplayMembers] = useState<Array<{ id: string; name: string; avatar: string | null }>>([]);
+  const [displayTotalIntents, setDisplayTotalIntents] = useState(0);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
 
   // Load integrations status
@@ -143,7 +148,10 @@ export default function OnboardingPage() {
   // Load index summary for invite members step
   const loadIndexSummary = useCallback(async () => {
     try {
-      setSummaryLoaded(false);
+      const wasLoaded = summaryLoaded;
+      if (!wasLoaded) {
+        setSummaryLoaded(false);
+      }
       
       // Get indexId from localStorage or createdIndex state
       const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
@@ -159,21 +167,49 @@ export default function OnboardingPage() {
         members: Array<{ id: string; name: string; avatar: string | null }>;
       }>(`/indexes/${indexId}/summary`);
       
-      setRecentUserIntents(response.exampleIntents || []);
-      setMembers(response.members || []);
-      setMemberCount(response.members?.length || 0);
-      setTotalIntents(response.totalIntents || 0);
-      setSummaryLoaded(true);
+      const newIntents = response.exampleIntents || [];
+      const newMembers = response.members || [];
+      const newTotalIntents = response.totalIntents || 0;
+      
+      // Update internal state
+      setRecentUserIntents(newIntents);
+      setMembers(newMembers);
+      setMemberCount(newMembers.length);
+      setTotalIntents(newTotalIntents);
+      
+      // Only update display values if there are meaningful changes or first load
+      if (!wasLoaded || 
+          JSON.stringify(newIntents) !== JSON.stringify(displayIntents) ||
+          JSON.stringify(newMembers) !== JSON.stringify(displayMembers) ||
+          newTotalIntents !== displayTotalIntents) {
+        setDisplayIntents(newIntents);
+        setDisplayMembers(newMembers);
+        setDisplayTotalIntents(newTotalIntents);
+      }
+      
+      if (!wasLoaded) {
+        setSummaryLoaded(true);
+      }
     } catch (error) {
       console.error('Failed to fetch index summary:', error);
-      // Fallback to mock data
-      setRecentUserIntents([ ]);
-      setMemberCount(0);
-      setTotalIntents(0);
-      setMembers([]);
-      setSummaryLoaded(true);
+      // Fallback to mock data only on first load
+      if (!summaryLoaded) {
+        const fallbackIntents: Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }> = [];
+        const fallbackMembers: Array<{ id: string; name: string; avatar: string | null }> = [];
+        
+        setRecentUserIntents(fallbackIntents);
+        setMembers(fallbackMembers);
+        setMemberCount(0);
+        setTotalIntents(0);
+        
+        setDisplayIntents(fallbackIntents);
+        setDisplayMembers(fallbackMembers);
+        setDisplayTotalIntents(0);
+        
+        setSummaryLoaded(true);
+      }
     }
-  }, [api, createdIndex?.id]);
+  }, [api, createdIndex?.id, summaryLoaded, displayIntents, displayMembers, displayTotalIntents]);
 
   // Detect flow from query string
   useEffect(() => {
@@ -240,12 +276,21 @@ export default function OnboardingPage() {
     }
   }, [currentStep, currentFlow, loadIntegrations, createdIndex?.id]);
 
-  // Load index summary when reaching invite_members step
+  // Load index summary when reaching invite_members step and reload every second
   useEffect(() => {
-    if (currentStep === 'invite_members' && !summaryLoaded) {
+    if (currentStep === 'invite_members') {
+      // Load immediately
       loadIndexSummary();
+      
+      // Set up interval to reload every second
+      const interval = setInterval(() => {
+        loadIndexSummary();
+      }, 1000);
+      
+      // Cleanup interval when leaving the step or component unmounts
+      return () => clearInterval(interval);
     }
-  }, [currentStep, summaryLoaded, loadIndexSummary]);
+  }, [currentStep, loadIndexSummary]);
 
   const uploadAvatar = async (file: File): Promise<string> => {
     const result = await api.uploadFile<AvatarUploadResponse>('/upload/avatar', file, undefined, 'avatar');
@@ -868,64 +913,107 @@ export default function OnboardingPage() {
           <div className="max-w-3xl mx-auto" >
             <div className="mb-2">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">You're all set—here's a quick snapshot.</h1>
-              <p className="text-black text-[14px] font-ibm-plex-mono mb-2">
-                Here are <strong>your intents</strong> from your connected sources. You can{' '}
-                <button
-                  type="button"
-                  onClick={() => loadIndexSummary()}
-                  className="inline p-0 m-0 align-baseline text-black italic underline hover:opacity-80 font-ibm-plex-mono text-[14px] bg-transparent border-0 cursor-pointer"
-                  style={{ display: 'inline', background: 'none' }}
-                >
-                  edit or add more
-                </button>{' '}
-                anytime.
-              </p>
-            </div>
-
-            {/* Intent tags */}
-            <div className="space-y-1.5 mb-4">
-              {summaryLoaded ? (
-                recentUserIntents.map((intent, index) => (
-                  <span
-                    key={intent.id}
-                    className="inline-block text-left px-2 py-1 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm"
+              {summaryLoaded && displayIntents.length > 0 ? (
+                <p className="text-black text-[14px] font-ibm-plex-mono mb-2">
+                  Here are <strong>your intents</strong> from your connected sources. You can{' '}
+                  <button
+                    type="button"
+                    onClick={() => loadIndexSummary()}
+                    className="inline p-0 m-0 align-baseline text-black italic underline hover:opacity-80 font-ibm-plex-mono text-[14px] bg-transparent border-0 cursor-pointer"
+                    style={{ display: 'inline', background: 'none' }}
                   >
-                    <span className="text-[#1976D2] text-[13px] font-ibm-plex-mono">
-                      {intent.summary || intent.payload}
-                    </span>
-                  </span>
-                ))
+                    edit or add more
+                  </button>{' '}
+                  anytime.
+                </p>
+              ) : summaryLoaded ? (
+                null
               ) : (
-                // Loading placeholders
-                Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="px-2 py-2.5  bg-[#F5F5F5] rounded-sm animate-pulse mb-1.5">
-                    <div className="h-[13px] bg-[#E0E0E0] rounded" style={{ width: `${Math.random() * 200 + 200}px` }}></div>
-                  </div>
-                ))
+                <p className="text-black text-[14px] font-ibm-plex-mono mb-2">
+                  Loading your intents from connected sources...
+                </p>
               )}
             </div>
+
+            {/* Intent tags - only show if there are intents or still loading */}
+            {(!summaryLoaded || displayIntents.length > 0) && (
+              <div className="space-y-1.5 mb-4">
+                {summaryLoaded ? (
+                  displayIntents.map((intent, index) => (
+                    <span
+                      key={intent.id}
+                      className="inline-block text-left px-2 py-1 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm"
+                    >
+                      <span className="text-[#1976D2] text-[13px] font-ibm-plex-mono">
+                        {intent.summary || intent.payload}
+                      </span>
+                    </span>
+                  ))
+                ) : (
+                  // Loading placeholders
+                  Array.from({ length: 5 }).map((_, index) => (
+                    <div key={index} className="px-2 py-2.5  bg-[#F5F5F5] rounded-sm animate-pulse mb-1.5">
+                      <div className="h-[13px] bg-[#E0E0E0] rounded" style={{ width: `${Math.random() * 200 + 200}px` }}></div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
 
             
 
             {/* Member invitation section */}
             <div className="mt-6 mb-12">
             {summaryLoaded ? (
-                <div className="mt-4">
-                  {/* Avatar grid */}
-                  <div>
-                    <span className="text-black text-[14px] font-ibm-plex-mono">
-                      We found {members.slice(0, 3).map((member, index) => (
-                        <span key={member.id}>
-                          <strong>{member.name}</strong>
-                          {index < Math.min(3, members.length) - 1 && index < 2 ? ', ' : ''}
-                        </span>
-                      ))}
-                      {members.length > 3 && (
-                        <span> and <strong>{members.length - 3} more members</strong></span>
-                      )}  sharing <strong>{totalIntents.toLocaleString()}</strong> intents.
-                    </span>
+                (displayMembers.length > 1 ) ? (
+                  <div className="mt-4">
+                    {/* Show member info when there are multiple members and intents */}
+                    <div>
+                      <span className="text-black text-[14px] font-ibm-plex-mono">
+                        We found {displayMembers.slice(0, 3).map((member, index) => (
+                          <span key={member.id}>
+                            <strong>{member.name}</strong>
+                            {index < Math.min(3, displayMembers.length) - 1 && index < 2 ? ', ' : ''}
+                          </span>
+                        ))}
+                        {displayMembers.length > 3 && (
+                          <span> and <strong>{displayMembers.length - 3} more members</strong></span>
+                        )}  sharing <strong>{displayTotalIntents.toLocaleString()}</strong> intents.
+                      </span>
+                    </div>
+                    <p className="text-black text-[14px] font-ibm-plex-mono mb-4 mt-4">
+                      Now, invite them to add their intents! The more intents people share, the easier it becomes to discover each other and connect at the right moment.
+                    </p>
+                    
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={() => {
+                          setInviteMethod('automatic');
+                          handleInviteMembers();
+                        }}
+                        className="bg-[#1976D2] text-white hover:bg-[#1565C0] font-ibm-plex-mono"
+                      >
+                        Invite Automatically
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setInviteMethod('link');
+                          handleInviteMembers();
+                        }}
+                        variant="outline" className="font-ibm-plex-mono"
+                      >
+                        Copy invite link
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="mt-4">
+                    {/* Show single pending text for both intents and members */}
+                    <p className="text-black text-[14px] font-ibm-plex-mono">
+                      We're still processing your connected sources to generate your intents and find potential members. This usually takes a few minutes. Check back later to see your results.
+                    </p>
+                  </div>
+                )
               ) : (
                 <div className="mt-4 mb-4">
                   {/* Loading state */}
@@ -934,30 +1022,6 @@ export default function OnboardingPage() {
                   </div>
                 </div>
               )}
-              <p className="text-black text-[14px] font-ibm-plex-mono mb-4">
-                Now, invite them to add their intents! The more intents people share, the easier it becomes to discover each other and connect at the right moment.
-              </p>
-              
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => {
-                    setInviteMethod('automatic');
-                    handleInviteMembers();
-                  }}
-                  className="bg-[#1976D2] text-white hover:bg-[#1565C0] font-ibm-plex-mono"
-                >
-                  Invite Automatically
-                </Button>
-                <Button
-                  onClick={() => {
-                    setInviteMethod('link');
-                    handleInviteMembers();
-                  }}
-                  variant="outline" className="font-ibm-plex-mono"
-                >
-                  Copy invite link
-                </Button>
-              </div>
             </div>
 
             <div className="flex gap-3">
@@ -1063,7 +1127,7 @@ export default function OnboardingPage() {
           if (currentStep === 'invite_members') {
             loadIndexSummary(); 
           }
-        }}
+        }}  
       />
     </ClientLayout>
   );

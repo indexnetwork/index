@@ -1429,7 +1429,7 @@ router.get('/:id/summary',
         .from(intentIndexes)
         .where(eq(intentIndexes.indexId, id));
 
-      // Get example intents (recent ones, limit 5) - full intent objects
+      // Get example intents (recent ones, limit 5) - only user's intents
       const exampleIntentsResult = await db.select({
         id: intents.id,
         payload: intents.payload,
@@ -1441,6 +1441,7 @@ router.get('/:id/summary',
         .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
         .where(and(
           eq(intentIndexes.indexId, id),
+          eq(intents.userId, req.user!.id),
           isNull(intents.archivedAt)
         ))
         .orderBy(desc(intents.createdAt))

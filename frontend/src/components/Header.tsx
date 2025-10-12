@@ -57,18 +57,10 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
 
   // Handle onboarding check when user data is available
   useEffect(() => {
-    if (user && authenticated) {
-      // Check if user needs onboarding (empty intro)
-      if (!user.intro || user.intro.trim() === '') {
-        // Redirect to onboarding page instead of showing modal
-        router.push('/onboarding');
-      } else {
-        try {
-          localStorage.setItem('onboarding_completed', Date.now().toString());
-        } catch (error) {
-          console.warn('Failed to store onboarding completion:', error);
-        }
-      }
+    const onboardingCompleted = localStorage.getItem('onboarding_completed');
+    if (user && authenticated && !onboardingCompleted) {
+      router.push('/onboarding');
+      return;
     }
   }, [user, authenticated, router]);
 
