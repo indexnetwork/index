@@ -301,14 +301,24 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
         if (e.key === 'Enter' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)) {
           e.preventDefault();
           contentRef.current.focus();
-          if (e.key.length === 1) {
-            // Insert the character at the cursor position
-            const selection = window.getSelection();
-            if (selection && selection.rangeCount > 0) {
-              const range = selection.getRangeAt(0);
-              range.deleteContents();
-              range.insertNode(document.createTextNode(e.key));
-              range.collapse(false);
+          
+          // Move cursor to the end of content
+          const selection = window.getSelection();
+          if (selection) {
+            const range = document.createRange();
+            range.selectNodeContents(contentRef.current);
+            range.collapse(false); // Collapse to end
+            selection.removeAllRanges();
+            selection.addRange(range);
+            
+            if (e.key.length === 1) {
+              // Insert the character at the end
+              const textNode = document.createTextNode(e.key);
+              range.insertNode(textNode);
+              range.setStartAfter(textNode);
+              range.setEndAfter(textNode);
+              selection.removeAllRanges();
+              selection.addRange(range);
             }
             setInputFocused(true);
           }
