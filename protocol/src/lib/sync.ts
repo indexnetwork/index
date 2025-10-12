@@ -49,6 +49,7 @@ export async function syncIntegration(
     let intentsGenerated = 0;
     let usersProcessed = 0;
     let newUsersCreated = 0;
+    let filesImported = 0;
     
     // Generic sync logic - works with any provider
     if (handler.fetchObjects && handler.processObjects) {
@@ -74,6 +75,7 @@ export async function syncIntegration(
 
       const result = await processFiles(integration[0].userId, files, integration[0], 'integration');
       intentsGenerated = result.intentsGenerated;
+      filesImported = result.filesImported;
     } else {
       throw new Error(`Provider ${integrationType} has no valid sync methods`);
     }
@@ -94,7 +96,7 @@ export async function syncIntegration(
 
     return {
       success: true,
-      filesImported: 0,
+      filesImported,
       intentsGenerated,
       usersProcessed,
       newUsersCreated,
@@ -133,16 +135,27 @@ export const linksProvider: SyncProvider<{ linkId: string }> = {
     }
 
     const link = singleLink[0];
-    const crawlResult = await crawlLinksForIndex([link.url]);
+    let crawlResult;
+    try {
+      crawlResult = await crawlLinksForIndex([link.url]);
+    } catch (error) {
+      await update({ stats: { filesImported: 0, intentsGenerated: 0, error: error instanceof Error ? error.message : String(error) } });
+      return;
+    }
     
     if (crawlResult.files.length > 0) {
-      const result = await processFiles(
-        run.userId,
-        crawlResult.files,
-        params.linkId,
-        'link'
-      );
-      await update({ stats: { filesImported: result.filesImported, intentsGenerated: result.intentsGenerated } });
+      try {
+        const result = await processFiles(
+          run.userId,
+          crawlResult.files,
+          params.linkId,
+          'link'
+        );
+        await update({ stats: { filesImported: result.filesImported, intentsGenerated: result.intentsGenerated } });
+      } catch (error) {
+        await update({ stats: { filesImported: 0, intentsGenerated: 0, error: error instanceof Error ? error.message : String(error) } });
+        return;
+      }
     } else {
       await update({ stats: { filesImported: 0, intentsGenerated: 0 } });
     }
@@ -165,7 +178,8 @@ export function createIntegrationProvider(type: string): SyncProvider {
           filesImported: result.filesImported, 
           intentsGenerated: result.intentsGenerated,
           usersProcessed: result.usersProcessed,
-          newUsersCreated: result.newUsersCreated
+          newUsersCreated: result.newUsersCreated,
+          error: result.error
         } 
       });
     },
