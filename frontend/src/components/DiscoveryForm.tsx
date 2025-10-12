@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Link, Paperclip } from "lucide-react";
 
 interface DiscoveryFormProps {
   onRequestsClick: () => void;
@@ -99,6 +100,19 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                   setOriginalInputValue(inputValue);
                 }}
                 onBlur={() => setTimeout(() => setInputFocused(false), 100)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    // Enter without shift submits the form
+                    e.preventDefault();
+                    setInputFocused(false);
+                    inputRef.current?.blur();
+                    // TODO: Add form submission logic here
+                  } else if (e.key === 'Enter' && e.shiftKey) {
+                    // Shift+Enter opens the dropdown for multi-line editing
+                    e.preventDefault();
+                    setInputFocused(true);
+                  }
+                }}
                 rows={1}
                 className="flex-1 text-lg font-ibm-plex-mono border-none focus:outline-none bg-transparent text-black placeholder-gray-500 resize-none overflow-hidden"
               />
@@ -120,9 +134,15 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                   }}
                   onBlur={() => setTimeout(() => setInputFocused(false), 100)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      // Enter without shift submits the form
+                      e.preventDefault();
                       setInputFocused(false);
                       inputRef.current?.blur();
+                      // TODO: Add form submission logic here
+                    } else if (e.key === 'Enter' && e.shiftKey) {
+                      // Shift+Enter adds new line (default behavior)
+                      // Don't prevent default to allow new line
                     } else if (e.key === 'Escape') {
                       setInputValue(originalInputValue);
                       setInputFocused(false);
@@ -145,13 +165,13 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                     className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black"
                     onMouseDown={(e) => e.preventDefault()}
                   >
-                    <span>📄</span> Add from a file
+                    <Paperclip className="w-4 h-4" /> Add from a file
                   </button>
                   <button 
                     className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black"
                     onMouseDown={(e) => e.preventDefault()}
                   >
-                    <span>🔗</span> Add from URL
+                    <Link className="w-4 h-4" /> Add from URL
                   </button>
                 </div>
               </div>
