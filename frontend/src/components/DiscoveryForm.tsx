@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Link, Paperclip } from "lucide-react";
+import { Link, Paperclip, X } from "lucide-react";
 
 interface DiscoveryFormProps {
   onRequestsClick: () => void;
@@ -12,7 +12,59 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
   const [inputValue, setInputValue] = useState('');
   const [originalInputValue, setOriginalInputValue] = useState('');
   const [inputFocused, setInputFocused] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle file selection
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFiles(prev => [...prev, file]);
+      // Reset the input value to allow selecting the same file again
+      event.target.value = '';
+    }
+    // Always reset the file dialog state and refocus
+    setIsFileDialogOpen(false);
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 0);
+  };
+
+  // Remove a specific file
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Get stripped filename for display
+  const getDisplayName = (file: File) => {
+    // Remove extension and clean up the filename
+    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+    // Replace underscores and hyphens with spaces, limit length
+    const cleaned = nameWithoutExt.replace(/[_-]/g, ' ').trim();
+    // Truncate if too long
+    return cleaned.length > 20 ? cleaned.substring(0, 20) + '...' : cleaned;
+  };
+
+  // Trigger file input
+  const handleFileButtonClick = () => {
+    setIsFileDialogOpen(true);
+    fileInputRef.current?.click();
+    
+    // Handle case where user cancels file dialog
+    const handleFocus = () => {
+      setTimeout(() => {
+        if (isFileDialogOpen) {
+          setIsFileDialogOpen(false);
+          inputRef.current?.focus();
+        }
+      }, 100);
+      window.removeEventListener('focus', handleFocus);
+    };
+    
+    window.addEventListener('focus', handleFocus);
+  };
 
   // Auto-resize textarea
   const autoResize = useCallback(() => {
@@ -99,7 +151,11 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                   setInputFocused(true);
                   setOriginalInputValue(inputValue);
                 }}
-                onBlur={() => setTimeout(() => setInputFocused(false), 100)}
+                onBlur={() => {
+                  if (!isFileDialogOpen) {
+                    setTimeout(() => setInputFocused(false), 100);
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     // Enter without shift submits the form
@@ -116,6 +172,12 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                 rows={1}
                 className="flex-1 text-lg font-ibm-plex-mono border-none focus:outline-none bg-transparent text-black placeholder-gray-500 resize-none overflow-hidden"
               />
+              {selectedFiles.length > 0 && (
+                <div className="flex items-center gap-1 text-gray-600 ml-2">
+                  <Paperclip className="w-4 h-4" />
+                  <span className="text-sm font-ibm-plex-mono">{selectedFiles.length}</span>
+                </div>
+              )}
             </div>
           ) : (
             /* Open state - dropdown with integrated textarea */
@@ -132,7 +194,11 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                     setInputValue(e.target.value);
                     autoResize();
                   }}
-                  onBlur={() => setTimeout(() => setInputFocused(false), 100)}
+                  onBlur={() => {
+                    if (!isFileDialogOpen) {
+                      setTimeout(() => setInputFocused(false), 100);
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       // Enter without shift submits the form
@@ -154,6 +220,30 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                 />
               </div>
               
+              {/* File tags */}
+              {selectedFiles.length > 0 && (
+                <div className="px-4">
+                  <div className="flex flex-wrap gap-2">
+                    {selectedFiles.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm font-ibm-plex-mono"
+                      >
+                        <span>📄</span>
+                        <span>{getDisplayName(file)}</span>
+                        <button
+                          onClick={() => removeFile(index)}
+                          onMouseDown={(e) => e.preventDefault()}
+                          className="hover:text-red-600 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
               <div className="px-4 pb-4 space-y-4">
               {/* Upload section */}
               <div className="space-y-3">
@@ -163,10 +253,21 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                 <div className="flex gap-3">
                   <button 
                     className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleFileButtonClick();
+                    }}
                     onMouseDown={(e) => e.preventDefault()}
                   >
                     <Paperclip className="w-4 h-4" /> Add from a file
                   </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.txt,.md,.ppt,.pptx"
+                  />
                   <button 
                     className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black"
                     onMouseDown={(e) => e.preventDefault()}
