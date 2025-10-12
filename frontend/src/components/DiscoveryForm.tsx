@@ -41,7 +41,12 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
     if (inputFocused && inputRef.current) {
       // Small delay to ensure DOM has updated
       setTimeout(() => {
-        inputRef.current?.focus();
+        if (inputRef.current) {
+          inputRef.current.focus();
+          // Set cursor to end of text
+          const length = inputRef.current.value.length;
+          inputRef.current.setSelectionRange(length, length);
+        }
       }, 0);
     }
   }, [inputFocused]);
@@ -58,6 +63,9 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
         if (e.key === 'Enter' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)) {
           e.preventDefault();
           inputRef.current.focus();
+          // Set cursor to end of text
+          const length = inputRef.current.value.length;
+          inputRef.current.setSelectionRange(length, length);
           if (e.key.length === 1) {
             setInputValue(prev => prev + e.key);
             setInputFocused(true);
