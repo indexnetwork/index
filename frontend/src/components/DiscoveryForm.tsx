@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Link, Paperclip, X } from "lucide-react";
+import { Paperclip, X } from "lucide-react";
 
 interface DiscoveryFormProps {
   onRequestsClick: () => void;
@@ -494,32 +494,25 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                }}>
                 <div className="px-4 pb-4 pt-2 space-y-4">
                   {/* Upload section */}
-                  <div className="space-y-3">
-                    <p className="text-sm text-gray-600 font-ibm-plex-mono">
-                      upload your pitch deck, one-pager, or paste a repo link.
+                  <div className="flex items-center gap-3">
+                    <button 
+                      className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black"
+                      onClick={handleFileButtonClick}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      <Paperclip className="w-4 h-4" />
+                      <span className="hidden sm:inline">Add from a file</span>
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,.txt,.md,.ppt,.pptx"
+                    />
+                    <p className="text-xs text-gray-500 font-ibm-plex-mono">
+                      upload your pitch deck, one-pager, or paste a link.
                     </p>
-                    <div className="flex gap-3">
-                      <button 
-                        className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black"
-                        onClick={handleFileButtonClick}
-                        onMouseDown={(e) => e.preventDefault()}
-                      >
-                        <Paperclip className="w-4 h-4" /> Add from a file
-                      </button>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        onChange={handleFileSelect}
-                        className="hidden"
-                        accept=".pdf,.doc,.docx,.txt,.md,.ppt,.pptx"
-                      />
-                      <button 
-                        className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black"
-                        onMouseDown={(e) => e.preventDefault()}
-                      >
-                        <Link className="w-4 h-4" /> Add from URL
-                      </button>
-                    </div>
                   </div>
                   
                   {/* Horizontal border */}
