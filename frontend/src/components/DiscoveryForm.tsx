@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, X } from "lucide-react";
+import { Paperclip, X, Plus, Radio } from "lucide-react";
 
 interface DiscoveryFormProps {
   onRequestsClick: () => void;
@@ -573,7 +573,7 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                       className="flex items-center gap-2 px-3 py-2 bg-black border border-black hover:bg-gray-800 text-sm font-ibm-plex-mono text-white"
                       onMouseDown={(e) => e.preventDefault()}
                     >
-                      <span>🔍</span> Turn on Discovery
+                      <Radio className="w-4 h-4" /> Turn on Discovery
                     </button>
                   </div>
                 </div>
