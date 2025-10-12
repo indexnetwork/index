@@ -19,6 +19,7 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
   const [inputFocused, setInputFocused] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
+  const [discoveryActive, setDiscoveryActive] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const processingTimer = useRef<NodeJS.Timeout | null>(null);
@@ -479,12 +480,20 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
               `}</style>
             </div>
             
-            {attachments.length > 0 && (
-              <div className="flex items-center gap-1 text-gray-600 ml-2">
-                <Paperclip className="w-4 h-4" />
-                <span className="text-sm font-ibm-plex-mono">{attachments.length}</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2 ml-2">
+              {attachments.length > 0 && (
+                <div className="flex items-center gap-1 text-gray-600">
+                  <Paperclip className="w-4 h-4" />
+                  <span className="text-sm font-ibm-plex-mono">{attachments.length}</span>
+                </div>
+              )}
+              
+              {discoveryActive && (
+                <div className="flex items-center gap-1 text-green-600">
+                  <Radio className="w-6 h-6 animate-pulse" />
+                </div>
+              )}
+            </div>
             
             {/* Dropdown when focused */}
             {inputFocused && (
@@ -572,6 +581,11 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                     <button 
                       className="flex items-center gap-2 px-3 py-2 bg-black border border-black hover:bg-gray-800 text-sm font-ibm-plex-mono text-white"
                       onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setDiscoveryActive(true);
+                        setInputFocused(false);
+                        contentRef.current?.blur();
+                      }}
                     >
                       <Radio className="w-4 h-4" /> Turn on Discovery
                     </button>
