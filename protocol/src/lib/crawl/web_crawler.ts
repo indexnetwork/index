@@ -73,6 +73,13 @@ async function postCrawl(urls: string[], instruction: string): Promise<Crawl4AIR
         verbose: true,
         remove_overlay_elements: true,
         scan_full_page: false,
+        ...(process.env.PROXY_SERVER && {
+          proxy_config: {
+            server: process.env.PROXY_SERVER,
+            username: process.env.PROXY_USERNAME,
+            password: process.env.PROXY_PASSWORD
+          }
+        }),
         markdown_generator: {
           type: 'DefaultMarkdownGenerator',
           params: {
