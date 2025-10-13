@@ -70,8 +70,12 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!name.trim()) {
+      return;
+    }
+    
     try {
-      await onSubmit({ name, prompt: prompt.trim() || undefined, joinPolicy });
+      await onSubmit({ name: name.trim(), prompt: prompt.trim() || undefined, joinPolicy });
       setName('');
       setPrompt('');
       setJoinPolicy('invite_only');
@@ -111,6 +115,7 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                 className=" px-4 py-3"
                 placeholder="Enter index name..."
                 required
+                minLength={1}
               />
             </div>
 
@@ -184,6 +189,7 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
               </Button>
               <Button
                 type="submit"
+                disabled={!name.trim()}
               >
                 Create
               </Button>

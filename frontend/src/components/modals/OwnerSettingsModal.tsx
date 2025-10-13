@@ -150,6 +150,11 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
   }, []);
 
   const handleSaveSettings = async () => {
+    if (!title.trim()) {
+      error('Title cannot be empty');
+      return;
+    }
+    
     try {
       setIsSavingSettings(true);
       const updatedIndex = await indexesService.updateIndex(index.id, {
@@ -381,6 +386,8 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Enter index title"
                     className="w-full"
+                    required
+                    minLength={1}
                   />
                 </div>
 
@@ -414,7 +421,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                   <Button
                     type="submit"
                     onClick={handleSaveSettings}
-                    disabled={isSavingSettings || !hasSettingsChanged}
+                    disabled={isSavingSettings || !hasSettingsChanged || !title.trim()}
                   >
                     {isSavingSettings ? 'Saving...' : 'Save Changes'}
                   </Button>
