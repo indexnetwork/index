@@ -24,7 +24,7 @@ export default function InboxPage() {
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
   const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
-  const [discoveryIntentIds, setDiscoveryIntentIds] = useState<string[] | undefined>(undefined);
+  const [discoveryIntents, setDiscoveryIntents] = useState<Array<{id: string; payload: string; summary?: string; createdAt: string}> | undefined>(undefined);
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
   const { selectedIndexIds } = useIndexFilter();
   
@@ -93,7 +93,7 @@ export default function InboxPage() {
         connectionsService.getConnectionsByUser('pending', apiIndexIds),
         discoverService.discoverUsers({ 
           indexIds: apiIndexIds, 
-          intentIds: discoveryIntentIds,
+          intentIds: discoveryIntents?.map(i => i.id),
           excludeDiscovered: true, 
           limit: 50 
         })
@@ -147,7 +147,7 @@ export default function InboxPage() {
     } finally {
       setLoading(false);
     }
-  }, [connectionsService, discoverService, fetchSynthesis, selectedIndexIds, discoveryIntentIds]);
+  }, [connectionsService, discoverService, fetchSynthesis, selectedIndexIds, discoveryIntents]);
 
   useEffect(() => {
     fetchData();
@@ -376,14 +376,44 @@ export default function InboxPage() {
           <div className="space-y-4">
             {/* Discovery input section */}
             {activeTab === 'discover' && (
-              <DiscoveryForm 
-                onRequestsClick={() => handleTabChange('requests')}
-                requestsCount={inboxConnections.length + pendingConnections.length}
-                onSubmit={(intentIds) => {
-                  // Set the discovery intent filter and refetch data
-                  setDiscoveryIntentIds(intentIds);
-                }}
-              />
+              <div className="flex gap-4 items-start">
+                {!discoveryIntents ? (
+                  <div className="flex-1">
+                    <DiscoveryForm 
+                      onSubmit={(intents) => {
+                        console.log('intents', intents);
+                        // Set the discovery intent filter and refetch data
+                        setDiscoveryIntents(intents);
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 px-4 py-3 bg-black text-white border border-b-2 border-black font-ibm-plex-mono text-sm h-[54px]">
+                      <span>{discoveryIntents[0]?.summary || discoveryIntents[0]?.payload || 'Discovery filter'}</span>
+                      <button
+                        onClick={() => setDiscoveryIntents(undefined)}
+                        className="ml-2 hover:opacity-70 transition-opacity flex-shrink-0"
+                        aria-label="Clear filter"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 4L4 12M4 4L12 12" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex-1"></div>
+                  </>
+                )}
+                <button
+                  onClick={() => handleTabChange('requests')}
+                  className="font-ibm-plex-mono px-4 py-3 border border-b-2 border-black bg-white hover:bg-gray-50 flex items-center gap-2 text-black whitespace-nowrap h-[54px]"
+                >
+                  View Requests
+                  <span className="bg-black text-white text-xs px-2 py-1 rounded">
+                    {inboxConnections.length + pendingConnections.length}
+                  </span>
+                </button>
+              </div>
             )}
             
             {/* Requests view button */}
@@ -462,7 +492,7 @@ export default function InboxPage() {
                     )}
                   </Tabs.Content>
 
-                  <Tabs.Content value="sent" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
+                  <Tabs.Content value="sent" className="p-0 mt-0 bg-white ">
                     {pendingConnections.length === 0 ? (
                       <div className="py-8 text-center text-gray-500">
                         No sent requests.

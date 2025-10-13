@@ -24,6 +24,7 @@ router.post('/list',
     body('archived').optional().isBoolean(),
     body('indexIds').optional().isArray(),
     body('indexIds.*').optional().isUUID(),
+    body('sourceType').optional().isString(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -32,7 +33,7 @@ router.post('/list',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { page = 1, limit = 10, archived, indexIds } = req.body;
+      const { page = 1, limit = 10, archived, indexIds, sourceType } = req.body;
       const skip = (page - 1) * limit;
       const showArchived = archived === true;
 
@@ -54,10 +55,16 @@ router.post('/list',
       }
 
       // Build base conditions
-      const baseCondition = and(
+      const baseConditions = [
         showArchived ? isNotNull(intents.archivedAt) : isNull(intents.archivedAt),
         eq(intents.userId, req.user!.id)
-      );
+      ];
+      
+      if (sourceType) {
+        baseConditions.push(eq(intents.sourceType, sourceType));
+      }
+      
+      const baseCondition = and(...baseConditions);
 
       const selectFields = {
         id: intents.id,

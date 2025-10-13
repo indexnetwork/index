@@ -187,9 +187,30 @@ router.post('/new',
       }
 
       // 4. Generate intents from combined content
-      let generatedIntentIds: string[] = [];
+      let generatedIntents: any[] = [];
       
-      if (combinedContent.trim()) {
+      // If payload is short, no files, and no URLs, create intent directly
+      const hasFiles = uploadedFiles && uploadedFiles.length > 0;
+      const hasUrls = savedLinkIds.length > 0;
+      const isShortPayload = payload && payload.length < 100;
+      
+      if (isShortPayload && !hasFiles && !hasUrls) {
+        console.log(`📝 Creating intent directly (short payload, no attachments/URLs)`);
+        try {
+          const createdIntent = await IntentService.createIntent({
+            payload: payload.trim(),
+            userId: userId,
+            sourceId: undefined,
+            sourceType: 'discovery_form',
+            isIncognito: false,
+          });
+
+          generatedIntents.push(createdIntent);
+          console.log(`✅ Intent created directly: ${createdIntent.id}`);
+        } catch (error) {
+          console.error(`❌ Failed to create intent directly:`, error);
+        }
+      } else if (combinedContent.trim()) {
         console.log(`🤖 Generating intents from ${combinedContent.length} characters`);
         
         // Create objects for intent generation
@@ -202,7 +223,7 @@ router.post('/new',
           contentObjects,
           payload || undefined,
           [], // no existing intents
-          5,  // generate 5 intents
+          1,  // generate 1 intent
           60000 // 60 second timeout
         );
 
@@ -213,18 +234,17 @@ router.post('/new',
           for (const generatedIntent of intentResult.intents) {
             // Determine source: use first file if exists, otherwise first link
             const sourceId = savedFileIds[0] || savedLinkIds[0] || undefined;
-            const sourceType = savedFileIds[0] ? 'file' as const : (savedLinkIds[0] ? 'link' as const : undefined);
 
             try {
               const createdIntent = await IntentService.createIntent({
                 payload: generatedIntent.payload,
                 userId: userId,
                 sourceId: sourceId,
-                sourceType: sourceType,
+                sourceType: 'discovery_form',
                 isIncognito: false,
               });
 
-              generatedIntentIds.push(createdIntent.id);
+              generatedIntents.push(createdIntent);
               console.log(`✅ Intent saved: ${createdIntent.id}`);
             } catch (error) {
               console.error(`❌ Failed to save intent:`, error);
@@ -239,10 +259,10 @@ router.post('/new',
 
       return res.json({
         success: true,
-        intentIds: generatedIntentIds,
+        intents: generatedIntents,
         filesProcessed: savedFileIds.length,
         linksProcessed: savedLinkIds.length,
-        intentsGenerated: generatedIntentIds.length,
+        intentsGenerated: generatedIntents.length,
       });
 
     } catch (error) {

@@ -11,7 +11,7 @@ export interface CreateIntentOptions {
   isIncognito?: boolean;
   indexIds?: string[];
   sourceId?: string;
-  sourceType?: 'file' | 'integration' | 'link';
+  sourceType?: 'file' | 'integration' | 'link' | 'discovery_form';
 }
 
 export interface CreatedIntent {

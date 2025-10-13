@@ -7,9 +7,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
 
 interface DiscoveryFormProps {
-  onRequestsClick: () => void;
-  requestsCount: number;
-  onSubmit?: (intentIds: string[]) => void;
+  onSubmit?: (intents: Array<{id: string; payload: string; summary?: string; createdAt: string}>) => void;
 }
 
 interface AttachmentItem {
@@ -19,16 +17,16 @@ interface AttachmentItem {
   file: File;
 }
 
-export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit }: DiscoveryFormProps) {
+export default function DiscoveryForm({ onSubmit }: DiscoveryFormProps) {
   const [inputFocused, setInputFocused] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
-  const [discoveryActive, setDiscoveryActive] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [recentIntents, setRecentIntents] = useState<Array<{id: string; payload: string; summary: string | null; createdAt: Date}>>([]);
   const contentRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const processingTimer = useRef<NodeJS.Timeout | null>(null);
-  const { discoverService } = useAPI();
+  const { discoverService, intentsService } = useAPI();
   const { getAccessToken } = usePrivy();
   const { success, error } = useNotifications();
 
@@ -292,7 +290,6 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
     if (isProcessing) return;
     
     setIsProcessing(true);
-    setDiscoveryActive(true);
     
     try {
       // Get text content from contentEditable div
@@ -305,33 +302,30 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
       if (files.length === 0 && !textContent.trim()) {
         error('Please add files or enter text to start discovery');
         setIsProcessing(false);
-        setDiscoveryActive(false);
         return;
       }
       
       // Submit discovery request
       const result = await discoverService.submitDiscoveryRequest(files, textContent)(getAccessToken);
       
-      if (result.success && result.intentIds.length > 0) {
-        success(`Discovery started! Generated ${result.intentsGenerated} intents`);
+      if (result.success && result.intents.length > 0) {
+        success(`Got the signal! Passing it along to the right folks, let's see what unfolds.`);
         
         // Clear only attachments, keep the text
         setAttachments([]);
         setInputFocused(false);
         contentRef.current?.blur();
         
-        // Trigger discovery with generated intent IDs
+        // Trigger discovery with generated intents
         if (onSubmit) {
-          onSubmit(result.intentIds);
+          onSubmit(result.intents);
         }
       } else {
         error('Failed to generate intents. Please try again.');
-        setDiscoveryActive(false);
       }
     } catch (err) {
       console.error('Discovery request failed:', err);
       error(err instanceof Error ? err.message : 'Failed to process discovery request');
-      setDiscoveryActive(false);
     } finally {
       setIsProcessing(false);
     }
@@ -383,12 +377,31 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
     };
   }, [inputFocused]);
 
+  // Fetch recent discovery intents when input is focused
+  useEffect(() => {
+    if (inputFocused && recentIntents.length === 0) {
+      const fetchRecentIntents = async () => {
+        try {
+          const response = await intentsService.getIntents(1, 3, false, undefined, 'discovery_form');
+          if (response.intents) {
+            setRecentIntents(response.intents.map(intent => ({
+              id: intent.id,
+              payload: intent.payload,
+              summary: intent.summary ?? null,
+              createdAt: new Date(intent.createdAt)
+            })));
+          }
+        } catch (err) {
+          console.error('Failed to fetch recent discovery intents:', err);
+        }
+      };
+      fetchRecentIntents();
+    }
+  }, [inputFocused, intentsService]);
+
   return (
-    <div className="space-y-4">
-      {/* Input and button row */}
-      <div className="flex gap-4 items-start">
-        <div className="flex-1 relative">
-          <div className="bg-white border border-b-2 border-gray-800 flex items-center px-4 py-2 min-h-[54px] relative">
+    <div className="relative">
+      <div className="bg-white border border-b-2 border-gray-800 flex items-center px-4 py-2 min-h-[54px] relative">
             <div className="flex-1 relative">
               {/* ContentEditable div */}
               <div
@@ -532,12 +545,6 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
                   <span className="text-sm font-ibm-plex-mono">{attachments.length}</span>
                 </div>
               )}
-              
-              {discoveryActive && (
-                <div className="flex items-center gap-1 text-green-600">
-                  <Radio className="w-6 h-6 animate-pulse" />
-                </div>
-              )}
             </div>
             
             {/* Dropdown when focused */}
@@ -569,57 +576,39 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
                     </p>
                   </div>
                   
-                  {/* Horizontal border */}
-                  <div className="border-t border-gray-200"></div>
-                  
-                  {/* Example suggestions */}
-                  <ul className="space-y-1">
-                    <li>
-                      <button 
-                        onClick={() => {
-                          if (contentRef.current) {
-                            contentRef.current.textContent = "Seeking privacy founders — here's my pitch_deck";
-                            setInputFocused(false);
-                            contentRef.current.blur();
-                          }
-                        }}
-                        onMouseDown={(e) => e.preventDefault()}
-                        className="w-full text-left text-sm text-gray-600 hover:text-black hover:bg-gray-50 font-ibm-plex-mono flex items-center gap-2 px-2 py-1 rounded"
-                      >
-                        Seeking privacy founders — here's my pitch_deck <span>📎</span>
-                      </button>
-                    </li>
-                    <li>
-                      <button 
-                        onClick={() => {
-                          if (contentRef.current) {
-                            contentRef.current.textContent = "Seeking early-stage investors strong fit to one_pager";
-                            setInputFocused(false);
-                            contentRef.current.blur();
-                          }
-                        }}
-                        onMouseDown={(e) => e.preventDefault()}
-                        className="w-full text-left text-sm text-gray-600 hover:text-black hover:bg-gray-50 font-ibm-plex-mono flex items-center gap-2 px-2 py-1 rounded"
-                      >
-                        Seeking early-stage investors strong fit to one_pager <span>📎</span>
-                      </button>
-                    </li>
-                    <li>
-                      <button 
-                        onClick={() => {
-                          if (contentRef.current) {
-                            contentRef.current.textContent = "Agent infra devs for github.com/indexnetwork/index";
-                            setInputFocused(false);
-                            contentRef.current.blur();
-                          }
-                        }}
-                        onMouseDown={(e) => e.preventDefault()}
-                        className="w-full text-left text-sm text-gray-600 hover:text-black hover:bg-gray-50 font-ibm-plex-mono flex items-center gap-2 px-2 py-1 rounded"
-                      >
-                        Agent infra devs for github.com/indexnetwork/index <span>🌐</span>
-                      </button>
-                    </li>
-                  </ul>
+                  {/* Recent discovery intents */}
+                  {recentIntents.length > 0 && (
+                    <>
+                      {/* Horizontal border */}
+                      <div className="border-t border-gray-200"></div>
+                      
+                      <ul className="space-y-1">
+                        {recentIntents.map((intent) => (
+                          <li key={intent.id}>
+                            <button 
+                              onClick={() => {
+                                // Set the intent as a filter
+                                if (onSubmit) {
+                                  onSubmit([{
+                                    id: intent.id,
+                                    payload: intent.payload,
+                                    summary: intent.summary || undefined,
+                                    createdAt: intent.createdAt.toISOString()
+                                  }]);
+                                }
+                                setInputFocused(false);
+                                contentRef.current?.blur();
+                              }}
+                              onMouseDown={(e) => e.preventDefault()}
+                              className="w-full text-left text-sm text-gray-600 hover:text-black hover:bg-gray-50 font-ibm-plex-mono flex items-center gap-2 px-2 py-1 rounded"
+                            >
+                              {intent.summary || intent.payload}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
                   
                   {/* Turn on Discovery - right aligned */}
                   <div className="flex justify-end">
@@ -632,7 +621,7 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
                       {isProcessing ? (
                         <>
                           <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
-                          Processing...
+                          Signal processing
                         </>
                       ) : (
                         <>
@@ -644,17 +633,6 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
                 </div>
               </div>
             )}
-          </div>
-        </div>
-        <button
-          onClick={onRequestsClick}
-          className="font-ibm-plex-mono px-4 py-3 border border-b-2 border-black bg-white hover:bg-gray-50 flex items-center gap-2 text-black whitespace-nowrap h-[54px]"
-        >
-          View Requests
-          <span className="bg-black text-white text-xs px-2 py-1 rounded">
-            {requestsCount}
-          </span>
-        </button>
       </div>
     </div>
   );

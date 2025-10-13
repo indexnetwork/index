@@ -7,7 +7,7 @@ export const connectionAction = pgEnum('connection_action', [
   'REQUEST', 'SKIP', 'CANCEL', 'ACCEPT', 'DECLINE'
 ]);
 // Polymorphic source type for intents
-export const sourceType = pgEnum('source_type', ['file', 'integration', 'link']);
+export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 'discovery_form']);
 
 // Tables
 export const users = pgTable('users', {

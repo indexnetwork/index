@@ -50,11 +50,10 @@ TEXT TO SUMMARIZE:
 ${text.substring(0, 8000)}${text.length > 8000 ? '\n...[text truncated for processing]' : ''}
 
 REQUIREMENTS:
-- Keep the summary under ${maxLength} characters
 - Maintain the key meaning and context
 - If the context or content can’t be summarized meaningfully, simply truncate the text.
 - Use clear, concise language
-- Write as flowing text
+- You must Keep the summary under ${maxLength} characters
 
 Generate a concise summary:`;
 
