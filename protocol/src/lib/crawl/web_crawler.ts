@@ -74,9 +74,9 @@ async function postCrawl(urls: string[], instruction: string): Promise<Crawl4AIR
         remove_overlay_elements: true,
         scan_full_page: false,
         proxy_config: {
-          server: process.env.BRIGHTDATA_PROXY_SERVER,
-          username: process.env.BRIGHTDATA_USERNAME,
-          password: process.env.BRIGHTDATA_PASSWORD
+          server: process.env.PROXY_SERVER,
+          username: process.env.PROXY_USERNAME,
+          password: process.env.PROXY_PASSWORD
         },
         markdown_generator: {
           type: 'DefaultMarkdownGenerator',
