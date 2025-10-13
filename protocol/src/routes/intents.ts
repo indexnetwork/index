@@ -157,14 +157,14 @@ router.get('/library',
         .where(and(
           eq(intents.userId, req.user!.id),
           isNull(intents.archivedAt),
-          isNotNull(intents.sourceType),
-          isNotNull(intents.sourceId)
+          //isNotNull(intents.sourceType),
+          //isNotNull(intents.sourceId)
         ))
         .orderBy(desc(intents.createdAt));
 
 
       const intentsBySource = rows.flatMap(row => {
-        if (!row.sourceType || !row.sourceId) return [];
+        // if (!row.sourceType || !row.sourceId) return [];
         const sourceType = row.sourceType as 'file' | 'link' | 'integration';
         let sourceName = '';
         let sourceValue: string | null = null;

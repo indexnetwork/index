@@ -2,10 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, X, Plus, Radio } from "lucide-react";
+import { useAPI } from "@/contexts/APIContext";
+import { usePrivy } from "@privy-io/react-auth";
+import { useNotifications } from "@/contexts/NotificationContext";
 
 interface DiscoveryFormProps {
   onRequestsClick: () => void;
   requestsCount: number;
+  onSubmit?: (intentIds: string[]) => void;
 }
 
 interface AttachmentItem {
@@ -15,14 +19,18 @@ interface AttachmentItem {
   file: File;
 }
 
-export default function DiscoveryForm({ onRequestsClick, requestsCount }: DiscoveryFormProps) {
+export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit }: DiscoveryFormProps) {
   const [inputFocused, setInputFocused] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
   const [discoveryActive, setDiscoveryActive] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const processingTimer = useRef<NodeJS.Timeout | null>(null);
+  const { discoverService } = useAPI();
+  const { getAccessToken } = usePrivy();
+  const { success, error } = useNotifications();
 
   // URL regex - stops at spaces and invalid characters (including unicode spaces)
   const URLInTextRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%]*)?/g;
@@ -291,6 +299,56 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
     fileInputRef.current?.click();
   };
 
+  // Handle discovery submission
+  const handleDiscoverySubmit = async () => {
+    if (isProcessing) return;
+    
+    setIsProcessing(true);
+    setDiscoveryActive(true);
+    
+    try {
+      // Get text content from contentEditable div
+      const textContent = contentRef.current?.innerText || '';
+      
+      // Get files from attachments
+      const files = attachments.map(att => att.file);
+      
+      // Validate that we have either files or text
+      if (files.length === 0 && !textContent.trim()) {
+        error('Please add files or enter text to start discovery');
+        setIsProcessing(false);
+        setDiscoveryActive(false);
+        return;
+      }
+      
+      // Submit discovery request
+      const result = await discoverService.submitDiscoveryRequest(files, textContent)(getAccessToken);
+      
+      if (result.success && result.intentIds.length > 0) {
+        success(`Discovery started! Generated ${result.intentsGenerated} intents`);
+        
+        // Clear only attachments, keep the text
+        setAttachments([]);
+        setInputFocused(false);
+        contentRef.current?.blur();
+        
+        // Trigger discovery with generated intent IDs
+        if (onSubmit) {
+          onSubmit(result.intentIds);
+        }
+      } else {
+        error('Failed to generate intents. Please try again.');
+        setDiscoveryActive(false);
+      }
+    } catch (err) {
+      console.error('Discovery request failed:', err);
+      error(err instanceof Error ? err.message : 'Failed to process discovery request');
+      setDiscoveryActive(false);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Auto-focus input on keypress
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -393,11 +451,10 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                     setTimeout(() => setInputFocused(false), 100);
                   }
                 }}
-                onKeyDown={(e) => {
+                onKeyDown={async (e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    setInputFocused(false);
-                    contentRef.current?.blur();
+                    await handleDiscoverySubmit();
                   } else if (e.key === 'Enter' && e.shiftKey) {
                     e.preventDefault();
                     setInputFocused(true);
@@ -579,15 +636,21 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
                   {/* Turn on Discovery - right aligned */}
                   <div className="flex justify-end">
                     <button 
-                      className="flex items-center gap-2 px-3 py-2 bg-black border border-black hover:bg-gray-800 text-sm font-ibm-plex-mono text-white"
+                      className="flex items-center gap-2 px-3 py-2 bg-black border border-black hover:bg-gray-800 text-sm font-ibm-plex-mono text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        setDiscoveryActive(true);
-                        setInputFocused(false);
-                        contentRef.current?.blur();
-                      }}
+                      disabled={isProcessing}
+                      onClick={handleDiscoverySubmit}
                     >
-                      <Radio className="w-4 h-4" /> Turn on Discovery
+                      {isProcessing ? (
+                        <>
+                          <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Radio className="w-4 h-4" /> Turn on Discovery
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>

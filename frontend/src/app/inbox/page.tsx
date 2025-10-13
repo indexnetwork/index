@@ -24,6 +24,7 @@ export default function InboxPage() {
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
   const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
+  const [discoveryIntentIds, setDiscoveryIntentIds] = useState<string[] | undefined>(undefined);
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
   const { selectedIndexIds } = useIndexFilter();
   
@@ -90,7 +91,12 @@ export default function InboxPage() {
       const [inboxData, pendingData, discoverData] = await Promise.all([
         connectionsService.getConnectionsByUser('inbox', apiIndexIds),
         connectionsService.getConnectionsByUser('pending', apiIndexIds),
-        discoverService.discoverUsers({ indexIds: apiIndexIds, excludeDiscovered: true, limit: 50 })
+        discoverService.discoverUsers({ 
+          indexIds: apiIndexIds, 
+          intentIds: discoveryIntentIds,
+          excludeDiscovered: true, 
+          limit: 50 
+        })
       ]);
 
       // Transform discover data to match StakesByUserResponse format
@@ -141,7 +147,7 @@ export default function InboxPage() {
     } finally {
       setLoading(false);
     }
-  }, [connectionsService, discoverService, fetchSynthesis, selectedIndexIds]);
+  }, [connectionsService, discoverService, fetchSynthesis, selectedIndexIds, discoveryIntentIds]);
 
   useEffect(() => {
     fetchData();
@@ -373,6 +379,10 @@ export default function InboxPage() {
               <DiscoveryForm 
                 onRequestsClick={() => handleTabChange('requests')}
                 requestsCount={inboxConnections.length + pendingConnections.length}
+                onSubmit={(intentIds) => {
+                  // Set the discovery intent filter and refetch data
+                  setDiscoveryIntentIds(intentIds);
+                }}
               />
             )}
             

@@ -48,7 +48,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [isLoadingIntents, setIsLoadingIntents] = useState(false);
   const [newIntentIds, setNewIntentIds] = useState<Set<string>>(new Set());
   const [activeMobileSection, setActiveMobileSection] = useState<'library' | 'intents'>('library');
-  const [showIntentsPanel, setShowIntentsPanel] = useState(false);
+  const [showIntentsPanel, setShowIntentsPanel] = useState(true);
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const knownIntentIds = useRef<Set<string>>(new Set());
   const connectSourcesRef = useRef<HTMLDivElement | null>(null);
@@ -640,16 +640,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (isSelectionFiltering) setActiveMobileSection('intents');
   }, [isSelectionFiltering, open]);
 
-  // Auto-toggle intents panel based on filtering state
+  // Auto-show intents panel when filtering becomes active
   useEffect(() => {
     if (!open) return;
     const hasActiveFiltering = isSelectionFiltering || isSourceFiltering;
     if (hasActiveFiltering && !showIntentsPanel) {
       // Show panel when filtering becomes active
       setShowIntentsPanel(true);
-    } else if (!hasActiveFiltering && showIntentsPanel) {
-      // Hide panel when no filtering is active
-      setShowIntentsPanel(false);
     }
   }, [isSelectionFiltering, isSourceFiltering, showIntentsPanel, open]);
 

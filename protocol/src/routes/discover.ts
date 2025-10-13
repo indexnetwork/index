@@ -3,8 +3,254 @@ import { body, param, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { discoverUsers } from '../lib/discover';
 import { getIndexWithPermissions } from '../lib/index-access';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
+import db from '../lib/db';
+import { files, indexLinks } from '../lib/schema';
+import { eq } from 'drizzle-orm';
+import { getUploadsPath } from '../lib/paths';
+import { processUploadedFiles } from '../lib/file-processing';
+import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
+import { analyzeObjects } from '../agents/core/intent_inferrer';
+import { IntentService } from '../services/intent-service';
 
 const router = Router();
+
+// Extend the Request interface to include generatedFileId
+declare global {
+  namespace Express {
+    interface Request {
+      generatedFileId?: string;
+    }
+  }
+}
+
+// Configure multer for file uploads (permanent storage)
+const baseUploadDir = getUploadsPath('files');
+if (!fs.existsSync(baseUploadDir)) fs.mkdirSync(baseUploadDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const userId = (req as AuthRequest).user!.id;
+    const userDir = getUploadsPath('files', userId);
+    if (!fs.existsSync(userDir)) fs.mkdirSync(userDir, { recursive: true });
+    cb(null, userDir);
+  },
+  filename: function (req, file, cb) {
+    // Generate UUID that will be used as file ID
+    const fileId = uuidv4();
+    const extension = path.extname(file.originalname);
+    req.generatedFileId = fileId;
+    cb(null, fileId + extension);
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB limit
+  },
+});
+
+// Helper function to validate URL
+function isValidUrlCandidate(u: string): boolean {
+  try {
+    const url = new URL(u);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+// Helper function to extract URLs from text
+function extractUrlsFromText(text: string): string[] {
+  const urlRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[^\s]*)?/g;
+  const matches = text.match(urlRegex);
+  return matches ? matches.filter(isValidUrlCandidate) : [];
+}
+
+// 🚀 Route: Process discovery form - upload files, extract URLs, and generate intents
+router.post('/new',
+  authenticatePrivy,
+  upload.array('files', 10),
+  [body('payload').optional().isString()],
+  async (req: AuthRequest, res: Response) => {
+    const uploadedFiles = req.files as Express.Multer.File[];
+    
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { payload } = req.body;
+      const userId = req.user!.id;
+
+      console.log(`🚀 Discovery request from user ${userId}`);
+      console.log(`📄 Files: ${uploadedFiles?.length || 0}, Payload: ${payload ? 'yes' : 'no'}`);
+
+      // Must have either files or payload
+      if ((!uploadedFiles || uploadedFiles.length === 0) && !payload) {
+        return res.status(400).json({ error: 'Must provide either files or payload text' });
+      }
+
+      const savedFileIds: string[] = [];
+      const savedLinkIds: string[] = [];
+      let combinedContent = '';
+      
+      // 1. Save uploaded files to database
+      if (uploadedFiles && uploadedFiles.length > 0) {
+        for (const file of uploadedFiles) {
+          try {
+            const fileRecord = await db.insert(files).values({
+              id: file.filename.split('.')[0], // Use the UUID from multer
+              name: file.originalname,
+              size: BigInt(file.size),
+              type: file.mimetype,
+              userId: userId,
+            }).returning({ id: files.id });
+
+            savedFileIds.push(fileRecord[0].id);
+            console.log(`✅ File saved: ${fileRecord[0].id} (${file.originalname})`);
+          } catch (error) {
+            console.error(`❌ Failed to save file ${file.originalname}:`, error);
+          }
+        }
+
+        // Process files to extract content
+        const fileContent = await processUploadedFiles(uploadedFiles);
+        if (fileContent.trim()) {
+          combinedContent += fileContent + '\n\n';
+        }
+      }
+
+      // 2. Extract and save URLs from payload
+      if (payload) {
+        const urls = extractUrlsFromText(payload);
+        console.log(`🔗 Found ${urls.length} URLs in payload`);
+
+        for (const url of urls) {
+          try {
+            // Save link to database
+            const linkRecord = await db.insert(indexLinks)
+              .values({ userId, url, lastStatus: 'processing' })
+              .returning({ id: indexLinks.id });
+
+            savedLinkIds.push(linkRecord[0].id);
+            console.log(`✅ Link saved: ${linkRecord[0].id} (${url})`);
+
+            // Crawl URL and save content
+            try {
+              const crawlResult = await crawlLinksForIndex([url]);
+              const crawledFiles = crawlResult.files || [];
+              
+              if (crawledFiles.length > 0 && crawledFiles[0].content) {
+                // Save crawled content to file
+                const linksDir = getUploadsPath('links', userId);
+                if (!fs.existsSync(linksDir)) fs.mkdirSync(linksDir, { recursive: true });
+                const filepath = path.join(linksDir, `${linkRecord[0].id}.md`);
+                await fs.promises.writeFile(filepath, crawledFiles[0].content);
+                
+                combinedContent += `=== ${url} ===\n${crawledFiles[0].content.substring(0, 5000)}\n\n`;
+                
+                await db.update(indexLinks)
+                  .set({ lastSyncAt: new Date(), lastStatus: 'ok', lastError: null })
+                  .where(eq(indexLinks.id, linkRecord[0].id));
+                  
+                console.log(`✅ URL crawled successfully: ${url}`);
+              } else {
+                await db.update(indexLinks)
+                  .set({ lastStatus: 'error: no-content', lastError: 'no-content' })
+                  .where(eq(indexLinks.id, linkRecord[0].id));
+                console.warn(`⚠️ No content from URL: ${url}`);
+              }
+            } catch (crawlError) {
+              await db.update(indexLinks)
+                .set({ lastError: (crawlError as Error).message, lastStatus: 'error' })
+                .where(eq(indexLinks.id, linkRecord[0].id));
+              console.error(`❌ Failed to crawl URL ${url}:`, crawlError);
+            }
+          } catch (error) {
+            console.error(`❌ Failed to save link ${url}:`, error);
+          }
+        }
+      }
+
+      // 3. Add instruction text to combined content
+      if (payload) {
+        const instructionText = payload.replace(/https?:\/\/[^\s]+/g, '').trim();
+        if (instructionText) {
+          combinedContent = `User instruction: ${instructionText}\n\n${combinedContent}`;
+        }
+      }
+
+      // 4. Generate intents from combined content
+      let generatedIntentIds: string[] = [];
+      
+      if (combinedContent.trim()) {
+        console.log(`🤖 Generating intents from ${combinedContent.length} characters`);
+        
+        // Create objects for intent generation
+        const contentObjects = [];
+        if (combinedContent) {
+          contentObjects.push({ content: combinedContent, name: 'discovery-content' });
+        }
+
+        const intentResult = await analyzeObjects(
+          contentObjects,
+          payload || undefined,
+          [], // no existing intents
+          5,  // generate 5 intents
+          60000 // 60 second timeout
+        );
+
+        if (intentResult.success && intentResult.intents.length > 0) {
+          console.log(`✅ Generated ${intentResult.intents.length} intents`);
+          
+          // Save each generated intent to database using IntentService
+          for (const generatedIntent of intentResult.intents) {
+            // Determine source: use first file if exists, otherwise first link
+            const sourceId = savedFileIds[0] || savedLinkIds[0] || undefined;
+            const sourceType = savedFileIds[0] ? 'file' as const : (savedLinkIds[0] ? 'link' as const : undefined);
+
+            try {
+              const createdIntent = await IntentService.createIntent({
+                payload: generatedIntent.payload,
+                userId: userId,
+                sourceId: sourceId,
+                sourceType: sourceType,
+                isIncognito: false,
+              });
+
+              generatedIntentIds.push(createdIntent.id);
+              console.log(`✅ Intent saved: ${createdIntent.id}`);
+            } catch (error) {
+              console.error(`❌ Failed to save intent:`, error);
+            }
+          }
+        } else {
+          console.warn(`⚠️ Intent generation failed or produced no results`);
+        }
+      } else {
+        console.warn(`⚠️ No content to generate intents from`);
+      }
+
+      return res.json({
+        success: true,
+        intentIds: generatedIntentIds,
+        filesProcessed: savedFileIds.length,
+        linksProcessed: savedLinkIds.length,
+        intentsGenerated: generatedIntentIds.length,
+      });
+
+    } catch (error) {
+      console.error('❌ Discovery request error:', error);
+      return res.status(500).json({ error: 'Failed to process discovery request' });
+    }
+  }
+);
 
 /*
 Request:{

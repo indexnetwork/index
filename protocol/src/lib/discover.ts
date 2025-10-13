@@ -55,48 +55,64 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
     limit = 50
   } = filters;
 
-  // Get authenticated user's intents, filtered by index and sources if specified
+  // Get authenticated user's intents, filtered by intentIds, index and sources
   let authenticatedUserIntents;
+  let targetIndexIds: string[] | undefined;
   
-  // Build base conditions
-  const baseConditions = [eq(intents.userId, authenticatedUserId)];
-  
-  // Add source filtering if specified
-  if (sources && sources.length > 0) {
-    const sourceConditions = sources.map(source => 
-      and(
-        eq(intents.sourceType, source.type),
-        eq(intents.sourceId, source.id)
-      )
-    );
-    baseConditions.push(or(...sourceConditions)!);
-  }
-  
-  // Determine which indexes to filter by
-  let targetIndexIds = indexIds;
-  if (!targetIndexIds || targetIndexIds.length === 0) {
-    // If no indexIds provided, default to user's accessible indexes
-    targetIndexIds = await getUserAccessibleIndexIds(authenticatedUserId);
-  }
-  
-  if (targetIndexIds && targetIndexIds.length > 0) {
-    // Get intents in the specified indexes (or user's indexes if none specified)
+  // If explicit intentIds are provided, use those directly (after validating they belong to the user)
+  if (intentIds && intentIds.length > 0) {
     authenticatedUserIntents = await db
       .select({ intentId: intents.id })
       .from(intents)
-      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
       .where(
         and(
-          ...baseConditions,
-          sql`${intentIndexes.indexId} = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+          eq(intents.userId, authenticatedUserId),
+          sql`${intents.id} = ANY(ARRAY[${sql.join(intentIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
         )
       );
+    // When explicit intentIds are provided, don't enforce index restrictions
+    targetIndexIds = undefined;
   } else {
-    // Fallback: get all user's intents (if user has no accessible indexes)
-    authenticatedUserIntents = await db
-      .select({ intentId: intents.id })
-      .from(intents)
-      .where(and(...baseConditions));
+    // Build base conditions
+    const baseConditions = [eq(intents.userId, authenticatedUserId)];
+    
+    // Add source filtering if specified
+    if (sources && sources.length > 0) {
+      const sourceConditions = sources.map(source => 
+        and(
+          eq(intents.sourceType, source.type),
+          eq(intents.sourceId, source.id)
+        )
+      );
+      baseConditions.push(or(...sourceConditions)!);
+    }
+    
+    // Determine which indexes to filter by
+    targetIndexIds = indexIds;
+    if (!targetIndexIds || targetIndexIds.length === 0) {
+      // If no indexIds provided, default to user's accessible indexes
+      targetIndexIds = await getUserAccessibleIndexIds(authenticatedUserId);
+    }
+    
+    if (targetIndexIds && targetIndexIds.length > 0) {
+      // Get intents in the specified indexes (or user's indexes if none specified)
+      authenticatedUserIntents = await db
+        .select({ intentId: intents.id })
+        .from(intents)
+        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+        .where(
+          and(
+            ...baseConditions,
+            sql`${intentIndexes.indexId} = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+          )
+        );
+    } else {
+      // Fallback: get all user's intents (if user has no accessible indexes)
+      authenticatedUserIntents = await db
+        .select({ intentId: intents.id })
+        .from(intents)
+        .where(and(...baseConditions));
+    }
   }
 
   // Extract the intent IDs for easier use in the main query
@@ -154,11 +170,6 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
         // Only stakes that contain authenticated user's intents
         userIntentIds.length > 0 ? sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)}]::uuid[]` : sql`FALSE`,
 
-        // External intent-ids filter (must be authenticated user's intents if provided)
-        ...(intentIds && intentIds.length > 0 ? [
-          sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(intentIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[]`
-        ] : []),
-
         // External user-ids filter (for vibecheck)
         ...(userIds && userIds.length > 0 ? [
           sql`${intents.userId} = ANY(ARRAY[${sql.join(userIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
@@ -187,29 +198,33 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
           )`
         ] : []),
 
-        // Check if all intents in the stake exist in the same index
-        sql`EXISTS (
-          SELECT 1
-          FROM ${intentIndexes} ii1
-          WHERE ii1.intent_id = ANY(${intentStakes.intents}::uuid[])
-          ${targetIndexIds && targetIndexIds.length > 0
-            ? sql`AND ii1.index_id = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
-            : sql``}
-          GROUP BY ii1.index_id
-          HAVING COUNT(*) = array_length(${intentStakes.intents}, 1)
-        )`,
+        // Check if all intents in the stake exist in the same index (skip if using explicit intentIds)
+        ...(targetIndexIds !== undefined ? [
+          sql`EXISTS (
+            SELECT 1
+            FROM ${intentIndexes} ii1
+            WHERE ii1.intent_id = ANY(${intentStakes.intents}::uuid[])
+            ${targetIndexIds && targetIndexIds.length > 0
+              ? sql`AND ii1.index_id = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+              : sql``}
+            GROUP BY ii1.index_id
+            HAVING COUNT(*) = array_length(${intentStakes.intents}, 1)
+          )`
+        ] : []),
 
-        // Ensure the user who created the intents is still a member of the target indexes
-        sql`EXISTS (
-          SELECT 1
-          FROM ${intentIndexes} ii_membership
-          INNER JOIN ${indexMembers} im ON ii_membership.index_id = im.index_id
-          WHERE ii_membership.intent_id = ANY(${intentStakes.intents}::uuid[])
-          AND im.user_id = ${intents.userId}
-          ${targetIndexIds && targetIndexIds.length > 0
-            ? sql`AND ii_membership.index_id = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
-            : sql``}
-        )`
+        // Ensure the user who created the intents is still a member of the target indexes (skip if using explicit intentIds)
+        ...(targetIndexIds !== undefined ? [
+          sql`EXISTS (
+            SELECT 1
+            FROM ${intentIndexes} ii_membership
+            INNER JOIN ${indexMembers} im ON ii_membership.index_id = im.index_id
+            WHERE ii_membership.intent_id = ANY(${intentStakes.intents}::uuid[])
+            AND im.user_id = ${intents.userId}
+            ${targetIndexIds && targetIndexIds.length > 0
+              ? sql`AND ii_membership.index_id = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+              : sql``}
+          )`
+        ] : [])
       )
     )
     // Group results by user to get per-user totals
