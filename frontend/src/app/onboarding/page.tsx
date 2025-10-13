@@ -78,10 +78,7 @@ export default function OnboardingPage() {
   // Invite members step states
   const [inviteMethod, setInviteMethod] = useState<'automatic' | 'link' | null>(null);
 
-  const [recentUserIntents, setRecentUserIntents] = useState<Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }>>([]);
   const [, setMemberCount] = useState(0);
-  const [totalIntents, setTotalIntents] = useState(0);
-  const [members, setMembers] = useState<Array<{ id: string; name: string; avatar: string | null }>>([]);
   const [summaryLoaded, setSummaryLoaded] = useState(false);
   
   // Memoized display values to prevent glitching during reloads
@@ -171,11 +168,8 @@ export default function OnboardingPage() {
       const newMembers = response.members || [];
       const newTotalIntents = response.totalIntents || 0;
       
-      // Update internal state
-      setRecentUserIntents(newIntents);
-      setMembers(newMembers);
+      // Update member count
       setMemberCount(newMembers.length);
-      setTotalIntents(newTotalIntents);
       
       // Only update display values if there are meaningful changes or first load
       if (!wasLoaded || 
@@ -197,10 +191,7 @@ export default function OnboardingPage() {
         const fallbackIntents: Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }> = [];
         const fallbackMembers: Array<{ id: string; name: string; avatar: string | null }> = [];
         
-        setRecentUserIntents(fallbackIntents);
-        setMembers(fallbackMembers);
         setMemberCount(0);
-        setTotalIntents(0);
         
         setDisplayIntents(fallbackIntents);
         setDisplayMembers(fallbackMembers);
@@ -939,7 +930,7 @@ export default function OnboardingPage() {
             {(!summaryLoaded || displayIntents.length > 0) && (
               <div className="space-y-1.5 mb-4">
                 {summaryLoaded ? (
-                  displayIntents.map((intent, index) => (
+                  displayIntents.map((intent) => (
                     <span
                       key={intent.id}
                       className="inline-block text-left px-2 py-1 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm"

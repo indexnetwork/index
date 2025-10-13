@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, X, Plus, Radio } from "lucide-react";
+import { Paperclip, Radio } from "lucide-react";
 import { useAPI } from "@/contexts/APIContext";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -34,18 +34,6 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
 
   // URL regex - stops at spaces and invalid characters (including unicode spaces)
   const URLInTextRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%]*)?/g;
-
-  // HTML escape function
-  const escapeHtml = (text: string) => {
-    const map: Record<string, string> = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    };
-    return text.replace(/[&<>"']/g, m => map[m]);
-  };
 
   // Handle file selection
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {

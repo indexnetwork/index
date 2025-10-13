@@ -107,9 +107,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       return { visibleIntents: libraryIntents, isSelectionFiltering: false, selectedIntentIds: new Set<string>(), isSourceFiltering: false } as const;
     }
 
-    const fileLabelById = new Map(files.map(f => [f.id, f.name]));
-    const linkUrlById = new Map(links.map(l => [l.id, l.url]));
-
     const selectedFileIds = new Set<string>();
     const selectedLinkIds = new Set<string>();
 
