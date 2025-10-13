@@ -59,60 +59,52 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
   let authenticatedUserIntents;
   let targetIndexIds: string[] | undefined;
   
-  // If explicit intentIds are provided, use those directly (after validating they belong to the user)
+  // Build base conditions
+  const baseConditions = [eq(intents.userId, authenticatedUserId)];
+  
+  // Add intentIds filtering if specified (post-filter - doesn't bypass index restrictions)
   if (intentIds && intentIds.length > 0) {
+    baseConditions.push(
+      sql`${intents.id} = ANY(ARRAY[${sql.join(intentIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+    );
+  }
+  
+  // Add source filtering if specified
+  if (sources && sources.length > 0) {
+    const sourceConditions = sources.map(source => 
+      and(
+        eq(intents.sourceType, source.type),
+        eq(intents.sourceId, source.id)
+      )
+    );
+    baseConditions.push(or(...sourceConditions)!);
+  }
+  
+  // Determine which indexes to filter by
+  targetIndexIds = indexIds;
+  if (!targetIndexIds || targetIndexIds.length === 0) {
+    // If no indexIds provided, default to user's accessible indexes
+    targetIndexIds = await getUserAccessibleIndexIds(authenticatedUserId);
+  }
+  
+  if (targetIndexIds && targetIndexIds.length > 0) {
+    // Get intents in the specified indexes (or user's indexes if none specified)
     authenticatedUserIntents = await db
       .select({ intentId: intents.id })
       .from(intents)
+      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
       .where(
         and(
-          eq(intents.userId, authenticatedUserId),
-          sql`${intents.id} = ANY(ARRAY[${sql.join(intentIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+          ...baseConditions,
+          sql`${intentIndexes.indexId} = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
         )
       );
-    // When explicit intentIds are provided, don't enforce index restrictions
-    targetIndexIds = undefined;
   } else {
-    // Build base conditions
-    const baseConditions = [eq(intents.userId, authenticatedUserId)];
-    
-    // Add source filtering if specified
-    if (sources && sources.length > 0) {
-      const sourceConditions = sources.map(source => 
-        and(
-          eq(intents.sourceType, source.type),
-          eq(intents.sourceId, source.id)
-        )
-      );
-      baseConditions.push(or(...sourceConditions)!);
-    }
-    
-    // Determine which indexes to filter by
-    targetIndexIds = indexIds;
-    if (!targetIndexIds || targetIndexIds.length === 0) {
-      // If no indexIds provided, default to user's accessible indexes
-      targetIndexIds = await getUserAccessibleIndexIds(authenticatedUserId);
-    }
-    
-    if (targetIndexIds && targetIndexIds.length > 0) {
-      // Get intents in the specified indexes (or user's indexes if none specified)
-      authenticatedUserIntents = await db
-        .select({ intentId: intents.id })
-        .from(intents)
-        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-        .where(
-          and(
-            ...baseConditions,
-            sql`${intentIndexes.indexId} = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
-          )
-        );
-    } else {
-      // Fallback: get all user's intents (if user has no accessible indexes)
-      authenticatedUserIntents = await db
-        .select({ intentId: intents.id })
-        .from(intents)
-        .where(and(...baseConditions));
-    }
+    // Fallback: get all user's intents (if user has no accessible indexes)
+    authenticatedUserIntents = await db
+      .select({ intentId: intents.id })
+      .from(intents)
+      .where(and(...baseConditions));
   }
 
   // Extract the intent IDs for easier use in the main query
@@ -237,11 +229,12 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
 
   // This query finds users who have stakes with the authenticated user's intents
   // It filters by:
-  // - Optional intent IDs (must be authenticated user's intents)
+  // - Optional intent IDs (post-filter - must be authenticated user's intents and respect index restrictions)
   // - Index IDs (defaults to user's accessible indexes if not specified)
   // - Optional user IDs
   // - Can exclude users with existing connections
   // - Ensures intents in stakes exist in same index
+  // - Ensures user membership in target indexes
   // - Groups by user to get totals
   // - Excludes authenticated user
   // - Includes pagination
