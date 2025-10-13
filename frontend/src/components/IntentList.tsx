@@ -27,24 +27,6 @@ interface IntentListProps<T extends BaseIntent> {
   className?: string;
 }
 
-function fileBadge(mime: string | undefined, name: string): string {
-  const ext = (name.split('.').pop() || '').toLowerCase();
-  if (ext === 'pdf') return 'PDF';
-  if (['doc','docx','rtf','odt'].includes(ext)) return 'DOC';
-  if (['xls','xlsx','csv'].includes(ext)) return 'SHEET';
-  if (['ppt','pptx','key'].includes(ext)) return 'SLIDE';
-  if (['png','jpg','jpeg','gif','svg','webp'].includes(ext)) return 'IMG';
-  if (['mp4','mov','avi','mkv','webm'].includes(ext)) return 'VID';
-  if (['mp3','wav','m4a','flac'].includes(ext)) return 'AUD';
-  if (['zip','rar','7z','tar','gz'].includes(ext)) return 'ARCH';
-  if (['md','txt','json','yaml','yml'].includes(ext)) return 'TXT';
-  if (mime?.includes('pdf')) return 'PDF';
-  if (mime?.startsWith('image/')) return 'IMG';
-  if (mime?.startsWith('video/')) return 'VID';
-  if (mime?.startsWith('audio/')) return 'AUD';
-  return 'FILE';
-}
-
 export default function IntentList<T extends BaseIntent>({
   intents,
   isLoading = false,
