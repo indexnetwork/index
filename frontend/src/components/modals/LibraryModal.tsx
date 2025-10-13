@@ -2,12 +2,14 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import ReactMarkdown from 'react-markdown';
 import { useAPI } from "@/contexts/APIContext";
+import { useDiscoveryFilter } from "@/contexts/DiscoveryFilterContext";
 import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
@@ -35,6 +37,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
   const { syncService } = useAPI();
+  const router = useRouter();
+  const { setDiscoveryIntents } = useDiscoveryFilter();
   const [isUploading, setIsUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -171,7 +175,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       selectedIntentIds: matchedIds,
       isSourceFiltering: sourceFilterActive
     } as const;
-  }, [files, links, libraryIntents, selectedIds, activeSourceFilters]);
+  }, [libraryIntents, selectedIds, activeSourceFilters]);
 
   const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: { id: string } }[], intentIds: string[] = []) => {
     try {
@@ -369,13 +373,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api]);
 
-  const handleJumpToSources = useCallback(() => {
-    setActiveMobileSection('library');
-    requestAnimationFrame(() => {
-      connectSourcesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }, []);
-
   const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
     try {
       await api.patch(`/intents/${intent.id}/archive`);
@@ -388,12 +385,22 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [api, success, error, loadLibraryIntents]);
 
   const handleOpenIntentSource = useCallback((intent: LibrarySourceIntent) => {
-    if (intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue)) {
-      window.open(intent.sourceValue, '_blank', 'noopener');
-      return;
+    // Set the discovery intent filter
+    setDiscoveryIntents([{
+      id: intent.id,
+      payload: intent.payload,
+      summary: intent.summary || undefined,
+      createdAt: intent.createdAt
+    }]);
+    
+    // Close modal
+    onOpenChange(false);
+    
+    // Navigate to inbox if not already there
+    if (typeof window !== 'undefined' && !window.location.pathname.includes('/inbox')) {
+      router.push('/inbox');
     }
-    handleJumpToSources();
-  }, [handleJumpToSources]);
+  }, [setDiscoveryIntents, onOpenChange, router]);
 
 
   const handleDisconnectIntegration = useCallback(async (type: IntegrationName) => {
@@ -701,7 +708,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               <div className="space-y-2 sm:space-y-3 lg:space-y-4">
 
             {/* Connect your sources */}
-            <section ref={connectSourcesRef} className="pr-2">
+            <section ref={connectSourcesRef} className="">
               <div className="flex items-center justify-between mb-1.5">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Connect Sources</h3>
               </div>
@@ -809,7 +816,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
 
             {/* Add new content */}
-            <section className="pr-2">
+            <section className="">
               <div className="flex items-center justify-between mb-2 min-h-[40px]">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Files and URLs</h3>
                 <div className="flex items-center gap-3">
@@ -906,7 +913,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
             {/* Library items */}
             <section>
-              <div className="pt-3 flex-1 pr-3 space-y-2 p-3 pt-0 overflow-y-scroll max-h-[45vh] sm:h-[400px]">
+              <div className="pt-3 flex-1 space-y-2 pb-0 pt-0 overflow-y-scroll max-h-[45vh] sm:h-[400px]">
                 {(() => {
                   type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: { id: string; name?: string; url?: string; type?: string; createdAt?: string; lastSyncAt?: string | null } };
                   const map: RecentItem[] = [
@@ -939,7 +946,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   return recent.map(item => (
                     <div
                       key={item.id}
-                      className={`w-full border rounded-sm px-2.5 py-2 transition-colors cursor-pointer md:px-3 ${
+                      className={`group w-full border rounded-sm px-2.5 py-2 transition-colors cursor-pointer md:px-3 ${
                         selectedIds.has(item.id)
                           ? 'border-[#99CFFF] bg-[#F0F7FF]'
                           : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'
@@ -978,7 +985,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           )}
                           <span className="text-sm text-[#333] truncate font-medium">{item.title}</span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                           {item.kind === 'link' && (
                             <>
                               <button 

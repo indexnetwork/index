@@ -13,6 +13,7 @@ import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 import DiscoveryForm from "@/components/DiscoveryForm";
 import { useIndexFilter } from "@/contexts/IndexFilterContext";
+import { useDiscoveryFilter } from "@/contexts/DiscoveryFilterContext";
 
 const validTabs = ['discover', 'requests'];
 
@@ -24,7 +25,7 @@ export default function InboxPage() {
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
   const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
-  const [discoveryIntents, setDiscoveryIntents] = useState<Array<{id: string; payload: string; summary?: string; createdAt: string}> | undefined>(undefined);
+  const { discoveryIntents, setDiscoveryIntents } = useDiscoveryFilter();
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
   const { selectedIndexIds } = useIndexFilter();
   

@@ -397,7 +397,7 @@ export default function DiscoveryForm({ onSubmit }: DiscoveryFormProps) {
       };
       fetchRecentIntents();
     }
-  }, [inputFocused, intentsService]);
+  }, [inputFocused, recentIntents.length, intentsService]);
 
   return (
     <div className="relative">
