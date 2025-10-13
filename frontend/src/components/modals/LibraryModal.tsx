@@ -11,7 +11,7 @@ import { useAPI } from "@/contexts/APIContext";
 import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
-import { IntegrationName } from "@/config/integrations";
+import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 
 type Props = {
   open: boolean;
@@ -308,7 +308,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       setIntegrationsLoaded(true);
     } catch (error) {
       console.error('Failed to fetch integrations:', error);
-      // Keep default state if API fails
+      // Fallback to default integrations if API fails
+      setIntegrations(getIntegrationsList());
       setIntegrationsLoaded(true);
     }
   }, [api]);
