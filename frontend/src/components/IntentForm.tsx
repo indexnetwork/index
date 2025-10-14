@@ -47,19 +47,20 @@ export default function IntentForm({
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
     
-    // Validate files before adding
-    const validation = validateFiles(selectedFiles, 'general');
+    // Validate against the combined file array to enforce cumulative constraints
+    const nextFiles = [...files, ...selectedFiles];
+    const validation = validateFiles(nextFiles, 'general');
     if (!validation.isValid) {
       error(validation.message || 'Invalid file');
       return;
     }
     
-    setFiles(prev => [...prev, ...selectedFiles]);
+    setFiles(nextFiles);
     // Reset input to allow selecting the same file again
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [error]);
+  }, [files, error]);
 
   const handleRemoveFile = useCallback((index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
@@ -81,16 +82,17 @@ export default function IntentForm({
     
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (droppedFiles.length > 0) {
-      // Validate files before adding
-      const validation = validateFiles(droppedFiles, 'general');
+      // Validate against the combined file array to enforce cumulative constraints
+      const nextFiles = [...files, ...droppedFiles];
+      const validation = validateFiles(nextFiles, 'general');
       if (!validation.isValid) {
         error(validation.message || 'Invalid file');
         return;
       }
       
-      setFiles(prev => [...prev, ...droppedFiles]);
+      setFiles(nextFiles);
     }
-  }, [error]);
+  }, [files, error]);
 
   // Use imported formatFileSize function
 

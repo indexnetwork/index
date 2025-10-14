@@ -70,7 +70,9 @@ export const SUPPORTED_FILE_TYPES = {
   ARCHIVES: {
     extensions: ['.zip'],
     mimeTypes: [
-      'application/zip'
+      'application/zip',
+      'application/x-zip-compressed',
+      'application/x-zip'
     ]
   }
 } as const;

@@ -86,9 +86,17 @@ export function getAcceptString(uploadType: 'general' | 'avatar' = 'general'): s
 
 // ----- Unstructured Processing -----
 
-const unstructuredClient = new UnstructuredClient({
-  serverURL: process.env.UNSTRUCTURED_API_URL
-});
+let unstructuredClient: UnstructuredClient | null = null;
+
+function getUnstructuredClient(): UnstructuredClient | null {
+  if (!process.env.UNSTRUCTURED_API_URL) return null;
+  if (!unstructuredClient) {
+    unstructuredClient = new UnstructuredClient({
+      serverURL: process.env.UNSTRUCTURED_API_URL
+    });
+  }
+  return unstructuredClient;
+}
 
 export function isFileSupported(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
@@ -101,9 +109,10 @@ export async function loadFileContent(filePath: string): Promise<{ content: stri
   }
 
   try {
-    if (process.env.UNSTRUCTURED_API_URL) {
+    const client = getUnstructuredClient();
+    if (client) {
       const data = fs.readFileSync(filePath);
-      const response = await unstructuredClient.general.partition({
+      const response = await client.general.partition({
         partitionParameters: {
           files: {
             content: data,

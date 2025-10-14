@@ -22,10 +22,18 @@ export interface IntentInferenceResult {
   intents: InferredIntent[];
 }
 
-// Initialize the unstructured client with optimized settings
-const unstructuredClient = new UnstructuredClient({
-  serverURL: process.env.UNSTRUCTURED_API_URL
-});
+// Lazy initialization for unstructured client
+let unstructuredClient: UnstructuredClient | null = null;
+
+function getUnstructuredClient(): UnstructuredClient | null {
+  if (!process.env.UNSTRUCTURED_API_URL) return null;
+  if (!unstructuredClient) {
+    unstructuredClient = new UnstructuredClient({
+      serverURL: process.env.UNSTRUCTURED_API_URL
+    });
+  }
+  return unstructuredClient;
+}
 
 /**
  * Check if file type is supported
@@ -53,10 +61,11 @@ async function loadFileContent(filePath: string): Promise<{ content: string | nu
 
   // Try UnstructuredClient first with fast processing settings
   try {
-    if (process.env.UNSTRUCTURED_API_URL) {
+    const client = getUnstructuredClient();
+    if (client) {
       const data = fs.readFileSync(filePath);
       
-      const response = await unstructuredClient.general.partition({
+      const response = await client.general.partition({
         partitionParameters: {
           files: {
             content: data,

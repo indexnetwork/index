@@ -104,6 +104,16 @@ router.post('/new',
       if (uploadedFiles && uploadedFiles.length > 0) {
         const fileValidation = validateFiles(uploadedFiles, 'general');
         if (!fileValidation.isValid) {
+          // Clean up uploaded files before returning error
+          await Promise.all(
+            uploadedFiles.map(async (file) => {
+              try {
+                await fs.promises.unlink(file.path);
+              } catch (unlinkError) {
+                console.warn(`Failed to remove invalid upload ${file.path}:`, unlinkError);
+              }
+            })
+          );
           return res.status(400).json({ error: fileValidation.message });
         }
       }

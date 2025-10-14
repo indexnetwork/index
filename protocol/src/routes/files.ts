@@ -149,6 +149,12 @@ router.post('/', authenticatePrivy, upload.single('file'),
       // Additional validation (multer fileFilter handles basic validation)
       const fileValidation = validateFiles([req.file], 'general');
       if (!fileValidation.isValid) {
+        // Clean up uploaded file before returning error
+        try {
+          await fs.promises.unlink(req.file.path);
+        } catch (unlinkError) {
+          console.warn(`Failed to remove invalid upload ${req.file.path}:`, unlinkError);
+        }
         return res.status(400).json({ error: fileValidation.message });
       }
 
