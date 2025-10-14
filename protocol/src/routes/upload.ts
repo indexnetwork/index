@@ -5,7 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import fs from 'fs';
 import { getUploadsPath } from '../lib/paths';
-import { FILE_SIZE_LIMITS, createAvatarFileFilter, validateFiles } from '../lib/uploads';
+import { createAvatarFileFilter, validateFiles } from '../lib/uploads';
+import { FILE_SIZE_LIMITS } from '../lib/uploads.config';
 
 const router = Router();
 

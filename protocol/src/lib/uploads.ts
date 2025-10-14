@@ -1,9 +1,8 @@
 /**
  * Backend Uploads Implementation
  *
- * Imports shared configuration from `uploads.config.ts` and exposes
- * backend-specific validation utilities, multer filters, and
- * Unstructured processing helpers.
+ * Thin adapters for Multer File types that delegate to shared validation logic.
+ * Also includes backend-specific multer filters and Unstructured processing.
  */
 
 import * as fs from 'fs';
@@ -15,88 +14,34 @@ import {
   MAX_FILES_PER_UPLOAD,
   SUPPORTED_FILE_TYPES,
   GENERAL_ALLOWED_TYPES,
-  ValidationError,
+  UploadType,
   ValidationResult,
+  validateFileTypeByMetadata,
+  validateFileSizeByBytes,
+  validateFileCountByNumber,
+  validateFileByMetadata,
+  validateFilesByMetadata,
 } from './uploads.config';
 
-// ----- Validation -----
+// ----- Thin Validation Adapters -----
 
-export function validateFileType(file: Express.Multer.File, uploadType: 'general' | 'avatar' = 'general'): ValidationResult {
-  const ext = path.extname(file.originalname).toLowerCase();
-  const mimeType = file.mimetype.toLowerCase();
+export const validateFileType = (file: Express.Multer.File, uploadType: UploadType = 'general'): ValidationResult =>
+  validateFileTypeByMetadata(file.originalname, file.mimetype, uploadType);
 
-  if (uploadType === 'avatar') {
-    const isImage = (SUPPORTED_FILE_TYPES.IMAGES.extensions as readonly string[]).includes(ext) &&
-                   (SUPPORTED_FILE_TYPES.IMAGES.mimeTypes as readonly string[]).includes(mimeType);
-    if (!isImage) {
-      return {
-        isValid: false,
-        error: ValidationError.UNSUPPORTED_FILE_TYPE,
-        message: 'Only image files are allowed for avatars (JPG, PNG, GIF, WEBP, BMP, TIFF, HEIC)'
-      };
-    }
-  } else {
-    const isGeneralType = (GENERAL_ALLOWED_TYPES.extensions as readonly string[]).includes(ext) &&
-                         (GENERAL_ALLOWED_TYPES.mimeTypes as readonly string[]).includes(mimeType);
-    if (!isGeneralType) {
-      return {
-        isValid: false,
-        error: ValidationError.UNSUPPORTED_FILE_TYPE,
-        message: 'Unsupported file type. Allowed: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX, JSON, MD, PPT, PPTX, RTF, ODT, XML, YAML, HTML, EPUB, EML, MSG, MBOX, ZIP'
-      };
-    }
-  }
+export const validateFileSize = (file: Express.Multer.File, uploadType: UploadType = 'general'): ValidationResult =>
+  validateFileSizeByBytes(file.size, uploadType);
 
-  return { isValid: true };
-}
+export const validateFileCount = (files: Express.Multer.File[]): ValidationResult =>
+  validateFileCountByNumber(files.length);
 
-export function validateFileSize(file: Express.Multer.File, uploadType: 'general' | 'avatar' = 'general'): ValidationResult {
-  const limit = uploadType === 'avatar' ? FILE_SIZE_LIMITS.AVATAR : FILE_SIZE_LIMITS.GENERAL;
-  const limitMB = Math.round(limit / (1024 * 1024));
+export const validateFile = (file: Express.Multer.File, uploadType: UploadType = 'general'): ValidationResult =>
+  validateFileByMetadata(file.originalname, file.mimetype, file.size, uploadType);
 
-  if (file.size > limit) {
-    return {
-      isValid: false,
-      error: ValidationError.FILE_TOO_LARGE,
-      message: `File size exceeds ${limitMB}MB limit`
-    };
-  }
-
-  return { isValid: true };
-}
-
-export function validateFileCount(files: Express.Multer.File[]): ValidationResult {
-  if (files.length > MAX_FILES_PER_UPLOAD) {
-    return {
-      isValid: false,
-      error: ValidationError.TOO_MANY_FILES,
-      message: `Maximum ${MAX_FILES_PER_UPLOAD} files allowed per upload`
-    };
-  }
-  return { isValid: true };
-}
-
-export function validateFile(file: Express.Multer.File, uploadType: 'general' | 'avatar' = 'general'): ValidationResult {
-  const typeValidation = validateFileType(file, uploadType);
-  if (!typeValidation.isValid) return typeValidation;
-
-  const sizeValidation = validateFileSize(file, uploadType);
-  if (!sizeValidation.isValid) return sizeValidation;
-
-  return { isValid: true };
-}
-
-export function validateFiles(files: Express.Multer.File[], uploadType: 'general' | 'avatar' = 'general'): ValidationResult {
-  const countValidation = validateFileCount(files);
-  if (!countValidation.isValid) return countValidation;
-
-  for (const file of files) {
-    const fileValidation = validateFile(file, uploadType);
-    if (!fileValidation.isValid) return fileValidation;
-  }
-
-  return { isValid: true };
-}
+export const validateFiles = (files: Express.Multer.File[], uploadType: UploadType = 'general'): ValidationResult =>
+  validateFilesByMetadata(
+    files.map(f => ({ filename: f.originalname, mimetype: f.mimetype, size: f.size })),
+    uploadType
+  );
 
 // ----- Multer Filters -----
 
@@ -230,6 +175,5 @@ export async function processUploadedFiles(files: Express.Multer.File[]): Promis
   return contentParts.join('\n\n');
 }
 
-export { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD };
 
 

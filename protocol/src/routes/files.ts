@@ -12,7 +12,8 @@ import { getUploadsPath } from '../lib/paths';
 import { processUploadedFiles } from '../lib/uploads';
 import { processFiles } from '../lib/integrations/files/processor';
 import type { IntegrationFile } from '../lib/integrations';
-import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD, createGeneralFileFilter, validateFiles } from '../lib/uploads';
+import { createGeneralFileFilter, validateFiles } from '../lib/uploads';
+import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from '../lib/uploads.config';
 
 // Extend the Request interface to include generatedFileId
 declare global {

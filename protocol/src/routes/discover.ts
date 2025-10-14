@@ -15,7 +15,8 @@ import { processUploadedFiles } from '../lib/uploads';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { analyzeObjects } from '../agents/core/intent_inferrer';
 import { IntentService } from '../services/intent-service';
-import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD, createGeneralFileFilter, validateFiles } from '../lib/uploads';
+import { createGeneralFileFilter, validateFiles } from '../lib/uploads';
+import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from '../lib/uploads.config';
 
 const router = Router();
 

@@ -10,11 +10,6 @@ const nextConfig: NextConfig = {
   experimental: {
     externalDir: true,
   },
-  turbopack: {
-    resolveAlias: {
-      '@protocol/lib/uploads.config': 'protocol/src/lib/uploads.config.ts',
-    },
-  },
   images: {
     remotePatterns: [
       {

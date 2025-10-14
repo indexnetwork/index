@@ -12,7 +12,8 @@ import { vibeCheck } from '../agents/external/vibe_checker_text';
 import { processUploadedFiles } from '../lib/uploads';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { getTempPath } from '../lib/paths';
-import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD, createGeneralFileFilter, validateFiles } from '../lib/uploads';
+import { createGeneralFileFilter, validateFiles } from '../lib/uploads';
+import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from '../lib/uploads.config';
 
 const router = Router();
 
