@@ -18,7 +18,7 @@ import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import LibraryModal from "@/components/modals/LibraryModal";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
-type OnboardingFlow = 'flow_1' | 'flow_2';
+type OnboardingFlow = 1 | 2;
 
 interface IntegrationState {
   id: string | null;           // The actual integration UUID
@@ -31,7 +31,7 @@ interface IntegrationState {
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('profile');
   const [isLoading, setIsLoading] = useState(false);
-  const [currentFlow, setCurrentFlow] = useState<OnboardingFlow>('flow_1');
+  const [currentFlow, setCurrentFlow] = useState<OnboardingFlow>(1);
   const router = useRouter();
   const searchParams = useSearchParams();
   const api = useAuthenticatedAPI();
@@ -93,7 +93,7 @@ export default function OnboardingPage() {
       // Determine if we should filter by indexId
       let url = '/integrations';
       
-      if (currentFlow === 'flow_2') {
+      if (currentFlow === 2) {
         // In flow_2, we need to filter by indexId
         const indexId = (user?.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null) || createdIndex?.id;
         if (indexId) {
@@ -204,11 +204,11 @@ export default function OnboardingPage() {
 
   // Detect flow from query string
   useEffect(() => {
-    const flow = searchParams.get('flow');
-    if (flow === 'flow_2') {
-      setCurrentFlow('flow_2');
+    const f = searchParams.get('f');
+    if (f === '2') {
+      setCurrentFlow(2);
     } else {
-      setCurrentFlow('flow_1');
+      setCurrentFlow(1);
     }
   }, [searchParams]);
 
@@ -222,7 +222,7 @@ export default function OnboardingPage() {
       // Order: intro first, index second, integrations third
       const storedIndexId = user.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null;
       
-      if (currentFlow === 'flow_2') {
+      if (currentFlow === 2) {
         // In flow_2: profile -> create_index -> connections -> invite_members
         if (!user.intro) {
           // Start with profile step if intro not filled
@@ -256,9 +256,9 @@ export default function OnboardingPage() {
     if (currentStep === 'connections') {
       // For flow_1, always load (no indexId needed)
       // For flow_2, only load if we have an indexId
-      if (currentFlow === 'flow_1') {
+      if (currentFlow === 1) {
         loadIntegrations();
-      } else if (currentFlow === 'flow_2') {
+      } else if (currentFlow === 2) {
         const indexId = (user?.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null) || createdIndex?.id;
         if (indexId) {
           loadIntegrations();
@@ -300,7 +300,7 @@ export default function OnboardingPage() {
 
   // Navigation helpers based on flow
   const getNextStep = (currentStep: OnboardingStep): OnboardingStep => {
-    if (currentFlow === 'flow_1') {
+    if (currentFlow === 1) {
       switch (currentStep) {
         case 'profile': return 'connections';
         case 'connections': return 'join_indexes';
@@ -317,7 +317,7 @@ export default function OnboardingPage() {
   };
 
   const getPreviousStep = (currentStep: OnboardingStep): OnboardingStep => {
-    if (currentFlow === 'flow_1') {
+    if (currentFlow === 1) {
       switch (currentStep) {
         case 'connections': return 'profile';
         case 'join_indexes': return 'connections';
@@ -632,7 +632,7 @@ export default function OnboardingPage() {
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Connect your accounts</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
-                {currentFlow === 'flow_1'
+                {currentFlow === 1
                   ? "Link the places you already work and share. Nobody gets notified, and it's only used to understand what you're looking for."
                   : "Link the platforms where your people already works and shares. Nobody gets notified for now. We recommend connecting every account you use regularly so Index has a full picture of your ecosystem."}
               </p>
@@ -684,7 +684,7 @@ export default function OnboardingPage() {
               ))}
             </div>
 
-            {currentFlow === 'flow_1' && (
+            {currentFlow === 1 && (
               <div className="mb-8">
                 <h2 className="text-lg font-bold text-black mb-4 font-ibm-plex-mono">
                   Add context files & links
