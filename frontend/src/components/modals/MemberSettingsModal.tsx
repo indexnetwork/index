@@ -45,10 +45,11 @@ interface MemberSettingsModalProps {
 
 export default function MemberSettingsModal({ open, onOpenChange, index }: MemberSettingsModalProps) {
   const [isLeaving, setIsLeaving] = useState(false);
+  const [showConfirmLeave, setShowConfirmLeave] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [originalPrompt, setOriginalPrompt] = useState('');
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
-  const [, setMemberSettings] = useState<MemberSettings | null>(null);
+  const [memberSettings, setMemberSettings] = useState<MemberSettings | null>(null);
   const [indexedIntents, setIndexedIntents] = useState<MemberIntent[]>([]);
   const [loadingIndexed, setLoadingIndexed] = useState(false);
   const [removingIntents, setRemovingIntents] = useState<Set<string>>(new Set());
@@ -145,9 +146,14 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
   }, [open, suggestionsFetched, loadingSuggestions, fetchTagSuggestions]);
 
 
-  const handleLeaveIndex = async () => {
+  const handleLeaveIndexClick = () => {
+    setShowConfirmLeave(true);
+  };
+
+  const handleConfirmLeave = async () => {
     try {
       setIsLeaving(true);
+      setShowConfirmLeave(false);
       await api.post(`/indexes/${index.id}/leave`, {});
       removeIndex(index.id); // Update global state
       success(`Successfully left ${index.title}`);
@@ -157,6 +163,10 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
     } finally {
       setIsLeaving(false);
     }
+  };
+
+  const handleCancelLeave = () => {
+    setShowConfirmLeave(false);
   };
 
   const handleSavePrompt = async () => {
@@ -215,18 +225,20 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
         <Dialog.Content className="fixed inset-0 w-screen h-[85dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[72vh] sm:min-h-[500px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6 transition-all sm:duration-300 sm:max-w-[1020px]">
-          <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
+          <div className="flex items-center justify-between mb-8 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
             <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">
               {index.title} - Member Settings
             </Dialog.Title>
-            <Button
-              onClick={handleLeaveIndex}
-              disabled={isLeaving}
-              variant="outline"
-              className="font-ibm-plex-mono text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
-            >
-              {isLeaving ? 'Leaving...' : 'Leave index'}
-            </Button>
+            {!memberSettings?.isOwner && (
+              <Button
+                onClick={handleLeaveIndexClick}
+                disabled={isLeaving}
+                variant="outline"
+                className="font-ibm-plex-mono text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
+              >
+                {isLeaving ? 'Leaving...' : 'Leave index'}
+              </Button>
+            )}
           </div>
 
           <div className="lg:hidden mb-3 flex items-center gap-2 rounded-lg bg-[#F2F2F2] p-1">
@@ -252,7 +264,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
               <div className="space-y-2 sm:space-y-3 lg:space-y-4">
                 {/* Member Settings Section */}
                 <section className="pr-2">
-                  <div className="mt-3 mb-3">
+                  <div className="mb-3">
                     <h3 className="text-sm font-medium font-ibm-plex-mono text-[#333]">
                       Instruct what to share and what to keep private
                     </h3>
@@ -338,6 +350,39 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
             </aside>
           </div>
         </Dialog.Content>
+
+        {/* Confirmation Modal */}
+        {showConfirmLeave && (
+          <Dialog.Root open={showConfirmLeave} onOpenChange={setShowConfirmLeave}>
+            <Dialog.Portal>
+              <Dialog.Overlay className="fixed inset-0 bg-black/60 animate-in fade-in duration-200 z-50" />
+              <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[420px] bg-[#FAFAFA] border border-[#E0E0E0] rounded-lg p-6 shadow-xl focus:outline-none animate-in fade-in zoom-in-95 duration-200 z-50">
+                <Dialog.Title className="text-lg font-bold text-[#333] font-ibm-plex-mono mb-3">
+                  Leave Index
+                </Dialog.Title>
+                <Dialog.Description className="text-sm text-[#555] font-ibm-plex-mono mb-6 leading-relaxed">
+                  Are you sure you want to leave <span className="font-semibold text-[#333]">&quot;{index.title}&quot;</span>? This action cannot be undone and you will lose access to all shared intents in this index.
+                </Dialog.Description>
+                <div className="flex gap-3 justify-end">
+                  <Button
+                    onClick={handleCancelLeave}
+                    variant="outline"
+                    className="font-ibm-plex-mono"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleConfirmLeave}
+                    disabled={isLeaving}
+                    className="font-ibm-plex-mono bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {isLeaving ? 'Leaving...' : 'Leave Index'}
+                  </Button>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+        )}
       </Dialog.Portal>
     </Dialog.Root>
   );
