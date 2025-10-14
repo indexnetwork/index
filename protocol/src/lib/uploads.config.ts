@@ -114,7 +114,9 @@ export function validateFileTypeByMetadata(
   mimetype: string,
   uploadType: UploadType
 ): ValidationResult {
-  const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
+  // Extract extension properly, handling edge cases
+  const lastDotIndex = filename.lastIndexOf('.');
+  const ext = lastDotIndex > 0 ? filename.toLowerCase().substring(lastDotIndex) : '';
   const mimeType = mimetype.toLowerCase();
 
   if (uploadType === 'avatar') {
@@ -128,9 +130,12 @@ export function validateFileTypeByMetadata(
       };
     }
   } else {
-    const isGeneralType = (GENERAL_ALLOWED_TYPES.extensions as readonly string[]).includes(ext) &&
-                         (GENERAL_ALLOWED_TYPES.mimeTypes as readonly string[]).includes(mimeType);
-    if (!isGeneralType) {
+    // For general files, check both extension and MIME type
+    // If no extension, rely on MIME type validation
+    const hasValidExtension = ext && (GENERAL_ALLOWED_TYPES.extensions as readonly string[]).includes(ext);
+    const hasValidMimeType = (GENERAL_ALLOWED_TYPES.mimeTypes as readonly string[]).includes(mimeType);
+    
+    if (!hasValidExtension && !hasValidMimeType) {
       return {
         isValid: false,
         error: ValidationError.UNSUPPORTED_FILE_TYPE,
