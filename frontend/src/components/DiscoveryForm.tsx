@@ -377,6 +377,33 @@ export default function DiscoveryForm({ onSubmit }: DiscoveryFormProps) {
     };
   }, [inputFocused]);
 
+  // Close input when any modal opens
+  useEffect(() => {
+    const checkForModals = () => {
+      const hasModalOpen = document.querySelector('[data-radix-dialog-content], [role="dialog"]') !== null;
+      
+      if (hasModalOpen && inputFocused) {
+        // Modal is open and input is focused, close it
+        setInputFocused(false);
+        contentRef.current?.blur();
+      }
+    };
+
+    // Check immediately
+    checkForModals();
+
+    // Use MutationObserver to detect when modals are added to the DOM
+    const observer = new MutationObserver(checkForModals);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [inputFocused]);
+
   // Fetch recent discovery intents when input is focused
   useEffect(() => {
     if (inputFocused && recentIntents.length === 0) {

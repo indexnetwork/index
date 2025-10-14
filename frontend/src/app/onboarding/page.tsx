@@ -95,7 +95,7 @@ export default function OnboardingPage() {
       
       if (currentFlow === 'flow_2') {
         // In flow_2, we need to filter by indexId
-        const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
+        const indexId = (user?.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null) || createdIndex?.id;
         if (indexId) {
           url = `/integrations?indexId=${indexId}`;
         }
@@ -140,7 +140,7 @@ export default function OnboardingPage() {
       setIntegrations(getIntegrationsList());
       setIntegrationsLoaded(true);
     }
-  }, [api, currentFlow, createdIndex?.id]);
+  }, [api, currentFlow, createdIndex?.id, user?.id]);
 
   // Load index summary for invite members step
   const loadIndexSummary = useCallback(async () => {
@@ -151,7 +151,7 @@ export default function OnboardingPage() {
       }
       
       // Get indexId from localStorage or createdIndex state
-      const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
+      const indexId = (user?.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null) || createdIndex?.id;
       
       if (!indexId) {
         setCurrentStep('create_index');
@@ -200,7 +200,7 @@ export default function OnboardingPage() {
         setSummaryLoaded(true);
       }
     }
-  }, [api, createdIndex?.id, summaryLoaded, displayIntents, displayMembers, displayTotalIntents]);
+  }, [api, createdIndex?.id, summaryLoaded, displayIntents, displayMembers, displayTotalIntents, user?.id]);
 
   // Detect flow from query string
   useEffect(() => {
@@ -220,7 +220,7 @@ export default function OnboardingPage() {
       
       // Check if we should skip steps based on user state and localStorage
       // Order: intro first, index second, integrations third
-      const storedIndexId = localStorage.getItem('onboarding_created_index_id');
+      const storedIndexId = user.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null;
       
       if (currentFlow === 'flow_2') {
         // In flow_2: profile -> create_index -> connections -> invite_members
@@ -259,13 +259,13 @@ export default function OnboardingPage() {
       if (currentFlow === 'flow_1') {
         loadIntegrations();
       } else if (currentFlow === 'flow_2') {
-        const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
+        const indexId = (user?.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null) || createdIndex?.id;
         if (indexId) {
           loadIntegrations();
         }
       }
     }
-  }, [currentStep, currentFlow, loadIntegrations, createdIndex?.id]);
+  }, [currentStep, currentFlow, loadIntegrations, createdIndex?.id, user?.id]);
 
   // Load index summary when reaching invite_members step and reload every second
   useEffect(() => {
@@ -379,7 +379,7 @@ export default function OnboardingPage() {
         const popup = typeof window !== 'undefined' ? window.open('', `oauth_${type}`, 'width=560,height=720') : null;
         
         // Get indexId from localStorage or createdIndex state
-        const indexId = localStorage.getItem('onboarding_created_index_id') || createdIndex?.id;
+        const indexId = (user?.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null) || createdIndex?.id;
         
         // indexId is required by the backend API
         if (!indexId) {
@@ -434,7 +434,7 @@ export default function OnboardingPage() {
     } finally {
       setPendingIntegration(null);
     }
-  }, [integrationsService, integrations, success, error, loadIntegrations, createdIndex?.id]);
+  }, [integrationsService, integrations, success, error, loadIntegrations, createdIndex?.id, user?.id]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
@@ -475,7 +475,7 @@ export default function OnboardingPage() {
   }, [api, linkUrl, success, error]);
 
   const handleCreateIndex = async () => {
-    if (!indexName.trim()) return;
+    if (!indexName.trim() || !user?.id) return;
     
     setIsLoading(true);
     try {
@@ -494,8 +494,8 @@ export default function OnboardingPage() {
       
       setCreatedIndex(indexData);
       
-      // Store only indexId in localStorage for future onboarding sessions
-      localStorage.setItem('onboarding_created_index_id', indexData.id);
+      // Store only indexId in localStorage for future onboarding sessions (user-specific)
+      localStorage.setItem(`onboarding:${user.id}:index`, indexData.id);
       
       success('Index created successfully!');
       setCurrentStep(getNextStep('create_index'));
@@ -521,13 +521,15 @@ export default function OnboardingPage() {
   };
 
   const handleCompleteOnboarding = async () => {
+    if (!user?.id) return;
+    
     try {
       setIsLoading(true);
-      // Mark onboarding as completed and clean up temporary data
-      localStorage.setItem('onboarding_completed', Date.now().toString());
+      // Mark onboarding as completed and clean up temporary data (user-specific)
+      localStorage.setItem(`onboarding:${user.id}:isCompleted`, Date.now().toString());
       
       // Clean up onboarding-specific localStorage items
-      localStorage.removeItem('onboarding_created_index_id');
+      localStorage.removeItem(`onboarding:${user.id}:index`);
       
       router.push('/inbox');
     } catch (error) {
