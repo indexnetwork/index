@@ -9,9 +9,10 @@ import { files } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc } from 'drizzle-orm';
 import { getUploadsPath } from '../lib/paths';
-import { processUploadedFiles } from '../lib/file-processing';
+import { processUploadedFiles } from '../lib/uploads';
 import { processFiles } from '../lib/integrations/files/processor';
 import type { IntegrationFile } from '../lib/integrations';
+import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD, createGeneralFileFilter, validateFiles } from '../lib/uploads';
 
 // Extend the Request interface to include generatedFileId
 declare global {
@@ -47,8 +48,10 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
+    fileSize: FILE_SIZE_LIMITS.GENERAL, // 10MB limit
+    files: MAX_FILES_PER_UPLOAD, // Max 10 files
   },
+  fileFilter: createGeneralFileFilter(),
 });
 
 // List files (user scoped)
@@ -140,6 +143,12 @@ router.post('/', authenticatePrivy, upload.single('file'),
 
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      // Additional validation (multer fileFilter handles basic validation)
+      const fileValidation = validateFiles([req.file], 'general');
+      if (!fileValidation.isValid) {
+        return res.status(400).json({ error: fileValidation.message });
       }
 
       const newFile = await db.insert(files).values({

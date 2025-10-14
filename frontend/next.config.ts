@@ -1,7 +1,20 @@
+import path from 'node:path';
 import type { NextConfig } from "next";
+
+const repoRoot = path.join(__dirname, '..');
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  transpilePackages: ['protocol'],
+  outputFileTracingRoot: repoRoot,
+  experimental: {
+    externalDir: true,
+  },
+  turbopack: {
+    resolveAlias: {
+      '@protocol/lib/uploads.config': 'protocol/src/lib/uploads.config.ts',
+    },
+  },
   images: {
     remotePatterns: [
       {

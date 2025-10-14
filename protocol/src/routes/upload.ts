@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import fs from 'fs';
 import { getUploadsPath } from '../lib/paths';
+import { FILE_SIZE_LIMITS, createAvatarFileFilter, validateFiles } from '../lib/uploads';
 
 const router = Router();
 
@@ -28,16 +29,9 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
+    fileSize: FILE_SIZE_LIMITS.AVATAR, // 4MB limit
   },
-  fileFilter: (req, file, cb) => {
-    // Only allow image files
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'));
-    }
-  }
+  fileFilter: createAvatarFileFilter(),
 });
 
 // Upload avatar endpoint
@@ -48,6 +42,12 @@ router.post('/avatar',
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      // Additional validation (multer fileFilter handles basic validation)
+      const fileValidation = validateFiles([req.file], 'avatar');
+      if (!fileValidation.isValid) {
+        return res.status(400).json({ error: fileValidation.message });
       }
 
       // Return just the filename - frontend will construct the full URL

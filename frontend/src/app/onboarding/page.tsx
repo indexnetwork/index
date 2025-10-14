@@ -16,6 +16,7 @@ import { useIndexService } from "@/services/indexes";
 import { useIntegrationsService } from "@/services/integrations";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import LibraryModal from "@/components/modals/LibraryModal";
+import { validateFiles, getAcceptString } from "@/lib/uploads";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
 type OnboardingFlow = 'flow_1' | 'flow_2';
@@ -291,6 +292,14 @@ export default function OnboardingPage() {
   const handleAvatarChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Validate avatar file
+      const validation = validateFiles([file], 'avatar');
+      if (!validation.isValid) {
+        error(validation.message || 'Invalid file');
+        e.target.value = '';
+        return;
+      }
+      
       setAvatarFile(file);
       const reader = new FileReader();
       reader.onload = () => setAvatarPreview(reader.result as string);
@@ -438,9 +447,18 @@ export default function OnboardingPage() {
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
+    
+    // Validate files before uploading
+    const files = Array.from(f);
+    const validation = validateFiles(files, 'general');
+    if (!validation.isValid) {
+      error(validation.message || 'Invalid file');
+      return;
+    }
+    
     setIsUploading(true);
     try {
-      const uploadedFiles = await Promise.all(Array.from(f).map(async file => {
+      const uploadedFiles = await Promise.all(files.map(async file => {
         const res = await api.uploadFile<{ file: { id: string; name: string; size: string; type: string } }>(`/files`, file);
         return res.file;
       }));
@@ -583,7 +601,7 @@ export default function OnboardingPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept={getAcceptString('avatar')}
                     onChange={handleAvatarChange}
                     className="hidden"
                   />
@@ -700,6 +718,7 @@ export default function OnboardingPage() {
                         type="file"
                         multiple
                         className="hidden"
+                        accept={getAcceptString('general')}
                         onChange={(e) => handleFilesSelected(e.target.files)}
                       />
                       <button

@@ -3,6 +3,21 @@
   "version": "0.1.0",
   "license": "MIT",
   "private": true,
+  "exports": {
+    "./package.json": "./package.json",
+    "./src/*": {
+      "types": "./src/*",
+      "default": "./src/*"
+    },
+    "./lib/uploads.config": {
+      "types": "./src/lib/uploads.config.ts",
+      "default": "./src/lib/uploads.config.ts"
+    },
+    "./lib/*": {
+      "types": "./src/lib/*.ts",
+      "default": "./src/lib/*.ts"
+    }
+  },
   "scripts": {
     "dev": "nodemon --inspect",
     "build": "tsc",

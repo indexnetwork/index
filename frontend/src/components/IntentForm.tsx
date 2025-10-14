@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Paperclip, Upload } from "lucide-react";
+import { validateFiles, getAcceptString, getUploadRequirements, formatFileSize } from "../lib/uploads";
+import { useNotifications } from "../contexts/NotificationContext";
 
 interface IntentFormProps {
   onSubmit: (data: { payload: string; files: File[]; vibeCheckIndex?: string }) => void;
@@ -24,6 +26,7 @@ export default function IntentForm({
   const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { error } = useNotifications();
 
   // Auto-resize textarea
   useEffect(() => {
@@ -43,12 +46,20 @@ export default function IntentForm({
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
+    
+    // Validate files before adding
+    const validation = validateFiles(selectedFiles, 'general');
+    if (!validation.isValid) {
+      error(validation.message || 'Invalid file');
+      return;
+    }
+    
     setFiles(prev => [...prev, ...selectedFiles]);
     // Reset input to allow selecting the same file again
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, []);
+  }, [error]);
 
   const handleRemoveFile = useCallback((index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
@@ -70,17 +81,18 @@ export default function IntentForm({
     
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (droppedFiles.length > 0) {
+      // Validate files before adding
+      const validation = validateFiles(droppedFiles, 'general');
+      if (!validation.isValid) {
+        error(validation.message || 'Invalid file');
+        return;
+      }
+      
       setFiles(prev => [...prev, ...droppedFiles]);
     }
-  }, []);
+  }, [error]);
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  // Use imported formatFileSize function
 
   const isValid = payload.trim() || files.length > 0;
 
@@ -98,8 +110,11 @@ export default function IntentForm({
             <label className="text-md font-bold text-gray-700">
               Upload any materials that help bring your work into focus:
             </label>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-gray-600 mb-2">
               Attach drafts, decks, notes, prototypes, or anything else that helps agents see the bigger picture.
+            </p>
+            <p className="text-xs text-gray-500 mb-4">
+              {getUploadRequirements('general')}
             </p>
             <div 
               className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors cursor-pointer ${
@@ -114,6 +129,7 @@ export default function IntentForm({
               className="hidden"
               id="file-upload-intent"
               multiple
+              accept={getAcceptString('general')}
               onChange={handleFileSelect}
               disabled={isSubmitting}
             />

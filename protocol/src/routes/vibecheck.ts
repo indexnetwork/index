@@ -9,9 +9,10 @@ import { intents, users, intentIndexes } from '../lib/schema';
 import { eq } from 'drizzle-orm';
 import { getIndexWithPermissions } from '../lib/index-access';
 import { vibeCheck } from '../agents/external/vibe_checker_text';
-import { processUploadedFiles } from '../lib/file-processing';
+import { processUploadedFiles } from '../lib/uploads';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { getTempPath } from '../lib/paths';
+import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD, createGeneralFileFilter, validateFiles } from '../lib/uploads';
 
 const router = Router();
 
@@ -35,31 +36,10 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
-    files: 10 // Max 10 files
+    fileSize: FILE_SIZE_LIMITS.GENERAL, // 10MB limit
+    files: MAX_FILES_PER_UPLOAD // Max 10 files
   },
-  fileFilter: function (req, file, cb) {
-    const allowedMimeTypes = [
-      'application/pdf', 'application/msword', 
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain', 'text/csv', 'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/json', 'text/markdown', 
-      'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'application/rtf'
-    ];
-    
-    const allowedTypes = /pdf|doc|docx|txt|csv|xlsx|xls|json|md|ppt|pptx|rtf/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedMimeTypes.includes(file.mimetype);
-
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(new Error('File type not allowed'));
-    }
-  }
+  fileFilter: createGeneralFileFilter(),
 });
 
 // Cleanup function to remove temporary files
@@ -224,6 +204,15 @@ router.post('/intent-suggestion',
       // Must have either files or payload
       if ((!uploadedFiles || uploadedFiles.length === 0) && !payload) {
         return res.status(400).json({ error: 'Must provide either files or payload' });
+      }
+
+      // Validate uploaded files
+      if (uploadedFiles && uploadedFiles.length > 0) {
+        const fileValidation = validateFiles(uploadedFiles, 'general');
+        if (!fileValidation.isValid) {
+          cleanupTempFiles(uploadedFiles);
+          return res.status(400).json({ error: fileValidation.message });
+        }
       }
 
       // If only payload, use it directly for intent generation

@@ -12,6 +12,7 @@ import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
+import { validateFiles, getAcceptString } from "../../lib/uploads";
 
 type Props = {
   open: boolean;
@@ -493,9 +494,18 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
+    
+    // Validate files before uploading
+    const files = Array.from(f);
+    const validation = validateFiles(files, 'general');
+    if (!validation.isValid) {
+      error(validation.message || 'Invalid file');
+      return;
+    }
+    
     setIsUploading(true);
     try {
-      const uploadedFiles = await Promise.all(Array.from(f).map(async file => {
+      const uploadedFiles = await Promise.all(files.map(async file => {
         const res = await api.uploadFile<{ file: { id: string; name: string; size: string; type: string; createdAt: string; url: string } }>(`/files`, file);
         return res.file;
       }));
@@ -514,7 +524,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [api, onChanged, loadLists, loadLibraryIntents]);
+  }, [api, onChanged, loadLists, loadLibraryIntents, error]);
 
   const handleAddLink = useCallback(async () => {
     if (!linkUrl) return;
@@ -845,6 +855,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       multiple
                       className="hidden"
                       id="library-file-upload"
+                      accept={getAcceptString('general')}
                       onChange={(e) => handleFilesSelected(e.target.files)}
                     />
                     <button

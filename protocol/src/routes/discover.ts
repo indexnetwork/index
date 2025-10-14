@@ -11,10 +11,11 @@ import db from '../lib/db';
 import { files, indexLinks } from '../lib/schema';
 import { eq } from 'drizzle-orm';
 import { getUploadsPath } from '../lib/paths';
-import { processUploadedFiles } from '../lib/file-processing';
+import { processUploadedFiles } from '../lib/uploads';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { analyzeObjects } from '../agents/core/intent_inferrer';
 import { IntentService } from '../services/intent-service';
+import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD, createGeneralFileFilter, validateFiles } from '../lib/uploads';
 
 const router = Router();
 
@@ -50,8 +51,10 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
+    fileSize: FILE_SIZE_LIMITS.GENERAL, // 10MB limit
+    files: MAX_FILES_PER_UPLOAD, // Max 10 files
   },
+  fileFilter: createGeneralFileFilter(),
 });
 
 // Helper function to validate URL
@@ -94,6 +97,14 @@ router.post('/new',
       // Must have either files or payload
       if ((!uploadedFiles || uploadedFiles.length === 0) && !payload) {
         return res.status(400).json({ error: 'Must provide either files or payload text' });
+      }
+
+      // Validate uploaded files
+      if (uploadedFiles && uploadedFiles.length > 0) {
+        const fileValidation = validateFiles(uploadedFiles, 'general');
+        if (!fileValidation.isValid) {
+          return res.status(400).json({ error: fileValidation.message });
+        }
       }
 
       const savedFileIds: string[] = [];
