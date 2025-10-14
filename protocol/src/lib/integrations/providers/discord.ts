@@ -19,9 +19,8 @@ export interface DiscordMessage {
 }
 import { getClient } from '../composio';
 import { log } from '../../log';
-import { analyzeObjects } from '../../../agents/core/intent_inferrer';
-import { IntentService } from '../../../services/intent-service';
 import { ensureIndexMembership } from '../membership-utils';
+import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
 
 // Shared function to get raw Discord messages
@@ -239,32 +238,18 @@ export async function processDiscordMessages(
       // Add user as index member if not already a member
       await ensureIndexMembership(createdUser.id, integration.indexId);
 
-      // Generate intents for this user
-      const existingIntents = await IntentService.getUserIntents(createdUser.id);
+      // Queue intent generation for this user
+      await addGenerateIntentsJob({
+        userId: createdUser.id,
+        sourceId: integration.id,
+        sourceType: 'integration',
+        objects: userMessages,
+        instruction: `Generate intents for Discord user "${createdUser.name}" based on their messages`,
+        indexId: integration.indexId,
+        intentCount: 3
+      }, 6);
       
-      const result = await analyzeObjects(
-        userMessages,
-        `Generate intents for Discord user "${createdUser.name}" based on their messages`,
-        Array.from(existingIntents),
-        3,
-        60000
-      );
-
-      if (result.success) {
-        for (const intentData of result.intents) {
-          if (!existingIntents.has(intentData.payload)) {
-            await IntentService.createIntent({
-              payload: intentData.payload,
-              userId: createdUser.id,
-              sourceId: integration.id,
-              sourceType: 'integration',
-              indexIds: [integration.indexId]
-            });
-            totalIntentsGenerated++;
-            existingIntents.add(intentData.payload);
-          }
-        }
-      }
+      totalIntentsGenerated++; // Count queued jobs
     } catch (error) {
       log.error('Failed to process Discord user', {
         discordUserId,

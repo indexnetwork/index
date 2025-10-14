@@ -1,7 +1,9 @@
-import { IndexIntentJob, BrokerJob, userQueueManager } from './llm-queue';
+import { IndexIntentJob, BrokerJob, GenerateIntentsJob, userQueueManager } from './llm-queue';
 import { intentIndexer } from '../../agents/core/intent_indexer';
 import { SemanticRelevancyBroker } from '../../agents/context_brokers/semantic_relevancy';
 import { getRedisClient } from '../redis';
+import { analyzeObjects, analyzeContent } from '../../agents/core/intent_inferrer';
+import { IntentService } from '../../services/intent-service';
 
 // Job history tracking interface
 export interface JobHistoryEntry {
@@ -194,6 +196,9 @@ export class QueueProcessor {
       case 'broker_semantic_relevancy':
         jobName = `Semantic Relevancy Pair`;
         break;
+      case 'generate_intents':
+        jobName = `Generate Intents`;
+        break;
       default:
         jobName = job.action;
     }
@@ -211,7 +216,10 @@ export class QueueProcessor {
     
     await this.addJobToHistory(historyEntry);
     
-    console.log(`${workerPrefix}🔄 Processing: ${job.action} for user ${userId} intent ${job.data.intentId} (priority: ${job.priority})`);
+    const jobDesc = job.action === 'generate_intents' 
+      ? `${job.action} for user ${userId} source ${(job.data as any).sourceId}`
+      : `${job.action} for user ${userId} intent ${(job.data as any).intentId}`;
+    console.log(`${workerPrefix}🔄 Processing: ${jobDesc} (priority: ${job.priority})`);
     
     try {
       switch (job.action) {
@@ -220,6 +228,9 @@ export class QueueProcessor {
           break;
         case 'broker_semantic_relevancy':
           await this.processBrokerJob(job as BrokerJob);
+          break;
+        case 'generate_intents':
+          await this.generateIntents(job as GenerateIntentsJob);
           break;
         default:
           console.warn(`${workerPrefix}Unknown action: ${job.action}`);
@@ -235,7 +246,10 @@ export class QueueProcessor {
         duration
       });
       
-      console.log(`${workerPrefix}✅ Completed: ${job.action} for user ${userId} intent ${job.data.intentId} (${duration}ms)`);
+      const completedDesc = job.action === 'generate_intents' 
+        ? `${job.action} for user ${userId} source ${(job.data as any).sourceId}`
+        : `${job.action} for user ${userId} intent ${(job.data as any).intentId}`;
+      console.log(`${workerPrefix}✅ Completed: ${completedDesc} (${duration}ms)`);
     } catch (error) {
       const completedAt = Date.now();
       const duration = completedAt - startTime;
@@ -248,7 +262,10 @@ export class QueueProcessor {
         error: error instanceof Error ? error.message : String(error)
       });
       
-      console.error(`${workerPrefix}❌ Failed: ${job.action} for user ${userId} intent ${job.data.intentId} (${duration}ms)`, error);
+      const failedDesc = job.action === 'generate_intents' 
+        ? `${job.action} for user ${userId} source ${(job.data as any).sourceId}`
+        : `${job.action} for user ${userId} intent ${(job.data as any).intentId}`;
+      console.error(`${workerPrefix}❌ Failed: ${failedDesc} (${duration}ms)`, error);
     }
   }
 
@@ -274,6 +291,52 @@ export class QueueProcessor {
         break;
       default:
         console.warn(`Unknown broker type: ${brokerType}`);
+    }
+  }
+
+  private async generateIntents(job: GenerateIntentsJob): Promise<void> {
+    const data = job.data;
+    
+    // Get existing intents
+    const existingIntents = await IntentService.getUserIntents(data.userId);
+    const count = data.intentCount ?? (data.sourceType === 'link' ? 1 : 5);
+    
+    let result;
+    if (data.content) {
+      // File/Link: use analyzeContent
+      result = await analyzeContent(
+        data.content,
+        1, // itemCount
+        data.instruction,
+        Array.from(existingIntents),
+        count,
+        60000
+      );
+    } else if (data.objects) {
+      // Integration: use analyzeObjects
+      result = await analyzeObjects(
+        data.objects,
+        data.instruction,
+        Array.from(existingIntents),
+        count,
+        60000
+      );
+    }
+    
+    // Create intents
+    if (result?.success) {
+      for (const intentData of result.intents) {
+        if (!existingIntents.has(intentData.payload)) {
+          await IntentService.createIntent({
+            payload: intentData.payload,
+            userId: data.userId,
+            sourceId: data.sourceId,
+            sourceType: data.sourceType,
+            indexIds: data.indexId ? [data.indexId] : []
+          });
+          existingIntents.add(intentData.payload);
+        }
+      }
     }
   }
 }

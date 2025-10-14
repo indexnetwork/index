@@ -1,11 +1,10 @@
 import type { IntegrationHandler } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
-import { analyzeObjects } from '../../../agents/core/intent_inferrer';
 import { resolveSlackUser } from '../../user-utils';
-import { IntentService } from '../../../services/intent-service';
 import { ensureIndexMembership } from '../membership-utils';
 import { getIntegrationById } from '../integration-utils';
+import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
 // Constants
 const CHANNEL_LIMIT = 200;
@@ -302,32 +301,18 @@ export async function processSlackMessages(
         isNewUser: userResolved.isNewUser
       });
 
-      // Generate intents for this user
-      const existingIntents = await IntentService.getUserIntents(userResolved.id);
+      // Queue intent generation for this user
+      await addGenerateIntentsJob({
+        userId: userResolved.id,
+        sourceId: integration.id,
+        sourceType: 'integration',
+        objects: userMessages,
+        instruction: `Generate intents for Slack user "${userResolved.name}" based on their messages`,
+        indexId: integration.indexId,
+        intentCount: MAX_INTENTS_PER_USER
+      }, 6);
       
-      const intentResult = await analyzeObjects(
-        userMessages,
-        `Generate intents for Slack user "${userResolved.name}" based on their messages`,
-        Array.from(existingIntents),
-        MAX_INTENTS_PER_USER,
-        INTENT_TIMEOUT
-      );
-
-      if (intentResult.success) {
-        for (const intentData of intentResult.intents) {
-          if (!existingIntents.has(intentData.payload)) {
-            await IntentService.createIntent({
-              payload: intentData.payload,
-              userId: userResolved.id,
-              sourceId: integration.id,
-              sourceType: 'integration',
-              indexIds: [integration.indexId]
-            });
-            totalIntentsGenerated++;
-            existingIntents.add(intentData.payload);
-          }
-        }
-      }
+      totalIntentsGenerated++; // Count queued jobs
     } catch (error) {
       log.error('Failed to process Slack user', {
         slackUserId,
