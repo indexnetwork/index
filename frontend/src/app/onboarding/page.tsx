@@ -353,7 +353,13 @@ export default function OnboardingPage() {
       if (response.user) {
         // Refetch user data in AuthContext to keep it in sync
         await refetchUser();
-        setCurrentStep(getNextStep('profile'));
+        
+        // For flow1, complete onboarding after profile step
+        if (currentFlow === 1) {
+          await handleCompleteOnboarding();
+        } else {
+          setCurrentStep(getNextStep('profile'));
+        }
       }
     } catch (err) {
       console.error('Error updating profile:', err);
