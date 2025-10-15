@@ -5,6 +5,8 @@
  * All validation functions work with primitive types to avoid runtime dependencies.
  */
 
+import path from 'path';
+
 // File size limits in bytes
 export const FILE_SIZE_LIMITS = {
   GENERAL: 10 * 1024 * 1024, // 10MB for general files
@@ -85,9 +87,8 @@ export function validateFileTypeByMetadata(
   mimetype: string,
   uploadType: UploadType
 ): ValidationResult {
-  // Extract extension properly, handling edge cases
-  const lastDotIndex = filename.lastIndexOf('.');
-  const ext = lastDotIndex > 0 ? filename.toLowerCase().substring(lastDotIndex) : '';
+  // Extract extension using path.extname for consistency
+  const ext = path.extname(filename).toLowerCase();
   const mimeType = mimetype.toLowerCase();
 
   if (uploadType === 'avatar') {

@@ -12,24 +12,17 @@ import { vibeCheck } from '../agents/external/vibe_checker_text';
 import { processUploadedFiles } from '../lib/uploads';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { getTempPath } from '../lib/paths';
-import { createUploadClient, validateFileUploads } from '../lib/uploads';
+import { createUploadClient, cleanupUploadedFiles } from '../lib/uploads';
 
 const router = Router();
 
-// Multer will be created per request in the route handler
-
-// Cleanup function to remove temporary files
-const cleanupTempFiles = (files: Express.Multer.File[]) => {
-  files.forEach(file => {
-    try {
-      if (fs.existsSync(file.path)) {
-        fs.unlinkSync(file.path);
-      }
-    } catch (error) {
-      console.warn(`Failed to cleanup temp file ${file.path}:`, error);
-    }
-  });
-};
+// ============================================================================
+// VIBE CHECK ROUTES
+// ============================================================================
+// This router handles vibe checking functionality, including:
+// - File uploads for intent generation and vibe checking
+// - Temporary file management for vibe check workflows
+// ============================================================================
 
 // Cleanup old temp files (24 hours)
 const cleanupOldTempFiles = () => {
@@ -111,7 +104,12 @@ const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: stri
     fileText = payloadText;
   } else {
     // Process uploaded files to extract text content
-    fileText = await processUploadedFiles(uploadedFiles);
+    const fileResult = await processUploadedFiles(uploadedFiles);
+    fileText = fileResult.content;
+    // Log any processing errors but don't fail the request
+    if (fileResult.errors.length > 0) {
+      console.warn('File processing errors:', fileResult.errors);
+    }
   }
   
   if (!fileText.trim()) {
@@ -179,7 +177,7 @@ router.post('/intent-suggestion',
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        cleanupTempFiles(uploadedFiles || []);
+        await cleanupUploadedFiles(uploadedFiles || []);
         return res.status(400).json({ errors: errors.array() });
       }
 
@@ -190,14 +188,7 @@ router.post('/intent-suggestion',
         return res.status(400).json({ error: 'Must provide either files or payload' });
       }
 
-      // Validate uploaded files
-      if (uploadedFiles && uploadedFiles.length > 0) {
-        const fileValidation = validateFileUploads(uploadedFiles, 'general');
-        if (!fileValidation.isValid) {
-          cleanupTempFiles(uploadedFiles);
-          return res.status(400).json({ error: fileValidation.message });
-        }
-      }
+      // Files are already validated by multer fileFilter and limits
 
       // If only payload, use it directly for intent generation
       if (payload && (!uploadedFiles || uploadedFiles.length === 0)) {
@@ -239,7 +230,7 @@ router.post('/intent-suggestion',
         );
 
         if (!intentInferResult.success) {
-          cleanupTempFiles(uploadedFiles);
+          await cleanupUploadedFiles(uploadedFiles);
           return res.status(500).json({ error: 'Intent generation failed' });
         }
 
@@ -259,7 +250,7 @@ router.post('/intent-suggestion',
            const vibeCheckResult = await performVibeCheck(uploadedFiles, indexCode);
            
            if (!vibeCheckResult.success) {
-             cleanupTempFiles(uploadedFiles);
+             await cleanupUploadedFiles(uploadedFiles);
              return res.status(vibeCheckResult.status || 500).json({ error: vibeCheckResult.error });
            }
 
@@ -276,7 +267,7 @@ router.post('/intent-suggestion',
       return res.status(400).json({ error: 'Invalid request parameters' });
 
     } catch (error) {
-      cleanupTempFiles(uploadedFiles || []);
+      await cleanupUploadedFiles(uploadedFiles || []);
       console.error('Intent suggestion error:', error);
       return res.status(500).json({ error: 'Failed to generate intent suggestions' });
     }

@@ -12,6 +12,15 @@ import { v4 as uuidv4 } from 'uuid';
 import { UnstructuredClient } from 'unstructured-client';
 import { Strategy } from 'unstructured-client/sdk/models/shared';
 import { getUploadsPath, getTempPath } from './paths';
+
+// Type extension for requests with generated file ID
+declare global {
+  namespace Express {
+    interface Request {
+      generatedFileId?: string;
+    }
+  }
+}
 import {
   FILE_SIZE_LIMITS,
   MAX_FILES_PER_UPLOAD,
@@ -163,21 +172,45 @@ export async function loadFilesInParallel(filePaths: string[]): Promise<Array<{ 
   return Promise.all(promises);
 }
 
-export async function processUploadedFiles(files: Express.Multer.File[]): Promise<string> {
+export async function processUploadedFiles(files: Express.Multer.File[]): Promise<{ content: string; errors: string[] }> {
   const contentParts: string[] = [];
+  const errors: string[] = [];
+  
   for (const file of files) {
     if (!isFileSupported(file.path)) {
-      console.log(`Skipping unsupported file: ${file.originalname}`);
+      const error = `Skipping unsupported file: ${file.originalname}`;
+      console.log(error);
+      errors.push(error);
       continue;
     }
     const result = await loadFileContent(file.path);
     if (result.content && result.content.trim()) {
       contentParts.push(`=== ${file.originalname} ===\n${result.content.substring(0, 5000)}`);
     } else if (result.error) {
-      console.warn(`Failed to process ${file.originalname}: ${result.error}`);
+      const error = `Failed to process ${file.originalname}: ${result.error}`;
+      console.warn(error);
+      errors.push(error);
     }
   }
-  return contentParts.join('\n\n');
+  
+  return {
+    content: contentParts.join('\n\n'),
+    errors
+  };
+}
+
+// ----- File Cleanup Utilities -----
+
+export async function cleanupUploadedFiles(files: Express.Multer.File[]): Promise<void> {
+  await Promise.all(
+    files.map(async (file) => {
+      try {
+        await fs.promises.unlink(file.path);
+      } catch (error) {
+        console.warn(`Failed to cleanup file ${file.path}:`, error);
+      }
+    })
+  );
 }
 
 // ----- Centralized Multer Factory -----
@@ -215,7 +248,7 @@ export function createUploadClient(
     filename: (req, file, cb) => {
       const fileId = uuidv4();
       const extension = path.extname(file.originalname);
-      (req as Express.Request & { generatedFileId?: string }).generatedFileId = fileId;
+      req.generatedFileId = fileId;
       cb(null, fileId + extension);
     }
   });

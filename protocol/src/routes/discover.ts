@@ -15,7 +15,7 @@ import { processUploadedFiles } from '../lib/uploads';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { analyzeObjects } from '../agents/core/intent_inferrer';
 import { IntentService } from '../services/intent-service';
-import { createUploadClient, validateFileUploads } from '../lib/uploads';
+import { createUploadClient, cleanupUploadedFiles } from '../lib/uploads';
 
 const router = Router();
 
@@ -79,23 +79,7 @@ router.post('/new',
         return res.status(400).json({ error: 'Must provide either files or payload text' });
       }
 
-      // Validate uploaded files
-      if (uploadedFiles && uploadedFiles.length > 0) {
-        const fileValidation = validateFileUploads(uploadedFiles, 'general');
-        if (!fileValidation.isValid) {
-          // Clean up uploaded files before returning error
-          await Promise.all(
-            uploadedFiles.map(async (file) => {
-              try {
-                await fs.promises.unlink(file.path);
-              } catch (unlinkError) {
-                console.warn(`Failed to remove invalid upload ${file.path}:`, unlinkError);
-              }
-            })
-          );
-          return res.status(400).json({ error: fileValidation.message });
-        }
-      }
+      // Files are already validated by multer fileFilter and limits
 
       const savedFileIds: string[] = [];
       const savedLinkIds: string[] = [];
@@ -121,9 +105,13 @@ router.post('/new',
         }
 
         // Process files to extract content
-        const fileContent = await processUploadedFiles(uploadedFiles);
-        if (fileContent.trim()) {
-          combinedContent += fileContent + '\n\n';
+        const fileResult = await processUploadedFiles(uploadedFiles);
+        if (fileResult.content.trim()) {
+          combinedContent += fileResult.content + '\n\n';
+        }
+        // Log any processing errors but don't fail the request
+        if (fileResult.errors.length > 0) {
+          console.warn('File processing errors:', fileResult.errors);
         }
       }
 

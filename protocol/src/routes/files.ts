@@ -12,7 +12,7 @@ import { getUploadsPath } from '../lib/paths';
 import { processUploadedFiles } from '../lib/uploads';
 import { processFiles } from '../lib/integrations/files/processor';
 import type { IntegrationFile } from '../lib/integrations';
-import { createUploadClient, validateFileUploads } from '../lib/uploads';
+import { createUploadClient, cleanupUploadedFiles } from '../lib/uploads';
 
 // Extend the Request interface to include generatedFileId
 declare global {
@@ -126,17 +126,7 @@ router.post('/', authenticatePrivy,
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      // Additional validation (multer fileFilter handles basic validation)
-      const fileValidation = validateFileUploads([req.file], 'general');
-      if (!fileValidation.isValid) {
-        // Clean up uploaded file before returning error
-        try {
-          await fs.promises.unlink(req.file.path);
-        } catch (unlinkError) {
-          console.warn(`Failed to remove invalid upload ${req.file.path}:`, unlinkError);
-        }
-        return res.status(400).json({ error: fileValidation.message });
-      }
+      // Files are already validated by multer fileFilter and limits
 
       const newFile = await db.insert(files).values({
         id: req.generatedFileId,
@@ -258,16 +248,19 @@ async function generateIntentsForUpload(options: {
   multerFile: Express.Multer.File;
 }) {
   const { userId, fileRecord, multerFile } = options;
-  const content = await processUploadedFiles([multerFile]);
-  if (!content.trim()) {
+  const fileResult = await processUploadedFiles([multerFile]);
+  if (!fileResult.content.trim()) {
     console.log(`🤖 Skipping intent generation for ${fileRecord.id} (no readable content)`);
+    if (fileResult.errors.length > 0) {
+      console.warn(`File processing errors for ${fileRecord.id}:`, fileResult.errors);
+    }
     return;
   }
 
   const uploadAsIntegrationFile: IntegrationFile = {
     id: fileRecord.id,
     name: fileRecord.name,
-    content,
+    content: fileResult.content,
     lastModified: new Date(),
     type: fileRecord.type,
     size: multerFile.size,

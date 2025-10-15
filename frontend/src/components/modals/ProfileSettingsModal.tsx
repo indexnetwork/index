@@ -9,6 +9,7 @@ import { X, Upload, Camera } from "lucide-react";
 import { User, AvatarUploadResponse, APIResponse } from "@/lib/types";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { getAvatarUrl } from "@/lib/file-utils";
+import { FILE_SIZE_LIMITS } from "protocol/lib/uploads.config";
 import Image from "next/image";
 
 interface ProfileSettingsModalProps {
@@ -81,10 +82,10 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check file size (5MB limit)
-      const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+      // Check file size (4MB limit)
+      const maxSize = FILE_SIZE_LIMITS.AVATAR;
       if (file.size > maxSize) {
-        setAvatarError('File size must be less than 5MB. Please choose a smaller image.');
+        setAvatarError('File size must be less than 4MB. Please choose a smaller image.');
         e.target.value = ''; // Clear the input
         return;
       }
