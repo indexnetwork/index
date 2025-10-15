@@ -173,7 +173,7 @@ export async function evaluateIntentAppropriation(
     
     // If no prompts available, return 0 appropriation
     if (!indexPrompt && !memberPrompt) {
-      return 0.0;
+      return 1;
     }
     
     // If only member prompt available (no index prompt), evaluate it directly
