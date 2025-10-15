@@ -55,7 +55,7 @@ async function fetchFiles(integrationId: string, lastSyncAt?: Date): Promise<Int
 
     const query = ['in:sent', lastSyncAt ? after(lastSyncAt) : undefined].filter(Boolean).join(' ');
     const args: any = { user_id: 'me', query, max_results: 100, include_payload: true, ids_only: false };
-    const resp = await composio.tools.execute('GMAIL_FETCH_EMAILS', { connectedAccountId, arguments: args });
+    const resp = await composio.tools.execute('GMAIL_FETCH_EMAILS', { userId: integration.userId, connectedAccountId, arguments: args });
     const data = (resp as any)?.data ?? resp;
     const messages: GmailMessage[] = data?.messages || data?.details?.messages || data?.items || [];
     if (!Array.isArray(messages) || !messages.length) return [];

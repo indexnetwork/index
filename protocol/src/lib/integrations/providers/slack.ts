@@ -86,12 +86,20 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 
+    console.log('Slack channels response', { 
+      connectedAccountId, 
+      arguments: { limit: CHANNEL_LIMIT } 
+    });
+
     // Fetch channels
     const channels: SlackChannel[] = [];
     const channelsResp = await composio.tools.execute('SLACK_LIST_ALL_CHANNELS', { 
+      userId: integration.userId,
       connectedAccountId, 
       arguments: { limit: CHANNEL_LIMIT } 
     }) as SlackApiResponse;
+
+    
     const channelList = channelsResp?.data?.channels || [];
     for (const ch of channelList) {
       if (ch?.id && !channels.find((c) => c.id === ch.id)) {
@@ -112,6 +120,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
       
       do {
         const usersResp = await composio.tools.execute('SLACK_LIST_ALL_USERS', {
+          userId: integration.userId,
           connectedAccountId,
           arguments: { 
             limit: USER_LIMIT,
@@ -202,7 +211,10 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
       const args: any = { channel: channelId, include_all_metadata: true };
       if (lastSyncAt) args.oldest = (lastSyncAt.getTime() / 1000).toString();
 
+      console.log('Fetching Slack conversation history', { args , connectedAccountId});
+
       const history = await composio.tools.execute('SLACK_FETCH_CONVERSATION_HISTORY', { 
+        userId: integration.userId,
         connectedAccountId, 
         arguments: args 
       }) as SlackApiResponse;

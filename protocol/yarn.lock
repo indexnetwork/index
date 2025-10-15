@@ -672,34 +672,30 @@
   resolved "https://registry.npmjs.org/@commander-js/extra-typings/-/extra-typings-13.1.0.tgz"
   integrity sha512-q5P52BYb1hwVWE6dtID7VvuJWrlfbCv4klj7BjUUOqMz4jbSZD4C9fJ9lRjL2jnBGTg+gDDlaXN51rkWcLk4fg==
 
-"@composio/client@0.1.0-alpha.31":
-  version "0.1.0-alpha.31"
-  resolved "https://registry.npmjs.org/@composio/client/-/client-0.1.0-alpha.31.tgz"
-  integrity sha512-DVPVCMDXzoQn1aUZx38e8s5+gA/J/c6FpVfS1rzUnMKCRSuXXrOoKXFAvoRME5pcaKN2Wjux5ARyvIPBugNoMA==
+"@composio/client@0.1.0-alpha.37":
+  version "0.1.0-alpha.37"
+  resolved "https://registry.yarnpkg.com/@composio/client/-/client-0.1.0-alpha.37.tgz#24ed8e4da379a3d91184597e8c9b2e118ad89905"
+  integrity sha512-2YzXiRXlxqOgEz7nEh1aKdJ9vwQRb69+RX6UH+LTDmuTwW+pOjI2qbhIBxTbP2z9e2SyHVG0/AtMxc9tR5jU0w==
 
-"@composio/core@^0.1.44":
-  version "0.1.46"
-  resolved "https://registry.npmjs.org/@composio/core/-/core-0.1.46.tgz"
-  integrity sha512-jI2tHnGWuEMXiiQuMws2HYzKHbXRKLPMDue5mz4LpA//HeP5NtXejpHlEvsNjFP7UG8eHyJgHTheKlJCd/VVjA==
+"@composio/core@^0.1.55":
+  version "0.1.55"
+  resolved "https://registry.yarnpkg.com/@composio/core/-/core-0.1.55.tgz#0e3e80afffd52db35f7fb1a03ab0ee2e339f7e2e"
+  integrity sha512-GLSWTS/gZeycQ7W2wSZQ21DKV+LC6WTAilhSj+JG9Apslx3re9luF1Lyblm4UMSf4DzYWKOrtipwQOaeg7bmTg==
   dependencies:
-    "@composio/client" "0.1.0-alpha.31"
-    "@composio/json-schema-to-zod" "0.1.13"
+    "@composio/client" "0.1.0-alpha.37"
+    "@composio/json-schema-to-zod" "0.1.16"
     "@types/json-schema" "^7.0.15"
     chalk "^4.1.2"
-    openai "^4.94.0"
+    openai "^5.16.0"
     pusher-js "^8.4.0"
     semver "^7.7.2"
-    uuid "^11.1.0"
-    zod "^3.24.2"
+    uuid "^13.0.0"
     zod-to-json-schema "^3.24.5"
 
-"@composio/json-schema-to-zod@0.1.13":
-  version "0.1.13"
-  resolved "https://registry.npmjs.org/@composio/json-schema-to-zod/-/json-schema-to-zod-0.1.13.tgz"
-  integrity sha512-M/pppyhshlWB/5S6hjocFYYFCm9sFK1y9dTm70MpYl2EGJtpYDgwUeS9cFIzml+Iw/MUebr0wCJ0c+jOYeDU/A==
-  dependencies:
-    "@types/json-schema" "^7.0.15"
-    zod "^3.24.2"
+"@composio/json-schema-to-zod@0.1.16":
+  version "0.1.16"
+  resolved "https://registry.yarnpkg.com/@composio/json-schema-to-zod/-/json-schema-to-zod-0.1.16.tgz#9167741f160f3a17c7a32eacd4d6702f2e934eeb"
+  integrity sha512-vu6RUQTWDW/0wLDWsQHtWJ97JsnMjA1olTQwVD88BAtKZTdDLuzjnGRxSllxp5JG/GntnovUphraZWcWfe80eQ==
 
 "@composio/mcp@1.0.3-0":
   version "1.0.3-0"
@@ -2920,9 +2916,9 @@ autoprefixer@^10.4.20:
     picocolors "^1.1.1"
     postcss-value-parser "^4.2.0"
 
-axios@^1.7.2:
+axios@^1.6.0, axios@^1.7.2:
   version "1.12.2"
-  resolved "https://registry.npmjs.org/axios/-/axios-1.12.2.tgz"
+  resolved "https://registry.yarnpkg.com/axios/-/axios-1.12.2.tgz#6c307390136cf7a2278d09cec63b136dfc6e6da7"
   integrity sha512-vMJzPewAlRyOgxV2dU0Cuz2O8zzzx9VYtbJOaBgXFeLc4IV/Eg50n4LowmehOOR61S8ZMpc2K5Sa7g6A4jfkUw==
   dependencies:
     follow-redirects "^1.15.6"
@@ -5205,7 +5201,7 @@ openai@5.12.2:
   resolved "https://registry.yarnpkg.com/openai/-/openai-5.12.2.tgz#512ab6b80eb8414837436e208f1b951442b97761"
   integrity sha512-xqzHHQch5Tws5PcKR2xsZGX9xtch+JQFz5zb14dGqlshmmDAFBFEWmeIpf7wVqWV+w7Emj7jRgkNJakyKE0tYQ==
 
-openai@^4.103.0, openai@^4.94.0, openai@^4.96.0:
+openai@^4.103.0, openai@^4.96.0:
   version "4.104.0"
   resolved "https://registry.npmjs.org/openai/-/openai-4.104.0.tgz"
   integrity sha512-p99EFNsA/yX6UhVO93f5kJsDRLAg+CTA2RBqdHK4RtK8u5IJw32Hyb2dTGKbnnFmnuoBv5r7Z2CURI9sGZpSuA==
@@ -5217,6 +5213,11 @@ openai@^4.103.0, openai@^4.94.0, openai@^4.96.0:
     form-data-encoder "1.7.2"
     formdata-node "^4.3.2"
     node-fetch "^2.6.7"
+
+openai@^5.16.0:
+  version "5.23.2"
+  resolved "https://registry.yarnpkg.com/openai/-/openai-5.23.2.tgz#f13e2dc2ef6b88aab6a9b97cdc68d41a1d083c68"
+  integrity sha512-MQBzmTulj+MM5O8SKEk/gL8a7s5mktS9zUtAkU257WjvobGc9nKcBuVwjyEEcb9SI8a8Y2G/mzn3vm9n1Jlleg==
 
 openapi-types@^12.1.3:
   version "12.1.3"
@@ -6312,6 +6313,11 @@ uuid@^11.1.0:
   resolved "https://registry.npmjs.org/uuid/-/uuid-11.1.0.tgz"
   integrity sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==
 
+uuid@^13.0.0:
+  version "13.0.0"
+  resolved "https://registry.yarnpkg.com/uuid/-/uuid-13.0.0.tgz#263dc341b19b4d755eb8fe36b78d95a6b65707e8"
+  integrity sha512-XQegIaBTVUjSHliKqcnFqYypAd4S+WCYt5NIeRs6w/UAry7z8Y9j5ZwRRL4kzq9U3sD6v+85er9FvkEaBpji2w==
+
 uuid@^8.3.2:
   version "8.3.2"
   resolved "https://registry.npmjs.org/uuid/-/uuid-8.3.2.tgz"
@@ -6544,7 +6550,7 @@ zod-to-json-schema@^3.22.3, zod-to-json-schema@^3.22.5, zod-to-json-schema@^3.23
   resolved "https://registry.npmjs.org/zod-to-json-schema/-/zod-to-json-schema-3.24.5.tgz"
   integrity sha512-/AuWwMP+YqiPbsJx5D6TfgRTc4kTLjsh5SOcd4bLsfUg2RcEXrFMJl1DGgdHy2aCfsIA/cr/1JM0xcB2GZji8g==
 
-zod@^3.22.3, zod@^3.22.4, zod@^3.23.8, zod@^3.24.2, zod@^3.24.3, zod@^3.25.32:
+zod@^3.22.3, zod@^3.22.4, zod@^3.23.8, zod@^3.24.3, zod@^3.25.32:
   version "3.25.76"
   resolved "https://registry.npmjs.org/zod/-/zod-3.25.76.tgz"
   integrity sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==

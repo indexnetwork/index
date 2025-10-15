@@ -7,20 +7,9 @@ import { userIntegrations, indexes, indexMembers } from '../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { runSync } from '../lib/sync';
 import { INTEGRATIONS } from '../lib/integrations/config';
+import { getClient } from '../lib/integrations/composio';
 
 const router = Router();
-
-// Initialize Composio SDK dynamically
-let composio: any;
-const initComposio = async () => {
-  if (!composio) {
-    const { Composio } = await import('@composio/core');
-    composio = new Composio({
-      apiKey: process.env.COMPOSIO_API_KEY
-    });
-  }
-  return composio;
-};
 
 // Use centralized integration config
 const INTEGRATION_MAPPINGS = Object.fromEntries(
@@ -109,7 +98,7 @@ router.post('/connect/:integrationType',
       const userId = req.user!.id;
       const integrationType = req.params.integrationType;
       const indexId = req.body.indexId;
-      const integrationConfig = INTEGRATION_MAPPINGS[integrationType as keyof typeof INTEGRATION_MAPPINGS];
+      const integrationConfig = INTEGRATIONS[integrationType as keyof typeof INTEGRATIONS];
 
       // Validate indexId access
       const indexExists = await db.select({ id: indexes.id })
@@ -142,8 +131,15 @@ router.post('/connect/:integrationType',
       }
 
       // Initiate OAuth connection with Composio
-      const composioClient = await initComposio();
-      const connection = await composioClient.toolkits.authorize(userId, integrationConfig.toolkit);
+      const composioClient = await getClient();
+      if (!integrationConfig.toolkit) {
+        return res.status(400).json({ error: 'Integration toolkit not configured' });
+      }
+      const connection = await composioClient.toolkits.authorize(
+        userId, 
+        integrationConfig.toolkit,
+        integrationConfig.authConfigId
+      );
 
       // Store integration record in database
       const [integrationRecord] = await db.insert(userIntegrations).values({
@@ -208,15 +204,18 @@ router.get('/:integrationId/status',
       // Check connection status with Composio if pending
       if (integrationRecord.status === 'pending' && integrationRecord.connectedAccountId) {
         try {
-          const composio = await initComposio();
+          const composio = await getClient();
           
           // Check the specific connected account status
           const connectedAccounts = await composio.connectedAccounts.list({
-            connectedAccountIds: [integrationRecord.connectedAccountId]
+            userIds: [userId]
           });
           
-          const connectionStatus = connectedAccounts?.items?.[0];
-          if (connectionStatus && (connectionStatus.status === 'ACTIVE' || connectionStatus.status === 'CONNECTED')) {
+          // Find the specific connected account by ID
+          const connectionStatus = connectedAccounts?.items?.find(
+            (acc: any) => acc.id === integrationRecord.connectedAccountId
+          );
+          if (connectionStatus && connectionStatus.status === 'ACTIVE') {
             // This connection is now active
             await db.update(userIntegrations)
               .set({
@@ -295,7 +294,7 @@ router.delete('/:integrationId',
       // Disconnect from Composio using the stored connectedAccountId
       if (integrationRecord.connectedAccountId) {
         try {
-          const composioClient = await initComposio();
+          const composioClient = await getClient();
           await composioClient.connectedAccounts.delete(integrationRecord.connectedAccountId);
           log.info('Disconnected from Composio', { 
             integrationId,

@@ -39,6 +39,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
 
     // Search pages sorted by last_edited_time desc
     const search = await composio.tools.execute('NOTION_SEARCH_NOTION_PAGE', {
+      userId: integration.userId,
       connectedAccountId,
       arguments: {
         query: '',
@@ -60,6 +61,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
 
       try {
         const blocksResp = await composio.tools.execute('NOTION_FETCH_BLOCK_CONTENTS', {
+          userId: integration.userId,
           connectedAccountId,
           arguments: { block_id: item.id, page_size: 100 },
         });

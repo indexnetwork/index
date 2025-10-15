@@ -43,16 +43,17 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
 
     // Get the connected account details by listing with the specific ID
     const accounts = await composio.connectedAccounts.list({
-      connectedAccountIds: [connectedAccountId]
+      userIds: [integration.userId]
     });
-    const account = accounts?.items?.[0];
+    // Find the specific connected account by ID
+    const account = accounts?.items?.find((acc: any) => acc.id === connectedAccountId);
     if (!account) {
       log.error('Connected account not found', { connectedAccountId, integrationId });
       return [];
     }
 
     // Get guild information from the connected account data
-    const guild = account.data?.guild;
+    const guild = (account as any).data?.guild;
     if (!guild?.id) {
       log.info('No guild found in connected account', { integrationId });
       return [];
@@ -62,6 +63,7 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
     const channels: Array<{ id: string; name?: string }> = [];
     
     const guildChannels = await composio.tools.execute('DISCORDBOT_LIST_GUILD_CHANNELS', {
+      userId: integration.userId,
       connectedAccountId,
       arguments: { guild_id: guild.id }
     });
@@ -95,11 +97,12 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
       }
 
       const messages = await composio.tools.execute('DISCORDBOT_LIST_MESSAGES', { 
+        userId: integration.userId,
         connectedAccountId,
         arguments: args
       });
 
-      const messageList = messages?.data?.details || [];
+      const messageList = (messages as any)?.data?.details || [];
       messagesTotal += messageList.length;
 
       for (const msg of messageList) {
