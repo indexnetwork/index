@@ -5,7 +5,7 @@ export interface IntegrationConfig {
   authConfigId?: string;
 }
 
-export const INTEGRATIONS: Record<string, IntegrationConfig> = {
+export const INTEGRATIONS = {
   notion: { 
     name: 'notion', 
     displayName: 'Notion', 
@@ -30,9 +30,9 @@ export const INTEGRATIONS: Record<string, IntegrationConfig> = {
     toolkit: 'LINKEDIN',
     authConfigId: process.env.COMPOSIO_AUTH_CONFIG_LINKEDIN
   },
-};
+} as const satisfies Record<string, IntegrationConfig>;
 
-export type IntegrationName = 'notion' | 'slack' | 'discord' | 'linkedin';
+export type IntegrationName = keyof typeof INTEGRATIONS;
 
 export const SYNC_PROVIDERS = {
   links: { name: 'links', displayName: 'Links' },
