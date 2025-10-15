@@ -5,7 +5,7 @@ import { Paperclip, Radio } from "lucide-react";
 import { useAPI } from "@/contexts/APIContext";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { validateFiles, getAcceptString } from "../lib/uploads";
+import { validateFileUploads, getSupportedFileExtensions } from "../lib/uploads";
 
 interface DiscoveryFormProps {
   onRequestsClick: () => void;
@@ -41,7 +41,7 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
     const file = event.target.files?.[0];
     if (file) {
       // Validate file before adding
-      const validation = validateFiles([file], 'general');
+      const validation = validateFileUploads([file], 'general');
       if (!validation.isValid) {
         error(validation.message || 'Invalid file');
         event.target.value = '';
@@ -572,7 +572,7 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
                       type="file"
                       onChange={handleFileSelect}
                       className="hidden"
-                      accept={getAcceptString('general')}
+                      accept={getSupportedFileExtensions('general')}
                     />
                     <p className="text-xs text-gray-500 font-ibm-plex-mono">
                       upload your pitch deck, one-pager, or paste a link.

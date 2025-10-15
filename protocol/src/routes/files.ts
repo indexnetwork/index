@@ -12,7 +12,7 @@ import { getUploadsPath } from '../lib/paths';
 import { processUploadedFiles } from '../lib/uploads';
 import { processFiles } from '../lib/integrations/files/processor';
 import type { IntegrationFile } from '../lib/integrations';
-import { createUploadClient, validateFiles } from '../lib/uploads';
+import { createUploadClient, validateFileUploads } from '../lib/uploads';
 
 // Extend the Request interface to include generatedFileId
 declare global {
@@ -127,7 +127,7 @@ router.post('/', authenticatePrivy,
       }
 
       // Additional validation (multer fileFilter handles basic validation)
-      const fileValidation = validateFiles([req.file], 'general');
+      const fileValidation = validateFileUploads([req.file], 'general');
       if (!fileValidation.isValid) {
         // Clean up uploaded file before returning error
         try {

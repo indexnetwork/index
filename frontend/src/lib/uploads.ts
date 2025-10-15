@@ -28,7 +28,7 @@ export const validateFileCount = (files: File[]): ValidationResult =>
 export const validateFile = (file: File, uploadType: UploadType = 'general'): ValidationResult =>
   validateFileByMetadata(file.name, file.type, file.size, uploadType);
 
-export const validateFiles = (files: File[], uploadType: UploadType = 'general'): ValidationResult =>
+export const validateFileUploads = (files: File[], uploadType: UploadType = 'general'): ValidationResult =>
   validateFilesByMetadata(
     files.map(f => ({ filename: f.name, mimetype: f.type, size: f.size })),
     uploadType
@@ -44,12 +44,12 @@ export const formatFileSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-export const getAcceptString = (uploadType: UploadType = 'general'): string =>
+export const getSupportedFileExtensions = (uploadType: UploadType = 'general'): string =>
   uploadType === 'avatar' 
     ? SUPPORTED_FILE_TYPES.IMAGES.extensions.join(',')
     : GENERAL_ALLOWED_TYPES.extensions.join(',');
 
-export const getSupportedFilesHelpText = (uploadType: UploadType = 'general'): string => {
+export const getSupportedFileTypesDisplayText = (uploadType: UploadType = 'general'): string => {
   if (uploadType === 'avatar') {
     const extensions = SUPPORTED_FILE_TYPES.IMAGES.extensions
       .map(ext => ext.toUpperCase().slice(1)) // Remove dot and uppercase

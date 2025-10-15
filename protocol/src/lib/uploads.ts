@@ -41,7 +41,7 @@ export const validateFileCount = (files: Express.Multer.File[]): ValidationResul
 export const validateFile = (file: Express.Multer.File, uploadType: UploadType = 'general'): ValidationResult =>
   validateFileByMetadata(file.originalname, file.mimetype, file.size, uploadType);
 
-export const validateFiles = (files: Express.Multer.File[], uploadType: UploadType = 'general'): ValidationResult =>
+export const validateFileUploads = (files: Express.Multer.File[], uploadType: UploadType = 'general'): ValidationResult =>
   validateFilesByMetadata(
     files.map(f => ({ filename: f.originalname, mimetype: f.mimetype, size: f.size })),
     uploadType
@@ -72,7 +72,7 @@ export function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-export function getAcceptString(uploadType: 'general' | 'avatar' = 'general'): string {
+export function getSupportedFileExtensions(uploadType: 'general' | 'avatar' = 'general'): string {
   if (uploadType === 'avatar') {
     return SUPPORTED_FILE_TYPES.IMAGES.extensions.join(',');
   }

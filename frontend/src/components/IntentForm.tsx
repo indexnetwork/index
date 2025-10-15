@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Paperclip, Upload } from "lucide-react";
-import { validateFiles, getAcceptString, formatFileSize } from "../lib/uploads";
+import { validateFileUploads, getSupportedFileExtensions, formatFileSize } from "../lib/uploads";
 import { useNotifications } from "../contexts/NotificationContext";
 
 interface IntentFormProps {
@@ -49,7 +49,7 @@ export default function IntentForm({
     
     // Validate against the combined file array to enforce cumulative constraints
     const nextFiles = [...files, ...selectedFiles];
-    const validation = validateFiles(nextFiles, 'general');
+    const validation = validateFileUploads(nextFiles, 'general');
     if (!validation.isValid) {
       error(validation.message || 'Invalid file');
       return;
@@ -84,7 +84,7 @@ export default function IntentForm({
     if (droppedFiles.length > 0) {
       // Validate against the combined file array to enforce cumulative constraints
       const nextFiles = [...files, ...droppedFiles];
-      const validation = validateFiles(nextFiles, 'general');
+      const validation = validateFileUploads(nextFiles, 'general');
       if (!validation.isValid) {
         error(validation.message || 'Invalid file');
         return;
@@ -131,7 +131,7 @@ export default function IntentForm({
               className="hidden"
               id="file-upload-intent"
               multiple
-              accept={getAcceptString('general')}
+              accept={getSupportedFileExtensions('general')}
               onChange={handleFileSelect}
               disabled={isSubmitting}
             />

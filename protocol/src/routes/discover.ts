@@ -15,7 +15,7 @@ import { processUploadedFiles } from '../lib/uploads';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { analyzeObjects } from '../agents/core/intent_inferrer';
 import { IntentService } from '../services/intent-service';
-import { createUploadClient, validateFiles } from '../lib/uploads';
+import { createUploadClient, validateFileUploads } from '../lib/uploads';
 
 const router = Router();
 
@@ -81,7 +81,7 @@ router.post('/new',
 
       // Validate uploaded files
       if (uploadedFiles && uploadedFiles.length > 0) {
-        const fileValidation = validateFiles(uploadedFiles, 'general');
+        const fileValidation = validateFileUploads(uploadedFiles, 'general');
         if (!fileValidation.isValid) {
           // Clean up uploaded files before returning error
           await Promise.all(

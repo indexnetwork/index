@@ -12,7 +12,7 @@ import { vibeCheck } from '../agents/external/vibe_checker_text';
 import { processUploadedFiles } from '../lib/uploads';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { getTempPath } from '../lib/paths';
-import { createUploadClient, validateFiles } from '../lib/uploads';
+import { createUploadClient, validateFileUploads } from '../lib/uploads';
 
 const router = Router();
 
@@ -192,7 +192,7 @@ router.post('/intent-suggestion',
 
       // Validate uploaded files
       if (uploadedFiles && uploadedFiles.length > 0) {
-        const fileValidation = validateFiles(uploadedFiles, 'general');
+        const fileValidation = validateFileUploads(uploadedFiles, 'general');
         if (!fileValidation.isValid) {
           cleanupTempFiles(uploadedFiles);
           return res.status(400).json({ error: fileValidation.message });

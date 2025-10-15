@@ -12,7 +12,7 @@ import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
-import { validateFiles, getAcceptString } from "../../lib/uploads";
+import { validateFileUploads, getSupportedFileExtensions } from "../../lib/uploads";
 
 type Props = {
   open: boolean;
@@ -497,7 +497,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     
     // Validate files before uploading
     const files = Array.from(f);
-    const validation = validateFiles(files, 'general');
+    const validation = validateFileUploads(files, 'general');
     if (!validation.isValid) {
       error(validation.message || 'Invalid file');
       return;
@@ -855,7 +855,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       multiple
                       className="hidden"
                       id="library-file-upload"
-                      accept={getAcceptString('general')}
+                      accept={getSupportedFileExtensions('general')}
                       onChange={(e) => handleFilesSelected(e.target.files)}
                     />
                     <button

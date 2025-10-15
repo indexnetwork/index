@@ -16,7 +16,7 @@ import { useIndexService } from "@/services/indexes";
 import { useIntegrationsService } from "@/services/integrations";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import LibraryModal from "@/components/modals/LibraryModal";
-import { validateFiles, getAcceptString } from "@/lib/uploads";
+import { validateFileUploads, getSupportedFileExtensions } from "@/lib/uploads";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
 type OnboardingFlow = 'flow_1' | 'flow_2';
@@ -293,7 +293,7 @@ export default function OnboardingPage() {
     const file = e.target.files?.[0];
     if (file) {
       // Validate avatar file
-      const validation = validateFiles([file], 'avatar');
+      const validation = validateFileUploads([file], 'avatar');
       if (!validation.isValid) {
         error(validation.message || 'Invalid file');
         e.target.value = '';
@@ -450,7 +450,7 @@ export default function OnboardingPage() {
     
     // Validate files before uploading
     const files = Array.from(f);
-    const validation = validateFiles(files, 'general');
+    const validation = validateFileUploads(files, 'general');
     if (!validation.isValid) {
       error(validation.message || 'Invalid file');
       return;
@@ -601,7 +601,7 @@ export default function OnboardingPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept={getAcceptString('avatar')}
+                    accept={getSupportedFileExtensions('avatar')}
                     onChange={handleAvatarChange}
                     className="hidden"
                   />
@@ -718,7 +718,7 @@ export default function OnboardingPage() {
                         type="file"
                         multiple
                         className="hidden"
-                        accept={getAcceptString('general')}
+                        accept={getSupportedFileExtensions('general')}
                         onChange={(e) => handleFilesSelected(e.target.files)}
                       />
                       <button

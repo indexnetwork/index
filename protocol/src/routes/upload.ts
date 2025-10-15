@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import fs from 'fs';
 import { getUploadsPath } from '../lib/paths';
-import { createUploadClient, validateFiles } from '../lib/uploads';
+import { createUploadClient, validateFileUploads } from '../lib/uploads';
 
 const router = Router();
 
@@ -29,7 +29,7 @@ router.post('/avatar',
       }
 
       // Additional validation (multer fileFilter handles basic validation)
-      const fileValidation = validateFiles([req.file], 'avatar');
+      const fileValidation = validateFileUploads([req.file], 'avatar');
       if (!fileValidation.isValid) {
         // Clean up uploaded file before returning error
         try {

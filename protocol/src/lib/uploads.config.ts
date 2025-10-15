@@ -177,7 +177,7 @@ export function validateFilesByMetadata(
   return { isValid: true };
 }
 
-export function getSupportedFilesHelpText(uploadType: UploadType = 'general'): string {
+export function getSupportedFileTypesDisplayText(uploadType: UploadType = 'general'): string {
   if (uploadType === 'avatar') {
     const extensions = SUPPORTED_FILE_TYPES.IMAGES.extensions
       .map(ext => ext.toUpperCase().slice(1)) // Remove dot and uppercase
