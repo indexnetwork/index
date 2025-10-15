@@ -15,8 +15,7 @@ import { processUploadedFiles } from '../lib/uploads';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { analyzeObjects } from '../agents/core/intent_inferrer';
 import { IntentService } from '../services/intent-service';
-import { createGeneralFileFilter, validateFiles } from '../lib/uploads';
-import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from '../lib/uploads.config';
+import { createUploadClient, validateFiles } from '../lib/uploads';
 
 const router = Router();
 
@@ -29,34 +28,7 @@ declare global {
   }
 }
 
-// Configure multer for file uploads (permanent storage)
-const baseUploadDir = getUploadsPath('files');
-if (!fs.existsSync(baseUploadDir)) fs.mkdirSync(baseUploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const userId = (req as AuthRequest).user!.id;
-    const userDir = getUploadsPath('files', userId);
-    if (!fs.existsSync(userDir)) fs.mkdirSync(userDir, { recursive: true });
-    cb(null, userDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate UUID that will be used as file ID
-    const fileId = uuidv4();
-    const extension = path.extname(file.originalname);
-    req.generatedFileId = fileId;
-    cb(null, fileId + extension);
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: {
-    fileSize: FILE_SIZE_LIMITS.GENERAL, // 10MB limit
-    files: MAX_FILES_PER_UPLOAD, // Max 10 files
-  },
-  fileFilter: createGeneralFileFilter(),
-});
+// Multer will be created per request in the route handler
 
 // Helper function to validate URL
 function isValidUrlCandidate(u: string): boolean {
@@ -78,7 +50,14 @@ function extractUrlsFromText(text: string): string[] {
 // 🚀 Route: Process discovery form - upload files, extract URLs, and generate intents
 router.post('/new',
   authenticatePrivy,
-  upload.array('files', 10),
+  (req: AuthRequest, res: Response, next: any) => {
+    try {
+      const upload = createUploadClient('discovery', req.user!.id);
+      upload.array('files', 10)(req, res, next);
+    } catch (error) {
+      next(error);
+    }
+  },
   [body('payload').optional().isString()],
   async (req: AuthRequest, res: Response) => {
     const uploadedFiles = req.files as Express.Multer.File[];

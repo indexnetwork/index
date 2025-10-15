@@ -12,36 +12,11 @@ import { vibeCheck } from '../agents/external/vibe_checker_text';
 import { processUploadedFiles } from '../lib/uploads';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { getTempPath } from '../lib/paths';
-import { createGeneralFileFilter, validateFiles } from '../lib/uploads';
-import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from '../lib/uploads.config';
+import { createUploadClient, validateFiles } from '../lib/uploads';
 
 const router = Router();
 
-// Configure multer for temporary file uploads
-const tempUploadDir = getTempPath('vibecheck');
-if (!fs.existsSync(tempUploadDir)) {
-  fs.mkdirSync(tempUploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, tempUploadDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename
-    const uniqueName = uuidv4() + path.extname(file.originalname);
-    cb(null, uniqueName);
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: {
-    fileSize: FILE_SIZE_LIMITS.GENERAL, // 10MB limit
-    files: MAX_FILES_PER_UPLOAD // Max 10 files
-  },
-  fileFilter: createGeneralFileFilter(),
-});
+// Multer will be created per request in the route handler
 
 // Cleanup function to remove temporary files
 const cleanupTempFiles = (files: Express.Multer.File[]) => {
@@ -59,6 +34,7 @@ const cleanupTempFiles = (files: Express.Multer.File[]) => {
 // Cleanup old temp files (24 hours)
 const cleanupOldTempFiles = () => {
   try {
+    const tempUploadDir = getTempPath('vibecheck');
     const files = fs.readdirSync(tempUploadDir);
     const now = Date.now();
     const maxAge = 24 * 60 * 60 * 1000; // 24 hours
@@ -185,7 +161,14 @@ const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: stri
 
 // Intent suggestion endpoint - accepts files and/or payload, with optional index code for vibe check
 router.post('/intent-suggestion',
-  upload.array('files', 10),
+  (req: Request, res: Response, next: any) => {
+    try {
+      const upload = createUploadClient('vibecheck');
+      upload.array('files', 10)(req, res, next);
+    } catch (error) {
+      next(error);
+    }
+  },
   [
     body('payload').optional().isString(),
     body('indexCode').optional().isUUID()
@@ -247,7 +230,7 @@ router.post('/intent-suggestion',
         
         // Always generate intent suggestions
         const intentInferResult = await analyzeFolder(
-          tempUploadDir, 
+          getTempPath('vibecheck'), 
           fileIds, 
           payload, // textInstruction
           [], // existingIntents
@@ -305,7 +288,7 @@ router.post('/intent-suggestion',
 router.get('/temp/:fileId', async (req: Request, res: Response) => {
   try {
     const { fileId } = req.params;
-    const tempFilePath = path.join(tempUploadDir, fileId);
+    const tempFilePath = path.join(getTempPath('vibecheck'), fileId);
     
     if (!fs.existsSync(tempFilePath)) {
       return res.status(404).json({ error: 'Temp file not found' });

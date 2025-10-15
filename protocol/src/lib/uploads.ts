@@ -7,14 +7,18 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
 import { UnstructuredClient } from 'unstructured-client';
 import { Strategy } from 'unstructured-client/sdk/models/shared';
+import { getUploadsPath, getTempPath } from './paths';
 import {
   FILE_SIZE_LIMITS,
   MAX_FILES_PER_UPLOAD,
   SUPPORTED_FILE_TYPES,
   GENERAL_ALLOWED_TYPES,
   UploadType,
+  UploadContext,
   ValidationResult,
   validateFileTypeByMetadata,
   validateFileSizeByBytes,
@@ -45,20 +49,11 @@ export const validateFiles = (files: Express.Multer.File[], uploadType: UploadTy
 
 // ----- Multer Filters -----
 
-export function createGeneralFileFilter() {
+export function createFileFilter(uploadContext: UploadContext) {
   return (req: any, file: Express.Multer.File, cb: any) => {
-    const validation = validateFileType(file, 'general');
-    if (validation.isValid) {
-      cb(null, true);
-    } else {
-      cb(new Error(validation.message), false);
-    }
-  };
-}
-
-export function createAvatarFileFilter() {
-  return (req: any, file: Express.Multer.File, cb: any) => {
-    const validation = validateFileType(file, 'avatar');
+    // Map upload contexts to validation types
+    const validationType: UploadType = uploadContext === 'avatar' ? 'avatar' : 'general';
+    const validation = validateFileType(file, validationType);
     if (validation.isValid) {
       cb(null, true);
     } else {
@@ -83,6 +78,7 @@ export function getAcceptString(uploadType: 'general' | 'avatar' = 'general'): s
   }
   return GENERAL_ALLOWED_TYPES.extensions.join(',');
 }
+
 
 // ----- Unstructured Processing -----
 
@@ -182,6 +178,58 @@ export async function processUploadedFiles(files: Express.Multer.File[]): Promis
     }
   }
   return contentParts.join('\n\n');
+}
+
+// ----- Centralized Multer Factory -----
+
+export function createUploadClient(
+  uploadContext: UploadContext,
+  userId?: string
+): multer.Multer {
+  const isAvatar = uploadContext === 'avatar';
+  const isVibecheck = uploadContext === 'vibecheck';
+  
+  // Validate userId is provided for upload types that require it
+  if (!isVibecheck && !userId) {
+    throw new Error(`userId is required for upload context: ${uploadContext}`);
+  }
+  
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      let targetDir: string;
+      if (isVibecheck) {
+        targetDir = getTempPath('vibecheck');
+      } else {
+        const uploadDir = isAvatar ? 'avatars' : 'files';
+        targetDir = getUploadsPath(uploadDir, userId);
+      }
+      if (!fs.existsSync(targetDir)) {
+        try {
+          fs.mkdirSync(targetDir, { recursive: true });
+        } catch (error) {
+          return cb(new Error(`Failed to create directory: ${error instanceof Error ? error.message : 'Unknown error'}`), '');
+        }
+      }
+      cb(null, targetDir);
+    },
+    filename: (req, file, cb) => {
+      const fileId = uuidv4();
+      const extension = path.extname(file.originalname);
+      (req as Express.Request & { generatedFileId?: string }).generatedFileId = fileId;
+      cb(null, fileId + extension);
+    }
+  });
+
+  const fileFilter = createFileFilter(uploadContext);
+
+  return multer({
+    storage,
+    limits: {
+      fileSize: isAvatar ? FILE_SIZE_LIMITS.AVATAR : FILE_SIZE_LIMITS.GENERAL,
+      files: isAvatar ? 1 : MAX_FILES_PER_UPLOAD
+    },
+    fileFilter
+  });
 }
 
 

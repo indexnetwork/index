@@ -12,8 +12,7 @@ import { getUploadsPath } from '../lib/paths';
 import { processUploadedFiles } from '../lib/uploads';
 import { processFiles } from '../lib/integrations/files/processor';
 import type { IntegrationFile } from '../lib/integrations';
-import { createGeneralFileFilter, validateFiles } from '../lib/uploads';
-import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from '../lib/uploads.config';
+import { createUploadClient, validateFiles } from '../lib/uploads';
 
 // Extend the Request interface to include generatedFileId
 declare global {
@@ -26,34 +25,7 @@ declare global {
 
 const router = Router();
 
-// Configure multer for file uploads (library scope)
-const baseUploadDir = getUploadsPath('files');
-if (!fs.existsSync(baseUploadDir)) fs.mkdirSync(baseUploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const userId = (req as AuthRequest).user!.id;
-    const userDir = getUploadsPath('files', userId);
-    if (!fs.existsSync(userDir)) fs.mkdirSync(userDir, { recursive: true });
-    cb(null, userDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate UUID that will be used as file ID
-    const fileId = uuidv4();
-    const extension = path.extname(file.originalname);
-    req.generatedFileId = fileId;
-    cb(null, fileId + extension);
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: {
-    fileSize: FILE_SIZE_LIMITS.GENERAL, // 10MB limit
-    files: MAX_FILES_PER_UPLOAD, // Max 10 files
-  },
-  fileFilter: createGeneralFileFilter(),
-});
+// Multer will be created per request in the route handler
 
 // List files (user scoped)
 router.get('/', authenticatePrivy, [
@@ -134,7 +106,15 @@ router.get('/:fileId', authenticatePrivy, [param('fileId').isUUID()],
 );
 
 // Upload file to user library
-router.post('/', authenticatePrivy, upload.single('file'),
+router.post('/', authenticatePrivy, 
+  (req: AuthRequest, res: Response, next: any) => {
+    try {
+      const upload = createUploadClient('library', req.user!.id);
+      upload.single('file')(req, res, next);
+    } catch (error) {
+      next(error);
+    }
+  },
   async (req: AuthRequest, res: Response) => {
     try {
       const errors = validationResult(req);

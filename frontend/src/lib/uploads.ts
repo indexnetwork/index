@@ -16,8 +16,6 @@ import {
   validateFilesByMetadata,
 } from 'protocol/lib/uploads.config';
 
-// ----- Thin Validation Adapters -----
-
 export const validateFileType = (file: File, uploadType: UploadType = 'general'): ValidationResult =>
   validateFileTypeByMetadata(file.name, file.type, uploadType);
 
@@ -51,4 +49,16 @@ export const getAcceptString = (uploadType: UploadType = 'general'): string =>
     ? SUPPORTED_FILE_TYPES.IMAGES.extensions.join(',')
     : GENERAL_ALLOWED_TYPES.extensions.join(',');
 
-
+export const getSupportedFilesHelpText = (uploadType: UploadType = 'general'): string => {
+  if (uploadType === 'avatar') {
+    const extensions = SUPPORTED_FILE_TYPES.IMAGES.extensions
+      .map(ext => ext.toUpperCase().slice(1)) // Remove dot and uppercase
+      .join(', ');
+    return `Supported image files: ${extensions}`;
+  } else {
+    const extensions = GENERAL_ALLOWED_TYPES.extensions
+      .map(ext => ext.toUpperCase().slice(1)) // Remove dot and uppercase  
+      .join(', ');
+    return `Supported files: ${extensions}`;
+  }
+};

@@ -18,27 +18,25 @@ export const MAX_FILES_PER_UPLOAD = 10 as const;
 export const SUPPORTED_FILE_TYPES = {
   // Document formats
   DOCUMENTS: {
-    extensions: ['.pdf', '.doc', '.docx', '.txt', '.csv', '.xls', '.xlsx', '.json', '.md', '.ppt', '.pptx', '.rtf', '.odt', '.xml', '.yaml', '.yml', '.html', '.htm', '.epub'],
+    extensions: ['.csv', '.doc', '.docx', '.epub', '.html', '.json', '.md', '.pdf', '.ppt', '.pptx', '.rtf', '.tsv', '.txt', '.xls', '.xlsx', '.xml'],
     mimeTypes: [
-      'application/pdf',
+      'text/csv',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain',
-      'text/csv',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/epub+zip',
+      'text/html',
       'application/json',
       'text/markdown',
+      'application/pdf',
       'application/vnd.ms-powerpoint',
       'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'application/rtf',
-      'application/vnd.oasis.opendocument.text',
+      'text/tab-separated-values',
+      'text/plain',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'application/xml',
-      'text/xml',
-      'application/x-yaml',
-      'text/yaml',
-      'text/html',
-      'application/epub+zip'
+      'text/xml'
     ]
   },
   
@@ -54,45 +52,18 @@ export const SUPPORTED_FILE_TYPES = {
       'image/tiff',
       'image/heic'
     ]
-  },
-  
-  // Email formats
-  EMAIL: {
-    extensions: ['.eml', '.msg', '.mbox'],
-    mimeTypes: [
-      'message/rfc822',
-      'application/vnd.ms-outlook',
-      'application/mbox'
-    ]
-  },
-  
-  // Archive formats (read-only, no processing)
-  ARCHIVES: {
-    extensions: ['.zip'],
-    mimeTypes: [
-      'application/zip',
-      'application/x-zip-compressed',
-      'application/x-zip'
-    ]
   }
 } as const;
 
 // Combined allowed types for general file uploads
 export const GENERAL_ALLOWED_TYPES = {
-  extensions: [
-    ...SUPPORTED_FILE_TYPES.DOCUMENTS.extensions,
-    ...SUPPORTED_FILE_TYPES.EMAIL.extensions,
-    ...SUPPORTED_FILE_TYPES.ARCHIVES.extensions
-  ],
-  mimeTypes: [
-    ...SUPPORTED_FILE_TYPES.DOCUMENTS.mimeTypes,
-    ...SUPPORTED_FILE_TYPES.EMAIL.mimeTypes,
-    ...SUPPORTED_FILE_TYPES.ARCHIVES.mimeTypes
-  ]
+  extensions: SUPPORTED_FILE_TYPES.DOCUMENTS.extensions,
+  mimeTypes: SUPPORTED_FILE_TYPES.DOCUMENTS.mimeTypes
 } as const;
 
 // Shared types
 export type UploadType = 'general' | 'avatar';
+export type UploadContext = 'discovery' | 'avatar' | 'library' | 'vibecheck';
 
 export enum ValidationError {
   FILE_TOO_LARGE = 'FILE_TOO_LARGE',
@@ -126,7 +97,7 @@ export function validateFileTypeByMetadata(
       return {
         isValid: false,
         error: ValidationError.UNSUPPORTED_FILE_TYPE,
-        message: 'Only image files are allowed for avatars (JPG, PNG, GIF, WEBP, BMP, TIFF, HEIC)'
+        message: `File "${filename}" (${mimetype}) is not supported. Only image files are allowed for avatars (JPG, PNG, GIF, WEBP, BMP, TIFF, HEIC)`
       };
     }
   } else {
@@ -139,7 +110,7 @@ export function validateFileTypeByMetadata(
       return {
         isValid: false,
         error: ValidationError.UNSUPPORTED_FILE_TYPE,
-        message: 'Unsupported file type. Allowed: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX, JSON, MD, PPT, PPTX, RTF, ODT, XML, YAML, HTML, EPUB, EML, MSG, MBOX, ZIP'
+        message: `File "${filename}" (${mimetype}) is not supported. Allowed: CSV, DOC, DOCX, EPUB, HTML, JSON, MD, PDF, PPT, PPTX, RTF, TSV, TXT, XLS, XLSX, XML`
       };
     }
   }
@@ -204,6 +175,20 @@ export function validateFilesByMetadata(
   }
 
   return { isValid: true };
+}
+
+export function getSupportedFilesHelpText(uploadType: UploadType = 'general'): string {
+  if (uploadType === 'avatar') {
+    const extensions = SUPPORTED_FILE_TYPES.IMAGES.extensions
+      .map(ext => ext.toUpperCase().slice(1)) // Remove dot and uppercase
+      .join(', ');
+    return `Supported image files: ${extensions}`;
+  } else {
+    const extensions = GENERAL_ALLOWED_TYPES.extensions
+      .map(ext => ext.toUpperCase().slice(1)) // Remove dot and uppercase  
+      .join(', ');
+    return `Supported files: ${extensions}`;
+  }
 }
 
 
