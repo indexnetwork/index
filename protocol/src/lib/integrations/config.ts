@@ -24,6 +24,12 @@ export const INTEGRATIONS: Record<string, IntegrationConfig> = {
     toolkit: 'DISCORDBOT',
     authConfigId: process.env.COMPOSIO_AUTH_CONFIG_DISCORD
   },
+  airtable: { 
+    name: 'airtable', 
+    displayName: 'Airtable', 
+    toolkit: 'AIRTABLE',
+    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_AIRTABLE
+  },
   linkedin: { 
     name: 'linkedin', 
     displayName: 'LinkedIn', 
@@ -32,7 +38,7 @@ export const INTEGRATIONS: Record<string, IntegrationConfig> = {
   },
 };
 
-export type IntegrationName = 'notion' | 'slack' | 'discord' | 'linkedin';
+export type IntegrationName = 'notion' | 'slack' | 'discord' | 'airtable' | 'linkedin';
 
 export const SYNC_PROVIDERS = {
   links: { name: 'links', displayName: 'Links' },
