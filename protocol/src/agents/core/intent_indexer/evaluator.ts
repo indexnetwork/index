@@ -171,7 +171,7 @@ export async function evaluateIntentAppropriation(
     // Get source name for context
     const sourceName = await getIntentSourceName(sourceType || null, sourceId || null);
     
-    // If no prompts available, return 0 appropriation
+    // If no prompts available, return 1 appropriation
     if (!indexPrompt && !memberPrompt) {
       return 1;
     }
