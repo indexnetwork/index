@@ -19,6 +19,7 @@ import {
   validateFileTypeByMetadata,
   validateFileSizeByBytes,
   validateFileCountByNumber,
+  getMimeTypeForExtension,
   UploadType
 } from '../lib/uploads.config';
 
@@ -321,10 +322,9 @@ router.get('/temp/:fileId', async (req: Request, res: Response) => {
     // Set proper content type based on file extension
     const ext = path.extname(tempFilePath).toLowerCase();
     
-    // Find matching MIME type from shared configuration
-    const extensionIndex = GENERAL_ALLOWED_TYPES.extensions.indexOf(ext as any);
-    if (extensionIndex !== -1) {
-      const mimeType = GENERAL_ALLOWED_TYPES.mimeTypes[extensionIndex];
+    // Get MIME type using the canonical helper function
+    const mimeType = getMimeTypeForExtension(ext);
+    if (mimeType) {
       res.setHeader('Content-Type', mimeType);
     }
     

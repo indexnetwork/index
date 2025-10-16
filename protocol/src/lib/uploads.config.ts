@@ -270,6 +270,20 @@ export function getFileCategoryBadge(filename: string, mimetype?: string): strin
 }
 
 /**
+ * Get MIME type for a file extension
+ */
+export function getMimeTypeForExtension(extension: string): string | null {
+  const ext = extension.toLowerCase();
+  const extensionIndex = GENERAL_ALLOWED_TYPES.extensions.indexOf(ext as any);
+  
+  if (extensionIndex !== -1) {
+    return GENERAL_ALLOWED_TYPES.mimeTypes[extensionIndex];
+  }
+  
+  return null;
+}
+
+/**
  * Extensions that can be read as plain text when Unstructured API fails
  */
 export const FALLBACK_TEXT_EXTENSIONS = [
