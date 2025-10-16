@@ -29,7 +29,6 @@ interface IntentListProps<T extends BaseIntent> {
   className?: string;
 }
 
-
 export default function IntentList<T extends BaseIntent>({
   intents,
   isLoading = false,
@@ -74,11 +73,6 @@ export default function IntentList<T extends BaseIntent>({
           month: 'short', 
           day: 'numeric'
         });
-        const detail = intent.sourceType === 'link' && intent.sourceValue && intent.sourceValue !== intent.sourceName ? intent.sourceValue : null;
-        const metaLabel = intent.sourceType === 'integration' && intent.sourceMeta ? (() => {
-          const parsed = new Date(intent.sourceMeta!);
-          return Number.isNaN(parsed.getTime()) ? null : formatDate(parsed);
-        })() : null;
         const isFresh = newIntentIds.has(intent.id);
         const isSelectedSource = selectedIntentIds.has(intent.id);
         const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
@@ -125,16 +119,9 @@ export default function IntentList<T extends BaseIntent>({
           }
           return null;
         })();
-
         return (
           <div key={intent.id} className={`group ${cardClasses}`}>
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                {icon && icon}
-                {isFresh && !isSelectedSource && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
-                )}
-              </div>
+            <div className="flex items-center gap-2">
               {createdLabel && (
                 <span className="flex items-center gap-1 text-[10px] text-[#777] font-ibm-plex-mono whitespace-nowrap">
                   <svg
@@ -156,14 +143,13 @@ export default function IntentList<T extends BaseIntent>({
                   {createdLabel}
                 </span>
               )}
+              {isFresh && !isSelectedSource && (
+                <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
+              )}
+              {icon}
             </div>
             <div className="mt-1 text-xs text-[#333] font-medium leading-snug line-clamp-3 break-words">{summary}</div>
-            {detail && (
-              <div className="mt-0.5 text-[10px] text-[#888] break-words">{detail}</div>
-            )}
-            {metaLabel && (
-              <div className="mt-1 text-[10px] text-[#888] font-ibm-plex-mono">Synced {metaLabel}</div>
-            )}
+
             <div className="mt-2 flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 lg:absolute lg:right-2 lg:bottom-2">
               {(onArchiveIntent || onRemoveIntent) && (
                 <button

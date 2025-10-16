@@ -8,7 +8,7 @@ export interface DiscoverFilters {
   intentIds?: string[];
   userIds?: string[];
   indexIds?: string[];
-  sources?: Array<{ type: 'file' | 'integration' | 'link'; id: string }>;
+  sources?: Array<{ type: 'file' | 'integration' | 'link' | 'discovery_form'; id: string }>;
   excludeDiscovered?: boolean;
   page?: number;
   limit?: number;

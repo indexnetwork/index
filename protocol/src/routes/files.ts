@@ -273,5 +273,5 @@ async function generateIntentsForUpload(options: {
     'file'
   );
 
-  console.log(`🤖 Intent generation complete for ${fileRecord.id}: generated ${intentsGenerated}`);
+  console.log(`🤖 Intent generation queued for ${fileRecord.id}`);
 }

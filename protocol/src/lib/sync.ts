@@ -4,9 +4,6 @@ import { userIntegrations, indexLinks } from './schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { log } from './log';
 import { handlers } from './integrations';
-import { processDiscordMessages } from './integrations/providers/discord';
-import { processSlackMessages } from './integrations/providers/slack';
-import { processNotionPages } from './integrations/providers/notion';
 import { processFiles } from './integrations/files/processor';
 import { crawlLinksForIndex } from './crawl/web_crawler';
 

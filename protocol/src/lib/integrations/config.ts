@@ -2,14 +2,35 @@ export interface IntegrationConfig {
   name: string;
   displayName: string;
   toolkit?: string;
+  authConfigId?: string;
 }
 
 export const INTEGRATIONS = {
-  notion: { name: 'notion', displayName: 'Notion', toolkit: 'NOTION' },
-  slack: { name: 'slack', displayName: 'Slack', toolkit: 'SLACK' },
-  discord: { name: 'discord', displayName: 'Discord', toolkit: 'DISCORDBOT' },
-  linkedin: { name: 'linkedin', displayName: 'LinkedIn', toolkit: 'LINKEDIN' },
-} as const;
+  notion: { 
+    name: 'notion', 
+    displayName: 'Notion', 
+    toolkit: 'NOTION',
+    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_NOTION
+  },
+  slack: { 
+    name: 'slack', 
+    displayName: 'Slack', 
+    toolkit: 'SLACK',
+    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_SLACK
+  },
+  discord: { 
+    name: 'discord', 
+    displayName: 'Discord', 
+    toolkit: 'DISCORDBOT',
+    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_DISCORD
+  },
+  linkedin: { 
+    name: 'linkedin', 
+    displayName: 'LinkedIn', 
+    toolkit: 'LINKEDIN',
+    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_LINKEDIN
+  },
+} as const satisfies Record<string, IntegrationConfig>;
 
 export type IntegrationName = keyof typeof INTEGRATIONS;
 

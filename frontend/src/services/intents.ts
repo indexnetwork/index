@@ -41,12 +41,13 @@ export const agents: Agent[] = [
 // Service functions factory that takes an authenticated API instance
 export const createIntentsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get all intents with pagination
-  getIntents: async (page: number = 1, limit: number = 10, archived: boolean = false, indexIds?: string[]): Promise<PaginatedResponse<Intent>> => {
+  getIntents: async (page: number = 1, limit: number = 10, archived: boolean = false, indexIds?: string[], sourceType?: string): Promise<PaginatedResponse<Intent>> => {
     const requestBody = {
       page,
       limit,
       archived,
-      ...(indexIds && indexIds.length > 0 && { indexIds })
+      ...(indexIds && indexIds.length > 0 && { indexIds }),
+      ...(sourceType && { sourceType })
     };
     
     const response = await api.post<PaginatedResponse<Intent>>('/intents/list', requestBody);

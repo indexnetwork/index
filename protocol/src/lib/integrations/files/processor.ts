@@ -9,7 +9,7 @@ export async function processFiles(
   userId: string,
   files: IntegrationFile[],
   source: { id: string; indexId?: string } | string,
-  sourceType: 'file' | 'integration' | 'link' = 'file',
+  sourceType: 'file' | 'integration' | 'link' | 'discovery_form' = 'file',
   onProgress?: (completed: number, total: number, note?: string) => Promise<void> | void
 ): Promise<{ intentsGenerated: number; filesImported: number }> {
   if (!files.length) {

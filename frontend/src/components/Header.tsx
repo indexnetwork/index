@@ -57,12 +57,14 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
 
   // Handle onboarding check when user data is available
   useEffect(() => {
-    const onboardingCompleted = localStorage.getItem('onboarding_completed');
-    if (user && authenticated && !onboardingCompleted) {
-      router.push('/onboarding');
-      return;
+    if (user?.id && authenticated) {
+      const onboardingCompleted = localStorage.getItem(`onboarding:${user.id}:isCompleted`);
+      if (!onboardingCompleted) {
+        router.push('/onboarding');
+        return;
+      }
     }
-  }, [user, authenticated, router]);
+  }, [user?.id, authenticated, router]);
 
   const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => {
     try {

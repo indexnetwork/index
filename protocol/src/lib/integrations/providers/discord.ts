@@ -19,9 +19,8 @@ export interface DiscordMessage {
 }
 import { getClient } from '../composio';
 import { log } from '../../log';
-import { analyzeObjects } from '../../../agents/core/intent_inferrer';
-import { IntentService } from '../../../services/intent-service';
 import { ensureIndexMembership } from '../membership-utils';
+import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
 
 // Shared function to get raw Discord messages
@@ -44,16 +43,17 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
 
     // Get the connected account details by listing with the specific ID
     const accounts = await composio.connectedAccounts.list({
-      connectedAccountIds: [connectedAccountId]
+      userIds: [integration.userId]
     });
-    const account = accounts?.items?.[0];
+    // Find the specific connected account by ID
+    const account = accounts?.items?.find((acc: any) => acc.id === connectedAccountId);
     if (!account) {
       log.error('Connected account not found', { connectedAccountId, integrationId });
       return [];
     }
 
     // Get guild information from the connected account data
-    const guild = account.data?.guild;
+    const guild = (account as any).data?.guild;
     if (!guild?.id) {
       log.info('No guild found in connected account', { integrationId });
       return [];
@@ -63,6 +63,7 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
     const channels: Array<{ id: string; name?: string }> = [];
     
     const guildChannels = await composio.tools.execute('DISCORDBOT_LIST_GUILD_CHANNELS', {
+      userId: integration.userId,
       connectedAccountId,
       arguments: { guild_id: guild.id }
     });
@@ -96,11 +97,12 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
       }
 
       const messages = await composio.tools.execute('DISCORDBOT_LIST_MESSAGES', { 
+        userId: integration.userId,
         connectedAccountId,
         arguments: args
       });
 
-      const messageList = messages?.data?.details || [];
+      const messageList = (messages as any)?.data?.details || [];
       messagesTotal += messageList.length;
 
       for (const msg of messageList) {
@@ -239,32 +241,18 @@ export async function processDiscordMessages(
       // Add user as index member if not already a member
       await ensureIndexMembership(createdUser.id, integration.indexId);
 
-      // Generate intents for this user
-      const existingIntents = await IntentService.getUserIntents(createdUser.id);
+      // Queue intent generation for this user
+      await addGenerateIntentsJob({
+        userId: createdUser.id,
+        sourceId: integration.id,
+        sourceType: 'integration',
+        objects: userMessages,
+        instruction: `Generate intents for Discord user "${createdUser.name}" based on their messages`,
+        indexId: integration.indexId,
+        intentCount: 3
+      }, 6);
       
-      const result = await analyzeObjects(
-        userMessages,
-        `Generate intents for Discord user "${createdUser.name}" based on their messages`,
-        Array.from(existingIntents),
-        3,
-        60000
-      );
-
-      if (result.success) {
-        for (const intentData of result.intents) {
-          if (!existingIntents.has(intentData.payload)) {
-            await IntentService.createIntent({
-              payload: intentData.payload,
-              userId: createdUser.id,
-              sourceId: integration.id,
-              sourceType: 'integration',
-              indexIds: [integration.indexId]
-            });
-            totalIntentsGenerated++;
-            existingIntents.add(intentData.payload);
-          }
-        }
-      }
+      totalIntentsGenerated++; // Count queued jobs
     } catch (error) {
       log.error('Failed to process Discord user', {
         discordUserId,

@@ -43,7 +43,7 @@ function getUnstructuredClient(): UnstructuredClient | null {
 /**
  * Core intent analysis function that works with any content
  */
-async function analyzeContent(
+export async function analyzeContent(
   content: string,
   itemCount: number,
   textInstruction?: string,

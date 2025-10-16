@@ -7,7 +7,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import path from 'path';
 import fs from 'fs';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
-import { processFiles } from '../lib/integrations/files/processor';
+import { addGenerateIntentsJob } from '../lib/queue/llm-queue';
 
 const router = Router();
 
@@ -43,15 +43,16 @@ async function crawlAndStore(userId: string, linkId: string, url: string) {
     const filepath = path.join(dir, `${linkId}.md`);
     await fs.promises.writeFile(filepath, file.content);
 
-    const { intentsGenerated } = await processFiles(
+    await addGenerateIntentsJob({
       userId,
-      [file],
-      linkId,
-      'link'
-    );
+      sourceId: linkId,
+      sourceType: 'link',
+      content: file.content,
+      intentCount: 1
+    }, 8);
 
     await db.update(indexLinks)
-      .set({ lastSyncAt: new Date(), lastStatus: `ok: intents=${intentsGenerated}`, lastError: null })
+      .set({ lastSyncAt: new Date(), lastStatus: 'processing_intents', lastError: null })
       .where(eq(indexLinks.id, linkId));
   } catch (e) {
     await db.update(indexLinks)

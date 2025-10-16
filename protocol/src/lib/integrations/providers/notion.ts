@@ -15,9 +15,8 @@ export interface NotionPage {
 }
 import { getClient } from '../composio';
 import { log } from '../../log';
-import { analyzeObjects } from '../../../agents/core/intent_inferrer';
-import { IntentService } from '../../../services/intent-service';
 import { ensureIndexMembership } from '../membership-utils';
+import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
 
 // Return raw Notion pages as objects
@@ -40,6 +39,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
 
     // Search pages sorted by last_edited_time desc
     const search = await composio.tools.execute('NOTION_SEARCH_NOTION_PAGE', {
+      userId: integration.userId,
       connectedAccountId,
       arguments: {
         query: '',
@@ -61,6 +61,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
 
       try {
         const blocksResp = await composio.tools.execute('NOTION_FETCH_BLOCK_CONTENTS', {
+          userId: integration.userId,
           connectedAccountId,
           arguments: { block_id: item.id, page_size: 100 },
         });
@@ -182,32 +183,18 @@ export async function processNotionPages(
       // Add user as index member if not already a member
       await ensureIndexMembership(createdUser.id, integration.indexId);
 
-      // Generate intents for this user
-      const existingIntents = await IntentService.getUserIntents(createdUser.id);
+      // Queue intent generation for this user
+      await addGenerateIntentsJob({
+        userId: createdUser.id,
+        sourceId: integration.id,
+        sourceType: 'integration',
+        objects: userPages,
+        instruction: `Generate intents for Notion user "${createdUser.name}" based on their pages`,
+        indexId: integration.indexId,
+        intentCount: 3
+      }, 6);
       
-      const result = await analyzeObjects(
-        userPages,
-        `Generate intents for Notion user "${createdUser.name}" based on their pages`,
-        Array.from(existingIntents),
-        3,
-        60000
-      );
-
-      if (result.success) {
-        for (const intentData of result.intents) {
-          if (!existingIntents.has(intentData.payload)) {
-            await IntentService.createIntent({
-              payload: intentData.payload,
-              userId: createdUser.id,
-              sourceId: integration.id,
-              sourceType: 'integration',
-              indexIds: [integration.indexId]
-            });
-            totalIntentsGenerated++;
-            existingIntents.add(intentData.payload);
-          }
-        }
-      }
+      totalIntentsGenerated++; // Count queued jobs
     } catch (error) {
       log.error('Failed to process Notion user', {
         notionUserId,

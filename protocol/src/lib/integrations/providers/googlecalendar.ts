@@ -88,6 +88,7 @@ async function fetchFiles(integrationId: string, lastSyncAt?: Date): Promise<Int
     if (timeMax) args.timeMax = timeMax;
 
     const resp = await composio.tools.execute('GOOGLECALENDAR_EVENTS_LIST', {
+      userId: integration.userId,
       connectedAccountId,
       arguments: args,
     });
