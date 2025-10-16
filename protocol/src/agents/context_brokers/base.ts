@@ -217,7 +217,7 @@ export abstract class BaseContextBroker {
         // Check if stake already exists for this exact set of intents
         const existingStake = await this.db.select()
           .from(intentStakes)
-          .where(sql`${intentStakes.intents} = ARRAY[${params.intents.map(id => `'${id}'`).join(',')}]`)
+          .where(eq(intentStakes.intents, params.intents))
           .then(rows => rows[0]);
 
         if (existingStake) {
@@ -241,7 +241,7 @@ export abstract class BaseContextBroker {
           // Another process created the stake, check if it exists now
           const existingStake = await this.db.select()
             .from(intentStakes)
-            .where(sql`${intentStakes.intents} = ARRAY[${params.intents.map(id => `'${id}'`).join(',')}]`)
+            .where(eq(intentStakes.intents, params.intents))
             .then(rows => rows[0]);
 
           if (existingStake) {

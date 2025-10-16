@@ -33,10 +33,10 @@ router.post('/avatar',
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
-      // Return just the filename - frontend will construct the full URL
+      // Return the full path including userId segment to match the actual file location
       return res.json({ 
         message: 'Avatar uploaded successfully',
-        avatarFilename: req.file.filename
+        avatarFilename: `${req.user!.id}/${req.file.filename}`
       });
     } catch (error) {
       console.error('Avatar upload error:', error);

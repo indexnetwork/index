@@ -27,7 +27,14 @@ export const getAvatarUrl = (params: { avatar?: string | null; id?: string; name
   // Remove leading slash if present
   const cleanFilename = avatar.startsWith('/') ? avatar.slice(1) : avatar;
   
-  return `${getBaseUrl()}/uploads/avatars/${cleanFilename}`;
+  // If the filename already includes a userId segment (format: userId/filename), use it as-is
+  // Otherwise, assume it's a legacy filename without userId segment
+  if (cleanFilename.includes('/')) {
+    return `${getBaseUrl()}/uploads/avatars/${cleanFilename}`;
+  } else {
+    // Legacy format: just filename without userId segment
+    return `${getBaseUrl()}/uploads/avatars/${cleanFilename}`;
+  }
 };
 
 

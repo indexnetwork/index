@@ -253,34 +253,21 @@ export function isFileExtensionSupported(filePath: string, uploadType: UploadTyp
 }
 
 /**
- * Get file category badge for display purposes
+ * Get file category badge for supported file types
  */
 export function getFileCategoryBadge(filename: string, mimetype?: string): string {
   const ext = path.extname(filename).toLowerCase();
   
-  // Document categories
   if (ext === '.pdf') return 'PDF';
   if (['.doc', '.docx', '.rtf', '.odt'].includes(ext)) return 'DOC';
   if (['.xls', '.xlsx', '.csv'].includes(ext)) return 'SHEET';
   if (['.ppt', '.pptx', '.key'].includes(ext)) return 'SLIDE';
-  
-  // Media categories
   if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.tiff', '.tif', '.heic'].includes(ext)) return 'IMG';
-  if (['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext)) return 'VID';
-  if (['.mp3', '.wav', '.m4a', '.flac'].includes(ext)) return 'AUD';
-  
-  // Archive categories
-  if (['.zip', '.rar', '.7z', '.tar', '.gz'].includes(ext)) return 'ARCH';
-  
-  // Text categories
   if (['.md', '.txt', '.json', '.yaml', '.yml', '.html', '.css', '.js', '.ts', '.py', '.xml'].includes(ext)) return 'TXT';
   
-  // Fallback to MIME type if available
   if (mimetype) {
     if (mimetype.includes('pdf')) return 'PDF';
     if (mimetype.startsWith('image/')) return 'IMG';
-    if (mimetype.startsWith('video/')) return 'VID';
-    if (mimetype.startsWith('audio/')) return 'AUD';
   }
   
   return 'FILE';
