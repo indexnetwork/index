@@ -13,6 +13,7 @@ import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import { validateFileUploads, getSupportedFileExtensions, formatFileSize } from "../../lib/uploads";
+import { getFileCategoryBadge } from 'protocol/lib/file-badges';
 
 type Props = {
   open: boolean;
@@ -975,7 +976,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           )}
                           {item.kind === 'file' && (
                             <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-sm font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
-                              {fileBadge(item.raw.type, item.raw.name || '')}
+                              {fileBadge(item.raw.name || '', item.raw.type)}
                             </span>
                           )}
                           {/* Icon for links only */}
@@ -1257,23 +1258,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 }
 
 
-function fileBadge(mime: string | undefined, name: string): string {
-  const ext = (name.split('.').pop() || '').toLowerCase();
-  if (ext === 'pdf') return 'PDF';
-  if (['doc','docx','rtf','odt'].includes(ext)) return 'DOC';
-  if (['xls','xlsx','csv'].includes(ext)) return 'SHEET';
-  if (['ppt','pptx','key'].includes(ext)) return 'SLIDE';
-  if (['png','jpg','jpeg','gif','svg','webp'].includes(ext)) return 'IMG';
-  if (['mp4','mov','avi','mkv','webm'].includes(ext)) return 'VID';
-  if (['mp3','wav','m4a','flac'].includes(ext)) return 'AUD';
-  if (['zip','rar','7z','tar','gz'].includes(ext)) return 'ARCH';
-  if (['md','txt','json','yaml','yml'].includes(ext)) return 'TXT';
-  if (mime?.includes('pdf')) return 'PDF';
-  if (mime?.startsWith('image/')) return 'IMG';
-  if (mime?.startsWith('video/')) return 'VID';
-  if (mime?.startsWith('audio/')) return 'AUD';
-  return 'FILE';
-}
+// Use shared file badge function from protocol
+const fileBadge = getFileCategoryBadge;
 
 
 // Deletion helpers

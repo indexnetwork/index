@@ -8,6 +8,10 @@
     "./lib/uploads.config": {
       "types": "./dist/lib/uploads.config.d.ts",
       "default": "./dist/lib/uploads.config.js"
+    },
+    "./lib/file-badges": {
+      "types": "./dist/lib/file-badges.d.ts",
+      "default": "./dist/lib/file-badges.js"
     }
   },
   "scripts": {

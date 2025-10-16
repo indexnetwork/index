@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Paperclip, Upload } from "lucide-react";
 import { validateFileUploads, getSupportedFileExtensions, formatFileSize, getSupportedFileTypesDisplayText } from "../lib/uploads";
-import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from "protocol/lib/uploads.config";
+import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from "../lib/uploads";
 import { useNotifications } from "../contexts/NotificationContext";
 
 interface IntentFormProps {

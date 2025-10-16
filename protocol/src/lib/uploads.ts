@@ -36,6 +36,8 @@ import {
   validateFilesByMetadata,
   formatFileSize,
   getSupportedFileExtensions,
+  isFileExtensionSupported,
+  FALLBACK_TEXT_EXTENSIONS,
 } from './uploads.config';
 
 // ----- Thin Validation Adapters -----
@@ -87,8 +89,7 @@ function getUnstructuredClient(): UnstructuredClient | null {
 }
 
 export function isFileSupported(filePath: string): boolean {
-  const ext = path.extname(filePath).toLowerCase();
-  return (GENERAL_ALLOWED_TYPES.extensions as readonly string[]).includes(ext);
+  return isFileExtensionSupported(filePath, 'general');
 }
 
 export async function loadFileContent(filePath: string): Promise<{ content: string | null; error: string | null }> {
@@ -99,6 +100,13 @@ export async function loadFileContent(filePath: string): Promise<{ content: stri
   try {
     const client = getUnstructuredClient();
     if (client) {
+      const stats = fs.statSync(filePath);
+      if (stats.size > FILE_SIZE_LIMITS.GENERAL) {
+        return {
+          content: null,
+          error: `File exceeds size limit (${formatFileSize(stats.size)} > ${formatFileSize(FILE_SIZE_LIMITS.GENERAL)})`
+        };
+      }
       const data = fs.readFileSync(filePath);
       const response = await client.general.partition({
         partitionParameters: {
@@ -130,8 +138,7 @@ export async function loadFileContent(filePath: string): Promise<{ content: stri
 
   try {
     const ext = path.extname(filePath).toLowerCase();
-    const textExtensions = ['.txt', '.md', '.json', '.csv', '.js', '.ts', '.py', '.html', '.css', '.xml', '.yml', '.yaml', '.eml', '.msg'];
-    if (textExtensions.includes(ext) || ext === '') {
+    if ((FALLBACK_TEXT_EXTENSIONS as readonly string[]).includes(ext) || ext === '') {
       const content = fs.readFileSync(filePath, 'utf8');
       if (content.trim()) return { content, error: null };
     }

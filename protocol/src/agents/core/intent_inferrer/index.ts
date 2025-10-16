@@ -7,6 +7,8 @@
 import { UnstructuredClient } from "unstructured-client";
 import { Strategy } from "unstructured-client/sdk/models/shared";
 import { traceableStructuredLlm } from "../../../lib/agents";
+import { isFileExtensionSupported } from "../../../lib/uploads.config";
+import { loadFileContent, loadFilesInParallel } from "../../../lib/uploads";
 import * as fs from 'fs';
 import path from 'path';
 import { z } from "zod";
@@ -39,93 +41,10 @@ function getUnstructuredClient(): UnstructuredClient | null {
  * Check if file type is supported
  */
 export function isFileSupported(filePath: string): boolean {
-  const ext = path.extname(filePath).toLowerCase();
-  
-  // Only skip clearly unsupported types (videos, audio, binaries)
-  const skipExtensions = [
-    '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv',
-    '.mp3', '.wav', '.aac', '.ogg', '.flac', '.m4a',
-    '.zip', '.rar', '.7z', '.tar', '.gz', '.exe', '.bin', '.dmg'
-  ];
-  
-  return !skipExtensions.includes(ext);
+  return isFileExtensionSupported(filePath, 'general');
 }
 
-/**
- * Load file content using native UnstructuredClient with optimized settings
- */
-async function loadFileContent(filePath: string): Promise<{ content: string | null; error: string | null }> {
-  if (!filePath || !fs.existsSync(filePath)) {
-    return { content: null, error: `File not found: ${filePath}` };
-  }
 
-  // Try UnstructuredClient first with fast processing settings
-  try {
-    const client = getUnstructuredClient();
-    if (client) {
-      const data = fs.readFileSync(filePath);
-      
-      const response = await client.general.partition({
-        partitionParameters: {
-          files: {
-            content: data,
-            fileName: path.basename(filePath),
-          },
-          strategy: Strategy.Fast, // Use fast strategy for speed
-          splitPdfPage: true, // Enable PDF page splitting for parallel processing
-          splitPdfConcurrencyLevel: 15, // Maximum concurrency for PDF processing
-          splitPdfAllowFailed: true, // Continue even if some pages fail
-          languages: ['eng'], // Optimize for English
-        },
-      });
-      
-      // Handle response - it can be either string (for CSV) or array of elements (for JSON)
-      if (Array.isArray(response) && response.length > 0) {
-        const content = response.map((element: any) => element.text || '').filter((text: string) => text.trim()).join('\n\n');
-        return { content, error: null };
-      } else if (typeof response === 'string' && response.trim()) {
-        return { content: response, error: null };
-      }
-    }
-  } catch (error) {
-    console.warn(`UnstructuredClient failed for ${path.basename(filePath)}, trying fallback:`, error instanceof Error ? error.message : 'Unknown error');
-  }
-
-  // Fallback: try to read as text file
-  try {
-    const ext = path.extname(filePath).toLowerCase();
-    const textExtensions = ['.txt', '.md', '.json', '.csv', '.js', '.ts', '.py', '.html', '.css', '.xml', '.yml', '.yaml'];
-    
-    if (textExtensions.includes(ext) || ext === '') {
-      const content = fs.readFileSync(filePath, 'utf8');
-      if (content.trim()) {
-        return { content, error: null };
-      }
-    }
-    
-    return {
-      content: null,
-      error: `Cannot process ${ext} files without Unstructured API. Please set UNSTRUCTURED_API_URL for document support.`
-    };
-  } catch (error) {
-    return { 
-      content: null,
-      error: `Error reading file: ${error instanceof Error ? error.message : 'Unknown error'}`
-    };
-  }
-}
-
-/**
- * Process multiple files in parallel for maximum speed
- */
-async function loadFilesInParallel(filePaths: string[]): Promise<Array<{ filePath: string; content: string | null; error: string | null }>> {
-  const promises = filePaths.map(async (filePath) => {
-    const result = await loadFileContent(filePath);
-    return { filePath, ...result };
-  });
-  
-  return Promise.all(promises);
-}
 
 /**
  * Core intent analysis function that works with any content
@@ -300,7 +219,7 @@ export async function analyzeFolder(
     const supportedFiles = allFiles.filter(file => {
       const fileIdMatch = fileIds.some(id => file.startsWith(id + '.'));
       const filePath = path.join(folderPath, file);
-      return fileIdMatch && isFileSupported(filePath);
+      return fileIdMatch && isFileExtensionSupported(filePath, 'general');
     });
 
     if (supportedFiles.length === 0) {

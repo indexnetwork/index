@@ -237,4 +237,60 @@ export function getSupportedFileTypesDisplayText(uploadType: UploadType = 'gener
   }
 }
 
+// ----- Additional Helper Functions -----
+
+/**
+ * Check if a file path has a supported extension
+ */
+export function isFileExtensionSupported(filePath: string, uploadType: UploadType = 'general'): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  
+  if (uploadType === 'avatar') {
+    return (SUPPORTED_FILE_TYPES.IMAGES.extensions as readonly string[]).includes(ext);
+  } else {
+    return (GENERAL_ALLOWED_TYPES.extensions as readonly string[]).includes(ext);
+  }
+}
+
+/**
+ * Get file category badge for display purposes
+ */
+export function getFileCategoryBadge(filename: string, mimetype?: string): string {
+  const ext = path.extname(filename).toLowerCase();
+  
+  // Document categories
+  if (ext === '.pdf') return 'PDF';
+  if (['.doc', '.docx', '.rtf', '.odt'].includes(ext)) return 'DOC';
+  if (['.xls', '.xlsx', '.csv'].includes(ext)) return 'SHEET';
+  if (['.ppt', '.pptx', '.key'].includes(ext)) return 'SLIDE';
+  
+  // Media categories
+  if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.tiff', '.tif', '.heic'].includes(ext)) return 'IMG';
+  if (['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext)) return 'VID';
+  if (['.mp3', '.wav', '.m4a', '.flac'].includes(ext)) return 'AUD';
+  
+  // Archive categories
+  if (['.zip', '.rar', '.7z', '.tar', '.gz'].includes(ext)) return 'ARCH';
+  
+  // Text categories
+  if (['.md', '.txt', '.json', '.yaml', '.yml', '.html', '.css', '.js', '.ts', '.py', '.xml'].includes(ext)) return 'TXT';
+  
+  // Fallback to MIME type if available
+  if (mimetype) {
+    if (mimetype.includes('pdf')) return 'PDF';
+    if (mimetype.startsWith('image/')) return 'IMG';
+    if (mimetype.startsWith('video/')) return 'VID';
+    if (mimetype.startsWith('audio/')) return 'AUD';
+  }
+  
+  return 'FILE';
+}
+
+/**
+ * Extensions that can be read as plain text when Unstructured API fails
+ */
+export const FALLBACK_TEXT_EXTENSIONS = [
+  '.txt', '.md', '.json', '.csv', '.js', '.ts', '.py', '.html', '.css', '.xml', '.yml', '.yaml', '.eml', '.msg'
+] as const;
+
 

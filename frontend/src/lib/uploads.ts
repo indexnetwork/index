@@ -7,6 +7,8 @@
 import {
   SUPPORTED_FILE_TYPES,
   GENERAL_ALLOWED_TYPES,
+  FILE_SIZE_LIMITS,
+  MAX_FILES_PER_UPLOAD,
   UploadType,
   ValidationResult,
   validateFileTypeByMetadata,
@@ -59,3 +61,6 @@ export const getSupportedFileTypesDisplayText = (uploadType: UploadType = 'gener
     return `Supported files: ${extensions}`;
   }
 };
+
+// Re-export constants from shared config
+export { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD };

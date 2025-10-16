@@ -196,19 +196,69 @@ export abstract class BaseContextBroker {
       throw new Error('Stakes must involve intents from at least 2 different users');
     }
     
-    // Check if stake already exists for this exact set of intents
-    const existingStake = await this.db.select()
-      .from(intentStakes)
-      .where(sql`${intentStakes.intents} = ARRAY[${sortedIntents.map(id => `'${id}'`).join(',')}]`)
-      .then(rows => rows[0]);
+    // Use retry logic to handle race conditions
+    await this.createStakeWithRetry({
+      ...params,
+      intents: sortedIntents
+    });
+  }
 
-    if (!existingStake) {
-      // Create new stake
-      await this.db.insert(intentStakes)
-        .values({
-          ...params,
-          intents: sortedIntents
-        });
+  /**
+   * Create stake with retry logic to handle race conditions
+   */
+  private async createStakeWithRetry(params: {
+    intents: string[];
+    stake: bigint;
+    reasoning: string;
+    agentId: string;
+  }, maxRetries: number = 3): Promise<void> {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Check if stake already exists for this exact set of intents
+        const existingStake = await this.db.select()
+          .from(intentStakes)
+          .where(sql`${intentStakes.intents} = ARRAY[${params.intents.map(id => `'${id}'`).join(',')}]`)
+          .then(rows => rows[0]);
+
+        if (existingStake) {
+          // Stake already exists, we're done
+          return;
+        }
+
+        // Attempt to create new stake
+        await this.db.insert(intentStakes)
+          .values({
+            ...params,
+            intents: params.intents
+          });
+        
+        // Success, we're done
+        return;
+
+      } catch (error: any) {
+        // Check if this is a duplicate key error (PostgreSQL error code 23505)
+        if (error?.code === '23505' || error?.message?.includes('duplicate key')) {
+          // Another process created the stake, check if it exists now
+          const existingStake = await this.db.select()
+            .from(intentStakes)
+            .where(sql`${intentStakes.intents} = ARRAY[${params.intents.map(id => `'${id}'`).join(',')}]`)
+            .then(rows => rows[0]);
+
+          if (existingStake) {
+            // Stake was created by another process, we're done
+            return;
+          }
+        }
+
+        // If this is the last attempt, re-throw the error
+        if (attempt === maxRetries - 1) {
+          throw error;
+        }
+
+        // Wait with exponential backoff before retrying
+        const delay = Math.pow(2, attempt) * 100; // 100ms, 200ms, 400ms
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
   }
 
