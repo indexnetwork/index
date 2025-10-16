@@ -52,6 +52,10 @@ export default function IntentForm({
     const validation = validateFileUploads(nextFiles, 'general');
     if (!validation.isValid) {
       error(validation.message || 'Invalid file');
+      // Reset input when validation fails to clear the selected files
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       return;
     }
     
@@ -87,6 +91,8 @@ export default function IntentForm({
       const validation = validateFileUploads(nextFiles, 'general');
       if (!validation.isValid) {
         error(validation.message || 'Invalid file');
+        // Clear the data transfer to prevent any visual feedback of failed drops
+        e.dataTransfer.clearData();
         return;
       }
       
