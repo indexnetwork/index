@@ -29,8 +29,6 @@ interface IntentListProps<T extends BaseIntent> {
   className?: string;
 }
 
-// Use shared file badge function from protocol
-const fileBadge = getFileCategoryBadge;
 
 export default function IntentList<T extends BaseIntent>({
   intents,
@@ -95,7 +93,7 @@ export default function IntentList<T extends BaseIntent>({
           if (intent.sourceType === 'file') {
             return (
               <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-sm font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
-                {fileBadge(intent.sourceName || '', intent.sourceMeta ?? undefined)}
+                {getFileCategoryBadge(intent.sourceName || '', intent.sourceMeta ?? undefined)}
               </span>
             );
           }
