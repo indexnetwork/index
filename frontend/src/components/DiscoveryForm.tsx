@@ -40,8 +40,9 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Validate file before adding
-      const validation = validateFileUploads([file], 'general');
+      // Validate combined file set to enforce cumulative limits
+      const nextFiles = [...attachments.map(a => a.file), file];
+      const validation = validateFileUploads(nextFiles, 'general');
       if (!validation.isValid) {
         error(validation.message || 'Invalid file');
         event.target.value = '';
