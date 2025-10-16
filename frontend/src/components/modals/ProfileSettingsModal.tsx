@@ -85,7 +85,8 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
       // Check file size (4MB limit)
       const maxSize = FILE_SIZE_LIMITS.AVATAR;
       if (file.size > maxSize) {
-        setAvatarError('File size must be less than 4MB. Please choose a smaller image.');
+        const maxSizeMb = Math.round(maxSize / (1024 * 1024));
+        setAvatarError(`File size must be less than ${maxSizeMb}MB. Please choose a smaller image.`);
         e.target.value = ''; // Clear the input
         return;
       }
