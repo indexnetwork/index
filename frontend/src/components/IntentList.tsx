@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo } from 'react';
-import { formatDate } from '@/lib/utils';
 import { getFileCategoryBadge } from '../lib/file-validation';
 
 interface BaseIntent {
