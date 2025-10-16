@@ -976,7 +976,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           )}
                           {item.kind === 'file' && (
                             <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-sm font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
-                              {fileBadge(item.raw.name || '', item.raw.type)}
+                              {getFileCategoryBadge(item.raw.name || '', item.raw.type)}
                             </span>
                           )}
                           {/* Icon for links only */}
@@ -1258,8 +1258,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 }
 
 
-// Use shared file badge function from protocol
-const fileBadge = getFileCategoryBadge;
 
 
 // Deletion helpers
