@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo } from 'react';
-import { getFileCategoryBadge } from '../lib/file-validation';
 
 interface BaseIntent {
   id: string;
@@ -82,42 +81,6 @@ export default function IntentList<T extends BaseIntent>({
             ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]'
             : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
 
-        const icon = (() => {
-          if (intent.sourceType === 'file') {
-            return (
-              <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-sm font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
-                {getFileCategoryBadge(intent.sourceName || '', intent.sourceMeta ?? undefined)}
-              </span>
-            );
-          }
-          if (intent.sourceType === 'link') {
-            return (
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-[#666]"
-              >
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-              </svg>
-            );
-          }
-          if (intent.sourceType === 'integration' && intent.sourceValue) {
-            return (
-              <div className="h-[18px] w-[18px] rounded-sm bg-white border border-[#E0E0E0] flex items-center justify-center overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/integrations/${intent.sourceValue}.png`} alt="" className="h-4 w-4 object-contain" />
-              </div>
-            );
-          }
-          return null;
-        })();
         return (
           <div key={intent.id} className={`group ${cardClasses}`}>
             <div className="flex items-center gap-2">
@@ -145,7 +108,6 @@ export default function IntentList<T extends BaseIntent>({
               {isFresh && !isSelectedSource && (
                 <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
               )}
-              {icon}
             </div>
             <div className="mt-1 text-xs text-[#333] font-medium leading-snug line-clamp-3 break-words">{summary}</div>
 

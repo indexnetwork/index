@@ -1,18 +1,15 @@
 import { Router, Response } from 'express';
 import { query, param, validationResult } from 'express-validator';
-import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
 import db from '../lib/db';
 import { files } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc } from 'drizzle-orm';
 import { getUploadsPath } from '../lib/paths';
 import { processUploadedFiles } from '../lib/uploads';
-import { processFiles } from '../lib/integrations/files/processor';
-import type { IntegrationFile } from '../lib/integrations';
-import { createUploadClient, cleanupUploadedFiles } from '../lib/uploads';
+import { createUploadClient } from '../lib/uploads';
+import { addGenerateIntentsJob } from '../lib/queue/llm-queue';
 
 // Extend the Request interface to include generatedFileId
 declare global {
@@ -248,30 +245,18 @@ async function generateIntentsForUpload(options: {
   multerFile: Express.Multer.File;
 }) {
   const { userId, fileRecord, multerFile } = options;
-  const fileResult = await processUploadedFiles([multerFile]);
-  if (!fileResult.content.trim()) {
+  const { content } = await processUploadedFiles([multerFile]);
+  if (!content.trim()) {
     console.log(`🤖 Skipping intent generation for ${fileRecord.id} (no readable content)`);
-    if (fileResult.errors.length > 0) {
-      console.warn(`File processing errors for ${fileRecord.id}:`, fileResult.errors);
-    }
     return;
   }
 
-  const uploadAsIntegrationFile: IntegrationFile = {
-    id: fileRecord.id,
-    name: fileRecord.name,
-    content: fileResult.content,
-    lastModified: new Date(),
-    type: fileRecord.type,
-    size: multerFile.size,
-  };
-
-  const { intentsGenerated } = await processFiles(
+  await addGenerateIntentsJob({
     userId,
-    [uploadAsIntegrationFile],
-    fileRecord.id,
-    'file'
-  );
+    sourceId: fileRecord.id,
+    sourceType: 'file',
+    content
+  }, 8);
 
   console.log(`🤖 Intent generation queued for ${fileRecord.id}`);
 }
