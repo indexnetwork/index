@@ -23,7 +23,7 @@ router.post('/avatar',
   (req: AuthRequest, res: Response, next: any) => {
     try {
       const upload = createUploadClient('avatar', req.user!.id);
-      upload.single('avatar')(req, res, next);
+      upload.single('avatar')(req as any, res as any, next);
     } catch (error) {
       next(error);
     }

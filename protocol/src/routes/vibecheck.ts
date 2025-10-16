@@ -138,7 +138,9 @@ const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: stri
 
 // Intent suggestion endpoint - accepts files and/or payload, with optional index code for vibe check
 router.post('/intent-suggestion',
-  upload.array('files', 10),
+  (req: any, res: any, next: any) => {
+    upload.array('files', 10)(req, res, next);
+  },
   [
     body('payload').optional().isString(),
     body('indexCode').optional().isUUID()

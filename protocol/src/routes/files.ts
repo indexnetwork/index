@@ -107,7 +107,7 @@ router.post('/', authenticatePrivy,
   (req: AuthRequest, res: Response, next: any) => {
     try {
       const upload = createUploadClient('library', req.user!.id);
-      upload.single('file')(req, res, next);
+      upload.single('file')(req as any, res as any, next);
     } catch (error) {
       next(error);
     }

@@ -53,7 +53,7 @@ router.post('/new',
   (req: AuthRequest, res: Response, next: any) => {
     try {
       const upload = createUploadClient('discovery', req.user!.id);
-      upload.array('files', 10)(req, res, next);
+      upload.array('files', 10)(req as any, res as any, next);
     } catch (error) {
       next(error);
     }
