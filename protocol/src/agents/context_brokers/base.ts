@@ -160,107 +160,59 @@ export abstract class BaseContextBroker {
     }
   }
 
-  /**
-   * Create a stake between multiple intents
-   */
-  protected async createStake(params: {
-    intents: string[];
-    stake: bigint;
-    reasoning: string;
-    agentId: string;
-  }): Promise<void> {
-    
-    // Sort intents to ensure consistent ordering
-    const sortedIntents = [...params.intents].sort();
-    
-    // Validate that intents have different owners (at least 2 different users)
-    const intentOwners = await this.db.select({
-      id: intents.id,
-      userId: intents.userId
-    })
-    .from(intents)
-    .where(
-      or(...sortedIntents.map(id => eq(intents.id, id)))
-    );
+  protected readonly stakeManager = new (class {
+    constructor(private broker: BaseContextBroker) {}
 
-    // Check if all intents exist
-    if (intentOwners.length !== sortedIntents.length) {
-      throw new Error('Some intents do not exist');
-    }
+    async createStake(params: {
+      intents: string[];
+      stake: bigint;
+      reasoning: string;
+      agentId: string;
+    }): Promise<void> {
+      
+      // Sort intents to ensure consistent ordering
+      const sortedIntents = [...params.intents].sort();
+      
+      // Validate that intents have different owners (at least 2 different users)
+      const intentOwners = await this.broker.db.select({
+        id: intents.id,
+        userId: intents.userId
+      })
+      .from(intents)
+      .where(
+        or(...sortedIntents.map(id => eq(intents.id, id)))
+      );
 
-    // Get unique user IDs
-    const uniqueUserIds = new Set(intentOwners.map(intent => intent.userId));
-    
-    // Validate that there are at least 2 different users
-    if (uniqueUserIds.size < 2) {
-      throw new Error('Stakes must involve intents from at least 2 different users');
-    }
-    
-    // Use retry logic to handle race conditions
-    await this.createStakeWithRetry({
-      ...params,
-      intents: sortedIntents
-    });
-  }
+      // Check if all intents exist
+      if (intentOwners.length !== sortedIntents.length) {
+        throw new Error('Some intents do not exist');
+      }
 
-  /**
-   * Create stake with retry logic to handle race conditions
-   */
-  private async createStakeWithRetry(params: {
-    intents: string[];
-    stake: bigint;
-    reasoning: string;
-    agentId: string;
-  }, maxRetries: number = 3): Promise<void> {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        // Check if stake already exists for this exact set of intents
-        const existingStake = await this.db.select()
-          .from(intentStakes)
-          .where(eq(intentStakes.intents, params.intents))
-          .then(rows => rows[0]);
+      // Get unique user IDs
+      const uniqueUserIds = new Set(intentOwners.map(intent => intent.userId));
+      
+      // Validate that there are at least 2 different users
+      if (uniqueUserIds.size < 2) {
+        throw new Error('Stakes must involve intents from at least 2 different users');
+      }
+      
+      // Check if stake already exists for this exact set of intents
+      const existingStake = await this.broker.db.select()
+        .from(intentStakes)
+        .where(sql`${intentStakes.intents} = ARRAY[${sortedIntents.map(id => `'${id}'`).join(',')}]`)
+        .then(rows => rows[0]);
 
-        if (existingStake) {
-          // Stake already exists, we're done
-          return;
-        }
-
-        // Attempt to create new stake
-        await this.db.insert(intentStakes)
+      if (!existingStake) {
+        // Create new stake
+        await this.broker.db.insert(intentStakes)
           .values({
             ...params,
-            intents: params.intents
+            intents: sortedIntents
           });
-        
-        // Success, we're done
-        return;
-
-      } catch (error: any) {
-        // Check if this is a duplicate key error (PostgreSQL error code 23505)
-        if (error?.code === '23505' || error?.message?.includes('duplicate key')) {
-          // Another process created the stake, check if it exists now
-          const existingStake = await this.db.select()
-            .from(intentStakes)
-            .where(eq(intentStakes.intents, params.intents))
-            .then(rows => rows[0]);
-
-          if (existingStake) {
-            // Stake was created by another process, we're done
-            return;
-          }
-        }
-
-        // If this is the last attempt, re-throw the error
-        if (attempt === maxRetries - 1) {
-          throw error;
-        }
-
-        // Wait with exponential backoff before retrying
-        const delay = Math.pow(2, attempt) * 100; // 100ms, 200ms, 400ms
-        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
-  }
+
+  })(this);
 
   /**
    * Abstract methods that must be implemented by concrete brokers
@@ -268,4 +220,4 @@ export abstract class BaseContextBroker {
   abstract onIntentCreated(intentId: string): Promise<void>;
   abstract onIntentUpdated(intentId: string, previousStatus?: string): Promise<void>;
   abstract onIntentArchived(intentId: string): Promise<void>;
-} 
+}

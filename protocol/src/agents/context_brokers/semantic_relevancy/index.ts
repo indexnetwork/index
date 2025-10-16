@@ -114,7 +114,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     
     // Only create stake if the intents are mutually related
     if (response.isMutual && response.reasoning.trim()) {
-      await this.createStake({
+      await this.stakeManager.createStake({
         intents: [currentIntentId, relatedIntentId],
         stake: BigInt(100),
         reasoning: response.reasoning,

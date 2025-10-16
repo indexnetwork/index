@@ -4,15 +4,7 @@
   "license": "MIT",
   "private": true,
   "exports": {
-    "./package.json": "./package.json",
-    "./lib/uploads.config": {
-      "types": "./dist/lib/uploads.config.d.ts",
-      "default": "./dist/lib/uploads.config.js"
-    },
-    "./lib/file-badges": {
-      "types": "./dist/lib/file-badges.d.ts",
-      "default": "./dist/lib/file-badges.js"
-    }
+    "./package.json": "./package.json"
   },
   "scripts": {
     "dev": "nodemon --inspect",

@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { formatDate } from '@/lib/utils';
-import { getFileCategoryBadge } from 'protocol/lib/file-badges';
+import { getFileCategoryBadge } from '../lib/file-validation';
 
 interface BaseIntent {
   id: string;

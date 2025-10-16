@@ -12,22 +12,68 @@ import { vibeCheck } from '../agents/external/vibe_checker_text';
 import { processUploadedFiles } from '../lib/uploads';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { getTempPath } from '../lib/paths';
-import { createUploadClient, cleanupUploadedFiles } from '../lib/uploads';
+import { 
+  FILE_SIZE_LIMITS, 
+  MAX_FILES_PER_UPLOAD, 
+  GENERAL_ALLOWED_TYPES,
+  validateFileTypeByMetadata,
+  validateFileSizeByBytes,
+  validateFileCountByNumber,
+  UploadType
+} from '../lib/uploads.config';
 
 const router = Router();
 
-// ============================================================================
-// VIBE CHECK ROUTES
-// ============================================================================
-// This router handles vibe checking functionality, including:
-// - File uploads for intent generation and vibe checking
-// - Temporary file management for vibe check workflows
-// ============================================================================
+// Configure multer for temporary file uploads
+const tempUploadDir = getTempPath('vibecheck');
+if (!fs.existsSync(tempUploadDir)) {
+  fs.mkdirSync(tempUploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, tempUploadDir);
+  },
+  filename: function (req, file, cb) {
+    // Generate unique filename
+    const uniqueName = uuidv4() + path.extname(file.originalname);
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: FILE_SIZE_LIMITS.GENERAL,
+    files: MAX_FILES_PER_UPLOAD
+  },
+  fileFilter: function (req, file, cb) {
+    const validation = validateFileTypeByMetadata(file.originalname, file.mimetype, 'general' as UploadType);
+    
+    if (validation.isValid) {
+      return cb(null, true);
+    } else {
+      cb(new Error(validation.message || 'File type not allowed'));
+    }
+  }
+});
+
+// Cleanup function to remove temporary files
+const cleanupTempFiles = (files: Express.Multer.File[]) => {
+  files.forEach(file => {
+    try {
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+    } catch (error) {
+      console.warn(`Failed to cleanup temp file ${file.path}:`, error);
+    }
+  });
+};
 
 // Cleanup old temp files (24 hours)
 const cleanupOldTempFiles = () => {
   try {
-    const tempUploadDir = getTempPath('vibecheck');
     const files = fs.readdirSync(tempUploadDir);
     const now = Date.now();
     const maxAge = 24 * 60 * 60 * 1000; // 24 hours
@@ -106,10 +152,6 @@ const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: stri
     // Process uploaded files to extract text content
     const fileResult = await processUploadedFiles(uploadedFiles);
     fileText = fileResult.content;
-    // Log any processing errors but don't fail the request
-    if (fileResult.errors.length > 0) {
-      console.warn('File processing errors:', fileResult.errors);
-    }
   }
   
   if (!fileText.trim()) {
@@ -159,14 +201,7 @@ const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: stri
 
 // Intent suggestion endpoint - accepts files and/or payload, with optional index code for vibe check
 router.post('/intent-suggestion',
-  (req: Request, res: Response, next: any) => {
-    try {
-      const upload = createUploadClient('vibecheck');
-      upload.array('files', 10)(req, res, next);
-    } catch (error) {
-      next(error);
-    }
-  },
+  upload.array('files', 10),
   [
     body('payload').optional().isString(),
     body('indexCode').optional().isUUID()
@@ -177,7 +212,7 @@ router.post('/intent-suggestion',
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        await cleanupUploadedFiles(uploadedFiles || []);
+        cleanupTempFiles(uploadedFiles || []);
         return res.status(400).json({ errors: errors.array() });
       }
 
@@ -187,8 +222,6 @@ router.post('/intent-suggestion',
       if ((!uploadedFiles || uploadedFiles.length === 0) && !payload) {
         return res.status(400).json({ error: 'Must provide either files or payload' });
       }
-
-      // Files are already validated by multer fileFilter and limits
 
       // If only payload, use it directly for intent generation
       if (payload && (!uploadedFiles || uploadedFiles.length === 0)) {
@@ -221,7 +254,7 @@ router.post('/intent-suggestion',
         
         // Always generate intent suggestions
         const intentInferResult = await analyzeFolder(
-          getTempPath('vibecheck'), 
+          tempUploadDir, 
           fileIds, 
           payload, // textInstruction
           [], // existingIntents
@@ -230,7 +263,7 @@ router.post('/intent-suggestion',
         );
 
         if (!intentInferResult.success) {
-          await cleanupUploadedFiles(uploadedFiles);
+          cleanupTempFiles(uploadedFiles);
           return res.status(500).json({ error: 'Intent generation failed' });
         }
 
@@ -250,7 +283,7 @@ router.post('/intent-suggestion',
            const vibeCheckResult = await performVibeCheck(uploadedFiles, indexCode);
            
            if (!vibeCheckResult.success) {
-             await cleanupUploadedFiles(uploadedFiles);
+             cleanupTempFiles(uploadedFiles);
              return res.status(vibeCheckResult.status || 500).json({ error: vibeCheckResult.error });
            }
 
@@ -267,7 +300,7 @@ router.post('/intent-suggestion',
       return res.status(400).json({ error: 'Invalid request parameters' });
 
     } catch (error) {
-      await cleanupUploadedFiles(uploadedFiles || []);
+      cleanupTempFiles(uploadedFiles || []);
       console.error('Intent suggestion error:', error);
       return res.status(500).json({ error: 'Failed to generate intent suggestions' });
     }
@@ -279,7 +312,7 @@ router.post('/intent-suggestion',
 router.get('/temp/:fileId', async (req: Request, res: Response) => {
   try {
     const { fileId } = req.params;
-    const tempFilePath = path.join(getTempPath('vibecheck'), fileId);
+    const tempFilePath = path.join(tempUploadDir, fileId);
     
     if (!fs.existsSync(tempFilePath)) {
       return res.status(404).json({ error: 'Temp file not found' });
@@ -287,23 +320,12 @@ router.get('/temp/:fileId', async (req: Request, res: Response) => {
     
     // Set proper content type based on file extension
     const ext = path.extname(tempFilePath).toLowerCase();
-    const mimeTypes: { [key: string]: string } = {
-      '.pdf': 'application/pdf',
-      '.doc': 'application/msword',
-      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      '.txt': 'text/plain',
-      '.csv': 'text/csv',
-      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      '.xls': 'application/vnd.ms-excel',
-      '.json': 'application/json',
-      '.md': 'text/markdown',
-      '.ppt': 'application/vnd.ms-powerpoint',
-      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      '.rtf': 'application/rtf'
-    };
     
-    if (mimeTypes[ext]) {
-      res.setHeader('Content-Type', mimeTypes[ext]);
+    // Find matching MIME type from shared configuration
+    const extensionIndex = GENERAL_ALLOWED_TYPES.extensions.indexOf(ext as any);
+    if (extensionIndex !== -1) {
+      const mimeType = GENERAL_ALLOWED_TYPES.mimeTypes[extensionIndex];
+      res.setHeader('Content-Type', mimeType);
     }
     
     // Send file as response

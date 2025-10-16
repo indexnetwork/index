@@ -34,7 +34,6 @@ import {
   validateFileCountByNumber,
   validateFileByMetadata,
   validateFilesByMetadata,
-  formatFileSize,
   getSupportedFileExtensions,
   isFileExtensionSupported,
   FALLBACK_TEXT_EXTENSIONS,
@@ -104,7 +103,7 @@ export async function loadFileContent(filePath: string): Promise<{ content: stri
       if (stats.size > FILE_SIZE_LIMITS.GENERAL) {
         return {
           content: null,
-          error: `File exceeds size limit (${formatFileSize(stats.size)} > ${formatFileSize(FILE_SIZE_LIMITS.GENERAL)})`
+          error: `File exceeds size limit (${(stats.size / (1024 * 1024)).toFixed(2)}MB > ${(FILE_SIZE_LIMITS.GENERAL / (1024 * 1024)).toFixed(2)}MB)`
         };
       }
       const data = fs.readFileSync(filePath);

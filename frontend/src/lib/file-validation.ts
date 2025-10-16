@@ -1,11 +1,9 @@
 /**
- * Shared Uploads Configuration & Validation
+ * Frontend File Validation Configuration
  *
- * Pure constants, types, and validation logic consumed by both backend and frontend.
- * All validation functions work with primitive types to avoid runtime dependencies.
+ * Complete file validation logic for browser environments.
+ * Duplicated from protocol to avoid cross-package dependencies.
  */
-
-import path from 'path';
 
 // File size limits in bytes
 export const FILE_SIZE_LIMITS = {
@@ -63,7 +61,7 @@ export const GENERAL_ALLOWED_TYPES = {
   mimeTypes: SUPPORTED_FILE_TYPES.DOCUMENTS.mimeTypes
 } as const;
 
-// Shared types
+// Types
 export type UploadType = 'general' | 'avatar';
 export type UploadContext = 'discovery' | 'avatar' | 'library' | 'vibecheck';
 
@@ -80,15 +78,11 @@ export interface ValidationResult {
   message?: string;
 }
 
-// ----- Pure Validation Functions -----
+// ----- Browser-Native Validation Functions -----
 
-export function validateFileTypeByMetadata(
-  filename: string,
-  mimetype: string,
-  uploadType: UploadType
-): ValidationResult {
+export function validateFileType(file: File, uploadType: UploadType = 'general'): ValidationResult {
   // Validate required inputs
-  if (!filename || !mimetype) {
+  if (!file.name || !file.type) {
     return {
       isValid: false,
       error: ValidationError.INVALID_FILE,
@@ -96,9 +90,9 @@ export function validateFileTypeByMetadata(
     };
   }
 
-  // Extract extension using path.extname for consistency
-  const ext = path.extname(filename).toLowerCase();
-  const mimeType = mimetype.toLowerCase();
+  // Extract extension
+  const ext = getFileExtension(file.name).toLowerCase();
+  const mimeType = file.type.toLowerCase();
 
   if (uploadType === 'avatar') {
     const isImage = (SUPPORTED_FILE_TYPES.IMAGES.extensions as readonly string[]).includes(ext) &&
@@ -107,7 +101,7 @@ export function validateFileTypeByMetadata(
       return {
         isValid: false,
         error: ValidationError.UNSUPPORTED_FILE_TYPE,
-        message: `File "${filename}" (${mimetype}) is not supported. Only image files are allowed for avatars (JPG, PNG, GIF, WEBP, BMP, TIFF, HEIC)`
+        message: `File "${file.name}" (${file.type}) is not supported. Only image files are allowed for avatars (JPG, PNG, GIF, WEBP, BMP, TIFF, HEIC)`
       };
     }
   } else {
@@ -119,7 +113,7 @@ export function validateFileTypeByMetadata(
       return {
         isValid: false,
         error: ValidationError.UNSUPPORTED_FILE_TYPE,
-        message: `File "${filename}" (${mimetype}) is not supported. Both extension and MIME type must be valid. Allowed: CSV, DOC, DOCX, EPUB, HTML, JSON, MD, PDF, PPT, PPTX, RTF, TSV, TXT, XLS, XLSX, XML`
+        message: `File "${file.name}" (${file.type}) is not supported. Both extension and MIME type must be valid. Allowed: CSV, DOC, DOCX, EPUB, HTML, JSON, MD, PDF, PPT, PPTX, RTF, TSV, TXT, XLS, XLSX, XML`
       };
     }
   }
@@ -127,12 +121,9 @@ export function validateFileTypeByMetadata(
   return { isValid: true };
 }
 
-export function validateFileSizeByBytes(
-  sizeInBytes: number,
-  uploadType: UploadType
-): ValidationResult {
+export function validateFileSize(file: File, uploadType: UploadType = 'general'): ValidationResult {
   // Validate input is a finite positive integer
-  if (!Number.isFinite(sizeInBytes) || sizeInBytes < 0 || !Number.isInteger(sizeInBytes)) {
+  if (!Number.isFinite(file.size) || file.size < 0 || !Number.isInteger(file.size)) {
     return {
       isValid: false,
       error: ValidationError.INVALID_FILE,
@@ -141,7 +132,7 @@ export function validateFileSizeByBytes(
   }
 
   // Reject empty files (0 bytes)
-  if (sizeInBytes === 0) {
+  if (file.size === 0) {
     return {
       isValid: false,
       error: ValidationError.INVALID_FILE,
@@ -151,28 +142,28 @@ export function validateFileSizeByBytes(
 
   const limit = uploadType === 'avatar' ? FILE_SIZE_LIMITS.AVATAR : FILE_SIZE_LIMITS.GENERAL;
 
-  if (sizeInBytes > limit) {
+  if (file.size > limit) {
     return {
       isValid: false,
       error: ValidationError.FILE_TOO_LARGE,
-      message: `File size exceeds ${(limit / (1024 * 1024)).toFixed(2)}MB limit`
+      message: `File size exceeds ${formatFileSize(limit)} limit`
     };
   }
 
   return { isValid: true };
 }
 
-export function validateFileCountByNumber(fileCount: number): ValidationResult {
+export function validateFileCount(files: File[]): ValidationResult {
   // Validate input
-  if (!Number.isInteger(fileCount) || fileCount < 0) {
+  if (!Array.isArray(files)) {
     return {
       isValid: false,
       error: ValidationError.INVALID_FILE,
-      message: 'Invalid file count'
+      message: 'Invalid file array'
     };
   }
 
-  if (fileCount > MAX_FILES_PER_UPLOAD) {
+  if (files.length > MAX_FILES_PER_UPLOAD) {
     return {
       isValid: false,
       error: ValidationError.TOO_MANY_FILES,
@@ -182,36 +173,38 @@ export function validateFileCountByNumber(fileCount: number): ValidationResult {
   return { isValid: true };
 }
 
-export function validateFileByMetadata(
-  filename: string,
-  mimetype: string,
-  sizeInBytes: number,
-  uploadType: UploadType
-): ValidationResult {
-  const typeValidation = validateFileTypeByMetadata(filename, mimetype, uploadType);
+export function validateFile(file: File, uploadType: UploadType = 'general'): ValidationResult {
+  const typeValidation = validateFileType(file, uploadType);
   if (!typeValidation.isValid) return typeValidation;
 
-  const sizeValidation = validateFileSizeByBytes(sizeInBytes, uploadType);
+  const sizeValidation = validateFileSize(file, uploadType);
   if (!sizeValidation.isValid) return sizeValidation;
 
   return { isValid: true };
 }
 
-export function validateFilesByMetadata(
-  files: Array<{ filename: string; mimetype: string; size: number }>,
-  uploadType: UploadType
-): ValidationResult {
-  const countValidation = validateFileCountByNumber(files.length);
+export function validateFiles(files: File[], uploadType: UploadType = 'general'): ValidationResult {
+  const countValidation = validateFileCount(files);
   if (!countValidation.isValid) return countValidation;
 
   for (const file of files) {
-    const fileValidation = validateFileByMetadata(file.filename, file.mimetype, file.size, uploadType);
+    const fileValidation = validateFile(file, uploadType);
     if (!fileValidation.isValid) return fileValidation;
   }
 
   return { isValid: true };
 }
 
+// ----- Helper Functions -----
+
+export function formatFileSize(bytes: number): string {
+  // Simple file size formatting without external dependency
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 
 export function getSupportedFileExtensions(uploadType: UploadType = 'general'): string {
   return uploadType === 'avatar' 
@@ -233,26 +226,19 @@ export function getSupportedFileTypesDisplayText(uploadType: UploadType = 'gener
   }
 }
 
-// ----- Additional Helper Functions -----
-
 /**
- * Check if a file path has a supported extension
+ * Extract file extension from filename
  */
-export function isFileExtensionSupported(filePath: string, uploadType: UploadType = 'general'): boolean {
-  const ext = path.extname(filePath).toLowerCase();
-  
-  if (uploadType === 'avatar') {
-    return (SUPPORTED_FILE_TYPES.IMAGES.extensions as readonly string[]).includes(ext);
-  } else {
-    return (GENERAL_ALLOWED_TYPES.extensions as readonly string[]).includes(ext);
-  }
+export function getFileExtension(filename: string): string {
+  const lastDot = filename.lastIndexOf('.');
+  return lastDot !== -1 ? filename.slice(lastDot) : '';
 }
 
 /**
  * Get file category badge for supported file types
  */
 export function getFileCategoryBadge(filename: string, mimetype?: string): string {
-  const ext = path.extname(filename).toLowerCase();
+  const ext = getFileExtension(filename).toLowerCase();
   
   if (ext === '.pdf') return 'PDF';
   if (['.doc', '.docx', '.rtf', '.odt'].includes(ext)) return 'DOC';
@@ -275,5 +261,3 @@ export function getFileCategoryBadge(filename: string, mimetype?: string): strin
 export const FALLBACK_TEXT_EXTENSIONS = [
   '.txt', '.md', '.json', '.csv', '.js', '.ts', '.py', '.html', '.css', '.xml', '.yml', '.yaml', '.eml', '.msg'
 ] as const;
-
-

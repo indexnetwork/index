@@ -7,9 +7,6 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   transpilePackages: ['protocol'],
   outputFileTracingRoot: repoRoot,
-  experimental: {
-    externalDir: true,
-  },
   images: {
     remotePatterns: [
       {

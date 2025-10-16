@@ -13,7 +13,7 @@ import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import { validateFileUploads, getSupportedFileExtensions, formatFileSize } from "../../lib/uploads";
-import { getFileCategoryBadge } from 'protocol/lib/file-badges';
+import { getFileCategoryBadge } from '../../lib/file-validation';
 
 type Props = {
   open: boolean;
