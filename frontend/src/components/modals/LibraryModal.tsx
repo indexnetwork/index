@@ -12,7 +12,7 @@ import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
-import { validateFileUploads, getSupportedFileExtensions, formatFileSize } from "../../lib/uploads";
+import { validateFiles, getSupportedFileExtensions, formatFileSize } from "../../lib/file-validation";
 import { getFileCategoryBadge } from '../../lib/file-validation';
 
 type Props = {
@@ -498,7 +498,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     
     // Validate files before uploading
     const files = Array.from(f);
-    const validation = validateFileUploads(files, 'general');
+    const validation = validateFiles(files, 'general');
     if (!validation.isValid) {
       error(validation.message || 'Invalid file');
       return;

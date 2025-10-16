@@ -3,8 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Paperclip, Upload } from "lucide-react";
-import { validateFileUploads, getSupportedFileExtensions, formatFileSize, getSupportedFileTypesDisplayText } from "../lib/uploads";
-import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from "../lib/uploads";
+import { validateFiles, getSupportedFileExtensions, formatFileSize, getSupportedFileTypesDisplayText, FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from "../lib/file-validation";
 import { useNotifications } from "../contexts/NotificationContext";
 
 interface IntentFormProps {
@@ -50,7 +49,7 @@ export default function IntentForm({
     
     // Validate against the combined file array to enforce cumulative constraints
     const nextFiles = [...files, ...selectedFiles];
-    const validation = validateFileUploads(nextFiles, 'general');
+    const validation = validateFiles(nextFiles, 'general');
     if (!validation.isValid) {
       error(validation.message || 'Invalid file');
       // Reset input when validation fails to clear the selected files
@@ -89,7 +88,7 @@ export default function IntentForm({
     if (droppedFiles.length > 0) {
       // Validate against the combined file array to enforce cumulative constraints
       const nextFiles = [...files, ...droppedFiles];
-      const validation = validateFileUploads(nextFiles, 'general');
+      const validation = validateFiles(nextFiles, 'general');
       if (!validation.isValid) {
         error(validation.message || 'Invalid file');
         // Clear the data transfer to prevent any visual feedback of failed drops

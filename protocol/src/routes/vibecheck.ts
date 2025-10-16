@@ -1,9 +1,7 @@
 import { Router, Response, Request } from 'express';
 import { validationResult, body } from 'express-validator';
-import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
 import db from '../lib/db';
 import { intents, users, intentIndexes } from '../lib/schema';
 import { eq } from 'drizzle-orm';
@@ -12,52 +10,13 @@ import { vibeCheck } from '../agents/external/vibe_checker_text';
 import { processUploadedFiles } from '../lib/uploads';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { getTempPath } from '../lib/paths';
-import { 
-  FILE_SIZE_LIMITS, 
-  MAX_FILES_PER_UPLOAD, 
-  GENERAL_ALLOWED_TYPES,
-  validateFileTypeByMetadata,
-  validateFileSizeByBytes,
-  validateFileCountByNumber,
-  getMimeTypeForExtension,
-  UploadType
-} from '../lib/uploads.config';
+import { createUploadClient } from '../lib/uploads';
+import { getMimeTypesForExtension } from '../lib/uploads.config';
 
 const router = Router();
 
-// Configure multer for temporary file uploads
-const tempUploadDir = getTempPath('vibecheck');
-if (!fs.existsSync(tempUploadDir)) {
-  fs.mkdirSync(tempUploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, tempUploadDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename
-    const uniqueName = uuidv4() + path.extname(file.originalname);
-    cb(null, uniqueName);
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: {
-    fileSize: FILE_SIZE_LIMITS.GENERAL,
-    files: MAX_FILES_PER_UPLOAD
-  },
-  fileFilter: function (req, file, cb) {
-    const validation = validateFileTypeByMetadata(file.originalname, file.mimetype, 'general' as UploadType);
-    
-    if (validation.isValid) {
-      return cb(null, true);
-    } else {
-      cb(new Error(validation.message || 'File type not allowed'));
-    }
-  }
-});
+// Use centralized upload client for vibecheck context
+const upload = createUploadClient('vibecheck');
 
 // Cleanup function to remove temporary files
 const cleanupTempFiles = (files: Express.Multer.File[]) => {
@@ -71,29 +30,6 @@ const cleanupTempFiles = (files: Express.Multer.File[]) => {
     }
   });
 };
-
-// Cleanup old temp files (24 hours)
-const cleanupOldTempFiles = () => {
-  try {
-    const files = fs.readdirSync(tempUploadDir);
-    const now = Date.now();
-    const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-
-    files.forEach(file => {
-      const filePath = path.join(tempUploadDir, file);
-      const stats = fs.statSync(filePath);
-      
-      if (now - stats.mtime.getTime() > maxAge) {
-        fs.unlinkSync(filePath);
-      }
-    });
-  } catch (error) {
-    console.warn('Cleanup failed:', error);
-  }
-};
-
-// Run cleanup every hour
-setInterval(cleanupOldTempFiles, 60 * 60 * 1000);
 
 // Separate function to handle vibe check logic
 const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: string, payloadText?: string) => {
@@ -255,7 +191,7 @@ router.post('/intent-suggestion',
         
         // Always generate intent suggestions
         const intentInferResult = await analyzeFolder(
-          tempUploadDir, 
+          getTempPath('vibecheck'), 
           fileIds, 
           payload, // textInstruction
           [], // existingIntents
@@ -313,7 +249,7 @@ router.post('/intent-suggestion',
 router.get('/temp/:fileId', async (req: Request, res: Response) => {
   try {
     const { fileId } = req.params;
-    const tempFilePath = path.join(tempUploadDir, fileId);
+    const tempFilePath = path.join(getTempPath('vibecheck'), fileId);
     
     if (!fs.existsSync(tempFilePath)) {
       return res.status(404).json({ error: 'Temp file not found' });
@@ -322,10 +258,10 @@ router.get('/temp/:fileId', async (req: Request, res: Response) => {
     // Set proper content type based on file extension
     const ext = path.extname(tempFilePath).toLowerCase();
     
-    // Get MIME type using the canonical helper function
-    const mimeType = getMimeTypeForExtension(ext);
-    if (mimeType) {
-      res.setHeader('Content-Type', mimeType);
+    // Set content type using centralized MIME type mapping
+    const mimeTypes = getMimeTypesForExtension(ext);
+    if (mimeTypes.length > 0) {
+      res.setHeader('Content-Type', mimeTypes[0]); // Use the primary MIME type
     }
     
     // Send file as response

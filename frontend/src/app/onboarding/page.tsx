@@ -16,7 +16,7 @@ import { useIndexService } from "@/services/indexes";
 import { useIntegrationsService } from "@/services/integrations";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import LibraryModal from "@/components/modals/LibraryModal";
-import { validateFileUploads, getSupportedFileExtensions } from "@/lib/uploads";
+import { validateFiles, getSupportedFileExtensions } from "@/lib/file-validation";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
 type OnboardingFlow = 'flow_1' | 'flow_2';
@@ -293,7 +293,7 @@ export default function OnboardingPage() {
     const file = e.target.files?.[0];
     if (file) {
       // Validate avatar file
-      const validation = validateFileUploads([file], 'avatar');
+      const validation = validateFiles([file], 'avatar');
       if (!validation.isValid) {
         error(validation.message || 'Invalid file');
         e.target.value = '';
@@ -450,7 +450,7 @@ export default function OnboardingPage() {
     
     // Validate files before uploading
     const files = Array.from(f);
-    const validation = validateFileUploads(files, 'general');
+    const validation = validateFiles(files, 'general');
     if (!validation.isValid) {
       error(validation.message || 'Invalid file');
       return;

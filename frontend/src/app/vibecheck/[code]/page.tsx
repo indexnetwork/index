@@ -16,7 +16,7 @@ import { User, APIResponse } from '@/lib/types';
 
 import ReactMarkdown from "react-markdown";
 import { formatDate } from "@/lib/utils";
-import { formatFileSize } from "@/lib/uploads";
+import { formatFileSize } from "@/lib/file-validation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from 'next/navigation';
 import IntentForm from '@/components/IntentForm';

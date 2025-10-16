@@ -9,7 +9,7 @@ import { X, Upload, Camera } from "lucide-react";
 import { User, AvatarUploadResponse, APIResponse } from "@/lib/types";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { getAvatarUrl } from "@/lib/file-utils";
-import { validateFileUploads } from "@/lib/uploads";
+import { validateFiles } from "@/lib/file-validation";
 import Image from "next/image";
 
 interface ProfileSettingsModalProps {
@@ -83,7 +83,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
     const file = e.target.files?.[0];
     if (file) {
       // Validate file using shared validation logic
-      const validation = validateFileUploads([file], 'avatar');
+      const validation = validateFiles([file], 'avatar');
       if (!validation.isValid) {
         setAvatarError(validation.message || 'Invalid file');
         e.target.value = ''; // Clear the input

@@ -5,7 +5,7 @@ import { Paperclip, Radio } from "lucide-react";
 import { useAPI } from "@/contexts/APIContext";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { validateFileUploads, getSupportedFileExtensions } from "../lib/uploads";
+import { validateFiles, getSupportedFileExtensions } from "../lib/file-validation";
 
 interface DiscoveryFormProps {
   onRequestsClick: () => void;
@@ -42,7 +42,7 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount, onSubmit
     if (file) {
       // Validate combined file set to enforce cumulative limits
       const nextFiles = [...attachments.map(a => a.file), file];
-      const validation = validateFileUploads(nextFiles, 'general');
+      const validation = validateFiles(nextFiles, 'general');
       if (!validation.isValid) {
         error(validation.message || 'Invalid file');
         event.target.value = '';

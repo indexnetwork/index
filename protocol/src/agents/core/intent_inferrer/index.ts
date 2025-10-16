@@ -37,12 +37,6 @@ function getUnstructuredClient(): UnstructuredClient | null {
   return unstructuredClient;
 }
 
-/**
- * Check if file type is supported
- */
-export function isFileSupported(filePath: string): boolean {
-  return isFileExtensionSupported(filePath, 'general');
-}
 
 
 
