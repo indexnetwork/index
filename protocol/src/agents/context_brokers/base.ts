@@ -160,59 +160,57 @@ export abstract class BaseContextBroker {
     }
   }
 
-  protected readonly stakeManager = new (class {
-    constructor(private broker: BaseContextBroker) {}
+  /**
+   * Create a stake between multiple intents
+   */
+  protected async createStake(params: {
+    intents: string[];
+    stake: bigint;
+    reasoning: string;
+    agentId: string;
+  }): Promise<void> {
+    
+    // Sort intents to ensure consistent ordering
+    const sortedIntents = [...params.intents].sort();
+    
+    // Validate that intents have different owners (at least 2 different users)
+    const intentOwners = await this.db.select({
+      id: intents.id,
+      userId: intents.userId
+    })
+    .from(intents)
+    .where(
+      or(...sortedIntents.map(id => eq(intents.id, id)))
+    );
 
-    async createStake(params: {
-      intents: string[];
-      stake: bigint;
-      reasoning: string;
-      agentId: string;
-    }): Promise<void> {
-      
-      // Sort intents to ensure consistent ordering
-      const sortedIntents = [...params.intents].sort();
-      
-      // Validate that intents have different owners (at least 2 different users)
-      const intentOwners = await this.broker.db.select({
-        id: intents.id,
-        userId: intents.userId
-      })
-      .from(intents)
-      .where(
-        or(...sortedIntents.map(id => eq(intents.id, id)))
-      );
-
-      // Check if all intents exist
-      if (intentOwners.length !== sortedIntents.length) {
-        throw new Error('Some intents do not exist');
-      }
-
-      // Get unique user IDs
-      const uniqueUserIds = new Set(intentOwners.map(intent => intent.userId));
-      
-      // Validate that there are at least 2 different users
-      if (uniqueUserIds.size < 2) {
-        throw new Error('Stakes must involve intents from at least 2 different users');
-      }
-      
-      // Check if stake already exists for this exact set of intents
-      const existingStake = await this.broker.db.select()
-        .from(intentStakes)
-        .where(sql`${intentStakes.intents} = ARRAY[${sortedIntents.map(id => `'${id}'`).join(',')}]`)
-        .then(rows => rows[0]);
-
-      if (!existingStake) {
-        // Create new stake
-        await this.broker.db.insert(intentStakes)
-          .values({
-            ...params,
-            intents: sortedIntents
-          });
-      }
+    // Check if all intents exist
+    if (intentOwners.length !== sortedIntents.length) {
+      throw new Error('Some intents do not exist');
     }
 
-  })(this);
+    // Get unique user IDs
+    const uniqueUserIds = new Set(intentOwners.map(intent => intent.userId));
+    
+    // Validate that there are at least 2 different users
+    if (uniqueUserIds.size < 2) {
+      throw new Error('Stakes must involve intents from at least 2 different users');
+    }
+    
+    // Check if stake already exists for this exact set of intents
+    const existingStake = await this.db.select()
+      .from(intentStakes)
+      .where(sql`${intentStakes.intents} = ARRAY[${sortedIntents.map(id => `'${id}'`).join(',')}]`)
+      .then(rows => rows[0]);
+
+    if (!existingStake) {
+      // Create new stake
+      await this.db.insert(intentStakes)
+        .values({
+          ...params,
+          intents: sortedIntents
+        });
+    }
+  }
 
   /**
    * Abstract methods that must be implemented by concrete brokers

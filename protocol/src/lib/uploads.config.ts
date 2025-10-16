@@ -6,6 +6,7 @@
  */
 
 import path from 'path';
+const filesize = require('filesize');
 
 // File size limits in bytes
 export const FILE_SIZE_LIMITS = {
@@ -87,6 +88,15 @@ export function validateFileTypeByMetadata(
   mimetype: string,
   uploadType: UploadType
 ): ValidationResult {
+  // Validate required inputs
+  if (!filename || !mimetype) {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_FILE,
+      message: 'Missing required file metadata'
+    };
+  }
+
   // Extract extension using path.extname for consistency
   const ext = path.extname(filename).toLowerCase();
   const mimeType = mimetype.toLowerCase();
@@ -102,16 +112,15 @@ export function validateFileTypeByMetadata(
       };
     }
   } else {
-    // For general files, check both extension and MIME type
-    // If no extension, rely on MIME type validation
+    // For general files, require BOTH extension and MIME type to be valid for security
     const hasValidExtension = ext && (GENERAL_ALLOWED_TYPES.extensions as readonly string[]).includes(ext);
     const hasValidMimeType = (GENERAL_ALLOWED_TYPES.mimeTypes as readonly string[]).includes(mimeType);
     
-    if (!hasValidExtension && !hasValidMimeType) {
+    if (!hasValidExtension || !hasValidMimeType) {
       return {
         isValid: false,
         error: ValidationError.UNSUPPORTED_FILE_TYPE,
-        message: `File "${filename}" (${mimetype}) is not supported. Allowed: CSV, DOC, DOCX, EPUB, HTML, JSON, MD, PDF, PPT, PPTX, RTF, TSV, TXT, XLS, XLSX, XML`
+        message: `File "${filename}" (${mimetype}) is not supported. Both extension and MIME type must be valid. Allowed: CSV, DOC, DOCX, EPUB, HTML, JSON, MD, PDF, PPT, PPTX, RTF, TSV, TXT, XLS, XLSX, XML`
       };
     }
   }
@@ -123,14 +132,31 @@ export function validateFileSizeByBytes(
   sizeInBytes: number,
   uploadType: UploadType
 ): ValidationResult {
+  // Validate input is a finite positive integer
+  if (!Number.isFinite(sizeInBytes) || sizeInBytes < 0 || !Number.isInteger(sizeInBytes)) {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_FILE,
+      message: 'Invalid file size'
+    };
+  }
+
+  // Reject empty files (0 bytes)
+  if (sizeInBytes === 0) {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_FILE,
+      message: 'File is empty (0 bytes)'
+    };
+  }
+
   const limit = uploadType === 'avatar' ? FILE_SIZE_LIMITS.AVATAR : FILE_SIZE_LIMITS.GENERAL;
-  const limitMB = Math.round(limit / (1024 * 1024));
 
   if (sizeInBytes > limit) {
     return {
       isValid: false,
       error: ValidationError.FILE_TOO_LARGE,
-      message: `File size exceeds ${limitMB}MB limit`
+      message: `File size exceeds ${formatFileSize(limit)} limit`
     };
   }
 
@@ -138,6 +164,15 @@ export function validateFileSizeByBytes(
 }
 
 export function validateFileCountByNumber(fileCount: number): ValidationResult {
+  // Validate input
+  if (!Number.isInteger(fileCount) || fileCount < 0) {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_FILE,
+      message: 'Invalid file count'
+    };
+  }
+
   if (fileCount > MAX_FILES_PER_UPLOAD) {
     return {
       isValid: false,
@@ -176,6 +211,16 @@ export function validateFilesByMetadata(
   }
 
   return { isValid: true };
+}
+
+export function formatFileSize(bytes: number): string {
+  return filesize(bytes, { precision: 2 });
+}
+
+export function getSupportedFileExtensions(uploadType: UploadType = 'general'): string {
+  return uploadType === 'avatar' 
+    ? SUPPORTED_FILE_TYPES.IMAGES.extensions.join(',')
+    : GENERAL_ALLOWED_TYPES.extensions.join(',');
 }
 
 export function getSupportedFileTypesDisplayText(uploadType: UploadType = 'general'): string {

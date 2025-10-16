@@ -12,7 +12,7 @@ import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
 import IntentList from "@/components/IntentList";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
-import { validateFileUploads, getSupportedFileExtensions } from "../../lib/uploads";
+import { validateFileUploads, getSupportedFileExtensions, formatFileSize } from "../../lib/uploads";
 
 type Props = {
   open: boolean;
@@ -925,7 +925,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       id: `f-${f.id}`,
                       kind: 'file' as const,
                       title: f.name,
-                      sub: `${formatSize(f.size)} • ${formatDate(f.createdAt).split(',')[0]}`,
+                      sub: `${formatFileSize(typeof f.size === 'bigint' ? Number(f.size) : Number(f.size.toString()))} • ${formatDate(f.createdAt).split(',')[0]}`,
                       createdAt: new Date(f.createdAt).getTime(),
                       raw: f,
                     })),
@@ -1256,17 +1256,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   );
 }
 
-// Helpers: size formatting and file badge
-function formatSize(size: string): string {
-  // If already human-readable, return as-is
-  if (/\d+\s?(KB|MB|GB|B)$/i.test(size)) return size;
-  const n = Number(size);
-  if (Number.isNaN(n)) return size;
-  const units = ['B','KB','MB','GB'];
-  let v = n; let i = 0;
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
-}
 
 function fileBadge(mime: string | undefined, name: string): string {
   const ext = (name.split('.').pop() || '').toLowerCase();

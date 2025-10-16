@@ -34,6 +34,8 @@ import {
   validateFileCountByNumber,
   validateFileByMetadata,
   validateFilesByMetadata,
+  formatFileSize,
+  getSupportedFileExtensions,
 } from './uploads.config';
 
 // ----- Thin Validation Adapters -----
@@ -71,26 +73,7 @@ export function createFileFilter(uploadContext: UploadContext) {
   };
 }
 
-// ----- Helpers -----
-
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-export function getSupportedFileExtensions(uploadType: 'general' | 'avatar' = 'general'): string {
-  if (uploadType === 'avatar') {
-    return SUPPORTED_FILE_TYPES.IMAGES.extensions.join(',');
-  }
-  return GENERAL_ALLOWED_TYPES.extensions.join(',');
-}
-
-
 // ----- Unstructured Processing -----
-
 let unstructuredClient: UnstructuredClient | null = null;
 
 function getUnstructuredClient(): UnstructuredClient | null {

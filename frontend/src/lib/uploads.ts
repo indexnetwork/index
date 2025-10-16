@@ -15,6 +15,7 @@ import {
   validateFileByMetadata,
   validateFilesByMetadata,
 } from 'protocol/lib/uploads.config';
+import { filesize } from 'filesize';
 
 export const validateFileType = (file: File, uploadType: UploadType = 'general'): ValidationResult =>
   validateFileTypeByMetadata(file.name, file.type, uploadType);
@@ -34,14 +35,10 @@ export const validateFileUploads = (files: File[], uploadType: UploadType = 'gen
     uploadType
   );
 
-// ----- Simple Helper Functions -----
+// ----- Helper Functions -----
 
 export const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  return filesize(bytes, { precision: 2 });
 };
 
 export const getSupportedFileExtensions = (uploadType: UploadType = 'general'): string =>

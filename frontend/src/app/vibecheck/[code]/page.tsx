@@ -16,6 +16,7 @@ import { User, APIResponse } from '@/lib/types';
 
 import ReactMarkdown from "react-markdown";
 import { formatDate } from "@/lib/utils";
+import { formatFileSize } from "@/lib/uploads";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from 'next/navigation';
 import IntentForm from '@/components/IntentForm';
@@ -408,7 +409,7 @@ export default function SharePage({ params }: SharePageProps) {
                           <div className="flex items-center gap-2">
                             <span className="text-lg font-medium font-ibm-plex-mono text-gray-900">{file.name}</span>
                           </div>
-                          <p className="text-sm text-gray-500">{file.size} bytes</p>
+                          <p className="text-sm text-gray-500">{formatFileSize(file.size)}</p>
                         </div>
                       </div>
                     ))
@@ -429,7 +430,7 @@ export default function SharePage({ params }: SharePageProps) {
                               <ArrowUpRight className="ml-1 h-4 w-4" />
                             </Button>
                           </div>
-                          <p className="text-sm text-gray-500">{f.size} bytes</p>
+                          <p className="text-sm text-gray-500">{formatFileSize(f.size)}</p>
                         </div>
                       </div>
                     ))}

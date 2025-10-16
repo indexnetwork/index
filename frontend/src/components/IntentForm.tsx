@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Paperclip, Upload } from "lucide-react";
-import { validateFileUploads, getSupportedFileExtensions, formatFileSize } from "../lib/uploads";
+import { validateFileUploads, getSupportedFileExtensions, formatFileSize, getSupportedFileTypesDisplayText } from "../lib/uploads";
+import { FILE_SIZE_LIMITS, MAX_FILES_PER_UPLOAD } from "protocol/lib/uploads.config";
 import { useNotifications } from "../contexts/NotificationContext";
 
 interface IntentFormProps {
@@ -122,7 +123,7 @@ export default function IntentForm({
               Attach drafts, decks, notes, prototypes, or anything else that helps agents see the bigger picture.
             </p>
             <p className="text-xs text-gray-500 mb-4">
-              Supported: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX, JSON, MD, PPT, PPTX, RTF, ODT, XML, YAML, HTML, EPUB, EML, MSG, MBOX, ZIP. Max size: 10MB (max 10 files)
+              {getSupportedFileTypesDisplayText('general')}. Max size: {formatFileSize(FILE_SIZE_LIMITS.GENERAL)} (max {MAX_FILES_PER_UPLOAD} files)
             </p>
             <div 
               className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors cursor-pointer ${
