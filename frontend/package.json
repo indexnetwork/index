@@ -27,7 +27,6 @@
     "filesize": "^11.0.13",
     "lucide-react": "^0.487.0",
     "next": "15.3.0",
-    "protocol": "file:../protocol",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.8",
