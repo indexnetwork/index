@@ -16,50 +16,42 @@ export const MAX_FILES_PER_UPLOAD = 10 as const;
 
 // Supported file types based on Unstructured.io capabilities
 export const SUPPORTED_FILE_TYPES = {
-  // Document formats
+  // Document formats - each extension maps to its valid MIME types
   DOCUMENTS: {
-    extensions: ['.csv', '.doc', '.docx', '.epub', '.html', '.json', '.md', '.pdf', '.ppt', '.pptx', '.rtf', '.tsv', '.txt', '.xls', '.xlsx', '.xml'],
-    mimeTypes: [
-      'text/csv',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/epub+zip',
-      'text/html',
-      'application/json',
-      'text/markdown',
-      'application/pdf',
-      'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'application/rtf',
-      'text/tab-separated-values',
-      'text/plain',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/xml',
-      'text/xml'
-    ]
+    '.csv': ['text/csv'],
+    '.doc': ['application/msword'],
+    '.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    '.epub': ['application/epub+zip'],
+    '.html': ['text/html'],
+    '.json': ['application/json'],
+    '.md': ['text/markdown'],
+    '.pdf': ['application/pdf'],
+    '.ppt': ['application/vnd.ms-powerpoint'],
+    '.pptx': ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+    '.rtf': ['application/rtf'],
+    '.tsv': ['text/tab-separated-values'],
+    '.txt': ['text/plain'],
+    '.xls': ['application/vnd.ms-excel'],
+    '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    '.xml': ['application/xml', 'text/xml'] // XML supports both MIME types per RFC standards
   },
   
-  // Image formats (for avatars)
+  // Image formats (for avatars) - each extension maps to its valid MIME types
   IMAGES: {
-    extensions: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.heic'],
-    mimeTypes: [
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-      'image/bmp',
-      'image/tiff',
-      'image/heic'
-    ]
+    '.jpg': ['image/jpeg'],
+    '.jpeg': ['image/jpeg'],
+    '.png': ['image/png'],
+    '.gif': ['image/gif'],
+    '.webp': ['image/webp'],
+    '.bmp': ['image/bmp'],
+    '.tiff': ['image/tiff'],
+    '.tif': ['image/tiff'],
+    '.heic': ['image/heic']
   }
 } as const;
 
 // Combined allowed types for general file uploads
-export const GENERAL_ALLOWED_TYPES = {
-  extensions: SUPPORTED_FILE_TYPES.DOCUMENTS.extensions,
-  mimeTypes: SUPPORTED_FILE_TYPES.DOCUMENTS.mimeTypes
-} as const;
+export const GENERAL_ALLOWED_TYPES = SUPPORTED_FILE_TYPES.DOCUMENTS;
 
 // Types
 export type UploadType = 'general' | 'avatar';
@@ -95,8 +87,8 @@ export function validateFileType(file: File, uploadType: UploadType = 'general')
   const mimeType = file.type.toLowerCase();
 
   if (uploadType === 'avatar') {
-    const isImage = (SUPPORTED_FILE_TYPES.IMAGES.extensions as readonly string[]).includes(ext) &&
-                   (SUPPORTED_FILE_TYPES.IMAGES.mimeTypes as readonly string[]).includes(mimeType);
+    const allowedMimeTypes = SUPPORTED_FILE_TYPES.IMAGES[ext as keyof typeof SUPPORTED_FILE_TYPES.IMAGES];
+    const isImage = allowedMimeTypes && (allowedMimeTypes as readonly string[]).includes(mimeType);
     if (!isImage) {
       return {
         isValid: false,
@@ -106,8 +98,9 @@ export function validateFileType(file: File, uploadType: UploadType = 'general')
     }
   } else {
     // For general files, require BOTH extension and MIME type to be valid for security
-    const hasValidExtension = ext && (GENERAL_ALLOWED_TYPES.extensions as readonly string[]).includes(ext);
-    const hasValidMimeType = (GENERAL_ALLOWED_TYPES.mimeTypes as readonly string[]).includes(mimeType);
+    const allowedMimeTypes = GENERAL_ALLOWED_TYPES[ext as keyof typeof GENERAL_ALLOWED_TYPES];
+    const hasValidExtension = ext && allowedMimeTypes;
+    const hasValidMimeType = allowedMimeTypes && (allowedMimeTypes as readonly string[]).includes(mimeType);
     
     if (!hasValidExtension || !hasValidMimeType) {
       return {
@@ -208,18 +201,18 @@ export function formatFileSize(bytes: number): string {
 
 export function getSupportedFileExtensions(uploadType: UploadType = 'general'): string {
   return uploadType === 'avatar' 
-    ? SUPPORTED_FILE_TYPES.IMAGES.extensions.join(',')
-    : GENERAL_ALLOWED_TYPES.extensions.join(',');
+    ? Object.keys(SUPPORTED_FILE_TYPES.IMAGES).join(',')
+    : Object.keys(GENERAL_ALLOWED_TYPES).join(',');
 }
 
 export function getSupportedFileTypesDisplayText(uploadType: UploadType = 'general'): string {
   if (uploadType === 'avatar') {
-    const extensions = SUPPORTED_FILE_TYPES.IMAGES.extensions
+    const extensions = Object.keys(SUPPORTED_FILE_TYPES.IMAGES)
       .map(ext => ext.toUpperCase().slice(1)) // Remove dot and uppercase
       .join(', ');
     return `Supported image files: ${extensions}`;
   } else {
-    const extensions = GENERAL_ALLOWED_TYPES.extensions
+    const extensions = Object.keys(GENERAL_ALLOWED_TYPES)
       .map(ext => ext.toUpperCase().slice(1)) // Remove dot and uppercase  
       .join(', ');
     return `Supported files: ${extensions}`;
@@ -253,6 +246,36 @@ export function getFileCategoryBadge(filename: string, mimetype?: string): strin
   }
   
   return 'FILE';
+}
+
+/**
+ * Check if a file path has a supported extension
+ */
+export function isFileExtensionSupported(filePath: string, uploadType: UploadType = 'general'): boolean {
+  const ext = getFileExtension(filePath).toLowerCase();
+  
+  if (uploadType === 'avatar') {
+    return ext in SUPPORTED_FILE_TYPES.IMAGES;
+  } else {
+    return ext in GENERAL_ALLOWED_TYPES;
+  }
+}
+
+/**
+ * Get MIME types for a file extension
+ */
+export function getMimeTypesForExtension(extension: string): readonly string[] {
+  const ext = extension.toLowerCase();
+  return GENERAL_ALLOWED_TYPES[ext as keyof typeof GENERAL_ALLOWED_TYPES] || [];
+}
+
+/**
+ * Get the primary MIME type for a file extension (first in the array)
+ * @deprecated Use getMimeTypesForExtension instead for better accuracy
+ */
+export function getMimeTypeForExtension(extension: string): string | null {
+  const mimeTypes = getMimeTypesForExtension(extension);
+  return mimeTypes.length > 0 ? mimeTypes[0] : null;
 }
 
 /**
