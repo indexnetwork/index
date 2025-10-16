@@ -220,4 +220,4 @@ export abstract class BaseContextBroker {
   abstract onIntentCreated(intentId: string): Promise<void>;
   abstract onIntentUpdated(intentId: string, previousStatus?: string): Promise<void>;
   abstract onIntentArchived(intentId: string): Promise<void>;
-} 
+}
