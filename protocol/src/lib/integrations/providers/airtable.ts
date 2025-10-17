@@ -85,12 +85,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
     const connectedAccountId = integration.connectedAccountId;
 
     // Step 1: Get authenticated user info
-    console.log('🔍 [AIRTABLE DEBUG] About to call AIRTABLE_GET_USER_INFO with:', {
-      userId: integration.userId,
-      connectedAccountId,
-      toolName: 'AIRTABLE_GET_USER_INFO'
-    });
-    
     let userInfoResp: AirtableApiResponse;
     try {
       userInfoResp = await composio.tools.execute('AIRTABLE_GET_USER_INFO', {
@@ -98,16 +92,8 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
         connectedAccountId,
         arguments: {}
       }) as AirtableApiResponse;
-      
-      console.log('🔍 [AIRTABLE DEBUG] AIRTABLE_GET_USER_INFO response:', {
-        hasData: !!userInfoResp?.data,
-        dataKeys: userInfoResp?.data ? Object.keys(userInfoResp.data) : [],
-        error: userInfoResp?.error,
-        successful: userInfoResp?.successful,
-        fullResponse: userInfoResp
-      });
     } catch (error) {
-      console.error('🔍 [AIRTABLE DEBUG] AIRTABLE_GET_USER_INFO failed with error:', error);
+      log.error('Failed to get Airtable user info', { integrationId, error: (error as Error).message });
       throw error;
     }
 
@@ -137,27 +123,11 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
     let offset: string | undefined;
     
     do {
-      console.log('🔍 [AIRTABLE DEBUG] About to call AIRTABLE_LIST_BASES with:', {
-        userId: integration.userId,
-        connectedAccountId,
-        arguments: offset ? { offset } : {},
-        toolName: 'AIRTABLE_LIST_BASES'
-      });
-      
       const basesResp = await composio.tools.execute('AIRTABLE_LIST_BASES', {
         userId: integration.userId,
         connectedAccountId,
         arguments: offset ? { offset } : {}
       }) as AirtableApiResponse;
-      
-      console.log('🔍 [AIRTABLE DEBUG] AIRTABLE_LIST_BASES response:', {
-        hasData: !!basesResp?.data,
-        hasResponseData: !!basesResp?.data?.response_data,
-        basesCount: basesResp?.data?.response_data?.bases?.length || 0,
-        hasOffset: !!basesResp?.data?.response_data?.offset,
-        error: basesResp?.error,
-        successful: basesResp?.successful
-      });
 
       const responseData = basesResp?.data?.response_data;
       if (responseData?.bases) {
@@ -169,11 +139,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
     } while (offset);
 
     log.info('Airtable bases', { count: bases.length });
-    console.log('🔍 [AIRTABLE DEBUG] All bases discovered:', bases.map(base => ({
-      id: base.id,
-      name: base.name
-    })));
-    
     if (!bases.length) return [];
 
     // Step 3: Process each base
@@ -182,26 +147,11 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
     for (const base of bases) {
       try {
         // Get base schema to discover tables
-        console.log('🔍 [AIRTABLE DEBUG] About to call AIRTABLE_GET_BASE_SCHEMA with:', {
-          userId: integration.userId,
-          connectedAccountId,
-          arguments: { baseId: base.id },
-          toolName: 'AIRTABLE_GET_BASE_SCHEMA'
-        });
-        
         const schemaResp = await composio.tools.execute('AIRTABLE_GET_BASE_SCHEMA', {
           userId: integration.userId,
           connectedAccountId,
           arguments: { baseId: base.id }
         }) as AirtableApiResponse;
-        
-        console.log('🔍 [AIRTABLE DEBUG] AIRTABLE_GET_BASE_SCHEMA response:', {
-          hasData: !!schemaResp?.data,
-          hasResponseData: !!schemaResp?.data?.response_data,
-          tablesCount: schemaResp?.data?.response_data?.tables?.length || 0,
-          error: schemaResp?.error,
-          successful: schemaResp?.successful
-        });
 
         const schemaData = schemaResp?.data?.response_data;
         if (!schemaData?.tables) {
@@ -211,16 +161,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
 
         const tables = schemaData.tables;
         log.info('Base tables', { baseId: base.id, baseName: base.name, tableCount: tables.length });
-        
-        console.log('🔍 [AIRTABLE DEBUG] Tables in base:', {
-          baseId: base.id,
-          baseName: base.name,
-          tables: tables.map((table: any) => ({
-            id: table.id,
-            name: table.name,
-            fieldCount: table.fields?.length || 0
-          }))
-        });
 
         // Step 4: Process each table
         for (const table of tables) {
@@ -246,14 +186,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
                 break;
               }
 
-              console.log('🔍 [AIRTABLE DEBUG] AIRTABLE_LIST_RECORDS response:', {
-                hasData: !!recordsResp?.data,
-                hasResponseData: !!recordsResp?.data?.response_data,
-                recordsCount: recordsData?.records?.length || 0,
-                error: recordsResp?.error,
-                successful: recordsResp?.successful
-              });
-
               // Filter records by lastSyncAt if provided
               const filteredRecords = recordsData.records.filter((record: any) => {
                 if (!lastSyncAt) return true;
@@ -261,25 +193,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
                 return recordTime > lastSyncAt;
               });
 
-              console.log('🔍 [AIRTABLE DEBUG] Records in table:', {
-                baseId: base.id,
-                baseName: base.name,
-                tableId: table.id,
-                tableName: table.name,
-                totalRecords: recordsData.records.length,
-                filteredRecords: filteredRecords.length,
-                sampleRecord: filteredRecords[0] ? {
-                  id: filteredRecords[0].id,
-                  createdTime: filteredRecords[0].createdTime,
-                  fieldKeys: Object.keys(filteredRecords[0].fields || {}),
-                  sampleFields: {
-                    // Show first few field values for debugging
-                    ...Object.fromEntries(
-                      Object.entries(filteredRecords[0].fields || {}).slice(0, 3)
-                    )
-                  }
-                } : null
-              });
 
               // Step 5: Process each record and fetch comments (optional)
               for (const record of filteredRecords) {
@@ -351,24 +264,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
               recordCount: tableRecords.length
             });
 
-            console.log('🔍 [AIRTABLE DEBUG] Table processing complete:', {
-              baseId: base.id,
-              baseName: base.name,
-              tableId: table.id,
-              tableName: table.name,
-              recordsProcessed: tableRecords.length,
-              sampleProcessedRecord: tableRecords[0] ? {
-                id: tableRecords[0].id,
-                baseId: tableRecords[0].baseId,
-                baseName: tableRecords[0].baseName,
-                tableId: tableRecords[0].tableId,
-                tableName: tableRecords[0].tableName,
-                createdTime: tableRecords[0].createdTime,
-                fieldCount: Object.keys(tableRecords[0].fields || {}).length,
-                commentCount: tableRecords[0].comments?.length || 0
-              } : null
-            });
-
           } catch (error) {
             log.error('Failed to process table', {
               baseId: base.id,
@@ -391,29 +286,10 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
       }
     }
 
-    log.info('Airtable objects sync done', { integrationId, objects: allRecords.length });
-    
-    console.log('🔍 [AIRTABLE DEBUG] Final sync summary:', {
-      integrationId,
-      totalRecords: allRecords.length,
-      recordsByBase: allRecords.reduce((acc, record) => {
-        const key = `${record.baseName} (${record.baseId})`;
-        acc[key] = (acc[key] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
-      recordsByTable: allRecords.reduce((acc, record) => {
-        const key = `${record.baseName} > ${record.tableName}`;
-        acc[key] = (acc[key] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
-      sampleFinalRecord: allRecords[0] ? {
-        id: allRecords[0].id,
-        baseName: allRecords[0].baseName,
-        tableName: allRecords[0].tableName,
-        fieldCount: Object.keys(allRecords[0].fields || {}).length,
-        commentCount: allRecords[0].comments?.length || 0,
-        sampleFields: Object.keys(allRecords[0].fields || {}).slice(0, 5)
-      } : null
+    log.info('Airtable objects sync done', { 
+      integrationId, 
+      objects: allRecords.length,
+      recordsWithComments: allRecords.filter(r => r.comments && r.comments.length > 0).length
     });
     
     return allRecords;
@@ -432,19 +308,9 @@ export async function processAirtableRecords(
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 
-  log.info('Processing Airtable records', { count: records.length });
-  
-  console.log('🔍 [AIRTABLE DEBUG] Starting record processing:', {
-    recordCount: records.length,
-    integrationId: integration.id,
-    indexId: integration.indexId,
-    sampleRecords: records.slice(0, 2).map(record => ({
-      id: record.id,
-      baseName: record.baseName,
-      tableName: record.tableName,
-      fieldCount: Object.keys(record.fields || {}).length,
-      commentCount: record.comments?.length || 0
-    }))
+  log.info('Processing Airtable records', { 
+    count: records.length,
+    recordsWithComments: records.filter(r => r.comments && r.comments.length > 0).length
   });
 
   try {
@@ -501,19 +367,6 @@ export async function processAirtableRecords(
     });
 
     // Queue intent generation for this user
-    console.log('🔍 [AIRTABLE DEBUG] Queuing intent generation job:', {
-      userId: resolvedUser.id,
-      userName: resolvedUser.name,
-      userEmail: resolvedUser.email,
-      sourceId: integration.id,
-      sourceType: 'integration',
-      objectCount: records.length,
-      instruction: `Generate intents for Airtable user "${resolvedUser.name}" based on their records and comments`,
-      indexId: integration.indexId,
-      intentCount: MAX_INTENTS_PER_USER,
-      priority: 6
-    });
-    
     await addGenerateIntentsJob({
       userId: resolvedUser.id,
       sourceId: integration.id,
