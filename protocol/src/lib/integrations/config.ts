@@ -24,6 +24,12 @@ export const INTEGRATIONS = {
     toolkit: 'DISCORDBOT',
     authConfigId: process.env.COMPOSIO_AUTH_CONFIG_DISCORD
   },
+  airtable: { 
+    name: 'airtable', 
+    displayName: 'Airtable', 
+    toolkit: 'AIRTABLE',
+    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_AIRTABLE
+  },
   linkedin: { 
     name: 'linkedin', 
     displayName: 'LinkedIn', 

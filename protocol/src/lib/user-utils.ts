@@ -357,3 +357,63 @@ export async function resolveNotionUser(email: string, notionUserId: string, nam
   }
 }
 
+export async function resolveAirtableUser(email: string, airtableUserId: string, name: string): Promise<CreatedUser | undefined> {
+  try {
+    // Try to find existing user by email first
+    const existingUser = await db
+      .select({
+        id: users.id,
+        privyId: users.privyId,
+        email: users.email,
+        name: users.name
+      })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    
+    if (existingUser.length > 0) {
+      // User exists, return existing user data
+      const user = existingUser[0];
+      log.info('Airtable user already exists', { email, airtableUserId, userId: user.id });
+      
+      return {
+        id: user.id,
+        privyId: user.privyId,
+        email: user.email,
+        name: user.name,
+        isNewUser: false
+      };
+    }
+    
+    // User doesn't exist, create new user via Privy SDK
+    const privyUser = await privyClient.importUser({
+      linkedAccounts: [
+        {
+          type: 'email',
+          address: email,
+        },
+      ],
+      customMetadata: {
+        provider: 'airtable',
+        providerId: airtableUserId,
+        name: name
+      },
+      createEthereumWallet: true
+    });
+    
+    // Save user to database using the agnostic saveUser function
+    const createdUser = await saveUser({
+      email,
+      name,
+      provider: 'airtable',
+      providerId: airtableUserId,
+      privyId: privyUser.id
+    });
+    
+    return createdUser;
+  } catch (error) {
+    log.error('Failed to resolve Airtable user', { email, airtableUserId, error: error instanceof Error ? error.message : String(error) });
+    return undefined;
+  }
+}
+

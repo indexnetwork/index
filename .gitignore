@@ -3,5 +3,5 @@ txt/
 protocol/temp-uploads/
 AGENTS.md
 postgres/
-
+.cursor
 package.json

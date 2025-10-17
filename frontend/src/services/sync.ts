@@ -1,6 +1,6 @@
 import { useAuthenticatedAPI } from '@/lib/api';
 
-export type SyncProviderName = 'links' | 'notion' | 'slack' | 'discord' | 'linkedin';
+export type SyncProviderName = 'links' | 'notion' | 'slack' | 'discord' | 'airtable' | 'linkedin';
 
 export interface SyncParams {
   indexId?: string;

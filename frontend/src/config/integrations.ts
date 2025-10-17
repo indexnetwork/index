@@ -8,6 +8,7 @@ export const INTEGRATIONS = {
   notion: { name: 'notion', displayName: 'Notion', toolkit: 'NOTION' },
   slack: { name: 'slack', displayName: 'Slack', toolkit: 'SLACK' },
   discord: { name: 'discord', displayName: 'Discord', toolkit: 'DISCORDBOT' },
+  airtable: { name: 'airtable', displayName: 'Airtable', toolkit: 'AIRTABLE' },
   linkedin: { name: 'linkedin', displayName: 'LinkedIn', toolkit: 'LINKEDIN' },
 } as const;
 
