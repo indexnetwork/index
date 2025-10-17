@@ -1,13 +1,11 @@
 import type { IntegrationHandler } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
-import { resolveAirtableUser } from '../../user-utils';
 import { ensureIndexMembership } from '../membership-utils';
 import { getIntegrationById } from '../integration-utils';
 import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
-// Constants
-const RECORD_LIMIT = 100; // Airtable max per page
+const RECORD_LIMIT = 100; // Airtable API pagination limit
 const MAX_INTENTS_PER_USER = 3;
 
 export interface AirtableRecord {
@@ -66,7 +64,10 @@ interface AirtableApiResponse {
   successful?: boolean;
 }
 
-// Return raw Airtable records as objects
+/**
+ * Fetches Airtable records with comments for intent generation.
+ * Processes all accessible bases and tables for the authenticated user.
+ */
 async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<AirtableRecord[]> {
   try {
     const integration = await getIntegrationById(integrationId);
@@ -84,7 +85,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 
-    // Step 1: Get authenticated user info
+    // Get authenticated user info
     let userInfoResp: AirtableApiResponse;
     try {
       userInfoResp = await composio.tools.execute('AIRTABLE_GET_USER_INFO', {
@@ -97,7 +98,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
       throw error;
     }
 
-    // Parse the response_data structure
     const userData = userInfoResp?.data?.response_data;
     if (!userData?.id || !userData?.email) {
       log.error('Failed to get Airtable user info', { 
@@ -113,12 +113,12 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
     const airtableUser = {
       id: userData.id,
       email: userData.email,
-      name: userData.email.split('@')[0] // Use email prefix as name fallback
+      name: userData.email.split('@')[0]
     };
 
     log.info('Airtable user info', { userId: airtableUser.id, email: airtableUser.email });
 
-    // Step 2: List all bases
+    // List all accessible bases
     const bases: AirtableBase[] = [];
     let offset: string | undefined;
     
@@ -141,12 +141,12 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
     log.info('Airtable bases', { count: bases.length });
     if (!bases.length) return [];
 
-    // Step 3: Process each base
+    // Process each base and its tables
     const allRecords: AirtableRecord[] = [];
     
     for (const base of bases) {
       try {
-        // Get base schema to discover tables
+        // Discover tables in this base
         const schemaResp = await composio.tools.execute('AIRTABLE_GET_BASE_SCHEMA', {
           userId: integration.userId,
           connectedAccountId,
@@ -162,10 +162,10 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
         const tables = schemaData.tables;
         log.info('Base tables', { baseId: base.id, baseName: base.name, tableCount: tables.length });
 
-        // Step 4: Process each table
+        // Process each table's records
         for (const table of tables) {
           try {
-            // List records from table with pagination
+            // Fetch records with pagination
             let recordOffset: string | undefined;
             const tableRecords: AirtableRecord[] = [];
 
@@ -186,7 +186,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
                 break;
               }
 
-              // Filter records by lastSyncAt if provided
+              // Apply incremental sync filter
               const filteredRecords = recordsData.records.filter((record: any) => {
                 if (!lastSyncAt) return true;
                 const recordTime = new Date(record.createdTime);
@@ -194,10 +194,11 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
               });
 
 
-              // Step 5: Process each record and fetch comments (optional)
+              // Process each record and fetch comments
               for (const record of filteredRecords) {
                 try {
-                  // Try to fetch comments for this record (optional - may fail due to permissions)
+                  // TODO: Optimize comment fetching - consider batching or parallel requests
+                  // Comments may fail due to permissions but are optional for intent generation
                   let comments: any[] = [];
                   try {
                     const commentsResp = await composio.tools.execute('AIRTABLE_LIST_COMMENTS', {
@@ -213,7 +214,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
                     const commentsData = commentsResp?.data?.response_data;
                     comments = commentsData?.comments || [];
                   } catch (commentError) {
-                    // Comments are optional - log but continue if they fail
                     log.debug('Comments not available for record', {
                       baseId: base.id,
                       tableId: table.id,
@@ -223,7 +223,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
                     comments = [];
                   }
 
-                  // Build AirtableRecord object
+                  // Create enriched record with comments
                   const airtableRecord: AirtableRecord = {
                     id: record.id,
                     fields: record.fields,
@@ -248,7 +248,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
                     recordId: record.id,
                     error: error instanceof Error ? error.message : String(error)
                   });
-                  // Continue processing other records
                 }
               }
 
@@ -272,7 +271,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
               tableName: table.name,
               error: error instanceof Error ? error.message : String(error)
             });
-            // Continue processing other tables
           }
         }
 
@@ -282,7 +280,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
           baseName: base.name,
           error: error instanceof Error ? error.message : String(error)
         });
-        // Continue processing other bases
       }
     }
 
@@ -299,7 +296,10 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
   }
 }
 
-// Process Airtable records to generate intents for the authenticated user
+/**
+ * Processes Airtable records to generate intents for the existing user.
+ * Uses the user who connected the Airtable integration and queues intent generation.
+ */
 export async function processAirtableRecords(
   records: AirtableRecord[],
   integration: { id: string; indexId: string }
@@ -314,65 +314,32 @@ export async function processAirtableRecords(
   });
 
   try {
-    // Get integration details to fetch user info
+    // Get integration details
     const integrationDetails = await getIntegrationById(integration.id);
     if (!integrationDetails) {
       log.error('Integration not found for processing', { integrationId: integration.id });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
-    // Get user info from Airtable API
-    const composio = await getClient();
-    const userInfoResp = await composio.tools.execute('AIRTABLE_GET_USER_INFO', {
-      userId: integrationDetails.userId,
-      connectedAccountId: integrationDetails.connectedAccountId!,
-      arguments: {}
-    }) as AirtableApiResponse;
+    // Use the existing user who connected the integration
+    const existingUserId = integrationDetails.userId;
 
-    // Parse the response_data structure
-    const userData = userInfoResp?.data?.response_data;
-    if (!userData?.id || !userData?.email) {
-      log.error('Failed to get Airtable user info for processing', { 
-        integrationId: integration.id,
-        hasData: !!userInfoResp?.data,
-        dataKeys: userInfoResp?.data ? Object.keys(userInfoResp.data) : [],
-        hasResponseData: !!userData,
-        responseDataKeys: userData ? Object.keys(userData) : []
-      });
-      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
-    }
+    // Ensure index membership
+    await ensureIndexMembership(existingUserId, integration.indexId);
 
-    const airtableUser = {
-      id: userData.id,
-      email: userData.email,
-      name: userData.email.split('@')[0] // Use email prefix as name fallback
-    };
-
-    // Resolve the user
-    const resolvedUser = await resolveAirtableUser(airtableUser.email, airtableUser.id, airtableUser.name);
-    if (!resolvedUser) {
-      log.error('Failed to resolve Airtable user', { userEmail: airtableUser.email, airtableUserId: airtableUser.id });
-      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
-    }
-
-    // Ensure user is a member of the index
-    await ensureIndexMembership(resolvedUser.id, integration.indexId);
-
-    log.info('Processing Airtable user', {
-      airtableUserId: airtableUser.id,
-      email: resolvedUser.email,
-      name: resolvedUser.name,
-      userId: resolvedUser.id,
-      isNewUser: resolvedUser.isNewUser
+    log.info('Processing Airtable records for existing user', {
+      userId: existingUserId,
+      integrationId: integration.id,
+      recordCount: records.length
     });
 
-    // Queue intent generation for this user
+    // Queue intent generation job for the existing user
     await addGenerateIntentsJob({
-      userId: resolvedUser.id,
+      userId: existingUserId,
       sourceId: integration.id,
       sourceType: 'integration',
       objects: records,
-      instruction: `Generate intents for Airtable user "${resolvedUser.name}" based on their records and comments`,
+      instruction: `Generate intents based on Airtable records and comments`,
       indexId: integration.indexId,
       intentCount: MAX_INTENTS_PER_USER
     }, 6);
@@ -380,13 +347,13 @@ export async function processAirtableRecords(
     log.info('Airtable processing complete', {
       intentsGenerated: 1,
       usersProcessed: 1,
-      newUsersCreated: resolvedUser.isNewUser ? 1 : 0
+      newUsersCreated: 0
     });
 
     return {
       intentsGenerated: 1,
       usersProcessed: 1,
-      newUsersCreated: resolvedUser.isNewUser ? 1 : 0
+      newUsersCreated: 0
     };
   } catch (error) {
     log.error('Failed to process Airtable records', {
