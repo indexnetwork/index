@@ -30,6 +30,12 @@ export const INTEGRATIONS = {
     toolkit: 'LINKEDIN',
     authConfigId: process.env.COMPOSIO_AUTH_CONFIG_LINKEDIN
   },
+  googledocs: { 
+    name: 'googledocs', 
+    displayName: 'Google Docs', 
+    toolkit: 'GOOGLEDOCS',
+    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_GOOGLEDOCS
+  },
 } as const satisfies Record<string, IntegrationConfig>;
 
 export type IntegrationName = keyof typeof INTEGRATIONS;

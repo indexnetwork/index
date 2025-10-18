@@ -9,6 +9,7 @@ export const INTEGRATIONS = {
   slack: { name: 'slack', displayName: 'Slack', toolkit: 'SLACK' },
   discord: { name: 'discord', displayName: 'Discord', toolkit: 'DISCORDBOT' },
   linkedin: { name: 'linkedin', displayName: 'LinkedIn', toolkit: 'LINKEDIN' },
+  googledocs: { name: 'googledocs', displayName: 'Google Docs', toolkit: 'GOOGLEDOCS' },
 } as const;
 
 export type IntegrationName = keyof typeof INTEGRATIONS;

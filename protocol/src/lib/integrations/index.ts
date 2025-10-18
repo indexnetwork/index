@@ -19,15 +19,18 @@ export interface IntegrationHandler<T = any> {
 import { notionHandler } from './providers/notion';
 import { slackHandler } from './providers/slack';
 import { discordHandler } from './providers/discord';
+import { googledocsHandler } from './providers/googledocs';
 
 export { notionHandler, processNotionPages, type NotionPage } from './providers/notion';
 export { slackHandler, type SlackMessage } from './providers/slack';
 export { discordHandler, type DiscordMessage } from './providers/discord';
+export { googledocsHandler, type GoogleDocsDocument } from './providers/googledocs';
 
 const registry: Record<string, IntegrationHandler> = {
   notion: notionHandler,
   slack: slackHandler,
   discord: discordHandler,
+  googledocs: googledocsHandler,
 };
 
 export const handlers = registry;
