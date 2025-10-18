@@ -20,17 +20,20 @@ import { notionHandler } from './providers/notion';
 import { slackHandler } from './providers/slack';
 import { discordHandler } from './providers/discord';
 import { googledocsHandler } from './providers/googledocs';
+import { airtableHandler } from './providers/airtable';
 
 export { notionHandler, processNotionPages, type NotionPage } from './providers/notion';
 export { slackHandler, type SlackMessage } from './providers/slack';
 export { discordHandler, type DiscordMessage } from './providers/discord';
 export { googledocsHandler, type GoogleDocsDocument } from './providers/googledocs';
+export { airtableHandler, type AirtableRecord } from './providers/airtable';
 
 const registry: Record<string, IntegrationHandler> = {
   notion: notionHandler,
   slack: slackHandler,
   discord: discordHandler,
   googledocs: googledocsHandler,
+  airtable: airtableHandler,
 };
 
 export const handlers = registry;

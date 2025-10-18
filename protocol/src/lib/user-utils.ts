@@ -356,4 +356,3 @@ export async function resolveNotionUser(email: string, notionUserId: string, nam
     return undefined;
   }
 }
-
