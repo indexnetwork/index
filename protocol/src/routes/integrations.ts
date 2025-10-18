@@ -86,7 +86,8 @@ router.post('/connect/:integrationType',
   authenticatePrivy,
   [
     param('integrationType').isIn(Object.keys(INTEGRATION_MAPPINGS)).withMessage('Invalid integration type'),
-    body('indexId').isUUID().withMessage('Index ID is required and must be valid UUID')
+    body('indexId').optional().isUUID().withMessage('Index ID must be valid UUID'),
+    body('enableUserAttribution').optional().isBoolean().withMessage('enableUserAttribution must be a boolean')
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -98,36 +99,58 @@ router.post('/connect/:integrationType',
       const userId = req.user!.id;
       const integrationType = req.params.integrationType;
       const indexId = req.body.indexId;
+      const enableUserAttribution = req.body.enableUserAttribution ?? false; // Default to false
       const integrationConfig = INTEGRATIONS[integrationType as keyof typeof INTEGRATIONS];
 
-      // Validate indexId access
-      const indexExists = await db.select({ id: indexes.id })
-        .from(indexes)
-        .innerJoin(indexMembers, eq(indexes.id, indexMembers.indexId))
-        .where(and(
-          eq(indexes.id, indexId),
-          eq(indexMembers.userId, userId),
-          isNull(indexes.deletedAt)
-        ))
-        .limit(1);
-
-      if (indexExists.length === 0) {
-        return res.status(404).json({ error: 'Index not found or access denied' });
+      // Validate: if attribution enabled, indexId is required
+      if (enableUserAttribution && !indexId) {
+        return res.status(400).json({ error: 'Index ID is required when user attribution is enabled' });
       }
 
-      // Check if already connected for this index
-      const existing = await db.select()
-        .from(userIntegrations)
-        .where(and(
-          eq(userIntegrations.userId, userId),
-          eq(userIntegrations.integrationType, integrationType),
-          eq(userIntegrations.indexId, indexId),
-          isNull(userIntegrations.deletedAt)
-        ))
-        .limit(1);
+      // Validate indexId access if provided
+      if (indexId) {
+        const indexExists = await db.select({ id: indexes.id })
+          .from(indexes)
+          .innerJoin(indexMembers, eq(indexes.id, indexMembers.indexId))
+          .where(and(
+            eq(indexes.id, indexId),
+            eq(indexMembers.userId, userId),
+            isNull(indexes.deletedAt)
+          ))
+          .limit(1);
 
-      if (existing.length > 0) {
-        return res.status(409).json({ error: 'Integration already connected for this index' });
+        if (indexExists.length === 0) {
+          return res.status(404).json({ error: 'Index not found or access denied' });
+        }
+
+        // Check if already connected for this index
+        const existing = await db.select()
+          .from(userIntegrations)
+          .where(and(
+            eq(userIntegrations.userId, userId),
+            eq(userIntegrations.integrationType, integrationType),
+            eq(userIntegrations.indexId, indexId),
+            isNull(userIntegrations.deletedAt)
+          ))
+          .limit(1);
+
+        if (existing.length > 0) {
+          return res.status(409).json({ error: 'Integration already connected for this index' });
+        }
+      } else {
+        // No indexId - check if user has any non-attributed integration of this type
+        const existing = await db.select()
+          .from(userIntegrations)
+          .where(and(
+            eq(userIntegrations.userId, userId),
+            eq(userIntegrations.integrationType, integrationType),
+            isNull(userIntegrations.deletedAt)
+          ))
+          .limit(1);
+
+        if (existing.length > 0) {
+          return res.status(409).json({ error: 'Integration already connected' });
+        }
       }
 
       // Initiate OAuth connection with Composio
@@ -145,10 +168,11 @@ router.post('/connect/:integrationType',
       const [integrationRecord] = await db.insert(userIntegrations).values({
         userId,
         integrationType,
-        indexId,
+        indexId: indexId || null, // Store null if not provided
         connectedAccountId: connection.id,
         redirectUrl: connection.redirectUrl,
-        status: 'pending'
+        status: 'pending',
+        enableUserAttribution
       }).returning();
 
       return res.json({ 

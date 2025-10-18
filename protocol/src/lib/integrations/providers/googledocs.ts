@@ -1,4 +1,4 @@
-import type { IntegrationHandler } from '../index';
+import type { IntegrationHandler, UserIdentifier } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
@@ -17,6 +17,10 @@ export interface GoogleDocsDocument {
   modifiedTime: string;
   webViewLink: string;
   size: string;
+  owners?: Array<{
+    emailAddress: string;
+    displayName: string;
+  }>;
 }
 
 interface GoogleDocsSearchResponse {
@@ -295,7 +299,8 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
           createdTime: doc.createdTime,
           modifiedTime: doc.modifiedTime,
           webViewLink: doc.webViewLink,
-          size: doc.size
+          size: doc.size,
+          owners: doc.owners // Include owners for attribution
         });
 
         log.debug('Document processed successfully', { 
@@ -369,12 +374,38 @@ export async function processGoogleDocsDocuments(
   };
 }
 
-export const googledocsHandler: IntegrationHandler<GoogleDocsDocument> = { 
+/**
+ * Extract unique users from Google Docs documents (from owners)
+ */
+function extractUsers(documents: GoogleDocsDocument[]): UserIdentifier[] {
+  const userMap = new Map<string, UserIdentifier>();
+
+  for (const document of documents) {
+    if (!document.owners) continue;
+
+    for (const owner of document.owners) {
+      if (!owner.emailAddress) continue;
+      if (userMap.has(owner.emailAddress)) continue;
+
+      userMap.set(owner.emailAddress, {
+        id: owner.emailAddress,
+        email: owner.emailAddress,
+        name: owner.displayName || owner.emailAddress.split('@')[0],
+        provider: 'googledocs',
+        providerId: owner.emailAddress
+      });
+    }
+  }
+
+  return Array.from(userMap.values());
+}
+
+export const googledocsHandler: IntegrationHandler<GoogleDocsDocument> = {
+  enableUserAttribution: false, // Default: process for integration owner only
   fetchObjects,
-  processObjects: processGoogleDocsDocuments
+  extractUsers
 };
 
-// TODO: Process shared documents and create intents for collaborators (like Slack user resolution)
 // TODO: Add document categorization (meeting-notes, project-docs, research, etc.) for better intent generation
 // TODO: Implement document version history tracking and change-based intent generation
 // TODO: Add real-time collaboration monitoring via Google Drive webhooks

@@ -1,5 +1,4 @@
-import type { IntegrationHandler } from '../index';
-import { resolveNotionUser } from '../../user-utils';
+import type { IntegrationHandler, UserIdentifier } from '../index';
 import { getIntegrationById } from '../integration-utils';
 
 export interface NotionPage {
@@ -130,106 +129,19 @@ function extractTitle(item: any): string {
   return item.id || 'Untitled';
 }
 
-// Process Notion pages to generate intents per user
-export async function processNotionPages(
-  pages: NotionPage[],
-  integration: { id: string; indexId: string }
-): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
-  if (!pages.length) {
-    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
-  }
-
-  log.info('Processing Notion pages', { count: pages.length });
-
-  // Group pages by Notion user ID first
-  const pagesByUser = new Map<string, NotionPage[]>();
-  for (const page of pages) {
-    const userId = page.created_by.id;
-    if (!pagesByUser.has(userId)) {
-      pagesByUser.set(userId, []);
-    }
-    pagesByUser.get(userId)!.push(page);
-  }
-
-  let totalIntentsGenerated = 0;
-  let usersProcessed = 0;
-  let newUsersCreated = 0;
-
-  // Process each user individually
-  for (const [notionUserId, userPages] of pagesByUser) {
-    if (!userPages.length) continue;
-
-    // Extract user info from the first page
-    const firstPage = userPages[0];
-
-    try {
-      // Save user individually using the Notion resolver
-      const createdUser = await resolveNotionUser(
-        `${firstPage.created_by.name || notionUserId}@notion.local`,
-        notionUserId,
-        firstPage.created_by.name || notionUserId
-      );
-      
-      if (!createdUser) {
-        console.error(`Failed to resolve Notion user: ${notionUserId}`);
-        continue;
-      }
-      
-      if (createdUser.isNewUser) {
-        newUsersCreated++;
-      }
-      usersProcessed++;
-
-      // Add user as index member if not already a member
-      await ensureIndexMembership(createdUser.id, integration.indexId);
-
-      // Queue intent generation for this user
-      await addGenerateIntentsJob({
-        userId: createdUser.id,
-        sourceId: integration.id,
-        sourceType: 'integration',
-        objects: userPages,
-        instruction: `Generate intents for Notion user "${createdUser.name}" based on their pages`,
-        indexId: integration.indexId,
-        intentCount: 3
-      }, 6);
-      
-      totalIntentsGenerated++; // Count queued jobs
-    } catch (error) {
-      log.error('Failed to process Notion user', {
-        notionUserId,
-        name: firstPage.created_by.name,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      // Continue processing other users even if one fails
-    }
-  }
-
-  log.info('Notion processing complete', { 
-    intentsGenerated: totalIntentsGenerated,
-    usersProcessed,
-    newUsersCreated
-  });
-
-  return { 
-    intentsGenerated: totalIntentsGenerated, 
-    usersProcessed,
-    newUsersCreated
-  };
-}
-
 // Extract Notion users from pages
-export function extractNotionUsers(pages: any[]) {
-  const userMap = new Map();
+function extractUsers(pages: NotionPage[]): UserIdentifier[] {
+  const userMap = new Map<string, UserIdentifier>();
   
   for (const page of pages) {
     const createdBy = page.created_by?.id;
     if (!createdBy || userMap.has(createdBy)) continue;
     
     const name = page.created_by?.name || `notion-user-${createdBy}`;
-    const email = `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}+notion-${createdBy}@notion.index.app`;
+    const email = `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}+notion-${createdBy}@notion.local`;
     
     userMap.set(createdBy, {
+      id: createdBy,
       email,
       name,
       provider: 'notion',
@@ -240,7 +152,8 @@ export function extractNotionUsers(pages: any[]) {
   return Array.from(userMap.values());
 }
 
-export const notionHandler: IntegrationHandler<NotionPage> = { 
+export const notionHandler: IntegrationHandler<NotionPage> = {
+  enableUserAttribution: true,
   fetchObjects,
-  processObjects: processNotionPages
+  extractUsers
 };

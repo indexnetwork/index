@@ -3,7 +3,7 @@ import db from './db';
 import { userIntegrations, indexLinks } from './schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { log } from './log';
-import { handlers } from './integrations';
+import { handlers, processObjects } from './integrations';
 import { processFiles } from './integrations/files/processor';
 import { crawlLinksForIndex } from './crawl/web_crawler';
 
@@ -49,10 +49,10 @@ export async function syncIntegration(
     let filesImported = 0;
     
     // Generic sync logic - works with any provider
-    if (handler.fetchObjects && handler.processObjects) {
-      // Object-based providers (Discord, Slack, Notion)
+    if (handler.fetchObjects) {
+      // Object-based providers (Discord, Slack, Notion, Airtable, Google Docs)
       const objects = await handler.fetchObjects(integrationId, lastSyncAt || undefined);
-      const result = await handler.processObjects(objects, integration[0]);
+      const result = await processObjects(objects, integration[0], handler);
       
       intentsGenerated = result.intentsGenerated;
       usersProcessed = result.usersProcessed;

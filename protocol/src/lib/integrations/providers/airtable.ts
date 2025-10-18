@@ -1,4 +1,4 @@
-import type { IntegrationHandler } from '../index';
+import type { IntegrationHandler, UserIdentifier } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { ensureIndexMembership } from '../membership-utils';
@@ -363,7 +363,35 @@ export async function processAirtableRecords(
   }
 }
 
-export const airtableHandler: IntegrationHandler<AirtableRecord> = { 
+/**
+ * Extract unique users from Airtable records (from comment authors)
+ */
+function extractUsers(records: AirtableRecord[]): UserIdentifier[] {
+  const userMap = new Map<string, UserIdentifier>();
+
+  for (const record of records) {
+    if (!record.comments) continue;
+
+    for (const comment of record.comments) {
+      const author = comment.author;
+      if (!author?.id || !author?.email) continue;
+      if (userMap.has(author.id)) continue;
+
+      userMap.set(author.id, {
+        id: author.id,
+        email: author.email,
+        name: author.email.split('@')[0],
+        provider: 'airtable',
+        providerId: author.id
+      });
+    }
+  }
+
+  return Array.from(userMap.values());
+}
+
+export const airtableHandler: IntegrationHandler<AirtableRecord> = {
+  enableUserAttribution: false, // Default: process for integration owner only
   fetchObjects,
-  processObjects: processAirtableRecords
+  extractUsers
 };

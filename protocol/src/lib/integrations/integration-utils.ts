@@ -10,6 +10,7 @@ export interface IntegrationDetails {
   integrationType: string;
   connectedAccountId: string | null;
   lastSyncAt: Date | null;
+  enableUserAttribution?: boolean | null;
 }
 
 /**
@@ -23,7 +24,8 @@ export async function getIntegrationById(integrationId: string): Promise<Integra
       indexId: userIntegrations.indexId,
       integrationType: userIntegrations.integrationType,
       connectedAccountId: userIntegrations.connectedAccountId,
-      lastSyncAt: userIntegrations.lastSyncAt
+      lastSyncAt: userIntegrations.lastSyncAt,
+      enableUserAttribution: userIntegrations.enableUserAttribution
     })
     .from(userIntegrations)
     .where(and(

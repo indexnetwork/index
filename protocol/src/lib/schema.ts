@@ -113,7 +113,8 @@ export const userIntegrations = pgTable('integrations', {
   redirectUrl: text('redirect_url'),
   connectedAt: timestamp('connected_at'),
   lastSyncAt: timestamp('last_sync_at'),
-  indexId: uuid('index_id').notNull().references(() => indexes.id),
+  indexId: uuid('index_id').references(() => indexes.id), // Optional: only required when enableUserAttribution is true
+  enableUserAttribution: boolean('enable_user_attribution').default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at')

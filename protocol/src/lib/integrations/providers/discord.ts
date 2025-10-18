@@ -1,5 +1,4 @@
-import type { IntegrationHandler } from '../index';
-import { resolveDiscordUser } from '../../user-utils';
+import type { IntegrationHandler, UserIdentifier } from '../index';
 import { getIntegrationById } from '../integration-utils';
 
 export interface DiscordMessage {
@@ -187,97 +186,34 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<D
   return discordMessages;
 }
 
-// Process Discord messages to generate intents per user
-export async function processDiscordMessages(
-  messages: DiscordMessage[],
-  integration: { id: string; indexId: string }
-): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
-  if (!messages.length) {
-    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
-  }
+/**
+ * Extract unique users from Discord messages
+ */
+function extractUsers(messages: DiscordMessage[]): UserIdentifier[] {
+  const userMap = new Map<string, UserIdentifier>();
 
-  // Using static imports from top of file
-
-  log.info('Processing Discord messages', { count: messages.length });
-
-  // Group messages by Discord user ID first
-  const messagesByUser = new Map<string, DiscordMessage[]>();
   for (const message of messages) {
-    const userId = message.author.id;
-    if (!messagesByUser.has(userId)) {
-      messagesByUser.set(userId, []);
-    }
-    messagesByUser.get(userId)!.push(message);
+    const discordUserId = message.author.id;
+    if (userMap.has(discordUserId)) continue;
+
+    const username = message.author.username;
+    const name = message.author.global_name || username;
+    const email = `${username}@discord.local`;
+
+    userMap.set(discordUserId, {
+      id: discordUserId,
+      email,
+      name,
+      provider: 'discord',
+      providerId: discordUserId
+    });
   }
 
-  let totalIntentsGenerated = 0;
-  let usersProcessed = 0;
-  let newUsersCreated = 0;
-
-  // Process each user individually
-  for (const [discordUserId, userMessages] of messagesByUser) {
-    if (!userMessages.length) continue;
-
-    // Extract user info from the first message
-    const firstMessage = userMessages[0];
-    try {
-      // Save user individually using the Discord resolver
-      const createdUser = await resolveDiscordUser(
-        `${firstMessage.author.username}@discord.local`,
-        firstMessage.author.id,
-        firstMessage.author.global_name || firstMessage.author.username
-      );
-      
-      if (!createdUser) {
-        console.error(`Failed to resolve Discord user: ${firstMessage.author.username}`);
-        continue;
-      }
-      
-      if (createdUser.isNewUser) {
-        newUsersCreated++;
-      }
-      usersProcessed++;
-
-      // Add user as index member if not already a member
-      await ensureIndexMembership(createdUser.id, integration.indexId);
-
-      // Queue intent generation for this user
-      await addGenerateIntentsJob({
-        userId: createdUser.id,
-        sourceId: integration.id,
-        sourceType: 'integration',
-        objects: userMessages,
-        instruction: `Generate intents for Discord user "${createdUser.name}" based on their messages`,
-        indexId: integration.indexId,
-        intentCount: 3
-      }, 6);
-      
-      totalIntentsGenerated++; // Count queued jobs
-    } catch (error) {
-      log.error('Failed to process Discord user', {
-        discordUserId,
-        username: firstMessage.author.username,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      // Continue processing other users even if one fails
-    }
-  }
-
-  log.info('Discord processing complete', { 
-    intentsGenerated: totalIntentsGenerated,
-    usersProcessed,
-    newUsersCreated
-  });
-
-  return { 
-    intentsGenerated: totalIntentsGenerated, 
-    usersProcessed,
-    newUsersCreated
-  };
+  return Array.from(userMap.values());
 }
 
-
-export const discordHandler: IntegrationHandler<DiscordMessage> = { 
+export const discordHandler: IntegrationHandler<DiscordMessage> = {
+  enableUserAttribution: true,
   fetchObjects,
-  processObjects: processDiscordMessages
+  extractUsers
 };

@@ -1,10 +1,7 @@
-import type { IntegrationHandler } from '../index';
+import type { IntegrationHandler, UserIdentifier } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
-import { resolveSlackUser } from '../../user-utils';
-import { ensureIndexMembership } from '../membership-utils';
 import { getIntegrationById } from '../integration-utils';
-import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
 // Constants
 const CHANNEL_LIMIT = 200;
@@ -23,11 +20,10 @@ export interface SlackMessage {
   channel_name: string;
   bot_id?: string;
   subtype?: string;
-  user_resolved?: {
-    id: string;
-    name: string;
+  user_profile?: {
     email: string;
-    isNewUser: boolean;
+    name: string;
+    avatar?: string;
   };
 }
 
@@ -38,6 +34,7 @@ interface SlackChannel {
 
 interface SlackUser {
   id: string;
+  name?: string;
   real_name?: string;
   profile?: {
     real_name?: string;
@@ -86,11 +83,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 
-    console.log('Slack channels response', { 
-      connectedAccountId, 
-      arguments: { limit: CHANNEL_LIMIT } 
-    });
-
     // Fetch channels
     const channels: SlackChannel[] = [];
     const channelsResp = await composio.tools.execute('SLACK_LIST_ALL_CHANNELS', { 
@@ -98,7 +90,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
       connectedAccountId, 
       arguments: { limit: CHANNEL_LIMIT } 
     }) as SlackApiResponse;
-
     
     const channelList = channelsResp?.data?.channels || [];
     for (const ch of channelList) {
@@ -110,7 +101,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
     log.info('Slack channels', { count: channels.length });
     if (!channels.length) return [];
 
-    // Step 1: Fetch all users from Slack workspace first
+    // Fetch all users from Slack workspace for metadata
     const userMap = new Map<string, SlackUser>();
     try {
       log.info('Fetching all Slack users');
@@ -150,58 +141,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
       log.error('Failed to fetch Slack users', { error: (error as Error).message });
     }
 
-    // Step 2: Process and resolve all users first
-    const resolvedUsers = new Map<string, SlackMessage['user_resolved']>();
-    log.info('Processing users first');
-    
-    for (const [slackUserId, userProfile] of userMap) {
-      if (!userProfile?.profile?.email) {
-        log.debug('No email found for user, skipping', { slackUserId });
-        continue;
-      }
-
-      try {
-        // Simplified name resolution with fallback chain
-        const name = userProfile.real_name || 
-                     userProfile.profile.real_name || 
-                     userProfile.profile.display_name || 
-                     slackUserId;
-        
-        // Extract avatar URL from Slack profile (use original image only)
-        const avatar = userProfile.profile.image_original;
-        
-        const resolvedUser = await resolveSlackUser(userProfile.profile.email, slackUserId, name, avatar);
-        if (resolvedUser) {
-          const userResolvedData = {
-            id: resolvedUser.id,
-            name: resolvedUser.name,
-            email: resolvedUser.email,
-            isNewUser: resolvedUser.isNewUser
-          };
-          
-          resolvedUsers.set(slackUserId, userResolvedData);
-          
-          // Ensure index membership immediately after resolving user
-          await ensureIndexMembership(resolvedUser.id, integration.indexId);
-          
-          log.debug('User resolved and added to index', { 
-            slackUserId, 
-            userId: resolvedUser.id, 
-            email: resolvedUser.email,
-            isNewUser: resolvedUser.isNewUser
-          });
-        }
-      } catch (error) {
-        log.error('Failed to resolve user', { 
-          slackUserId, 
-          error: error instanceof Error ? error.message : String(error)
-        });
-      }
-    }
-    
-    log.info('Users processed', { resolvedCount: resolvedUsers.size });
-    
-    // Step 3: Now fetch and process messages
+    // Fetch messages from all channels
     const allMessages: SlackMessage[] = [];
     let messagesTotal = 0;
     
@@ -210,8 +150,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
       const channelName = ch.name || ch.id;
       const args: any = { channel: channelId, include_all_metadata: true };
       if (lastSyncAt) args.oldest = (lastSyncAt.getTime() / 1000).toString();
-
-      console.log('Fetching Slack conversation history', { args , connectedAccountId});
 
       const history = await composio.tools.execute('SLACK_FETCH_CONVERSATION_HISTORY', { 
         userId: integration.userId,
@@ -228,13 +166,12 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
           continue;
         }
         
-        // Get pre-resolved user information
-        const userResolved = resolvedUsers.get(msg.user);
-        if (!userResolved) {
-          log.debug('No resolved user found for message', { 
-            slackUserId: msg.user, 
-            messageTs: msg.ts 
-          });
+        // Get user profile for metadata
+        const userProfile = userMap.get(msg.user);
+        
+        // Only include messages with valid user profiles
+        if (!userProfile?.profile?.email) {
+          log.debug('Skipping message without user email', { userId: msg.user });
           continue;
         }
         
@@ -242,14 +179,18 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
           ts: msg.ts,
           text: msg.text || '',
           user: msg.user,
-          username: msg.username,
-          real_name: msg.real_name,
-          display_name: msg.display_name,
+          username: msg.username || userProfile.name,
+          real_name: msg.real_name || userProfile.real_name,
+          display_name: msg.display_name || userProfile.profile.display_name,
           channel_id: channelId,
           channel_name: channelName,
           bot_id: msg.bot_id,
           subtype: msg.subtype,
-          user_resolved: userResolved
+          user_profile: {
+            email: userProfile.profile.email,
+            name: userProfile.real_name || userProfile.profile.real_name || userProfile.profile.display_name || msg.user,
+            avatar: userProfile.profile.image_original
+          }
         });
       }
     }
@@ -260,94 +201,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
     return [];
   }
 }
-
-// Process Slack messages to generate intents per user
-export async function processSlackMessages(
-  messages: SlackMessage[],
-  integration: { id: string; indexId: string }
-): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
-  if (!messages.length) {
-    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
-  }
-
-  log.info('Processing Slack messages', { count: messages.length });
-
-  // Group messages by Slack user ID first
-  const messagesByUser = new Map<string, SlackMessage[]>();
-  for (const message of messages) {
-    const userId = message.user;
-    if (!messagesByUser.has(userId)) {
-      messagesByUser.set(userId, []);
-    }
-    messagesByUser.get(userId)!.push(message);
-  }
-
-  let totalIntentsGenerated = 0;
-  let usersProcessed = 0;
-  let newUsersCreated = 0;
-
-  // Process each user individually
-  for (const [slackUserId, userMessages] of messagesByUser) {
-    if (!userMessages.length) continue;
-
-    // Get user info from the first message's resolved user data
-    const firstMessage = userMessages[0];
-    const userResolved = firstMessage.user_resolved;
-    
-    if (!userResolved) {
-      log.error('No resolved user data found for Slack user', { slackUserId });
-      continue;
-    }
-
-    try {
-      if (userResolved.isNewUser) {
-        newUsersCreated++;
-      }
-      usersProcessed++;
-      
-      log.info('Processing Slack user', { 
-        slackUserId, 
-        email: userResolved.email, 
-        name: userResolved.name, 
-        userId: userResolved.id,
-        isNewUser: userResolved.isNewUser
-      });
-
-      // Queue intent generation for this user
-      await addGenerateIntentsJob({
-        userId: userResolved.id,
-        sourceId: integration.id,
-        sourceType: 'integration',
-        objects: userMessages,
-        instruction: `Generate intents for Slack user "${userResolved.name}" based on their messages`,
-        indexId: integration.indexId,
-        intentCount: MAX_INTENTS_PER_USER
-      }, 6);
-      
-      totalIntentsGenerated++; // Count queued jobs
-    } catch (error) {
-      log.error('Failed to process Slack user', {
-        slackUserId,
-        username: firstMessage.username,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      // Continue processing other users even if one fails
-    }
-  }
-
-  log.info('Slack processing complete', { 
-    intentsGenerated: totalIntentsGenerated,
-    usersProcessed,
-    newUsersCreated
-  });
-
-  return { 
-    intentsGenerated: totalIntentsGenerated, 
-    usersProcessed,
-    newUsersCreated
-  };
-}
-
 
 /**
  * Helper function to validate if a message should be processed
@@ -373,7 +226,33 @@ function isValidMessage(msg: any, lastSyncAt?: Date): boolean {
   return true;
 }
 
-export const slackHandler: IntegrationHandler<SlackMessage> = { 
+/**
+ * Extract unique users from Slack messages
+ */
+function extractUsers(messages: SlackMessage[]): UserIdentifier[] {
+  const userMap = new Map<string, UserIdentifier>();
+
+  for (const message of messages) {
+    if (!message.user_profile) continue;
+
+    const slackUserId = message.user;
+    if (userMap.has(slackUserId)) continue;
+
+    userMap.set(slackUserId, {
+      id: slackUserId,
+      email: message.user_profile.email,
+      name: message.user_profile.name,
+      provider: 'slack',
+      providerId: slackUserId,
+      avatar: message.user_profile.avatar
+    });
+  }
+
+  return Array.from(userMap.values());
+}
+
+export const slackHandler: IntegrationHandler<SlackMessage> = {
+  enableUserAttribution: true,
   fetchObjects,
-  processObjects: processSlackMessages
+  extractUsers
 };

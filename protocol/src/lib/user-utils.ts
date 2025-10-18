@@ -126,9 +126,20 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
   }
 }
 
-// User resolver functions for different integration providers - always return user object
-
-export async function resolveSlackUser(email: string, slackUserId: string, name: string, avatar?: string): Promise<CreatedUser | undefined> {
+/**
+ * Generic user resolver for integration providers.
+ * Finds existing user by email or creates a new one via Privy.
+ */
+export async function resolveIntegrationUser(params: {
+  email: string;
+  providerId: string;
+  name: string;
+  provider: IntegrationName;
+  avatar?: string;
+  updateEmptyFields?: boolean;
+}): Promise<CreatedUser | undefined> {
+  const { email, providerId, name, provider, avatar, updateEmptyFields = false } = params;
+  
   try {
     // Try to find existing user by email first
     const existingUser = await db
@@ -144,56 +155,57 @@ export async function resolveSlackUser(email: string, slackUserId: string, name:
       .limit(1);
     
     if (existingUser.length > 0) {
-      // User exists, check if we need to update avatar or name
       const user = existingUser[0];
       
-      // Check if we need to update empty fields
-      const needsUpdate = (!user.name || user.name.trim() === '') || 
-                         (avatar && !user.avatar);
-      
-      if (needsUpdate) {
-        const updateData: any = {};
-        if (!user.name || user.name.trim() === '') {
-          updateData.name = name;
-        }
-        if (avatar && !user.avatar) {
-          updateData.avatar = avatar;
-        }
+      // Optionally update empty fields (for Slack which has avatars)
+      if (updateEmptyFields) {
+        const needsUpdate = (!user.name || user.name.trim() === '') || (avatar && !user.avatar);
         
-        if (Object.keys(updateData).length > 0) {
-          updateData.updatedAt = new Date();
+        if (needsUpdate) {
+          const updateData: any = {};
+          if (!user.name || user.name.trim() === '') {
+            updateData.name = name;
+          }
+          if (avatar && !user.avatar) {
+            updateData.avatar = avatar;
+          }
           
-          const updatedUser = await db
-            .update(users)
-            .set(updateData)
-            .where(eq(users.id, user.id))
-            .returning({
-              id: users.id,
-              privyId: users.privyId,
-              email: users.email,
-              name: users.name
-            });
-          
-          if (updatedUser.length > 0) {
-            log.info('Updated existing Slack user with missing data', { 
-              email, 
-              slackUserId, 
-              userId: user.id,
-              updatedFields: Object.keys(updateData)
-            });
+          if (Object.keys(updateData).length > 0) {
+            updateData.updatedAt = new Date();
             
-            return {
-              id: updatedUser[0].id,
-              privyId: updatedUser[0].privyId,
-              email: updatedUser[0].email,
-              name: updatedUser[0].name,
-              isNewUser: false
-            };
+            const updatedUser = await db
+              .update(users)
+              .set(updateData)
+              .where(eq(users.id, user.id))
+              .returning({
+                id: users.id,
+                privyId: users.privyId,
+                email: users.email,
+                name: users.name
+              });
+            
+            if (updatedUser.length > 0) {
+              log.info('Updated existing user with missing data', { 
+                email,
+                provider,
+                providerId,
+                userId: user.id,
+                updatedFields: Object.keys(updateData)
+              });
+              
+              return {
+                id: updatedUser[0].id,
+                privyId: updatedUser[0].privyId,
+                email: updatedUser[0].email,
+                name: updatedUser[0].name,
+                isNewUser: false
+              };
+            }
           }
         }
       }
       
-      log.info('Slack user already exists', { email, slackUserId, userId: user.id });
+      log.info('Integration user already exists', { email, provider, providerId, userId: user.id });
       
       return {
         id: user.id,
@@ -213,146 +225,31 @@ export async function resolveSlackUser(email: string, slackUserId: string, name:
         },
       ],
       customMetadata: {
-        provider: 'slack',
-        providerId: slackUserId,
-        name: name
+        provider,
+        providerId,
+        name
       },
       createEthereumWallet: true
     });
     
-    // Save user to database using the agnostic saveUser function
+    // Save user to database
     const createdUser = await saveUser({
       email,
       name,
-      provider: 'slack',
-      providerId: slackUserId,
+      provider,
+      providerId,
       privyId: privyUser.id,
       avatar
     });
     
     return createdUser;
   } catch (error) {
-    log.error('Failed to resolve Slack user', { email, slackUserId, error: error instanceof Error ? error.message : String(error) });
-    return undefined;
-  }
-}
-
-export async function resolveDiscordUser(email: string, discordUserId: string, name: string): Promise<CreatedUser | undefined> {
-  try {
-    // Try to find existing user by email first
-    const existingUser = await db
-      .select({
-        id: users.id,
-        privyId: users.privyId,
-        email: users.email,
-        name: users.name
-      })
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
-    
-    if (existingUser.length > 0) {
-      // User exists, return existing user data
-      const user = existingUser[0];
-      log.info('Discord user already exists', { email, discordUserId, userId: user.id });
-      
-      return {
-        id: user.id,
-        privyId: user.privyId,
-        email: user.email,
-        name: user.name,
-        isNewUser: false
-      };
-    }
-    
-    // User doesn't exist, create new user via Privy SDK
-    const privyUser = await privyClient.importUser({
-      linkedAccounts: [
-        {
-          type: 'email',
-          address: email,
-        },
-      ],
-      customMetadata: {
-        provider: 'discord',
-        providerId: discordUserId,
-        name: name
-      },
-      createEthereumWallet: true
+    log.error('Failed to resolve integration user', { 
+      email, 
+      provider, 
+      providerId, 
+      error: error instanceof Error ? error.message : String(error) 
     });
-    
-    // Save user to database using the agnostic saveUser function
-    const createdUser = await saveUser({
-      email,
-      name,
-      provider: 'discord',
-      providerId: discordUserId,
-      privyId: privyUser.id
-    });
-    
-    return createdUser;
-  } catch (error) {
-    log.error('Failed to resolve Discord user', { email, discordUserId, error: error instanceof Error ? error.message : String(error) });
-    return undefined;
-  }
-}
-
-export async function resolveNotionUser(email: string, notionUserId: string, name: string): Promise<CreatedUser | undefined> {
-  try {
-    // Try to find existing user by email first
-    const existingUser = await db
-      .select({
-        id: users.id,
-        privyId: users.privyId,
-        email: users.email,
-        name: users.name
-      })
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
-    
-    if (existingUser.length > 0) {
-      // User exists, return existing user data
-      const user = existingUser[0];
-      log.info('Notion user already exists', { email, notionUserId, userId: user.id });
-      
-      return {
-        id: user.id,
-        privyId: user.privyId,
-        email: user.email,
-        name: user.name,
-        isNewUser: false
-      };
-    }
-    
-    // User doesn't exist, create new user via Privy SDK
-    const privyUser = await privyClient.importUser({
-      linkedAccounts: [
-        {
-          type: 'email',
-          address: email,
-        },
-      ],
-      customMetadata: {
-        provider: 'notion',
-        providerId: notionUserId,
-        name: name
-      },
-      createEthereumWallet: true
-    });
-    
-    // Save user to database using the agnostic saveUser function
-    const createdUser = await saveUser({
-      email,
-      name,
-      provider: 'notion',
-      providerId: notionUserId,
-      privyId: privyUser.id
-    });
-    
-    return createdUser;
-  } catch (error) {
-    log.error('Failed to resolve Notion user', { email, notionUserId, error: error instanceof Error ? error.message : String(error) });
     return undefined;
   }
 }

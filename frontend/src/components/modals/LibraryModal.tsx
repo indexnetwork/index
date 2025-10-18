@@ -84,6 +84,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     name: string;
   } | null>(null);
   const [selectedIndexForConnection, setSelectedIndexForConnection] = useState<string>('');
+  const [enableUserAttribution, setEnableUserAttribution] = useState<boolean>(false);
   const [userIndexes, setUserIndexes] = useState<Array<{ id: string; title: string }>>([]);
   
   // Source filtering state - now supports multiple sources
@@ -422,14 +423,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api, integrations, success, error]);
 
-  const handleConnectIntegration = useCallback(async (type: IntegrationName, indexId: string) => {
+  const handleConnectIntegration = useCallback(async (type: IntegrationName, indexId: string | null, enableUserAttribution: boolean) => {
     const item = integrations.find(i => i.type === type);
     if (!item) return;
     
     try {
       setPendingIntegration(type);
       const popup = typeof window !== 'undefined' ? window.open('', `oauth_${type}`, 'width=560,height=720') : null;
-      const res = await api.post<{ redirectUrl?: string; integrationId?: string }>(`/integrations/connect/${type}`, { indexId });
+      const payload: { indexId?: string; enableUserAttribution: boolean } = { enableUserAttribution };
+      if (indexId) payload.indexId = indexId;
+      const res = await api.post<{ redirectUrl?: string; integrationId?: string }>(`/integrations/connect/${type}`, payload);
       const redirect = res.redirectUrl;
       const integrationId = res.integrationId;
       
@@ -1151,6 +1154,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             if (!v) {
               setConfigureIntegration(null);
               setSelectedIndexForConnection('');
+              setEnableUserAttribution(false);
             }
           }}>
             <Dialog.Portal>
@@ -1160,75 +1164,135 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   Configure {configureIntegration?.name}
                 </Dialog.Title>
                 
-                <div className="mt-4 mb-4">
-                  <label className="block text-sm font-medium text-[#333] mb-2 font-ibm-plex-mono">
-                    Select Index
-                  </label>
-                  <select
-                    value={selectedIndexForConnection}
-                    onChange={(e) => setSelectedIndexForConnection(e.target.value)}
-                    className="w-full p-2 border border-[#BBBBBB] rounded-sm font-ibm-plex-mono text-sm focus:ring-2 focus:ring-[rgba(0,109,75,0.35)] focus:border-[#006D4B] bg-white text-[#333]"
-                  >
-                    <option value="">Choose an index...</option>
-                    {userIndexes.map((index) => (
-                      <option key={index.id} value={index.id}>
-                        {index.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* User Attribution Toggle - hide for LinkedIn */}
+                {configureIntegration?.type !== 'linkedin' && (
+                  <div className="mt-4 mb-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <label className="block text-sm font-medium text-[#333] font-ibm-plex-mono">
+                          User Attribution
+                        </label>
+                        <p className="text-xs text-gray-600 font-ibm-plex-mono mt-0.5">
+                          {enableUserAttribution ? 'Extract users and add as index members' : 'Process for your account only'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEnableUserAttribution(!enableUserAttribution);
+                          if (enableUserAttribution) {
+                            setSelectedIndexForConnection('');
+                          }
+                        }}
+                        className={`relative h-6 w-11 rounded-full transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                          enableUserAttribution ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                        }`}
+                        aria-pressed={enableUserAttribution}
+                        aria-label="Toggle user attribution"
+                      >
+                        <span
+                          className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
+                            enableUserAttribution ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Index Selector - only visible when attribution enabled */}
+                {enableUserAttribution && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-[#333] mb-2 font-ibm-plex-mono">
+                      Select Index
+                    </label>
+                    <select
+                      value={selectedIndexForConnection}
+                      onChange={(e) => setSelectedIndexForConnection(e.target.value)}
+                      className="w-full p-2 border border-[#BBBBBB] rounded-sm font-ibm-plex-mono text-sm focus:ring-2 focus:ring-[rgba(0,109,75,0.35)] focus:border-[#006D4B] bg-white text-[#333]"
+                    >
+                      <option value="">Choose an index...</option>
+                      {userIndexes.map((index) => (
+                        <option key={index.id} value={index.id}>
+                          {index.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-                <div className="mb-4 p-4 bg-[#E3F2FD] border border-[#BBDEFB] rounded-sm space-y-3">
-                  <div className="flex items-start gap-2">
-                    <div className="w-4 h-4 rounded-full bg-[#1976D2] flex-shrink-0 mt-0.5">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="12" cy="7" r="4"></circle>
-                      </svg>
+                {/* Info Box - changes based on attribution setting */}
+                {enableUserAttribution ? (
+                  <div className="mb-4 p-4 bg-[#E3F2FD] border border-[#BBDEFB] rounded-sm space-y-3">
+                    <div className="flex items-start gap-2">
+                      <div className="w-4 h-4 rounded-full bg-[#1976D2] flex-shrink-0 mt-0.5">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-1">
+                          Auto-add Members
+                        </p>
+                        <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
+                          People from {configureIntegration?.name} will automatically become members of the selected index
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-1">
-                        Auto-add Members
-                      </p>
-                      <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
-                        People from {configureIntegration?.name} will automatically become members of the selected index
-                      </p>
+                    
+                    <div className="flex items-start gap-2">
+                      <div className="w-4 h-4 rounded-full bg-[#1976D2] flex-shrink-0 mt-0.5">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
+                          <path d="M9 11l3 3L22 4"></path>
+                          <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c1.67 0 3.22.46 4.56 1.26"></path>
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-1">
+                          Generate Intents
+                        </p>
+                        <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
+                          Agent will analyze their data and create intents associated with this index
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start gap-2">
+                      <div className="w-4 h-4 rounded-full bg-[#1976D2] flex-shrink-0 mt-0.5">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
+                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-1">
+                          Enable Discovery
+                        </p>
+                        <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
+                          Their intents will be discoverable by other members of this index to surface mutual interests
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  
-                  <div className="flex items-start gap-2">
-                    <div className="w-4 h-4 rounded-full bg-[#1976D2] flex-shrink-0 mt-0.5">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
-                        <path d="M9 11l3 3L22 4"></path>
-                        <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c1.67 0 3.22.46 4.56 1.26"></path>
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-1">
-                        Generate Intents
-                      </p>
-                      <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
-                        Agent will analyze their data and create intents associated with this index
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-start gap-2">
-                    <div className="w-4 h-4 rounded-full bg-[#1976D2] flex-shrink-0 mt-0.5">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
-                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-1">
-                        Enable Discovery
-                      </p>
-                      <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
-                        Their intents will be discoverable by other members of this index to surface mutual interests
-                      </p>
+                ) : (
+                  <div className="mb-4 p-4 bg-[#F5F5F5] border border-[#E0E0E0] rounded-sm">
+                    <div className="flex items-start gap-2">
+                      <div className="w-4 h-4 rounded-full bg-[#757575] flex-shrink-0 mt-0.5">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-[#616161] font-ibm-plex-mono mb-1">
+                          Personal Processing
+                        </p>
+                        <p className="text-xs text-[#757575] font-ibm-plex-mono">
+                          Data from {configureIntegration?.name} will be processed for your account only. No other users will be extracted or added to any index.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div className="flex justify-end space-x-3">
                   <Button
@@ -1237,6 +1301,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     onClick={() => {
                       setConfigureIntegration(null);
                       setSelectedIndexForConnection('');
+                      setEnableUserAttribution(false);
                     }}
                     className="font-ibm-plex-mono"
                   >
@@ -1245,11 +1310,15 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   <Button
                     type="button"
                     onClick={() => {
-                      if (configureIntegration && selectedIndexForConnection) {
-                        handleConnectIntegration(configureIntegration.type, selectedIndexForConnection);
+                      if (configureIntegration && (selectedIndexForConnection || !enableUserAttribution)) {
+                        handleConnectIntegration(
+                          configureIntegration.type, 
+                          enableUserAttribution ? selectedIndexForConnection : null,
+                          enableUserAttribution
+                        );
                       }
                     }}
-                    disabled={!selectedIndexForConnection || !!pendingIntegration}
+                    disabled={(enableUserAttribution && !selectedIndexForConnection) || !!pendingIntegration}
                     className="bg-[#006D4B] text-white hover:bg-[#005A3E] disabled:opacity-50 font-ibm-plex-mono"
                   >
                     {pendingIntegration ? 'Connecting...' : 'Connect'}
