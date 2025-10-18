@@ -10,6 +10,7 @@ export const INTEGRATIONS = {
   discord: { name: 'discord', displayName: 'Discord', toolkit: 'DISCORDBOT' },
   airtable: { name: 'airtable', displayName: 'Airtable', toolkit: 'AIRTABLE' },
   linkedin: { name: 'linkedin', displayName: 'LinkedIn', toolkit: 'LINKEDIN' },
+  googledocs: { name: 'googledocs', displayName: 'Google Docs', toolkit: 'GOOGLEDOCS' },
 } as const;
 
 export type IntegrationName = keyof typeof INTEGRATIONS;
