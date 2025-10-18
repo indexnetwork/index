@@ -18,7 +18,8 @@ export interface AvailableIntegrationType {
 }
 
 export interface ConnectIntegrationRequest {
-  indexId: string;
+  indexId?: string;
+  enableUserAttribution?: boolean;
 }
 
 export interface ConnectIntegrationResponse {

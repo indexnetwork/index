@@ -393,16 +393,33 @@ export default function OnboardingPage() {
       } else {
         const popup = typeof window !== 'undefined' ? window.open('', `oauth_${type}`, 'width=560,height=720') : null;
         
-        // Get indexId from localStorage or createdIndex state
-        const indexId = (user?.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null) || createdIndex?.id;
+        // Determine attribution and indexId based on flow
+        let enableUserAttribution: boolean;
+        let indexId: string | undefined;
         
-        // indexId is required by the backend API
-        if (!indexId) {
-          error('Index ID is required to connect integrations');
-          return;
+        if (currentFlow === 1) {
+          // Flow 1 (Personal): No attribution, no index
+          enableUserAttribution = false;
+          indexId = undefined;
+        } else {
+          // Flow 2 (Community): Attribution enabled, use created index
+          enableUserAttribution = true;
+          indexId = (user?.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null) || createdIndex?.id;
+          
+          if (!indexId) {
+            error('Index ID is required to connect integrations in community flow');
+            return;
+          }
         }
         
-        const res = await integrationsService.connectIntegration(type, { indexId });
+        const payload: { indexId?: string; enableUserAttribution: boolean } = { 
+          enableUserAttribution 
+        };
+        if (indexId) {
+          payload.indexId = indexId;
+        }
+        
+        const res = await integrationsService.connectIntegration(type, payload);
         const redirect = res.redirectUrl;
         const integrationId = res.integrationId;
         
@@ -449,7 +466,7 @@ export default function OnboardingPage() {
     } finally {
       setPendingIntegration(null);
     }
-  }, [integrationsService, integrations, success, error, loadIntegrations, createdIndex?.id, user?.id]);
+  }, [integrationsService, integrations, success, error, loadIntegrations, createdIndex?.id, user?.id, currentFlow]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
@@ -663,49 +680,62 @@ export default function OnboardingPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-              {integrations.map((integration) => (
-                <div key={integration.type} className="border border-b-2 border-[#000] p-4 bg-white">
-                  <div className="flex items-center justify-between mb-0">
-                    <div className="flex items-center gap-3">
-                      <Image 
-                        src={`/integrations/${integration.type}.png?3`} 
-                        width={24} 
-                        height={24} 
-                        alt={integration.name}
-                      />
-                      <span className="font-small text-black font-ibm-plex-mono text-[14px]">{integration.name}</span>
-                    </div>
-                    {!integrationsLoaded ? (
-                      // Show loading placeholder for toggle only
-                      <div className="w-11 h-6 bg-[#F5F5F5] rounded-full animate-pulse" />
-                    ) : (
-                      <button
-                        onClick={() => toggleIntegration(integration.type)}
-                        disabled={pendingIntegration === integration.type}
-                        className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${
-                          integration.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                        } ${pendingIntegration === integration.type ? 'opacity-70' : ''}`}
-                      >
-                        <span
-                          className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
-                            integration.connected ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                        {pendingIntegration === integration.type && (
-                          <span className="absolute inset-0 grid place-items-center">
-                          <span
-                            className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
-                            style={{
-                              marginLeft: integration.connected ? "-20px" : "20px"
-                            }}
+              {integrations
+                .filter((integration) => {
+                  // In Flow 1, remove Slack and Discord
+                  if (currentFlow === 1 && (integration.type === 'slack' || integration.type === 'discord')) {
+                    return false;
+                  }
+                  return true;
+                })
+                .map((integration) => {
+                  return (
+                    <div 
+                      key={integration.type} 
+                      className="border border-b-2 border-[#000] p-4 bg-white"
+                    >
+                      <div className="flex items-center justify-between mb-0">
+                        <div className="flex items-center gap-3">
+                          <Image 
+                            src={`/integrations/${integration.type}.png?3`} 
+                            width={24} 
+                            height={24} 
+                            alt={integration.name}
                           />
-                        </span>
+                          <span className="font-small text-black font-ibm-plex-mono text-[14px]">{integration.name}</span>
+                        </div>
+                        {!integrationsLoaded ? (
+                          // Show loading placeholder for toggle only
+                          <div className="w-11 h-6 bg-[#F5F5F5] rounded-full animate-pulse" />
+                        ) : (
+                          <button
+                            onClick={() => toggleIntegration(integration.type)}
+                            disabled={pendingIntegration === integration.type}
+                            className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${
+                              integration.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                            } ${pendingIntegration === integration.type ? 'opacity-70' : ''}`}
+                          >
+                            <span
+                              className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
+                                integration.connected ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                            {pendingIntegration === integration.type && (
+                              <span className="absolute inset-0 grid place-items-center">
+                              <span
+                                className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
+                                style={{
+                                  marginLeft: integration.connected ? "-20px" : "20px"
+                                }}
+                              />
+                            </span>
+                            )}
+                          </button>
                         )}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
 
             {currentFlow === 1 && (
