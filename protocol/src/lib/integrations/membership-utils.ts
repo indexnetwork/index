@@ -23,7 +23,7 @@ export async function ensureIndexMembership(userId: string, indexId: string): Pr
       await db.insert(indexMembers).values({
         userId,
         indexId,
-        permissions: ['can-read', 'can-write-intents'],
+        permissions: ['member'],
         autoAssign: true
       });
       log.info('Added integration user as index member', { userId, indexId });

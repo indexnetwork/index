@@ -40,7 +40,7 @@ export async function getIndexWithPermissions(
     if (!indexPermissions?.invitationLink || indexPermissions.joinPolicy !== 'invite_only') {
       return { hasAccess: false, error: 'Invalid invitation link', status: 403 };
     }
-    return { hasAccess: true, indexData: index, memberPermissions: ['can-write-intents'] };
+    return { hasAccess: true, indexData: index, memberPermissions: ['member'] };
   }
 
   // User-based access
@@ -59,15 +59,6 @@ export async function getIndexWithPermissions(
   }
 
   const permissions = [...new Set(membership.flatMap(m => m.permissions || []))];
-  
-  // If user has owner permission, grant all permissions
-  if (permissions.includes('owner')) {
-    return { 
-      hasAccess: true, 
-      indexData: index, 
-      memberPermissions: ['owner', 'can-write', 'can-read', 'can-discover', 'can-write-intents'] 
-    };
-  }
   
   return { hasAccess: true, indexData: index, memberPermissions: permissions };
 }
@@ -90,17 +81,15 @@ export interface MultipleIndexAccessResult {
   error?: string;
 }
 
-// Helper to check specific permissions
-const hasPermissions = (userPermissions: string[] = [], required: string[]): boolean =>
-  userPermissions.includes('owner') || required.some(p => userPermissions.includes(p));
-
-export const checkIndexIntentWriteAccess = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
+// Check if user is a member (has any permission)
+export const checkIndexMembership = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
   const result = await checkIndexAccess(indexId, userId);
   if (!result.hasAccess) return result;
 
-  const canWrite = hasPermissions(result.memberPermissions, ['can-write', 'can-write-intents']);
-  if (!canWrite) {
-    return { hasAccess: false, error: 'Intent write access denied', status: 403, indexData: result.indexData };
+  // If they have access, they are a member (owner or member role)
+  const isMember = result.memberPermissions && result.memberPermissions.length > 0;
+  if (!isMember) {
+    return { hasAccess: false, error: 'Membership required', status: 403, indexData: result.indexData };
   }
   return result;
 };
@@ -130,20 +119,8 @@ async function checkBulkAccess(
   };
 }
 
-export const checkMultipleIndexesIntentWriteAccess = (indexIds: string[], userId: string) =>
-  checkBulkAccess(indexIds, userId, checkIndexIntentWriteAccess, 'Some index IDs are invalid or you don\'t have intent write access to them');
-
-export const checkMultipleIndexesReadAccess = async (indexIds: string[], userId: string): Promise<MultipleIndexAccessResult> => {
-  const readCheckFn = async (id: string, userId: string) => {
-    const result = await checkIndexAccess(id, userId);
-    if (!result.hasAccess) return result;
-    
-    const canRead = hasPermissions(result.memberPermissions, ['can-read', 'can-write', 'can-write-intents', 'can-discover']);
-    return canRead ? result : { hasAccess: false, error: 'Read access denied', status: 403 };
-  };
-
-  return checkBulkAccess(indexIds, userId, readCheckFn, 'Some index IDs are invalid or you don\'t have read access to them');
-};
+export const checkMultipleIndexesMembership = (indexIds: string[], userId: string) =>
+  checkBulkAccess(indexIds, userId, checkIndexMembership, 'Some index IDs are invalid or you don\'t have membership access to them');
 
 export const getUserAccessibleIndexIds = async (userId: string): Promise<string[]> => {
   const member = await db.select({ indexId: indexMembers.indexId })
@@ -168,7 +145,7 @@ export async function validateAndGetAccessibleIndexIds(
     return { validIndexIds: await getUserAccessibleIndexIds(requestingUserId) };
   }
 
-  const accessCheck = await checkMultipleIndexesReadAccess(requestedIndexIds, requestingUserId);
+  const accessCheck = await checkMultipleIndexesMembership(requestedIndexIds, requestingUserId);
   return accessCheck.hasAccess 
     ? { validIndexIds: accessCheck.validIndexIds }
     : {

@@ -1,14 +1,13 @@
 import db from './db';
 import { intents, intentIndexes } from './schema';
 import { eq, isNull, and, ne, inArray } from 'drizzle-orm';
-import { checkMultipleIndexesReadAccess, getUserAccessibleIndexIds } from './index-access';
+import { checkMultipleIndexesMembership, getUserAccessibleIndexIds } from './index-access';
 
 export interface AccessibleIntentsFilters {
   indexIds?: string[];     // Narrow to specific indexes (must be within accessible set)
   intentIds?: string[];    // Narrow to specific intents
   userIds?: string[];      // Narrow to specific users  
   includeOwnIntents?: boolean; // Default: false (exclude requesting user's intents)
-  requirePermission?: 'can-read' | 'can-discover' | 'can-write-intents'; // Default: 'can-read'
 }
 
 export interface AccessibleIntentsResult {
@@ -38,7 +37,6 @@ export async function getAccessibleIntents(
   
   const appliedFilters: AccessibleIntentsFilters = {
     includeOwnIntents: false,
-    requirePermission: 'can-read',
     ...filters
   };
 
@@ -47,7 +45,7 @@ export async function getAccessibleIntents(
   
   if (appliedFilters.indexIds && appliedFilters.indexIds.length > 0) {
     // Validate explicitly provided indexIds - can only narrow, not expand
-    const accessCheck = await checkMultipleIndexesReadAccess(appliedFilters.indexIds, requestingUserId);
+    const accessCheck = await checkMultipleIndexesMembership(appliedFilters.indexIds, requestingUserId);
     if (!accessCheck.hasAccess) {
       // Return empty result if user doesn't have access to requested indexes
       return {

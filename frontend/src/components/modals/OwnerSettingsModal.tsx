@@ -268,7 +268,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
   const handleAddMember = async (user: Member) => {
     try {
       // All new members get basic member permissions
-      const defaultPermissions = ['can-read', 'can-write'];
+      const defaultPermissions = ['member'];
       const newMember = await indexesService.addMember(index.id, user.id, defaultPermissions);
       setMembers(prev => [...prev, newMember]);
       setMemberSearchQuery('');

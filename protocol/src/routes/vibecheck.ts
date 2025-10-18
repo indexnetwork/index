@@ -45,8 +45,8 @@ const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: stri
 
   const sharedIndexData = accessCheck.indexData!;
 
-  // Check if the shared index has can-discover permission
-  if (!accessCheck.memberPermissions?.includes('can-discover')) {
+  // Check if the shared index allows access
+  if (!accessCheck.memberPermissions?.includes('member') && !accessCheck.memberPermissions?.includes('owner')) {
     return {
       success: false,
       status: 403,

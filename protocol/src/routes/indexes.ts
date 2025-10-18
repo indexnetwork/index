@@ -9,7 +9,7 @@ import {
   checkIndexOwnership, 
   getIndexWithPermissions, 
   getUserAccessibleIndexIds,
-  checkIndexIntentWriteAccess,
+  checkIndexMembership,
   validateOwnershipChange,
   EVERYONE_USER_ID
 } from '../lib/index-access';
@@ -539,7 +539,7 @@ router.post('/:id/members',
       }
 
       // Validate permissions
-      const validPermissions = ['can-write', 'can-read', 'can-discover', 'can-write-intents', 'owner'];
+      const validPermissions = ['owner', 'member'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -712,7 +712,7 @@ router.patch('/:id/members/:userId',
       }
 
       // Validate permissions
-      const validPermissions = ['can-write', 'can-read', 'can-discover', 'can-write-intents', 'owner'];
+      const validPermissions = ['owner', 'member'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -1149,7 +1149,7 @@ router.delete('/:indexId/intents/:intentId',
       }
 
       // Verify user has intent write access to the index being removed
-      const accessCheck = await checkIndexIntentWriteAccess(indexId, req.user!.id);
+      const accessCheck = await checkIndexMembership(indexId, req.user!.id);
       
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status || 403).json({ 
@@ -1213,8 +1213,8 @@ router.post('/share/:code/intents',
 
       const sharedIndexData = accessCheck.indexData!;
 
-      // Check if the shared index has can-write-intents permission
-      if (!accessCheck.memberPermissions?.includes('can-write-intents')) {
+      // Check if the shared index has member permission
+      if (!accessCheck.memberPermissions?.includes('member') && !accessCheck.memberPermissions?.includes('owner')) {
         return res.status(403).json({ error: 'Shared index does not allow intent creation' });
       }
 
@@ -1264,12 +1264,12 @@ router.get('/:indexId/intents',
         return res.status(accessCheck.status || 403).json({ error: accessCheck.error });
       }
 
-      // Check if user has read permission (owner has all permissions by default)
+      // Check if user has member or owner access
       const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
-      const hasReadPermission = accessCheck.memberPermissions?.includes('can-read');
+      const isMember = accessCheck.memberPermissions?.includes('member') || false;
       
-      if (!isOwner && !hasReadPermission) {
-        return res.status(403).json({ error: 'Read access denied' });
+      if (!isOwner && !isMember) {
+        return res.status(403).json({ error: 'Access denied' });
       }
 
       // Build base conditions for intents in this index

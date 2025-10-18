@@ -333,12 +333,11 @@ const createMatchlist = async (content: string, files: File[], shareCode: string
 
 ### **VibeCheck Permissions**
 
-* `can-discover` – Required to run vibe checks against index.
+* `member` – Required to read intents and run vibe checks against index.
 
 ### **MatchList Permissions**
 
-* `can-discover` – Required to see matches/stakes.
-* `can-write-intents` – Required to create intents in shared index.
+* `member` – Required to see matches/stakes and create intents in shared index.
 
 ---
 

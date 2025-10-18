@@ -6,7 +6,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, sql, inArray } from 'drizzle-orm';
 import { Events } from '../lib/events';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
-import { checkMultipleIndexesIntentWriteAccess } from '../lib/index-access';
+import { checkMultipleIndexesMembership } from '../lib/index-access';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { getDisplayName } from '../lib/integrations/config';
 import { suggestTags } from '../agents/core/intent_tag_suggester';
@@ -318,7 +318,7 @@ router.post('/',
 
       // Verify index IDs exist and user has intent write access to them
       if (indexIds.length > 0) {
-        const accessCheck = await checkMultipleIndexesIntentWriteAccess(indexIds, req.user!.id);
+        const accessCheck = await checkMultipleIndexesMembership(indexIds, req.user!.id);
         
         if (!accessCheck.hasAccess) {
           return res.status(400).json({ 
@@ -382,7 +382,7 @@ router.put('/:id',
 
       // Verify index IDs exist and user has intent write access to them if indexIds is provided
       if (indexIds !== undefined && indexIds.length > 0) {
-        const accessCheck = await checkMultipleIndexesIntentWriteAccess(indexIds, req.user!.id);
+        const accessCheck = await checkMultipleIndexesMembership(indexIds, req.user!.id);
         
         if (!accessCheck.hasAccess) {
           return res.status(400).json({ 

@@ -29,11 +29,9 @@ Index specializes in the social intent space, enabling people to signal their pr
 
 Privacy isn't an afterthought but a foundational design constraint. Index uses a multi-layered access control model where content is organized into **indexes** with granular permissions. Users can share specific contexts without exposing their entire intentions, just like we do in real life.
 
-**Technical Implementation**: Index-based access control with four permission levels:
-- `can-read`: View intents in the index
-- `can-write`: Add intents to the index  
-- `can-write-intents`: Create and modify intents in the index
-- `can-discover`: Participate in discovery within this context
+**Technical Implementation**: Index-based access control with two permission levels:
+- `owner`: Full access (manage members, settings, read/write intents, run vibe checks)
+- `member`: Standard access (read/write intents, run vibe checks)
 
 ### 3. Agent-Mediated Context
 
@@ -320,7 +318,7 @@ POST /api/indexes
 POST /api/indexes/{id}/members
 {
   "userId": "user-456",
-  "permissions": ["can-read", "can-discover"]
+  "permissions": ["member"]
 }
 ```
 

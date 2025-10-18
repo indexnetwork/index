@@ -104,7 +104,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
         await db.insert(indexMembers).values({
           indexId: INDEX_ID,
           userId: user.id,
-          permissions: i === 0 ? ['owner', 'can-read-intents', 'can-write-intents'] : ['can-read-intents', 'can-write-intents'],
+          permissions: i === 0 ? ['owner'] : ['member'],
           prompt: 'everything',
           autoAssign: true,
         });

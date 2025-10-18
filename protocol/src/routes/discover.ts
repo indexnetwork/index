@@ -405,8 +405,8 @@ router.get('/index/share/:code/by-user',
 
       const sharedIndexData = accessCheck.indexData!;
 
-      // Check if the shared index has can-discover permission
-      if (!accessCheck.memberPermissions?.includes('can-discover')) {
+      // Check if the shared index allows access
+      if (!accessCheck.memberPermissions?.includes('member') && !accessCheck.memberPermissions?.includes('owner')) {
         return res.status(403).json({ error: 'Shared index does not allow discovery' });
       }
 
