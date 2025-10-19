@@ -629,7 +629,16 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
                 ref={contentRef}
                 contentEditable
                 suppressContentEditableWarning
-                onInput={scheduleContentProcessing}
+                onInput={(e) => {
+                  scheduleContentProcessing();
+                  
+                  // Clean up empty content to ensure placeholder shows
+                  const target = e.currentTarget;
+                  const text = target.innerText.trim();
+                  if (!text && attachments.length === 0) {
+                    target.innerHTML = '';
+                  }
+                }}
                 onPaste={(e) => {
                   e.preventDefault();
                   
