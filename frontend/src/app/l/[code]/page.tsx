@@ -11,6 +11,7 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { Lock, Users, Loader2 } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { useIndexesState } from '@/contexts/IndexesContext';
 
 interface InvitationPageProps {
   params: Promise<{
@@ -41,6 +42,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
   const indexesService = useIndexes();
   const router = useRouter();
   const { success, error: notifyError } = useNotifications();
+  const { refreshIndexes } = useIndexesState();
 
   // Load index and check user state
   useEffect(() => {
@@ -133,6 +135,9 @@ export default function InvitationPage({ params }: InvitationPageProps) {
       } else {
         success(`Successfully joined ${result.index.title}!`);
       }
+      
+      // Refresh indexes context
+      await refreshIndexes();
       
       // Redirect to the index page
       router.push(`/inbox?index=${result.index.id}`);

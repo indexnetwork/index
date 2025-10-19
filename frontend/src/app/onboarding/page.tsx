@@ -17,6 +17,7 @@ import { useIntegrationsService } from "@/services/integrations";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import LibraryModal from "@/components/modals/LibraryModal";
 import { validateFiles, getSupportedFileExtensions } from "@/lib/file-validation";
+import { useIndexesState } from "@/contexts/IndexesContext";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
 type OnboardingFlow = 1 | 2;
@@ -40,6 +41,7 @@ export default function OnboardingPage() {
   const integrationsService = useIntegrationsService();
   const { success, error } = useNotifications();
   const { user, refetchUser } = useAuthContext();
+  const { refreshIndexes } = useIndexesState();
 
   // Profile step states
   const [name, setName] = useState('');
@@ -562,6 +564,9 @@ export default function OnboardingPage() {
       // Store only indexId in localStorage for future onboarding sessions (user-specific)
       localStorage.setItem(`onboarding:${user.id}:index`, indexData.id);
       
+      // Refresh indexes context to include the newly created index
+      await refreshIndexes();
+      
       success('Index created successfully!');
       setCurrentStep(getNextStep('create_index'));
     } catch (err) {
@@ -590,6 +595,10 @@ export default function OnboardingPage() {
     
     try {
       setIsLoading(true);
+      
+      // Refresh indexes to ensure sidebar shows newly joined indexes
+      await refreshIndexes();
+      
       // Mark onboarding as completed and clean up temporary data (user-specific)
       localStorage.setItem(`onboarding:${user.id}:isCompleted`, Date.now().toString());
       
@@ -1157,6 +1166,8 @@ export default function OnboardingPage() {
             setPublicIndexes(prev => prev.map(idx => 
               idx.id === index.id ? { ...idx, isMember: true } : idx
             ));
+            // Refresh indexes context
+            await refreshIndexes();
           } catch (err) {
             console.error('Failed to join index:', err);
             error('Failed to join index');
