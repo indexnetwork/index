@@ -45,9 +45,6 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
       // Store in localStorage
       localStorage.setItem('alpha', alphaParam);
       setIsAlpha(alphaParam === 'true');
-    } else if (pathname?.startsWith('/vibecheck/') || pathname?.startsWith('/matchlist/')) {
-      localStorage.setItem('alpha', 'true');
-      setIsAlpha(true);
     } else {
       // Get from localStorage only once on mount
       const storedAlpha = localStorage.getItem('alpha');

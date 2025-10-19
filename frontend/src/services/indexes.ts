@@ -120,8 +120,8 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Permissions Management
-  // Update index permissions (joinPolicy, allowGuestVibeCheck)
-  updatePermissions: async (indexId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }): Promise<Index> => {
+  // Update index permissions (joinPolicy)
+  updatePermissions: async (indexId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only' }): Promise<Index> => {
     const response = await api.patch<APIResponse<Index>>(`/indexes/${indexId}/permissions`, permissions);
     if (!response.index) {
       throw new Error('Failed to update permissions');

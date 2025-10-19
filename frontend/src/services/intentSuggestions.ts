@@ -3,7 +3,7 @@ export interface GenerateSuggestionsRequest {
   payload?: string;
   files?: File[];
   maxSuggestions?: number;
-  indexCode?: string; // For vibecheck functionality
+  indexCode?: string;
 }
 
 export interface SuggestedIntent {
@@ -17,7 +17,7 @@ export interface GenerateSuggestionsResponse {
   suggestedIntents: SuggestedIntent[];
   totalSuggestions: number;
   error?: string;
-  // Vibecheck-specific properties
+  // Additional properties for synthesis
   synthesis?: string;
   score?: number;
   tempFiles?: { id: string; name: string; size: number; type: string }[];

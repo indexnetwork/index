@@ -20,7 +20,6 @@ export interface Index {
     invitationLink: {
       code: string;
     } | null;
-    allowGuestVibeCheck: boolean;
   } | null;
   createdAt: string;
   updatedAt: string;

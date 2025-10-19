@@ -209,22 +209,17 @@ export function createUploadClient(
   userId?: string
 ): multer.Multer {
   const isAvatar = uploadContext === 'avatar';
-  const isVibecheck = uploadContext === 'vibecheck';
   
   // Validate userId is provided for upload types that require it
-  if (!isVibecheck && !userId) {
+  if (!userId) {
     throw new Error(`userId is required for upload context: ${uploadContext}`);
   }
   
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-      let targetDir: string;
-      if (isVibecheck) {
-        targetDir = getTempPath('vibecheck');
-      } else {
-        const uploadDir = isAvatar ? 'avatars' : 'files';
-        targetDir = getUploadsPath(uploadDir, userId);
-      }
+      const uploadDir = isAvatar ? 'avatars' : 'files';
+      const targetDir = getUploadsPath(uploadDir, userId);
+      
       if (!fs.existsSync(targetDir)) {
         try {
           fs.mkdirSync(targetDir, { recursive: true });

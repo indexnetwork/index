@@ -1,7 +1,7 @@
 import path from 'path';
 
 export type UploadsKind = 'files' | 'links' | 'avatars';
-export type TempKind = 'sync' | 'vibecheck' | 'links-temp';
+export type TempKind = 'sync' | 'links-temp';
 
 // Resolve the absolute path to the uploads root directory.
 export function getUploadsRoot(): string {

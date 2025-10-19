@@ -55,7 +55,7 @@ export const GENERAL_ALLOWED_TYPES = SUPPORTED_FILE_TYPES.DOCUMENTS;
 
 // Types
 export type UploadType = 'general' | 'avatar';
-export type UploadContext = 'discovery' | 'avatar' | 'library' | 'vibecheck';
+export type UploadContext = 'discovery' | 'avatar' | 'library';
 
 export enum ValidationError {
   FILE_TOO_LARGE = 'FILE_TOO_LARGE',
