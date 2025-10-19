@@ -87,6 +87,9 @@ export default function InboxPage() {
     }
   }, [synthesisService]);
 
+  const lastDataRef = useRef<string>('');
+  const lastRefreshTimeRef = useRef<number>(0);
+  
   const fetchData = useCallback(async () => {
     try {
       // Determine indexIds to pass to API calls
@@ -123,29 +126,43 @@ export default function InboxPage() {
         }))
       }));
 
-      // Set data for each tab
-      setDiscoverStakes(transformedStakesData);
-      setInboxConnections(inboxData.connections);
-      setPendingConnections(pendingData.connections);
-
-      // Clear previous synthesis cache when filters change
-      fetchedSynthesesRef.current.clear();
-      setSyntheses({});
-
-      // Automatically fetch synthesis for all users
-      const allUserIds = new Set<string>();
-      
-      // Collect user IDs from discover stakes
-      transformedStakesData.forEach(stake => allUserIds.add(stake.user.id));
-      
-      // Collect user IDs from connections
-      [...inboxData.connections, ...pendingData.connections]
-        .forEach(connection => allUserIds.add(connection.user.id));
-
-      // Fetch synthesis for all unique users with current index filter
-      allUserIds.forEach(userId => {
-        fetchSynthesis(userId, undefined, apiIndexIds);
+      // Check if data has changed (memoization)
+      const currentDataHash = JSON.stringify({
+        discover: transformedStakesData.map(s => ({ userId: s.user.id, intentIds: s.intents.map(i => i.intent.id) })),
+        inbox: inboxData.connections.map(c => c.user.id),
+        pending: pendingData.connections.map(c => c.user.id)
       });
+      
+      if (currentDataHash !== lastDataRef.current) {
+        // Data has changed, update state
+        lastDataRef.current = currentDataHash;
+        
+        // Set data for each tab
+        setDiscoverStakes(transformedStakesData);
+        setInboxConnections(inboxData.connections);
+        setPendingConnections(pendingData.connections);
+
+        // Clear previous synthesis cache when filters change
+        fetchedSynthesesRef.current.clear();
+        setSyntheses({});
+
+        // Automatically fetch synthesis for all users
+        const allUserIds = new Set<string>();
+        
+        // Collect user IDs from discover stakes
+        transformedStakesData.forEach(stake => allUserIds.add(stake.user.id));
+        
+        // Collect user IDs from connections
+        [...inboxData.connections, ...pendingData.connections]
+          .forEach(connection => allUserIds.add(connection.user.id));
+
+        // Fetch synthesis for all unique users with current index filter
+        allUserIds.forEach(userId => {
+          fetchSynthesis(userId, undefined, apiIndexIds);
+        });
+      }
+      
+      lastRefreshTimeRef.current = Date.now();
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -158,6 +175,17 @@ export default function InboxPage() {
     fetchData();
   }, [fetchData]);
 
+  // Auto-refresh every 5 seconds
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      const timeSinceLastRefresh = Date.now() - lastRefreshTimeRef.current;
+      if (timeSinceLastRefresh >= 5000) {
+        fetchData();
+      }
+    }, 5000);
+
+    return () => clearInterval(intervalId);
+  }, [fetchData]);
 
   // Sync tab state with URL changes
   useEffect(() => {
@@ -463,6 +491,8 @@ export default function InboxPage() {
                         console.log('intents', intents);
                         // Set the discovery intent filter and refetch data
                         setDiscoveryIntents(intents);
+                        // Refresh inbox after intent creation
+                        fetchData();
                       }}
                     />
                   </div>
