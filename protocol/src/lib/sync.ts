@@ -52,7 +52,12 @@ export async function syncIntegration(
     if (handler.fetchObjects) {
       // Object-based providers (Discord, Slack, Notion, Airtable, Google Docs)
       const objects = await handler.fetchObjects(integrationId, lastSyncAt || undefined);
-      const result = await processObjects(objects, integration[0], handler);
+      const result = await processObjects(objects, {
+        id: integration[0].id,
+        indexId: integration[0].indexId,
+        userId: integration[0].userId,
+        enableUserAttribution: integration[0].enableUserAttribution ?? undefined
+      }, handler);
       
       intentsGenerated = result.intentsGenerated;
       usersProcessed = result.usersProcessed;
@@ -70,7 +75,10 @@ export async function syncIntegration(
         return { success: true, filesImported: 0, intentsGenerated: 0 };
       }
 
-      const result = await processFiles(integration[0].userId, files, integration[0], 'integration');
+      const result = await processFiles(integration[0].userId, files, {
+        id: integration[0].id,
+        indexId: integration[0].indexId ?? undefined
+      }, 'integration');
       intentsGenerated = result.intentsGenerated;
       filesImported = result.filesImported;
     } else {

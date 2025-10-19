@@ -78,7 +78,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
 
             // Check if user is already a member
             try {
-              const memberCheckResponse = await indexesService.getIndex(index.id);
+              await indexesService.getIndex(index.id);
               // If we can access the index, user is already a member
               setState(prev => ({ ...prev, step: 'already-member' }));
             } catch {
@@ -94,12 +94,12 @@ export default function InvitationPage({ params }: InvitationPageProps) {
             error: 'Failed to load user data' 
           }));
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error('Failed to load index:', err);
         setState(prev => ({ 
           ...prev, 
           step: 'error', 
-          error: err?.message || 'Invalid or expired invitation link' 
+          error: (err as Error)?.message || 'Invalid or expired invitation link' 
         }));
       }
     };
@@ -136,13 +136,13 @@ export default function InvitationPage({ params }: InvitationPageProps) {
       
       // Redirect to the index page
       router.push(`/inbox?index=${result.index.id}`);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to join index:', err);
-      notifyError(err?.message || 'Failed to join index');
+      notifyError((err as Error)?.message || 'Failed to join index');
       setState(prev => ({ 
         ...prev, 
         step: 'error', 
-        error: err?.message || 'Failed to join index' 
+        error: (err as Error)?.message || 'Failed to join index' 
       }));
     }
   };

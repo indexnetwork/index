@@ -10,6 +10,7 @@ export interface IndexAccessResult {
   status?: number;
   indexData?: {
     id: string;
+    prompt?: string | null;
     permissions?: {
       joinPolicy: 'anyone' | 'invite_only';
       invitationLink: {

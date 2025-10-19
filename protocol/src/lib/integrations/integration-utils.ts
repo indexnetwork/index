@@ -6,7 +6,7 @@ import { log } from '../log';
 export interface IntegrationDetails {
   id: string;
   userId: string;
-  indexId: string;
+  indexId: string | null;
   integrationType: string;
   connectedAccountId: string | null;
   lastSyncAt: Date | null;

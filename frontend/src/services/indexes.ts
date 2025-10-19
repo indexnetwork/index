@@ -160,11 +160,11 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Accept invitation and join index
-  acceptInvitation: async (code: string): Promise<{ index: Index; membership: any; alreadyMember?: boolean }> => {
+  acceptInvitation: async (code: string): Promise<{ index: Index; membership: Member; alreadyMember?: boolean }> => {
     const response = await api.post<{ 
       message: string; 
       index: Index; 
-      membership: any;
+      membership: Member;
       alreadyMember?: boolean;
     }>(`/indexes/invitation/${code}/accept`);
     return {
