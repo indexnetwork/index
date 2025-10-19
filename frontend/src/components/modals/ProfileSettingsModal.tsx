@@ -210,7 +210,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="px-4 py-3"
-              placeholder="Enter your name..."
+              placeholder="John Doe"
               required
             />
           </div>

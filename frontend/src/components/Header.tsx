@@ -18,9 +18,10 @@ interface HeaderProps {
   showNavigation?: boolean;
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
+  showHeaderButtons?: boolean;
 }
 
-export default function Header({ showNavigation = true, onToggleSidebar, isSidebarOpen }: HeaderProps) {
+export default function Header({ showNavigation = true, onToggleSidebar, isSidebarOpen, showHeaderButtons = true }: HeaderProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -184,9 +185,10 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
             </div>
           </Link>
         </div>
-        {isAlpha ? (
-          authenticated ? (
-            <div className="relative" ref={dropdownRef}>
+        {showHeaderButtons && (
+          isAlpha ? (
+            authenticated ? (
+              <div className="relative" ref={dropdownRef}>
               <div 
                 className="flex items-center px-4 py-2 border border-[#9f9f9f] border-1 rounded-sm cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -279,6 +281,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
             <UserPlus className="h-5 w-5" />
             <span className="hidden sm:inline mx-2">Join the waitlist</span>
           </Button>
+        )
         )}
       </header>
 

@@ -9,7 +9,7 @@ import { useIndexes } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useRouter } from 'next/navigation';
-import { Lock, Users, Loader2 } from 'lucide-react';
+import { Lock, Users, Loader2, Globe } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
 
@@ -48,7 +48,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
   useEffect(() => {
     const loadIndexAndCheckAuth = async () => {
       try {
-        // Load index by share code
+        // Load index by share code (works for both invitation codes and index IDs)
         const index = await publicIndexesService.getIndexByShareCode(resolvedParams.code);
         setState(prev => ({ ...prev, index }));
 
@@ -128,19 +128,29 @@ export default function InvitationPage({ params }: InvitationPageProps) {
     try {
       setState(prev => ({ ...prev, step: 'joining' }));
       
-      const result = await indexesService.acceptInvitation(resolvedParams.code);
+      // Check if it's a private or public index
+      const isPrivate = state.index.permissions?.joinPolicy === 'invite_only';
       
-      if (result.alreadyMember) {
-        success('You are already a member of this index');
+      if (isPrivate) {
+        // For private indexes, use invitation code
+        const result = await indexesService.acceptInvitation(resolvedParams.code);
+        
+        if (result.alreadyMember) {
+          success('You are already a member of this index');
+        } else {
+          success(`Successfully joined ${result.index.title}!`);
+        }
       } else {
-        success(`Successfully joined ${result.index.title}!`);
+        // For public indexes, join directly by ID
+        await indexesService.joinIndex(state.index.id);
+        success(`Successfully joined ${state.index.title}!`);
       }
       
       // Refresh indexes context
       await refreshIndexes();
       
       // Redirect to the index page
-      router.push(`/inbox?index=${result.index.id}`);
+      router.push(`/inbox`);
     } catch (err) {
       console.error('Failed to join index:', err);
       notifyError((err as Error)?.message || 'Failed to join index');
@@ -162,17 +172,19 @@ export default function InvitationPage({ params }: InvitationPageProps) {
     switch (state.step) {
       case 'loading':
         return (
-          <div className="flex flex-col items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-400 mb-4" />
-            <p className="text-gray-600 font-ibm-plex-mono">Loading invitation...</p>
+          <div className="max-w-3xl mx-auto">
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-gray-400 mb-4" />
+              <p className="text-gray-600 font-ibm-plex-mono">Loading invitation...</p>
+            </div>
           </div>
         );
 
       case 'error':
         return (
-          <div className="max-w-md mx-auto text-center py-12">
+          <div className="max-w-3xl mx-auto">
             <div className="mb-6">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
                 <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -193,18 +205,30 @@ export default function InvitationPage({ params }: InvitationPageProps) {
 
       case 'auth-required':
         return (
-          <div className="max-w-lg mx-auto">
+          <div className="max-w-3xl mx-auto">
+            <div className="mb-8">
+              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
+                {state.index?.permissions?.joinPolicy === 'invite_only' ? "You're invited to join" : "You're about to join"}
+              </h1>
+              <p className="text-black text-[14px] font-ibm-plex-mono">
+                Connect with others who share your intent — discover relevant matches inside this {state.index?.permissions?.joinPolicy === 'invite_only' ? 'private' : 'public'} network.
+              </p>
+            </div>
+            
             {state.index && (
               <div className="bg-white border border-gray-200 rounded-lg p-8 mb-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <Lock className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">Private Index</h2>
+                  {state.index.permissions?.joinPolicy === 'invite_only' ? (
+                    <Lock className="h-5 w-5 text-black" />
+                  ) : (
+                    <Globe className="h-5 w-5 text-black" />
+                  )}
+                  <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">
+                    {state.index.permissions?.joinPolicy === 'invite_only' ? 'Private Network' : 'Public Network'}
+                  </h2>
                 </div>
                 
-                <h1 className="text-2xl font-bold text-black mb-3 font-ibm-plex-mono">
-                  You've been invited to join
-                </h1>
-                <h2 className="text-3xl font-bold text-black mb-4 font-ibm-plex-mono">
+                <h2 className="text-3xl font-bold text-black mb-6 font-ibm-plex-mono">
                   {state.index.title}
                 </h2>
                 
@@ -219,37 +243,45 @@ export default function InvitationPage({ params }: InvitationPageProps) {
               </div>
             )}
             
-            <Button
-              onClick={handleLogin}
-              className="w-full bg-black text-white hover:bg-gray-800 font-ibm-plex-mono"
-            >
-              Sign in to accept invitation
-            </Button>
+            <div className="max-w-md">
+              <Button
+                onClick={handleLogin}
+                className=" bg-black text-white hover:bg-gray-800 font-ibm-plex-mono"
+              >
+                Sign in to accept invitation
+              </Button>
+            </div>
           </div>
         );
 
       case 'ready-to-join':
         return (
-          <div className="max-w-lg mx-auto">
+          <div className="max-w-3xl mx-auto">
+            <div className="mb-8">
+              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
+                {state.index?.permissions?.joinPolicy === 'invite_only' ? "You're invited to join" : "You're about to join"}
+              </h1>
+              <p className="text-black text-[14px] font-ibm-plex-mono">
+                Connect with others who share your intent — discover relevant matches inside this {state.index?.permissions?.joinPolicy === 'invite_only' ? 'private' : 'public'} network.
+              </p>
+            </div>
+            
             {state.index && (
               <div className="bg-white border border-gray-200 rounded-lg p-8 mb-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <Lock className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">Private Index</h2>
+                  {state.index.permissions?.joinPolicy === 'invite_only' ? (
+                    <Lock className="h-5 w-5 text-black" />
+                  ) : (
+                    <Globe className="h-5 w-5 text-black" />
+                  )}
+                  <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">
+                    {state.index.permissions?.joinPolicy === 'invite_only' ? 'Private Network' : 'Public Index'}
+                  </h2>
                 </div>
                 
-                <h1 className="text-2xl font-bold text-black mb-3 font-ibm-plex-mono">
-                  Join
-                </h1>
-                <h2 className="text-3xl font-bold text-black mb-4 font-ibm-plex-mono">
+                <h2 className="text-3xl font-bold text-black mb-6 font-ibm-plex-mono">
                   {state.index.title}
                 </h2>
-                
-                {state.index.prompt && (
-                  <p className="text-gray-700 mb-4 font-ibm-plex-mono text-sm">
-                    {state.index.prompt}
-                  </p>
-                )}
                 
                 {state.index._count && (
                   <div className="flex items-center gap-2 text-gray-600">
@@ -262,28 +294,32 @@ export default function InvitationPage({ params }: InvitationPageProps) {
               </div>
             )}
             
-            <Button
-              onClick={handleJoinIndex}
-              className="w-full bg-blue-600 text-white hover:bg-blue-700 font-ibm-plex-mono"
-            >
-              Accept Invitation & Join
-            </Button>
+            <div className="max-w-md">
+              <Button
+                onClick={handleJoinIndex}
+                className="w-full bg-black text-white hover:bg-gray-800 font-ibm-plex-mono"
+              >
+                {state.index?.permissions?.joinPolicy === 'invite_only' ? 'Accept invitation & join' : 'Join'}
+              </Button>
+            </div>
           </div>
         );
 
       case 'joining':
         return (
-          <div className="flex flex-col items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-            <p className="text-gray-600 font-ibm-plex-mono">Joining index...</p>
+          <div className="max-w-3xl mx-auto">
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
+              <p className="text-gray-600 font-ibm-plex-mono">Joining index...</p>
+            </div>
           </div>
         );
 
       case 'already-member':
         return (
-          <div className="max-w-md mx-auto text-center py-12">
+          <div className="max-w-3xl mx-auto">
             <div className="mb-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
                 <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
@@ -309,8 +345,10 @@ export default function InvitationPage({ params }: InvitationPageProps) {
 
   return (
     <ClientLayout>
-      <div className="min-h-screen bg-[#FAFAFA] py-12 px-6">
-        {renderContent()}
+      <div className="bg-[#FAFAFA]">
+        <div className="px-6 py-12">
+          {renderContent()}
+        </div>
       </div>
     </ClientLayout>
   );
