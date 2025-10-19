@@ -4,10 +4,11 @@ import { body, param, query, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
 import { userIntegrations, indexes, indexMembers } from '../lib/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import { runSync } from '../lib/sync';
 import { INTEGRATIONS } from '../lib/integrations/config';
 import { getClient } from '../lib/integrations/composio';
+import { checkIndexOwnership } from '../lib/index-access';
 
 const router = Router();
 
@@ -34,6 +35,14 @@ router.get('/',
 
       const userId = req.user!.id;
       const indexId = req.query.indexId as string | undefined;
+
+      // Check owner permission if indexId provided
+      if (indexId) {
+        const ownershipCheck = await checkIndexOwnership(indexId, userId);
+        if (!ownershipCheck.hasAccess) {
+          return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+        }
+      }
 
       // Build where conditions
       const whereConditions = [
@@ -107,20 +116,11 @@ router.post('/connect/:integrationType',
         return res.status(400).json({ error: 'Index ID is required when user attribution is enabled' });
       }
 
-      // Validate indexId access if provided
+      // Validate indexId access if provided - must be owner
       if (indexId) {
-        const indexExists = await db.select({ id: indexes.id })
-          .from(indexes)
-          .innerJoin(indexMembers, eq(indexes.id, indexMembers.indexId))
-          .where(and(
-            eq(indexes.id, indexId),
-            eq(indexMembers.userId, userId),
-            isNull(indexes.deletedAt)
-          ))
-          .limit(1);
-
-        if (indexExists.length === 0) {
-          return res.status(404).json({ error: 'Index not found or access denied' });
+        const ownershipCheck = await checkIndexOwnership(indexId, userId);
+        if (!ownershipCheck.hasAccess) {
+          return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
         }
 
         // Check if already connected for this index
@@ -314,6 +314,14 @@ router.delete('/:integrationId',
       }
 
       const integrationRecord = integration[0];
+
+      // Check ownership if integration is connected to an index
+      if (integrationRecord.indexId) {
+        const ownershipCheck = await checkIndexOwnership(integrationRecord.indexId, userId);
+        if (!ownershipCheck.hasAccess) {
+          return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+        }
+      }
 
       // Disconnect from Composio using the stored connectedAccountId
       if (integrationRecord.connectedAccountId) {

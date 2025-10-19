@@ -16,6 +16,7 @@ import IntentList from "@/components/IntentList";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import { validateFiles, getSupportedFileExtensions, formatFileSize } from "../../lib/file-validation";
 import { getFileCategoryBadge } from '../../lib/file-validation';
+import { useAuthContext } from "@/contexts/AuthContext";
 
 type Props = {
   open: boolean;
@@ -41,6 +42,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const api = useAuthenticatedAPI(); // Keep for specialized endpoints
   const router = useRouter();
   const { setDiscoveryIntents } = useDiscoveryFilter();
+  const { user: currentUser } = useAuthContext();
   const [isUploading, setIsUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -85,7 +87,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   } | null>(null);
   const [selectedIndexForConnection, setSelectedIndexForConnection] = useState<string>('');
   const [enableUserAttribution, setEnableUserAttribution] = useState<boolean>(false);
-  const [userIndexes, setUserIndexes] = useState<Array<{ id: string; title: string }>>([]);
+  const [ownedIndexes, setOwnedIndexes] = useState<Array<{ id: string; title: string; isOwner: boolean }>>([]);
   
   // Source filtering state - now supports multiple sources
   const [activeSourceFilters, setActiveSourceFilters] = useState<Set<string>>(new Set());
@@ -313,15 +315,23 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [integrationsService]);
 
-  const loadUserIndexes = useCallback(async () => {
+  const loadOwnedIndexes = useCallback(async () => {
     try {
       const response = await indexesService.getIndexes(1, 100);
-      setUserIndexes((response.data || []).map(idx => ({ id: idx.id, title: idx.title })));
+      const indexes = response.indexes || [];
+
+      console.log('indexes', response);
+      // Filter to only owned indexes and add isOwner flag
+      setOwnedIndexes(
+        indexes
+          .filter(idx => currentUser && idx.user && idx.user.id === currentUser.id)
+          .map(idx => ({ id: idx.id, title: idx.title, isOwner: true }))
+      );
     } catch (error) {
       console.error('Failed to fetch user indexes:', error);
-      setUserIndexes([]);
+      setOwnedIndexes([]);
     }
-  }, [indexesService]);
+  }, [indexesService, currentUser]);
 
   const loadLibraryIntents = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -614,7 +624,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       loadLists();
       loadIntegrations();
       loadLibraryIntents();
-      loadUserIndexes();
+      loadOwnedIndexes();
     }
     if (!open && wasOpen.current) {
       wasOpen.current = false;
@@ -1154,7 +1164,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 </Dialog.Title>
                 
                 {/* User Attribution Toggle - hide for LinkedIn */}
-                {configureIntegration?.type !== 'linkedin' && (
+                {configureIntegration?.type !== 'linkedin' && ownedIndexes.length > 0 && (
                   <div className="mt-4 mb-4">
                     <div className="flex items-center justify-between mb-3">
                       <div>
@@ -1162,7 +1172,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           User Attribution
                         </label>
                         <p className="text-xs text-gray-600 font-ibm-plex-mono mt-0.5">
-                          {enableUserAttribution ? 'Extract users and add as index members' : 'Process for your account only'}
+                          {enableUserAttribution 
+                            ? `Add ${configureIntegration?.name} users automatically as index members.` 
+                            : `Agents will generate intents based on your ${configureIntegration?.name} data.`}
                         </p>
                       </div>
                       <button
@@ -1194,13 +1206,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <label className="block text-sm font-medium text-[#333] mb-2 font-ibm-plex-mono">
                       Select Index
                     </label>
+                    <p className="text-xs text-gray-600 font-ibm-plex-mono mb-2">
+                      Select where you&apos;d like to connect your {configureIntegration?.name} data
+                    </p>
                     <select
                       value={selectedIndexForConnection}
                       onChange={(e) => setSelectedIndexForConnection(e.target.value)}
                       className="w-full p-2 border border-[#BBBBBB] rounded-sm font-ibm-plex-mono text-sm focus:ring-2 focus:ring-[rgba(0,109,75,0.35)] focus:border-[#006D4B] bg-white text-[#333]"
                     >
                       <option value="">Choose an index...</option>
-                      {userIndexes.map((index) => (
+                      {ownedIndexes.map((index) => (
                         <option key={index.id} value={index.id}>
                           {index.title}
                         </option>
@@ -1212,6 +1227,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 {/* Info Box - changes based on attribution setting */}
                 {enableUserAttribution ? (
                   <div className="mb-4 p-4 bg-[#E3F2FD] border border-[#BBDEFB] rounded-sm space-y-3">
+                    <h4 className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-2">What happens next:</h4>
+                    
                     <div className="flex items-start gap-2">
                       <div className="w-4 h-4 rounded-full bg-[#1976D2] flex-shrink-0 mt-0.5">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
@@ -1224,7 +1241,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           Auto-add Members
                         </p>
                         <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
-                          People from {configureIntegration?.name} will automatically become members of the selected index
+                          People from {configureIntegration?.name} will automatically join the selected index.
                         </p>
                       </div>
                     </div>
@@ -1241,7 +1258,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           Generate Intents
                         </p>
                         <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
-                          Agent will analyze their data and create intents associated with this index
+                          We&apos;ll analyze their {configureIntegration?.name} data to understand key topics and goals.
                         </p>
                       </div>
                     </div>
@@ -1257,7 +1274,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           Enable Discovery
                         </p>
                         <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
-                          Their intents will be discoverable by other members of this index to surface mutual interests
+                          Others in this index can discover shared interests to spark collaboration.
                         </p>
                       </div>
                     </div>
@@ -1272,11 +1289,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                         </svg>
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-[#616161] font-ibm-plex-mono mb-1">
-                          Personal Processing
-                        </p>
+
                         <p className="text-xs text-[#757575] font-ibm-plex-mono">
-                          Data from {configureIntegration?.name} will be processed for your account only. No other users will be extracted or added to any index.
+                          Agents will generate intents based on your {configureIntegration?.name} data.
                         </p>
                       </div>
                     </div>
