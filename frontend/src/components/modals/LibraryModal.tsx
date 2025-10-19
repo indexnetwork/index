@@ -6,9 +6,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useAuthenticatedAPI } from "@/lib/api";
 import ReactMarkdown from 'react-markdown';
 import { useAPI } from "@/contexts/APIContext";
+import { useAuthenticatedAPI } from "@/lib/api";
 import { useDiscoveryFilter } from "@/contexts/DiscoveryFilterContext";
 import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
@@ -37,8 +37,8 @@ type LibrarySourceIntent = {
 
 export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
-  const api = useAuthenticatedAPI();
-  const { syncService } = useAPI();
+  const { syncService, filesService, linksService, intentsService, integrationsService, indexesService } = useAPI();
+  const api = useAuthenticatedAPI(); // Keep for specialized endpoints
   const router = useRouter();
   const { setDiscoveryIntents } = useDiscoveryFilter();
   const [isUploading, setIsUploading] = useState(false);
@@ -93,13 +93,18 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const loadLists = useCallback(async () => {
     try {
       const [f, l] = await Promise.all([
-        api.get<{ files: typeof files }>(`/files`).then(r => r.files || []),
-        api.get<{ links: typeof links }>(`/links`).then(r => r.links || [])
+        filesService.getFiles(),
+        linksService.getLinks()
       ]);
-      setFiles(f);
+      setFiles(f.map(file => ({
+        ...file,
+        size: String(file.size),
+        createdAt: file.createdAt || new Date().toISOString(),
+        url: file.url || ''
+      })));
       setLinks(l);
     } catch {}
-  }, [api]);
+  }, [filesService, linksService]);
 
   const toggleSelected = useCallback((id: string, checked: boolean) => {
     setSelectedIds(prev => {
@@ -183,13 +188,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: { id: string } }[], intentIds: string[] = []) => {
     try {
       const deletions = batch.map(({ kind, item }) => kind === 'file'
-        ? api.delete(`/files/${item.id}`)
-        : api.delete(`/links/${item.id}`)
+        ? filesService.deleteFile(item.id)
+        : linksService.deleteLink(item.id)
       );
       const uniqueIntentIds = Array.from(new Set(intentIds));
       if (uniqueIntentIds.length > 0) {
         uniqueIntentIds.forEach(id => {
-          deletions.push(api.patch(`/intents/${id}/archive`));
+          deletions.push(intentsService.archiveIntent(id));
         });
       }
       await Promise.all(deletions);
@@ -200,7 +205,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } catch {
       error('Failed to delete some items or archive related intents');
     }
-  }, [api, success, error, onChanged]);
+  }, [filesService, linksService, intentsService, success, error, onChanged]);
 
 
   const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: { id: string } }[], intentIds: string[] = []) => {
@@ -281,20 +286,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   // Integrations (compact section)
   const loadIntegrations = useCallback(async () => {
     try {
-      const response = await api.get<{ 
-        integrations: Array<{ 
-          id: string; // integrationId (UUID)
-          type: string; // integration type (slack, discord, etc.)
-          name: string; 
-          connected: boolean; 
-          indexId?: string | null;
-        }>;
-        availableTypes: Array<{
-          type: string;
-          name: string;
-          toolkit: string;
-        }>;
-      }>('/integrations');
+      const response = await integrationsService.getIntegrations();
       
       const connectedIntegrations = response.integrations || [];
       const availableTypes = response.availableTypes || [];
@@ -319,17 +311,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       setIntegrations(getIntegrationsList());
       setIntegrationsLoaded(true);
     }
-  }, [api]);
+  }, [integrationsService]);
 
   const loadUserIndexes = useCallback(async () => {
     try {
-      const response = await api.get<{ indexes: Array<{ id: string; title: string }> }>('/indexes');
-      setUserIndexes(response.indexes || []);
+      const response = await indexesService.getIndexes(1, 100);
+      setUserIndexes((response.data || []).map(idx => ({ id: idx.id, title: idx.title })));
     } catch (error) {
       console.error('Failed to fetch user indexes:', error);
       setUserIndexes([]);
     }
-  }, [api]);
+  }, [indexesService]);
 
   const loadLibraryIntents = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -339,18 +331,18 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       const incoming = res.intents ?? [];
 
       const prevIds = knownIntentIds.current;
-      const nextIds = new Set(incoming.map(item => item.id));
+      const nextIds = new Set(incoming.map((item: LibrarySourceIntent) => item.id));
       const isInitialLoad = prevIds.size === 0;
 
       if (!isInitialLoad) {
-        const freshIds = incoming.filter(item => !prevIds.has(item.id)).map(item => item.id);
+        const freshIds = incoming.filter((item: LibrarySourceIntent) => !prevIds.has(item.id)).map((item: LibrarySourceIntent) => item.id);
         if (freshIds.length > 0) {
           setNewIntentIds(prev => {
             const next = new Set(prev);
-            freshIds.forEach(id => next.add(id));
+            freshIds.forEach((id: string) => next.add(id));
             return next;
           });
-          freshIds.forEach(id => {
+          freshIds.forEach((id: string) => {
             const existing = highlightTimers.current.get(id);
             if (existing) clearTimeout(existing);
             const timeout = setTimeout(() => {
@@ -378,14 +370,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
   const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
     try {
-      await api.patch(`/intents/${intent.id}/archive`);
+      await intentsService.archiveIntent(intent.id);
       success('Intent archived');
       // Refresh intents after archiving
       await loadLibraryIntents();
     } catch {
       error('Failed to archive intent');
     }
-  }, [api, success, error, loadLibraryIntents]);
+  }, [intentsService, success, error, loadLibraryIntents]);
 
   const handleOpenIntentSource = useCallback((intent: LibrarySourceIntent) => {
     // Set the discovery intent filter
@@ -412,7 +404,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     
     try {
       setPendingIntegration(type);
-      await api.delete(`/integrations/${item.id}`);
+      await integrationsService.disconnectIntegration(item.id!);
       setIntegrations(prev => prev.map(x => x.type === type ? { ...x, connected: false, id: null } : x));
       success(`${item.name} disconnected`);
     } catch (err) {
@@ -421,7 +413,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } finally {
       setPendingIntegration(null);
     }
-  }, [api, integrations, success, error]);
+  }, [integrationsService, integrations, success, error]);
 
   const handleConnectIntegration = useCallback(async (type: IntegrationName, indexId: string | null, enableUserAttribution: boolean) => {
     const item = integrations.find(i => i.type === type);
@@ -432,7 +424,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       const popup = typeof window !== 'undefined' ? window.open('', `oauth_${type}`, 'width=560,height=720') : null;
       const payload: { indexId?: string; enableUserAttribution: boolean } = { enableUserAttribution };
       if (indexId) payload.indexId = indexId;
-      const res = await api.post<{ redirectUrl?: string; integrationId?: string }>(`/integrations/connect/${type}`, payload);
+      const res = await integrationsService.connectIntegration(type, payload);
       const redirect = res.redirectUrl;
       const integrationId = res.integrationId;
       
@@ -454,9 +446,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           }
           
           try {
-            const s = await api.get<{ status: 'pending' | 'connected'; connectedAt?: string }>(
-              `/integrations/${integrationId}/status`
-            );
+            const s = await integrationsService.getIntegrationStatus(integrationId);
             
             if (s.status === 'connected') {
               clearInterval(poll);
@@ -485,7 +475,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       error(`Failed to connect ${item.name}`);
       setPendingIntegration(null);
     }
-  }, [api, integrations, success, error]);
+  }, [integrationsService, integrations, success, error]);
 
   const handleSourceFilter = useCallback((integrationType: string) => {
     setActiveSourceFilters(prev => {
@@ -516,15 +506,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     
     setIsUploading(true);
     try {
-      const uploadedFiles = await Promise.all(files.map(async file => {
-        const res = await api.uploadFile<{ file: { id: string; name: string; size: string; type: string; createdAt: string; url: string } }>(`/files`, file);
-        return res.file;
+      const uploadedFiles = await Promise.all(files.map(async (file: File) => {
+        return await filesService.uploadFile(file);
       }));
       
       onChanged?.();
       
       // Reset all filters and only select the newly uploaded files
-      const newFileIds = uploadedFiles.map(file => `f-${file.id}`);
+      const newFileIds = uploadedFiles.map((file) => `f-${file.id}`);
       setSelectedIds(new Set(newFileIds));
       setActiveSourceFilters(new Set());
 
@@ -548,12 +537,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     
     try {
       setIsAddingLink(true);
-      const res = await api.post<{ link: { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string } }>(`/links`, { url: normalizedUrl });
+      const link = await linksService.createLink(normalizedUrl);
       setLinkUrl("");
       onChanged?.();
 
-      if (res.link?.id) {
-        setSelectedIds(new Set([`l-${res.link.id}`]));
+      if (link?.id) {
+        setSelectedIds(new Set([`l-${link.id}`]));
         setActiveSourceFilters(new Set());
       }      
       await loadLists();
@@ -948,7 +937,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       onClick: async () => {
                         const id = l.id;
                         setPreview({ id, title: l.url });
-                        const res = await api.get<{ content?: string; pending?: boolean; url?: string; lastStatus?: string | null; lastSyncAt?: string | null }>(`/links/${id}/content`);
+                        const res = await linksService.getLinkContent(id);
                         if (res?.content) setPreview({ id, title: l.url, content: res.content });
                       },
                       createdAt: (l.lastSyncAt ? new Date(l.lastSyncAt).getTime() : (l.createdAt ? new Date(l.createdAt).getTime() : 0)),

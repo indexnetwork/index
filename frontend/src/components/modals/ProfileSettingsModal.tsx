@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { X, Upload, Camera } from "lucide-react";
-import { User, AvatarUploadResponse, APIResponse } from "@/lib/types";
-import { useAuthenticatedAPI } from "@/lib/api";
+import { User } from "@/lib/types";
+import { useAuth } from "@/contexts/APIContext";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { validateFiles } from "@/lib/file-validation";
 import Image from "next/image";
@@ -77,7 +77,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const api = useAuthenticatedAPI();
+  const authService = useAuth();
 
   const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -103,12 +103,6 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
     }
   }, []);
 
-  const uploadAvatar = async (file: File): Promise<string> => {
-    // Use the uploadFile method with 'avatar' as the field name
-    const result = await api.uploadFile<AvatarUploadResponse>('/upload/avatar', file, undefined, 'avatar');
-    return result.avatarFilename;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -119,20 +113,14 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
       
       // Upload avatar if a new one was selected
       if (avatarFile) {
-        avatarFilename = await uploadAvatar(avatarFile);
+        avatarFilename = await authService.uploadAvatar(avatarFile);
       }
       
-      const response = await api.patch<APIResponse<User>>('/auth/profile', {
+      const updatedUser = await authService.updateProfile({
         name: name || undefined,
         intro: intro || undefined,
         avatar: avatarFilename || undefined,
       });
-      
-      if (!response.user) {
-        throw new Error('Failed to update profile');
-      }
-      
-      const updatedUser = response.user;
       
       onUserUpdate(updatedUser);
       onOpenChange(false);

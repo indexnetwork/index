@@ -5,10 +5,9 @@ import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import { Focus, Archive } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useAuthenticatedAPI } from '@/lib/api';
+import { useIntents } from '@/contexts/APIContext';
 import { useDiscoveryFilter } from '@/contexts/DiscoveryFilterContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { Intent } from '@/lib/types';
 
 interface SynthesisMarkdownProps {
   content: string;
@@ -22,7 +21,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
   const [currentLink, setCurrentLink] = useState<{ href: string; text: string; intentId?: string } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const api = useAuthenticatedAPI();
+  const intentsService = useIntents();
   const { setDiscoveryIntents } = useDiscoveryFilter();
   const { success, error } = useNotifications();
 
@@ -84,14 +83,14 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
     if (currentLink?.intentId) {
       try {
         // Fetch the intent details
-        const response = await api.get<{ intent: Intent }>(`/intents/${currentLink.intentId}`);
-        if (response.intent) {
+        const intent = await intentsService.getIntent(currentLink.intentId);
+        if (intent) {
           // Set the intent as a discovery filter, converting null to undefined for summary
           setDiscoveryIntents([{
-            id: response.intent.id,
-            payload: response.intent.payload,
-            summary: response.intent.summary || undefined,
-            createdAt: response.intent.createdAt
+            id: intent.id,
+            payload: intent.payload,
+            summary: intent.summary || undefined,
+            createdAt: intent.createdAt
           }]);
           // Navigate to inbox page
           router.push('/inbox');
@@ -108,7 +107,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
   const handleArchive = async () => {
     if (currentLink?.intentId) {
       try {
-        await api.patch(`/intents/${currentLink.intentId}/archive`);
+        await intentsService.archiveIntent(currentLink.intentId);
         success('Intent archived');
         setPopoverOpen(false);
         // Call the onArchive callback to refetch data

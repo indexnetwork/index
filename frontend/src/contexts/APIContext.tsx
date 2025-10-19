@@ -9,6 +9,9 @@ import { createSynthesisService } from '@/services/synthesis';
 import { createDiscoverService } from '@/services/discover';
 import { createFilesService } from '@/services/files';
 import { createSyncService } from '@/services/sync';
+import { createLinksService } from '@/services/links';
+import { createAuthService } from '@/services/auth';
+import { createIntegrationsService } from '@/services/integrations';
 
 interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
@@ -18,6 +21,9 @@ interface APIContextType {
   discoverService: ReturnType<typeof createDiscoverService>;
   filesService: ReturnType<typeof createFilesService>;
   syncService: ReturnType<typeof createSyncService>;
+  linksService: ReturnType<typeof createLinksService>;
+  authService: ReturnType<typeof createAuthService>;
+  integrationsService: ReturnType<typeof createIntegrationsService>;
 }
 
 const APIContext = createContext<APIContextType | undefined>(undefined);
@@ -38,7 +44,10 @@ export function APIProvider({ children }: { children: ReactNode }) {
       synthesisService: createSynthesisService(api),
       discoverService: createDiscoverService(api),
       filesService: createFilesService(api),
-      syncService: createSyncService(api)
+      syncService: createSyncService(api),
+      linksService: createLinksService(api),
+      authService: createAuthService(api),
+      integrationsService: createIntegrationsService(api)
     };
     apiRef.current = api;
   }
@@ -92,4 +101,19 @@ export function useFiles() {
 export function useSync() {
   const { syncService } = useAPI();
   return syncService;
+}
+
+export function useLinks() {
+  const { linksService } = useAPI();
+  return linksService;
+}
+
+export function useAuth() {
+  const { authService } = useAPI();
+  return authService;
+}
+
+export function useIntegrations() {
+  const { integrationsService } = useAPI();
+  return integrationsService;
 }

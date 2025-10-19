@@ -18,6 +18,7 @@ import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import LibraryModal from "@/components/modals/LibraryModal";
 import { validateFiles, getSupportedFileExtensions } from "@/lib/file-validation";
 import { useIndexesState } from "@/contexts/IndexesContext";
+import { useAuth as useAuthService, useFiles, useLinks } from "@/contexts/APIContext";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
 type OnboardingFlow = 1 | 2;
@@ -39,6 +40,9 @@ export default function OnboardingPage() {
   const api = useAuthenticatedAPI();
   const indexService = useIndexService();
   const integrationsService = useIntegrationsService();
+  const filesService = useFiles();
+  const linksService = useLinks();
+  const authService = useAuthService();
   const { success, error } = useNotifications();
   const { user, refetchUser } = useAuthContext();
   const { refreshIndexes } = useIndexesState();
@@ -99,31 +103,15 @@ export default function OnboardingPage() {
   const loadIntegrations = useCallback(async () => {
     try {
       // Determine if we should filter by indexId
-      let url = '/integrations';
+      let queryIndexId: string | undefined;
       
       if (currentFlow === 2) {
         // In flow_2, we need to filter by indexId
-        const indexId = (user?.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null) || createdIndex?.id;
-        if (indexId) {
-          url = `/integrations?indexId=${indexId}`;
-        }
+        queryIndexId = (user?.id ? localStorage.getItem(`onboarding:${user.id}:index`) : null) || createdIndex?.id || undefined;
       }
       // In flow_1, we don't filter by indexId (show all integrations)
       
-      const response = await api.get<{ 
-        integrations: Array<{ 
-          id: string; // integrationId (UUID)
-          type: string; // integration type (slack, discord, etc.)
-          name: string; 
-          connected: boolean; 
-          indexId?: string | null;
-        }>;
-        availableTypes: Array<{
-          type: string;
-          name: string;
-          toolkit: string;
-        }>;
-      }>(url);
+      const response = await integrationsService.getIntegrations(queryIndexId);
       
       const connectedIntegrations = response.integrations || [];
       const availableTypes = response.availableTypes || [];
@@ -311,8 +299,7 @@ export default function OnboardingPage() {
   }, [currentStep, loadIndexSummary]);
 
   const uploadAvatar = async (file: File): Promise<string> => {
-    const result = await api.uploadFile<AvatarUploadResponse>('/upload/avatar', file, undefined, 'avatar');
-    return result.avatarFilename;
+    return await authService.uploadAvatar(file);
   };
 
   const handleAvatarChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -379,13 +366,13 @@ export default function OnboardingPage() {
         avatarFilename = await uploadAvatar(avatarFile);
       }
       
-      const response = await api.patch<APIResponse<User>>('/auth/profile', {
+      const updatedUser = await authService.updateProfile({
         name: name.trim(),
         intro: intro.trim(),
         avatar: avatarFilename || undefined,
       });
       
-      if (response.user) {
+      if (updatedUser) {
         // Refetch user data in AuthContext to keep it in sync
         await refetchUser();
         
@@ -507,18 +494,22 @@ export default function OnboardingPage() {
     
     setIsUploading(true);
     try {
-      const uploadedFiles = await Promise.all(files.map(async file => {
-        const res = await api.uploadFile<{ file: { id: string; name: string; size: string; type: string } }>(`/files`, file);
-        return res.file;
+      const uploadedFiles = await Promise.all(files.map(async (file: File) => {
+        return await filesService.uploadFile(file);
       }));
-      setFiles(prev => [...prev, ...uploadedFiles]);
+      setFiles(prev => [...prev, ...uploadedFiles.map(f => ({
+        id: f.id,
+        name: f.name,
+        size: String(f.size),
+        type: f.type
+      }))]);
       success(`${uploadedFiles.length} file(s) uploaded`);
     } catch {
       error('Failed to upload files');
     } finally {
       setIsUploading(false);
     }
-  }, [api, success, error]);
+  }, [filesService, success, error]);
 
   const handleAddLink = useCallback(async () => {
     if (!linkUrl.trim()) return;
@@ -530,8 +521,8 @@ export default function OnboardingPage() {
     
     try {
       setIsAddingLink(true);
-      const res = await api.post<{ link: { id: string; url: string } }>(`/links`, { url: normalizedUrl });
-      setLinks(prev => [...prev, res.link]);
+      const link = await linksService.createLink(normalizedUrl);
+      setLinks(prev => [...prev, link]);
       setLinkUrl("");
       success('Link added successfully');
     } catch {

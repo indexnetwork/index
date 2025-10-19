@@ -1,8 +1,6 @@
 import { 
   ConnectionEvent,
-  ConnectionStatus,
   ConnectionsByUserResponse,
-  CreateConnectionActionRequest
 } from '../lib/types';
 
 // Service functions factory that takes an authenticated API instance
@@ -17,21 +15,6 @@ export const createConnectionsService = (api: ReturnType<typeof import('../lib/a
       ...(indexIds && indexIds.length > 0 && { indexIds })
     };
     const response = await api.post<ConnectionsByUserResponse>('/connections/by-user', requestBody);
-    return response;
-  },
-
-  // Create a connection action
-  createConnectionAction: async (data: CreateConnectionActionRequest): Promise<ConnectionEvent> => {
-    const response = await api.post<{event: ConnectionEvent}>('/connections/actions', data);
-    if (!response.event) {
-      throw new Error('Failed to create connection action');
-    }
-    return response.event;
-  },
-
-  // Get connection status with a specific user
-  getConnectionStatus: async (targetUserId: string): Promise<ConnectionStatus> => {
-    const response = await api.get<ConnectionStatus>(`/connections/status/${targetUserId}`);
     return response;
   },
 

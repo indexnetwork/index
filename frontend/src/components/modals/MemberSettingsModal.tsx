@@ -5,10 +5,10 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Index } from '@/lib/types';
 import { Plus } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { useAPI } from '@/contexts/APIContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { Button } from '@/components/ui/button';
-import { createIntentsService } from '@/services/intents';
 import IntentList from '@/components/IntentList';
 
 interface MemberIntent {
@@ -60,9 +60,9 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
   const [activeMobileSection, setActiveMobileSection] = useState<'settings' | 'intents'>('settings');
 
   const { success, error } = useNotifications();
-  const { removeIndex } = useIndexesState();
-  const api = useAuthenticatedAPI();
-  const intentsService = useMemo(() => createIntentsService(api), [api]);
+  const { removeIndex, refreshIndexes } = useIndexesState();
+  const { indexesService, intentsService } = useAPI();
+  const api = useAuthenticatedAPI(); // Keep for specialized endpoints
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = prompt !== originalPrompt;
@@ -77,22 +77,20 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
     } catch (err) {
       console.error('Failed to fetch member settings:', err);
     }
-  }, [api, index.id]);
+  }, [index.id]);
 
   // Fetch member intents
   const fetchMemberIntents = useCallback(async () => {
     try {
       setLoadingIndexed(true);
-      const response = await api.get<{ intents: MemberIntent[] }>(
-        `/indexes/${index.id}/member-intents`
-      );
-      setIndexedIntents(response.intents);
+      const intents = await indexesService.getMemberIntents(index.id);
+      setIndexedIntents(intents);
     } catch (err) {
       console.error('Failed to fetch member intents:', err);
     } finally {
       setLoadingIndexed(false);
     }
-  }, [api, index.id]);
+  }, [indexesService, index.id]);
 
   // Fetch tag suggestions
   const fetchTagSuggestions = useCallback(async () => {
@@ -129,14 +127,17 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
   useEffect(() => {
     if (!open) return;
     
-    const interval = setInterval(() => {
-      api.get<{ intents: MemberIntent[] }>(`/indexes/${index.id}/member-intents`)
-        .then(response => setIndexedIntents(response.intents))
-        .catch(err => console.error('Failed to refresh member intents:', err));
+    const interval = setInterval(async () => {
+      try {
+        const intents = await indexesService.getMemberIntents(index.id);
+        setIndexedIntents(intents);
+      } catch (err) {
+        console.error('Failed to refresh member intents:', err);
+      }
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [api, index.id, open]);
+  }, [indexesService, index.id, open]);
 
   // Fetch tag suggestions once when modal opens
   useEffect(() => {
@@ -176,7 +177,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
         prompt: prompt.trim() || null,
         autoAssign: true // Temporary: always set to true for now
       });
-      success('Settings saved');
+      success('Member settings updated');
       setOriginalPrompt(prompt);
       await fetchMemberSettings();
     } catch {
@@ -189,7 +190,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
   const handleRemoveIntent = async (intentId: string) => {
     setRemovingIntents(prev => new Set([...prev, intentId]));
     try {
-      await api.delete(`/indexes/${index.id}/member-intents/${intentId}`);
+      await indexesService.removeMemberIntent(index.id, intentId);
       success('Intent removed from index');
       await fetchMemberIntents();
     } catch {
