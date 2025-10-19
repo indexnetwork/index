@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, ReactNode, useState, useEffect, useCallback, useRef } from 'react';
 import { Index } from '@/lib/types';
 import { useIndexes as useIndexesService } from '@/contexts/APIContext';
 
@@ -21,13 +21,20 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const indexesService = useIndexesService();
+  const hasFetchedRef = useRef(false);
+  const hasDataRef = useRef(false);
 
   const refreshIndexes = useCallback(async () => {
     try {
-      setLoading(true);
+      // Only set loading to true if we don't have data yet (first load)
+      if (!hasDataRef.current) {
+        setLoading(true);
+      }
       setError(null);
       const response = await indexesService.getIndexes(1, 100);
       setIndexes(response.indexes || []);
+      hasFetchedRef.current = true;
+      hasDataRef.current = true;
     } catch (err) {
       console.error('Error fetching indexes:', err);
       setError('Failed to load indexes');
@@ -51,9 +58,11 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
     setIndexes(prev => prev.filter(index => index.id !== indexId));
   }, []);
 
-  // Initial load
+  // Initial load - only fetch once
   useEffect(() => {
-    refreshIndexes();
+    if (!hasFetchedRef.current) {
+      refreshIndexes();
+    }
   }, [refreshIndexes]);
 
   return (
