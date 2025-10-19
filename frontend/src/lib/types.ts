@@ -17,6 +17,7 @@ export interface Index {
   prompt?: string | null;
   permissions?: {
     joinPolicy: 'anyone' | 'invite_only';
+    allowGuestVibeCheck?: boolean;
     invitationLink: {
       code: string;
     } | null;
