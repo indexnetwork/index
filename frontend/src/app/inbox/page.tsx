@@ -14,6 +14,7 @@ import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActi
 import DiscoveryForm from "@/components/DiscoveryForm";
 import { useIndexFilter } from "@/contexts/IndexFilterContext";
 import { useDiscoveryFilter } from "@/contexts/DiscoveryFilterContext";
+import { Upload } from "lucide-react";
 
 const validTabs = ['discover', 'requests'];
 
@@ -28,6 +29,9 @@ export default function InboxPage() {
   const { discoveryIntents, setDiscoveryIntents } = useDiscoveryFilter();
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
   const { selectedIndexIds } = useIndexFilter();
+  const [isDragging, setIsDragging] = useState(false); //tempo
+  const dragCounterRef = useRef(0);
+  const discoveryFormRef = useRef<{ handleFileDrop: (files: FileList) => void }>(null);
   
   // URL parameter handling
   const searchParams = useSearchParams();
@@ -165,6 +169,64 @@ export default function InboxPage() {
       setActiveTab('discover');
     }
   }, [searchParams]);
+
+  // Drag and drop handlers
+  useEffect(() => {
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Only show overlay on discover tab with no active filters
+      if (activeTab !== 'discover' || discoveryIntents) return;
+      
+      dragCounterRef.current++;
+      if (e.dataTransfer?.types.includes('Files')) {
+        setIsDragging(true);
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      dragCounterRef.current--;
+      if (dragCounterRef.current === 0) {
+        setIsDragging(false);
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+      
+      // Only handle on discover tab with no active filters
+      if (activeTab !== 'discover' || discoveryIntents) return;
+      
+      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+        discoveryFormRef.current?.handleFileDrop(e.dataTransfer.files);
+      }
+    };
+
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('drop', handleDrop);
+
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, [activeTab, discoveryIntents]);
 
   const handleConnectionAction = async (action: ConnectionAction, userId: string) => {
     try {
@@ -366,6 +428,21 @@ export default function InboxPage() {
 
   return (
     <ClientLayout>
+      {/* Drag and Drop Overlay */}
+      {isDragging && (
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center transition-opacity bg-white/40 backdrop-blur-xs"
+          style={{
+            minHeight: '100vh'
+          }}
+        >
+          <div className="bg-white border-2 border-dashed border-black-500 rounded-lg p-12 flex flex-col items-center gap-4">
+            <Upload className="w-10 h-10 text-blue-500" />
+            <p className="text-xl font-ibm-plex-mono text-gray-700">Drop file(s) here to discover relevant connections</p>
+          </div>
+        </div>
+      )}
+
       <div className="w-full border border-gray-800 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
           backgroundImage: 'url(/grid.png)',
           backgroundColor: 'white',
@@ -381,6 +458,7 @@ export default function InboxPage() {
                 {!discoveryIntents ? (
                   <div className="flex-1">
                     <DiscoveryForm 
+                      ref={discoveryFormRef}
                       onSubmit={(intents) => {
                         console.log('intents', intents);
                         // Set the discovery intent filter and refetch data

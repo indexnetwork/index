@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 import { Paperclip, Radio } from "lucide-react";
 import { useAPI } from "@/contexts/APIContext";
 import { usePrivy } from "@privy-io/react-auth";
@@ -18,7 +18,11 @@ interface AttachmentItem {
   file: File;
 }
 
-export default function DiscoveryForm({ onSubmit }: DiscoveryFormProps) {
+export interface DiscoveryFormRef {
+  handleFileDrop: (files: FileList) => void;
+}
+
+const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubmit }, ref) => {
   const [inputFocused, setInputFocused] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
@@ -30,6 +34,38 @@ export default function DiscoveryForm({ onSubmit }: DiscoveryFormProps) {
   const { discoverService, intentsService } = useAPI();
   const { getAccessToken } = usePrivy();
   const { success, error } = useNotifications();
+
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    handleFileDrop: (files: FileList) => {
+      if (files.length > 0) {
+        const file = files[0];
+        
+        // Validate combined file set
+        const nextFiles = [...attachments.map(a => a.file), file];
+        const validation = validateFiles(nextFiles, 'general');
+        if (!validation.isValid) {
+          error(validation.message || 'Invalid file');
+          return;
+        }
+        
+        const newAttachment: AttachmentItem = {
+          id: Date.now().toString(),
+          type: 'file',
+          name: file.name,
+          file: file
+        };
+        setAttachments(prev => [...prev, newAttachment]);
+        setInputFocused(true);
+        
+        // Insert attachment at cursor position
+        setTimeout(() => {
+          contentRef.current?.focus();
+          insertAttachment(newAttachment);
+        }, 0);
+      }
+    }
+  }));
 
   // URL regex - stops at spaces and invalid characters (including unicode spaces)
   const URLInTextRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%]*)?/g;
@@ -674,4 +710,8 @@ export default function DiscoveryForm({ onSubmit }: DiscoveryFormProps) {
       </div>
     </div>
   );
-}
+});
+
+DiscoveryForm.displayName = 'DiscoveryForm';
+
+export default DiscoveryForm;
