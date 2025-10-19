@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import { User, AvatarUploadResponse, APIResponse } from "@/lib/types";
+import { User, AvatarUploadResponse, APIResponse, Index } from "@/lib/types";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -60,7 +60,12 @@ export default function OnboardingPage() {
   const [files, setFiles] = useState<Array<{ id: string; name: string; size: string; type: string }>>([]);
   const [links, setLinks] = useState<Array<{ id: string; url: string }>>([]);
 
-  // Mock indexes for the final step
+  // Public indexes for join_indexes step
+  const [publicIndexes, setPublicIndexes] = useState<Array<Index & { isMember?: boolean }>>([]);
+  const [publicIndexesLoaded, setPublicIndexesLoaded] = useState(false);
+  const [isJoiningIndex, setIsJoiningIndex] = useState<string | null>(null);
+
+  // Mock indexes for the final step (fallback if no public indexes)
   const mockIndexes = [
     { id: 'index-early', name: 'Index Early', description: 'AI, Web3, Decentralization', members: 1250 },
     { id: 'techstars', name: 'Techstars Universe', description: 'AI, Web3, Decentralization', members: 890 },
@@ -268,6 +273,25 @@ export default function OnboardingPage() {
     }
   }, [currentStep, currentFlow, loadIntegrations, createdIndex?.id, user?.id]);
 
+  // Load public indexes when on join_indexes step
+  useEffect(() => {
+    const loadPublicIndexes = async () => {
+      if (currentStep === 'join_indexes' && !publicIndexesLoaded) {
+        try {
+          const response = await indexService.discoverPublicIndexes(1, 20);
+          setPublicIndexes(response.indexes || []);
+          setPublicIndexesLoaded(true);
+        } catch (error) {
+          console.error('Failed to load public indexes:', error);
+          // Keep mock data as fallback
+          setPublicIndexesLoaded(true);
+        }
+      }
+    };
+
+    loadPublicIndexes();
+  }, [currentStep, publicIndexesLoaded, indexService]);
+
   // Load index summary when reaching invite_members step and reload every second
   useEffect(() => {
     if (currentStep === 'invite_members') {
@@ -365,7 +389,7 @@ export default function OnboardingPage() {
         
         // For flow1, complete onboarding after profile step
         if (currentFlow === 1) {
-          await handleCompleteOnboarding();
+          setCurrentStep(getNextStep('connections'));
         } else {
           setCurrentStep(getNextStep('profile'));
         }
@@ -1091,6 +1115,56 @@ export default function OnboardingPage() {
         );
 
       case 'join_indexes':
+        const indexesToShow = publicIndexes.length > 0 ? publicIndexes : mockIndexes.map(m => ({
+          id: m.id,
+          title: m.name,
+          prompt: m.description,
+          permissions: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          user: { id: '', name: '', email: null, avatar: null },
+          _count: { members: m.members, files: 0 },
+          isMember: false
+        }));
+
+        const handleToggleJoin = async (index: typeof indexesToShow[number]) => {
+          // Skip if this is mock data
+          if (!publicIndexes.length && mockIndexes.find(m => m.id === index.id)) {
+            // Just toggle for mock data
+            setSelectedIndexes(prev => {
+              const next = new Set(prev);
+              if (next.has(index.id)) {
+                next.delete(index.id);
+              } else {
+                next.add(index.id);
+              }
+              return next;
+            });
+            return;
+          }
+
+          if (index.isMember || selectedIndexes.has(index.id)) {
+            // Already joined, don't do anything
+            return;
+          }
+
+          try {
+            setIsJoiningIndex(index.id);
+            await indexService.joinIndex(index.id);
+            setSelectedIndexes(prev => new Set(prev).add(index.id));
+            success(`Joined ${index.title}!`);
+            // Update the index in the list
+            setPublicIndexes(prev => prev.map(idx => 
+              idx.id === index.id ? { ...idx, isMember: true } : idx
+            ));
+          } catch (err) {
+            console.error('Failed to join index:', err);
+            error('Failed to join index');
+          } finally {
+            setIsJoiningIndex(null);
+          }
+        };
+
         return (
           <div className="max-w-4xl mx-auto">
             <div className="mb-8">
@@ -1100,38 +1174,51 @@ export default function OnboardingPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-              {mockIndexes.map((index) => (
-                <div key={index.id} className="border border-[#E0E0E0] rounded-lg p-6 bg-white">
-                  <div className="text-center">
-                    <h3 className="text-lg font-bold text-black mb-2 font-ibm-plex-mono">{index.name}</h3>
-                    <p className="text-sm text-[#666] mb-4 font-ibm-plex-mono">{index.description}</p>
-                    <p className="text-xs text-[#888] mb-4 font-ibm-plex-mono">{index.members.toLocaleString()} members</p>
-                    <Button
-                      variant={selectedIndexes.has(index.id) ? "default" : "outline"}
-                      onClick={() => {
-                        setSelectedIndexes(prev => {
-                          const next = new Set(prev);
-                          if (next.has(index.id)) {
-                            next.delete(index.id);
-                          } else {
-                            next.add(index.id);
-                          }
-                          return next;
-                        });
-                      }}
-                      className={`w-full font-ibm-plex-mono ${
-                        selectedIndexes.has(index.id)
-                          ? 'bg-[#006D4B] text-white hover:bg-[#005A3E]'
-                          : 'border-[#E0E0E0] text-black hover:bg-[#F0F0F0]'
-                      }`}
-                    >
-                      {selectedIndexes.has(index.id) ? 'Joined' : 'Join'}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {!publicIndexesLoaded ? (
+              <div className="flex justify-center py-12">
+                <div className="h-8 w-8 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                {indexesToShow.map((index) => {
+                  const isJoined = index.isMember || selectedIndexes.has(index.id);
+                  const isJoining = isJoiningIndex === index.id;
+                  
+                  return (
+                    <div key={index.id} className="border border-[#E0E0E0] rounded-lg p-6 bg-white">
+                      <div className="text-center">
+                        <h3 className="text-lg font-bold text-black mb-2 font-ibm-plex-mono">{index.title}</h3>
+                        <p className="text-sm text-[#666] mb-4 font-ibm-plex-mono">{index.prompt || 'No description'}</p>
+                        <p className="text-xs text-[#888] mb-4 font-ibm-plex-mono">
+                          {index._count.members.toLocaleString()} members
+                        </p>
+                        <Button
+                          variant={isJoined ? "default" : "outline"}
+                          onClick={() => handleToggleJoin(index)}
+                          disabled={isJoined || isJoining}
+                          className={`w-full font-ibm-plex-mono ${
+                            isJoined
+                              ? 'bg-[#006D4B] text-white hover:bg-[#005A3E]'
+                              : 'border-[#E0E0E0] text-black hover:bg-[#F0F0F0]'
+                          }`}
+                        >
+                          {isJoining ? (
+                            <>
+                              <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2 inline-block" />
+                              Joining...
+                            </>
+                          ) : isJoined ? (
+                            'Joined'
+                          ) : (
+                            'Join'
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="flex gap-3">
               <Button

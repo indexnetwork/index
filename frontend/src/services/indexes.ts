@@ -37,6 +37,12 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response;
   },
 
+  // Discover public indexes (indexes that anyone can join)
+  discoverPublicIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index & { isMember?: boolean }>> => {
+    const response = await api.get<PaginatedResponse<Index & { isMember?: boolean }>>(`/indexes/discover/public?page=${page}&limit=${limit}`);
+    return response;
+  },
+
   // Get single index by ID
   getIndex: async (id: string): Promise<Index> => {
     const response = await api.get<APIResponse<Index>>(`/indexes/${id}`);
@@ -146,6 +152,26 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   // Leave index (remove current user as member)
   leaveIndex: async (indexId: string, userId: string): Promise<void> => {
     await api.delete(`/indexes/${indexId}/members/${userId}`);
+  },
+
+  // Join a public index
+  joinIndex: async (indexId: string): Promise<void> => {
+    await api.post(`/indexes/${indexId}/join`);
+  },
+
+  // Accept invitation and join index
+  acceptInvitation: async (code: string): Promise<{ index: Index; membership: any; alreadyMember?: boolean }> => {
+    const response = await api.post<{ 
+      message: string; 
+      index: Index; 
+      membership: any;
+      alreadyMember?: boolean;
+    }>(`/indexes/invitation/${code}/accept`);
+    return {
+      index: response.index,
+      membership: response.membership,
+      alreadyMember: response.alreadyMember
+    };
   },
 
   // Get suggested intents for an index
