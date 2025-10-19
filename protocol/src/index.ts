@@ -13,7 +13,6 @@ import fileRoutes from './routes/files';
 import indexRoutes from './routes/indexes';
 import uploadRoutes from './routes/upload';
 import connectionRoutes from './routes/connections';
-import vibecheckRoutes from './routes/vibecheck';
 import synthesisRoutes from './routes/synthesis';
 import integrationRoutes from './routes/integrations';
 import discoverRoutes from './routes/discover';
@@ -54,7 +53,6 @@ app.use('/api/indexes', indexRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/sync', syncRoutes);
 
-app.use('/api/vibecheck', vibecheckRoutes);
 app.use('/api/synthesis', synthesisRoutes);
 app.use('/api/discover', discoverRoutes);
 
