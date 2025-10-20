@@ -135,7 +135,14 @@ router.post('/connect/:integrationType',
           .limit(1);
 
         if (existing.length > 0) {
-          return res.status(409).json({ error: 'Integration already connected for this index' });
+          // If there's a connected integration, block the request
+          if (existing[0].status === 'connected') {
+            return res.status(409).json({ error: 'Integration already connected for this index' });
+          }
+          // If there's a pending integration, clean it up before creating a new one
+          await db.update(userIntegrations)
+            .set({ deletedAt: new Date() })
+            .where(eq(userIntegrations.id, existing[0].id));
         }
       } else {
         // No indexId - check if user has any non-attributed integration of this type
@@ -149,7 +156,14 @@ router.post('/connect/:integrationType',
           .limit(1);
 
         if (existing.length > 0) {
-          return res.status(409).json({ error: 'Integration already connected' });
+          // If there's a connected integration, block the request
+          if (existing[0].status === 'connected') {
+            return res.status(409).json({ error: 'Integration already connected' });
+          }
+          // If there's a pending integration, clean it up before creating a new one
+          await db.update(userIntegrations)
+            .set({ deletedAt: new Date() })
+            .where(eq(userIntegrations.id, existing[0].id));
         }
       }
 
