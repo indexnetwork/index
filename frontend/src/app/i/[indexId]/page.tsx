@@ -9,17 +9,17 @@ import { useIndexes, useAuth as useAuthService } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useRouter } from 'next/navigation';
-import { Lock, Users, Loader2, Globe } from 'lucide-react';
+import { Users, Loader2, Globe } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
 
-interface InvitationPageProps {
+interface PublicJoinPageProps {
   params: Promise<{
-    code: string;
+    indexId: string;
   }>;
 }
 
-type PageStep = 'loading' | 'auth-required' | 'onboarding-required' | 'ready-to-join' | 'joining' | 'error' | 'already-member';
+type PageStep = 'loading' | 'auth-required' | 'ready-to-join' | 'joining' | 'error' | 'already-member';
 
 type PageState = {
   step: PageStep;
@@ -28,7 +28,7 @@ type PageState = {
   error: string | null;
 };
 
-export default function InvitationPage({ params }: InvitationPageProps) {
+export default function PublicJoinPage({ params }: PublicJoinPageProps) {
   const resolvedParams = use(params);
   const [state, setState] = useState<PageState>({
     step: 'loading',
@@ -49,16 +49,16 @@ export default function InvitationPage({ params }: InvitationPageProps) {
   useEffect(() => {
     const loadIndexAndCheckAuth = async () => {
       try {
-        // Load index by share code (works for both invitation codes and index IDs)
-        const index = await publicIndexesService.getIndexByShareCode(resolvedParams.code);
+        // Load public index by ID
+        const index = await publicIndexesService.getPublicIndexById(resolvedParams.indexId);
         setState(prev => ({ ...prev, index }));
 
-        // Reject public indexes - they should use /i/[indexId] instead
-        if (index.permissions?.joinPolicy === 'anyone') {
+        // Double-check that this is a public index
+        if (index.permissions?.joinPolicy !== 'anyone') {
           setState(prev => ({ 
             ...prev, 
             step: 'error', 
-            error: 'No invitation found' 
+            error: 'This index is private. You need an invitation to join.' 
           }));
           return;
         }
@@ -79,9 +79,9 @@ export default function InvitationPage({ params }: InvitationPageProps) {
           if (response.user) {
             setState(prev => ({ ...prev, user: response.user || null }));
 
-            // Accept private invitation
+            // Join the public index immediately
             try {
-              const joinResult = await indexesService.acceptInvitation(resolvedParams.code);
+              const joinResult = await indexesService.joinIndex(index.id);
               
               // Check if user is already a member
               if (joinResult?.alreadyMember) {
@@ -91,20 +91,14 @@ export default function InvitationPage({ params }: InvitationPageProps) {
               
               await refreshIndexes();
             } catch (err) {
-              console.error('Failed to accept invitation:', err);
+              console.error('Failed to join index:', err);
               setState(prev => ({ 
                 ...prev, 
                 step: 'error', 
-                error: 'Failed to accept invitation' 
+                error: 'Failed to join index' 
               }));
               return;
             }
-
-            // Store invitation code in onboarding state for reference
-            await authService.updateOnboardingState({ 
-              flow: 3,
-              invitationCode: resolvedParams.code
-            });
 
             // Check if user needs onboarding
             const hasCompletedOnboarding = response.user.onboarding?.completedAt;
@@ -129,18 +123,18 @@ export default function InvitationPage({ params }: InvitationPageProps) {
         setState(prev => ({ 
           ...prev, 
           step: 'error', 
-          error: (err as Error)?.message || 'Invalid or expired invitation link' 
+          error: (err as Error)?.message || 'Index not found or is private' 
         }));
       }
     };
 
     loadIndexAndCheckAuth();
-  }, [resolvedParams.code, authenticated, ready, api, router, indexesService]);
+  }, [resolvedParams.indexId, authenticated, ready, api, router, indexesService]);
 
   // Trigger reload when user authenticates
   useEffect(() => {
     if (authenticated && ready && state.step === 'auth-required') {
-      // Trigger reload to check membership
+      // Trigger reload to join the index
       setState(prev => ({ ...prev, step: 'loading' }));
     }
   }, [authenticated, ready, state.step]);
@@ -151,8 +145,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
     try {
       setState(prev => ({ ...prev, step: 'joining' }));
       
-      // Accept private invitation
-      const result = await indexesService.acceptInvitation(resolvedParams.code);
+      const result = await indexesService.joinIndex(state.index.id);
       
       if (result?.alreadyMember) {
         success('You are already a member of this index');
@@ -165,12 +158,12 @@ export default function InvitationPage({ params }: InvitationPageProps) {
         router.push(`/inbox`);
       }
     } catch (err) {
-      console.error('Failed to accept invitation:', err);
-      notifyError((err as Error)?.message || 'Failed to accept invitation');
+      console.error('Failed to join index:', err);
+      notifyError((err as Error)?.message || 'Failed to join index');
       setState(prev => ({ 
         ...prev, 
         step: 'error', 
-        error: (err as Error)?.message || 'Failed to accept invitation' 
+        error: (err as Error)?.message || 'Failed to join index' 
       }));
     }
   };
@@ -186,7 +179,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
           <div className="max-w-3xl mx-auto">
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-gray-400 mb-4" />
-              <p className="text-gray-600 font-ibm-plex-mono">Loading invitation...</p>
+              <p className="text-gray-600 font-ibm-plex-mono">Loading index...</p>
             </div>
           </div>
         );
@@ -200,9 +193,9 @@ export default function InvitationPage({ params }: InvitationPageProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Invalid Invitation</h1>
+              <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Not Found</h1>
               <p className="text-gray-600 font-ibm-plex-mono">
-                {state.error || 'This invitation link is invalid or has expired.'}
+                {state.error || 'This index was not found or is private.'}
               </p>
             </div>
             <Button
@@ -219,19 +212,19 @@ export default function InvitationPage({ params }: InvitationPageProps) {
           <div className="max-w-3xl mx-auto">
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
-                You're invited to join
+                Join this public index
               </h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
-                Connect with others who share your intent — discover relevant matches inside this private network.
+                Connect with others who share your intent — discover relevant matches inside this public network.
               </p>
             </div>
             
             {state.index && (
               <div className="bg-white border border-gray-200 rounded-lg p-8 mb-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <Lock className="h-5 w-5 text-black" />
+                  <Globe className="h-5 w-5 text-black" />
                   <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">
-                    Private Network
+                    Public Index
                   </h2>
                 </div>
                 
@@ -253,9 +246,9 @@ export default function InvitationPage({ params }: InvitationPageProps) {
             <div className="max-w-md">
               <Button
                 onClick={handleLogin}
-                className=" bg-black text-white hover:bg-gray-800 font-ibm-plex-mono"
+                className="bg-black text-white hover:bg-gray-800 font-ibm-plex-mono"
               >
-                Sign in to accept invitation
+                Sign in to join
               </Button>
             </div>
           </div>
@@ -266,19 +259,19 @@ export default function InvitationPage({ params }: InvitationPageProps) {
           <div className="max-w-3xl mx-auto">
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
-                You're invited to join
+                Join this public index
               </h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
-                Connect with others who share your intent — discover relevant matches inside this private network.
+                Connect with others who share your intent — discover relevant matches inside this public network.
               </p>
             </div>
             
             {state.index && (
               <div className="bg-white border border-gray-200 rounded-lg p-8 mb-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <Lock className="h-5 w-5 text-black" />
+                  <Globe className="h-5 w-5 text-black" />
                   <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">
-                    Private Network
+                    Public Index
                   </h2>
                 </div>
                 
@@ -302,7 +295,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
                 onClick={handleJoinIndex}
                 className="w-full bg-black text-white hover:bg-gray-800 font-ibm-plex-mono"
               >
-                Accept invitation & join
+                Join
               </Button>
             </div>
           </div>

@@ -55,14 +55,17 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
 
   // Handle onboarding check when user data is available
   useEffect(() => {
-    if (user?.id && authenticated) {
-      const onboardingCompleted = localStorage.getItem(`onboarding:${user.id}:isCompleted`);
-      if (!onboardingCompleted) {
+    if (user?.id && authenticated && pathname !== '/onboarding') {
+      // Check if user has completed onboarding using database field
+      const hasCompletedOnboarding = user.onboarding?.completedAt;
+      
+      // Only redirect if user hasn't completed onboarding AND hasn't filled their intro
+      if (!hasCompletedOnboarding) {
         router.push('/onboarding');
         return;
       }
     }
-  }, [user?.id, authenticated, router]);
+  }, [user?.id, user?.onboarding?.completedAt, user?.intro, authenticated, pathname, router]);
 
   const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => {
     try {
@@ -186,9 +189,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
           </Link>
         </div>
         {showHeaderButtons && (
-          isAlpha ? (
-            authenticated ? (
-              <div className="relative" ref={dropdownRef}>
+          authenticated ? (
+            <div className="relative" ref={dropdownRef}>
               <div 
                 className="flex items-center px-4 py-2 border border-[#9f9f9f] border-1 rounded-sm cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -262,7 +264,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                 </div>
               )}
             </div>
-          ) : (
+          ) : isAlpha ? (
             <Button 
               variant="outline" 
               className="flex items-center px-3 py-5"
@@ -271,17 +273,16 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
               <LogIn className="h-5 w-5" />
               <span className="hidden sm:inline mx-2">Login</span>
             </Button>
+          ) : (
+            <Button 
+              variant="outline" 
+              className="flex items-center px-3 py-5"
+              onClick={() => window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank")}
+            >
+              <UserPlus className="h-5 w-5" />
+              <span className="hidden sm:inline mx-2">Join the waitlist</span>
+            </Button>
           )
-        ) : (
-          <Button 
-            variant="outline" 
-            className="flex items-center px-3 py-5"
-            onClick={() => window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank")}
-          >
-            <UserPlus className="h-5 w-5" />
-            <span className="hidden sm:inline mx-2">Join the waitlist</span>
-          </Button>
-        )
         )}
       </header>
 

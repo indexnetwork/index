@@ -30,7 +30,15 @@ export async function getIndexWithPermissions(
   // Get index
   const query = 'id' in selector 
     ? and(eq(indexes.id, selector.id), isNull(indexes.deletedAt))
-    : and(isNull(indexes.deletedAt), sql`${indexes.permissions}->'invitationLink'->>'code' = ${selector.code}`);
+    : and(
+        isNull(indexes.deletedAt), 
+        or(
+          // Check if code matches invitationLink.code (for both public and private)
+          sql`${indexes.permissions}->'invitationLink'->>'code' = ${selector.code}`,
+          // OR check if code matches the index ID itself (for public indexes using ID as code)
+          eq(indexes.id, selector.code)
+        )
+      );
     
   const [index] = await db.select().from(indexes).where(query).limit(1);
   if (!index) return { hasAccess: false, error: 'Index not found', status: 404 };
@@ -38,10 +46,18 @@ export async function getIndexWithPermissions(
   // Code-based access
   if ('code' in selector) {
     const indexPermissions = index.permissions;
-    if (!indexPermissions?.invitationLink || indexPermissions.joinPolicy !== 'invite_only') {
-      return { hasAccess: false, error: 'Invalid invitation link', status: 403 };
+    
+    // For public indexes (anyone can join), allow access via code
+    if (indexPermissions?.joinPolicy === 'anyone') {
+      return { hasAccess: true, indexData: index, memberPermissions: ['member'] };
     }
-    return { hasAccess: true, indexData: index, memberPermissions: ['member'] };
+    
+    // For private indexes, check invitation link exists and joinPolicy is invite_only
+    if (indexPermissions?.invitationLink && indexPermissions.joinPolicy === 'invite_only') {
+      return { hasAccess: true, indexData: index, memberPermissions: ['member'] };
+    }
+    
+    return { hasAccess: false, error: 'Invalid invitation link', status: 403 };
   }
 
   // User-based access

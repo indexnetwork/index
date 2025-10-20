@@ -225,7 +225,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
 
   const handleCopyLink = async (linkType: 'index' | 'invitation', code?: string) => {
     const url = linkType === 'index' 
-      ? `${window.location.origin}/index/${index.id}`
+      ? `${window.location.origin}/i/${index.id}`
       : `${window.location.origin}/l/${code}`;
     
     try {
@@ -559,7 +559,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                         <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
                           <Globe className="h-4 w-4 text-gray-500" />
                           <code className="flex-1 text-xs text-gray-700 font-mono">
-                            {window.location.origin}/index/{index.id}
+                            {window.location.origin}/i/{index.id}
                           </code>
                           <Button
                             variant="outline"

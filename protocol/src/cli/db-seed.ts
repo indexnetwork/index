@@ -55,6 +55,7 @@ async function createUser(account: typeof PRIVY_TEST_ACCOUNTS[0]): Promise<any> 
       email: account.email,
       name: account.name,
       intro: `Test account for ${account.name}`,
+      onboarding: {}
     }).returning();
     return user;
   } catch {

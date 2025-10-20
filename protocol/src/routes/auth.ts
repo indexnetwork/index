@@ -17,6 +17,7 @@ router.get('/me', authenticatePrivy, async (req: AuthRequest, res: Response) => 
       name: users.name,
       intro: users.intro,
       avatar: users.avatar,
+      onboarding: users.onboarding,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt
     }).from(users)
@@ -54,6 +55,7 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
         name: users.name,
         intro: users.intro,
         avatar: users.avatar,
+        onboarding: users.onboarding,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt
       });
@@ -66,6 +68,62 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
   } catch (error) {
     console.error('Update profile error:', error);
     return res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// Update onboarding state
+router.patch('/onboarding-state', authenticatePrivy, async (req: AuthRequest, res: Response) => {
+  try {
+    const { completedAt, flow, currentStep, indexId, invitationCode } = req.body;
+    
+    // Get current onboarding state
+    const currentUser = await db.select({
+      onboarding: users.onboarding
+    }).from(users)
+      .where(eq(users.id, req.user!.id))
+      .limit(1);
+    
+    if (currentUser.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Merge with existing onboarding state
+    const currentOnboarding = (currentUser[0].onboarding || {}) as any;
+    const updatedOnboarding = {
+      ...currentOnboarding,
+      ...(completedAt !== undefined && { completedAt }),
+      ...(flow !== undefined && { flow }),
+      ...(currentStep !== undefined && { currentStep }),
+      ...(indexId !== undefined && { indexId }),
+      ...(invitationCode !== undefined && { invitationCode }),
+    };
+    
+    const updatedUser = await db.update(users)
+      .set({
+        onboarding: updatedOnboarding,
+        updatedAt: new Date()
+      })
+      .where(eq(users.id, req.user!.id))
+      .returning({
+        id: users.id,
+        privyId: users.privyId,
+        email: users.email,
+        name: users.name,
+        intro: users.intro,
+        avatar: users.avatar,
+        onboarding: users.onboarding,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt
+      });
+
+    if (updatedUser.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    return res.json({ user: updatedUser[0] });
+  } catch (error) {
+    console.error('Update onboarding state error:', error);
+    return res.status(500).json({ error: 'Failed to update onboarding state' });
   }
 });
 

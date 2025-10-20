@@ -1,6 +1,6 @@
 import { useAuthenticatedAPI } from '../lib/api';
 import { useMemo } from 'react';
-import { User, AvatarUploadResponse, APIResponse } from '../lib/types';
+import { User, AvatarUploadResponse, APIResponse, OnboardingState } from '../lib/types';
 
 export interface UpdateProfileRequest {
   name?: string;
@@ -20,6 +20,15 @@ export const createAuthService = (api: ReturnType<typeof useAuthenticatedAPI>) =
     const response = await api.patch<APIResponse<User>>('/auth/profile', data);
     if (!response.user) {
       throw new Error('Failed to update profile');
+    }
+    return response.user;
+  },
+
+  // Update onboarding state
+  updateOnboardingState: async (data: Partial<OnboardingState>): Promise<User> => {
+    const response = await api.patch<APIResponse<User>>('/auth/onboarding-state', data);
+    if (!response.user) {
+      throw new Error('Failed to update onboarding state');
     }
     return response.user;
   }

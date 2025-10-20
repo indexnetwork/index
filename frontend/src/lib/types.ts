@@ -1,3 +1,12 @@
+// Onboarding state type
+export interface OnboardingState {
+  completedAt?: string;  // ISO timestamp when completed
+  flow?: 1 | 2 | 3;
+  currentStep?: 'profile' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
+  indexId?: string;  // Persisted index ID for flow 2
+  invitationCode?: string;  // Store which invitation was used (reference only)
+}
+
 // User types
 export interface User {
   id: string;
@@ -6,6 +15,7 @@ export interface User {
   name: string;
   intro: string | null;
   avatar: string | null;
+  onboarding?: OnboardingState;
   createdAt: string;
   updatedAt: string;
 }

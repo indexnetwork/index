@@ -61,6 +61,15 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response.index;
   },
 
+  // Get public index by ID (public access - only works for public indexes)
+  getPublicIndexById: async (id: string): Promise<Index> => {
+    const response = await api.get<APIResponse<Index>>(`/indexes/public/${id}`);
+    if (!response.index) {
+      throw new Error('Index not found');
+    }
+    return response.index;
+  },
+
   // Create new index
   createIndex: async (data: CreateIndexRequest): Promise<Index> => {
     const response = await api.post<APIResponse<Index>>('/indexes', data);
@@ -139,8 +148,18 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Join a public index
-  joinIndex: async (indexId: string): Promise<void> => {
-    await api.post(`/indexes/${indexId}/join`);
+  joinIndex: async (indexId: string): Promise<{ index: Index; membership?: Member; alreadyMember?: boolean }> => {
+    const response = await api.post<{ 
+      message: string; 
+      index: Index; 
+      membership?: Member;
+      alreadyMember?: boolean;
+    }>(`/indexes/${indexId}/join`);
+    return {
+      index: response.index,
+      membership: response.membership,
+      alreadyMember: response.alreadyMember
+    };
   },
 
   // Accept invitation and join index
@@ -196,6 +215,15 @@ export const indexesService = {
   // Get index by share code (public access, no auth required)
   getIndexByShareCode: async (code: string): Promise<Index> => {
     const response = await apiClient.get<APIResponse<Index>>(`/indexes/share/${code}`);
+    if (!response.index) {
+      throw new Error('Index not found');
+    }
+    return response.index;
+  },
+
+  // Get public index by ID (public access, no auth required - only works for public indexes)
+  getPublicIndexById: async (id: string): Promise<Index> => {
+    const response = await apiClient.get<APIResponse<Index>>(`/indexes/public/${id}`);
     if (!response.index) {
       throw new Error('Index not found');
     }

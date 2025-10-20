@@ -384,61 +384,6 @@ router.post("/filter",
   }
 });
 
-// Get stakes for users within a specific shared index, grouped by user
-router.get('/index/share/:code/by-user',
-  authenticatePrivy,
-  [param('code').isUUID()],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
 
-      const { code } = req.params;
-
-      // Check access to the shared index
-      const accessCheck = await getIndexWithPermissions({ code });
-      if (!accessCheck.hasAccess) {
-        return res.status(accessCheck.status!).json({ error: accessCheck.error });
-      }
-
-      const sharedIndexData = accessCheck.indexData!;
-
-      // Check if the shared index allows access
-      if (!accessCheck.memberPermissions?.includes('member') && !accessCheck.memberPermissions?.includes('owner')) {
-        return res.status(403).json({ error: 'Shared index does not allow discovery' });
-      }
-
-
-      // Use the new discovery logic
-      const { results } = await discoverUsers({
-        authenticatedUserId: req.user!.id,
-        indexIds: [sharedIndexData.id],
-        excludeDiscovered: false, // Include all users, not just undiscovered ones
-        page: 1,
-        limit: 100
-      });
-
-      // Format results to match the expected response structure
-      const formattedResults = results.map(r => ({
-        user: {
-          id: r.user.id,
-          name: r.user.name,
-          avatar: r.user.avatar,
-          intro: r.user.intro
-        },
-        totalStake: r.totalStake.toString(),
-        reasoning: r.intents.flatMap(i => i.reasonings).filter(r => r).join(' ')
-      }))
-      .sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
-
-      return res.json(formattedResults);
-    } catch (error) {
-      console.error('Get index stakes by user error:', error);
-      return res.status(500).json({ error: 'Failed to fetch index stakes by user' });
-    }
-  }
-);
 
 export default router;

@@ -66,7 +66,8 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
         email: extractedUser.email,
         name: extractedUser.name,
         intro: null,
-        avatar: extractedUser.avatar || null
+        avatar: extractedUser.avatar || null,
+        onboarding: {}
       })
       .returning({
         id: users.id,
