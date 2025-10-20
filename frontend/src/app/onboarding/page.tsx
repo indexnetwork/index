@@ -323,7 +323,7 @@ export default function OnboardingPage() {
         setCurrentStep(nextAfterProfile);
       }
     }
-  }, [user, currentFlow, router]);
+  }, [user, currentFlow, router, searchParams]);
 
   // Load integrations when appropriate
   useEffect(() => {
