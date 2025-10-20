@@ -29,8 +29,6 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
       return res.status(401).json({ error: 'Invalid access token' });
     }
 
-    console.log('Claims userId:', claims.userId);
-
     // Validate userId before making Privy API call
     if (!claims.userId || typeof claims.userId !== 'string') {
       console.error('Invalid userId in claims:', claims.userId);
