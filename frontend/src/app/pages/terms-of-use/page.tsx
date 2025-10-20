@@ -1,12 +1,11 @@
 import ClientLayout from "@/components/ClientLayout";
 
-function formatEffectiveDate(date: Date): string {
-  const options: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" };
-  return new Intl.DateTimeFormat("en-US", options).format(date);
-}
-
 export default function TermsOfUsePage() {
-  const effectiveDate = formatEffectiveDate(new Date());
+  const effectiveDate = new Date(2025, 9, 20).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
 
   return (
     <ClientLayout>
