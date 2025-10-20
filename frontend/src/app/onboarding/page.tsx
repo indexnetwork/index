@@ -248,7 +248,7 @@ export default function OnboardingPage() {
         setSummaryLoaded(true);
       }
     }
-  }, [api, createdIndex?.id, summaryLoaded, displayIntents, displayMembers, displayTotalIntents, user?.id]);
+  }, [api, createdIndex?.id, summaryLoaded, displayIntents, displayMembers, displayTotalIntents, user?.onboarding?.indexId]);
 
   // Detect flow from query string, user onboarding state, or default
   useEffect(() => {
@@ -262,8 +262,8 @@ export default function OnboardingPage() {
         authService.updateOnboardingState({
           flow: 2,
           currentStep: 'profile',
-          indexId: undefined, // Clear any previous index
-          completedAt: undefined // Mark as not completed
+          indexId: null, // Clear any previous index
+          completedAt: null // Mark as not completed
         }).then(() => {
           refetchUser();
         }).catch((err) => {
@@ -284,12 +284,14 @@ export default function OnboardingPage() {
       setIntro(user.intro || '');
       
       const config = FLOW_CONFIGS[currentFlow];
+      const f = searchParams.get('f');
       
-      // If onboarding is already completed, redirect to inbox
-      if (user.onboarding?.completedAt) {
+      // If onboarding is already completed, redirect to inbox UNLESS f=2 is present
+      if (user.onboarding?.completedAt && f !== '2') {
         router.push('/inbox');
         return;
       }
+      
       
       // If user has a saved step in onboarding state, resume from there
       if (user.onboarding?.currentStep && config.steps.includes(user.onboarding.currentStep)) {
@@ -356,7 +358,7 @@ export default function OnboardingPage() {
         setIntegrationsIndexId(undefined);
       }
     }
-  }, [currentStep, currentFlow, createdIndex?.id, user?.onboarding?.indexId, integrationsLoaded, integrationsIndexId]);
+  }, [currentStep, currentFlow, createdIndex?.id, user?.onboarding?.indexId, integrationsLoaded, integrationsIndexId, loadIntegrations]);
 
   // Load public indexes when on join_indexes step
   useEffect(() => {
@@ -551,7 +553,7 @@ export default function OnboardingPage() {
     } finally {
       setPendingIntegration(null);
     }
-  }, [integrationsService, integrations, success, error, loadIntegrations, createdIndex?.id, user?.id, currentFlow]);
+  }, [integrationsService, integrations, success, error, loadIntegrations, createdIndex?.id, currentFlow, user?.onboarding?.indexId]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;

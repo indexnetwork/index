@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Index, User, APIResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from '@privy-io/react-auth';
-import { useIndexes, useAuth as useAuthService } from '@/contexts/APIContext';
+import { useIndexes } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useRouter } from 'next/navigation';
@@ -40,7 +40,6 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
   const { login, authenticated, ready } = usePrivy();
   const api = useAuthenticatedAPI();
   const indexesService = useIndexes();
-  const authService = useAuthService();
   const router = useRouter();
   const { success, error: notifyError } = useNotifications();
   const { refreshIndexes } = useIndexesState();
@@ -129,7 +128,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
     };
 
     loadIndexAndCheckAuth();
-  }, [resolvedParams.indexId, authenticated, ready, api, router, indexesService]);
+  }, [resolvedParams.indexId, authenticated, ready, api, router, indexesService, refreshIndexes]);
 
   // Trigger reload when user authenticates
   useEffect(() => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Index } from '@/lib/types';
 import { Plus } from 'lucide-react';
@@ -14,7 +14,7 @@ import IntentList from '@/components/IntentList';
 interface MemberIntent {
   id: string;
   payload: string;
-  summary?: string;
+  summary?: string | null;
   createdAt: string;
   sourceType?: 'file' | 'link' | 'integration';
   sourceId?: string;
@@ -60,7 +60,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
   const [activeMobileSection, setActiveMobileSection] = useState<'settings' | 'intents'>('settings');
 
   const { success, error } = useNotifications();
-  const { removeIndex, refreshIndexes } = useIndexesState();
+  const { removeIndex } = useIndexesState();
   const { indexesService, intentsService } = useAPI();
   const api = useAuthenticatedAPI(); // Keep for specialized endpoints
 
@@ -77,7 +77,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
     } catch (err) {
       console.error('Failed to fetch member settings:', err);
     }
-  }, [index.id]);
+  }, [api, index.id]);
 
   // Fetch member intents
   const fetchMemberIntents = useCallback(async () => {

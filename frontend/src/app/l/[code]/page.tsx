@@ -9,7 +9,7 @@ import { useIndexes, useAuth as useAuthService } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useRouter } from 'next/navigation';
-import { Lock, Users, Loader2, Globe } from 'lucide-react';
+import { Lock, Users, Loader2 } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
 
@@ -135,7 +135,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
     };
 
     loadIndexAndCheckAuth();
-  }, [resolvedParams.code, authenticated, ready, api, router, indexesService]);
+  }, [resolvedParams.code, authenticated, ready, api, router, indexesService, authService, refreshIndexes]);
 
   // Trigger reload when user authenticates
   useEffect(() => {

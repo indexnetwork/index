@@ -534,7 +534,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [api, onChanged, loadLists, loadLibraryIntents, error]);
+  }, [onChanged, loadLists, loadLibraryIntents, error, filesService]);
 
   const handleAddLink = useCallback(async () => {
     if (!linkUrl) return;
@@ -567,7 +567,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } finally {
       setIsAddingLink(false);
     }
-  }, [api, linkUrl, onChanged, loadLists, loadLibraryIntents, success, error]);
+  }, [linkUrl, onChanged, loadLists, loadLibraryIntents, success, error, linksService]);
 
   const handleSyncIntegration = useCallback(async (integrationType: string) => {
     try {

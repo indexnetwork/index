@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { useAuthenticatedAPI, apiClient } from '../lib/api';
 import { 
   Index, 
-  Intent,
   PaginatedResponse, 
   APIResponse, 
   CreateIndexRequest, 
