@@ -1419,7 +1419,6 @@ export default function OnboardingPage() {
                     <div key={index.id} className="border border-[#E0E0E0] rounded-lg p-6 bg-white">
                       <div className="text-center">
                         <h3 className="text-lg font-bold text-black mb-2 font-ibm-plex-mono">{index.title}</h3>
-                        <p className="text-sm text-[#666] mb-4 font-ibm-plex-mono">{index.prompt || 'No description'}</p>
                         <p className="text-xs text-[#888] mb-4 font-ibm-plex-mono">
                           {index._count.members.toLocaleString()} members
                         </p>
