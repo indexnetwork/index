@@ -1463,7 +1463,7 @@ export default function OnboardingPage() {
                 disabled={isLoading}
                 className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
               >
-                {isLoading ? 'Finishing...' : 'Complete Onboarding'}
+                {isLoading ? 'Finishing...' : `See who's in here`}
               </Button>
             </div>
           </div>
