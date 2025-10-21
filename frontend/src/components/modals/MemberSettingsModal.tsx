@@ -97,7 +97,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
   // Fetch queue status
   const fetchQueueStatus = useCallback(async (options?: { silent?: boolean }) => {
     try {
-      const response = await api.get<any>('/queue/status');
+      const response = await api.get<{ jobCounts?: Record<string, { pending: number; active: number; completed: number }>; totalPending?: number }>('/queue/status');
       // Map the response from jobCounts to friendly property names
       if (response?.jobCounts) {
         const status: QueueStatus = {

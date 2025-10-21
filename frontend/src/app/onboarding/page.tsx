@@ -366,7 +366,7 @@ export default function OnboardingPage() {
   useEffect(() => {
     const fetchQueueStatus = async () => {
       try {
-        const response = await api.get<any>('/queue/status');
+        const response = await api.get<{ jobCounts?: Record<string, { pending: number; active: number; completed: number }>; totalPending?: number }>('/queue/status');
         // Map the response from jobCounts to friendly property names
         if (response?.jobCounts) {
           const status: QueueStatus = {
@@ -377,7 +377,7 @@ export default function OnboardingPage() {
           };
           setQueueStatus(status);
         }
-      } catch (error) {
+      } catch {
         // Silently fail - queue status is not critical
         setQueueStatus(null);
       }

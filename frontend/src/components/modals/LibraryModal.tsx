@@ -17,7 +17,7 @@ import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import { validateFiles, getSupportedFileExtensions, formatFileSize } from "../../lib/file-validation";
 import { getFileCategoryBadge } from '../../lib/file-validation';
 import { useAuthContext } from "@/contexts/AuthContext";
-import { QueueService, QueueStatus } from "@/services/queue";
+import { QueueStatus } from "@/services/queue";
 
 type Props = {
   open: boolean;
@@ -339,7 +339,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
   const loadQueueStatus = useCallback(async (options?: { silent?: boolean }) => {
     try {
-      const response = await api.get<any>('/queue/status');
+      const response = await api.get<{ jobCounts?: Record<string, { pending: number; active: number; completed: number }>; totalPending?: number }>('/queue/status');
       // Map the response from jobCounts to friendly property names
       if (response?.jobCounts) {
         const status: QueueStatus = {
