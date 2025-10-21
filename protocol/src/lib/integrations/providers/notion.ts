@@ -53,7 +53,10 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
       arguments: searchArgs,
     });
     
-    const items = (search as any)?.data?.results ?? [];
+    const items =
+      (search as any)?.data?.response_data?.results ??
+      (search as any)?.data?.results ??
+      [];
     log.info('Notion pages', { count: items.length });
 
     const allPages: NotionPage[] = [];
@@ -63,7 +66,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
       
       if (lastSyncAt) {
         const lastModified = new Date(item.last_edited_time as any);
-        if (lastModified <= lastSyncAt) {
+        if (lastModified < lastSyncAt) {
           continue;
         }
       }
@@ -75,7 +78,11 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
           arguments: { block_id: item.id, page_size: 100 },
         });
         
-        const blocks = (blocksResp as any)?.data?.results ?? [];
+        const blocks =
+          (blocksResp as any)?.data?.block_child_data?.results ??
+          (blocksResp as any)?.data?.response_data?.results ??
+          (blocksResp as any)?.data?.results ??
+          [];
         const content = extractContentFromBlocks(blocks);
         const title = extractTitle(item);
         
