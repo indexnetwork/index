@@ -5,12 +5,12 @@ import { indexes, users, indexMembers, intentIndexes, intents } from '../lib/sch
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists, sql } from 'drizzle-orm';
 import { 
-  checkIndexAccess, 
   checkIndexOwnership, 
-  getIndexWithPermissions, 
   getUserAccessibleIndexIds,
-  checkIndexMembership,
+  checkMultipleIndexesMembership,
   validateOwnershipChange,
+  validateInvitationCode,
+  checkUserIndexAccess,
   EVERYONE_USER_ID
 } from '../lib/index-access';
 import { Events } from '../lib/events';
@@ -320,7 +320,7 @@ router.get('/:id',
 
       const { id } = req.params;
 
-      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      const accessCheck = await checkUserIndexAccess(id, req.user!.id);
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
@@ -1046,7 +1046,7 @@ router.get('/:id/members',
 
       const { id } = req.params;
 
-      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      const accessCheck = await checkUserIndexAccess(id, req.user!.id);
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
@@ -1086,13 +1086,13 @@ router.get('/:id/member-settings',
       const { id } = req.params;
 
       // Use existing access control method
-      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      const accessCheck = await checkUserIndexAccess(id, req.user!.id);
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
 
       const indexData = accessCheck.indexData!;
-      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
+      const isOwner = accessCheck.permissions?.includes('owner') || false;
 
       // Get full index data for title and prompt
       const indexInfo = await db.select({
@@ -1145,7 +1145,7 @@ router.put('/:id/member-settings',
       const { prompt, autoAssign } = req.body;
 
       // Use existing access control method
-      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      const accessCheck = await checkUserIndexAccess(id, req.user!.id);
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
@@ -1250,12 +1250,13 @@ router.get('/share/:code',
 
       const { code } = req.params;
 
-      const accessCheck = await getIndexWithPermissions({ code });
-      if (!accessCheck.hasAccess) {
-        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      // Validate invitation code (does not check user membership)
+      const codeValidation = await validateInvitationCode(code);
+      if (!codeValidation.valid) {
+        return res.status(codeValidation.status!).json({ error: codeValidation.error });
       }
 
-      const indexData = accessCheck.indexData!;
+      const indexId = codeValidation.indexId!;
 
       const index = await db.select({
         id: indexes.id,
@@ -1264,7 +1265,7 @@ router.get('/share/:code',
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt
       }).from(indexes)
-        .where(and(eq(indexes.id, indexData.id), isNull(indexes.deletedAt)))
+        .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
         .limit(1);
 
       if (index.length === 0) {
@@ -1274,7 +1275,7 @@ router.get('/share/:code',
       // Get member count
       const memberCount = await db.select({ count: count() })
         .from(indexMembers)
-        .where(eq(indexMembers.indexId, indexData.id));
+        .where(eq(indexMembers.indexId, indexId));
 
       const indexResult = index[0];
       
@@ -1402,27 +1403,25 @@ router.post('/invitation/:code/accept',
       const { code } = req.params;
       const userId = req.user!.id;
 
-      // Validate invitation code
-      const accessCheck = await getIndexWithPermissions({ code });
-      if (!accessCheck.hasAccess) {
-        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      // Validate invitation code (does not check user membership)
+      const codeValidation = await validateInvitationCode(code);
+      if (!codeValidation.valid) {
+        return res.status(codeValidation.status!).json({ error: codeValidation.error });
       }
 
-      const indexData = accessCheck.indexData!;
+      const indexId = codeValidation.indexId!;
+      const indexData = codeValidation.indexData!;
 
       // Double-check this is an invite_only index
       if (indexData.permissions?.joinPolicy !== 'invite_only') {
         return res.status(403).json({ error: 'This invitation link is no longer valid' });
       }
 
-      // Check if user is already a member
-      const existingMember = await db.select({ userId: indexMembers.userId })
-        .from(indexMembers)
-        .where(and(eq(indexMembers.indexId, indexData.id), eq(indexMembers.userId, userId)))
-        .limit(1);
-
-      if (existingMember.length > 0) {
-        // User is already a member, return the index info without owner details
+      // Check if user is already a member using real membership check
+      const userAccess = await checkUserIndexAccess(indexId, userId);
+      
+      if (userAccess.hasAccess) {
+        // User is already a member, return the index info
         const fullIndex = await db.select({
           id: indexes.id,
           title: indexes.title,
@@ -1431,7 +1430,7 @@ router.post('/invitation/:code/accept',
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt
         }).from(indexes)
-          .where(eq(indexes.id, indexData.id))
+          .where(eq(indexes.id, indexId))
           .limit(1);
 
         const result = {
@@ -1452,7 +1451,7 @@ router.post('/invitation/:code/accept',
 
       // Add user as member
       await db.insert(indexMembers).values({
-        indexId: indexData.id,
+        indexId: indexId,
         userId,
         permissions: ['member'],
         prompt: indexData.prompt || null,
@@ -1468,7 +1467,7 @@ router.post('/invitation/:code/accept',
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt
       }).from(indexes)
-        .where(eq(indexes.id, indexData.id))
+        .where(eq(indexes.id, indexId))
         .limit(1);
 
       // Get membership details
@@ -1478,7 +1477,7 @@ router.post('/invitation/:code/accept',
         permissions: indexMembers.permissions,
         createdAt: indexMembers.createdAt
       }).from(indexMembers)
-        .where(and(eq(indexMembers.indexId, indexData.id), eq(indexMembers.userId, userId)))
+        .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
         .limit(1);
 
       const result = {
@@ -1529,7 +1528,7 @@ router.delete('/:indexId/intents/:intentId',
       }
 
       // Verify user has intent write access to the index being removed
-      const accessCheck = await checkIndexMembership(indexId, req.user!.id);
+      const accessCheck = await checkUserIndexAccess(indexId, req.user!.id);
       
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status || 403).json({ 
@@ -1591,14 +1590,14 @@ router.get('/:indexId/intents',
       const showArchived = req.query.archived === 'true';
 
       // Check access to the index
-      const accessCheck = await checkIndexAccess(indexId, req.user!.id);
+      const accessCheck = await checkUserIndexAccess(indexId, req.user!.id);
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status || 403).json({ error: accessCheck.error });
       }
 
       // Check if user has member or owner access
-      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
-      const isMember = accessCheck.memberPermissions?.includes('member') || false;
+      const isOwner = accessCheck.permissions?.includes('owner') || false;
+      const isMember = accessCheck.permissions?.includes('member') || false;
       
       if (!isOwner && !isMember) {
         return res.status(403).json({ error: 'Access denied' });
@@ -1690,7 +1689,7 @@ router.get('/:id/member-intents',
       const { id } = req.params;
 
       // Use existing access control method
-      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      const accessCheck = await checkUserIndexAccess(id, req.user!.id);
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
@@ -1814,13 +1813,13 @@ router.post('/:id/member-intents/:intentId',
       const { id, intentId } = req.params;
 
       // Use existing access control method
-      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      const accessCheck = await checkUserIndexAccess(id, req.user!.id);
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
 
       const indexData = accessCheck.indexData!;
-      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
+      const isOwner = accessCheck.permissions?.includes('owner') || false;
 
       // Check if intent exists and belongs to the user
       const intent = await db.select({ id: intents.id, userId: intents.userId })
@@ -1880,13 +1879,13 @@ router.delete('/:id/member-intents/:intentId',
       const { id, intentId } = req.params;
 
       // Use existing access control method
-      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      const accessCheck = await checkUserIndexAccess(id, req.user!.id);
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
 
       const indexData = accessCheck.indexData!;
-      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
+      const isOwner = accessCheck.permissions?.includes('owner') || false;
 
       // Check if intent exists and belongs to the user
       const intent = await db.select({ id: intents.id, userId: intents.userId })

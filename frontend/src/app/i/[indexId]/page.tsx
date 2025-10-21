@@ -211,7 +211,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
           <div className="max-w-3xl mx-auto">
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
-                Join this public index
+                You're about to join this network
               </h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
                 Connect with others who share your intent — discover relevant matches inside this public network.
@@ -258,7 +258,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
           <div className="max-w-3xl mx-auto">
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
-                Join this public index
+                You're about to join this network
               </h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
                 Connect with others who share your intent — discover relevant matches inside this public network.

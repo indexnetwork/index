@@ -22,73 +22,159 @@ export interface IndexAccessResult {
   memberPermissions?: string[];
 }
 
-// Core function that handles all access patterns
-export async function getIndexWithPermissions(
-  selector: { id: string } | { code: string },
-  userId?: string
-): Promise<IndexAccessResult> {
-  // Get index
-  const query = 'id' in selector 
-    ? and(eq(indexes.id, selector.id), isNull(indexes.deletedAt))
-    : and(
-        isNull(indexes.deletedAt), 
-        or(
-          // Check if code matches invitationLink.code (for both public and private)
-          sql`${indexes.permissions}->'invitationLink'->>'code' = ${selector.code}`,
-          // OR check if code matches the index ID itself (for public indexes using ID as code)
-          eq(indexes.id, selector.code)
-        )
-      );
-    
-  const [index] = await db.select().from(indexes).where(query).limit(1);
-  if (!index) return { hasAccess: false, error: 'Index not found', status: 404 };
+export interface InvitationCodeValidationResult {
+  valid: boolean;
+  indexId?: string;
+  indexData?: {
+    id: string;
+    title?: string;
+    prompt?: string | null;
+    permissions?: {
+      joinPolicy: 'anyone' | 'invite_only';
+      invitationLink: {
+        code: string;
+      } | null;
+      allowGuestVibeCheck: boolean;
+    } | null;
+  };
+  error?: string;
+  status?: number;
+}
 
-  // Code-based access
-  if ('code' in selector) {
-    const indexPermissions = index.permissions;
-    
-    // For public indexes (anyone can join), allow access via code
-    if (indexPermissions?.joinPolicy === 'anyone') {
-      return { hasAccess: true, indexData: index, memberPermissions: ['member'] };
-    }
-    
-    // For private indexes, check invitation link exists and joinPolicy is invite_only
-    if (indexPermissions?.invitationLink && indexPermissions.joinPolicy === 'invite_only') {
-      return { hasAccess: true, indexData: index, memberPermissions: ['member'] };
-    }
-    
-    return { hasAccess: false, error: 'Invalid invitation link', status: 403 };
+export interface UserAccessResult {
+  hasAccess: boolean;
+  permissions: string[];
+  indexData?: {
+    id: string;
+    prompt?: string | null;
+  };
+  error?: string;
+  status?: number;
+}
+
+/**
+ * Validates an invitation code for an index.
+ * This function ONLY validates the code and returns index information.
+ * It does NOT check user membership or return user permissions.
+ * 
+ * Security: Does not accept index ID as code (only actual invitation codes).
+ * 
+ * @param code - The invitation code to validate
+ * @returns Validation result with index data if valid
+ */
+export async function validateInvitationCode(code: string): Promise<InvitationCodeValidationResult> {
+  // Query only by invitation code, NOT by index ID (security fix)
+  const query = and(
+    isNull(indexes.deletedAt),
+    sql`${indexes.permissions}->'invitationLink'->>'code' = ${code}`
+  );
+
+  const [index] = await db.select().from(indexes).where(query).limit(1);
+  
+  if (!index) {
+    return { 
+      valid: false, 
+      error: 'Invalid invitation code', 
+      status: 404 
+    };
   }
 
-  // User-based access
-  if (!userId) return { hasAccess: false, error: 'Auth required', status: 401 };
-  
-  // Check membership (including owner permission)
+  const indexPermissions = index.permissions;
+
+  // Validate based on join policy
+  if (indexPermissions?.joinPolicy === 'anyone') {
+    // Public index with valid code
+    return { 
+      valid: true, 
+      indexId: index.id,
+      indexData: index 
+    };
+  }
+
+  if (indexPermissions?.invitationLink && indexPermissions.joinPolicy === 'invite_only') {
+    // Private index with valid invitation link
+    return { 
+      valid: true, 
+      indexId: index.id,
+      indexData: index 
+    };
+  }
+
+  return { 
+    valid: false, 
+    error: 'Invalid invitation link', 
+    status: 403 
+  };
+}
+
+/**
+ * Checks if a user has access to an index and returns their actual permissions.
+ * This function queries the indexMembers table for real membership data.
+ * Always requires authentication.
+ * 
+ * @param indexId - The index ID to check access for
+ * @param userId - The authenticated user ID
+ * @returns User access result with actual permissions from database
+ */
+export async function checkUserIndexAccess(indexId: string, userId: string): Promise<UserAccessResult> {
+  // Verify index exists and is not deleted
+  const [index] = await db.select({
+    id: indexes.id,
+    prompt: indexes.prompt
+  })
+  .from(indexes)
+  .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+  .limit(1);
+
+  if (!index) {
+    return { 
+      hasAccess: false, 
+      permissions: [],
+      error: 'Index not found', 
+      status: 404 
+    };
+  }
+
+  // Check actual membership in database
   const membership = await db.select({ permissions: indexMembers.permissions })
     .from(indexMembers)
     .where(and(
-      eq(indexMembers.indexId, index.id),
+      eq(indexMembers.indexId, indexId),
       or(eq(indexMembers.userId, userId), eq(indexMembers.userId, EVERYONE_USER_ID))
     ));
 
   if (membership.length === 0) {
-    return { hasAccess: false, error: 'Access denied', status: 403 };
+    return { 
+      hasAccess: false, 
+      permissions: [],
+      error: 'Access denied', 
+      status: 403 
+    };
   }
 
   const permissions = [...new Set(membership.flatMap(m => m.permissions || []))];
-  
-  return { hasAccess: true, indexData: index, memberPermissions: permissions };
+
+  return { 
+    hasAccess: true, 
+    permissions,
+    indexData: index
+  };
 }
 
-export const checkIndexAccess = (indexId: string, userId: string) => 
-  getIndexWithPermissions({ id: indexId }, userId);
+
+
 
 export const checkIndexOwnership = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
-  const result = await getIndexWithPermissions({ id: indexId }, userId);
-  if (!result.hasAccess || !result.memberPermissions?.includes('owner')) {
+  const result = await checkUserIndexAccess(indexId, userId);
+  if (!result.hasAccess || !result.permissions.includes('owner')) {
     return { hasAccess: false, error: 'Access denied', status: 403 };
   }
-  return result;
+  // Convert UserAccessResult to IndexAccessResult for backward compatibility
+  return {
+    hasAccess: true,
+    indexData: result.indexData,
+    memberPermissions: result.permissions
+  };
 };
 
 export interface MultipleIndexAccessResult {
@@ -98,31 +184,15 @@ export interface MultipleIndexAccessResult {
   error?: string;
 }
 
-// Check if user is a member (has any permission)
-export const checkIndexMembership = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
-  const result = await checkIndexAccess(indexId, userId);
-  if (!result.hasAccess) return result;
-
-  // If they have access, they are a member (owner or member role)
-  const isMember = result.memberPermissions && result.memberPermissions.length > 0;
-  if (!isMember) {
-    return { hasAccess: false, error: 'Membership required', status: 403, indexData: result.indexData };
-  }
-  return result;
-};
-
-// Generic bulk access checker
-async function checkBulkAccess(
+export async function checkMultipleIndexesMembership(
   indexIds: string[], 
-  userId: string, 
-  checkFn: (id: string, userId: string) => Promise<IndexAccessResult>,
-  errorMsg: string
+  userId: string
 ): Promise<MultipleIndexAccessResult> {
   if (indexIds.length === 0) return { hasAccess: true, validIndexIds: [], invalidIds: [] };
 
   const results = await Promise.all(indexIds.map(async id => ({ 
     id, 
-    result: await checkFn(id, userId) 
+    result: await checkUserIndexAccess(id, userId) 
   })));
 
   const validIndexIds = results.filter(r => r.result.hasAccess).map(r => r.id);
@@ -132,12 +202,9 @@ async function checkBulkAccess(
     hasAccess: invalidIds.length === 0,
     validIndexIds,
     invalidIds,
-    error: invalidIds.length > 0 ? errorMsg : undefined
+    error: invalidIds.length > 0 ? 'Some index IDs are invalid or you don\'t have membership access to them' : undefined
   };
 }
-
-export const checkMultipleIndexesMembership = (indexIds: string[], userId: string) =>
-  checkBulkAccess(indexIds, userId, checkIndexMembership, 'Some index IDs are invalid or you don\'t have membership access to them');
 
 export const getUserAccessibleIndexIds = async (userId: string): Promise<string[]> => {
   const member = await db.select({ indexId: indexMembers.indexId })
