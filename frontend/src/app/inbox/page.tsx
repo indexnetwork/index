@@ -303,110 +303,48 @@ export default function InboxPage() {
     return 'none';
   };
 
-  const renderStakeCard = (userStake: StakesByUserResponse, tabType: 'discover' | 'requests') => {
+  const renderUserCard = (
+    data: StakesByUserResponse | UserConnection, 
+    tabType: 'discover' | 'requests'
+  ) => {
+    const isStakeCard = 'intents' in data;
+    const user = data.user;
+    const intents = isStakeCard ? data.intents : undefined;
+    const lastUpdated = !isStakeCard ? (data as UserConnection).lastUpdated : undefined;
+
     return (
-      <div key={userStake.user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
+      <div key={user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
         <div className="py-4 px-2 sm:px-4 hover:bg-gray-50 transition-colors">
-        {/* User Header */}
-        <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-4">
-          <div className="flex items-center gap-4 w-full sm:w-auto mb-2 sm:mb-0">
-            <Image
-              src={getAvatarUrl(userStake.user)}
-              alt={userStake.user.name}
-              width={48}
-              height={48}
-              className="rounded-full"
-            />
-            <div>
-              <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{userStake.user.name}</h2>
-              <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
-                {userStake.intents.length > 0 ? (
-                  <span>{userStake.intents.length} mutual intent{userStake.intents.length !== 1 ? 's' : ''}</span>
-                ) : (
-                  <span>Potential connection</span>
-                )}
-              </div>
-            </div>
-          </div>
-          {/* Connection Actions */}
-          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-            <ConnectionActions
-              userId={userStake.user.id}
-              userName={userStake.user.name}
-              connectionStatus={getConnectionStatus(tabType, requestsView)}
-              onAction={handleConnectionAction}
-              size="sm"
-            />
-          </div>
-        </div>
-
-        {/* What Could Happen Here */}
-        {(synthesisLoading[userStake.user.id] || syntheses[userStake.user.id]) && (
-          <div className="mb-4">
-            <h3 className="font-medium text-gray-700 mb-2 text-sm">What could happen here</h3>
-            <div className="space-y-2">
-              {synthesisLoading[userStake.user.id] ? (
-                <div className="text-gray-500 text-sm animate-pulse">
-                  ...
-                </div>
-              ) : (
-                <SynthesisMarkdown 
-                  content={syntheses[userStake.user.id]}
-                  className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm"
-                  onArchive={fetchData}
-                />
-              )}
-            </div>
-          </div>
-        )}
-
-        {userStake.intents.length > 0 && (
-          <div className="mb-4">
-            <h3 className="font-medium text-gray-700 mb-2 text-sm">Mutual intents ({userStake.intents.length})</h3>
-            <div className="flex flex-wrap gap-2">
-              {userStake.intents.map((intentConnection) => (
-                <div key={intentConnection.intent.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200">
-                  <h4 className="text-sm font-ibm-plex-mono font-light text-gray-900">{intentConnection.intent.summary || 'Untitled Intent'}</h4>
-                  <span className="text-gray-400 text-xs">
-                    ({intentConnection.totalStake})
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        </div>
-      </div>
-    );
-  };
-
-  const renderConnectionCard = (connection: UserConnection, tabType: 'requests') => {
-    return (
-      <div key={connection.user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
-        <div className="py-4 px-2 sm:px-4 hover:bg-gray-50 transition-colors">
+          {/* User Header */}
           <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-4">
             <div className="flex items-center gap-4 w-full sm:w-auto mb-2 sm:mb-0">
               <Image
-                src={getAvatarUrl(connection.user)}
-                alt={connection.user.name}
+                src={getAvatarUrl(user)}
+                alt={user.name}
                 width={48}
                 height={48}
                 className="rounded-full"
               />
               <div>
-                <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{connection.user.name}</h2>
+                <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{user.name}</h2>
                 <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
-                  <span>
-                    {formatDate(connection.lastUpdated)}
-                  </span>
+                  {intents !== undefined ? (
+                    intents.length > 0 ? (
+                      <span>{intents.length} mutual intent{intents.length !== 1 ? 's' : ''}</span>
+                    ) : (
+                      <span>Potential connection</span>
+                    )
+                  ) : (
+                    <span>{formatDate(lastUpdated!)}</span>
+                  )}
                 </div>
               </div>
             </div>
+            {/* Connection Actions */}
             <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
               <ConnectionActions
-                userId={connection.user.id}
-                userName={connection.user.name}
+                userId={user.id}
+                userName={user.name}
                 connectionStatus={getConnectionStatus(tabType, requestsView)}
                 onAction={handleConnectionAction}
                 size="sm"
@@ -415,21 +353,47 @@ export default function InboxPage() {
           </div>
 
           {/* What Could Happen Here */}
-          {(synthesisLoading[connection.user.id] || syntheses[connection.user.id]) && (
+          {(synthesisLoading[user.id] || syntheses[user.id]) && (
             <div className="mb-4">
               <h3 className="font-medium text-gray-700 mb-2 text-sm">What could happen here</h3>
               <div className="space-y-2">
-                {synthesisLoading[connection.user.id] ? (
-                  <div className="text-gray-500 text-sm animate-pulse">
-                    ...
+                {synthesisLoading[user.id] ? (
+                  <div className="animate-pulse space-y-2">
+                    <div className="h-3 bg-gray-200 rounded w-full"></div>
+                    <div className="h-3 bg-gray-200 rounded w-full"></div>
+                    <div className="h-3 bg-gray-200 rounded w-11/12"></div>
+                    <div className="h-3 bg-gray-200 rounded w-full"></div>
+                    <div className="h-3 bg-gray-200 rounded w-10/12"></div>
+                    <div className="h-3 bg-gray-200 rounded w-full"></div>
+                    <div className="h-3 bg-gray-200 rounded w-9/12"></div>
+                    <div className="mt-3 pt-2">
+                      <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+                    </div>
                   </div>
                 ) : (
                   <SynthesisMarkdown 
-                    content={syntheses[connection.user.id]}
+                    content={syntheses[user.id]}
                     className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm"
                     onArchive={fetchData}
                   />
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Mutual Intents Section (only for stake cards) */}
+          {intents && intents.length > 0 && (
+            <div className="mb-4">
+              <h3 className="font-medium text-gray-700 mb-2 text-sm">Mutual intents ({intents.length})</h3>
+              <div className="flex flex-wrap gap-2">
+                {intents.map((intentConnection) => (
+                  <div key={intentConnection.intent.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200">
+                    <h4 className="text-sm font-ibm-plex-mono font-light text-gray-900">{intentConnection.intent.summary || 'Untitled Intent'}</h4>
+                    <span className="text-gray-400 text-xs">
+                      ({intentConnection.totalStake})
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -574,7 +538,7 @@ export default function InboxPage() {
                 </p>
               </div>
               ) : (
-                discoverStakes.map((userStake) => renderStakeCard(userStake, 'discover'))
+                discoverStakes.map((userStake) => renderUserCard(userStake, 'discover'))
               )}
                 </div>
             )}
@@ -608,7 +572,7 @@ export default function InboxPage() {
                         No incoming connection requests. All caught up!
                       </div>
                     ) : (
-                      inboxConnections.map((connection) => renderConnectionCard(connection, 'requests'))
+                      inboxConnections.map((connection) => renderUserCard(connection, 'requests'))
                     )}
                   </Tabs.Content>
 
@@ -618,7 +582,7 @@ export default function InboxPage() {
                         No sent requests.
                       </div>
                     ) : (
-                      pendingConnections.map((connection) => renderConnectionCard(connection, 'requests'))
+                      pendingConnections.map((connection) => renderUserCard(connection, 'requests'))
                     )}
                   </Tabs.Content>
                 </Tabs.Root>
