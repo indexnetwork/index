@@ -66,6 +66,10 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
       
       if (lastSyncAt) {
         const lastModified = new Date(item.last_edited_time as any);
+        if (isNaN(lastModified.getTime())) {
+          log.warn('Invalid last_edited_time for Notion page', { pageId: item.id, last_edited_time: item.last_edited_time });
+          continue;
+        }
         if (lastModified < lastSyncAt) {
           continue;
         }
