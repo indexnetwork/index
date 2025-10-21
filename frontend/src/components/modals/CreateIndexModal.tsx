@@ -66,14 +66,16 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
   const [name, setName] = useState('');
   const [prompt, setPrompt] = useState('');
   const [joinPolicy, setJoinPolicy] = useState<'anyone' | 'invite_only'>('invite_only');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!name.trim()) {
+    if (!name.trim() || isSubmitting) {
       return;
     }
     
+    setIsSubmitting(true);
     try {
       await onSubmit({ name: name.trim(), prompt: prompt.trim() || undefined, joinPolicy });
       setName('');
@@ -83,11 +85,13 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
     } catch (error) {
       console.error('Error creating index:', error);
       // You might want to show an error state here
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(open) => !isSubmitting && onOpenChange(open)}>
       <DialogContent className="max-w-lg mx-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Create New Index</DialogTitle>
@@ -116,6 +120,7 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                 placeholder="Enter index name..."
                 required
                 minLength={1}
+                disabled={isSubmitting}
               />
             </div>
 
@@ -127,9 +132,10 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                 id="prompt"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                className="w-full px-4 py-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="Define what people can share in this index..."
                 rows={3}
+                disabled={isSubmitting}
               />
             </div>
 
@@ -141,11 +147,12 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                 <button
                   type="button"
                   onClick={() => setJoinPolicy('anyone')}
+                  disabled={isSubmitting}
                   className={`border-2 p-3 rounded-md text-left transition-all ${
                     joinPolicy === 'anyone'
                       ? 'border-[#007EFF] bg-white' 
                       : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
-                  }`}
+                  } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <div className="flex items-center gap-2 mb-1.5">
                     <Globe className={`h-4 w-4 ${joinPolicy === 'anyone' ? "text-[#007EFF]" : "text-gray-600"}`} />
@@ -161,11 +168,12 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                 <button
                   type="button"
                   onClick={() => setJoinPolicy('invite_only')}
+                  disabled={isSubmitting}
                   className={`border-2 p-3 rounded-md text-left transition-all ${
                     joinPolicy === 'invite_only'
                       ? 'border-[#007EFF] bg-white' 
                       : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
-                  }`}
+                  } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <div className="flex items-center gap-2 mb-1.5">
                     <Lock className={`h-4 w-4 ${joinPolicy === 'invite_only' ? "text-[#007EFF]" : "text-gray-600"}`} />
@@ -184,14 +192,15 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
               <Button
                 variant="outline" 
                 onClick={() => onOpenChange(false)}
+                disabled={isSubmitting}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                disabled={!name.trim()}
+                disabled={!name.trim() || isSubmitting}
               >
-                Create
+                {isSubmitting ? 'Creating...' : 'Create'}
               </Button>
             </div>
           </form>
