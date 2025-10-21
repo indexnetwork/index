@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment-specific .env file
+const envFile = `.env.${process.env.NODE_ENV || 'development'}`;
+dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+
 import { Command } from 'commander';
 import { syncIntegration } from '../lib/sync';
 import { setLevel } from '../lib/log';

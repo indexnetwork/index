@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment-specific .env file
+const envFile = `.env.development`;
+dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+
 import { Command } from 'commander';
 import { sql } from 'drizzle-orm';
 import db, { closeDb } from '../lib/db';
@@ -56,6 +62,11 @@ async function main(): Promise<void> {
     .action(async (opts: GlobalOpts) => {
       if (opts.silent) setLevel('error');
 
+      // Prevent seeding in production
+      if (process.env.NODE_ENV === 'production') {
+        console.error('❌ db:seed cannot be run in production environment');
+        process.exit(1);
+      }
       if (!opts.confirm) {
         console.log('⚠️  This will permanently delete ALL data from the database.');
         console.log('Use --confirm to skip this warning.');
