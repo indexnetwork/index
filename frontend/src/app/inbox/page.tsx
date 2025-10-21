@@ -459,14 +459,25 @@ export default function InboxPage() {
       {/* Drag and Drop Overlay */}
       {isDragging && (
         <div
-          className="fixed inset-0 z-[99999] flex items-center justify-center transition-opacity bg-white/40 backdrop-blur-xs"
+          className="fixed inset-0 z-[99999] flex items-center justify-center transition-opacity backdrop-blur-xs"
           style={{
-            minHeight: '100vh'
+            minHeight: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.2)'
           }}
         >
-          <div className="bg-white border-2 border-dashed border-black-500 rounded-lg p-12 flex flex-col items-center gap-4">
-            <Upload className="w-10 h-10 text-blue-500" />
-            <p className="text-xl font-ibm-plex-mono text-gray-700">Drop file(s) here to discover relevant connections</p>
+          <div 
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: 'url(/noise.jpg)',
+              backgroundSize: 'auto',
+              opacity: 0.1
+            }}
+          />
+          <div className="relative z-10 bg-white border-1 rounded-sm  border-black px-6 py-4 flex flex-col items-center gap-3  w-[340px]">
+            <Upload className="w-8 h-8 text-black" />
+            <p className="text-base font-ibm-plex-mono text-gray-700 text-center leading-snug">
+              Drop file(s) here to discover relevant connections
+            </p>
           </div>
         </div>
       )}
