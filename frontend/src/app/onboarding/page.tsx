@@ -1308,11 +1308,21 @@ export default function OnboardingPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="mt-4">
-                    {/* Show single pending text for both intents and members */}
-                    <p className="text-black text-[14px] font-ibm-plex-mono">
+                  <div className="mt-4 flex flex-col items-center justify-center pb-8">
+                    <p className="text-black text-[14px] font-ibm-plex-mono mt-4">
                       We're still processing your connected sources to generate your intents and find potential members. This usually takes a few minutes. Check back later to see your results.
                     </p>
+                    <Image 
+                      className="h-auto"
+                      src={'/loading2.gif'} 
+                      alt="Loading..." 
+                      width={300} 
+                      height={200} 
+                      style={{
+                        mixBlendMode: 'multiply',
+                        imageRendering: 'auto',
+                      }}
+                    />
                   </div>
                 )
               ) : (
