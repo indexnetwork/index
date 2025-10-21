@@ -14,8 +14,6 @@ export interface NotionPage {
 }
 import { getClient } from '../composio';
 import { log } from '../../log';
-import { ensureIndexMembership } from '../membership-utils';
-import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
 
 // Return raw Notion pages as objects
@@ -32,7 +30,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
       return [];
     }
 
-    log.info('Notion objects sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
+    log.info('🚀 Notion sync starting', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 
@@ -48,8 +46,8 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
     });
     
     // Parse search results directly from API response
-    const items = (search as any)?.data?.response_data?.results ?? [];
-    log.info('Notion pages', { count: items.length });
+    const items = (search as any)?.data?.results ?? [];
+    log.info('📄 Notion pages found', { count: items.length });
 
     const allPages: NotionPage[] = [];
     
@@ -66,7 +64,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
         });
         
         // Parse blocks directly from API response
-        const blocks = (blocksResp as any)?.data?.block_child_data?.results ?? [];
+        const blocks = (blocksResp as any)?.data?.results ?? (blocksResp as any)?.data?.block_child_data?.results ?? [];
         const content = extractContentFromBlocks(blocks);
         const title = extractTitle(item);
         
@@ -82,14 +80,18 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
           }
         });
       } catch (error) {
-        log.error('Error fetching Notion page blocks', { pageId: item.id, error: (error as Error).message });
+        log.error('❌ Error fetching Notion page blocks', { pageId: item.id, error: (error as Error).message });
       }
     }
 
-    log.info('Notion objects sync done', { integrationId, objects: allPages.length });
+    log.info('✅ Notion sync completed', { 
+      integrationId, 
+      pagesProcessed: allPages.length,
+      totalContentLength: allPages.reduce((sum, page) => sum + page.content.length, 0)
+    });
     return allPages;
   } catch (error) {
-    log.error('Notion objects sync error', { integrationId, error: (error as Error).message });
+    log.error('💥 Notion sync failed', { integrationId, error: (error as Error).message });
     return [];
   }
 }

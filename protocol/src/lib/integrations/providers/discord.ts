@@ -1,5 +1,12 @@
 import type { IntegrationHandler, UserIdentifier } from '../index';
+import { getClient } from '../composio';
+import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
+import { ensureIndexMembership } from '../membership-utils';
+import { addGenerateIntentsJob } from '../../queue/llm-queue';
+
+// Constants
+const MESSAGE_LIMIT = 100;
 
 export interface DiscordMessage {
   id: string;
@@ -16,10 +23,6 @@ export interface DiscordMessage {
   embeds?: any[];
   attachments?: any[];
 }
-import { getClient } from '../composio';
-import { log } from '../../log';
-import { ensureIndexMembership } from '../membership-utils';
-import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
 
 // Shared function to get raw Discord messages
@@ -85,7 +88,7 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
     for (const ch of channels) {
       const channelId = ch.id;
       const channelName = ch.name || ch.id;
-      const args: any = { channel_id: channelId, limit: 100 };
+      const args: any = { channel_id: channelId, limit: MESSAGE_LIMIT };
       
       // Add after timestamp filter if lastSyncAt is provided
       if (lastSyncAt) {
@@ -129,8 +132,9 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
 
 // Return raw Discord messages as objects
 async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<DiscordMessage[]> {
-  const messages = await fetchDiscordMessages(integrationId, lastSyncAt);
-  const discordMessages: DiscordMessage[] = [];
+  try {
+    const messages = await fetchDiscordMessages(integrationId, lastSyncAt);
+    const discordMessages: DiscordMessage[] = [];
   
   for (const msg of messages) {
     // Extract content from various sources
@@ -184,6 +188,10 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<D
   
   log.info('Discord objects sync done', { integrationId, objects: discordMessages.length });
   return discordMessages;
+  } catch (error) {
+    log.error('Discord objects sync error', { integrationId, error: (error as Error).message });
+    return [];
+  }
 }
 
 /**
