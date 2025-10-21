@@ -32,6 +32,7 @@ export default function InboxPage() {
   const [isDragging, setIsDragging] = useState(false); //tempo
   const dragCounterRef = useRef(0);
   const discoveryFormRef = useRef<{ handleFileDrop: (files: FileList) => void }>(null);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   
   // URL parameter handling
   const searchParams = useSearchParams();
@@ -466,6 +467,9 @@ export default function InboxPage() {
                         console.log('intents', intents);
                         // Set the discovery intent filter and refetch data
                         setDiscoveryIntents(intents);
+                        // Show success message temporarily
+                        setShowSuccessMessage(true);
+                        setTimeout(() => setShowSuccessMessage(false), 10000);
                         // Refresh inbox after intent creation
                         fetchData();
                       }}
@@ -534,7 +538,9 @@ export default function InboxPage() {
                   }}
                 />
                 <p className="text-gray-900 font-500 font-ibm-plex-mono text-md mt-4 text-center">
-                No mutual intents for now, it's not you, the world's just being shy.
+                {showSuccessMessage 
+                  ? "Got the signal! Passing it along to the right folks, let's see what unfolds."
+                  : "No relevant connections for now, it's not you, the world's just being shy."}
                 </p>
               </div>
               ) : (

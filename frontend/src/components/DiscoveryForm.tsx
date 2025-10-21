@@ -36,7 +36,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   const isUndoRedoing = useRef(false);
   const { discoverService, intentsService } = useAPI();
   const { getAccessToken } = usePrivy();
-  const { success, error } = useNotifications();
+  const { error } = useNotifications();
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -503,8 +503,6 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
       const result = await discoverService.submitDiscoveryRequest(files, textContent)(getAccessToken);
       
       if (result.success && result.intents.length > 0) {
-        success(`Got the signal! Passing it along to the right folks, let's see what unfolds.`);
-        
         // Clear only attachments, keep the text
         setAttachments([]);
         setInputFocused(false);
