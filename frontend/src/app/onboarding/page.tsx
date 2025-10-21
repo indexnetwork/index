@@ -20,6 +20,7 @@ import { validateFiles, getSupportedFileExtensions, formatFileSize, getFileCateg
 import { formatDate } from "@/lib/utils";
 import { useIndexesState } from "@/contexts/IndexesContext";
 import { useAuth as useAuthService, useFiles, useLinks } from "@/contexts/APIContext";
+import { QueueStatus } from "@/services/queue";
 
 type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
 type OnboardingFlow = 1 | 2 | 3;
@@ -109,6 +110,7 @@ export default function OnboardingPage() {
   const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
   const [integrationsIndexId, setIntegrationsIndexId] = useState<string | undefined>(undefined);
   const [pendingIntegration, setPendingIntegration] = useState<string | null>(null);
+  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
 
   // Library step states
   const [linkUrl, setLinkUrl] = useState("");
@@ -359,6 +361,43 @@ export default function OnboardingPage() {
       }
     }
   }, [currentStep, currentFlow, createdIndex?.id, user?.onboarding?.indexId, integrationsLoaded, integrationsIndexId, loadIntegrations]);
+
+  // Poll queue status when on connections step
+  useEffect(() => {
+    const fetchQueueStatus = async () => {
+      try {
+        const response = await api.get<any>('/queue/status');
+        // Map the response from jobCounts to friendly property names
+        if (response?.jobCounts) {
+          const status: QueueStatus = {
+            indexIntent: response.jobCounts['index_intent'] || { pending: 0, active: 0, completed: 0 },
+            generateIntents: response.jobCounts['generate_intents'] || { pending: 0, active: 0, completed: 0 },
+            semanticRelevancy: response.jobCounts['broker_semantic_relevancy'] || { pending: 0, active: 0, completed: 0 },
+            totalPending: response.totalPending || 0
+          };
+          setQueueStatus(status);
+        }
+      } catch (error) {
+        // Silently fail - queue status is not critical
+        setQueueStatus(null);
+      }
+    };
+
+    if (currentStep === 'connections') {
+      // Initial fetch
+      fetchQueueStatus();
+      
+      // Poll every 3 seconds
+      const interval = setInterval(() => {
+        fetchQueueStatus();
+      }, 1000);
+      
+      return () => clearInterval(interval);
+    } else {
+      // Reset when leaving connections step
+      setQueueStatus(null);
+    }
+  }, [currentStep, api]);
 
   // Load public indexes when on join_indexes step
   useEffect(() => {
@@ -719,7 +758,7 @@ export default function OnboardingPage() {
         return (
           <div className="max-w-3xl mx-auto">
             <div className="mb-8">
-              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Tell us who you are.</h1>
+              <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Introduce yourself</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
                 Set up your profile to get started with Index Network.
               </p>
@@ -803,11 +842,36 @@ export default function OnboardingPage() {
       case 'connections':
         return (
           <div className="max-w-3xl mx-auto">
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Connect your accounts</h1>
-              <p className="text-black text-[14px] font-ibm-plex-mono">
-                {flowConfig.descriptions.connections}
+            <div className="mb-4">
+              <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Connect your context</h1>
+              <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
+                Help Index understand what you're working on and looking for by connecting your accounts and sharing relevant content.
               </p>
+              
+              {/* Queue Status */}
+              {queueStatus?.generateIntents && ((queueStatus.generateIntents.pending ?? 0) > 0 || (queueStatus.generateIntents.active ?? 0) > 0) && (
+                <div className="mb-3 text-[10px] font-ibm-plex-mono text-[#666] bg-[#F8F9FA] px-2 py-1.5 rounded-sm border border-[#E0E0E0]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1">
+                      {(queueStatus.generateIntents.active ?? 0) > 0 && (
+                        <span className="h-1.5 w-1.5 bg-[#0A8F5A] rounded-full animate-pulse"></span>
+                      )}
+                      Generating Intents
+                    </span>
+                    <span className="font-medium">
+                      {(queueStatus.generateIntents.active ?? 0) > 0 && (
+                        `${queueStatus.generateIntents.active} task${queueStatus.generateIntents.active === 1 ? '' : 's'} active`
+                      )}
+                      {(queueStatus.generateIntents.active ?? 0) > 0 && (queueStatus.generateIntents.pending ?? 0) > 0 && ' • '}
+                      {(queueStatus.generateIntents.pending ?? 0) > 0 && (
+                        `${queueStatus.generateIntents.pending} task${queueStatus.generateIntents.pending === 1 ? '' : 's'} pending`
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              <h2 className="text-lg font-bold text-black font-ibm-plex-mono">Connect accounts</h2>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
@@ -869,16 +933,16 @@ export default function OnboardingPage() {
                 })}
             </div>
 
-            <div className="mb-8">
-              <h2 className="text-lg font-bold text-black mb-4 font-ibm-plex-mono">
-                Add context files & links
+            <div className="mb-2">
+              <h2 className="text-lg font-bold text-black mb-2 font-ibm-plex-mono">
+                Add from files & web
               </h2>
               
               <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
-                Add text-based context – for example, a <strong>research note</strong>, a <strong>draft proposal</strong>, or a <strong>blogpost</strong> you wrote or found inspiring.
+                Upload documents or add links to content that represents your work and interests—like research notes, articles, proposals, or blog posts.
               </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
                   {/* File upload */}
                   <div className="border border-[#E0E0E0] rounded-sm">
                     <div className="relative w-full">
@@ -1020,7 +1084,7 @@ export default function OnboardingPage() {
                 )}
               </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 mt-6">
               <Button
                 variant="outline"
                 onClick={() => setCurrentStep(getPreviousStep('connections'))}
@@ -1335,7 +1399,7 @@ export default function OnboardingPage() {
         return (
           <div className="max-w-4xl mx-auto">
             <div className="mb-8">
-              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Step into the right indexes.</h1>
+              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Step into the right indexes</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
               Based on your profile, here are networks where people are already sharing opportunities and ideas.
               </p>

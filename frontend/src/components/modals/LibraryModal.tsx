@@ -17,6 +17,7 @@ import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import { validateFiles, getSupportedFileExtensions, formatFileSize } from "../../lib/file-validation";
 import { getFileCategoryBadge } from '../../lib/file-validation';
 import { useAuthContext } from "@/contexts/AuthContext";
+import { QueueService, QueueStatus } from "@/services/queue";
 
 type Props = {
   open: boolean;
@@ -91,6 +92,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   
   // Source filtering state - now supports multiple sources
   const [activeSourceFilters, setActiveSourceFilters] = useState<Set<string>>(new Set());
+  
+  // Queue status state
+  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
 
   const loadLists = useCallback(async () => {
     try {
@@ -332,6 +336,28 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       setOwnedIndexes([]);
     }
   }, [indexesService, currentUser]);
+
+  const loadQueueStatus = useCallback(async (options?: { silent?: boolean }) => {
+    try {
+      const response = await api.get<any>('/queue/status');
+      // Map the response from jobCounts to friendly property names
+      if (response?.jobCounts) {
+        const status: QueueStatus = {
+          indexIntent: response.jobCounts['index_intent'] || { pending: 0, active: 0, completed: 0 },
+          generateIntents: response.jobCounts['generate_intents'] || { pending: 0, active: 0, completed: 0 },
+          semanticRelevancy: response.jobCounts['broker_semantic_relevancy'] || { pending: 0, active: 0, completed: 0 },
+          totalPending: response.totalPending || 0
+        };
+        setQueueStatus(status);
+      }
+    } catch (error) {
+      if (!options?.silent) {
+        console.error('Failed to fetch queue status:', error);
+      }
+      // Set default state on error
+      setQueueStatus(null);
+    }
+  }, [api]);
 
   const loadLibraryIntents = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -625,6 +651,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       loadIntegrations();
       loadLibraryIntents();
       loadOwnedIndexes();
+      loadQueueStatus();
     }
     if (!open && wasOpen.current) {
       wasOpen.current = false;
@@ -644,9 +671,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     setActiveMobileSection('library');
     const interval = setInterval(() => {
       void loadLibraryIntents({ silent: true });
-    }, 5000);
+      void loadQueueStatus({ silent: true });
+    }, 1000);
     return () => clearInterval(interval);
-  }, [open, loadLibraryIntents]);
+  }, [open, loadLibraryIntents, loadQueueStatus]);
 
   useEffect(() => () => {
     highlightTimers.current.forEach(clearTimeout);
@@ -1067,6 +1095,27 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   </div>
                 </div>
                 <div className="pt-3 flex-1 pr-3 space-y-3 p-3 pt-0 overflow-y-scroll">
+                  {queueStatus?.generateIntents && ((queueStatus.generateIntents.pending ?? 0) > 0 || (queueStatus.generateIntents.active ?? 0) > 0) && (
+                    <div className="mb-3 text-[10px] font-ibm-plex-mono text-[#666] bg-[#F8F9FA] px-2 py-1.5 rounded-sm border border-[#E0E0E0]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1">
+                          {(queueStatus.generateIntents.active ?? 0) > 0 && (
+                            <span className="h-1.5 w-1.5 bg-[#0A8F5A] rounded-full animate-pulse"></span>
+                          )}
+                          Generating Intents
+                        </span>
+                        <span className="font-medium">
+                          {(queueStatus.generateIntents.active ?? 0) > 0 && (
+                            `${queueStatus.generateIntents.active} task${queueStatus.generateIntents.active === 1 ? '' : 's'} active`
+                          )}
+                          {(queueStatus.generateIntents.active ?? 0) > 0 && (queueStatus.generateIntents.pending ?? 0) > 0 && ' • '}
+                          {(queueStatus.generateIntents.pending ?? 0) > 0 && (
+                            `${queueStatus.generateIntents.pending} task${queueStatus.generateIntents.pending === 1 ? '' : 's'} pending`
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   <IntentList
                     intents={visibleIntents}
                     isLoading={isLoadingIntents}
