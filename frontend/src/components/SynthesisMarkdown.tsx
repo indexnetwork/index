@@ -13,9 +13,10 @@ interface SynthesisMarkdownProps {
   content: string;
   className?: string;
   onArchive?: () => void;
+  popoverControlRef?: React.MutableRefObject<{ close: () => void } | null>;
 }
 
-export default function SynthesisMarkdown({ content, className = '', onArchive }: SynthesisMarkdownProps) {
+export default function SynthesisMarkdown({ content, className = '', onArchive, popoverControlRef }: SynthesisMarkdownProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [popoverPosition, setPopoverPosition] = useState({ x: 0, y: 0 });
   const [currentLink, setCurrentLink] = useState<{ href: string; text: string; intentId?: string } | null>(null);
@@ -24,6 +25,15 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
   const intentsService = useIntents();
   const { setDiscoveryIntents } = useDiscoveryFilter();
   const { success, error } = useNotifications();
+
+  const closePopover = () => setPopoverOpen(false);
+
+  // Register/unregister close function when popover opens/closes
+  useEffect(() => {
+    if (popoverOpen && popoverControlRef) {
+      popoverControlRef.current = { close: closePopover };
+    }
+  }, [popoverOpen, popoverControlRef]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -34,18 +44,18 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
       }
       
       if (popoverRef.current && !popoverRef.current.contains(target)) {
-        setPopoverOpen(false);
+        closePopover();
       }
     };
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setPopoverOpen(false);
+        closePopover();
       }
     };
 
     const handleScroll = () => {
-      setPopoverOpen(false);
+      closePopover();
     };
 
     if (popoverOpen) {
@@ -64,10 +74,27 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
     event.preventDefault();
     event.stopPropagation();
 
+    // Close any existing popover first
+    if (popoverControlRef?.current) {
+      popoverControlRef.current.close();
+    }
+
     const rect = (event.target as HTMLElement).getBoundingClientRect();
-    const popoverWidth = 200;
-    const x = Math.min(rect.left, window.innerWidth - popoverWidth - 10);
-    const y = rect.bottom + 4;
+    const popoverWidth = 90;
+    
+    // Use click position for horizontal alignment, keep within viewport
+    let x = event.clientX;
+    if (x + popoverWidth > window.innerWidth) {
+      x = window.innerWidth - popoverWidth - 10;
+    }
+    
+    // Calculate which line was clicked and align below that line
+    const clickY = event.clientY;
+    const element = event.target as HTMLElement;
+    const lineHeight = parseFloat(getComputedStyle(element).lineHeight) || 20;
+    const relativeY = clickY - rect.top;
+    const lineIndex = Math.floor(relativeY / lineHeight);
+    const y = rect.top + (lineIndex + 1) * lineHeight + 4;
 
     // Extract intent ID from URL (e.g., /intents/123 or https://index.network/intents/123)
     const intentIdMatch = href.match(/\/intents\/([a-zA-Z0-9-]+)/);
@@ -101,7 +128,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
         error('Failed to load intent');
       }
     }
-    setPopoverOpen(false);
+    closePopover();
   };
 
   const handleArchive = async () => {
@@ -109,7 +136,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
       try {
         await intentsService.archiveIntent(currentLink.intentId);
         success('Intent archived');
-        setPopoverOpen(false);
+        closePopover();
         // Call the onArchive callback to refetch data
         if (onArchive) {
           onArchive();
@@ -130,7 +157,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
               <a
                 href={href}
                 onClick={(e) => handleLinkClick(e, href || '', String(children))}
-                className="text-[#ec6767] font-bold underline hover:opacity-80 cursor-pointer"
+                className="text-[#007EFF] font-medium py-0.5 px-0.5 -mx-0.5 rounded-md hover:opacity-80 cursor-pointer bg-[#edf5ff]"
                 {...props}
               >
                 {children}
@@ -145,7 +172,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
       {popoverOpen && typeof window !== 'undefined' && createPortal(
         <div
           ref={popoverRef}
-          className="fixed z-[200] bg-white border border-b-2 border-gray-800 shadow-lg flex gap-2"
+          className="fixed z-[200] bg-white flex gap-1"
           style={{
             top: popoverPosition.y,
             left: popoverPosition.x,
@@ -153,17 +180,15 @@ export default function SynthesisMarkdown({ content, className = '', onArchive }
         >
           <button
             onClick={handleFocus}
-            className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors cursor-pointer"
+            className="flex items-center justify-center w-9 h-9 border border-b-2 rounded-xs border-black hover:bg-gray-100 transition-colors cursor-pointer"
           >
-            <Focus className="w-4 h-4 text-gray-600" />
-            <span className="text-gray-900">Focus</span>
+            <Focus className="w-6 h-6 text-black" />
           </button>
           <button
             onClick={handleArchive}
-            className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-red-50 transition-colors cursor-pointer"
+            className="flex items-center justify-center w-9 h-9 border border-b-2 rounded-xs border-black hover:bg-gray-100 transition-colors cursor-pointer"
           >
-            <Archive className="w-4 h-4 text-red-600" />
-            <span className="text-red-600">Archive</span>
+            <Archive className="w-6 h-6 text-red-600" />
           </button>
         </div>,
         document.body

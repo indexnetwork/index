@@ -46,6 +46,7 @@ export default function InboxPage() {
   const lastRefreshTimeRef = useRef<number>(0);
   const dragCounterRef = useRef(0);
   const discoveryFormRef = useRef<{ handleFileDrop: (files: FileList) => void }>(null);
+  const popoverControlRef = useRef<{ close: () => void } | null>(null);
 
   // Context Hooks
   const { selectedIndexIds } = useIndexFilter();
@@ -298,7 +299,7 @@ export default function InboxPage() {
 
     return (
       <div key={user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
-        <div className="py-4 px-2 sm:px-4 hover:bg-gray-50 transition-colors">
+        <div className="py-4 px-2 sm:px-4 ">
           {/* User Header */}
           <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-4">
             <div className="flex items-center gap-4 w-full sm:w-auto mb-2 sm:mb-0">
@@ -358,9 +359,9 @@ export default function InboxPage() {
                   content={syntheses[user.id]}
                   className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm"
                   onArchive={fetchData}
+                  popoverControlRef={popoverControlRef}
                 />
-              )}
-            </div>
+              )}            </div>
           )}
 
           {/* Mutual Intents */}
