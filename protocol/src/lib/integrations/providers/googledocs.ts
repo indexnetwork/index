@@ -46,6 +46,27 @@ interface GoogleDocsSearchResponse {
 }
 
 interface GoogleDocsDocumentResponse {
+  data?: {
+    response_data?: {
+      body?: {
+        content?: Array<{
+          paragraph?: {
+            elements?: Array<{
+              textRun?: {
+                content: string;
+              };
+            }>;
+            bullet?: {
+              listId: string;
+            };
+          };
+          sectionBreak?: any;
+        }>;
+      };
+      documentId?: string;
+      title?: string;
+    };
+  };
   response_data?: {
     body?: {
       content?: Array<{
@@ -65,6 +86,9 @@ interface GoogleDocsDocumentResponse {
     documentId?: string;
     title?: string;
   };
+  error?: string;
+  successful?: boolean;
+  logId?: string;
 }
 
 /**
@@ -73,10 +97,16 @@ interface GoogleDocsDocumentResponse {
  * This function navigates the structure and extracts only the readable text.
  */
 function extractContentFromDocument(responseData: any): string {
-  // Handle both possible response structures from Composio API
-  const content = responseData?.data?.response_data?.body?.content || responseData?.response_data?.body?.content;
+
+  // Handle multiple possible response structures from Composio API
+  const content = responseData?.data?.response_data?.body?.content || 
+                  responseData?.response_data?.body?.content ||
+                  responseData?.data?.body?.content ||
+                  responseData?.body?.content;
   
+
   if (!content) {
+    log.warn('⚠️ No content found in document response');
     return '';
   }
 
@@ -108,6 +138,26 @@ function extractContentFromDocument(responseData: any): string {
             contentParts.push(`• ${text}`);
           } else {
             contentParts.push(text);
+          }
+        }
+      }
+    } else {
+      // Try alternative content extraction methods
+      if (element.textRun?.content) {
+        const text = element.textRun.content.trim();
+        if (text) {
+          contentParts.push(text);
+        }
+      }
+      
+      // Try to extract from nested structures
+      if (element.elements) {
+        for (const nestedElement of element.elements) {
+          if (nestedElement?.textRun?.content) {
+            const text = nestedElement.textRun.content.trim();
+            if (text) {
+              contentParts.push(text);
+            }
           }
         }
       }
@@ -168,11 +218,22 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
       throw error;
     }
 
+    // Check for API permission errors in search response
+    if (searchResponse?.error && searchResponse.error.includes('PERMISSION_DENIED')) {
+      log.error('🚫 Google Docs API permission denied during search');
+      return [];
+    }
+
+    // Check for API not enabled errors in search response
+    if (searchResponse?.error && searchResponse.error.includes('Google Docs API has not been used')) {
+      log.error('🔧 Google Docs API not enabled during search');
+      return [];
+    }
+
     // Fallback: try alternative search if initial search returns no results
     if (!searchResponse?.data?.documents?.length) {
-      log.info('No documents found with search, trying alternative approach...');
+      log.info('🔄 No documents found, trying alternative search...');
       
-      // Retry with minimal parameters to handle API inconsistencies
       try {
         const alternativeResponse = await composio.tools.execute('GOOGLEDOCS_SEARCH_DOCUMENTS', {
           userId: integration.userId,
@@ -180,16 +241,11 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
           arguments: { max_results: MAX_DOCUMENTS }
         }) as GoogleDocsSearchResponse;
         
-        log.info('Alternative search response', { 
-          hasDocuments: !!alternativeResponse?.data?.documents,
-          documentsLength: alternativeResponse?.data?.documents?.length || 0
-        });
-        
         if (alternativeResponse?.data?.documents?.length) {
           searchResponse = alternativeResponse;
         }
       } catch (altError) {
-        log.error('Alternative search also failed', { altError });
+        log.error('Alternative search failed', { altError });
       }
     }
 
@@ -197,7 +253,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
     log.info('📄 Google Docs search results', { count: documents.length });
 
     if (!documents.length) {
-      log.warn('⚠️ No documents found in Google Docs search - user may not have any documents or search may be failing');
+      log.warn('⚠️ No documents found in Google Docs search');
       return [];
     }
 
@@ -229,13 +285,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
     }
     
     if (!userEmail) {
-      log.error('User email not found in connected account', { 
-        connectedAccountId, 
-        accountData: (account as any).data,
-        accountEmail: (account as any).email,
-        hasIdToken: !!(account as any).data?.id_token,
-        fullAccount: account 
-      });
+      log.error('❌ User email not found in connected account', { connectedAccountId });
       return [];
     }
 
@@ -250,13 +300,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
       // Only process documents owned by the connected user
       const isOwner = doc.owners?.some(owner => owner.emailAddress === userEmail);
       if (!isOwner) {
-        log.info('Skipping document - user is not owner', { 
-          documentId: doc.id, 
-          documentName: doc.name,
-          userEmail,
-          owners: doc.owners?.map(o => o.emailAddress),
-          ownerEmails: doc.owners?.map(o => o.emailAddress)
-        });
+        log.info('⏭️ Skipping document - user is not owner', { documentId: doc.id, documentName: doc.name });
         continue;
       }
 
@@ -265,11 +309,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
       if (lastSyncAt) {
         const modifiedTime = new Date(doc.modifiedTime);
         if (modifiedTime <= lastSyncAt) {
-          log.debug('Skipping document - not modified since last sync', { 
-            documentId: doc.id, 
-            modifiedTime: doc.modifiedTime,
-            lastSyncAt: lastSyncAt.toISOString()
-          });
           continue;
         }
       }
@@ -282,13 +321,26 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
           arguments: { id: doc.id }
         }) as GoogleDocsDocumentResponse;
 
+
+        // Check for API permission errors
+        if (documentResponse?.error && documentResponse.error.includes('PERMISSION_DENIED')) {
+          log.error('🚫 Google Docs API permission denied', { documentId: doc.id, documentName: doc.name });
+          continue;
+        }
+
+        // Check for API not enabled errors
+        if (documentResponse?.error && documentResponse.error.includes('Google Docs API has not been used')) {
+          log.error('🔧 Google Docs API not enabled', { documentId: doc.id, documentName: doc.name });
+          continue;
+        }
+
         // Extract plain text content from complex Google Docs structure
         const content = extractContentFromDocument(documentResponse);
         
         
         // Skip documents with no extractable content
         if (!content.trim()) {
-          log.warn('Document has no content', { documentId: doc.id, documentName: doc.name });
+          log.warn('📄 Document has no content', { documentId: doc.id, documentName: doc.name });
           continue;
         }
 
@@ -303,14 +355,10 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
           owners: doc.owners // Include owners for attribution
         });
 
-        log.debug('Document processed successfully', { 
-          documentId: doc.id, 
-          documentName: doc.name,
-          contentLength: content.length
-        });
+        log.info('✅ Document processed', { documentId: doc.id, documentName: doc.name, contentLength: content.length });
 
       } catch (error) {
-        log.error('Error fetching document', { documentId: doc.id, error: (error as Error).message });
+        log.error('❌ Error fetching document', { documentId: doc.id, error: (error as Error).message });
         // Continue processing other documents to maximize data collection
       }
     }
