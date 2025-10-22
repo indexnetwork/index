@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { Lock, Users, Loader2 } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface InvitationPageProps {
   params: Promise<{
@@ -44,6 +45,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
   const router = useRouter();
   const { success, error: notifyError } = useNotifications();
   const { refreshIndexes } = useIndexesState();
+  const { refetchUser } = useAuthContext();
 
   // Load index and check user state
   useEffect(() => {
@@ -109,6 +111,8 @@ export default function InvitationPage({ params }: InvitationPageProps) {
             // Check if user needs onboarding
             const hasCompletedOnboarding = response.user.onboarding?.completedAt;
             if (!hasCompletedOnboarding) {
+              // Refetch user to ensure onboarding state is updated before redirecting
+              await refetchUser();
               router.push('/onboarding');
               return;
             }
@@ -135,7 +139,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
     };
 
     loadIndexAndCheckAuth();
-  }, [resolvedParams.code, authenticated, ready, api, router, indexesService, authService, refreshIndexes]);
+  }, [resolvedParams.code, authenticated, ready, api, router, indexesService, authService, refreshIndexes, refetchUser]);
 
   // Trigger reload when user authenticates
   useEffect(() => {
