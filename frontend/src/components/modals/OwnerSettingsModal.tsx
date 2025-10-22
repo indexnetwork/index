@@ -7,6 +7,7 @@ import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Copy, Globe, Lock, Trash2, Plus, Check, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { Input } from '../ui/input';
+import { Textarea } from '../ui/textarea';
 import { useIndexes } from '@/contexts/APIContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -396,11 +397,11 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                   <label className="block text-sm font-medium text-gray-900 mb-2 font-ibm-plex-mono">
                     Prompt
                   </label>
-                  <textarea
+                  <Textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     placeholder="Describe what people can share in this index..."
-                    className="w-full min-h-[100px] px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 font-ibm-plex-mono text-black text-sm"
+                    className="min-h-[100px] shadow-sm font-ibm-plex-mono text-sm"
                     rows={4}
                   />
                   <p className="text-xs text-gray-500 mt-1">
@@ -808,7 +809,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                     value={deleteConfirmationText}
                     onChange={(e) => setDeleteConfirmationText(e.target.value)}
                     placeholder=""
-                    className="w-full bg-[#40444b] border-[#40444b] text-white placeholder-[#72767d] focus:border-blue-500 focus:ring-blue-500"
+                    className="bg-[#40444b] border-[#40444b] text-white placeholder-[#72767d]"
                     autoFocus
                   />
                 </div>

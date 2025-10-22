@@ -4,6 +4,7 @@ import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { X, Globe, Lock } from "lucide-react";
 
 interface CreateIndexModalProps {
@@ -116,7 +117,6 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                     handleSubmit(e);
                   }
                 }}
-                className=" px-4 py-3"
                 placeholder="Enter index name..."
                 required
                 minLength={1}
@@ -128,11 +128,11 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
               <label htmlFor="prompt" className="text-md font-medium font-ibm-plex-mono text-black">
                 <div className="mb-2">Prompt (Optional)</div>
               </label>
-              <textarea
+              <Textarea
                 id="prompt"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black disabled:opacity-50 disabled:cursor-not-allowed"
+                className="resize-none"
                 placeholder="Define what people can share in this index..."
                 rows={3}
                 disabled={isSubmitting}

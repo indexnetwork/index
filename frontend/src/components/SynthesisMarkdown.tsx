@@ -182,13 +182,13 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
             onClick={handleFocus}
             className="flex items-center justify-center w-9 h-9 border border-b-2 rounded-xs border-black hover:bg-gray-100 transition-colors cursor-pointer"
           >
-            <Focus className="w-6 h-6 text-black" />
+            <Focus strokeWidth={1.5} className="w-6 h-6 text-gray-900" />
           </button>
           <button
             onClick={handleArchive}
             className="flex items-center justify-center w-9 h-9 border border-b-2 rounded-xs border-black hover:bg-gray-100 transition-colors cursor-pointer"
           >
-            <Archive className="w-6 h-6 text-red-600" />
+            <Archive strokeWidth={1.5} className="w-6 h-6 text-red-500" />
           </button>
         </div>,
         document.body

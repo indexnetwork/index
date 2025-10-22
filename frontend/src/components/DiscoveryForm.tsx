@@ -637,7 +637,32 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
 
   return (
     <div className="relative">
-      <div className="bg-white border border-b-2 border-gray-800 flex items-center px-4 py-2 min-h-[54px] relative">
+      {/* Focus Overlay */}
+      {inputFocused && (
+        <div
+          className="fixed inset-0 z-[9998] transition-opacity backdrop-blur-xs"
+          style={{
+            minHeight: '100vh',
+            opacity: 0.9,
+            backgroundColor: 'rgba(0, 0, 0, 0.2)'
+          }}
+          onClick={() => {
+            setInputFocused(false);
+            contentRef.current?.blur();
+          }}
+        >
+          <div 
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: 'url(/noise.jpg)',
+              backgroundSize: 'cover',
+              opacity: 0.3
+            }}
+          />
+        </div>
+      )}
+      
+      <div className="bg-white border border-b-2 border-gray-800 flex items-center px-4 py-2 min-h-[54px] relative z-[9999]">
             <div className="flex-1 relative">
               {/* ContentEditable div */}
               <div

@@ -410,6 +410,7 @@ export default function InboxPage() {
           className="fixed inset-0 z-[99999] flex items-center justify-center transition-opacity backdrop-blur-xs"
           style={{
             minHeight: '100vh',
+            //opacity: 0.9,
             backgroundColor: 'rgba(0, 0, 0, 0.2)'
           }}
         >
@@ -417,11 +418,11 @@ export default function InboxPage() {
             className="absolute inset-0 pointer-events-none"
             style={{
               backgroundImage: 'url(/noise.jpg)',
-              backgroundSize: 'auto',
-              opacity: 0.1
+              backgroundSize: 'cover',
+              opacity: 0.3
             }}
           />
-          <div className="relative z-10 bg-white border-1 rounded-sm  border-black px-6 py-4 flex flex-col items-center gap-3  w-[340px]">
+          <div className="relative z-10 bg-white border-1 rounded-sm border-black px-6 py-4 flex flex-col items-center gap-3 w-[340px]">
             <Upload className="w-8 h-8 text-black" />
             <p className="text-base font-ibm-plex-mono text-gray-700 text-center leading-snug">
               Drop file(s) here to discover relevant connections

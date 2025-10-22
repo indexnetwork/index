@@ -209,7 +209,6 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="px-4 py-3"
               placeholder="John Doe"
               required
             />
@@ -224,7 +223,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               <Input
                 id="email"
                 value={user?.email || 'Not provided'}
-                className="px-4 py-3 bg-gray-50"
+                className="bg-gray-50"
                 disabled
               />
             </div>
@@ -241,7 +240,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               id="intro"
               value={intro}
               onChange={(e) => setIntro(e.target.value)}
-              className="px-4 py-3 min-h-[100px]"
+              className="min-h-[100px]"
               placeholder="Tell others about yourself..."
               maxLength={500}
             />

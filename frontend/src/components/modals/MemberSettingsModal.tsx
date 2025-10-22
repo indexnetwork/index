@@ -9,6 +9,7 @@ import { useAPI } from '@/contexts/APIContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import IntentList from '@/components/IntentList';
 import { QueueStatus } from '@/services/queue';
 
@@ -299,13 +300,13 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
                   </div>
 
                   <div>
-                    <div className="relative border border-[#E0E0E0] rounded-lg p-3">
-                      <textarea
+                    <div className="relative border border-gray-400 rounded-sm p-3 bg-white">
+                      <Textarea
                         id="prompt"
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
                         placeholder="e.g., Share my Slack intents about AI research, include my Notion notes about collaboration, but keep personal documents private..."
-                        className="w-full text-[#333] resize-none h-25 text-sm font-ibm-plex-mono outline-none bg-transparent"
+                        className="resize-none h-25 text-[#333] text-sm font-ibm-plex-mono border-0 p-0 focus:ring-0 shadow-none bg-transparent"
                       />
                       
                       {/* Tag suggestions */}
