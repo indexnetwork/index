@@ -4,7 +4,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import * as Tabs from "@radix-ui/react-tabs";
+import { Upload } from "lucide-react";
 import { useConnections, useSynthesis, useDiscover } from "@/contexts/APIContext";
+import { useIndexFilter } from "@/contexts/IndexFilterContext";
+import { useDiscoveryFilter } from "@/contexts/DiscoveryFilterContext";
 import { StakesByUserResponse, UserConnection } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { formatDate } from "@/lib/utils";
@@ -12,29 +15,11 @@ import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 import DiscoveryForm from "@/components/DiscoveryForm";
 import SynthesisMarkdown from "@/components/SynthesisMarkdown";
-import { useIndexFilter } from "@/contexts/IndexFilterContext";
-import { useDiscoveryFilter } from "@/contexts/DiscoveryFilterContext";
-import { Upload } from "lucide-react";
 
 const validTabs = ['discover', 'requests'];
 
 export default function InboxPage() {
-  const [discoverStakes, setDiscoverStakes] = useState<StakesByUserResponse[]>([]);
-  const [inboxConnections, setInboxConnections] = useState<UserConnection[]>([]);
-  const [pendingConnections, setPendingConnections] = useState<UserConnection[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [syntheses, setSyntheses] = useState<Record<string, string>>({});
-  const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
-  const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
-  const { discoveryIntents, setDiscoveryIntents } = useDiscoveryFilter();
-  const fetchedSynthesesRef = useRef<Set<string>>(new Set());
-  const { selectedIndexIds } = useIndexFilter();
-  const [isDragging, setIsDragging] = useState(false); //tempo
-  const dragCounterRef = useRef(0);
-  const discoveryFormRef = useRef<{ handleFileDrop: (files: FileList) => void }>(null);
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  
-  // URL parameter handling
+  // URL & Navigation State
   const searchParams = useSearchParams();
   const router = useRouter();
   const urlTab = searchParams.get('tab');
@@ -42,31 +27,40 @@ export default function InboxPage() {
     urlTab && validTabs.includes(urlTab) ? urlTab : 'discover'
   );
 
+  // Data State
+  const [discoverStakes, setDiscoverStakes] = useState<StakesByUserResponse[]>([]);
+  const [inboxConnections, setInboxConnections] = useState<UserConnection[]>([]);
+  const [pendingConnections, setPendingConnections] = useState<UserConnection[]>([]);
+  const [syntheses, setSyntheses] = useState<Record<string, string>>({});
+  const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
+
+  // UI State
+  const [loading, setLoading] = useState(true);
+  const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
+  const [isDragging, setIsDragging] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
+  // Refs
+  const fetchedSynthesesRef = useRef<Set<string>>(new Set());
+  const lastDataRef = useRef<string>('');
+  const lastRefreshTimeRef = useRef<number>(0);
+  const dragCounterRef = useRef(0);
+  const discoveryFormRef = useRef<{ handleFileDrop: (files: FileList) => void }>(null);
+
+  // Context Hooks
+  const { selectedIndexIds } = useIndexFilter();
+  const { discoveryIntents, setDiscoveryIntents } = useDiscoveryFilter();
+
+  // Service Hooks
   const connectionsService = useConnections();
   const synthesisService = useSynthesis();
   const discoverService = useDiscover();
 
-  const handleTabChange = (newTab: string) => {
-    if (!validTabs.includes(newTab)) return;
-    
-    setActiveTab(newTab);
-    const params = new URLSearchParams(searchParams.toString());
-    
-    if (newTab === 'discover') {
-      // Remove tab parameter for discover (default)
-      params.delete('tab');
-      const queryString = params.toString();
-      router.push(`/inbox${queryString ? `?${queryString}` : ''}`);
-    } else {
-      params.set('tab', newTab);
-      router.push(`/inbox?${params.toString()}`);
-    }
-  };
-
+  // Fetch synthesis for a user
   const fetchSynthesis = useCallback(async (targetUserId: string, intentIds?: string[], indexIds?: string[]) => {
     const cacheKey = `${targetUserId}-${(indexIds || []).sort().join(',')}`;
     if (fetchedSynthesesRef.current.has(cacheKey)) {
-      return; // Already fetched or in progress
+      return;
     }
 
     fetchedSynthesesRef.current.add(cacheKey);
@@ -81,22 +75,17 @@ export default function InboxPage() {
       setSyntheses(prev => ({ ...prev, [targetUserId]: response.synthesis }));
     } catch (error) {
       console.error('Error fetching synthesis:', error);
-      // Set empty synthesis on error to avoid infinite loading
       setSyntheses(prev => ({ ...prev, [targetUserId]: "" }));
     } finally {
       setSynthesisLoading(prev => ({ ...prev, [targetUserId]: false }));
     }
   }, [synthesisService]);
 
-  const lastDataRef = useRef<string>('');
-  const lastRefreshTimeRef = useRef<number>(0);
-  
+  // Fetch all inbox data
   const fetchData = useCallback(async () => {
     try {
-      // Determine indexIds to pass to API calls
       const apiIndexIds = selectedIndexIds.length > 0 ? selectedIndexIds : undefined;
       
-      // Fetch connections and discover data
       const [inboxData, pendingData, discoverData] = await Promise.all([
         connectionsService.getConnectionsByUser('inbox', apiIndexIds),
         connectionsService.getConnectionsByUser('pending', apiIndexIds),
@@ -108,7 +97,7 @@ export default function InboxPage() {
         })
       ]);
 
-      // Transform discover data to match StakesByUserResponse format
+      // Transform discover data
       const transformedStakesData: StakesByUserResponse[] = (discoverData?.results || []).map(result => ({
         user: {
           id: result.user.id,
@@ -120,14 +109,14 @@ export default function InboxPage() {
             id: stake.intent.id,
             summary: stake.intent.summary,
             payload: stake.intent.payload,
-            updatedAt: stake.intent.createdAt, // Using createdAt as updatedAt not available
+            updatedAt: stake.intent.createdAt,
           },
           totalStake: String(stake.totalStake),
-          agents: [] // The new API doesn't return agent-specific stakes
+          agents: []
         }))
       }));
 
-      // Check if data has changed (memoization)
+      // Check if data has changed
       const currentDataHash = JSON.stringify({
         discover: transformedStakesData.map(s => ({ userId: s.user.id, intentIds: s.intents.map(i => i.intent.id) })),
         inbox: inboxData.connections.map(c => c.user.id),
@@ -135,29 +124,21 @@ export default function InboxPage() {
       });
       
       if (currentDataHash !== lastDataRef.current) {
-        // Data has changed, update state
         lastDataRef.current = currentDataHash;
         
-        // Set data for each tab
         setDiscoverStakes(transformedStakesData);
         setInboxConnections(inboxData.connections);
         setPendingConnections(pendingData.connections);
 
-        // Clear previous synthesis cache when filters change
+        // Clear and refetch synthesis
         fetchedSynthesesRef.current.clear();
         setSyntheses({});
 
-        // Automatically fetch synthesis for all users
         const allUserIds = new Set<string>();
-        
-        // Collect user IDs from discover stakes
         transformedStakesData.forEach(stake => allUserIds.add(stake.user.id));
-        
-        // Collect user IDs from connections
         [...inboxData.connections, ...pendingData.connections]
           .forEach(connection => allUserIds.add(connection.user.id));
 
-        // Fetch synthesis for all unique users with current index filter
         allUserIds.forEach(userId => {
           fetchSynthesis(userId, undefined, apiIndexIds);
         });
@@ -172,6 +153,71 @@ export default function InboxPage() {
     }
   }, [connectionsService, discoverService, fetchSynthesis, selectedIndexIds, discoveryIntents]);
 
+  // Tab change handler
+  const handleTabChange = (newTab: string) => {
+    if (!validTabs.includes(newTab)) return;
+    
+    setActiveTab(newTab);
+    const params = new URLSearchParams(searchParams.toString());
+    
+    if (newTab === 'discover') {
+      params.delete('tab');
+      const queryString = params.toString();
+      router.push(`/inbox${queryString ? `?${queryString}` : ''}`);
+    } else {
+      params.set('tab', newTab);
+      router.push(`/inbox?${params.toString()}`);
+    }
+  };
+
+  // Connection action handler
+  const handleConnectionAction = async (action: ConnectionAction, userId: string) => {
+    try {
+      switch (action) {
+        case 'REQUEST':
+          await connectionsService.requestConnection(userId);
+          break;
+        case 'SKIP':
+          await connectionsService.skipConnection(userId);
+          break;
+        case 'ACCEPT':
+          await connectionsService.acceptConnection(userId);
+          break;
+        case 'DECLINE':
+          await connectionsService.declineConnection(userId);
+          break;
+        case 'CANCEL':
+          await connectionsService.cancelConnection(userId);
+          break;
+      }
+      await fetchData();
+    } catch (error) {
+      console.error('Error handling connection action:', error);
+    }
+  };
+
+  // Helper: Get connection status for rendering
+  const getConnectionStatus = (tabType: 'discover' | 'requests', viewType?: 'received' | 'sent'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
+    if (tabType === 'discover') {
+      return 'none';
+    }
+    if (tabType === 'requests') {
+      return viewType === 'sent' ? 'pending_sent' : 'pending_received';
+    }
+    return 'none';
+  };
+
+  // Sync tab state with URL changes
+  useEffect(() => {
+    const urlTab = searchParams.get('tab');
+    if (urlTab && validTabs.includes(urlTab)) {
+      setActiveTab(urlTab);
+    } else if (!urlTab) {
+      setActiveTab('discover');
+    }
+  }, [searchParams]);
+
+  // Initial data fetch
   useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -188,24 +234,11 @@ export default function InboxPage() {
     return () => clearInterval(intervalId);
   }, [fetchData]);
 
-  // Sync tab state with URL changes
-  useEffect(() => {
-    const urlTab = searchParams.get('tab');
-    if (urlTab && validTabs.includes(urlTab)) {
-      setActiveTab(urlTab);
-    } else if (!urlTab) {
-      // Default to discover when no tab is specified
-      setActiveTab('discover');
-    }
-  }, [searchParams]);
-
-  // Drag and drop handlers
+  // Drag and drop for file upload
   useEffect(() => {
     const handleDragEnter = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      
-      // Only show overlay on discover tab with no active filters
       if (activeTab !== 'discover' || discoveryIntents) return;
       
       dragCounterRef.current++;
@@ -217,7 +250,6 @@ export default function InboxPage() {
     const handleDragLeave = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      
       dragCounterRef.current--;
       if (dragCounterRef.current === 0) {
         setIsDragging(false);
@@ -232,13 +264,10 @@ export default function InboxPage() {
     const handleDrop = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      
       dragCounterRef.current = 0;
       setIsDragging(false);
       
-      // Only handle on discover tab with no active filters
       if (activeTab !== 'discover' || discoveryIntents) return;
-      
       if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
         discoveryFormRef.current?.handleFileDrop(e.dataTransfer.files);
       }
@@ -257,53 +286,7 @@ export default function InboxPage() {
     };
   }, [activeTab, discoveryIntents]);
 
-  const handleConnectionAction = async (action: ConnectionAction, userId: string) => {
-    try {
-      
-      // Call the appropriate connection service method
-      switch (action) {
-        case 'REQUEST':
-          await connectionsService.requestConnection(userId);
-          break;
-        case 'SKIP':
-          await connectionsService.skipConnection(userId);
-          break;
-        case 'ACCEPT':
-          await connectionsService.acceptConnection(userId);
-          break;
-        case 'DECLINE':
-          await connectionsService.declineConnection(userId);
-          break;
-        case 'CANCEL':
-          await connectionsService.cancelConnection(userId);
-          break;
-      }
-
-      // Refresh the data to reflect the changes
-      await fetchData();
-    } catch (error) {
-      console.error('Error handling connection action:', error);
-      // You might want to show a toast or error message to the user
-    }
-  };
-
-
-  const getConnectionStatus = (tabType: 'discover' | 'requests', viewType?: 'received' | 'sent'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
-    if (tabType === 'discover') {
-        return 'none'; // suggestions for new connections
-    }
-    
-    if (tabType === 'requests') {
-      if (viewType === 'sent') {
-        return 'pending_sent'; // you acted, awaiting them
-      } else {
-        return 'pending_received'; // items awaiting your response
-      }
-    }
-    
-    return 'none';
-  };
-
+  // Render user card component
   const renderUserCard = (
     data: StakesByUserResponse | UserConnection, 
     tabType: 'discover' | 'requests'
@@ -353,46 +336,44 @@ export default function InboxPage() {
             </div>
           </div>
 
-          {/* What Could Happen Here */}
+          {/* Synthesis Section */}
           {(synthesisLoading[user.id] || syntheses[user.id]) && (
             <div className="mb-4">
               <h3 className="font-medium text-gray-700 mb-2 text-sm">What could happen here</h3>
-              <div className="space-y-2">
-                {synthesisLoading[user.id] ? (
-                  <div className="animate-pulse space-y-2">
-                    <div className="h-3 bg-gray-200 rounded w-full"></div>
-                    <div className="h-3 bg-gray-200 rounded w-full"></div>
-                    <div className="h-3 bg-gray-200 rounded w-11/12"></div>
-                    <div className="h-3 bg-gray-200 rounded w-full"></div>
-                    <div className="h-3 bg-gray-200 rounded w-10/12"></div>
-                    <div className="h-3 bg-gray-200 rounded w-full"></div>
-                    <div className="h-3 bg-gray-200 rounded w-9/12"></div>
-                    <div className="mt-3 pt-2">
-                      <div className="h-3 bg-gray-200 rounded w-3/4"></div>
-                    </div>
+              {synthesisLoading[user.id] ? (
+                <div className="animate-pulse space-y-2">
+                  <div className="h-3 bg-gray-200 rounded w-full"></div>
+                  <div className="h-3 bg-gray-200 rounded w-full"></div>
+                  <div className="h-3 bg-gray-200 rounded w-11/12"></div>
+                  <div className="h-3 bg-gray-200 rounded w-full"></div>
+                  <div className="h-3 bg-gray-200 rounded w-10/12"></div>
+                  <div className="h-3 bg-gray-200 rounded w-full"></div>
+                  <div className="h-3 bg-gray-200 rounded w-9/12"></div>
+                  <div className="mt-3 pt-2">
+                    <div className="h-3 bg-gray-200 rounded w-3/4"></div>
                   </div>
-                ) : (
-                  <SynthesisMarkdown 
-                    content={syntheses[user.id]}
-                    className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm"
-                    onArchive={fetchData}
-                  />
-                )}
-              </div>
+                </div>
+              ) : (
+                <SynthesisMarkdown 
+                  content={syntheses[user.id]}
+                  className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm"
+                  onArchive={fetchData}
+                />
+              )}
             </div>
           )}
 
-          {/* Mutual Intents Section (only for stake cards) */}
+          {/* Mutual Intents */}
           {intents && intents.length > 0 && (
             <div className="mb-4">
               <h3 className="font-medium text-gray-700 mb-2 text-sm">Mutual intents ({intents.length})</h3>
               <div className="flex flex-wrap gap-2">
                 {intents.map((intentConnection) => (
                   <div key={intentConnection.intent.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200">
-                    <h4 className="text-sm font-ibm-plex-mono font-light text-gray-900">{intentConnection.intent.summary || 'Untitled Intent'}</h4>
-                    <span className="text-gray-400 text-xs">
-                      ({intentConnection.totalStake})
-                    </span>
+                    <h4 className="text-sm font-ibm-plex-mono font-light text-gray-900">
+                      {intentConnection.intent.summary || 'Untitled Intent'}
+                    </h4>
+                    <span className="text-gray-400 text-xs">({intentConnection.totalStake})</span>
                   </div>
                 ))}
               </div>
@@ -403,6 +384,7 @@ export default function InboxPage() {
     );
   };
 
+  // Loading state
   if (loading) {
     return (
       <ClientLayout>
@@ -464,14 +446,9 @@ export default function InboxPage() {
                     <DiscoveryForm 
                       ref={discoveryFormRef}
                       onSubmit={(intents) => {
-                        console.log('intents', intents);
-                        // Set the discovery intent filter and refetch data
                         setDiscoveryIntents(intents);
-                        // Show success message temporarily
                         setShowSuccessMessage(true);
-                        setTimeout(() => setShowSuccessMessage(false), 10000);
-                        // Refresh inbox after intent creation
-                        fetchData();
+                        setTimeout(() => setShowSuccessMessage(false), 20000);
                       }}
                     />
                   </div>
@@ -522,39 +499,54 @@ export default function InboxPage() {
 
           <Tabs.Root value={activeTab} onValueChange={handleTabChange} className="flex-grow">
 
-            {/* Discover Content - Connection suggestions */}
+            {/* Discover Content */}
             {activeTab === 'discover' && (
               <div className="mt-4">
-              {discoverStakes.length === 0 ? (
-                <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
-                <Image 
-                  className="h-auto"
-                  src={'/loading2.gif'} 
-                  alt="Loading..." 
-                  width={300} 
-                  height={200} 
-                  style={{
-                    imageRendering: 'auto',
-                  }}
-                />
-                <p className="text-gray-900 font-500 font-ibm-plex-mono text-md mt-4 text-center">
-                {showSuccessMessage 
-                  ? "Got the signal! Passing it along to the right folks, let's see what unfolds."
-                  : "No relevant connections for now, it's not you, the world's just being shy."}
-                </p>
+                {discoverStakes.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
+                    <Image 
+                      className="h-auto"
+                      src={'/loading2.gif'} 
+                      alt="Loading..." 
+                      width={300} 
+                      height={200} 
+                      style={{ imageRendering: 'auto' }}
+                    />
+                    {showSuccessMessage ? (
+                      <>
+                        <h3 className="text-gray-900 font-bold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
+                          Got the signal!
+                        </h3>
+                        <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
+                          Passing it along to the right folks, let's see what unfolds.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
+                          No relevant connections for now.
+                        </h3>
+                        <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
+                          It's not you, the world's just being shy. Don't worry, I'll keep looking.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  discoverStakes.map((userStake) => renderUserCard(userStake, 'discover'))
+                )}
               </div>
-              ) : (
-                discoverStakes.map((userStake) => renderUserCard(userStake, 'discover'))
-              )}
-                </div>
             )}
 
-            {/* Requests Content - Incoming/Outgoing requests */}
+            {/* Requests Content */}
             {activeTab === 'requests' && (
-              <div className="">
+              <div>
                 <Tabs.Root value={requestsView} onValueChange={(value) => setRequestsView(value as 'received' | 'sent')}>
                   <Tabs.List className="overflow-x-auto inline-flex text-sm text-black">
-                    <Tabs.Trigger value="received" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white">
+                    <Tabs.Trigger 
+                      value="received" 
+                      className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
+                    >
                       Incoming
                       {inboxConnections.length > 0 && (
                         <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
@@ -562,7 +554,10 @@ export default function InboxPage() {
                         </span>
                       )}
                     </Tabs.Trigger>
-                    <Tabs.Trigger value="sent" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 bg-white  data-[state=active]:bg-black data-[state=active]:text-white">
+                    <Tabs.Trigger 
+                      value="sent" 
+                      className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
+                    >
                       Sent
                       {pendingConnections.length > 0 && (
                         <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
@@ -582,21 +577,19 @@ export default function InboxPage() {
                     )}
                   </Tabs.Content>
 
-                  <Tabs.Content value="sent" className="p-0 mt-0 bg-white ">
+                  <Tabs.Content value="sent" className="p-0 mt-0 bg-white">
                     {pendingConnections.length === 0 ? (
-                      <div className="py-8 text-center text-gray-500">
-                        No sent requests.
-                      </div>
+                      <div className="py-8 text-center text-gray-500">No sent requests.</div>
                     ) : (
                       pendingConnections.map((connection) => renderUserCard(connection, 'requests'))
                     )}
                   </Tabs.Content>
                 </Tabs.Root>
-                </div>
-              )}
+              </div>
+            )}
           </Tabs.Root>
         </div>
       </div>
     </ClientLayout>
   );
-} 
+}
