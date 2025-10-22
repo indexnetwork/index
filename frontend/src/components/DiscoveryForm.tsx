@@ -20,6 +20,7 @@ interface AttachmentItem {
 
 export interface DiscoveryFormRef {
   handleFileDrop: (files: FileList) => void;
+  focus: () => void;
 }
 
 const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubmit }, ref) => {
@@ -66,6 +67,22 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
           contentRef.current?.focus();
           insertAttachment(newAttachment);
         }, 0);
+      }
+    },
+    focus: () => {
+      if (contentRef.current) {
+        contentRef.current.focus();
+        setInputFocused(true);
+        
+        // Move cursor to the end of content
+        const selection = window.getSelection();
+        if (selection) {
+          const range = document.createRange();
+          range.selectNodeContents(contentRef.current);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
       }
     }
   }));

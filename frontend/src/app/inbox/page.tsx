@@ -13,7 +13,7 @@ import { getAvatarUrl } from "@/lib/file-utils";
 import { formatDate } from "@/lib/utils";
 import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
-import DiscoveryForm from "@/components/DiscoveryForm";
+import DiscoveryForm, { DiscoveryFormRef } from "@/components/DiscoveryForm";
 import SynthesisMarkdown from "@/components/SynthesisMarkdown";
 
 const validTabs = ['discover', 'requests'];
@@ -45,7 +45,7 @@ export default function InboxPage() {
   const lastDataRef = useRef<string>('');
   const lastRefreshTimeRef = useRef<number>(0);
   const dragCounterRef = useRef(0);
-  const discoveryFormRef = useRef<{ handleFileDrop: (files: FileList) => void }>(null);
+  const discoveryFormRef = useRef<DiscoveryFormRef>(null);
   const popoverControlRef = useRef<{ close: () => void } | null>(null);
 
   // Context Hooks
@@ -507,7 +507,7 @@ export default function InboxPage() {
                   <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
                     <Image 
                       className="h-auto"
-                      src={'/loading2.gif'} 
+                      src={!discoveryIntents ? '/generic.png' : '/loading2.gif'} 
                       alt="Loading..." 
                       width={300} 
                       height={200} 
@@ -520,6 +520,18 @@ export default function InboxPage() {
                         </h3>
                         <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
                           Passing it along to the right folks, let's see what unfolds.
+                        </p>
+                      </>
+                    ) : !discoveryIntents ? (
+                      <>
+                        <button
+                          onClick={() => discoveryFormRef.current?.focus()}
+                          className="border border-gray-300 py-2 mb-2 text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 hover:text-black transition-colors"
+                        >
+                          Find your people
+                        </button>
+                        <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
+                          Share what you're looking for or drop a file above to discover relevant connections.
                         </p>
                       </>
                     ) : (
