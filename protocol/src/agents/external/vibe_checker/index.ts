@@ -20,7 +20,6 @@ export interface VibeCheckResult {
 
 export interface VibeCheckOptions {
   timeout?: number;
-  outputFormat?: 'markdown' | 'html';
   characterLimit?: number;
 }
 
@@ -67,25 +66,17 @@ export async function vibeCheck(
       };
     }
 
-    const { timeout = 30000, outputFormat = 'markdown', characterLimit } = options;
+    const { timeout = 30000, characterLimit } = options;
 
-    const formatInstructions = outputFormat === 'html' 
-      ? `- Always output as HTML.
-- Use HTML links sparingly for only the most important intents: <a href="https://index.network/intents/:id">intent text</a>
-- Use HTML formatting: <strong>, <em>, <p>, <ul>, <li> as appropriate`
-      : `- Always output as markdown.
-- Add inline markdown links only for the most important intents: https://index.network/intents/:id
+    const formatInstructions = `- Always output as markdown.
+- Add inline markdown links only for the most important intents: [intent text](https://index.network/intents/:id)
 - Do not use bold (**) or italic (*) formatting`;
 
     const lengthInstructions = characterLimit 
       ? `- Keep the response under ${characterLimit} characters.`
       : '- Keep it concise and actionable';
 
-    const exampleOutput = outputFormat === 'html'
-      ? `Since you're looking for <a href="https://index.network/intents/12345">coordination without platforms</a> and trust-preserving discovery, Seren is designing agent-led systems to negotiate access based on context, while the other is exploring intent schemas that don't rely on reputation scores or central visibility.
-
-<p>Together, you could co-develop a context-aware coordination primitive: agents that interpret and match intents without revealing identity, a shared layer for discovery across personal data stores, and a working prototype that shows how agents from different graphs collaborate securely. This isn't just adjacent thinking — it's a chance to push the boundaries of what intent-based coordination can look like when it's real, composable, and private by default.</p>`
-      : `Since you're looking for [coordination without platforms](https://index.network/intents/12345) and trust-preserving discovery, Seren is designing agent-led systems to negotiate access based on context, while the other is exploring intent schemas that don't rely on reputation scores or central visibility.
+    const exampleOutput = `Since you're looking for [coordination without platforms](https://index.network/intents/12345) and trust-preserving discovery, Seren is designing agent-led systems to negotiate access based on context, while the other is exploring intent schemas that don't rely on reputation scores or central visibility.
 
 Together, you could co-develop a context-aware coordination primitive: agents that interpret and match intents without revealing identity, a shared layer for discovery across personal data stores, and a working prototype that shows how agents from different graphs collaborate securely. This isn't just adjacent thinking — it's a chance to push the boundaries of what intent-based coordination can look like when it's real, composable, and private by default.`;
 
@@ -159,8 +150,7 @@ ${exampleOutput}
       {
         user_id: userData.id,
         user_name: userData.name,
-        intents_count: userData.intents.length,
-        output_format: outputFormat
+        intents_count: userData.intents.length
       }
     );
 

@@ -4,6 +4,7 @@ import { eq, sql, and } from 'drizzle-orm';
 import { sendEmail } from './email';
 import { connectionRequestTemplate, connectionAcceptedTemplate, connectionDeclinedTemplate } from './email-templates';
 import { synthesizeVibeCheck, synthesizeIntro } from '../synthesis';
+import { marked } from 'marked';
 
 async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise<boolean> {
   const [user1Intents, user2Intents] = await Promise.all([
@@ -77,11 +78,14 @@ export async function sendConnectionRequestEmail(initiatorUserId: string, receiv
     console.log('initiatorUserId', initiatorUserId);
 
     // Generate synthesis for the receiver
-    const synthesis = await synthesizeVibeCheck({
+    const synthesisMarkdown = await synthesizeVibeCheck({
       contextUserId: receiverUserId,
       targetUserId: initiatorUserId,
-      options: { outputFormat: 'html', characterLimit: 500 }
+      options: { characterLimit: 500 }
     });
+
+    // Convert markdown to HTML
+    const synthesis = await marked.parse(synthesisMarkdown);
 
     const template = connectionRequestTemplate(initiator[0].name, receiver[0].name, synthesis);
     await sendEmail({
@@ -120,10 +124,13 @@ export async function sendConnectionAcceptedEmail(accepterUserId: string, initia
     console.log('initiatorUserId', initiatorUserId);
 
     // Generate intro synthesis
-    const synthesis = await synthesizeIntro({
+    const synthesisMarkdown = await synthesizeIntro({
       senderUserId: accepterUserId,
       recipientUserId: initiatorUserId
     });
+
+    // Convert markdown to HTML
+    const synthesis = await marked.parse(synthesisMarkdown);
 
     const template = connectionAcceptedTemplate(initiator[0].name, accepter[0].name, synthesis);
     await sendEmail({
