@@ -13,6 +13,9 @@ export const sendEmail = async (options: {
     return;
   }
 
+  console.log('Email is disabled for now: not from mainnet yet');
+  return;
+
   try {
     const result = await resend.emails.send({
       from: 'Index Network <updates@agent.index.network>',
