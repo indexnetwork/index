@@ -662,7 +662,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
         </div>
       )}
       
-      <div className="bg-white border border-b-2 border-gray-800 flex items-center px-4 py-2 min-h-[54px] relative z-[9999]">
+      <div className={`bg-white border border-b-2 border-gray-800 flex items-center px-4 py-2 min-h-[54px] relative ${inputFocused ? 'z-[9999]' : 'z-0'}`}>
             <div className="flex-1 relative">
               {/* ContentEditable div */}
               <div
