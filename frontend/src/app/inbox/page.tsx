@@ -456,7 +456,7 @@ export default function InboxPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2 px-4 py-3 bg-black text-white border border-b-2 border-black font-ibm-plex-mono text-sm h-[54px]">
+                    <div className="flex items-center gap-2 px-4 py-3 bg-black text-white border border-b-2 border-black font-ibm-plex-mono text-xs h-[54px]">
                       <span>{discoveryIntents[0]?.summary || discoveryIntents[0]?.payload || 'Discovery filter'}</span>
                       <button
                         onClick={() => setDiscoveryIntents(undefined)}
