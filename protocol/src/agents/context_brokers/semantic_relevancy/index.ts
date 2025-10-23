@@ -100,8 +100,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     Provide a structured response indicating whether they are mutually related and if so, explain why in one sentence.`;
 
     const reasoningCall = traceableStructuredLlm(
-      "broker-semantic-relevancy-reasoning-generator",
-      ["context-broker", "broker-semantic-relevancy", "structured-output"],
+      "semantic-relevancy",
       {
         agent_type: "semantic_relevancy_broker",
         operation: "reasoning_generation",

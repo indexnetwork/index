@@ -145,8 +145,7 @@ ${exampleOutput}
     });
 
     const vibeCall = traceableLlm(
-      "vibe-check-synthesis",
-      [],
+      "vibe-checker",
       {
         user_id: userData.id,
         user_name: userData.name,

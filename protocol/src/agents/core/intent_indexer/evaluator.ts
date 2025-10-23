@@ -79,8 +79,7 @@ INSTRUCTIONS:
 Return only the numeric score (e.g., 0.85):`;
 
   const evaluateCall = traceableLlm(
-    "intent-indexer-index-evaluator",
-    [],
+    "intent-indexer",
     {
       agent_type: "intent_indexer",
       operation: "index_appropriation_evaluation",
@@ -131,8 +130,7 @@ INSTRUCTIONS:
 Return only the numeric score (e.g., 0.85):`;
 
   const evaluateCall = traceableLlm(
-    "intent-indexer-member-evaluator",
-    [],
+    "intent-indexer",
     {
       agent_type: "intent_indexer",
       operation: "member_appropriation_evaluation",

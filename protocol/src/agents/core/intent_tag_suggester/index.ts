@@ -100,7 +100,6 @@ GUIDELINES:
 
     const suggestCall = traceableStructuredLlm(
       "intent-tag-suggester",
-      ["tag-generation", "clustering", "structured-output"],
       {
         agent_type: "intent_tag_suggester",
         operation: "tag_suggestion",

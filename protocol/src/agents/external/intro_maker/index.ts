@@ -74,7 +74,6 @@ Generate the synthesis:`;
 
     const introCall = traceableLlm(
       "intro-maker",
-      [],
       {
         sender_id: data.sender.id,
         recipient_id: data.recipient.id,

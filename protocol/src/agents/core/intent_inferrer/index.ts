@@ -110,7 +110,6 @@ ${content.substring(0, 15000)}${content.length > 15000 ? '\n...[content truncate
 
     const intentInferCall = traceableStructuredLlm(
       "intent-inferrer",
-      ["structured-output"],
       {
         items_processed: itemCount,
         existing_intents_count: existingIntents.length,

@@ -64,7 +64,6 @@ Generate a concise summary:`;
 
     const summarizeCall = traceableLlm(
       "intent-summarizer",
-      [],
       {
         original_length: text.length,
         target_length: maxLength

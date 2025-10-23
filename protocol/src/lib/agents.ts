@@ -2,7 +2,7 @@ import db from './db';
 import { ChatOpenAI } from "@langchain/openai";
 import { CallbackHandler } from "langfuse-langchain";
 
-// Helper function to create Langfuse callback handler
+// Langfuse handler factory
 function createLangfuseHandler(sessionId: string, metadata: Record<string, any>) {
   return new CallbackHandler({
     publicKey: process.env.LANGFUSE_PUBLIC_KEY || "",
@@ -13,52 +13,44 @@ function createLangfuseHandler(sessionId: string, metadata: Record<string, any>)
   });
 }
 
+// Factory function to create LLM instance for a specific preset
+function createAgentLlm(preset: string): ChatOpenAI {
+  return new ChatOpenAI({
+    model: `@preset/${preset}`,
+    streaming: false,
+    apiKey: process.env.OPENROUTER_API_KEY!,
+    configuration: {
+      baseURL: 'https://openrouter.ai/api/v1',
+    }
+  });
+}
 
-// OpenRouter client for agent decisions
-export const llm = new ChatOpenAI({
-  model: process.env.OPENROUTER_MODEL || "openrouter/auto",
-  streaming: false,
-  apiKey: process.env.OPENROUTER_API_KEY!,
-  reasoning: {
-    effort: 'minimal',
-  },
+// Traceable LLM wrapper with Langfuse integration
+export function traceableLlm(preset: string, metadata: Record<string, any>) {
+  const llm = createAgentLlm(preset);
   
-  configuration: {
-    baseURL: 'https://openrouter.ai/api/v1',
-  }
-});
-
-
-// LLM wrapper utility with Langfuse tracing - uses single ChatOpenAI instance
-export function traceableLlm(name: string, tags: string[], metadata: Record<string, any>) {
   return async (prompt: string) => {
-    const handler = createLangfuseHandler(name, { ...metadata, tags });
-    
-    const response = await llm.invoke(prompt, { runName: name, callbacks: [handler] });
-    
-    // OpenRouter normalizes all responses to OpenAI format
+    const handler = createLangfuseHandler(preset, metadata);
+    const response = await llm.invoke(prompt, { runName: preset, callbacks: [handler] });
     return response;
   };
 }
 
-// Structured output wrapper utility with Langfuse tracing - uses single ChatOpenAI instance
-export function traceableStructuredLlm(name: string, tags: string[], metadata: Record<string, any>) {
+// Traceable structured output LLM wrapper with Langfuse integration
+export function traceableStructuredLlm(preset: string, metadata: Record<string, any>) {
+  const llm = createAgentLlm(preset);
+  
   return async (prompt: string, schema: any) => {
-    const handler = createLangfuseHandler(name, { ...metadata, tags });
-    
-    // Use LangChain's native withStructuredOutput method
+    const handler = createLangfuseHandler(preset, metadata);
     const structuredLlm = llm.withStructuredOutput(schema, {
       name: schema.name || 'structured_output'
     });
-    
     const response = await structuredLlm.invoke(prompt, { 
-      runName: name, 
+      runName: preset, 
       callbacks: [handler] 
     });
-    
     return response;
   };
 }
 
-
-export default db; 
+export default db;
