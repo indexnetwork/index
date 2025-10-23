@@ -30,11 +30,12 @@ export class IntentService {
    */
   static async getUserIntents(userId: string): Promise<Set<string>> {
     const existingIntents = await db.select({
-      payload: intents.payload
+      payload: intents.payload,
+      summary: intents.summary
     }).from(intents)
       .where(eq(intents.userId, userId));
     
-    return new Set(existingIntents.map(intent => intent.payload));
+    return new Set(existingIntents.map(intent => intent.summary || intent.payload));
   }
 
   /**

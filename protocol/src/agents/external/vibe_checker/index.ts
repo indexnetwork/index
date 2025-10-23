@@ -128,7 +128,7 @@ Generate synthesis:`
     );
 
     const response = await Promise.race([
-      vibeCall([systemMessage, userMessage]),
+      vibeCall([systemMessage, userMessage], { reasoning: { exclude: true, effort: 'minimal' } }),
       timeoutPromise
     ]);
 

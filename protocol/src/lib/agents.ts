@@ -27,10 +27,25 @@ function createAgentLlm(preset: string): ChatOpenAI {
 
 // Traceable LLM wrapper with Langfuse integration
 export function traceableLlm(preset: string, metadata: Record<string, any>) {
-  const llm = createAgentLlm(preset);
-  
-  return async (messages: Array<{role: string, content: string}>) => {
+  return async (messages: Array<{role: string, content: string}>, options?: { reasoning?: { exclude?: boolean; effort?: 'minimal' | 'low' | 'medium' | 'high'; max_tokens?: number } }) => {
     const handler = createLangfuseHandler(preset, metadata);
+    
+    // Build modelKwargs with reasoning config if provided
+    const modelKwargs: any = {};
+    if (options?.reasoning) {
+      modelKwargs.reasoning = options.reasoning;
+    }
+    
+    const llm = new ChatOpenAI({
+      model: `@preset/${preset}`,
+      streaming: false,
+      apiKey: process.env.OPENROUTER_API_KEY!,
+      configuration: {
+        baseURL: 'https://openrouter.ai/api/v1',
+      },
+      modelKwargs
+    });
+    
     const response = await llm.invoke(messages, { runName: preset, callbacks: [handler] });
     return response;
   };
