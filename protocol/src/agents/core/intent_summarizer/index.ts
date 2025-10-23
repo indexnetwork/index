@@ -42,20 +42,23 @@ export async function summarizeText(
       };
     }
 
-    const prompt = `Summarize the following text in approximately ${maxLength} characters or less.
+    const systemMessage = {
+      role: "system",
+      content: `You are a text summarization specialist. Create concise summaries that preserve key meaning and context.
 
-Create a brief, clear summary focusing on the main points.
+Rules:
+- Maximum ${maxLength} characters
+- Use clear, direct language
+- Maintain essential information
+- If content can't be meaningfully summarized, truncate intelligently`
+    };
 
-TEXT TO SUMMARIZE:
-${text.substring(0, 8000)}${text.length > 8000 ? '\n...[text truncated for processing]' : ''}
+    const userMessage = {
+      role: "user",
+      content: `Summarize this text:
 
-REQUIREMENTS:
-- Maintain the key meaning and context
-- If the context or content can’t be summarized meaningfully, simply truncate the text.
-- Use clear, concise language
-- You must Keep the summary under ${maxLength} characters
-
-Generate a concise summary:`;
+${text.substring(0, 8000)}${text.length > 8000 ? '\n...[truncated]' : ''}`
+    };
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -70,7 +73,7 @@ Generate a concise summary:`;
       }
     );
     const response = await Promise.race([
-      summarizeCall(prompt),
+      summarizeCall([systemMessage, userMessage]),
       timeoutPromise
     ]);
 

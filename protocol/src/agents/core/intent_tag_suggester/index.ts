@@ -64,34 +64,33 @@ export async function suggestTags(
       timeout = 30000
     } = options;
 
-    // Create the prompt for tag suggestion
+    // System message: Define role and tag generation rules
+    const systemMessage = {
+      role: "system",
+      content: `You are a tag suggestion analyst. Analyze user intents to identify themes and generate relevant tags.
+
+Tag rules:
+- 1-3 words, lowercase, specific
+- Scores 0-1 (minimum ${minRelevanceScore})
+- Avoid generic terms like "technology" or "work"
+- Each tag should cluster multiple related intents
+- Order by ${prompt ? 'relevance to user prompt' : 'prominence across intents'}
+- Return up to ${maxSuggestions} tags`
+    };
+
+    // User message: Provide intents and task
     const intentList = intents.map(intent => 
-      `- ID: ${intent.id}\n  Content: ${intent.payload}`
+      `- ${intent.payload}`
     ).join('\n');
 
-    const systemPrompt = `You are an intelligent tag suggester that analyzes user intents to identify themes and suggest relevant tags.
+    const userMessage = {
+      role: "user",
+      content: `${prompt ? `User's focus: "${prompt}"\n\n` : ''}Analyze these intents and suggest relevant tags:
 
-USER'S INTENTS:
 ${intentList}
 
-USER'S CURRENT PROMPT:
-"${prompt || '(No prompt provided - suggest most prominent themes)'}"
-
-YOUR TASK:
-1. Analyze all intents to identify common themes, topics, and patterns
-2. ${prompt ? 'Consider the user\'s prompt to understand their current focus' : 'Focus on the most prominent themes across all intents'}
-3. Generate tag suggestions that represent meaningful clusters of intents
-4. Each tag should cover multiple related intents when possible
-5. ${prompt ? 'Order tags by relevance to the prompt (most relevant first)' : 'Order tags by prominence (most common themes first)'}
-6. Return up to ${maxSuggestions} suggestions
-
-GUIDELINES:
-- Tag values should be 1-3 words, clear and specific, and LOWERCASE
-- Scores between 0 and 1 (only include scores >= ${minRelevanceScore})
-- Values will be added to the prompt as comma-separated text
-- Focus on actionable, meaningful clusters that expand the user's expression
-- If the prompt is empty, suggest the most prominent themes from their intents
-- Avoid overly generic tags like "technology" or "work"`;
+Generate tag suggestions:`
+    };
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -110,7 +109,7 @@ GUIDELINES:
     );
 
     const response = await Promise.race([
-      suggestCall(systemPrompt, TagSuggestionSchema),
+      suggestCall([systemMessage, userMessage], TagSuggestionSchema),
       timeoutPromise
     ]);
     

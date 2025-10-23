@@ -29,9 +29,9 @@ function createAgentLlm(preset: string): ChatOpenAI {
 export function traceableLlm(preset: string, metadata: Record<string, any>) {
   const llm = createAgentLlm(preset);
   
-  return async (prompt: string) => {
+  return async (messages: Array<{role: string, content: string}>) => {
     const handler = createLangfuseHandler(preset, metadata);
-    const response = await llm.invoke(prompt, { runName: preset, callbacks: [handler] });
+    const response = await llm.invoke(messages, { runName: preset, callbacks: [handler] });
     return response;
   };
 }
@@ -40,12 +40,12 @@ export function traceableLlm(preset: string, metadata: Record<string, any>) {
 export function traceableStructuredLlm(preset: string, metadata: Record<string, any>) {
   const llm = createAgentLlm(preset);
   
-  return async (prompt: string, schema: any) => {
+  return async (messages: Array<{role: string, content: string}>, schema: any) => {
     const handler = createLangfuseHandler(preset, metadata);
     const structuredLlm = llm.withStructuredOutput(schema, {
       name: schema.name || 'structured_output'
     });
-    const response = await structuredLlm.invoke(prompt, { 
+    const response = await structuredLlm.invoke(messages, { 
       runName: preset, 
       callbacks: [handler] 
     });

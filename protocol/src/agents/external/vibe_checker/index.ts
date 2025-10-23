@@ -68,76 +68,50 @@ export async function vibeCheck(
 
     const { timeout = 30000, characterLimit } = options;
 
-    const formatInstructions = `- Always output as markdown.
-- Add inline markdown links only for the most important intents: [intent text](https://index.network/intents/:id)
-- Do not use bold (**) or italic (*) formatting`;
+    // System message: Define role, tone, and format
+    const systemMessage = {
+      role: "system",
+      content: `You are a collaboration synthesis generator. Create a warm, practical paragraph describing what two people could do together.
 
-    const lengthInstructions = characterLimit 
-      ? `- Keep the response under ${characterLimit} characters.`
-      : '- Keep it concise and actionable';
+Style:
+- Warm and friendly, not formal
+- Real and practical (no hypotheticals)
+- Direct and concise
 
-    const exampleOutput = `Since you're looking for [coordination without platforms](https://index.network/intents/12345) and trust-preserving discovery, Seren is designing agent-led systems to negotiate access based on context, while the other is exploring intent schemas that don't rely on reputation scores or central visibility.
+Format:
+- Markdown with 2-3 inline hyperlinks: [descriptive phrase](https://index.network/intents/ID)
+- Link natural phrases like "UX designers crafting interfaces" not "UX designers (link)"
+- Place links in beginning/middle of paragraph, not at the end
+- No bold, italic, or title${characterLimit ? `\n- Maximum ${characterLimit} characters` : ''}
 
-Together, you could co-develop a context-aware coordination primitive: agents that interpret and match intents without revealing identity, a shared layer for discovery across personal data stores, and a working prototype that shows how agents from different graphs collaborate securely. This isn't just adjacent thinking — it's a chance to push the boundaries of what intent-based coordination can look like when it's real, composable, and private by default.`;
-
-    const fewShotExamples = `
-GOOD EXAMPLES (DO):
-✅ "By teaming up with [UX designers crafting agent interfaces](https://index.network/intents/123), you can prototype accessible dashboards."
-✅ "Partner with [social media influencers](https://index.network/intents/456) to showcase the staking model to broader audiences."
-✅ "Collaborate with [early adopters testing discovery systems](https://index.network/intents/789) for real-world feedback."
-
-BAD EXAMPLES (DON'T):
-❌ "By teaming up with UX designers (link) you can prototype dashboards."
-❌ "Partner with social media influencers (UX design effort) to showcase the model."
-❌ "Collaborate with early adopters seeking early adopters to test systems."
-❌ "Working with the group searching for UX designers to craft interfaces (UX design effort)."
-❌ "Connecting with social media influencers (link) and community managers (community manager outreach)."
-
-HYPERLINK POSITIONING RULES:
-- Link descriptive phrases that naturally flow: "UX designers crafting agent interfaces" not "UX designers (link)"
-- Avoid meta descriptions in parentheses like "(link)", "(UX design effort)", "(community manager outreach)"
-- Make links contextual and readable: "early adopters testing discovery systems" not "early adopters seeking early adopters" but not too long.
-- Position links where they enhance understanding, not interrupt flow`;
-
-    const prompt = `Generate a "What Could Happen Here" (what these two people can do together) collaboration synthesis text.
-
-
-INTENT CONTEXTS AND AGENT REASONING:
-${userData.intents.slice(0, 10).map(intent => `
-- Intent Text: ${intent.payload}
-- Intent Link: /intents/${intent.id}
-- Agent Analysis: ${intent.reasons.map(r => r.reasoning).join('; ')}
-`).join('\n')}
-
-GUIDELINES:
-${formatInstructions}
-- Be concise. Cut the bullshit, no imaginary things. Be real and practical.
-- Use warm and friendly tone.
-- Dont justify, just share what they can do together.
-
-- Use "You" vs "${userData.name}" context
-- When talking about other, suggested user, use their name ( no surnames) as ${userData.name} and bio as "${userData.intro}"
-- Contextualize user's intents as they wants, thinks, seeks, etc. Dont treat them as a pure database object.
+Structure:
+- Address reader as "you" vs the other person by first name only
+- Describe their work/interests from agent analysis
 - Focus on concrete collaboration possibilities
-- When referring to intents, hyperlink key phrases that naturally flow in the text - you must avoid parenthetical meta descriptions like "(link)"
-- Position hyperlinks for optimal position in the text - link the most descriptive and contextual parts of sentences.
-- Dont add hyperlinks to the end of paragraph.  Beginning and middle is good.
-- Use at least 2 but maximum 3 hyperlinks total - only link the most important/relevant intents
-- Keep response to maximum 1 paragraph length, but you can add new lines.
+- Single paragraph, can use line breaks`
+    };
 
-${lengthInstructions}
-- Dont add "What Could Happen Here" title.
-- Dont start with name or intro. 
+    // User message: Provide intent data and task
+    const intentContext = userData.intents.slice(0, 10).map(intent => 
+      `- "${intent.payload}" (ID: ${intent.id})\n  Analysis: ${intent.reasons.map(r => r.reasoning).join('; ')}`
+    ).join('\n');
 
-------
-${fewShotExamples}
+    const userMessage = {
+      role: "user",
+      content: `Generate collaboration synthesis for you + ${userData.name}.
 
-------
-Example Output: 
+### ${userData.name}'s Profile
+Bio: ${userData.intro}
+Intents:
+${intentContext}
 
-${exampleOutput}
+### Examples
+✅ "Since you're looking for [coordination without platforms](https://index.network/intents/ID), ${userData.name} is designing agent-led systems to negotiate access. Together, you could co-develop a context-aware coordination primitive."
 
-`;
+✅ "By teaming up with [React developers](https://index.network/intents/ID), you can build the interface while ${userData.name} handles [backend architecture](https://index.network/intents/ID)."
+
+Generate synthesis:`
+    };
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -153,9 +127,8 @@ ${exampleOutput}
       }
     );
 
-    console.log(`Prompt: ${prompt}`);
     const response = await Promise.race([
-      vibeCall(prompt),
+      vibeCall([systemMessage, userMessage]),
       timeoutPromise
     ]);
 

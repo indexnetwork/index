@@ -67,41 +67,55 @@ export async function analyzeContent(
       })).min(count).max(count).describe(`Array of ${count} high-quality intent objects`)
     });
 
-    // Build context about existing intents to avoid duplicates
-    const existingContext = [];
-    if (existingIntents.length > 0) {
-      existingContext.push(`EXISTING USER INTENTS (do not duplicate these):\n${existingIntents.map(intent => `- ${intent}`).join('\n')}`);
-    }
+    // System message: Define role and core constraints
+    const systemMessage = {
+      role: "system",
+      content: `You are an intent generation specialist. Your role is to analyze content and generate specific, actionable intents that describe what the user wants to find or connect with.
 
-    // Use text instruction as guidance if provided
-    const instructionText = textInstruction ? `\n\nUSER INSTRUCTION: ${textInstruction}\nUse this instruction to guide how you analyze the content and what types of intents to generate.\n` : '';
+Core rules:
+- Generate intents for the PRIMARY target audience (70%), with a few for SECONDARY audiences (30%)
+- Each intent must be specific, actionable, and professional
+- Remove all personal information (names, emails, phone numbers)
+- Avoid generic phrases; be concrete about what/who the user seeks
+- Output exactly the requested number of NEW intents`
+    };
 
-    const prompt = `You are analyzing content from ${itemCount} items and generating ${count} new intents.${instructionText}
+    // User message: Provide task, context, and data
+    const existingContext = existingIntents.length > 0 
+      ? `\n### Existing Intents (do NOT duplicate)\n${existingIntents.map(i => `- ${i}`).join('\n')}\n`
+      : '';
+    
+    const instructionContext = textInstruction 
+      ? `\n### User Guidance\n${textInstruction}\n`
+      : '';
 
-${existingContext.length > 0 ? existingContext.join('\n\n') + '\n\n' : ''}REQUIREMENTS:
-- Generate ${count} completely NEW intents that are different from any existing intents or suggestions listed above
-- Analyze the content to identify the primary target audience and their needs
-- Prioritize generating many intents for the most likely target audience, but also add few for secondary target audiences
-- Start with most important intents
-- Strip out any personal information, names, etc.
-- Make each intent specific and actionable
+    const userMessage = {
+      role: "user",
+      content: `Generate ${count} new intents from ${itemCount} content items.
+${instructionContext}${existingContext}
+### Content Analysis Examples
+Q: Pitch deck uploaded → Who does the user want to find?
+A: Primarily investors (3 intents), then partners (1), early customers (1)
 
-For example:
-If I uploaded a pitch deck, I would most likely want to generate intents for VCs, angel investors, and other investors. so 3 investor intent, 1 partnership, 1 early customer.
-If I uploaded a research paper, I would want to generate intents to find other researchers, and other people looking for research.
-If I uploaded a job posting, I would want to find candidates, and other people looking for jobs.
+Q: Research paper uploaded → Who does the user want to find?
+A: Other researchers in the field, institutions seeking this research
 
-Examples intents:
-- "Looking for early-stage investors interested in AI and machine learning startups with strong technical backgrounds and experience in scaling deep tech companies"
-- "Seeking venture capital firms focused on technology and innovation investments, particularly those with a track record of backing Series A and B rounds in emerging markets"
-- "Connecting with angel investors who support emerging tech companies and have expertise in product-market fit validation and go-to-market strategy development"
-- "Targeting partnerships with developers and technical teams for platform integration, specifically those working on enterprise SaaS solutions and API-first architectures"
-- "Reaching out to community managers and network leaders for collaboration opportunities, particularly those building developer communities and technical talent networks in emerging tech hubs"
+Q: Job posting uploaded → Who does the user want to find?
+A: Qualified candidates, recruiters in this space
 
-CONTENT:
-${content.substring(0, 15000)}${content.length > 15000 ? '\n...[content truncated for processing]' : ''}
+### Quality Examples
+✅ "Looking for early-stage investors in AI/ML startups with experience scaling deep tech companies"
+✅ "Seeking venture capital firms with track records in Series A/B rounds for emerging markets"
+✅ "Connecting with developers for enterprise SaaS platform integration and API partnerships"
 
-`;
+❌ "Looking for investors" (too generic)
+❌ "Contact John Smith about opportunities" (contains personal info)
+
+### Content to Analyze
+${content.substring(0, 15000)}${content.length > 15000 ? '\n...[truncated]' : ''}
+
+Generate ${count} new intents:`
+    };
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -117,7 +131,7 @@ ${content.substring(0, 15000)}${content.length > 15000 ? '\n...[content truncate
       }
     );
     const response = await Promise.race([
-      intentInferCall(prompt, IntentSchema),
+      intentInferCall([systemMessage, userMessage], IntentSchema),
       timeoutPromise
     ]);
 

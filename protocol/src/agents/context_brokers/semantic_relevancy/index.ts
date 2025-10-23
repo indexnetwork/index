@@ -91,13 +91,33 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. If not mutual, provide empty string.")
     });
 
-    // Create new stake with reasoning from LLM - but only if they're mutually related
-    const reasoningPrompt = `Analyze these two intents and determine if they have mutual intent (both intents relate to or depend on each other).
+    // System message: Define role and evaluation criteria
+    const systemMessage = {
+      role: "system",
+      content: `You are a semantic relationship analyst. Determine if two intents have MUTUAL relevance (both relate to or complement each other).
 
-    Intent 1: ${JSON.stringify(currentIntent.payload)}
-    Intent 2: ${JSON.stringify(relatedIntent.payload)}
+Mutual criteria:
+- Both intents seek things that complement each other (e.g., investor + startup, designer + developer)
+- Both intents could lead to a valuable connection or collaboration
+- There's bidirectional value (not just one-way interest)
 
-    Provide a structured response indicating whether they are mutually related and if so, explain why in one sentence.`;
+Examples:
+✅ MUTUAL: "Seeking AI investors" + "Looking for AI startups to fund" → Both want to connect
+✅ MUTUAL: "Need React developers" + "Looking for projects to build with React" → Complementary
+❌ NOT MUTUAL: "Seeking investors" + "Seeking investors" → Same need, no complement
+❌ NOT MUTUAL: "Looking for designers" + "Looking for investors" → Unrelated needs`
+    };
+
+    // User message: Provide the two intents to compare
+    const userMessage = {
+      role: "user",
+      content: `Analyze these intents for mutual relevance:
+
+Intent 1: ${currentIntent.payload}
+Intent 2: ${relatedIntent.payload}
+
+Are these mutually relevant? If yes, explain why in one sentence.`
+    };
 
     const reasoningCall = traceableStructuredLlm(
       "semantic-relevancy",
@@ -109,7 +129,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       }
     );
     
-    const response = await reasoningCall(reasoningPrompt, MutualIntentSchema);
+    const response = await reasoningCall([systemMessage, userMessage], MutualIntentSchema);
     
     // Only create stake if the intents are mutually related
     if (response.isMutual && response.reasoning.trim()) {

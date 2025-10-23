@@ -43,29 +43,33 @@ export async function introMaker(
 
     const { timeout = 30000 } = options;
 
-    const prompt = `Generate a brief introduction synthesis for an email connection between two users based on agent reasonings.
+    const systemMessage = {
+      role: "system",
+      content: `You are an email introduction writer. Generate warm, conversational synthesis explaining why two people should connect.
 
-SENDER: ${data.sender.userName}
-Agent reasonings about ${data.sender.userName}:
+Style:
+- 2-3 sentences
+- Warm and conversational, not formal
+- Focus on shared themes or complementary work
+- No "What could happen here" phrasing
+- Assume greetings already said
+- No intent IDs or links`
+    };
+
+    const userMessage = {
+      role: "user",
+      content: `Write introduction synthesis for email connecting two users.
+
+${data.sender.userName}:
 ${data.sender.reasonings.map(r => `- ${r}`).join('\n')}
 
-RECIPIENT: ${data.recipient.userName}  
-Agent reasonings about ${data.recipient.userName}:
+${data.recipient.userName}:
 ${data.recipient.reasonings.map(r => `- ${r}`).join('\n')}
 
-GUIDELINES:
-- Write 2-3 sentences explaining why this connection makes sense
-- Focus on shared themes, complementary work, or collaboration opportunities
-- Be conversational and warm, not overly formal
-- Don't use "What could happen here" - this is for email intros
-- Assume you already said hello to the users and already said It's great to connect you both!
-- Don't mention specific intent IDs or links
-- Focus on the people and their work/interests based on reasonings
+Example: "You both share a strong focus around coordination without platforms and trust-preserving discovery. Sarah's working on agent-led systems that negotiate access based on context, while David is exploring intent schemas that don't rely on reputation scores. This feels like a connection where you could build something meaningful together."
 
-Example output:
-You both share a strong focus around coordination without platforms and trust-preserving discovery. Sarah's working on agent-led systems that negotiate access based on context, while David is exploring intent schemas that don't rely on reputation scores or central visibility. This feels like a connection where you could build something meaningful together around private, intent-driven coordination.
-
-Generate the synthesis:`;
+Generate synthesis:`
+    };
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -82,7 +86,7 @@ Generate the synthesis:`;
       }
     );
     const response = await Promise.race([
-      introCall(prompt),
+      introCall([systemMessage, userMessage]),
       timeoutPromise
     ]);
 

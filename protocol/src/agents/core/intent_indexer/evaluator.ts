@@ -57,26 +57,31 @@ async function evaluateIndexAppropriation(
   indexPrompt: string,
   sourceName?: string
 ): Promise<number> {
-  const sourceInfo = sourceName ? `\n\nINTENT SOURCE:\n${sourceName}` : '';
-  const prompt = `You are an intent appropriation evaluator that determines how well an intent matches an index purpose.
+  const systemMessage = {
+    role: "system",
+    content: `You are an intent appropriation evaluator. Determine how well an intent matches an index purpose.
 
-INTENT TO EVALUATE:
-${intentPayload}${sourceInfo}
+Scoring rubric:
+- 0.9-1.0: Highly appropriate, perfect match
+- 0.7-0.8: Good match, should be included
+- 0.5-0.6: Moderate, borderline
+- 0.3-0.4: Low appropriation, poor fit
+- 0.0-0.2: Not appropriate
 
-INDEX PURPOSE:
-${indexPrompt}
+Output format: Return ONLY a decimal number (e.g., 0.85)`
+  };
 
-INSTRUCTIONS:
-- Analyze how appropriate this intent is for the index purpose
-- Focus only on the index purpose, ignore any other context
-- Return ONLY a decimal number between 0.0 and 1.0 where:
-  - 0.9-1.0: Highly appropriate, perfect match for the index purpose
-  - 0.7-0.8: Good appropriation, should be included
-  - 0.5-0.6: Moderate appropriation, borderline
-  - 0.3-0.4: Low appropriation, probably not a good fit
-  - 0.0-0.2: Not appropriate, should not be included
+  const sourceInfo = sourceName ? `\nSource: ${sourceName}\n` : '';
+  const userMessage = {
+    role: "user",
+    content: `Evaluate this intent against the index purpose:
+${sourceInfo}
+Intent: ${intentPayload}
 
-Return only the numeric score (e.g., 0.85):`;
+Index purpose: ${indexPrompt}
+
+Score:`
+  };
 
   const evaluateCall = traceableLlm(
     "intent-indexer",
@@ -88,7 +93,7 @@ Return only the numeric score (e.g., 0.85):`;
     }
   );
   
-  const response = await evaluateCall(prompt);
+  const response = await evaluateCall([systemMessage, userMessage]);
   const scoreText = (response.content as string).trim();
   const score = parseFloat(scoreText);
   
@@ -108,26 +113,31 @@ async function evaluateMemberAppropriation(
   memberPrompt: string,
   sourceName?: string
 ): Promise<number> {
-  const sourceInfo = sourceName ? `\n\nINTENT SOURCE:\n${sourceName}` : '';
-  const prompt = `You are an intent appropriation evaluator that determines how well an intent matches a member's sharing focus.
+  const systemMessage = {
+    role: "system",
+    content: `You are an intent appropriation evaluator. Determine how well an intent matches a member's sharing preferences.
 
-INTENT TO EVALUATE:
-${intentPayload}${sourceInfo}
+Scoring rubric:
+- 0.9-1.0: Perfect match for sharing focus
+- 0.7-0.8: Good alignment with intent
+- 0.5-0.6: Moderate, borderline match
+- 0.3-0.4: Low appropriation, poor match
+- 0.0-0.2: Doesn't match sharing focus
 
-MEMBER SHARING FOCUS:
-${memberPrompt}
+Output format: Return ONLY a decimal number (e.g., 0.85)`
+  };
 
-INSTRUCTIONS:
-- Analyze how appropriate this intent is to what the member wants to share
-- Focus only on the member's sharing preferences, ignore any other context
-- Return ONLY a decimal number between 0.0 and 1.0 where:
-  - 0.9-1.0: Highly appropriate, perfect match for member's sharing focus
-  - 0.7-0.8: Good appropriation, aligns with member's intent
-  - 0.5-0.6: Moderate appropriation, borderline match
-  - 0.3-0.4: Low appropriation, probably not what member wants to share
-  - 0.0-0.2: Not appropriate, doesn't match member's sharing focus
+  const sourceInfo = sourceName ? `\nSource: ${sourceName}\n` : '';
+  const userMessage = {
+    role: "user",
+    content: `Evaluate this intent against the member's sharing preferences:
+${sourceInfo}
+Intent: ${intentPayload}
 
-Return only the numeric score (e.g., 0.85):`;
+Member wants to share: ${memberPrompt}
+
+Score:`
+  };
 
   const evaluateCall = traceableLlm(
     "intent-indexer",
@@ -139,7 +149,7 @@ Return only the numeric score (e.g., 0.85):`;
     }
   );
   
-  const response = await evaluateCall(prompt);
+  const response = await evaluateCall([systemMessage, userMessage]);
   const scoreText = (response.content as string).trim();
   const score = parseFloat(scoreText);
   
