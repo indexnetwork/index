@@ -4,8 +4,7 @@ import { eq, sql, and } from 'drizzle-orm';
 import { sendEmail } from './email';
 import { connectionRequestTemplate, connectionAcceptedTemplate, connectionDeclinedTemplate } from './email-templates';
 import { synthesizeVibeCheck, synthesizeIntro } from '../synthesis';
-import { marked } from 'marked';
-
+  
 async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise<boolean> {
   const [user1Intents, user2Intents] = await Promise.all([
     db.select({ id: intents.id }).from(intents).where(eq(intents.userId, user1Id)),
@@ -85,6 +84,7 @@ export async function sendConnectionRequestEmail(initiatorUserId: string, receiv
     });
 
     // Convert markdown to HTML
+    const { marked } = await import('marked');
     const synthesis = await marked.parse(synthesisMarkdown);
 
     const template = connectionRequestTemplate(initiator[0].name, receiver[0].name, synthesis);
@@ -130,6 +130,7 @@ export async function sendConnectionAcceptedEmail(accepterUserId: string, initia
     });
 
     // Convert markdown to HTML
+    const { marked } = await import('marked');
     const synthesis = await marked.parse(synthesisMarkdown);
 
     const template = connectionAcceptedTemplate(initiator[0].name, accepter[0].name, synthesis);
