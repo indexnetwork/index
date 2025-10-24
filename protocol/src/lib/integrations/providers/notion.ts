@@ -34,27 +34,44 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 
-    // Search pages sorted by last_edited_time desc
+    const searchArgs: any = {
+      query: '',
+      page_size: 100,
+    };
+
+    if (lastSyncAt) {
+      log.info('🔄 Incremental sync - filtering client-side', { after: lastSyncAt.toISOString() });
+    } else {
+      log.info('🆕 First sync - fetching all pages');
+    }
+
     const search = await composio.tools.execute('NOTION_SEARCH_NOTION_PAGE', {
       userId: integration.userId,
       connectedAccountId,
-      arguments: {
-        query: '',
-        sort: { timestamp: 'last_edited_time', direction: 'descending' },
-        page_size: 100,
-      },
+      arguments: searchArgs,
     });
     
-    // Parse search results directly from API response
-    const items = (search as any)?.data?.results ?? [];
-    log.info('📄 Notion pages found', { count: items.length });
+    const items =
+      (search as any)?.data?.response_data?.results ??
+      (search as any)?.data?.results ??
+      [];
+    log.info('Notion pages', { count: items.length });
 
     const allPages: NotionPage[] = [];
     
     for (const item of items) {
-      if (!item?.id) continue; // Skip invalid items
-      const lastModified = new Date(item.last_edited_time as any);
-      if (lastSyncAt && lastModified <= lastSyncAt) continue;
+      if (!item?.id) continue;
+      
+      if (lastSyncAt) {
+        const lastModified = new Date(item.last_edited_time as any);
+        if (isNaN(lastModified.getTime())) {
+          log.warn('Invalid last_edited_time for Notion page', { pageId: item.id, last_edited_time: item.last_edited_time });
+          continue;
+        }
+        if (lastModified < lastSyncAt) {
+          continue;
+        }
+      }
 
       try {
         const blocksResp = await composio.tools.execute('NOTION_FETCH_BLOCK_CONTENTS', {
@@ -63,8 +80,11 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
           arguments: { block_id: item.id, page_size: 100 },
         });
         
-        // Parse blocks directly from API response
-        const blocks = (blocksResp as any)?.data?.results ?? (blocksResp as any)?.data?.block_child_data?.results ?? [];
+        const blocks =
+          (blocksResp as any)?.data?.block_child_data?.results ??
+          (blocksResp as any)?.data?.response_data?.results ??
+          (blocksResp as any)?.data?.results ??
+          [];
         const content = extractContentFromBlocks(blocks);
         const title = extractTitle(item);
         
@@ -84,11 +104,8 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
       }
     }
 
-    log.info('✅ Notion sync completed', { 
-      integrationId, 
-      pagesProcessed: allPages.length,
-      totalContentLength: allPages.reduce((sum, page) => sum + page.content.length, 0)
-    });
+    log.info('Notion objects sync done', { integrationId, objects: allPages.length });
+    
     return allPages;
   } catch (error) {
     log.error('💥 Notion sync failed', { integrationId, error: (error as Error).message });
