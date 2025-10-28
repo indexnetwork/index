@@ -5,10 +5,9 @@
  */
 
 import { UnstructuredClient } from "unstructured-client";
-import { Strategy } from "unstructured-client/sdk/models/shared";
 import { traceableStructuredLlm } from "../../../lib/agents";
 import { isFileExtensionSupported } from "../../../lib/uploads.config";
-import { loadFileContent, loadFilesInParallel } from "../../../lib/uploads";
+import { loadFilesInParallel } from "../../../lib/uploads";
 import * as fs from 'fs';
 import path from 'path';
 import { z } from "zod";
@@ -70,52 +69,74 @@ export async function analyzeContent(
     // System message: Define role and core constraints
     const systemMessage = {
       role: "system",
-      content: `You are an intent generation specialist. Your role is to analyze content and generate specific, actionable intents that describe what the user wants to find or connect with.
+      content: `You are an intent generation specialist. Your role is to analyze content and generate specific intents that reflect the user's actual interests, focus areas, and intellectual pursuits based on what they've uploaded.
 
 Core rules:
-- Generate intents for the PRIMARY target audience (70%), with a few for SECONDARY audiences (30%)
-- Each intent must be specific, actionable, and professional
+- Intents must reflect the user's ACTUAL interests derived from their content, not imaginary networking personas
+- Use analytical language that describes what the user is studying, exploring, or analyzing, 
+- Each intent must be specific, concrete, and grounded in the source material
 - Remove all personal information (names, emails, phone numbers)
-- Avoid generic phrases; be concrete about what/who the user seeks
-- Output exactly the requested number of NEW intents`
+- Avoid generic phrases like "seeking partnerships" or "looking for investors" unless those exact phrases appear in the source content
+- Output exactly the requested number of NEW intents
+
+Content Analysis Examples:
+Q: Pitch deck uploaded → What is the user interested in?
+A: Primarily the business model and market opportunity (3 intents), with some focus on competitive landscape and technical architecture (2 intents)
+
+Q: Research paper uploaded → What is the user interested in?
+A: The methodology and findings of the research, applications of the research in related fields, gaps or questions raised by the work
+
+Q: Ben Thompson's "The Great Unbundling" article → What is the user interested in?
+A: How zero-cost distribution reshapes media economics, bundle vs. unbundle pricing dynamics, attention-based integration models replacing distribution monopolies
+
+Quality Examples:
+✅ "Analyzing how zero-cost digital distribution reshapes the balance between content creation and monetization in media industries"
+✅ "Investigating bundle economics across music, video, and text sectors to quantify consumer surplus and pricing elasticity changes"
+✅ "Exploring the shift from distribution-based monopolies to attention-based integrations in digital media ecosystems"
+✅ "Comparing pre- and post-Internet media business models to identify structural dependencies between distribution ownership and profit generation"
+
+❌ "Looking for investors" (too generic and not grounded in actual user interest, dont use it unless the user explicitly says they are looking for investors)
+❌ "Seeking partnerships with media companies" (fictional networking persona, not derived from content, dont use it unless the user explicitly says they are seeking partnerships with media companies)
+❌ "Contact John Smith about opportunities" (contains personal info, dont use it unless the user explicitly says they are seeking opportunities with John Smith)`
     };
 
-    // User message: Provide task, context, and data
-    const existingContext = existingIntents.length > 0 
-      ? `\n### Existing Intents (do NOT duplicate)\n${existingIntents.map(i => `- ${i}`).join('\n')}\n`
-      : '';
+    // Build user messages logically:
+    // 1. Context (user guidance + existing intents)
+    // 2. Content to analyze
+    // 3. Task instruction
     
-    const instructionContext = textInstruction 
-      ? `\n### User Guidance\n${textInstruction}\n`
-      : '';
-
-    const userMessage = {
+    const messages: any[] = [systemMessage];
+    
+    // Message 1: Provide context (if any)
+    const contextParts: string[] = [];
+    
+    if (textInstruction) {
+      contextParts.push(`User Guidance:\n${textInstruction}`);
+    }
+    
+    if (existingIntents.length > 0) {
+      const intentsToShow = existingIntents.slice(0, 50);
+      contextParts.push(`Existing Intents (do NOT generate duplicates):\n${intentsToShow.map(i => `- ${i}`).join('\n')}`);
+    }
+    
+    if (contextParts.length > 0) {
+      messages.push({
+        role: "user",
+        content: contextParts.join('\n\n')
+      });
+    }
+    
+    // Message 2: Provide the content to analyze
+    messages.push({
       role: "user",
-      content: `Generate ${count} new intents from ${itemCount} content items.
-${instructionContext}${existingContext}
-### Content Analysis Examples
-Q: Pitch deck uploaded → Who does the user want to find?
-A: Primarily investors (3 intents), then partners (1), early customers (1)
-
-Q: Research paper uploaded → Who does the user want to find?
-A: Other researchers in the field, institutions seeking this research
-
-Q: Job posting uploaded → Who does the user want to find?
-A: Qualified candidates, recruiters in this space
-
-### Quality Examples
-✅ "Looking for early-stage investors in AI/ML startups with experience scaling deep tech companies"
-✅ "Seeking venture capital firms with track records in Series A/B rounds for emerging markets"
-✅ "Connecting with developers for enterprise SaaS platform integration and API partnerships"
-
-❌ "Looking for investors" (too generic)
-❌ "Contact John Smith about opportunities" (contains personal info)
-
-### Content to Analyze
-${content.substring(0, 15000)}${content.length > 15000 ? '\n...[truncated]' : ''}
-
-Generate ${count} new intents:`
-    };
+      content: `Content to analyze (${itemCount} items):\n\n${content}`
+    });
+    
+    // Message 3: Give the specific task instruction
+    messages.push({
+      role: "user",
+      content: `Generate exactly ${count} new intents based on the content above.`
+    });
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -131,7 +152,7 @@ Generate ${count} new intents:`
       }
     );
     const response = await Promise.race([
-      intentInferCall([systemMessage, userMessage], IntentSchema),
+      intentInferCall(messages, IntentSchema),
       timeoutPromise
     ]);
 

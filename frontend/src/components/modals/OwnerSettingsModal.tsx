@@ -15,7 +15,6 @@ import { useNotifications } from '@/contexts/NotificationContext';
 interface Member {
   id: string;
   name: string;
-  email: string;
   permissions: string[];
   avatar?: string;
 }
@@ -109,7 +108,6 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
       setSuggestedUsers(users.map(user => ({
         id: user.id,
         name: user.name,
-        email: user.email,
         avatar: user.avatar,
         permissions: [] // Will be set when adding member
       })));
@@ -669,7 +667,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                         <Plus className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <Input
                           ref={searchInputRef}
-                          placeholder="Search people by name or email..."
+                          placeholder="Search people by name..."
                           value={memberSearchQuery}
                           onChange={(e) => handleSearchInputChange(e.target.value)}
                           onFocus={() => {
@@ -704,7 +702,6 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                             </div>
                             <div>
                               <p className="text-sm text-black font-medium">{member.name}</p>
-                              <p className="text-xs text-gray-600">{member.email}</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -771,7 +768,6 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                      <p className="text-xs text-gray-500">{user.email}</p>
                     </div>
                     <Plus className="h-4 w-4 text-gray-400" />
                   </button>

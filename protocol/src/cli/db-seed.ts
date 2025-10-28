@@ -6,6 +6,8 @@ import path from 'path';
 const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
+console.log(process.env.DATABASE_URL);
+
 import { Command } from 'commander';
 import { eq } from 'drizzle-orm';
 import db, { closeDb } from '../lib/db';

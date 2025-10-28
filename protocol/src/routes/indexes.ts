@@ -350,7 +350,6 @@ router.get('/:id',
         db.select({
           userId: indexMembers.userId,
           userName: users.name,
-          userEmail: users.email,
           userAvatar: users.avatar,
           permissions: indexMembers.permissions,
           memberCreatedAt: indexMembers.createdAt
@@ -382,7 +381,6 @@ router.get('/:id',
         members: indexMembersData.map(member => ({
           id: member.userId,
           name: member.userName,
-          email: member.userEmail,
           avatar: member.userAvatar,
           permissions: member.permissions,
           createdAt: member.memberCreatedAt
@@ -1054,7 +1052,6 @@ router.get('/:id/members',
       const members = await db.select({
         id: users.id,
         name: users.name,
-        email: users.email,
         avatar: users.avatar,
         permissions: indexMembers.permissions,
         createdAt: indexMembers.createdAt,

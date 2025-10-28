@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import * as Tabs from "@radix-ui/react-tabs";
@@ -57,6 +57,17 @@ export default function InboxPage() {
   const synthesisService = useSynthesis();
   const discoverService = useDiscover();
 
+  // Memoize API parameters to prevent unnecessary recreations
+  const apiIndexIds = useMemo(() => 
+    selectedIndexIds.length > 0 ? selectedIndexIds : undefined,
+    [selectedIndexIds]
+  );
+
+  const apiIntentIds = useMemo(() => 
+    discoveryIntents?.map(i => i.id),
+    [discoveryIntents]
+  );
+
   // Fetch synthesis for a user
   const fetchSynthesis = useCallback(async (targetUserId: string, intentIds?: string[], indexIds?: string[]) => {
     const cacheKey = `${targetUserId}-${(indexIds || []).sort().join(',')}`;
@@ -85,11 +96,9 @@ export default function InboxPage() {
   // Fetch discovery data (default tab - priority)
   const fetchDiscovery = useCallback(async () => {
     try {
-      const apiIndexIds = selectedIndexIds.length > 0 ? selectedIndexIds : undefined;
-      
       const discoverData = await discoverService.discoverUsers({ 
         indexIds: apiIndexIds, 
-        intentIds: discoveryIntents?.map(i => i.id),
+        intentIds: apiIntentIds,
         excludeDiscovered: true, 
         limit: 50 
       });
@@ -126,13 +135,11 @@ export default function InboxPage() {
     } finally {
       setDiscoveryLoading(false);
     }
-  }, [discoverService, fetchSynthesis, selectedIndexIds, discoveryIntents]);
+  }, [discoverService, fetchSynthesis, apiIndexIds, apiIntentIds]);
 
   // Fetch connections data (non-blocking background load)
   const fetchConnections = useCallback(async () => {
     try {
-      const apiIndexIds = selectedIndexIds.length > 0 ? selectedIndexIds : undefined;
-      
       const [inboxData, pendingData] = await Promise.all([
         connectionsService.getConnectionsByUser('inbox', apiIndexIds),
         connectionsService.getConnectionsByUser('pending', apiIndexIds),
@@ -151,9 +158,9 @@ export default function InboxPage() {
     } finally {
       setConnectionsLoading(false);
     }
-  }, [connectionsService, fetchSynthesis, selectedIndexIds]);
+  }, [connectionsService, fetchSynthesis, apiIndexIds]);
 
-  // Fetch all data (both discovery and connections)
+  // Fetch all data - initial load (clears syntheses)
   const fetchData = useCallback(async () => {
     setDiscoveryLoading(true);
     setConnectionsLoading(true);
@@ -161,6 +168,13 @@ export default function InboxPage() {
     setSyntheses({});
     
     // Load discovery first (default tab), connections in background
+    fetchDiscovery();
+    fetchConnections();
+  }, [fetchDiscovery, fetchConnections]);
+
+  // Refresh data - auto-refresh (preserves syntheses to avoid glitch)
+  const refreshData = useCallback(async () => {
+    // Don't show loading states or clear syntheses on refresh
     fetchDiscovery();
     fetchConnections();
   }, [fetchDiscovery, fetchConnections]);
@@ -239,12 +253,12 @@ export default function InboxPage() {
     const intervalId = setInterval(() => {
       const timeSinceLastRefresh = Date.now() - lastRefreshTimeRef.current;
       if (timeSinceLastRefresh >= 5000) {
-        fetchData();
+        refreshData();
       }
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [fetchData]);
+  }, [refreshData]);
 
   // Drag and drop for file upload
   useEffect(() => {
@@ -299,7 +313,7 @@ export default function InboxPage() {
   }, [activeTab, discoveryIntents]);
 
   // Render user card component
-  const renderUserCard = (
+  const renderUserCard = useCallback((
     data: StakesByUserResponse | UserConnection, 
     tabType: 'discover' | 'requests'
   ) => {
@@ -394,7 +408,7 @@ export default function InboxPage() {
         </div>
       </div>
     );
-  };
+  }, [synthesisLoading, syntheses, requestsView, handleConnectionAction, fetchData]);
 
 
   return (
