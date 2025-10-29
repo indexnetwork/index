@@ -50,22 +50,22 @@ async function getIntentSourceName(sourceType: string | null, sourceId: string |
 }
 
 /**
- * Evaluate appropriation against index prompt only
+ * Evaluate appropriateness against index prompt only
  */
-async function evaluateIndexAppropriation(
+async function evaluateIndexAppropriateness(
   intentPayload: string,
   indexPrompt: string,
   sourceName?: string
 ): Promise<number> {
   const systemMessage = {
     role: "system",
-    content: `You are an intent appropriation evaluator. Determine how well an intent matches an index purpose.
+    content: `You are an intent appropriateness evaluator. Determine how well an intent matches an index purpose.
 
 Scoring rubric:
 - 0.9-1.0: Highly appropriate, perfect match
 - 0.7-0.8: Good match, should be included
 - 0.5-0.6: Moderate, borderline
-- 0.3-0.4: Low appropriation, poor fit
+- 0.3-0.4: Low appropriateness, poor fit
 - 0.0-0.2: Not appropriate
 
 Output format: Return ONLY a decimal number (e.g., 0.85)`
@@ -87,7 +87,7 @@ Score:`
     "intent-indexer",
     {
       agent_type: "intent_indexer",
-      operation: "index_appropriation_evaluation",
+      operation: "index_appropriateness_evaluation",
       intent_length: intentPayload.length,
       index_prompt_length: indexPrompt.length
     }
@@ -98,7 +98,7 @@ Score:`
   const score = parseFloat(scoreText);
   
   if (isNaN(score) || score < 0 || score > 1) {
-    console.warn(`Invalid index appropriation score returned: ${scoreText}, defaulting to 0.0`);
+    console.warn(`Invalid index appropriateness score returned: ${scoreText}, defaulting to 0.0`);
     return 0.0;
   }
   
@@ -106,22 +106,22 @@ Score:`
 }
 
 /**
- * Evaluate appropriation against member prompt only
+ * Evaluate appropriateness against member prompt only
  */
-async function evaluateMemberAppropriation(
+async function evaluateMemberAppropriateness(
   intentPayload: string,
   memberPrompt: string,
   sourceName?: string
 ): Promise<number> {
   const systemMessage = {
     role: "system",
-    content: `You are an intent appropriation evaluator. Determine how well an intent matches a member's sharing preferences.
+    content: `You are an intent appropriateness evaluator. Determine how well an intent matches a member's sharing preferences.
 
 Scoring rubric:
 - 0.9-1.0: Perfect match for sharing focus
 - 0.7-0.8: Good alignment with intent
 - 0.5-0.6: Moderate, borderline match
-- 0.3-0.4: Low appropriation, poor match
+- 0.3-0.4: Low appropriateness, poor match
 - 0.0-0.2: Doesn't match sharing focus
 
 Output format: Return ONLY a decimal number (e.g., 0.85)`
@@ -143,7 +143,7 @@ Score:`
     "intent-indexer",
     {
       agent_type: "intent_indexer",
-      operation: "member_appropriation_evaluation",
+      operation: "member_appropriateness_evaluation",
       intent_length: intentPayload.length,
       member_prompt_length: memberPrompt.length
     }
@@ -154,7 +154,7 @@ Score:`
   const score = parseFloat(scoreText);
   
   if (isNaN(score) || score < 0 || score > 1) {
-    console.warn(`Invalid member appropriation score returned: ${scoreText}, defaulting to 0.0`);
+    console.warn(`Invalid member appropriateness score returned: ${scoreText}, defaulting to 0.0`);
     return 0.0;
   }
   
@@ -166,7 +166,7 @@ Score:`
  * Uses context isolation - evaluates index prompt first, then member prompt only if index qualifies
  * Both scores must be separately > 0.7 to proceed
  */
-export async function evaluateIntentAppropriation(
+export async function evaluateIntentAppropriateness(
   intentPayload: string,
   indexPrompt: string | null,
   memberPrompt: string | null,
@@ -179,23 +179,23 @@ export async function evaluateIntentAppropriation(
     // Get source name for context
     const sourceName = await getIntentSourceName(sourceType || null, sourceId || null);
     
-    // If no prompts available, return 1 appropriation
+    // If no prompts available, return 1 appropriateness
     if (!indexPrompt && !memberPrompt) {
       return 1;
     }
     
     // If only member prompt available (no index prompt), evaluate it directly
     if (!indexPrompt && memberPrompt) {
-      const memberScore = await evaluateMemberAppropriation(intentPayload, memberPrompt, sourceName);
-      console.log(`📊 Member appropriation score (index prompt not available): ${memberScore.toFixed(3)}`);
+      const memberScore = await evaluateMemberAppropriateness(intentPayload, memberPrompt, sourceName);
+      console.log(`📊 Member appropriateness score (index prompt not available): ${memberScore.toFixed(3)}`);
       return memberScore;
     }
     
     // Evaluate index prompt first (if available)
     let indexScore = 0.0;
     if (indexPrompt) {
-      indexScore = await evaluateIndexAppropriation(intentPayload, indexPrompt, sourceName);
-      console.log(`📊 Index appropriation score: ${indexScore.toFixed(3)}`);
+      indexScore = await evaluateIndexAppropriateness(intentPayload, indexPrompt, sourceName);
+      console.log(`📊 Index appropriateness score: ${indexScore.toFixed(3)}`);
       
       // If index prompt doesn't qualify, return early without evaluating member prompt
       if (indexScore <= QUALIFICATION_THRESHOLD) {
@@ -207,8 +207,8 @@ export async function evaluateIntentAppropriation(
     // Index prompt qualified, now evaluate member prompt (if available)
     let memberScore = 0.0;
     if (memberPrompt) {
-      memberScore = await evaluateMemberAppropriation(intentPayload, memberPrompt, sourceName);
-      console.log(`📊 Member appropriation score: ${memberScore.toFixed(3)}`);
+      memberScore = await evaluateMemberAppropriateness(intentPayload, memberPrompt, sourceName);
+      console.log(`📊 Member appropriateness score: ${memberScore.toFixed(3)}`);
       
       // Both scores must be separately > 0.7
       if (memberScore <= QUALIFICATION_THRESHOLD) {
@@ -220,16 +220,16 @@ export async function evaluateIntentAppropriation(
       // Index prompt gets higher weight (0.6) as it defines the index purpose
       // Member prompt gets lower weight (0.4) as it's more specific to user
       const finalScore = (indexScore * 0.6) + (memberScore * 0.4);
-      console.log(`📊 Final combined appropriation score: ${finalScore.toFixed(3)}`);
+      console.log(`📊 Final combined appropriateness score: ${finalScore.toFixed(3)}`);
       return finalScore;
     } else {
       // Only index prompt available and it qualified
-      console.log(`📊 Final appropriation score (member prompt not available): ${indexScore.toFixed(3)}`);
+      console.log(`📊 Final appropriateness score (member prompt not available): ${indexScore.toFixed(3)}`);
       return indexScore;
     }
     
   } catch (error) {
-    console.error('Error evaluating intent appropriation:', error);
-    return 0.0; // Default to no appropriation on error
+    console.error('Error evaluating intent appropriateness:', error);
+    return 0.0; // Default to no appropriateness on error
   }
 }

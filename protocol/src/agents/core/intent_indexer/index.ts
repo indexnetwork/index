@@ -1,7 +1,7 @@
 import db from '../../../lib/db';
 import { intents, intentIndexes, indexes, indexMembers } from '../../../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
-import { evaluateIntentAppropriation } from './evaluator';
+import { evaluateIntentAppropriateness } from './evaluator';
 
 export interface IntentIndexerResult {
   success: boolean;
@@ -54,8 +54,8 @@ export class IntentIndexer {
       const currentIndexes = await this.getCurrentIndexes(intentId);
       const isCurrentlyAssigned = currentIndexes.includes(indexId);
       
-      // Evaluate appropriation
-      const appropriationScore = await evaluateIntentAppropriation(
+      // Evaluate appropriateness
+      const appropriatenessScore = await evaluateIntentAppropriateness(
         intent.payload,
         targetIndex.indexPrompt || '',
         targetIndex.memberPrompt || '',
@@ -63,8 +63,8 @@ export class IntentIndexer {
         intent.sourceId
       );
       
-      const isAppropriate = appropriationScore > 0.7;
-      console.log(`🔍 Intent ${intentId} appropriation score: ${appropriationScore.toFixed(3)}, is appropriate: ${isAppropriate}`);
+      const isAppropriate = appropriatenessScore > 0.7;
+      console.log(`🔍 Intent ${intentId} appropriateness score: ${appropriatenessScore.toFixed(3)}, is appropriate: ${isAppropriate}`);
       
       if (isAppropriate && !isCurrentlyAssigned) {
         await this.indexIntent(intentId, indexId);
