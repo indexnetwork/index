@@ -203,7 +203,7 @@ async function inferIntents(
     ]);
 
     console.log(`🎯 Generated ${response.intents.length} intents:`);
-    response.intents.forEach((intent, idx) => {
+    response.intents.forEach((intent: Intent, idx: number) => {
       console.log(`  ${idx + 1}. [${intent.type}] ${intent.intent} (${intent.confidence})`);
     });
 
