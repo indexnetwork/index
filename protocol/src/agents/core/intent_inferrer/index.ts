@@ -1,7 +1,7 @@
 /**
- * Intent Suggester Agent
+ * Intent Inferrer Agent
  * 
- * Minimal implementation that reads files directly and generates intents.
+ * Minimal, dynamic implementation that extracts explicit and implicit intents.
  */
 
 import { UnstructuredClient } from "unstructured-client";
@@ -13,6 +13,12 @@ import path from 'path';
 import { z } from "zod";
 
 // Type definitions
+export interface Intent {
+  intent: string;
+  type: 'explicit' | 'implicit';
+  confidence: number;
+}
+
 export interface InferredIntent {
   payload: string;
   confidence: number;
@@ -36,18 +42,191 @@ function getUnstructuredClient(): UnstructuredClient | null {
   return unstructuredClient;
 }
 
+// Minimal Intent Inferrer Prompt
+const SYSTEM_PROMPT = `You extract social intents from content.
+
+Rules:
+1. Intents must be substantial and meaningful, not procedural calls-to-action
+2. Remove temporal markers ("Now", "Currently", "Just") - focus on the actual intent
+3. Skip generic instructions ("fill out form", "apply here", "contact us", "pass it along")
+4. Combine related technical requirements into cohesive intents, not fragmented lists
+5. Forward-looking (what they seek/offer), not backward-looking (what they've done)
+6. Intents MUST be self-contained with enough context to be understood independently
+7. Add relevant context from surrounding content to make intents substantial
+
+EXPLICIT (directly stated) → preserve core statement but add relevant context to make it self-contained
+
+IMPLICIT (inferred) → express through topic/direction in source tone, not as role-seeking
+
+Examples:
+
+Content: "Looking for Rust devs. Been thinking about privacy-preserving computation."
+
+✅ "Looking for Rust devs to work on privacy-preserving computation" (explicit, self-contained)
+
+✅ "Thinking about privacy-preserving computation" (implicit)
+
+❌ "Looking for Rust devs" (too short, not self-contained)
+
+❌ "Seeking collaborators in privacy tech" (constructed role)
+
+Content: "PhD on climate models. The question is making them accessible to smaller groups."
+
+✅ "Figuring out how to make climate models accessible" (implicit, in source tone)
+
+✅ "Working on climate modeling approaches" (implicit)
+
+❌ "Looking for research partners" (constructed role)
+
+❌ "Seeking collaboration opportunities" (constructed role)
+
+Content: "Now looking for a founding engineer. Fill out the form if interested."
+
+✅ "Looking for a founding engineer" (explicit, temporal marker removed, but needs more context if available)
+
+❌ "Fill out the form if interested" (procedural call-to-action)
+
+❌ "Now looking for a founding engineer" (keep temporal marker)
+
+Content: "Looking for Founding Fullstack Engineer to build protocol for private, intent-driven discovery. Apply here."
+
+✅ "Looking for Founding Fullstack Engineer to build protocol for private, intent-driven discovery" (explicit, self-contained)
+
+❌ "Looking for Founding Fullstack Engineer" (too short, not self-contained)
+
+❌ "Apply here" (procedural call-to-action)
+
+Content: "Been playing with agent coordination. Not sure anyone's solved the game theory."
+
+✅ "Playing with agent coordination mechanisms" (implicit, keeps casual tone)
+
+✅ "Figuring out game theory for agent systems" (implicit)
+
+❌ "Need game theory experts" (constructed role)
+
+❌ "Seeking technical advisors" (constructed role)
+
+Content: "Building tools for decentralized research. The hard part is incentive alignment."
+
+✅ "Building tools for decentralized research" (implicit)
+
+✅ "Figuring out incentive alignment for research networks" (implicit)
+
+❌ "Looking for partners in research infrastructure" (constructed role)
+
+Content: "Job posting: Need experience with Next.js, React, TypeScript, Postgres, Redis, Docker."
+
+✅ "Looking for fullstack engineering experience (Next.js, React, TypeScript, Postgres, Redis)" (cohesive)
+
+❌ "Need experience with Next.js" (fragmented)
+
+❌ "Need experience with React" (fragmented)
+
+❌ "Need experience with TypeScript" (fragmented)
+
+Content: "Exploring how privacy and discovery can coexist. Interested in agent-native protocols."
+
+✅ "Exploring how privacy and discovery can coexist" (implicit, as stated)
+
+✅ "Interested in agent-native protocols" (implicit)
+
+❌ "Seeking privacy researchers" (constructed role)
+
+Content: "Open to consulting in distributed systems. Working on consensus mechanisms."
+
+✅ "Open to consulting in distributed systems" (explicit)
+
+✅ "Working on consensus mechanisms" (implicit)
+
+❌ "Looking for consulting opportunities" (rephrased explicit wrong)
+
+Content: "Trying to understand how trust emerges in P2P networks. No clear answer yet."
+
+✅ "Trying to understand how trust emerges in P2P networks" (implicit, keeps exploratory tone)
+
+✅ "Exploring trust models without central authority" (implicit)
+
+❌ "Seeking P2P networking experts" (constructed role)
+
+Pattern: 
+
+- Explicit → preserve exactly, remove temporal markers
+- Implicit → what they're doing/exploring, not who they're seeking
+- Skip procedural instructions and calls-to-action
+- Combine related items into cohesive intents
+- Keep the voice: casual stays casual, technical stays technical, exploratory stays exploratory
+
+Generate intents naturally, you decide how many intents to generate. 
+
+Output: [{"intent": "...", "type": "explicit|implicit", "confidence": 0-1}]`;
+
+const USER_PROMPT = (content: string, context?: string) => `
+${context ? `Context: ${context}\n` : ''}
+Content:
+${content}
+`;
+
+/**
+ * Core intent inference function with dynamic generation
+ */
+async function inferIntents(
+  content: string, 
+  context?: string,
+  timeoutMs: number = 60000
+): Promise<Intent[]> {
+  try {
+    const IntentSchema = z.object({
+      intents: z.array(z.object({
+        intent: z.string().describe("The intent in user's voice"),
+        type: z.enum(['explicit', 'implicit']).describe("Whether intent is directly stated or inferred"),
+        confidence: z.number().min(0).max(1).describe("Confidence score between 0 and 1")
+      })).describe("Array of intents, naturally generated (typically 3-7)")
+    });
+
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: USER_PROMPT(content, context) }
+    ];
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Intent generation timeout')), timeoutMs);
+    });
+
+    const intentInferCall = traceableStructuredLlm(
+      "intent-inferrer",
+      { content_length: content.length }
+    );
+
+    const response = await Promise.race([
+      intentInferCall(messages, IntentSchema),
+      timeoutPromise
+    ]);
+
+    console.log(`🎯 Generated ${response.intents.length} intents:`);
+    response.intents.forEach((intent, idx) => {
+      console.log(`  ${idx + 1}. [${intent.type}] ${intent.intent} (${intent.confidence})`);
+    });
+
+    return response.intents;
+  } catch (error) {
+    console.error('❌ Error inferring intents:', error);
+    return [];
+  }
+}
+
 
 
 
 /**
  * Core intent analysis function that works with any content
+ * Uses dynamic inference with backward compatibility
  */
 export async function analyzeContent(
   content: string,
   itemCount: number,
   textInstruction?: string,
   existingIntents: string[] = [],
-  count: number = 5,
+  count: number = 5, // Ignored - kept for backward compatibility
   timeoutMs: number = 60000
 ): Promise<IntentInferenceResult> {
   try {
@@ -58,109 +237,34 @@ export async function analyzeContent(
 
     console.log(`📋 Analyzing ${content.length} characters from ${itemCount} items`);
 
-    // Generate intents using Zod schema
-    const IntentSchema = z.object({
-      intents: z.array(z.object({
-        payload: z.string().describe("Specific intent describing what information the user is looking for"),
-        confidence: z.number().min(0.6).max(1.0).describe("Confidence score between 0.6 and 1.0")
-      })).min(count).max(count).describe(`Array of ${count} high-quality intent objects`)
-    });
-
-    // System message: Define role and core constraints
-    const systemMessage = {
-      role: "system",
-      content: `You are an intent generation specialist. Your role is to analyze content and generate specific intents that reflect the user's actual interests, focus areas, and intellectual pursuits based on what they've uploaded.
-
-Core rules:
-- Intents must reflect the user's ACTUAL interests derived from their content, not imaginary networking personas
-- Use analytical language that describes what the user is studying, exploring, or analyzing, 
-- Each intent must be specific, concrete, and grounded in the source material
-- Remove all personal information (names, emails, phone numbers)
-- Avoid generic phrases like "seeking partnerships" or "looking for investors" unless those exact phrases appear in the source content
-- Output exactly the requested number of NEW intents
-
-Content Analysis Examples:
-Q: Pitch deck uploaded → What is the user interested in?
-A: Primarily the business model and market opportunity (3 intents), with some focus on competitive landscape and technical architecture (2 intents)
-
-Q: Research paper uploaded → What is the user interested in?
-A: The methodology and findings of the research, applications of the research in related fields, gaps or questions raised by the work
-
-Q: Ben Thompson's "The Great Unbundling" article → What is the user interested in?
-A: How zero-cost distribution reshapes media economics, bundle vs. unbundle pricing dynamics, attention-based integration models replacing distribution monopolies
-
-Quality Examples:
-✅ "Analyzing how zero-cost digital distribution reshapes the balance between content creation and monetization in media industries"
-✅ "Investigating bundle economics across music, video, and text sectors to quantify consumer surplus and pricing elasticity changes"
-✅ "Exploring the shift from distribution-based monopolies to attention-based integrations in digital media ecosystems"
-✅ "Comparing pre- and post-Internet media business models to identify structural dependencies between distribution ownership and profit generation"
-
-❌ "Looking for investors" (too generic and not grounded in actual user interest, dont use it unless the user explicitly says they are looking for investors)
-❌ "Seeking partnerships with media companies" (fictional networking persona, not derived from content, dont use it unless the user explicitly says they are seeking partnerships with media companies)
-❌ "Contact John Smith about opportunities" (contains personal info, dont use it unless the user explicitly says they are seeking opportunities with John Smith)`
-    };
-
-    // Build user messages logically:
-    // 1. Context (user guidance + existing intents)
-    // 2. Content to analyze
-    // 3. Task instruction
-    
-    const messages: any[] = [systemMessage];
-    
-    // Message 1: Provide context (if any)
+    // Build context from instructions and existing intents
     const contextParts: string[] = [];
     
     if (textInstruction) {
-      contextParts.push(`User Guidance:\n${textInstruction}`);
+      contextParts.push(`User Guidance: ${textInstruction}`);
     }
     
     if (existingIntents.length > 0) {
       const intentsToShow = existingIntents.slice(0, 50);
-      contextParts.push(`Existing Intents (do NOT generate duplicates):\n${intentsToShow.map(i => `- ${i}`).join('\n')}`);
+      // contextParts.push(`Existing Intents (do NOT generate duplicates): ${intentsToShow.join(', ')}`);
     }
     
-    if (contextParts.length > 0) {
-      messages.push({
-        role: "user",
-        content: contextParts.join('\n\n')
-      });
-    }
+    const context = contextParts.length > 0 ? contextParts.join('\n') : undefined;
     
-    // Message 2: Provide the content to analyze
-    messages.push({
-      role: "user",
-      content: `Content to analyze (${itemCount} items):\n\n${content}`
-    });
-    
-    // Message 3: Give the specific task instruction
-    messages.push({
-      role: "user",
-      content: `Generate exactly ${count} new intents based on the content above.`
-    });
+    // Use dynamic inference
+    const intents = await inferIntents(content, context, timeoutMs);
 
-    // Set up timeout
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Intent generation timeout')), timeoutMs);
-    });
+    console.log(`✅ Generated ${intents.length} intents`);
 
-    const intentInferCall = traceableStructuredLlm(
-      "intent-inferrer",
-      {
-        items_processed: itemCount,
-        existing_intents_count: existingIntents.length,
-        requested_count: count
-      }
-    );
-    const response = await Promise.race([
-      intentInferCall(messages, IntentSchema),
-      timeoutPromise
-    ]);
-
-    console.log(`✅ Generated ${response.intents.length} intents`);
+    // Convert to old format for backward compatibility
+    const inferredIntents: InferredIntent[] = intents.map(intent => ({
+      payload: intent.intent,
+      confidence: intent.confidence
+    }));
 
     return {
       success: true,
-      intents: response.intents
+      intents: inferredIntents
     };
 
   } catch (error) {
@@ -176,7 +280,7 @@ export async function analyzeObjects(
   objects: any[],
   textInstruction?: string,
   existingIntents: string[] = [],
-  count: number = 5,
+  count: number = 5, // Ignored - kept for backward compatibility
   timeoutMs: number = 60000
 ): Promise<IntentInferenceResult> {
   if (!objects.length) {
@@ -222,7 +326,7 @@ export async function analyzeFolder(
   fileIds: string[],
   textInstruction?: string,
   existingIntents: string[] = [],
-  count: number = 5,
+  count: number = 5, // Ignored - kept for backward compatibility
   timeoutMs: number = 60000
 ): Promise<IntentInferenceResult> {
   try {
@@ -294,3 +398,5 @@ export async function analyzeFolder(
     return { success: false, intents: [] };
   }
 }
+
+export { inferIntents, SYSTEM_PROMPT };
