@@ -197,7 +197,7 @@ export default function InboxPage() {
   };
 
   // Connection action handler
-  const handleConnectionAction = async (action: ConnectionAction, userId: string) => {
+  const handleConnectionAction = useCallback(async (action: ConnectionAction, userId: string) => {
     try {
       switch (action) {
         case 'REQUEST':
@@ -220,7 +220,7 @@ export default function InboxPage() {
     } catch (error) {
       console.error('Error handling connection action:', error);
     }
-  };
+  }, [connectionsService, fetchData]);
 
   // Helper: Get connection status for rendering
   const getConnectionStatus = (tabType: 'discover' | 'requests', viewType?: 'received' | 'sent'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
@@ -387,23 +387,6 @@ export default function InboxPage() {
                   popoverControlRef={popoverControlRef}
                 />
               )}            </div>
-          )}
-
-          {/* Mutual Intents */}
-          {intents && intents.length > 0 && (
-            <div className="mb-4">
-              <h3 className="font-medium text-gray-700 mb-2 text-sm">Mutual intents ({intents.length})</h3>
-              <div className="flex flex-wrap gap-2">
-                {intents.map((intentConnection) => (
-                  <div key={intentConnection.intent.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200">
-                    <h4 className="text-sm font-ibm-plex-mono font-light text-gray-900">
-                      {intentConnection.intent.summary || 'Untitled Intent'}
-                    </h4>
-                    <span className="text-gray-400 text-xs">({intentConnection.totalStake})</span>
-                  </div>
-                ))}
-              </div>
-            </div>
           )}
         </div>
       </div>

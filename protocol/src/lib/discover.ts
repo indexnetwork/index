@@ -126,16 +126,15 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
   // Main query to find users who have staked on authenticated user's intents
   const mainQuery = db
     .select({
-      // Get the user ID who has staked
-      userId: intents.userId,
-      // Sum up all stake amounts for this user
-      totalStake: sql<number>`SUM(${intentStakes.stake})`,
-      // Collect all stake information
-      stakes: sql<any[]>`ARRAY_AGG(
+      // Get the stake ID
+      stakeId: intentStakes.id,
+      stake: intentStakes.stake,
+      reasoning: intentStakes.reasoning,
+      // Collect all intent information from this stake
+      intents: sql<any[]>`ARRAY_AGG(
         jsonb_build_object(
-          'reasoning', ${intentStakes.reasoning},
-          'stake', ${intentStakes.stake},
           'intentId', intentId.id,
+          'userId', ${intents.userId},
           'intent', jsonb_build_object(
             'id', ${intents.id},
             'payload', ${intents.payload},
@@ -152,43 +151,15 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
       sql`UNNEST(${intentStakes.intents}::uuid[]) as intentId(id)`,
       sql`TRUE`
     )
-    // Join with intents table to get user info
+    // Join with intents table to get intent details
     .innerJoin(intents, sql`intentId.id = ${intents.id}`)
-    // Join with users table to get user details
+    // Join with users table to get user details (will use later)
     .innerJoin(users, eq(users.id, intents.userId))
     
     .where(
       and(
         // Only stakes that contain authenticated user's intents
         userIntentIds.length > 0 ? sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)}]::uuid[]` : sql`FALSE`,
-
-        // External user-ids filter (for vibecheck)
-        ...(userIds && userIds.length > 0 ? [
-          sql`${intents.userId} = ANY(ARRAY[${sql.join(userIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
-        ] : []),
-
-        // External index-ids filter (must be authenticated user's indexes)
-        ...(indexIds && indexIds.length > 0 ? [
-          sql`EXISTS (
-            SELECT 1
-            FROM ${intentIndexes} ii_filter
-            WHERE ii_filter.intent_id = ANY(${intentStakes.intents}::uuid[])
-            AND ii_filter.index_id = ANY(ARRAY[${sql.join(indexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])
-          )`
-        ] : []),
-
-        // Exclude users with existing connections if excludeDiscovered is true
-        ...(excludeDiscovered ? [
-          sql`NOT EXISTS (
-            SELECT 1
-            FROM ${userConnectionEvents} uce
-            WHERE (
-              (uce.initiator_user_id = ${authenticatedUserId} AND uce.receiver_user_id = ${intents.userId})
-              OR
-              (uce.initiator_user_id = ${intents.userId} AND uce.receiver_user_id = ${authenticatedUserId})
-            )
-          )`
-        ] : []),
 
         // Check if all intents in the stake exist in the same index (skip if using explicit intentIds)
         ...(targetIndexIds !== undefined ? [
@@ -204,99 +175,161 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
           )`
         ] : []),
 
-        // Ensure the user who created the intents is still a member of the target indexes (skip if using explicit intentIds)
-        ...(targetIndexIds !== undefined ? [
-          sql`EXISTS (
-            SELECT 1
-            FROM ${intentIndexes} ii_membership
-            INNER JOIN ${indexMembers} im ON ii_membership.index_id = im.index_id
-            WHERE ii_membership.intent_id = ANY(${intentStakes.intents}::uuid[])
-            AND im.user_id = ${intents.userId}
-            ${targetIndexIds && targetIndexIds.length > 0
-              ? sql`AND ii_membership.index_id = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
-              : sql``}
-          )`
-        ] : [])
+        // Ensure stake contains intents from users other than authenticated user
+        sql`EXISTS (
+          SELECT 1
+          FROM UNNEST(${intentStakes.intents}::uuid[]) as check_intent_id
+          JOIN ${intents} check_intent ON check_intent.id = check_intent_id
+          WHERE check_intent.user_id != ${authenticatedUserId}
+        )`
       )
     )
-    // Group results by user to get per-user totals
-    .groupBy(intents.userId)
-    // Exclude the authenticated user from results
-    .having(ne(intents.userId, authenticatedUserId))
+    // Group by stake to get all intents for each stake
+    .groupBy(intentStakes.id, intentStakes.stake, intentStakes.reasoning)
     // Add pagination
     .limit(limit)
     .offset((page - 1) * limit);
 
-  // This query finds users who have stakes with the authenticated user's intents
+  // This query finds stakes with the authenticated user's intents
+  // Then we process them to find discovered users
   // It filters by:
-  // - Optional intent IDs (post-filter - must be authenticated user's intents and respect index restrictions)
-  // - Index IDs (defaults to user's accessible indexes if not specified)
-  // - Optional user IDs
-  // - Can exclude users with existing connections
-  // - Ensures intents in stakes exist in same index
-  // - Ensures user membership in target indexes
-  // - Groups by user to get totals
-  // - Excludes authenticated user
+  // - Stakes that contain authenticated user's intents
+  // - Stakes that contain intents from other users (discovered users)
+  // - Index coherence (all intents in stake exist in same index)
+  // - Groups by stake to get all intents per stake
   // - Includes pagination
 
   const results = await mainQuery;
 
-  // Format the results to match the expected structure
-  const formattedResults = await Promise.all(results.map(async (row) => {
-    // Get user details
-    const userDetails = await db.select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      avatar: users.avatar,
-      intro: users.intro
-    }).from(users)
-      .where(eq(users.id, row.userId))
-      .limit(1);
-
-    const user = userDetails[0];
-
-    // Process stakes to filter only those that involve authenticated user's intents
-    const relevantStakes = row.stakes.filter((stake: any) => 
-      userIntentIds.includes(stake.intentId)
-    );
-
-    // Get unique intents that are staked
-    const intentMap = new Map<string, {
-      intent: {
-        id: string;
-        payload: string;
-        summary?: string | null;
-        createdAt: Date;
-      };
+  // Process stakes to find discovered users
+  // Map: userId -> user data with aggregated intents and stakes
+  const userMap = new Map<string, {
+    user: { id: string; name: string; email: string | null; avatar: string | null; intro: string | null };
+    totalStake: number;
+    intentMap: Map<string, {
+      intent: { id: string; payload: string; summary?: string | null; createdAt: Date };
       totalStake: number;
       reasonings: string[];
-    }>();
-    
-    relevantStakes.forEach((stake: any) => {
-      if (!intentMap.has(stake.intent.id)) {
-        intentMap.set(stake.intent.id, {
-          intent: stake.intent,
+    }>;
+  }>();
+
+  for (const stakeRow of results) {
+    // Filter to get authenticated user's intents from this stake
+    const authUserIntents = stakeRow.intents.filter((intentData: any) => 
+      userIntentIds.includes(intentData.intentId) && intentData.userId === authenticatedUserId
+    );
+
+    // Find discovered users (users other than authenticated user who have intents in this stake)
+    const discoveredUserIds = new Set(
+      stakeRow.intents
+        .filter((intentData: any) => intentData.userId !== authenticatedUserId)
+        .map((intentData: any) => intentData.userId)
+    );
+
+    // For each discovered user, add the authenticated user's matched intents
+    for (const discoveredUserId of discoveredUserIds) {
+      // Apply user ID filter if specified
+      if (userIds && userIds.length > 0 && !userIds.includes(discoveredUserId)) {
+        continue;
+      }
+
+      // Check if this discovered user should be excluded (existing connection)
+      if (excludeDiscovered) {
+        const hasConnection = await db
+          .select({ id: userConnectionEvents.id })
+          .from(userConnectionEvents)
+          .where(
+            or(
+              and(
+                eq(userConnectionEvents.initiatorUserId, authenticatedUserId),
+                eq(userConnectionEvents.receiverUserId, discoveredUserId)
+              ),
+              and(
+                eq(userConnectionEvents.initiatorUserId, discoveredUserId),
+                eq(userConnectionEvents.receiverUserId, authenticatedUserId)
+              )
+            )
+          )
+          .limit(1);
+
+        if (hasConnection.length > 0) {
+          continue;
+        }
+      }
+
+      // Check if user is member of target indexes
+      if (targetIndexIds && targetIndexIds.length > 0) {
+        const isMember = await db
+          .select({ indexId: indexMembers.indexId })
+          .from(indexMembers)
+          .where(
+            and(
+              eq(indexMembers.userId, discoveredUserId),
+              sql`${indexMembers.indexId} = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+            )
+          )
+          .limit(1);
+
+        if (isMember.length === 0) {
+          continue;
+        }
+      }
+
+      // Get or create user entry in map
+      if (!userMap.has(discoveredUserId)) {
+        // Fetch user details
+        const userDetails = await db
+          .select({
+            id: users.id,
+            name: users.name,
+            email: users.email,
+            avatar: users.avatar,
+            intro: users.intro
+          })
+          .from(users)
+          .where(eq(users.id, discoveredUserId))
+          .limit(1);
+
+        if (userDetails.length === 0) continue;
+
+        userMap.set(discoveredUserId, {
+          user: userDetails[0],
           totalStake: 0,
-          reasonings: []
+          intentMap: new Map()
         });
       }
-      const intentData = intentMap.get(stake.intent.id)!;
-      intentData.totalStake += parseInt(stake.stake);
-      if (stake.reasoning) {
-        intentData.reasonings.push(stake.reasoning);
-      }
-    });
 
-    return {
-      user,
-      totalStake: Number(row.totalStake),
-      intents: Array.from(intentMap.values()).map(intentData => ({
-        intent: intentData.intent,
-        totalStake: intentData.totalStake,
-        reasonings: [...new Set(intentData.reasonings)]
-      }))
-    };
+      const userData = userMap.get(discoveredUserId)!;
+      userData.totalStake += Number(stakeRow.stake);
+
+      // Add authenticated user's intents from this stake
+      for (const authIntent of authUserIntents) {
+        if (!userData.intentMap.has(authIntent.intent.id)) {
+          userData.intentMap.set(authIntent.intent.id, {
+            intent: authIntent.intent,
+            totalStake: 0,
+            reasonings: []
+          });
+        }
+
+        const intentData = userData.intentMap.get(authIntent.intent.id)!;
+        intentData.totalStake += Number(stakeRow.stake);
+        if (stakeRow.reasoning && !intentData.reasonings.includes(stakeRow.reasoning)) {
+          intentData.reasonings.push(stakeRow.reasoning);
+        }
+      }
+    }
+  }
+
+  // Convert map to array
+  const formattedResults = Array.from(userMap.values()).map(userData => ({
+    user: userData.user,
+    totalStake: userData.totalStake,
+    intents: Array.from(userData.intentMap.values()).map(intentData => ({
+      intent: intentData.intent,
+      totalStake: intentData.totalStake,
+      reasonings: intentData.reasonings
+    }))
   }));
 
   return {

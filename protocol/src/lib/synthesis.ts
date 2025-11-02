@@ -71,13 +71,6 @@ export async function synthesizeVibeCheck(params: {
       return "";
     }
 
-    // Get target user's intents using secure generic function
-    const targetIntentsResult = await getAccessibleIntents(targetUserId, {
-      indexIds: indexIds,
-      includeOwnIntents: true
-    });
-    const targetIntentIds = targetIntentsResult.intents.map(i => i.id);
-
     // Get stakes data - find stakes that connect context user's intents with target user's intents
     const stakes = await db.select({
       stake: intentStakes.stake,
@@ -95,18 +88,23 @@ export async function synthesizeVibeCheck(params: {
     .where(and(
       isNull(agents.deletedAt),
       eq(intents.userId, contextUserId), // Context user's intents (authenticated user)
-      inArray(intents.id, contextIntentIds),
-      // Stakes must also include at least one intent from target user
-      targetIntentIds.length > 0 ? sql`EXISTS(
+      sql`EXISTS(
         SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-        WHERE intent_id IN (${sql.join(targetIntentIds.map(id => sql`${id}`), sql`, `)})
-      )` : sql`1=1`
+        WHERE intent_id IN (${sql.join(contextIntentIds.map(id => sql`${id}`), sql`, `)})
+      )`,
+      // Stakes must also include at least one intent OWNED by target user
+      sql`EXISTS(
+        SELECT 1 FROM ${intents} i2
+        WHERE i2.id::text = ANY(${intentStakes.intents})
+        AND i2.user_id = ${targetUserId}
+      )`
     ));
 
     if (stakes.length === 0) {
       return "";
     }
 
+    console.log('Stakes:', stakes);
     // Group by intent
     const intentGroups = new Map();
     stakes.forEach(stake => {
@@ -183,20 +181,7 @@ export async function synthesizeIntro(params: {
     const senderUser = userRecords.find(u => u.id === senderUserId);
     const recipientUser = userRecords.find(u => u.id === recipientUserId);
 
-    // Get intents for both users using secure generic function
-    const [senderIntentsResult, recipientIntentsResult] = await Promise.all([
-      getAccessibleIntents(senderUserId, { indexIds, includeOwnIntents: true }),
-      getAccessibleIntents(recipientUserId, { indexIds, includeOwnIntents: true })
-    ]);
-
-    const senderIntentIds = senderIntentsResult.intents.map(i => i.id);
-    const recipientIntentIds = recipientIntentsResult.intents.map(i => i.id);
-
-    if (senderIntentIds.length === 0 || recipientIntentIds.length === 0) {
-      return "";
-    }
-
-    // Get shared stakes
+    // Get shared stakes - stakes must include intents OWNED by both users
     const sharedStakes = await db.select({
       reasoning: intentStakes.reasoning,
       stakeIntents: intentStakes.intents
@@ -206,14 +191,29 @@ export async function synthesizeIntro(params: {
     .where(and(
       isNull(agents.deletedAt),
       sql`EXISTS(
-        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-        WHERE intent_id IN (${sql.join(senderIntentIds.map(id => sql`${id}`), sql`, `)})
+        SELECT 1 FROM ${intents} i1
+        WHERE i1.id::text = ANY(${intentStakes.intents})
+        AND i1.user_id = ${senderUserId}
       )`,
       sql`EXISTS(
-        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-        WHERE intent_id IN (${sql.join(recipientIntentIds.map(id => sql`${id}`), sql`, `)})
+        SELECT 1 FROM ${intents} i2
+        WHERE i2.id::text = ANY(${intentStakes.intents})
+        AND i2.user_id = ${recipientUserId}
       )`
     ));
+
+    console.log('Shared stakes:', sharedStakes);
+
+    // Get intent IDs for both users to group reasonings
+    const senderIntentIds = await db.select({ id: intents.id })
+      .from(intents)
+      .where(eq(intents.userId, senderUserId))
+      .then(rows => rows.map(r => r.id));
+    
+    const recipientIntentIds = await db.select({ id: intents.id })
+      .from(intents)
+      .where(eq(intents.userId, recipientUserId))
+      .then(rows => rows.map(r => r.id));
 
     const senderReasonings: string[] = [];
     const recipientReasonings: string[] = [];

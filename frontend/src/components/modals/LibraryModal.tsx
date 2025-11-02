@@ -405,13 +405,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [api]);
 
   const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
+    // Optimistically remove from UI first
+    setLibraryIntents(prev => prev.filter(i => i.id !== intent.id));
+    
     try {
       await intentsService.archiveIntent(intent.id);
       success('Intent archived');
-      // Refresh intents after archiving
-      await loadLibraryIntents();
     } catch {
       error('Failed to archive intent');
+      // Reload to restore state on error
+      await loadLibraryIntents();
     }
   }, [intentsService, success, error, loadLibraryIntents]);
 

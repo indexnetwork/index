@@ -134,7 +134,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
           await db.insert(intentStakes).values({
             intents: intentPair,
             stake: BigInt(100),
-            reasoning: `Connected ${createdUsers[i].name} with ${createdUsers[j].name}`,
+            reasoning: `${createdUsers[i].name} and ${createdUsers[j].name} should connect`,
             agentId: SEMANTIC_RELEVANCY_AGENT_ID,
           });
         } catch {}
