@@ -286,7 +286,7 @@ router.get('/search-users',
         avatar: users.avatar
       }).from(users)
         .where(whereCondition)
-        .limit(10);
+        .limit(3);
 
       // If indexId is provided, filter out existing members
       let filteredResults = searchResults;
@@ -1067,7 +1067,8 @@ router.get('/:id/members',
       }).from(indexMembers)
         .innerJoin(users, eq(indexMembers.userId, users.id))
         .where(eq(indexMembers.indexId, id))
-        .orderBy(indexMembers.createdAt);
+        .orderBy(desc(indexMembers.createdAt))
+        .limit(5);
 
       return res.json({ members });
     } catch (error) {

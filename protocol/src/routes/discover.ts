@@ -41,7 +41,7 @@ function isValidUrlCandidate(u: string): boolean {
 
 // Helper function to extract URLs from text
 function extractUrlsFromText(text: string): string[] {
-  const urlRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[^\s]*)?/g;
+  const urlRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%-]*)?/g;
   const matches = text.match(urlRegex);
   return matches ? matches.filter(isValidUrlCandidate) : [];
 }

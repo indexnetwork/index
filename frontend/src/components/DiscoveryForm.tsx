@@ -91,7 +91,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   }));
 
   // URL regex - stops at spaces and invalid characters (including unicode spaces)
-  const URLInTextRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%]*)?/g;
+  const URLInTextRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%-]*)?/g;
 
   // Start typed animation after 3 seconds
   useEffect(() => {
