@@ -26,6 +26,7 @@ import discoverRoutes from './routes/discover';
 import linksRoutes from './routes/links';
 import syncRoutes from './routes/sync';
 import queueRoutes from './routes/queue';
+import adminRoutes from './routes/admin';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -64,6 +65,8 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/synthesis', synthesisRoutes);
 app.use('/api/discover', discoverRoutes);
 app.use('/api/queue', queueRoutes);
+
+app.use('/api/admin', adminRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
