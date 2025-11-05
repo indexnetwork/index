@@ -321,7 +321,7 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
     }
   }
 
-  // Convert map to array
+  // Convert map to array and sort by total stake descending
   const formattedResults = Array.from(userMap.values()).map(userData => ({
     user: userData.user,
     totalStake: userData.totalStake,
@@ -330,7 +330,7 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
       totalStake: intentData.totalStake,
       reasonings: intentData.reasonings
     }))
-  }));
+  })).sort((a, b) => b.totalStake - a.totalStake);
 
   return {
     results: formattedResults,
