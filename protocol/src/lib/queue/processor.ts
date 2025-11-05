@@ -1,6 +1,5 @@
-import { IndexIntentJob, BrokerJob, GenerateIntentsJob, userQueueManager } from './llm-queue';
+import { IndexIntentJob, GenerateIntentsJob, userQueueManager } from './llm-queue';
 import { intentIndexer } from '../../agents/core/intent_indexer';
-import { SemanticRelevancyBroker } from '../../agents/context_brokers/semantic_relevancy';
 import { getRedisClient } from '../redis';
 import { analyzeObjects, analyzeContent } from '../../agents/core/intent_inferrer';
 import { IntentService } from '../../services/intent-service';
@@ -26,7 +25,6 @@ export class QueueProcessor {
   private concurrency: number;
   private redis = getRedisClient();
   private historyKey = 'queue:job_history';
-  private semanticBroker = new SemanticRelevancyBroker('028ef80e-9b1c-434b-9296-bb6130509482');
   private availableWorkers = new Set<number>(); // Track available workers
   private jobDistributionInterval: NodeJS.Timeout | null = null;
 
@@ -193,9 +191,6 @@ export class QueueProcessor {
       case 'index_intent':
         jobName = `Index Intent → Index`;
         break;
-      case 'broker_semantic_relevancy':
-        jobName = `Semantic Relevancy Pair`;
-        break;
       case 'generate_intents':
         jobName = `Generate Intents`;
         break;
@@ -225,9 +220,6 @@ export class QueueProcessor {
       switch (job.action) {
         case 'index_intent':
           await this.indexIntent(job as IndexIntentJob);
-          break;
-        case 'broker_semantic_relevancy':
-          await this.processBrokerJob(job as BrokerJob);
           break;
         case 'generate_intents':
           await this.generateIntents(job as GenerateIntentsJob);
@@ -275,23 +267,6 @@ export class QueueProcessor {
     // Process specific intent-index pair
     await intentIndexer.processIntentForIndex(intentId, indexId);
     
-  }
-
-  private async processBrokerJob(job: BrokerJob): Promise<void> {
-    const { intentId, relatedIntentId, brokerType } = job.data;
-    
-    switch (brokerType) {
-      case 'semantic_relevancy':
-        if (!relatedIntentId) {
-          console.error(`Semantic relevancy job missing relatedIntentId: ${intentId}`);
-          return;
-        }
-        // Process specific intent pair
-        await this.semanticBroker.processIntentPair(intentId, relatedIntentId);
-        break;
-      default:
-        console.warn(`Unknown broker type: ${brokerType}`);
-    }
   }
 
   private async generateIntents(job: GenerateIntentsJob): Promise<void> {

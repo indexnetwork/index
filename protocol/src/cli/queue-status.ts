@@ -82,8 +82,6 @@ async function getQueueStats(): Promise<QueueStats> {
     let jobType: string;
     if (job.jobName.includes('Index Intent')) {
       jobType = 'index_intent';
-    } else if (job.jobName.includes('Semantic Relevancy')) {
-      jobType = 'broker_semantic_relevancy';
     } else if (job.jobName.includes('Generate Intents')) {
       jobType = 'generate_intents';
     } else {
@@ -151,7 +149,6 @@ function clearScreen() {
 function getJobTypeName(jobType: string): string {
   switch (jobType) {
     case 'index_intent': return 'Index Intent';
-    case 'broker_semantic_relevancy': return 'Semantic Relevancy';
     case 'generate_intents': return 'Generate Intents';
     default: return jobType;
   }

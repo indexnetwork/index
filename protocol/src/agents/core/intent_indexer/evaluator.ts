@@ -4,6 +4,9 @@ import { files, indexLinks, userIntegrations } from '../../../lib/schema';
 import { eq } from 'drizzle-orm';
 import { getDisplayName } from '../../../lib/integrations/config';
 
+// Toggle to enable/disable logs
+const ENABLE_LOGS = false;
+
 async function getIntentSourceName(sourceType: string | null, sourceId: string | null): Promise<string> {
   if (!sourceType || !sourceId) {
     return '';
@@ -187,7 +190,7 @@ export async function evaluateIntentAppropriateness(
     // If only member prompt available (no index prompt), evaluate it directly
     if (!indexPrompt && memberPrompt) {
       const memberScore = await evaluateMemberAppropriateness(intentPayload, memberPrompt, sourceName);
-      console.log(`📊 Member appropriateness score (index prompt not available): ${memberScore.toFixed(3)}`);
+      if (ENABLE_LOGS) console.log(`📊 Member appropriateness score (index prompt not available): ${memberScore.toFixed(3)}`);
       return memberScore;
     }
     
@@ -195,11 +198,11 @@ export async function evaluateIntentAppropriateness(
     let indexScore = 0.0;
     if (indexPrompt) {
       indexScore = await evaluateIndexAppropriateness(intentPayload, indexPrompt, sourceName);
-      console.log(`📊 Index appropriateness score: ${indexScore.toFixed(3)}`);
+      if (ENABLE_LOGS) console.log(`📊 Index appropriateness score: ${indexScore.toFixed(3)}`);
       
       // If index prompt doesn't qualify, return early without evaluating member prompt
       if (indexScore <= QUALIFICATION_THRESHOLD) {
-        console.log(`❌ Index score ${indexScore.toFixed(3)} not above threshold ${QUALIFICATION_THRESHOLD}, skipping member prompt evaluation`);
+        if (ENABLE_LOGS) console.log(`❌ Index score ${indexScore.toFixed(3)} not above threshold ${QUALIFICATION_THRESHOLD}, skipping member prompt evaluation`);
         return indexScore;
       }
     }
@@ -208,11 +211,11 @@ export async function evaluateIntentAppropriateness(
     let memberScore = 0.0;
     if (memberPrompt) {
       memberScore = await evaluateMemberAppropriateness(intentPayload, memberPrompt, sourceName);
-      console.log(`📊 Member appropriateness score: ${memberScore.toFixed(3)}`);
+      if (ENABLE_LOGS) console.log(`📊 Member appropriateness score: ${memberScore.toFixed(3)}`);
       
       // Both scores must be separately > 0.7
       if (memberScore <= QUALIFICATION_THRESHOLD) {
-        console.log(`❌ Member score ${memberScore.toFixed(3)} not above threshold ${QUALIFICATION_THRESHOLD}`);
+        if (ENABLE_LOGS) console.log(`❌ Member score ${memberScore.toFixed(3)} not above threshold ${QUALIFICATION_THRESHOLD}`);
         return 0.0; // Return 0 if member score doesn't qualify
       }
       
@@ -220,11 +223,11 @@ export async function evaluateIntentAppropriateness(
       // Index prompt gets higher weight (0.6) as it defines the index purpose
       // Member prompt gets lower weight (0.4) as it's more specific to user
       const finalScore = (indexScore * 0.6) + (memberScore * 0.4);
-      console.log(`📊 Final combined appropriateness score: ${finalScore.toFixed(3)}`);
+      if (ENABLE_LOGS) console.log(`📊 Final combined appropriateness score: ${finalScore.toFixed(3)}`);
       return finalScore;
     } else {
       // Only index prompt available and it qualified
-      console.log(`📊 Final appropriateness score (member prompt not available): ${indexScore.toFixed(3)}`);
+      if (ENABLE_LOGS) console.log(`📊 Final appropriateness score (member prompt not available): ${indexScore.toFixed(3)}`);
       return indexScore;
     }
     

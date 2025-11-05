@@ -14,6 +14,7 @@ import db, { closeDb } from '../lib/db';
 import { intents, intentIndexes, intentStakes, indexMembers, indexes, users } from '../lib/schema';
 import { privyClient } from '../lib/privy';
 import { setLevel } from '../lib/log';
+import { generateEmbedding } from '../lib/embeddings';
 
 type GlobalOpts = {
   silent?: boolean;
@@ -73,10 +74,20 @@ async function createUser(account: typeof PRIVY_TEST_ACCOUNTS[0]): Promise<any> 
 }
 
 async function createIntent(user: any, payload: string): Promise<string> {
+  // Generate embedding for the intent
+  let embedding: number[] | undefined;
+  try {
+    embedding = await generateEmbedding(payload);
+    console.log(`Generated embedding for intent: "${payload.slice(0, 50)}..."`);
+  } catch (error) {
+    console.error(`Failed to generate embedding for intent:`, error);
+  }
+
   const [intent] = await db.insert(intents).values({
     payload,
     summary: payload.slice(0, 100),
     userId: user.id,
+    embedding,
   }).returning();
 
   await db.insert(intentIndexes).values({

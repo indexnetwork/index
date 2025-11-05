@@ -70,8 +70,6 @@ async function getJobCountsForUser(userId: string): Promise<QueueStatusResponse>
     let jobType: string;
     if (job.jobName.includes('Index Intent')) {
       jobType = 'index_intent';
-    } else if (job.jobName.includes('Semantic Relevancy')) {
-      jobType = 'broker_semantic_relevancy';
     } else if (job.jobName.includes('Generate Intents')) {
       jobType = 'generate_intents';
     } else {

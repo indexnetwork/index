@@ -8,14 +8,6 @@ export interface IndexIntentJobData {
   userId: string; // Add userId to job data
 }
 
-export interface BrokerJobData {
-  intentId: string; // Changed from currentIntentId for consistency
-  relatedIntentId: string; // Required - we only queue pair processing jobs
-  userId: string;
-  brokerType: 'semantic_relevancy' | 'other';
-  brokerAgentId?: string;
-}
-
 export interface GenerateIntentsJobData {
   userId: string;
   sourceId: string;
@@ -28,22 +20,21 @@ export interface GenerateIntentsJobData {
 }
 
 export type IndexIntentJob = QueueJob<IndexIntentJobData>;
-export type BrokerJob = QueueJob<BrokerJobData>;
 export type GenerateIntentsJob = QueueJob<GenerateIntentsJobData>;
 
 // Per-user queue manager with parallel processing
 export class UserQueueManager {
   private redis = getRedisClient();
-  private userQueues = new Map<string, PriorityQueue<IndexIntentJobData | BrokerJobData | GenerateIntentsJobData>>();
+  private userQueues = new Map<string, PriorityQueue<IndexIntentJobData | GenerateIntentsJobData>>();
   private activeUsersSetKey = 'active_user_queues';
   private userWorkers = new Map<string, Set<number>>(); // Track active workers per user
   private maxUsers = parseInt(process.env.QUEUE_MAX_USERS || '10'); // Max concurrent users
   private maxWorkersPerUser = parseInt(process.env.QUEUE_MAX_WORKERS_PER_USER || '3'); // Max workers per user
 
   // Get or create queue for specific user
-  getUserQueue(userId: string): PriorityQueue<IndexIntentJobData | BrokerJobData | GenerateIntentsJobData> {
+  getUserQueue(userId: string): PriorityQueue<IndexIntentJobData | GenerateIntentsJobData> {
     if (!this.userQueues.has(userId)) {
-      const queue = new PriorityQueue<IndexIntentJobData | BrokerJobData | GenerateIntentsJobData>(`user_queue:${userId}`);
+      const queue = new PriorityQueue<IndexIntentJobData | GenerateIntentsJobData>(`user_queue:${userId}`);
       this.userQueues.set(userId, queue);
     }
     return this.userQueues.get(userId)!;
@@ -64,24 +55,6 @@ export class UserQueueManager {
       },
       // Custom ID generator for intent jobs
       (job) => `${job.action}_${data.intentId}_${data.indexId}_${Date.now()}`
-    );
-  }
-
-  // Add broker job to user's specific queue
-  async addUserBrokerJob(userId: string, data: BrokerJobData, priority: number): Promise<void> {
-    const userQueue = this.getUserQueue(userId);
-    
-    // Add user to active users set
-    await this.redis.sadd(this.activeUsersSetKey, userId);
-    
-    await userQueue.addJob(
-      {
-        action: 'broker_semantic_relevancy',
-        priority,
-        data
-      },
-      // Custom ID generator for broker jobs
-      (job) => `${job.action}_${data.intentId}_${data.relatedIntentId}_${Date.now()}`
     );
   }
 
@@ -110,7 +83,7 @@ export class UserQueueManager {
   }
 
   // Get next job from any user queue with parallel processing limits
-  async getNextJobFromAnyUser(workerId: number): Promise<{ job: QueueJob<IndexIntentJobData | BrokerJobData | GenerateIntentsJobData>; userId: string } | null> {
+  async getNextJobFromAnyUser(workerId: number): Promise<{ job: QueueJob<IndexIntentJobData | GenerateIntentsJobData>; userId: string } | null> {
     const activeUsers = await this.getActiveUserQueues();
     
     if (activeUsers.length === 0) {
@@ -168,7 +141,7 @@ export class UserQueueManager {
   }
 
   // Get multiple jobs from multiple users in parallel (for batch processing)
-  async getJobsFromAllEligibleUsers(): Promise<Array<{ job: QueueJob<IndexIntentJobData | BrokerJobData | GenerateIntentsJobData>; userId: string }>> {
+  async getJobsFromAllEligibleUsers(): Promise<Array<{ job: QueueJob<IndexIntentJobData | GenerateIntentsJobData>; userId: string }>> {
     const activeUsers = await this.getActiveUserQueues();
     
     if (activeUsers.length === 0) {
@@ -194,7 +167,7 @@ export class UserQueueManager {
       
       // Get up to availableSlots jobs from this user
       const userQueue = this.getUserQueue(userId);
-      const userJobs: Array<{ job: QueueJob<IndexIntentJobData | BrokerJobData | GenerateIntentsJobData>; userId: string }> = [];
+      const userJobs: Array<{ job: QueueJob<IndexIntentJobData | GenerateIntentsJobData>; userId: string }> = [];
       
       for (let i = 0; i < availableSlots; i++) {
         const job = await userQueue.getNextJob();
@@ -286,11 +259,6 @@ export const userQueueManager = new UserQueueManager();
 // Helper function to add index intent jobs with userId
 export async function addIndexIntentJob(data: IndexIntentJobData, priority: number): Promise<void> {
   await userQueueManager.addUserJob(data.userId, data, priority);
-}
-
-// Helper function to add broker jobs with userId
-export async function addBrokerJob(data: BrokerJobData, priority: number): Promise<void> {
-  await userQueueManager.addUserBrokerJob(data.userId, data, priority);
 }
 
 // Helper function to add intent generation jobs
