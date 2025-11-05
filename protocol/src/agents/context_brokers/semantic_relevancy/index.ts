@@ -364,8 +364,6 @@ STRICT Mutual criteria (INCREASED RIGOR):
 - Specific, not vague connections
 - EXCLUDE "adjacent but non-dependent" roles (e.g., designer + engineer unless explicitly co-building the same thing)
 - EXCLUDE "same-side" roles (e.g., both hiring, both seeking mentors, both seeking funding)
-- EXCLUDE "different domains with only shared buzzwords"
-- Penalize educational, exploratory, or generic intents (e.g., “learning”, “interested in”, “open to”)
 
 Score threshold: Must be >= 70 to qualify as mutual
 
@@ -404,14 +402,12 @@ SCORING EXAMPLES (study these closely):
 - "Looking for design partners" + "Seeking startups needing UI/UX help" → 87 (aligned but vague scope)
 - "Seeking technical cofounder" + "Open to cofounder opportunities in tech" → 81 (mutual but broad)
 - "Interested in blockchain projects" + "Building DeFi tools, need advisors" → 76 (related but role unclear)
-- "Want to learn about AI" + "Teaching AI fundamentals" → 50 (educational, not bidirectional)
+- "Want to learn about AI" + "Teaching AI fundamentals" → 73 (educational match but commitment unclear)
 - "Hiring React dev" + "Mentoring junior devs" → 45 (adjacent but not mutual)
 - "Building AI tool" + "Looking for UI designer" → 60 (related but not mutual unless explicitly for same project)
 - "Looking for networking in SF" + "Attending SF tech events" → 65 (too vague, REJECT)
 - "Seeking customers" + "Seeking customers" → 20 (same need, REJECT)
-+ "Want to learn about AI" + "Teaching AI fundamentals" → 50 (educational, not bidirectional)
-+ "Hiring React dev" + "Mentoring junior devs" → 45 (adjacent but not mutual)
-+ "Building AI tool" + "Looking for UI designer" → 60 (related but not mutual unless explicitly for same project)
+
 IMPORTANT: 
 - Use the full 70-100 range
 - Be critical and precise
