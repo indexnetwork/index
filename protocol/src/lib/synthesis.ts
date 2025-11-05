@@ -98,7 +98,9 @@ export async function synthesizeVibeCheck(params: {
         WHERE i2.id::text = ANY(${intentStakes.intents})
         AND i2.user_id = ${targetUserId}
       )`
-    ));
+    ))
+    .orderBy(sql`${intentStakes.stake} DESC`)
+    .limit(3);
 
     if (stakes.length === 0) {
       return "";
