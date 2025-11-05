@@ -51,6 +51,9 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
   const [allowVibecheck, setAllowVibecheck] = useState<boolean>(() => {
     return index.permissions?.allowGuestVibeCheck || false;
   });
+  const [requireApproval, setRequireApproval] = useState<boolean>(() => {
+    return index.permissions?.requireApproval || false;
+  });
   const [members, setMembers] = useState<Member[]>([]);
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
   const [isCopied, setIsCopied] = useState<string | null>(null);
@@ -84,6 +87,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
       setOriginalPrompt(index.prompt || '');
       setAnyoneCanJoin(index.permissions?.joinPolicy === 'anyone');
       setAllowVibecheck(index.permissions?.allowGuestVibeCheck || false);
+      setRequireApproval(index.permissions?.requireApproval || false);
       
       // Initialize invitation link for private mode
       if (index.permissions?.invitationLink?.code && index.permissions.joinPolicy === 'invite_only') {
@@ -203,14 +207,24 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
     setDeleteConfirmationText('');
   };
 
-  const handleUpdatePermissions = async (anyoneCanJoin: boolean, allowVibecheck: boolean) => {
+  const handleUpdatePermissions = async (anyoneCanJoin: boolean, allowVibecheck: boolean, requireApproval?: boolean) => {
     try {
       if (allowVibecheck === true || allowVibecheck === false) setIsUpdatingVibeCheckPermission(true);
       
-      await indexesService.updatePermissions(index.id, {
+      const updates: {
+        joinPolicy: 'anyone' | 'invite_only';
+        allowGuestVibeCheck: boolean;
+        requireApproval?: boolean;
+      } = {
         joinPolicy: anyoneCanJoin ? 'anyone' : 'invite_only',
         allowGuestVibeCheck: allowVibecheck
-      });
+      };
+      
+      if (requireApproval !== undefined) {
+        updates.requireApproval = requireApproval;
+      }
+      
+      await indexesService.updatePermissions(index.id, updates);
       const updatedIndex = await indexesService.getIndex(index.id);
       updateIndex(updatedIndex); // Update global state
       onIndexUpdate?.(updatedIndex);
@@ -545,6 +559,37 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                           Only people with the invitation link can join.
                         </p>
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Require Approval Toggle */}
+                  <div className="pt-4  my-1">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-medium font-ibm-plex-mono text-black">Require Approval for Connections</h4>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Approve connection requests before members can connect
+                        </p>
+                      </div>
+                      <label className="relative inline-flex cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={requireApproval}
+                          onChange={async (e) => {
+                            const newValue = e.target.checked;
+                            setRequireApproval(newValue);
+                            await handleUpdatePermissions(anyoneCanJoin, allowVibecheck, newValue);
+                            if (newValue) {
+                              success('Connection approval enabled');
+                            } else {
+                              success('Connection approval disabled');
+                            }
+                          }}
+                          disabled={isUpdatingVibeCheckPermission}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                      </label>
                     </div>
                   </div>
 

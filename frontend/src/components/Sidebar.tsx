@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -8,7 +9,7 @@ import { Index as IndexType } from '@/lib/types';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
 import OwnerSettingsModal from '@/components/modals/OwnerSettingsModal';
 import ContextMenu from '@/components/ContextMenu';
-import { User as UserIcon, Crown, Link2, Check } from 'lucide-react';
+import { User as UserIcon, Crown, Link2, Check, Shield, ArrowLeft } from 'lucide-react';
 
 interface IndexItem {
   id: string;
@@ -19,6 +20,8 @@ interface IndexItem {
 }
 
 export default function Sidebar() {
+  const router = useRouter();
+  const pathname = usePathname();
   const { indexes: rawIndexes, loading } = useIndexesState();
   const { user: currentUser } = useAuthContext();
   const [indexes, setIndexes] = useState<IndexItem[]>([]);
@@ -27,6 +30,11 @@ export default function Sidebar() {
   const [ownerSettingsIndex, setOwnerSettingsIndex] = useState<IndexType | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const { setSelectedIndexIds } = useIndexFilter();
+  
+  // Check if we're in admin mode
+  const isAdminMode = pathname?.startsWith('/admin/');
+  const adminIndexId = isAdminMode ? pathname?.split('/admin/')[1] : null;
+  const adminIndex = rawIndexes?.find(idx => idx.id === adminIndexId);
   
   
   // Transform raw indexes into sidebar items whenever rawIndexes changes
@@ -112,19 +120,98 @@ export default function Sidebar() {
 
   return (
     <div className="space-y-6 font-mono">
-      <div className="bg-white rounded-sm border-black border p-3 pb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-black">Networks</h2>
-        </div>
-        
-        <div className="space-y-1.5">
-          {loading ? (
-            <div className="text-center text-gray-500 py-4">
-              Loading indexes...
+      {/* Admin Mode Sidebar */}
+      {isAdminMode && adminIndex ? (
+        <div className="bg-white rounded-sm border-black border p-4">
+          <button
+            onClick={() => router.push('/inbox')}
+            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-ibm-plex-mono text-sm mb-6 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to User Mode
+          </button>
+          
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+              <Shield className="w-5 h-5 text-gray-600" />
             </div>
-          ) : (
-            indexes.map((index) => {
-              if (index.isSelectAll) {
+            <div>
+              <h2 className="font-bold text-lg text-black font-ibm-plex-mono">
+                {adminIndex.title}
+              </h2>
+              <p className="text-sm text-gray-600 font-ibm-plex-mono">
+                Admin Mode
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Normal Sidebar */
+        <div className="bg-white rounded-sm border-black border p-3 pb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-black">Networks</h2>
+          </div>
+          
+          <div className="space-y-1.5">
+            {loading ? (
+              <div className="text-center text-gray-500 py-4">
+                Loading indexes...
+              </div>
+            ) : (
+              indexes.map((index) => {
+                if (index.isSelectAll) {
+                  return (
+                    <div
+                      key={index.id}
+                      onClick={() => handleIndexClick(index.id)}
+                      className={`flex items-center justify-between group rounded cursor-pointer px-3 h-10 ${
+                        index.isSelected ? 'bg-gray-200' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center min-w-0">
+                        <span
+                          className={`text-[14px] text-black truncate ${index.isSelected ? 'font-bold' : ''}`}
+                          title={index.name}
+                        >
+                          {index.name}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Create context menu items for non-"All Indexes" items
+                const contextMenuItems = [];
+
+                // 1. Copy Link (always show for now - will determine link type in handler)
+                const isCopied = copiedLink === index.id;
+                contextMenuItems.push({
+                  id: 'copy-link',
+                  label: isCopied ? 'Copied!' : 'Copy Link',
+                  icon: isCopied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />,
+                  onClick: () => index.fullIndex && handleCopyLink(index.fullIndex),
+                  disabled: isCopied
+                });
+
+                // 2. Configure Index (if user is owner)
+                const isOwner = currentUser && index.fullIndex?.user && currentUser.id === index.fullIndex.user.id;
+                if (isOwner) {
+                  contextMenuItems.push({
+                    id: 'index-settings',
+                    label: 'Configure Index',
+                    icon: <Crown className="w-4 h-4" />,
+                    onClick: () => index.fullIndex && handleOwnerSettings(index.fullIndex)
+                  });
+                }
+
+                // 3. Member Settings (always available)
+                contextMenuItems.push({
+                  id: 'member-settings',
+                  label: 'Manage what you\'re sharing',
+                  icon: <UserIcon className="w-4 h-4" />,
+                  onClick: () => index.fullIndex && handleMemberSettings(index.fullIndex)
+                });
+
                 return (
                   <div
                     key={index.id}
@@ -141,68 +228,32 @@ export default function Sidebar() {
                         {index.name}
                       </span>
                     </div>
+                    <div className="flex items-center gap-1">
+                      {/* Admin button for owners */}
+                      {isOwner && index.fullIndex?.permissions?.requireApproval && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/admin/${index.id}`);
+                          }}
+                          className="p-1 cursor-pointer rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-200"
+                          title="Admin - Approve Connections"
+                        >
+                          <Shield className="w-4 h-4 text-blue-600" />
+                        </button>
+                      )}
+                      <ContextMenu 
+                        items={contextMenuItems} 
+                        trigger="click"
+                      />
+                    </div>
                   </div>
                 );
-              }
-
-              // Create context menu items for non-"All Indexes" items
-              const contextMenuItems = [];
-
-              // 1. Copy Link (always show for now - will determine link type in handler)
-              const isCopied = copiedLink === index.id;
-              contextMenuItems.push({
-                id: 'copy-link',
-                label: isCopied ? 'Copied!' : 'Copy Link',
-                icon: isCopied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />,
-                onClick: () => index.fullIndex && handleCopyLink(index.fullIndex),
-                disabled: isCopied
-              });
-
-              // 2. Configure Index (if user is owner)
-              const isOwner = currentUser && index.fullIndex?.user && currentUser.id === index.fullIndex.user.id;
-              if (isOwner) {
-                contextMenuItems.push({
-                  id: 'index-settings',
-                  label: 'Configure Index',
-                  icon: <Crown className="w-4 h-4" />,
-                  onClick: () => index.fullIndex && handleOwnerSettings(index.fullIndex)
-                });
-              }
-
-              // 3. Member Settings (always available)
-              contextMenuItems.push({
-                id: 'member-settings',
-                label: 'Manage what you\'re sharing',
-                icon: <UserIcon className="w-4 h-4" />,
-                onClick: () => index.fullIndex && handleMemberSettings(index.fullIndex)
-              });
-
-              return (
-                <div
-                  key={index.id}
-                  onClick={() => handleIndexClick(index.id)}
-                  className={`flex items-center justify-between group rounded cursor-pointer px-3 h-10 ${
-                    index.isSelected ? 'bg-gray-200' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-center min-w-0">
-                    <span
-                      className={`text-[14px] text-black truncate ${index.isSelected ? 'font-bold' : ''}`}
-                      title={index.name}
-                    >
-                      {index.name}
-                    </span>
-                  </div>
-                  <ContextMenu 
-                    items={contextMenuItems} 
-                    trigger="click"
-                  />
-                </div>
-              );
-            })
-          )}
+              })
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {memberSettingsIndex && (
         <MemberSettingsModal

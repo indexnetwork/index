@@ -28,6 +28,7 @@ export interface Index {
   permissions?: {
     joinPolicy: 'anyone' | 'invite_only';
     allowGuestVibeCheck?: boolean;
+    requireApproval?: boolean;
     invitationLink: {
       code: string;
     } | null;

@@ -4,7 +4,7 @@ import { relations } from 'drizzle-orm';
 
 // Enums
 export const connectionAction = pgEnum('connection_action', [
-  'REQUEST', 'SKIP', 'CANCEL', 'ACCEPT', 'DECLINE'
+  'REQUEST', 'SKIP', 'CANCEL', 'ACCEPT', 'DECLINE', 'OWNER_APPROVE', 'OWNER_DENY'
 ]);
 // Polymorphic source type for intents
 export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 'discovery_form']);
@@ -63,10 +63,12 @@ export const indexes = pgTable('indexes', {
       code: string;
     } | null;
     allowGuestVibeCheck: boolean;
+    requireApproval: boolean;
   }>().default({
     joinPolicy: 'invite_only',
     invitationLink: null,
-    allowGuestVibeCheck: false
+    allowGuestVibeCheck: false,
+    requireApproval: false
   }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
