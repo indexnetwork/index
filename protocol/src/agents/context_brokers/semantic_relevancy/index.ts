@@ -3,26 +3,10 @@ import { intents, intentStakes } from '../../../lib/schema';
 import { eq, sql, and, desc } from 'drizzle-orm';
 import { traceableStructuredLlm } from "../../../lib/agents";
 import { z } from "zod";
-import fs from 'fs';
-import path from 'path';
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
-  private logFilePath: string;
-
   constructor(agentId: string) {
     super(agentId);
-    // Create logs directory if it doesn't exist
-    const logsDir = path.join(process.cwd(), 'logs');
-    if (!fs.existsSync(logsDir)) {
-      fs.mkdirSync(logsDir, { recursive: true });
-    }
-    this.logFilePath = path.join(logsDir, 'stake-user-relationships.log');
-  }
-
-  private logToFile(message: string): void {
-    const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] ${message}\n`;
-    fs.appendFileSync(this.logFilePath, logEntry, 'utf8');
   }
 
   /**
@@ -90,9 +74,7 @@ STATUS: ${stats.errors === 0 ? '✅ SUCCESS' : `⚠️  COMPLETED WITH ${stats.e
 ${'='.repeat(100)}
 `;
 
-    this.logToFile(summary);
-    
-    // Also log a condensed version to console
+    // Log condensed version to console
     console.log(`\n📊 OPERATION SUMMARY:`);
     console.log(`   Intent: ${stats.intentId}`);
     console.log(`   Users Evaluated: ${stats.usersEvaluated}`);
