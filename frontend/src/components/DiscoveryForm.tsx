@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 import { Paperclip, Radio } from "lucide-react";
+import { ReactTyped } from "react-typed";
 import { useAPI } from "@/contexts/APIContext";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -29,6 +30,8 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [recentIntents, setRecentIntents] = useState<Array<{id: string; payload: string; summary: string | null; createdAt: Date}>>([]);
+  const [hasContent, setHasContent] = useState(false);
+  const [showTypedAnimation, setShowTypedAnimation] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const processingTimer = useRef<NodeJS.Timeout | null>(null);
@@ -89,6 +92,15 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
 
   // URL regex - stops at spaces and invalid characters (including unicode spaces)
   const URLInTextRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%]*)?/g;
+
+  // Start typed animation after 3 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowTypedAnimation(true);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   // Save current state to undo stack
   const saveToUndoStack = () => {
@@ -677,6 +689,9 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
                   const text = target.innerText.trim();
                   if (!text && attachments.length === 0) {
                     target.innerHTML = '';
+                    setHasContent(false);
+                  } else {
+                    setHasContent(true);
                   }
                 }}
                 onPaste={(e) => {
@@ -824,9 +839,37 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
                 data-placeholder="What do you want to discover?"
               />
               
-              {/* Placeholder styling */}
+              {/* Animated Placeholder with react-typed - only when not focused */}
+              {!hasContent && !inputFocused && (
+                <div 
+                  className="absolute top-0 left-0 text-lg font-ibm-plex-mono text-gray-500 py-1 pointer-events-none"
+                  style={{ lineHeight: '1.5' }}
+                >
+                  {!showTypedAnimation ? (
+                    // Show static text for first 3 seconds
+                    <span>What do you want to discover?</span>
+                  ) : (
+                    // Then start animation
+                    <ReactTyped
+                      strings={[
+                        "Meet founders building next-gen robotics platforms",
+                        "Connect with researchers working on materials science",
+                        "Collaborate with engineers building autonomous agents",
+                      ]}
+                      typeSpeed={20}
+                      backSpeed={0}
+                      backDelay={4000}
+                      startDelay={0}
+                      loopCount={3}
+                      showCursor={true}
+                    />
+                  )}
+                </div>
+              )}
+              
+              {/* Static placeholder styling - shows when focused and empty */}
               <style jsx>{`
-                [contenteditable][data-placeholder]:empty::before {
+                [contenteditable][data-placeholder]:empty:focus::before {
                   content: attr(data-placeholder);
                   color: #6b7280;
                   pointer-events: none;

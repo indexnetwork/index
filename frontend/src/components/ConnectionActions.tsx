@@ -61,7 +61,7 @@ export default function ConnectionActions({
               className="flex items-center gap-2"
             >
               <UserPlus className="h-4 w-4" />
-              Request
+              Connect
             </Button>
             <Button
               variant="outline"
