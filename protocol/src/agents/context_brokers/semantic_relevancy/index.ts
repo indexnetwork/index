@@ -364,7 +364,7 @@ STRICT Mutual criteria (INCREASED RIGOR):
 - Specific, not vague connections
 - EXCLUDE "adjacent but non-dependent" roles (e.g., designer + engineer unless explicitly co-building the same thing)
 - EXCLUDE "same-side" roles (e.g., both hiring, both seeking mentors, both seeking funding)
-
+- **STRICTLY EXCLUDE** A-seeks-Role AND B-seeks-Role (e.g., A needs an engineer, B needs a designer) - these are company-level needs, not a mutual intent pair.
 Score threshold: Must be >= 70 to qualify as mutual
 
 CONFIDENCE SCORING RUBRIC (BE PRECISE AND VARIED):
