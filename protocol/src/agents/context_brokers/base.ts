@@ -137,7 +137,7 @@ export abstract class BaseContextBroker {
 
       // Filter by similarity threshold (equivalent to 0.7 LLM score)
       const relatedIntents = similarIntents
-        .filter(intent => intent.similarity > 0.50) // 50% cosine similarity threshold
+        .filter(intent => intent.similarity > 0.30) // 50% cosine similarity threshold
         .map(intent => ({
           intent: {
             id: intent.id,
