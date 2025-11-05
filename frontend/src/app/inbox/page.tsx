@@ -16,7 +16,7 @@ import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActi
 import DiscoveryForm, { DiscoveryFormRef } from "@/components/DiscoveryForm";
 import SynthesisMarkdown from "@/components/SynthesisMarkdown";
 
-const validTabs = ['discover', 'requests'];
+const validTabs = ['discover', 'requests', 'history'];
 
 export default function InboxPage() {
   // URL & Navigation State
@@ -31,13 +31,14 @@ export default function InboxPage() {
   const [discoverStakes, setDiscoverStakes] = useState<StakesByUserResponse[]>([]);
   const [inboxConnections, setInboxConnections] = useState<UserConnection[]>([]);
   const [pendingConnections, setPendingConnections] = useState<UserConnection[]>([]);
+  const [historyConnections, setHistoryConnections] = useState<UserConnection[]>([]);
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
 
   // UI State
   const [discoveryLoading, setDiscoveryLoading] = useState(true);
   const [connectionsLoading, setConnectionsLoading] = useState(true);
-  const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
+  const [requestsView, setRequestsView] = useState<'received' | 'sent' | 'history'>('received');
   const [isDragging, setIsDragging] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
@@ -140,16 +141,18 @@ export default function InboxPage() {
   // Fetch connections data (non-blocking background load)
   const fetchConnections = useCallback(async () => {
     try {
-      const [inboxData, pendingData] = await Promise.all([
+      const [inboxData, pendingData, historyData] = await Promise.all([
         connectionsService.getConnectionsByUser('inbox', apiIndexIds),
         connectionsService.getConnectionsByUser('pending', apiIndexIds),
+        connectionsService.getConnectionsByUser('history', apiIndexIds),
       ]);
 
       setInboxConnections(inboxData.connections);
       setPendingConnections(pendingData.connections);
+      setHistoryConnections(historyData.connections);
 
       // Fetch synthesis for connection users
-      [...inboxData.connections, ...pendingData.connections].forEach(connection => {
+      [...inboxData.connections, ...pendingData.connections, ...historyData.connections].forEach(connection => {
         fetchSynthesis(connection.user.id, undefined, apiIndexIds);
       });
 
@@ -223,12 +226,14 @@ export default function InboxPage() {
   }, [connectionsService, fetchData]);
 
   // Helper: Get connection status for rendering
-  const getConnectionStatus = (tabType: 'discover' | 'requests', viewType?: 'received' | 'sent'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
+  const getConnectionStatus = (tabType: 'discover' | 'requests', viewType?: 'received' | 'sent' | 'history'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
     if (tabType === 'discover') {
       return 'none';
     }
     if (tabType === 'requests') {
-      return viewType === 'sent' ? 'pending_sent' : 'pending_received';
+      if (viewType === 'sent') return 'pending_sent';
+      if (viewType === 'received') return 'pending_received';
+      if (viewType === 'history') return 'connected';
     }
     return 'none';
   };
@@ -472,7 +477,7 @@ export default function InboxPage() {
                     <span className="bg-black text-white text-xs px-2 py-1 rounded">0</span>
                   ) : (
                     <span className="bg-black text-white text-xs px-2 py-1 rounded">
-                      {inboxConnections.length + pendingConnections.length}
+                      {inboxConnections.length + pendingConnections.length + historyConnections.length}
                     </span>
                   )}
                 </button>
@@ -565,13 +570,13 @@ export default function InboxPage() {
             {/* Requests Content */}
             {activeTab === 'requests' && (
               <div>
-                <Tabs.Root value={requestsView} onValueChange={(value) => setRequestsView(value as 'received' | 'sent')}>
+                <Tabs.Root value={requestsView} onValueChange={(value) => setRequestsView(value as 'received' | 'sent' | 'history')}>
                   <Tabs.List className="overflow-x-auto inline-flex text-sm text-black">
                     <Tabs.Trigger 
                       value="received" 
                       className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
                     >
-                      Incoming
+                      Inbox
                       {inboxConnections.length > 0 && (
                         <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
                           {inboxConnections.length}
@@ -580,12 +585,23 @@ export default function InboxPage() {
                     </Tabs.Trigger>
                     <Tabs.Trigger 
                       value="sent" 
-                      className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
+                      className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
                     >
                       Sent
                       {pendingConnections.length > 0 && (
                         <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
                           {pendingConnections.length}
+                        </span>
+                      )}
+                    </Tabs.Trigger>
+                    <Tabs.Trigger 
+                      value="history" 
+                      className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
+                    >
+                      History
+                      {historyConnections.length > 0 && (
+                        <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
+                          {historyConnections.length}
                         </span>
                       )}
                     </Tabs.Trigger>
@@ -606,6 +622,16 @@ export default function InboxPage() {
                       <div className="py-8 text-center text-gray-500">No sent requests.</div>
                     ) : (
                       pendingConnections.map((connection) => renderUserCard(connection, 'requests'))
+                    )}
+                  </Tabs.Content>
+
+                  <Tabs.Content value="history" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
+                    {historyConnections.length === 0 ? (
+                      <div className="py-8 text-center text-gray-500">
+                        No connection history yet.
+                      </div>
+                    ) : (
+                      historyConnections.map((connection) => renderUserCard(connection, 'requests'))
                     )}
                   </Tabs.Content>
                 </Tabs.Root>
