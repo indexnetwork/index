@@ -48,6 +48,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [linkUrl, setLinkUrl] = useState("");
   const [isAddingLink, setIsAddingLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pasteTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [files, setFiles] = useState<Array<{ id: string; name: string; size: string; type: string; createdAt: string; url: string }>>([]);
   const [links, setLinks] = useState<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string }>>([]);
   const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
@@ -565,11 +566,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [onChanged, loadLists, loadLibraryIntents, error, filesService]);
 
-  const handleAddLink = useCallback(async () => {
-    if (!linkUrl) return;
+  const handleAddLink = useCallback(async (urlOverride?: string) => {
+    const urlToUse = urlOverride || linkUrl;
+    if (!urlToUse) return;
     
     // Normalize URL - add https:// if no protocol is specified
-    let normalizedUrl = linkUrl.trim();
+    let normalizedUrl = urlToUse.trim();
     if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
       normalizedUrl = `https://${normalizedUrl}`;
     }
@@ -932,7 +934,22 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <Input
                       placeholder="Paste URL here"
                       value={linkUrl}
-                      onChange={(e) => setLinkUrl(e.target.value)}
+                      onChange={(e) => {
+                        setLinkUrl(e.target.value);
+                      }}
+                      onPaste={(e) => {
+                        const pastedText = e.clipboardData.getData('text');
+                        if (pastedText.trim()) {
+                          // Clear any existing timeout
+                          if (pasteTimeoutRef.current) {
+                            clearTimeout(pasteTimeoutRef.current);
+                          }
+                          // Use the pasted text directly instead of waiting for state
+                          pasteTimeoutRef.current = setTimeout(() => {
+                            handleAddLink(pastedText);
+                          }, 50);
+                        }
+                      }}
                       onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
                       className="text-sm bg-white rounded-sm font-ibm-plex-mono w-full pl-10 pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
                     />
