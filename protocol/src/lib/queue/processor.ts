@@ -40,9 +40,6 @@ export class QueueProcessor {
     if (this.isRunning) return;
     
     this.isRunning = true;
-    const maxUsers = process.env.QUEUE_MAX_USERS || '10';
-    const maxWorkersPerUser = process.env.QUEUE_MAX_WORKERS_PER_USER || '3';
-    console.log(`🚀 Queue processor started with parallel user processing: ${this.concurrency} workers, max ${maxUsers} users, ${maxWorkersPerUser} workers/user`);
     
     // Start job distribution loop instead of individual worker loops
     this.startJobDistribution();
@@ -54,7 +51,7 @@ export class QueueProcessor {
         try {
           await this.distributeJobsToWorkers();
         } catch (error) {
-          console.error('Job distribution error:', error);
+          // Error during job distribution
         }
         // Small delay to prevent busy waiting
         await new Promise(resolve => setTimeout(resolve, parseInt(process.env.QUEUE_POLL_INTERVAL_MS || '100')));
@@ -62,7 +59,7 @@ export class QueueProcessor {
     };
     
     distributionLoop().catch(error => {
-      console.error('Job distribution crashed:', error);
+      // Distribution loop crashed
     });
   }
 
@@ -127,7 +124,6 @@ export class QueueProcessor {
       clearInterval(this.processingInterval);
       this.processingInterval = null;
     }
-    console.log('🛑 Queue processor stopped');
   }
 
   // Add job to history tracking
@@ -142,7 +138,7 @@ export class QueueProcessor {
         await this.redis.zremrangebyrank(this.historyKey, 0, totalEntries - 1000 - 1);
       }
     } catch (error) {
-      console.error('Failed to add job to history:', error);
+      // Failed to add job to history
     }
   }
 
@@ -164,7 +160,7 @@ export class QueueProcessor {
         }
       }
     } catch (error) {
-      console.error('Failed to update job history:', error);
+      // Failed to update job history
     }
   }
 
@@ -174,7 +170,6 @@ export class QueueProcessor {
       const entries = await this.redis.zrange(this.historyKey, -limit, -1);
       return entries.map(entry => JSON.parse(entry)).reverse(); // Most recent first
     } catch (error) {
-      console.error('Failed to get job history:', error);
       return [];
     }
   }
@@ -211,11 +206,6 @@ export class QueueProcessor {
     
     await this.addJobToHistory(historyEntry);
     
-    const jobDesc = job.action === 'generate_intents' 
-      ? `${job.action} for user ${userId} source ${(job.data as any).sourceId}`
-      : `${job.action} for user ${userId} intent ${(job.data as any).intentId}`;
-    console.log(`${workerPrefix}🔄 Processing: ${jobDesc} (priority: ${job.priority})`);
-    
     try {
       switch (job.action) {
         case 'index_intent':
@@ -225,7 +215,7 @@ export class QueueProcessor {
           await this.generateIntents(job as GenerateIntentsJob);
           break;
         default:
-          console.warn(`${workerPrefix}Unknown action: ${job.action}`);
+          break;
       }
       
       const completedAt = Date.now();
@@ -237,11 +227,6 @@ export class QueueProcessor {
         completedAt,
         duration
       });
-      
-      const completedDesc = job.action === 'generate_intents' 
-        ? `${job.action} for user ${userId} source ${(job.data as any).sourceId}`
-        : `${job.action} for user ${userId} intent ${(job.data as any).intentId}`;
-      console.log(`${workerPrefix}✅ Completed: ${completedDesc} (${duration}ms)`);
     } catch (error) {
       const completedAt = Date.now();
       const duration = completedAt - startTime;
@@ -253,11 +238,6 @@ export class QueueProcessor {
         duration,
         error: error instanceof Error ? error.message : String(error)
       });
-      
-      const failedDesc = job.action === 'generate_intents' 
-        ? `${job.action} for user ${userId} source ${(job.data as any).sourceId}`
-        : `${job.action} for user ${userId} intent ${(job.data as any).intentId}`;
-      console.error(`${workerPrefix}❌ Failed: ${failedDesc} (${duration}ms)`, error);
     }
   }
 
@@ -307,7 +287,9 @@ export class QueueProcessor {
             userId: data.userId,
             sourceId: data.sourceId,
             sourceType: data.sourceType,
-            indexIds: data.indexId ? [data.indexId] : []
+            indexIds: data.indexId ? [data.indexId] : [],
+            confidence: intentData.confidence,
+            inferenceType: intentData.type
           });
           existingIntents.add(intentData.payload);
         }

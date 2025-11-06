@@ -20,8 +20,6 @@ export class IntentIndexer {
    * Process a specific intent for a specific index (used by queue processor)
    */
   async processIntentForIndex(intentId: string, indexId: string): Promise<void> {
-    console.log(`🔍 Processing intent ${intentId} for index ${indexId}`);
-    
     try {
       // Get intent and index details
       const intentData = await db.select({
@@ -35,7 +33,6 @@ export class IntentIndexer {
         .limit(1);
         
       if (intentData.length === 0) {
-        console.error(`Intent ${intentId} not found`);
         return;
       }
 
@@ -46,7 +43,6 @@ export class IntentIndexer {
       const targetIndex = indexData.find(idx => idx.id === indexId);
       
       if (!targetIndex) {
-        console.log(`Index ${indexId} not eligible for user ${intent.userId}`);
         return;
       }
 
@@ -64,18 +60,15 @@ export class IntentIndexer {
       );
       
       const isAppropriate = appropriatenessScore > 0.7;
-      console.log(`🔍 Intent ${intentId} appropriateness score: ${appropriatenessScore.toFixed(3)}, is appropriate: ${isAppropriate}`);
       
       if (isAppropriate && !isCurrentlyAssigned) {
         await this.indexIntent(intentId, indexId);
-        console.log(`✅ Added intent ${intentId} to index ${indexId}`);
       } else if (!isAppropriate && isCurrentlyAssigned) {
         await this.deIndexIntent(intentId, indexId);
-        console.log(`🗑️ Removed intent ${intentId} from index ${indexId}`);
       }
       
     } catch (error) {
-      console.error(`Failed to process intent ${intentId} for index ${indexId}:`, error);
+      throw error;
     }
   }
 

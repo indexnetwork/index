@@ -55,7 +55,9 @@ export async function processFiles(
             userId,
             sourceId,
             sourceType,
-            indexIds: indexId ? [indexId] : []
+            indexIds: indexId ? [indexId] : [],
+            confidence: intentData.confidence || 0.8,
+            inferenceType: intentData.type || 'implicit',
           });
           intentsGenerated++;
           existingIntents.add(intentData.payload);

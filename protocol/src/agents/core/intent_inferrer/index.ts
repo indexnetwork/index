@@ -22,6 +22,7 @@ export interface Intent {
 export interface InferredIntent {
   payload: string;
   confidence: number;
+  type: 'explicit' | 'implicit';
 }
 
 export interface IntentInferenceResult {
@@ -202,12 +203,18 @@ async function inferIntents(
       timeoutPromise
     ]);
 
-    console.log(`🎯 Generated ${response.intents.length} intents:`);
-    response.intents.forEach((intent: Intent, idx: number) => {
+    // Factor implicit intents confidence by 0.8
+    const processedIntents = response.intents.map((intent: Intent) => ({
+      ...intent,
+      confidence: intent.type === 'implicit' ? intent.confidence * 0.8 : intent.confidence
+    }));
+
+    console.log(`🎯 Generated ${processedIntents.length} intents:`);
+    processedIntents.forEach((intent: Intent, idx: number) => {
       console.log(`  ${idx + 1}. [${intent.type}] ${intent.intent} (${intent.confidence})`);
     });
 
-    return response.intents;
+    return processedIntents;
   } catch (error) {
     console.error('❌ Error inferring intents:', error);
     return [];
@@ -259,7 +266,8 @@ export async function analyzeContent(
     // Convert to old format for backward compatibility
     const inferredIntents: InferredIntent[] = intents.map(intent => ({
       payload: intent.intent,
-      confidence: intent.confidence
+      confidence: intent.confidence,
+      type: intent.type
     }));
 
     return {

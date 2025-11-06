@@ -191,6 +191,8 @@ router.post('/new',
             sourceId: undefined,
             sourceType: 'discovery_form',
             isIncognito: false,
+            confidence: 1.0,
+            inferenceType: 'explicit',
           });
 
           generatedIntents.push(createdIntent);
@@ -214,7 +216,8 @@ router.post('/new',
           1,  // generate 1 intent
           60000 // 60 second timeout
         );
-
+        
+        console.log(`panzer`,intentResult.intents);
         if (intentResult.success && intentResult.intents.length > 0) {
           console.log(`✅ Generated ${intentResult.intents.length} intents`);
           
@@ -230,6 +233,8 @@ router.post('/new',
                 sourceId: sourceId,
                 sourceType: 'discovery_form',
                 isIncognito: false,
+                confidence: generatedIntent.confidence,
+                inferenceType: generatedIntent.type
               });
 
               generatedIntents.push(createdIntent);

@@ -158,6 +158,9 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
     
     .where(
       and(
+        // Exclude single-intent confidence stakes
+        sql`array_length(${intentStakes.intents}, 1) > 1`,
+        
         // Only stakes that contain authenticated user's intents
         userIntentIds.length > 0 ? sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)}]::uuid[]` : sql`FALSE`,
 

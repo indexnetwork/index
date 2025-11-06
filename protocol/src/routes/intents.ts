@@ -332,7 +332,9 @@ router.post('/',
         payload,
         userId: req.user!.id,
         isIncognito,
-        indexIds
+        indexIds,
+        confidence: 1.0,
+        inferenceType: 'explicit',
       });
 
       return res.status(201).json({

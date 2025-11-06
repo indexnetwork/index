@@ -3,6 +3,7 @@ import { intents, intentStakes } from '../../../lib/schema';
 import { eq, sql, and, desc } from 'drizzle-orm';
 import { traceableStructuredLlm } from "../../../lib/agents";
 import { z } from "zod";
+import { INTENT_INFERRER_AGENT_ID } from '../../../lib/agent-ids';
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
   constructor(agentId: string) {
@@ -10,145 +11,54 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   }
 
   /**
-   * Log comprehensive summary of the entire operation
+   * Main entry point - processes intent and finds relevant user matches
    */
-  private logOperationSummary(stats: {
-    sessionId: string;
-    intentId: string;
-    userId: string;
-    intentPayload: string;
-    usersEvaluated: number;
-    userResults: Array<{
-      userId: string;
-      mutualIntentsFound: number;
-      stakesDeleted: number;
-      stakesInserted: number;
-      finalStakeCount: number;
-    }>;
-    totalMutualIntents: number;
-    totalStakesDeleted: number;
-    totalStakesInserted: number;
-    errors: number;
-  }, duration: number): void {
-    const summary = `
-${'='.repeat(100)}
-SEMANTIC RELEVANCY BROKER - OPERATION SUMMARY
-${'='.repeat(100)}
+  async onIntentCreated(intentId: string): Promise<void> {
+    const startTime = Date.now();
+    console.log(`🤖 SemanticRelevancyBroker: Processing intent ${intentId}`);
+    
+    const newIntent = await this.getIntent(intentId);
+    if (!newIntent) return;
 
-Session ID: ${stats.sessionId}
-Timestamp: ${new Date().toISOString()}
-Duration: ${duration}ms
+    const topUsers = await this.findTopUsersByIntentSimilarity(newIntent);
+    console.log(`🔍 Found ${topUsers.length} relevant users`);
 
-INTENT PROCESSED:
-  Intent ID: ${stats.intentId}
-  User ID: ${stats.userId}
-  Payload: ${stats.intentPayload}
-
-EVALUATION SCOPE:
-  Users Evaluated: ${stats.usersEvaluated}
-  Total Intents Evaluated: ${stats.userResults.reduce((sum, r) => sum + r.mutualIntentsFound, 0)} intent pairs checked
-
-MUTUALITY RESULTS (Score >= 70):
-  Total Mutual Intents Found: ${stats.totalMutualIntents}
-  Average per User: ${stats.usersEvaluated > 0 ? (stats.totalMutualIntents / stats.usersEvaluated).toFixed(2) : '0'}
-
-STAKE OPERATIONS:
-  Total Stakes Deleted: ${stats.totalStakesDeleted}
-  Total Stakes Inserted: ${stats.totalStakesInserted}
-  Net Change: ${stats.totalStakesInserted - stats.totalStakesDeleted > 0 ? '+' : ''}${stats.totalStakesInserted - stats.totalStakesDeleted}
-
-USER-BY-USER BREAKDOWN:
-${stats.userResults.map((result, idx) => `  ${idx + 1}. User: ${result.userId}
-     Mutual Intents: ${result.mutualIntentsFound}
-     Stakes Deleted: ${result.stakesDeleted}
-     Stakes Inserted: ${result.stakesInserted}
-     Final Stakes: ${result.finalStakeCount}`).join('\n\n')}
-
-PERFORMANCE:
-  Total Duration: ${duration}ms
-  Avg Time per User: ${stats.usersEvaluated > 0 ? Math.round(duration / stats.usersEvaluated) : 0}ms
-  Errors: ${stats.errors}
-
-STATUS: ${stats.errors === 0 ? '✅ SUCCESS' : `⚠️  COMPLETED WITH ${stats.errors} ERRORS`}
-
-${'='.repeat(100)}
-`;
-
-    // Log condensed version to console
-    console.log(`\n📊 OPERATION SUMMARY:`);
-    console.log(`   Intent: ${stats.intentId}`);
-    console.log(`   Users Evaluated: ${stats.usersEvaluated}`);
-    console.log(`   Mutual Intents Found: ${stats.totalMutualIntents}`);
-    console.log(`   Stakes: ${stats.totalStakesDeleted} deleted, ${stats.totalStakesInserted} inserted`);
-    console.log(`   Duration: ${duration}ms`);
+    await this.processUserRelationships(newIntent, topUsers);
+    
+    const duration = Date.now() - startTime;
+    console.log(`✅ Completed in ${duration}ms`);
   }
 
   /**
-   * Main entry point - NO QUEUE, direct processing
+   * Get intent from database
    */
-  async onIntentCreated(intentId: string): Promise<void> {
-    console.log(`🤖 SemanticRelevancyBroker: Processing intent ${intentId}`);
-    
-    const startTime = Date.now();
-    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Get the new intent
-    const newIntent = await this.db.select()
+  private async getIntent(intentId: string): Promise<any | null> {
+    const rows = await this.db.select()
       .from(intents)
-      .where(eq(intents.id, intentId))
-      .then(rows => rows[0]);
-
-    if (!newIntent) {
-      console.error(`Intent ${intentId} not found`);
-      return;
-    }
-
-    console.log('🔍 Finding top 10 most relevant users...');
+      .where(eq(intents.id, intentId));
     
-    // Find top 10 users by intent similarity
-    const topUsers = await this.findTopUsersByIntentSimilarity(newIntent);
-    console.log(`Found ${topUsers.length} relevant users`);
+    if (rows.length === 0) {
+      console.error(`Intent ${intentId} not found`);
+      return null;
+    }
+    
+    return rows[0];
+  }
 
-    // Track statistics for summary
-    const stats = {
-      sessionId,
-      intentId,
-      userId: newIntent.userId,
-      intentPayload: newIntent.payload,
-      usersEvaluated: topUsers.length,
-      userResults: [] as Array<{
-        userId: string;
-        mutualIntentsFound: number;
-        stakesDeleted: number;
-        stakesInserted: number;
-        finalStakeCount: number;
-      }>,
-      totalMutualIntents: 0,
-      totalStakesDeleted: 0,
-      totalStakesInserted: 0,
-      errors: 0
-    };
-
-    // Process each user relationship synchronously (NO QUEUE)
+  /**
+   * Process all user relationships
+   */
+  private async processUserRelationships(
+    newIntent: any,
+    topUsers: Array<{ userId: string; intents: any[]; maxSimilarity: number }>
+  ): Promise<void> {
     for (const targetUser of topUsers) {
       try {
-        const result = await this.evaluateUserRelationship(newIntent, targetUser);
-        stats.userResults.push(result);
-        stats.totalMutualIntents += result.mutualIntentsFound;
-        stats.totalStakesDeleted += result.stakesDeleted;
-        stats.totalStakesInserted += result.stakesInserted;
+        await this.evaluateUserRelationship(newIntent, targetUser);
       } catch (error) {
         console.error(`Error evaluating relationship with user ${targetUser.userId}:`, error);
-        stats.errors++;
       }
     }
-
-    const duration = Date.now() - startTime;
-
-    // Generate and log comprehensive summary
-    this.logOperationSummary(stats, duration);
-
-    console.log(`✅ Completed processing ${topUsers.length} user relationships in ${duration}ms`);
   }
 
   /**
@@ -195,146 +105,160 @@ ${'='.repeat(100)}
 
   /**
    * Evaluate user relationship with two-stage LLM approach
-   * Returns statistics for summary logging
    */
   private async evaluateUserRelationship(
     newIntent: any,
     targetUser: { userId: string; intents: any[]; maxSimilarity: number }
-  ): Promise<{
-    userId: string;
-    mutualIntentsFound: number;
-    stakesDeleted: number;
-    stakesInserted: number;
-    finalStakeCount: number;
-  }> {
-    console.log(`\n👥 Evaluating relationship: ${newIntent.userId} ↔ ${targetUser.userId}`);
-
-    let mutualIntentsFound = 0;
-    let stakesDeleted = 0;
-    let stakesInserted = 0;
-    let finalStakeCount = 0;
+  ): Promise<void> {
+    console.log(`\n👥 Evaluating: ${newIntent.userId} ↔ ${targetUser.userId}`);
 
     await this.db.transaction(async (tx) => {
-      // Get existing stakes between these users (with lock)
-      const existingStakes = await tx.select({
-        id: intentStakes.id,
-        stake: intentStakes.stake,
-        intents: intentStakes.intents,
-        reasoning: intentStakes.reasoning
-      })
-        .from(intentStakes)
-        .where(and(
-          eq(intentStakes.agentId, this.agentId),
-          sql`EXISTS (
-            SELECT 1 FROM ${intents} i1
-            WHERE i1.id::text = ANY(${intentStakes.intents})
-            AND i1.user_id = ${newIntent.userId}
-          )`,
-          sql`EXISTS (
-            SELECT 1 FROM ${intents} i2
-            WHERE i2.id::text = ANY(${intentStakes.intents})
-            AND i2.user_id = ${targetUser.userId}
-          )`
-        ))
-        .orderBy(desc(intentStakes.stake))
-        .for('update'); // Lock rows
-
+      // Get and lock existing stakes between these users
+      const existingStakes = await this.getExistingStakes(tx, newIntent.userId, targetUser.userId);
       console.log(`   🔒 Found ${existingStakes.length} existing stakes (locked)`);
-      stakesDeleted = existingStakes.length; // Will delete all existing
 
-      // ===== STAGE 1: MUTUALITY EVALUATION (STRICTER) =====
-      console.log(`   📋 Stage 1: Evaluating mutuality for ${targetUser.intents.length} target intents...`);
+      // Stage 1: Find mutual intents
+      const mutualResults = await this.findMutualIntents(newIntent, targetUser.intents);
+      console.log(`   ✅ Stage 1: ${mutualResults.length} mutual intents (≥70 score)`);
 
-      const mutualityPromises = targetUser.intents.map(async (targetIntent) => {
-        const evaluation = await this.evaluateMutualityStrict(newIntent, targetIntent);
-
-        console.log(`   🔍 Evaluation: ${evaluation?.isMutual} ${evaluation?.confidenceScore}`);
-        
-        // STRICT FILTER: Only keep if mutual AND score >= 70
-        if (evaluation && evaluation.isMutual && evaluation.confidenceScore >= 70) {
-          return {
-            targetIntentId: targetIntent.id,
-            score: evaluation.confidenceScore,
-            reasoning: evaluation.reasoning
-          };
-        }
-        return null;
-      });
-
-      const mutualResults = (await Promise.all(mutualityPromises)).filter(r => r !== null);
-      mutualIntentsFound = mutualResults.length;
-      console.log(`   ✅ Stage 1 complete: ${mutualResults.length} mutual intents found (>= 70 score)`);
-
-      console.log(mutualResults);
+      // Skip if no mutual intents and no existing stakes
       if (mutualResults.length === 0 && existingStakes.length === 0) {
-        console.log(`   ⏭️  No mutual intents and no existing stakes - skipping`);
-        stakesDeleted = 0; // Nothing deleted
+        console.log(`   ⏭️  Skipping - no mutual intents or existing stakes`);
         return;
       }
 
-      // ===== STAGE 2: RANKING =====
-      console.log(`   🏆 Stage 2: Ranking all candidate pairs...`);
-
-      const candidatePairs = [
-        // New mutual pairs
-        ...mutualResults.map(r => ({
-          type: 'new' as const,
-          newIntentId: newIntent.id,
-          targetIntentId: r.targetIntentId,
-          score: r.score,
-          reasoning: r.reasoning
-        })),
-        // Existing stakes
-        ...existingStakes.map(stake => ({
-          type: 'existing' as const,
-          stakeId: stake.id,
-          newIntentId: stake.intents[0],
-          targetIntentId: stake.intents[1],
-          score: Number(stake.stake),
-          reasoning: stake.reasoning
-        }))
-      ];
-
+      // Stage 2: Rank all candidates and get top 3
+      const candidatePairs = this.buildCandidatePairs(newIntent.id, mutualResults, existingStakes);
       const rankingResult = await this.rankIntentPairs(candidatePairs);
-      stakesInserted = rankingResult.top3IntentPairs.length;
-      finalStakeCount = stakesInserted;
-      console.log(`   ✅ Stage 2 complete: Selected top ${rankingResult.top3IntentPairs.length} pairs`);
+      console.log(`   ✅ Stage 2: Selected top ${rankingResult.top3IntentPairs.length} pairs`);
 
-      // ===== EXECUTE: DELETE ALL, INSERT TOP 3 =====
-      console.log(`   🔧 Executing: Delete ${existingStakes.length}, Insert ${rankingResult.top3IntentPairs.length}`);
+      // Execute: Delete all existing, insert top 3
+      await this.updateStakes(tx, existingStakes, rankingResult.top3IntentPairs, candidatePairs);
+      console.log(`   ✔️  Committed - ${rankingResult.top3IntentPairs.length} stakes`);
+    });
+  }
 
-      // Delete all existing stakes
-      for (const stake of existingStakes) {
-        await tx.delete(intentStakes).where(eq(intentStakes.id, stake.id));
+  /**
+   * Get existing stakes between two users with row lock
+   */
+  private async getExistingStakes(tx: any, userId1: string, userId2: string) {
+    return await tx.select({
+      id: intentStakes.id,
+      stake: intentStakes.stake,
+      intents: intentStakes.intents,
+      reasoning: intentStakes.reasoning
+    })
+    .from(intentStakes)
+    .where(and(
+      eq(intentStakes.agentId, this.agentId),
+      sql`EXISTS (
+        SELECT 1 FROM ${intents} i1
+        WHERE i1.id::text = ANY(${intentStakes.intents})
+        AND i1.user_id = ${userId1}
+      )`,
+      sql`EXISTS (
+        SELECT 1 FROM ${intents} i2
+        WHERE i2.id::text = ANY(${intentStakes.intents})
+        AND i2.user_id = ${userId2}
+      )`
+    ))
+    .orderBy(desc(intentStakes.stake))
+    .for('update');
+  }
+
+  /**
+   * Find mutual intents between new intent and target intents
+   */
+  private async findMutualIntents(newIntent: any, targetIntents: any[]) {
+    const mutualityPromises = targetIntents.map(async (targetIntent) => {
+      const evaluation = await this.evaluateMutualityStrict(newIntent, targetIntent);
+      console.log(`   🔍 Evaluation: ${evaluation?.isMutual} ${evaluation?.confidenceScore}`);
+      
+      if (evaluation && evaluation.isMutual && evaluation.confidenceScore >= 70) {
+        return {
+          targetIntentId: targetIntent.id,
+          score: evaluation.confidenceScore,
+          reasoning: evaluation.reasoning
+        };
       }
-
-      // Insert top 3
-      for (const pair of rankingResult.top3IntentPairs) {
-        const pairData = candidatePairs.find(
-          c => c.newIntentId === pair.newIntentId && c.targetIntentId === pair.targetIntentId
-        );
-        
-        if (pairData) {
-          const sortedIntents = [pair.newIntentId, pair.targetIntentId].sort();
-          await tx.insert(intentStakes).values({
-            intents: sortedIntents,
-            stake: BigInt(Math.round(pairData.score)), // Round to integer before converting to BigInt
-            reasoning: pairData.reasoning,
-            agentId: this.agentId
-          });
-        }
-      }
-
-      console.log(`   ✔️  Committed - user pair now has ${rankingResult.top3IntentPairs.length} stakes`);
+      return null;
     });
 
-    return {
-      userId: targetUser.userId,
-      mutualIntentsFound,
-      stakesDeleted,
-      stakesInserted,
-      finalStakeCount
-    };
+    const results = await Promise.all(mutualityPromises);
+    return results.filter(r => r !== null);
+  }
+
+  /**
+   * Build candidate pairs from mutual results and existing stakes
+   */
+  private buildCandidatePairs(
+    newIntentId: string,
+    mutualResults: Array<{ targetIntentId: string; score: number; reasoning: string }>,
+    existingStakes: Array<{ id: string; stake: bigint; intents: string[]; reasoning: string }>
+  ) {
+    return [
+      ...mutualResults.map(r => ({
+        type: 'new' as const,
+        newIntentId,
+        targetIntentId: r.targetIntentId,
+        score: r.score,
+        reasoning: r.reasoning
+      })),
+      ...existingStakes.map(stake => ({
+        type: 'existing' as const,
+        stakeId: stake.id,
+        newIntentId: stake.intents[0],
+        targetIntentId: stake.intents[1],
+        score: Number(stake.stake),
+        reasoning: stake.reasoning
+      }))
+    ];
+  }
+
+  /**
+   * Update stakes: delete existing and insert top 3
+   */
+  private async updateStakes(
+    tx: any,
+    existingStakes: Array<{ id: string }>,
+    top3Pairs: Array<{ newIntentId: string; targetIntentId: string }>,
+    candidatePairs: Array<{ newIntentId: string; targetIntentId: string; score: number; reasoning: string }>
+  ) {
+    // Delete all existing stakes
+    for (const stake of existingStakes) {
+      await tx.delete(intentStakes).where(eq(intentStakes.id, stake.id));
+    }
+
+    // Insert top 3
+    for (const pair of top3Pairs) {
+      const pairData = candidatePairs.find(
+        c => c.newIntentId === pair.newIntentId && c.targetIntentId === pair.targetIntentId
+      );
+      
+      if (pairData) {
+        const sortedIntents = [pair.newIntentId, pair.targetIntentId].sort();
+        
+        const stake1 = await this.calculateWeightedStake(
+          pair.newIntentId, 
+          BigInt(Math.round(pairData.score)),
+          INTENT_INFERRER_AGENT_ID
+        );
+        const stake2 = await this.calculateWeightedStake(
+          pair.targetIntentId,
+          BigInt(Math.round(pairData.score)),
+          INTENT_INFERRER_AGENT_ID
+        );
+        
+        const finalStake = stake1 < stake2 ? stake1 : stake2;
+        
+        await tx.insert(intentStakes).values({
+          intents: sortedIntents,
+          stake: finalStake,
+          reasoning: pairData.reasoning,
+          agentId: this.agentId
+        });
+      }
+    }
   }
 
   /**
@@ -420,8 +344,8 @@ IMPORTANT:
       role: "user",
       content: `Analyze these intents for mutual relevance:
 
-Intent 1: ${newIntent.payload}
-Intent 2: ${targetIntent.payload}
+"${newIntent.payload}" (Intent ID: ${newIntent.id})
+"${targetIntent.payload}" (Intent ID: ${targetIntent.id})
 
 Are these mutually relevant with high confidence (>= 70 score)? Provide score and reasoning.`
     };
@@ -498,7 +422,6 @@ Ranking criteria (in priority order):
 2. **Specificity**: More specific intents are more actionable than vague ones
 3. **Actionability**: Can both parties immediately act on this connection?
 4. **Complementarity**: How well do the intents complement each other?
-5. **Recency**: When comparing similar scores, prefer newer evaluations
 
 Strategy:
 - Don't just pick the 3 highest scores mechanically
@@ -514,7 +437,7 @@ Return exactly 3 pairs (or fewer if less than 3 candidates exist).`
       content: `Rank these intent pairs and return the top 3:
 
 ${candidatePairs.map((c, i) => 
-  `${i + 1}. ${c.type.toUpperCase()} - Intent ${c.newIntentId} ↔ ${c.targetIntentId}
+  `${i + 1}. ${c.type.toUpperCase()} - Pair between Intent ${c.newIntentId} and Intent ${c.targetIntentId}
    Score: ${c.score}
    Reasoning: ${c.reasoning}`
 ).join('\n\n')}
