@@ -17,6 +17,7 @@ export interface GenerateIntentsJobData {
   indexId?: string;
   intentCount?: number;
   instruction?: string;
+  createdAt?: Date;
 }
 
 export type IndexIntentJob = QueueJob<IndexIntentJobData>;

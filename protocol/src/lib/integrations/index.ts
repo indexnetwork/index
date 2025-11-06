@@ -183,8 +183,18 @@ async function attributeToUsers<T>(
   // Step 3: Queue intent generation per user
   let totalIntentsGenerated = 0;
 
+
   for (const [providerId, user] of resolvedUsers) {
     try {
+      // Extract datetime from objects if available
+      let createdAt: Date | undefined;
+      if (objects.length > 0) {
+        const firstObj = objects[0] as any;
+        if (firstObj?.metadata?.createdAt) {
+          createdAt = firstObj.metadata.createdAt;
+        }
+      }
+
       // Queue intent generation for this user
       await addGenerateIntentsJob({
         userId: user.id,
@@ -193,7 +203,8 @@ async function attributeToUsers<T>(
         objects: objects,
         instruction: `Generate intents based on integration data`,
         indexId: integration.indexId,
-        intentCount: MAX_INTENTS_PER_USER
+        intentCount: MAX_INTENTS_PER_USER,
+        ...(createdAt && { createdAt })
       }, 6);
 
       totalIntentsGenerated++;
@@ -238,6 +249,15 @@ async function attributeToOwner<T>(
       await ensureIndexMembership(integrationOwnerId, integration.indexId);
     }
 
+    // Extract datetime from objects if available
+    let createdAt: Date | undefined;
+    if (objects.length > 0) {
+      const firstObj = objects[0] as any;
+      if (firstObj?.metadata?.createdAt) {
+        createdAt = firstObj.metadata.createdAt;
+      }
+    }
+
     // Queue intent generation for integration owner with all objects
     await addGenerateIntentsJob({
       userId: integrationOwnerId,
@@ -246,7 +266,8 @@ async function attributeToOwner<T>(
       objects: objects,
       instruction: `Generate intents based on integration data`,
       indexId: integration.indexId || undefined,
-      intentCount: MAX_INTENTS_PER_USER
+      intentCount: MAX_INTENTS_PER_USER,
+      ...(createdAt && { createdAt })
     }, 6);
 
     log.info('Object processing without attribution complete', {

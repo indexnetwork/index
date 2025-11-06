@@ -217,7 +217,6 @@ router.post('/new',
           60000 // 60 second timeout
         );
         
-        console.log(`panzer`,intentResult.intents);
         if (intentResult.success && intentResult.intents.length > 0) {
           console.log(`✅ Generated ${intentResult.intents.length} intents`);
           

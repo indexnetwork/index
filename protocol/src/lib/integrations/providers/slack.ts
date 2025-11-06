@@ -1,4 +1,5 @@
 import type { IntegrationHandler, UserIdentifier } from '../index';
+import { processObjects } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
@@ -14,8 +15,6 @@ const MESSAGE_LIMIT = 15; // Messages per call
 const RATE_LIMIT_DELAY_MS = 60000; // 60 seconds between calls (1 call per minute)
 const RATE_LIMIT_RETRY_MS = 60000; // 1 minute wait on rate limit error
 const MAX_RETRIES = 3; // Max retries per API call
-const MAX_INTENTS_PER_USER = 3;
-const INTENT_TIMEOUT = 60000;
 
 // Filter channels to sync (set to empty array to sync all channels)
 const CHANNEL_FILTER: string[] = ['kernel-intros', 'kernel-asks']; // Add channel names here
@@ -71,6 +70,9 @@ export interface SlackMessage {
     email: string;
     name: string;
     avatar?: string;
+  };
+  metadata?: {
+    createdAt: Date;
   };
 }
 
@@ -204,7 +206,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
     }
 
     // Fetch messages from all channels
-    const allMessages: SlackMessage[] = [];
     let channelsProcessed = 0;
     
     for (const ch of filteredChannels) {
@@ -316,6 +317,9 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
             });
           }
           
+          // Process messages from this page immediately
+          const pageMessages: SlackMessage[] = [];
+          
           for (const msg of messages) {
             if (!isValidMessage(msg, lastSyncAt)) {
               continue;
@@ -330,7 +334,11 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
               continue;
             }
             
-            allMessages.push({
+            // Convert Slack timestamp to Date
+            const messageDate = new Date(parseFloat(msg.ts) * 1000);
+            console.log(`Processing Slack message with timestamp: ${messageDate.toISOString()}`);
+            
+            pageMessages.push({
               ts: msg.ts,
               text: msg.text || '',
               user: msg.user,
@@ -345,8 +353,26 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
                 email: userProfile.profile.email,
                 name: userProfile.real_name || userProfile.profile.real_name || userProfile.profile.display_name || msg.user,
                 avatar: userProfile.profile.image_original
+              },
+              metadata: {
+                createdAt: messageDate
               }
             });
+          }
+          
+          // Process this page of messages immediately
+          if (pageMessages.length > 0) {
+            log.info(`Processing ${pageMessages.length} messages from page ${pageNum}`, { channelName });
+            
+            // Process each message individually to preserve its timestamp
+            for (const message of pageMessages) {
+              await processObjects([message], {
+                id: integration.id,
+                indexId: integration.indexId || undefined,
+                userId: integration.userId,
+                enableUserAttribution: integration.enableUserAttribution ?? undefined
+              }, slackHandler);
+            }
           }
           
           messageCursor = history?.data?.response_metadata?.next_cursor;
@@ -370,17 +396,16 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
       channelsProcessed++;
       log.info(`Channel processed`, { 
         channelName, 
-        messagesInChannel: channelMessages,
-        totalMessages: allMessages.length
+        messagesInChannel: channelMessages
       });
     }
     
     log.info('Slack objects sync done', { 
       integrationId, 
-      channelsProcessed,
-      totalMessages: allMessages.length 
+      channelsProcessed
     });
-    return allMessages;
+    // Return empty array since messages are processed incrementally
+    return [];
   } catch (error) {
     log.error('Slack objects sync error', { integrationId, error: (error as Error).message });
     return [];
