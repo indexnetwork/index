@@ -122,7 +122,8 @@ export async function synthesizeVibeCheck(params: {
       intentGroups.get(stake.intentId).reasons.push({
         agent_name: stake.agentName,
         agent_id: stake.agentName,
-        reasoning: stake.reasoning
+        reasoning: stake.reasoning,
+        stake: Number(stake.stake)
       });
     });
 
