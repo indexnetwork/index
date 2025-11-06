@@ -957,7 +957,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       <div className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <button
-                        onClick={handleAddLink}
+                        onClick={() => handleAddLink()}
                         disabled={!linkUrl}
                         className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                         aria-label="Add URL"
