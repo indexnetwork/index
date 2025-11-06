@@ -230,7 +230,20 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
           ...(messageCursor && { cursor: messageCursor })
         };
         
-        if (lastSyncAt) {
+        // For kernel-asks, always limit to last 2 months
+        if (channelName === 'kernel-asks') {
+          const twoMonthsAgo = new Date();
+          twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+          const twoMonthsTimestamp = (twoMonthsAgo.getTime() / 1000).toString();
+          
+          // Use the more recent timestamp between lastSyncAt and 2 months ago
+          if (lastSyncAt) {
+            const lastSyncTimestamp = (lastSyncAt.getTime() / 1000).toString();
+            args.oldest = lastSyncTimestamp > twoMonthsTimestamp ? lastSyncTimestamp : twoMonthsTimestamp;
+          } else {
+            args.oldest = twoMonthsTimestamp;
+          }
+        } else if (lastSyncAt) {
           args.oldest = (lastSyncAt.getTime() / 1000).toString();
         }
 
