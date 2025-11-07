@@ -9,3 +9,6 @@ export const SEMANTIC_RELEVANCY_AGENT_ID = '028ef80e-9b1c-434b-9296-bb6130509482
 // Temporary placeholder - will be set after agent creation
 export const INTENT_INFERRER_AGENT_ID = 'ff5d0ef6-c48b-4383-b299-641ecb5d0388';
 
+// Intent Freshness Auditor Agent ID
+export const INTENT_FRESHNESS_AUDITOR_AGENT_ID = '8a3c4e1f-9d2b-4567-a890-1234567890ab';
+
