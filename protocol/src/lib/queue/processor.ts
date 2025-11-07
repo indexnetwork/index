@@ -2,7 +2,7 @@ import { IndexIntentJob, GenerateIntentsJob, userQueueManager } from './llm-queu
 import { intentIndexer } from '../../agents/core/intent_indexer';
 import { getRedisClient } from '../redis';
 import { analyzeObjects, analyzeContent } from '../../agents/core/intent_inferrer';
-import { IntentService } from '../../services/intent-service';
+import { IntentService } from '../intent-service';
 
 // Job history tracking interface
 export interface JobHistoryEntry {

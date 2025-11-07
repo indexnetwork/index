@@ -3,7 +3,7 @@ import path from 'path';
 import { analyzeFolder } from '../../../agents/core/intent_inferrer';
 import { getTempPath } from '../../paths';
 import type { IntegrationFile } from '../index';
-import { IntentService } from '../../../services/intent-service';
+import { IntentService } from '../../intent-service';
 
 export async function processFiles(
   userId: string,

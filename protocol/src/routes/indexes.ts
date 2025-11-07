@@ -14,7 +14,7 @@ import {
   EVERYONE_USER_ID
 } from '../lib/index-access';
 import { Events } from '../lib/events';
-import { IntentService } from '../services/intent-service';
+import { IntentService } from '../lib/intent-service';
 // Removed intent-filtering import - using existing suggestions system
 import crypto from 'crypto';
 
