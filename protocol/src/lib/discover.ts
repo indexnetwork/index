@@ -33,6 +33,8 @@ export interface DiscoverResult {
     totalStake: number;
     reasonings: string[];
   }>;
+  bucket?: number; // Time bucket: 1 (week), 2 (month), 3 (quarter), 4 (older)
+  mostRecentIntentDate?: Date; // For debugging/display
 }
 
 export async function discoverUsers(filters: DiscoverFilters): Promise<{
@@ -324,19 +326,42 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
     }
   }
 
-  // Convert map to array and sort by total stake descending
-  const formattedResults = Array.from(userMap.values()).map(userData => ({
-    user: userData.user,
-    totalStake: userData.totalStake,
-    intents: Array.from(userData.intentMap.values()).map(intentData => ({
-      intent: intentData.intent,
-      totalStake: intentData.totalStake,
-      reasonings: intentData.reasonings
-    }))
-  })).sort((a, b) => b.totalStake - a.totalStake);
+  // Calculate bucket for each user based on most recent intent
+  const bucketedResults = Array.from(userMap.values()).map(userData => {
+    const mostRecentIntent = Math.max(
+      ...Array.from(userData.intentMap.values()).map(i => new Date(i.intent.createdAt).getTime())
+    );
+    const daysOld = (Date.now() - mostRecentIntent) / (1000 * 60 * 60 * 24);
+    
+    let bucket;
+    if (daysOld <= 7) bucket = 1;       // This week
+    else if (daysOld <= 30) bucket = 2;  // This month  
+    else if (daysOld <= 90) bucket = 3;  // This quarter
+    else bucket = 4;                     // Older
+    
+    return {
+      user: userData.user,
+      totalStake: userData.totalStake,
+      bucket,
+      mostRecentIntentDate: new Date(mostRecentIntent),
+      intents: Array.from(userData.intentMap.values()).map(intentData => ({
+        intent: intentData.intent,
+        totalStake: intentData.totalStake,
+        reasonings: intentData.reasonings
+      }))
+    };
+  });
+
+  // Sort by bucket first (newer first), then by stake within bucket
+  bucketedResults.sort((a, b) => {
+    // First sort by bucket (newer first)
+    if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+    // Then by stake within bucket
+    return b.totalStake - a.totalStake;
+  });
 
   return {
-    results: formattedResults,
+    results: bucketedResults,
     pagination: {
       page,
       limit,
