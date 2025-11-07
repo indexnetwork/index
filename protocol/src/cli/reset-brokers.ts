@@ -12,9 +12,14 @@ console.log(process.env);
 
 import db from '../lib/db';
 import { intents, intentStakes } from '../lib/schema';
-import { isNull, inArray } from 'drizzle-orm';
+import { isNull, inArray, asc } from 'drizzle-orm';
 import { initializeBrokers, triggerBrokersOnIntentCreated, getRegisteredBrokers } from '../agents/context_brokers/connector';
 import { INTENT_INFERRER_AGENT_ID } from '../lib/agent-ids';
+
+const CHUNK_SIZE = 100;
+const DELAY_BETWEEN_CHUNKS_MS = 20000; // 20 seconds
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
   try {
@@ -38,14 +43,16 @@ import { INTENT_INFERRER_AGENT_ID } from '../lib/agent-ids';
 
     console.log(`✅ Deleted ${deletedStakes.length} broker stakes\n`);
 
-    // Step 2: Get all non-archived intents
-    console.log('📥 Fetching all non-archived intents...');
+    // Step 2: Get all non-archived intents ordered by creation time
+    console.log('📥 Fetching all non-archived intents ordered by creation time...');
     const allIntents = await db.select({
       id: intents.id,
-      payload: intents.payload
+      payload: intents.payload,
+      createdAt: intents.createdAt
     })
       .from(intents)
-      .where(isNull(intents.archivedAt));
+      .where(isNull(intents.archivedAt))
+      .orderBy(asc(intents.createdAt));
 
     console.log(`📊 Found ${allIntents.length} non-archived intents\n`);
 
@@ -54,19 +61,36 @@ import { INTENT_INFERRER_AGENT_ID } from '../lib/agent-ids';
       process.exit(0);
     }
 
-    // Step 3: Trigger all brokers for each intent
-    console.log('🚀 Re-triggering all brokers for all intents...\n');
+    // Step 3: Trigger all brokers for each intent in chunks
+    console.log(`🚀 Re-triggering all brokers for all intents in chunks of ${CHUNK_SIZE}...\n`);
     let processed = 0;
     let errors = 0;
 
-    for (const intent of allIntents) {
-      try {
-        console.log(`[${processed + 1}/${allIntents.length}] Processing intent ${intent.id}...`);
-        triggerBrokersOnIntentCreated(intent.id);
-        processed++;
-      } catch (error) {
-        console.error(`❌ Error processing intent ${intent.id}:`, error);
-        errors++;
+    // Split intents into chunks
+    const totalChunks = Math.ceil(allIntents.length / CHUNK_SIZE);
+    
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      const start = chunkIndex * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, allIntents.length);
+      const chunk = allIntents.slice(start, end);
+      
+      console.log(`\n📦 Processing chunk ${chunkIndex + 1}/${totalChunks} (intents ${start + 1}-${end})`);
+      
+      for (const intent of chunk) {
+        try {
+          console.log(`[${processed + 1}/${allIntents.length}] Processing intent ${intent.id}...`);
+          triggerBrokersOnIntentCreated(intent.id);
+          processed++;
+        } catch (error) {
+          console.error(`❌ Error processing intent ${intent.id}:`, error);
+          errors++;
+        }
+      }
+      
+      // Wait between chunks (but not after the last chunk)
+      if (chunkIndex < totalChunks - 1) {
+        console.log(`\n⏳ Waiting ${DELAY_BETWEEN_CHUNKS_MS / 1000} seconds before next chunk...`);
+        await sleep(DELAY_BETWEEN_CHUNKS_MS);
       }
     }
 
