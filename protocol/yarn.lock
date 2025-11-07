@@ -6083,6 +6083,11 @@ tiktoken@^1.0.21:
   resolved "https://registry.yarnpkg.com/tiktoken/-/tiktoken-1.0.22.tgz#a6c674839228bb88f32dfe646dff47193762f7d3"
   integrity sha512-PKvy1rVF1RibfF3JlXBSP0Jrcw2uq3yXdgcEXtKTYn3QJ/cBRBHDnrJ5jHky+MENZ6DIPwNUGWpkVx+7joCpNA==
 
+timeago.js@^4.0.2:
+  version "4.0.2"
+  resolved "https://registry.yarnpkg.com/timeago.js/-/timeago.js-4.0.2.tgz#724e8c8833e3490676c7bb0a75f5daf20e558028"
+  integrity sha512-a7wPxPdVlQL7lqvitHGGRsofhdwtkoSXPGATFuSOA2i1ZNQEPLrGnj68vOp2sOJTCFAQVXPeNMX/GctBaO9L2w==
+
 tmp@^0.0.33:
   version "0.0.33"
   resolved "https://registry.yarnpkg.com/tmp/-/tmp-0.0.33.tgz#6d34335889768d21b2bcda0aa277ced3b1bfadf9"

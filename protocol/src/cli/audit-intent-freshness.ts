@@ -1,9 +1,14 @@
 #!/usr/bin/env node
-/**
- * CLI tool to manually audit intent freshness
- * 
- * Usage: npm run audit-freshness
- */
+
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment-specific .env file
+const envFile = `.env.${process.env.NODE_ENV || 'development'}`;
+dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+
+console.log(process.env);
+
 
 import { auditAllIntents } from '../agents/core/intent_freshness_auditor';
 

@@ -11,6 +11,7 @@ import { isNull, eq } from 'drizzle-orm';
 import { traceableStructuredLlm } from '../../../lib/agents';
 import { z } from 'zod';
 import { Events } from '../../../lib/events';
+import { format } from 'timeago.js';
 
 // OpenRouter preset: intent-freshness-auditor
 // Configured to analyze temporal context and expiration signals
@@ -23,30 +24,61 @@ export interface FreshnessResult {
   confidenceScore: number;
 }
 
-const SYSTEM_PROMPT = `You are an intent freshness analyzer. Determine if an intent has EXPIRED based on temporal markers and context.
+const SYSTEM_PROMPT = `You are an intent freshness analyzer. Determine if an intent has EXPIRED based on both explicit temporal markers AND the inherent nature of the intent type.
 
-An intent is EXPIRED if it contains:
+EXPLICIT EXPIRATION - An intent is EXPIRED if it contains:
 1. Past dates or time periods (e.g., "Q1 2024" when current date is later)
 2. Time-sensitive opportunities that have clearly passed (e.g., "attending conference next week" from 6 months ago)
 3. Job postings with stale timelines (e.g., "hiring for Summer 2023 internship" when we're in 2025)
 4. Event-specific intents tied to past dates (e.g., "speaking at DevConf March 15" when that date has passed)
 5. Seasonal or time-bound offers that are clearly outdated
 
-An intent is NOT EXPIRED if:
-- No temporal markers exist (timeless statements like "interested in AI research")
-- Temporal context is ongoing or future-looking (e.g., "building a startup")
-- References are relative without specific dates (e.g., "looking for co-founder")
-- The intent is evergreen (e.g., "open to consulting", "seeking partnerships")
+IMPLICIT EXPIRATION - Consider the nature and typical lifecycle of intent types:
 
-Current date for reference: ${new Date().toISOString().split('T')[0]}
+SHORT-TERM INTENTS (typically expire after 1-3 months):
+- Job searching / "looking for work" / "open to opportunities"
+- Seeking specific roles or positions
+- Attending upcoming events or conferences
+- Buying/selling specific items or services
+- Urgent help or immediate needs
+- Short-term project collaborations
+
+MEDIUM-TERM INTENTS (typically expire after 3-6 months):
+- Looking for co-founders or team members
+- Fundraising or seeking investment
+- Beta testing or early access requests
+- Specific project launches
+- Learning specific skills for near-term goals
+- Networking for specific opportunities
+
+EVERGREEN INTENTS (rarely expire without explicit markers):
+- General research interests or areas of expertise
+- Professional background and capabilities
+- Open to consulting or advisory roles (general)
+- Industry interests and passions
+- Building long-term projects or companies
+- Core professional identity statements
+
+EXPIRATION GUIDELINES:
+- A "looking for work" intent from 4+ months ago is likely stale (either found work or gave up)
+- A "seeking co-founder" intent from 6+ months ago is probably outdated
+- An event attendance from 2+ weeks ago is definitely expired
+- General interests and expertise are evergreen regardless of age
+- Consider context: "building X" is ongoing, "looking to build X" may expire
+
+An intent is NOT EXPIRED if:
+- It's evergreen in nature (expertise, interests, ongoing projects)
+- It's recent enough for its type (job search under 2 months, etc.)
+- Context suggests ongoing relevance
+- It's a statement of capability rather than seeking
 
 Confidence scoring:
-- 90-100: Clear expired temporal markers (specific past dates, expired deadlines)
-- 75-89: Strong signals of expiration (stale job posting, old event reference)
-- 70-74: Probable expiration (context suggests it's outdated)
+- 90-100: Clear expired temporal markers OR obviously stale for its intent type
+- 75-89: Strong signals of expiration (time-sensitive intent that's aged out)
+- 70-74: Probable expiration (intent type + age suggest staleness)
 - Below 70: Not confident enough to archive
 
-Be conservative. Only mark as expired if there's clear temporal evidence.`;
+Be thoughtful about intent types but err on the side of caution.`;
 
 /**
  * Analyze a single intent for freshness
@@ -75,12 +107,15 @@ export async function auditIntentFreshness(intentId: string): Promise<FreshnessR
       confidenceScore: z.number().min(0).max(100).describe("Confidence score 0-100")
     });
 
+    // Use timeago.js for human-readable relative time
+    const timeAgo = format(intent.createdAt);
+
     const userMessage = {
       role: "user",
       content: `Analyze this intent for expiration:
 
 Intent: "${intent.payload}"
-Created: ${intent.createdAt.toISOString().split('T')[0]}
+Created: ${timeAgo}
 
 Is this intent expired? Provide confidence score and reasoning.`
     };
@@ -114,6 +149,7 @@ Is this intent expired? Provide confidence score and reasoning.`
  * Archive an intent by setting archivedAt timestamp
  */
 async function archiveIntent(intentId: string, userId: string): Promise<void> {
+
   await db.update(intents)
     .set({ 
       archivedAt: new Date(),
@@ -148,27 +184,30 @@ export async function auditAllIntents(): Promise<{
 
   console.log(`📊 Found ${allIntents.length} non-archived intents to audit`);
 
-  let audited = 0;
-  let archived = 0;
-  let errors = 0;
-
-  for (const intent of allIntents) {
-    try {
+  const results = await Promise.allSettled(
+    allIntents.map(async (intent) => {
       const result = await auditIntentFreshness(intent.id);
-      audited++;
-
+      
       if (result.isExpired && result.confidenceScore >= CONFIDENCE_THRESHOLD) {
         console.log(`🗑️  Archiving expired intent ${intent.id}: ${result.reasoning} (confidence: ${result.confidenceScore})`);
         await archiveIntent(intent.id, intent.userId);
-        archived++;
+        return { archived: true };
       } else if (result.isExpired) {
         console.log(`⏭️  Skipping intent ${intent.id}: Below confidence threshold (${result.confidenceScore} < ${CONFIDENCE_THRESHOLD})`);
       }
-    } catch (error) {
-      console.error(`❌ Error processing intent ${intent.id}:`, error);
-      errors++;
+      return { archived: false };
+    })
+  );
+
+  const audited = results.filter(r => r.status === 'fulfilled').length;
+  const archived = results.filter(r => r.status === 'fulfilled' && r.value.archived).length;
+  const errors = results.filter(r => r.status === 'rejected').length;
+
+  results.forEach((result, idx) => {
+    if (result.status === 'rejected') {
+      console.error(`❌ Error processing intent ${allIntents[idx].id}:`, result.reason);
     }
-  }
+  });
 
   console.log(`✅ Audit complete: ${audited} audited, ${archived} archived, ${errors} errors`);
 
