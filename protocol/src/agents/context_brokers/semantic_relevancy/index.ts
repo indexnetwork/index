@@ -267,7 +267,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   ): Promise<{ isMutual: boolean; confidenceScore: number; reasoning: string } | null> {
     const MutualIntentSchema = z.object({
       isMutual: z.boolean().describe("Whether the two intents have mutual intent (both relate to or depend on each other)"),
-      reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. If not mutual, provide empty string."),
+      reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. Refer to intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research') rather than by position or ordinal references. Do not use 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'. If not mutual, provide empty string."),
       confidenceScore: z.number().min(0).max(100).describe("Precise confidence score 0-100. Use full range 70-100 for mutual matches. Avoid round numbers like 100, 90, 80. Be specific: 87, 76, 92, etc.")
     });
 
