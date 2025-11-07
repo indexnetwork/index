@@ -257,7 +257,6 @@ export class QueueProcessor {
     
     // Get existing intents
     const existingIntents = await IntentService.getUserIntents(data.userId);
-    const count = data.intentCount ?? (data.sourceType === 'link' ? 1 : 5);
     
     let result;
     if (data.content) {
@@ -267,7 +266,7 @@ export class QueueProcessor {
         1, // itemCount
         data.instruction,
         Array.from(existingIntents),
-        count,
+        undefined,
         60000
       );
     } else if (data.objects) {
@@ -276,7 +275,7 @@ export class QueueProcessor {
         data.objects,
         data.instruction,
         Array.from(existingIntents),
-        count,
+        undefined,
         60000
       );
     }

@@ -253,7 +253,11 @@ export async function analyzeContent(
     
     if (existingIntents.length > 0) {
       const intentsToShow = existingIntents.slice(0, 50);
-      // contextParts.push(`Existing Intents (do NOT generate duplicates): ${intentsToShow.join(', ')}`);
+      contextParts.push(
+        `Existing User Intents:\n${intentsToShow.map((i, idx) => `${idx + 1}. ${i}`).join('\n')}\n\n` +
+        `Generate only NEW intents that are meaningfully distinct from the existing ones above. ` +
+        `Skip any intent that duplicates or closely resembles what already exists.`
+      );
     }
     
     const context = contextParts.length > 0 ? contextParts.join('\n') : undefined;
