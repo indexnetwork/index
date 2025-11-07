@@ -107,8 +107,8 @@ export async function synthesizeVibeCheck(params: {
       return "";
     }
 
-    console.log('Stakes:', stakes);
-    // Group by intent
+    
+    // Group by intent and keep only the most valuable reason (highest stake)
     const intentGroups = new Map();
     stakes.forEach(stake => {
       if (!intentGroups.has(stake.intentId)) {
@@ -116,15 +116,25 @@ export async function synthesizeVibeCheck(params: {
           id: stake.intentId,
           summary: stake.intentSummary,
           payload: stake.intentPayload,
-          reasons: []
+          most_valuable_reason: {
+            agent_name: stake.agentName,
+            agent_id: stake.agentName,
+            reasoning: stake.reasoning,
+            stake: Number(stake.stake)
+          }
         });
+      } else {
+        // Update if this stake is higher
+        const current = intentGroups.get(stake.intentId).most_valuable_reason;
+        if (Number(stake.stake) > current.stake) {
+          intentGroups.get(stake.intentId).most_valuable_reason = {
+            agent_name: stake.agentName,
+            agent_id: stake.agentName,
+            reasoning: stake.reasoning,
+            stake: Number(stake.stake)
+          };
+        }
       }
-      intentGroups.get(stake.intentId).reasons.push({
-        agent_name: stake.agentName,
-        agent_id: stake.agentName,
-        reasoning: stake.reasoning,
-        stake: Number(stake.stake)
-      });
     });
 
     // Prepare data for vibe checker - target user info with context user's intents
