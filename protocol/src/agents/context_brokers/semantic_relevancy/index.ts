@@ -127,7 +127,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     }
 
     // Stage 2: Rank all candidates and get top 3
-    const candidatePairs = this.buildCandidatePairs(newIntent.id, mutualResults, existingStakes);
+    const candidatePairs = await this.buildCandidatePairs(newIntent.id, mutualResults, existingStakes);
     const rankingResult = await this.rankIntentPairs(candidatePairs);
     console.log(`   ✅ Stage 2: Selected top ${rankingResult.top3IntentPairs.length} pairs`);
 
@@ -188,28 +188,47 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   /**
    * Build candidate pairs from mutual results and existing stakes
    */
-  private buildCandidatePairs(
+  private async buildCandidatePairs(
     newIntentId: string,
     mutualResults: Array<{ targetIntentId: string; score: number; reasoning: string }>,
     existingStakes: Array<{ id: string; stake: bigint; intents: string[]; reasoning: string }>
   ) {
-    return [
-      ...mutualResults.map(r => ({
+    // Calculate recency weight based on intent creation time
+    const calculateRecencyWeight = async (intentId: string): Promise<number> => {
+      const intent = await this.getIntent(intentId);
+      if (!intent?.createdAt) return 0;
+      
+      const ageInMs = Date.now() - new Date(intent.createdAt).getTime();
+      const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
+      
+      // Recency score: 100 for today, decays to ~50 after 30 days, ~25 after 90 days
+      return Math.round(100 * Math.exp(-ageInDays / 30));
+    };
+
+    const candidatePairsWithRecency = await Promise.all([
+      ...mutualResults.map(async r => ({
         type: 'new' as const,
         newIntentId,
         targetIntentId: r.targetIntentId,
         score: r.score,
-        reasoning: r.reasoning
+        reasoning: r.reasoning,
+        recencyWeight: await calculateRecencyWeight(r.targetIntentId)
       })),
-      ...existingStakes.map(stake => ({
+      ...existingStakes.map(async stake => ({
         type: 'existing' as const,
         stakeId: stake.id,
         newIntentId: stake.intents[0],
         targetIntentId: stake.intents[1],
         score: Number(stake.stake),
-        reasoning: stake.reasoning
+        reasoning: stake.reasoning,
+        recencyWeight: Math.max(
+          await calculateRecencyWeight(stake.intents[0]),
+          await calculateRecencyWeight(stake.intents[1])
+        )
       }))
-    ];
+    ]);
+
+    return candidatePairsWithRecency;
   }
 
   /**
@@ -219,7 +238,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     db: any,
     existingStakes: Array<{ id: string }>,
     top3Pairs: Array<{ newIntentId: string; targetIntentId: string }>,
-    candidatePairs: Array<{ newIntentId: string; targetIntentId: string; score: number; reasoning: string }>
+    candidatePairs: Array<{ newIntentId: string; targetIntentId: string; score: number; reasoning: string; recencyWeight: number }>
   ) {
     // Delete all existing stakes
     for (const stake of existingStakes) {
@@ -380,6 +399,7 @@ Are these mutually relevant with high confidence (>= 70 score)? Provide score an
       targetIntentId: string;
       score: number;
       reasoning: string;
+      recencyWeight: number;
       stakeId?: string;
     }>
   ): Promise<{ top3IntentPairs: Array<{ newIntentId: string; targetIntentId: string }> }> {
@@ -416,13 +436,22 @@ Candidates include:
 
 Ranking criteria (in priority order):
 1. **Score/Quality**: Higher confidence scores indicate stronger mutual value
-2. **Specificity**: More specific intents are more actionable than vague ones
-3. **Actionability**: Can both parties immediately act on this connection?
-4. **Complementarity**: How well do the intents complement each other?
+2. **Recency**: More recent intents (higher recency weight) are more relevant and timely
+3. **Specificity**: More specific intents are more actionable than vague ones
+4. **Actionability**: Can both parties immediately act on this connection?
+5. **Complementarity**: How well do the intents complement each other?
+
+Recency Weight Guide:
+- 90-100: Created very recently (today/this week) - highly time-sensitive
+- 70-89: Recent (within last 2 weeks) - still very relevant
+- 50-69: Moderate age (2-4 weeks) - relevant but less urgent
+- 30-49: Older (1-2 months) - potentially stale
+- <30: Old (2+ months) - may be outdated
 
 Strategy:
 - Don't just pick the 3 highest scores mechanically
 - Consider the overall value profile for the user relationship
+- Balance quality with recency - fresh intents often represent active needs
 - Diversity can be valuable (different types of collaboration)
 - But quality always trumps diversity
 
@@ -436,10 +465,11 @@ Return exactly 3 pairs (or fewer if less than 3 candidates exist).`
 ${candidatePairs.map((c, i) => 
   `${i + 1}. ${c.type.toUpperCase()} - Pair between Intent ${c.newIntentId} and Intent ${c.targetIntentId}
    Score: ${c.score}
+   Recency Weight: ${c.recencyWeight}
    Reasoning: ${c.reasoning}`
 ).join('\n\n')}
 
-Return the top 3 pairs by quality (prioritize higher scores).`
+Return the top 3 pairs by quality (balance score with recency - recent intents with high scores are ideal).`
     };
 
     try {
