@@ -150,6 +150,7 @@ Is this intent expired? Provide confidence score and reasoning.`
  */
 async function archiveIntent(intentId: string, userId: string): Promise<void> {
 
+  return;
   await db.update(intents)
     .set({ 
       archivedAt: new Date(),
@@ -177,7 +178,8 @@ export async function auditAllIntents(): Promise<{
   const allIntents = await db.select({
     id: intents.id,
     userId: intents.userId,
-    payload: intents.payload
+    payload: intents.payload,
+    summary: intents.summary
   })
     .from(intents)
     .where(isNull(intents.archivedAt));
@@ -188,13 +190,32 @@ export async function auditAllIntents(): Promise<{
     allIntents.map(async (intent) => {
       const result = await auditIntentFreshness(intent.id);
       
+      // Get time ago for this intent
+      const intentData = await db.select({ createdAt: intents.createdAt })
+        .from(intents)
+        .where(eq(intents.id, intent.id))
+        .limit(1);
+      const timeAgo = intentData[0] ? format(intentData[0].createdAt) : 'unknown';
+      
+      // Always log the full analysis for debugging
+      console.log('\n' + '='.repeat(80));
+      console.log(`📝 Intent: "${intent.summary}`);
+      console.log(`⏰ Created: ${timeAgo}`);
+      console.log(`❓ Is Expired: ${result.isExpired ? '✅ YES' : '❌ NO'}`);
+      console.log(`💭 Reasoning: ${result.reasoning}`);
+      console.log(`📊 Confidence: ${result.confidenceScore}%`);
+      
       if (result.isExpired && result.confidenceScore >= CONFIDENCE_THRESHOLD) {
-        console.log(`🗑️  Archiving expired intent ${intent.id}: ${result.reasoning} (confidence: ${result.confidenceScore})`);
+        console.log(`🗑️  ACTION: Archiving (above ${CONFIDENCE_THRESHOLD}% threshold)`);
         await archiveIntent(intent.id, intent.userId);
         return { archived: true };
       } else if (result.isExpired) {
-        console.log(`⏭️  Skipping intent ${intent.id}: Below confidence threshold (${result.confidenceScore} < ${CONFIDENCE_THRESHOLD})`);
+        console.log(`⏭️  ACTION: Skipping (below ${CONFIDENCE_THRESHOLD}% confidence threshold)`);
+      } else {
+        console.log(`✨ ACTION: Keeping (not expired)`);
       }
+      console.log('='.repeat(80));
+      
       return { archived: false };
     })
   );
