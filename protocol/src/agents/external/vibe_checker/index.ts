@@ -39,6 +39,7 @@ export interface OtherUserData {
   name: string;
   intro: string;
   intents: AuthenticatedUserIntent[]; // Authenticated user's intents matched to this other user
+  initiatorName?: string; // For 3rd person perspective (admin view)
 }
 
 /**
@@ -71,6 +72,10 @@ export async function vibeCheck(
 
     const { timeout = 30000, characterLimit } = options;
 
+    const isThirdPerson = !!otherUserData.initiatorName;
+    const initiatorName = otherUserData.initiatorName || 'you';
+    const targetName = otherUserData.name;
+
     // System message: Define role, tone, and format
     const systemMessage = {
       role: "system",
@@ -89,51 +94,53 @@ Format:
 - No bold, italic, or title${characterLimit ? `\n- Maximum ${characterLimit} characters` : ''}
 
 Structure:
-- Start with what the authenticated user (you) is explicitly looking for
-- State what the other person provides or is looking for (based on relevance analysis)
+- Start with what ${initiatorName} ${isThirdPerson ? 'is' : 'are'} explicitly looking for
+- State what ${targetName} provides or is looking for (based on relevance analysis)
 - Explain the mutual fit using present tense and direct language
-- Address reader as "you" vs the other person by first name only
+- Address ${isThirdPerson ? `${initiatorName} and ${targetName} in third person` : `reader as "${initiatorName}" vs the other person by first name only`}
 - Single paragraph, can use line breaks`
     };
 
     // User message: Provide authenticated user's intents and their relevance to other user
-    const yourIntentsXml = otherUserData.intents
+    const intentsLabel = isThirdPerson ? `${initiatorName}_intents` : 'your_intents';
+    const intentsXml = otherUserData.intents
       .slice(0, 10)
       .map((intent) => {
-        return `  <your_intent id="${intent.id}">
-    <what_you_want>${intent.payload}</what_you_want>
-    <relevance_to_them>${intent.most_valuable_reason.reasoning}</relevance_to_them>
-  </your_intent>`;
+        const wantLabel = isThirdPerson ? 'what_they_want' : 'what_you_want';
+        return `  <${intentsLabel.slice(0, -1)} id="${intent.id}">
+    <${wantLabel}>${intent.payload}</${wantLabel}>
+    <relevance_to_${targetName.toLowerCase().replace(/\s+/g, '_')}>${intent.most_valuable_reason.reasoning}</relevance_to_${targetName.toLowerCase().replace(/\s+/g, '_')}>
+  </${intentsLabel.slice(0, -1)}>`;
       })
       .join('\n');
 
     const userMessage = {
       role: "user",
-      content: `Generate collaboration synthesis between you (authenticated user) and ${otherUserData.name}.
+      content: `Generate collaboration synthesis between ${initiatorName} ${isThirdPerson ? `and ${targetName}` : `(authenticated user) and ${targetName}`}.
 
 <other_person>
-  <name>${otherUserData.name}</name>
+  <name>${targetName}</name>
   <bio>${otherUserData.intro}</bio>
 </other_person>
 
-<your_intents>
-${yourIntentsXml}
-</your_intents>
+<${intentsLabel}>
+${intentsXml}
+</${intentsLabel}>
 
 <examples>
-  <good>"You're looking for [coordination without platforms](https://index.network/intents/ID) and ${otherUserData.name} is designing agent-led systems to negotiate access. They're working on exactly the context-aware coordination primitives you need—this is the match."</good>
+  <good>"${initiatorName} ${isThirdPerson ? 'is' : 'are'} looking for [coordination without platforms](https://index.network/intents/ID) and ${targetName} is designing agent-led systems to negotiate access. They're working on exactly the context-aware coordination primitives ${isThirdPerson ? initiatorName + ' needs' : 'you need'}—this is the match."</good>
   
-  <good>"You want to [build better dashboards](https://index.network/intents/ID) and ${otherUserData.name} is obsessed with data viz. They've got the visual design expertise you're looking for (shocking how rare this combo is)."</good>
+  <good>"${initiatorName} ${isThirdPerson ? 'wants' : 'want'} to [build better dashboards](https://index.network/intents/ID) and ${targetName} is obsessed with data viz. They've got the visual design expertise ${isThirdPerson ? initiatorName + ' is' : "you're"} looking for (shocking how rare this combo is)."</good>
   
-  <good>"${otherUserData.name} runs [community events for developers](https://index.network/intents/ID) and you need beta testers. They have exactly the developer audience you're trying to reach."</good>
+  <good>"${targetName} runs [community events for developers](https://index.network/intents/ID) and ${initiatorName} ${isThirdPerson ? 'needs' : 'need'} beta testers. They have exactly the developer audience ${isThirdPerson ? initiatorName + ' is' : "you're"} trying to reach."</good>
   
-  <good>"You're building [alignment tools](https://index.network/intents/ID) and ${otherUserData.name} writes about AI safety frameworks. Your implementation work matches their theoretical expertise—bridges theory and practice, pretty rare combo."</good>
+  <good>"${initiatorName} ${isThirdPerson ? 'is' : 'are'} building [alignment tools](https://index.network/intents/ID) and ${targetName} writes about AI safety frameworks. ${isThirdPerson ? `${initiatorName}'s` : 'Your'} implementation work matches their theoretical expertise—bridges theory and practice, pretty rare combo."</good>
   
-  <good>"You're looking for [someone to jam on music](https://index.network/intents/ID) and ${otherUserData.name} built a collaborative music app. They're actively looking for musicians to test it with."</good>
+  <good>"${initiatorName} ${isThirdPerson ? 'is' : 'are'} looking for [someone to jam on music](https://index.network/intents/ID) and ${targetName} built a collaborative music app. They're actively looking for musicians to test it with."</good>
   
-  <good>"You need help [scaling APIs](https://index.network/intents/ID) and ${otherUserData.name} has done this twice before. They have the exact experience you're looking for."</good>
+  <good>"${initiatorName} ${isThirdPerson ? 'needs' : 'need'} help [scaling APIs](https://index.network/intents/ID) and ${targetName} has done this twice before. They have the exact experience ${isThirdPerson ? initiatorName + ' is' : "you're"} looking for."</good>
   
-  <good>"You're trying to [understand Web3 gaming](https://index.network/intents/ID) and ${otherUserData.name} shipped three games. They're looking to advise people getting into the space—perfect fit."</good>
+  <good>"${initiatorName} ${isThirdPerson ? 'is' : 'are'} trying to [understand Web3 gaming](https://index.network/intents/ID) and ${targetName} shipped three games. They're looking to advise people getting into the space—perfect fit."</good>
 </examples>`
     };
 

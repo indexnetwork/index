@@ -1,6 +1,7 @@
 // Types for synthesis requests and responses
 export interface SynthesisRequest {
   targetUserId: string;
+  initiatorId?: string;
   intentIds?: string[];
   indexIds?: string[];
   options?: {

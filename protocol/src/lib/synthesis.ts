@@ -2,7 +2,7 @@ import { vibeCheck, type VibeCheckOptions } from '../agents/external/vibe_checke
 import { introMaker, type IntroMakerData } from '../agents/external/intro_maker';
 import { cache } from './redis';
 import db from './db';
-import { users as usersTable, intents, intentStakes, agents } from './schema';
+import { users as usersTable, intents, intentStakes, agents, intentIndexes } from './schema';
 import { eq, isNull, and, sql, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 import { getAccessibleIntents } from './intent-access';
@@ -22,28 +22,34 @@ export async function synthesizeVibeCheck(params: {
   targetUserId: string; // User being analyzed - their profile info will be used
   targetUserName?: string;
   contextUserId?: string; // User requesting analysis - their intents will be analyzed
+  initiatorId?: string; // For 3rd person admin view - the person initiating connection
   intentIds?: string[]; // Specific context user's intents to focus on (if no contextUserId)
   indexIds?: string[]; // Index filtering for secure access
   options?: SynthesisOptions;
 }): Promise<string> {
   try {
-    const { targetUserId, contextUserId, intentIds, indexIds, options } = params;
+    const { targetUserId, contextUserId, initiatorId, intentIds, indexIds, options } = params;
 
     // Get target user info
-    const targetUser = await db.select({
+    const userIds = initiatorId ? [targetUserId, initiatorId] : [targetUserId];
+    const userRecords = await db.select({
       id: usersTable.id,
       name: usersTable.name,
       intro: usersTable.intro
     })
     .from(usersTable)
-    .where(eq(usersTable.id, targetUserId))
-    .limit(1);
+    .where(inArray(usersTable.id, userIds));
 
-    if (targetUser.length === 0) {
+    if (userRecords.length === 0) {
       return "";
     }
 
-    const user = targetUser[0];
+    const targetUser = userRecords.find(u => u.id === targetUserId);
+    const initiatorUser = initiatorId ? userRecords.find(u => u.id === initiatorId) : undefined;
+    
+    if (!targetUser) {
+      return "";
+    }
 
     // Get context intents using secure generic function
     let contextIntentIds: string[] = [];
@@ -72,6 +78,7 @@ export async function synthesizeVibeCheck(params: {
     }
 
     // Get stakes data - find stakes that connect context user's intents with target user's intents
+    // Filter to only include intents that exist in the specified indexes
     const stakes = await db.select({
       stake: intentStakes.stake,
       reasoning: intentStakes.reasoning,
@@ -98,7 +105,20 @@ export async function synthesizeVibeCheck(params: {
         SELECT 1 FROM ${intents} i2
         WHERE i2.id::text = ANY(${intentStakes.intents})
         AND i2.user_id = ${targetUserId}
-      )`
+      )`,
+      // Filter: both context and target intents must exist in the specified indexes
+      ...(indexIds && indexIds.length > 0 ? [sql`EXISTS(
+        SELECT 1 FROM ${intentIndexes} ii1
+        WHERE ii1.intent_id = ${intents.id}
+        AND ii1.index_id IN (${sql.join(indexIds.map(id => sql`${id}`), sql`, `)})
+      )`,
+      sql`EXISTS(
+        SELECT 1 FROM ${intents} i2
+        INNER JOIN ${intentIndexes} ii2 ON ii2.intent_id = i2.id
+        WHERE i2.id::text = ANY(${intentStakes.intents})
+        AND i2.user_id = ${targetUserId}
+        AND ii2.index_id IN (${sql.join(indexIds.map(id => sql`${id}`), sql`, `)})
+      )`] : [])
     ))
     .orderBy(sql`${intentStakes.stake} DESC`)
     .limit(3);
@@ -139,15 +159,17 @@ export async function synthesizeVibeCheck(params: {
 
     // Prepare data for vibe checker - target user info with context user's intents
     const userData = {
-      id: user.id,
-      name: user.name,
-      intro: user.intro || "",
-      intents: Array.from(intentGroups.values())
+      id: targetUser.id,
+      name: targetUser.name,
+      intro: targetUser.intro || "",
+      intents: Array.from(intentGroups.values()),
+      initiatorName: initiatorUser?.name
     };
 
-    // Check cache
+    // Check cache (include initiatorId in cache key for proper segmentation)
     const hashKey = 'synthesis';
-    const fieldKey = createCacheHash(userData, options);
+    const cacheData = initiatorId ? { ...userData, initiatorId } : userData;
+    const fieldKey = createCacheHash(cacheData, options);
     const cachedResult = await cache.hget(hashKey, fieldKey);
     
     if (cachedResult) {

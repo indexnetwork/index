@@ -43,7 +43,17 @@ router.get('/:indexId/pending-connections',
         return res.json({ connections: [] });
       }
 
-      // Get all connection events of type REQUEST
+      // Get all members of this index
+      const indexMemberIds = await db.select({ userId: indexMembers.userId })
+        .from(indexMembers)
+        .where(eq(indexMembers.indexId, indexId))
+        .then(rows => rows.map(r => r.userId));
+
+      if (indexMemberIds.length === 0) {
+        return res.json({ connections: [] });
+      }
+
+      // Get connection events of type REQUEST where both users are index members
       const requestEvents = await db.select({
         id: userConnectionEvents.id,
         initiatorUserId: userConnectionEvents.initiatorUserId,
@@ -52,7 +62,11 @@ router.get('/:indexId/pending-connections',
         createdAt: userConnectionEvents.createdAt,
       })
       .from(userConnectionEvents)
-      .where(eq(userConnectionEvents.eventType, 'REQUEST'))
+      .where(and(
+        eq(userConnectionEvents.eventType, 'REQUEST'),
+        inArray(userConnectionEvents.initiatorUserId, indexMemberIds),
+        inArray(userConnectionEvents.receiverUserId, indexMemberIds)
+      ))
       .orderBy(desc(userConnectionEvents.createdAt));
 
       // For each REQUEST, check if there's a subsequent action
@@ -139,6 +153,22 @@ router.post('/:indexId/approve-connection',
         return res.status(ownerCheck.status || 403).json({ error: ownerCheck.error || 'Only index owners can approve connections' });
       }
 
+      // Verify both users are members of this index
+      const memberCheck = await db.select()
+        .from(indexMembers)
+        .where(and(
+          eq(indexMembers.indexId, indexId),
+          or(
+            eq(indexMembers.userId, initiatorUserId),
+            eq(indexMembers.userId, receiverUserId)
+          )
+        ));
+
+      const memberIds = memberCheck.map(m => m.userId);
+      if (!memberIds.includes(initiatorUserId) || !memberIds.includes(receiverUserId)) {
+        return res.status(403).json({ error: 'Both users must be members of this index' });
+      }
+
       // Verify connection request exists and is still pending
       const latestEvent = await db.select()
         .from(userConnectionEvents)
@@ -204,6 +234,22 @@ router.post('/:indexId/deny-connection',
       const ownerCheck = await checkIndexOwnership(indexId, userId);
       if (!ownerCheck.hasAccess) {
         return res.status(ownerCheck.status || 403).json({ error: ownerCheck.error || 'Only index owners can deny connections' });
+      }
+
+      // Verify both users are members of this index
+      const memberCheck = await db.select()
+        .from(indexMembers)
+        .where(and(
+          eq(indexMembers.indexId, indexId),
+          or(
+            eq(indexMembers.userId, initiatorUserId),
+            eq(indexMembers.userId, receiverUserId)
+          )
+        ));
+
+      const memberIds = memberCheck.map(m => m.userId);
+      if (!memberIds.includes(initiatorUserId) || !memberIds.includes(receiverUserId)) {
+        return res.status(403).json({ error: 'Both users must be members of this index' });
       }
 
       // Verify connection request exists and is still pending
@@ -278,14 +324,28 @@ router.get('/:indexId/pending-count',
         return res.json({ count: 0 });
       }
 
-      // Get all REQUEST events and count those still pending
+      // Get all members of this index
+      const indexMemberIds = await db.select({ userId: indexMembers.userId })
+        .from(indexMembers)
+        .where(eq(indexMembers.indexId, indexId))
+        .then(rows => rows.map(r => r.userId));
+
+      if (indexMemberIds.length === 0) {
+        return res.json({ count: 0 });
+      }
+
+      // Get REQUEST events where both users are index members and count those still pending
       const requestEvents = await db.select({
         id: userConnectionEvents.id,
         initiatorUserId: userConnectionEvents.initiatorUserId,
         receiverUserId: userConnectionEvents.receiverUserId,
       })
       .from(userConnectionEvents)
-      .where(eq(userConnectionEvents.eventType, 'REQUEST'));
+      .where(and(
+        eq(userConnectionEvents.eventType, 'REQUEST'),
+        inArray(userConnectionEvents.initiatorUserId, indexMemberIds),
+        inArray(userConnectionEvents.receiverUserId, indexMemberIds)
+      ));
 
       let pendingCount = 0;
       

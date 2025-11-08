@@ -47,6 +47,7 @@ export default function AdminPage({ params }: { params: Promise<{ indexId: strin
       // Generate synthesis about the potential connection
       const response = await synthesisService.generateVibeCheck({
         targetUserId: receiverId,
+        initiatorId: initiatorId,
         indexIds: [indexId]
       });
       setSyntheses(prev => ({ ...prev, [cacheKey]: response.synthesis }));

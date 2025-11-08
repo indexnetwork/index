@@ -15,6 +15,7 @@ router.post('/vibecheck',
   authenticatePrivy,
   [
     body('targetUserId').isUUID().withMessage('Target user ID must be a valid UUID'),
+    body('initiatorId').optional().isUUID().withMessage('Initiator user ID must be a valid UUID'),
     body('intentIds').optional().isArray().withMessage('Intent IDs must be an array'),
     body('intentIds.*').optional().isUUID().withMessage('Each intent ID must be a valid UUID'),
     body('indexIds').optional().isArray().withMessage('Index IDs must be an array'),
@@ -29,7 +30,7 @@ router.post('/vibecheck',
       }
 
       const contextUserId = req.user!.id;
-      const { targetUserId, intentIds, indexIds, options } = req.body;
+      const { targetUserId, initiatorId, intentIds, indexIds, options } = req.body;
 
       // Prevent self-synthesis
       if (contextUserId === targetUserId) {
@@ -52,7 +53,8 @@ router.post('/vibecheck',
 
       const synthesis = await synthesizeVibeCheck({
         targetUserId,
-        contextUserId,
+        contextUserId: initiatorId || contextUserId,
+        initiatorId,
         intentIds,
         indexIds: validIndexIds,
         options
