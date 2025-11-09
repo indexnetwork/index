@@ -101,7 +101,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     // Sort by max similarity and take top 10 users
     return Array.from(userMap.values())
       .sort((a, b) => b.maxSimilarity - a.maxSimilarity)
-      .slice(0, 10);
+      .slice(0, 20);
   }
 
   /**
