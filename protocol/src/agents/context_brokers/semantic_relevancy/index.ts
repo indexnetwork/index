@@ -4,6 +4,7 @@ import { eq, sql, and, desc } from 'drizzle-orm';
 import { traceableStructuredLlm } from "../../../lib/agents";
 import { z } from "zod";
 import { INTENT_INFERRER_AGENT_ID } from '../../../lib/agent-ids';
+import { format } from 'timeago.js';
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
   constructor(agentId: string) {
@@ -126,14 +127,14 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       return;
     }
 
-    // Stage 2: Rank all candidates and get top 3
+    // Stage 2: Rank all candidates and get top 10
     const candidatePairs = this.buildCandidatePairs(newIntent.id, mutualResults, existingStakes);
     const rankingResult = await this.rankIntentPairs(candidatePairs);
-    console.log(`   ✅ Stage 2: Selected top ${rankingResult.top3IntentPairs.length} pairs`);
+    console.log(`   ✅ Stage 2: Selected top ${rankingResult.rankedPairs.length} pairs`);
 
-    // Execute: Delete all existing, insert top 3
-    await this.updateStakes(this.db, existingStakes, rankingResult.top3IntentPairs, candidatePairs);
-    console.log(`   ✔️  Committed - ${rankingResult.top3IntentPairs.length} stakes`);
+    // Execute: Delete all existing, insert top 10
+    await this.updateStakes(this.db, existingStakes, rankingResult.rankedPairs, candidatePairs);
+    console.log(`   ✔️  Committed - ${rankingResult.rankedPairs.length} stakes`);
   }
 
   /**
@@ -213,12 +214,12 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   }
 
   /**
-   * Update stakes: delete existing and insert top 3
+   * Update stakes: delete existing and insert top 10
    */
   private async updateStakes(
     db: any,
     existingStakes: Array<{ id: string }>,
-    top3Pairs: Array<{ newIntentId: string; targetIntentId: string }>,
+    rankedPairs: Array<{ newIntentId: string; targetIntentId: string; score: number }>,
     candidatePairs: Array<{ newIntentId: string; targetIntentId: string; score: number; reasoning: string }>
   ) {
     // Delete all existing stakes
@@ -226,8 +227,8 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       await db.delete(intentStakes).where(eq(intentStakes.id, stake.id));
     }
 
-    // Insert top 3
-    for (const pair of top3Pairs) {
+    // Insert top 10
+    for (const pair of rankedPairs) {
       const pairData = candidatePairs.find(
         c => c.newIntentId === pair.newIntentId && c.targetIntentId === pair.targetIntentId
       );
@@ -237,12 +238,12 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
         
         const stake1 = await this.calculateWeightedStake(
           pair.newIntentId, 
-          BigInt(Math.round(pairData.score)),
+          BigInt(Math.round(pair.score)),
           INTENT_INFERRER_AGENT_ID
         );
         const stake2 = await this.calculateWeightedStake(
           pair.targetIntentId,
-          BigInt(Math.round(pairData.score)),
+          BigInt(Math.round(pair.score)),
           INTENT_INFERRER_AGENT_ID
         );
         
@@ -288,6 +289,13 @@ STRICT Mutual criteria (INCREASED RIGOR):
 - **STRICTLY EXCLUDE** A-seeks-Role AND B-seeks-Role (e.g., A needs an engineer, B needs a designer) - these are company-level needs, not a mutual intent pair.
 Score threshold: Must be >= 70 to qualify as mutual
 
+TIMING CONSIDERATION:
+- Evaluate whether timing matters based on intent nature
+- Time-sensitive intents (hiring, funding, events, deadlines, immediate needs): older intents reduce relevance
+- Evergreen intents (interests, skills, learning, broad topics): age matters less
+- If one or both intents are clearly stale for their context, reduce confidence score accordingly
+- For time-sensitive intents older than a few months, consider reducing score by 5-15 points
+
 CONFIDENCE SCORING RUBRIC (BE PRECISE AND VARIED):
 
 95-100: EXCEPTIONAL MATCH
@@ -295,6 +303,7 @@ CONFIDENCE SCORING RUBRIC (BE PRECISE AND VARIED):
 - Highly specific and aligned
 - Both parties' exact needs met
 - Immediate, obvious value
+- Good timing alignment for the intent type
 
 85-94: STRONG MATCH
 - Clear complementary value but with minor gaps
@@ -316,6 +325,7 @@ CONFIDENCE SCORING RUBRIC (BE PRECISE AND VARIED):
 
 Below 70: NOT MUTUAL
 - Reject these outright
+- Includes time-sensitive intents that are too stale
 
 SCORING EXAMPLES (study these closely):
 - "Seeking pre-seed AI investors" + "Investing in pre-seed AI companies" → 98 (perfect stage + sector match)
@@ -334,17 +344,20 @@ IMPORTANT:
 - Be critical and precise
 - Most matches should be 75-90, not 95-100
 - Only exceptional perfect matches deserve 95+
-- Differentiate based on specificity, clarity, and actionability`
+- Differentiate based on specificity, clarity, actionability, and timing context`
     };
+
+    const newIntentAge = format(new Date(newIntent.createdAt));
+    const targetIntentAge = format(new Date(targetIntent.createdAt));
 
     const userMessage = {
       role: "user",
       content: `Analyze these intents for mutual relevance:
 
-"${newIntent.payload}" (Intent ID: ${newIntent.id})
-"${targetIntent.payload}" (Intent ID: ${targetIntent.id})
+"${newIntent.payload}" (Intent ID: ${newIntent.id}, created ${newIntentAge})
+"${targetIntent.payload}" (Intent ID: ${targetIntent.id}, created ${targetIntentAge})
 
-Are these mutually relevant with high confidence (>= 70 score)? Provide score and reasoning.`
+Are these mutually relevant with high confidence (>= 70 score)? Consider timing in your evaluation. Provide score and reasoning.`
     };
 
     try {
@@ -371,7 +384,7 @@ Are these mutually relevant with high confidence (>= 70 score)? Provide score an
   }
 
   /**
-   * Rank all candidate pairs and return top 3
+   * Rank all candidate pairs and return top 10 with new scores
    */
   private async rankIntentPairs(
     candidatePairs: Array<{
@@ -382,64 +395,95 @@ Are these mutually relevant with high confidence (>= 70 score)? Provide score an
       reasoning: string;
       stakeId?: string;
     }>
-  ): Promise<{ top3IntentPairs: Array<{ newIntentId: string; targetIntentId: string }> }> {
+  ): Promise<{ rankedPairs: Array<{ newIntentId: string; targetIntentId: string; score: number }> }> {
     if (candidatePairs.length === 0) {
-      return { top3IntentPairs: [] };
+      return { rankedPairs: [] };
     }
 
-    // If 3 or fewer candidates, return all
-    if (candidatePairs.length <= 3) {
+    // If 10 or fewer candidates, return all
+    if (candidatePairs.length <= 10) {
       return {
-        top3IntentPairs: candidatePairs.map(c => ({
+        rankedPairs: candidatePairs.map(c => ({
           newIntentId: c.newIntentId,
-          targetIntentId: c.targetIntentId
+          targetIntentId: c.targetIntentId,
+          score: c.score
         }))
       };
     }
 
+    // Fetch intent timestamps for contextual recency evaluation
+    const intentIds = new Set<string>();
+    candidatePairs.forEach(c => {
+      intentIds.add(c.newIntentId);
+      intentIds.add(c.targetIntentId);
+    });
+
+    const intentTimestamps = new Map<string, Date>();
+    const intentRecords = await this.db
+      .select({ id: intents.id, createdAt: intents.createdAt })
+      .from(intents)
+      .where(sql`${intents.id} IN (${sql.join([...intentIds].map(id => sql`${id}`), sql`, `)})`);
+    
+    intentRecords.forEach(record => {
+      intentTimestamps.set(record.id, new Date(record.createdAt));
+    });
+
     const RankingSchema = z.object({
-      top3IntentPairs: z.array(z.object({
+      rankedPairs: z.array(z.object({
         newIntentId: z.string(),
-        targetIntentId: z.string()
-      })).max(3).describe("Top 3 intent pair IDs ranked by mutual value quality")
+        targetIntentId: z.string(),
+        score: z.number().min(1).max(100).describe("New quality score 1-100 based on all ranking criteria including contextual recency")
+      })).max(10).describe("Top 10 intent pairs with new scores based on comprehensive evaluation")
     });
 
     const systemMessage = {
       role: "system",
       content: `You are a ranking system for intent pairs between two users.
 
-Task: Select the TOP 3 intent pairs that represent the BEST mutual value opportunities.
+Task: Select the TOP 10 intent pairs that represent the BEST mutual value opportunities and assign NEW quality scores (1-100) based on comprehensive evaluation.
 
 Candidates include:
 - NEW pairs: From recent mutuality evaluation (scored >= 70)
 - EXISTING pairs: Current stakes between these users
 
-Ranking criteria (in priority order):
-1. **Score/Quality**: Higher confidence scores indicate stronger mutual value
-2. **Specificity**: More specific intents are more actionable than vague ones
-3. **Actionability**: Can both parties immediately act on this connection?
-4. **Complementarity**: How well do the intents complement each other?
+Ranking criteria (evaluate holistically):
+1. **Semantic Quality**: How well do the intents complement each other?
+2. **Contextual Recency**: Evaluate whether timing matters based on intent nature
+   - Time-sensitive intents (hiring, funding, events, immediate needs) strongly favor recent matches
+   - Evergreen intents (interests, skills, learning, broad topics) prioritize quality over recency
+   - Mixed pairs: weight recency based on which side is time-sensitive
+3. **Specificity**: More specific intents are more actionable than vague ones
+4. **Actionability**: Can both parties immediately act on this connection?
+
+Scoring guidelines for NEW scores:
+- 90-100: Exceptional match - perfect complementarity, highly actionable, optimal timing
+- 75-89: Strong match - clear value, good timing for intent type
+- 60-74: Good match - solid potential but may have timing or specificity gaps
+- 40-59: Acceptable match - has value but notable limitations
 
 Strategy:
-- Don't just pick the 3 highest scores mechanically
+- Don't just reorder existing scores - evaluate each pair fresh
 - Consider the overall value profile for the user relationship
-- Diversity can be valuable (different types of collaboration)
-- But quality always trumps diversity
+- Quality always matters most, but let timing influence scores for time-sensitive intents
+- Return up to 10 pairs, ranked by your new scores (highest first)
 
-Return exactly 3 pairs (or fewer if less than 3 candidates exist).`
+Return the top 10 pairs with new scores.`
     };
 
     const userMessage = {
       role: "user",
-      content: `Rank these intent pairs and return the top 3:
+      content: `Rank these intent pairs and return the top 10 with new quality scores:
 
-${candidatePairs.map((c, i) => 
-  `${i + 1}. ${c.type.toUpperCase()} - Pair between Intent ${c.newIntentId} and Intent ${c.targetIntentId}
-   Score: ${c.score}
-   Reasoning: ${c.reasoning}`
-).join('\n\n')}
+${candidatePairs.map((c, i) => {
+  const newIntentDate = intentTimestamps.get(c.newIntentId);
+  const targetIntentDate = intentTimestamps.get(c.targetIntentId);
+  const formatTimeAgo = (date: Date | undefined) => date ? format(date) : 'unknown';
+  
+  return `${i + 1}. ${c.type.toUpperCase()} - Intent ${c.newIntentId} (created ${formatTimeAgo(newIntentDate)}) ↔ Intent ${c.targetIntentId} (created ${formatTimeAgo(targetIntentDate)})
+   Reasoning: ${c.reasoning}`;
+}).join('\n\n')}
 
-Return the top 3 pairs by quality (prioritize higher scores).`
+Return the top 10 pairs with new scores based on semantic quality and contextual recency.`
     };
 
     try {
@@ -454,18 +498,19 @@ Return the top 3 pairs by quality (prioritize higher scores).`
       
       const response = await rankingCall([systemMessage, userMessage], RankingSchema);
       return {
-        top3IntentPairs: response.top3IntentPairs || []
+        rankedPairs: response.rankedPairs || []
       };
     } catch (error) {
       console.error(`Error ranking pairs:`, error);
-      // Fallback: return top 3 by score
+      // Fallback: return top 10 by existing score
       return {
-        top3IntentPairs: candidatePairs
+        rankedPairs: candidatePairs
           .sort((a, b) => b.score - a.score)
-          .slice(0, 3)
+          .slice(0, 10)
           .map(c => ({
             newIntentId: c.newIntentId,
-            targetIntentId: c.targetIntentId
+            targetIntentId: c.targetIntentId,
+            score: c.score
           }))
       };
     }
