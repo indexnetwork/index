@@ -104,7 +104,7 @@ function transformMessage(msg: ExportedSlackMessage, users: ExportData['users'])
 
 async function importSlackExport(
   filePath: string,
-  opts: Required<Omit<Opts, 'json' | 'silent' | 'batchSize'>> & { batchSize: number }
+  opts: Required<Omit<Opts, 'json' | 'silent' | 'batchSize' | 'indexId'>> & { batchSize: number; indexId?: string }
 ): Promise<{
   success: boolean;
   totalMessages: number;
@@ -299,7 +299,7 @@ async function main(): Promise<void> {
       const result = await importSlackExport(filePath, {
         integrationId,
         userId,
-        indexId: indexId || null,
+        indexId: indexId || undefined,
         enableUserAttribution,
         batchSize
       });

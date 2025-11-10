@@ -112,7 +112,7 @@ const getRetryAfterDelay = (error: any): number => {
     }
   }
   
-  return CONFIG.RATE_LIMIT_RETRY_MS;
+  return 60000;
 };
 
 const formatTimestamp = (ts: string): { timestamp: string; date: string } => {
