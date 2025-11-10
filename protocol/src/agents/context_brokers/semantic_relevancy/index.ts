@@ -268,7 +268,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   ): Promise<{ isMutual: boolean; confidenceScore: number; reasoning: string } | null> {
     const MutualIntentSchema = z.object({
       isMutual: z.boolean().describe("Whether the two intents have mutual intent (both relate to or depend on each other)"),
-      reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. Refer to intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research') rather than by position or ordinal references. Do not use 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'. If not mutual, provide empty string."),
+      reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. Refer to intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research') rather than by position or ordinal references. Do not use 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'. If not mutual, provide empty string.").max(400),
       confidenceScore: z.number().min(0).max(100).describe("Precise confidence score 0-100. Use full range 70-100 for mutual matches. Avoid round numbers like 100, 90, 80. Be specific: 87, 76, 92, etc.")
     });
 
@@ -411,21 +411,24 @@ Are these mutually relevant with high confidence (>= 70 score)? Consider timing 
       };
     }
 
-    // Fetch intent timestamps for contextual recency evaluation
+    // Fetch intent data for contextual recency evaluation and payloads
     const intentIds = new Set<string>();
     candidatePairs.forEach(c => {
       intentIds.add(c.newIntentId);
       intentIds.add(c.targetIntentId);
     });
 
-    const intentTimestamps = new Map<string, Date>();
+    const intentData = new Map<string, { createdAt: Date; payload: string }>();
     const intentRecords = await this.db
-      .select({ id: intents.id, createdAt: intents.createdAt })
+      .select({ id: intents.id, createdAt: intents.createdAt, payload: intents.payload })
       .from(intents)
       .where(sql`${intents.id} IN (${sql.join([...intentIds].map(id => sql`${id}`), sql`, `)})`);
     
     intentRecords.forEach(record => {
-      intentTimestamps.set(record.id, new Date(record.createdAt));
+      intentData.set(record.id, {
+        createdAt: new Date(record.createdAt),
+        payload: record.payload
+      });
     });
 
     const RankingSchema = z.object({
@@ -469,14 +472,27 @@ Return the top 10 pairs with new scores.`
       role: "user",
       content: `Rank these intent pairs and return the top 10 with new quality scores:
 
+<candidate_pairs>
 ${candidatePairs.map((c, i) => {
-  const newIntentDate = intentTimestamps.get(c.newIntentId);
-  const targetIntentDate = intentTimestamps.get(c.targetIntentId);
+  const newIntentData = intentData.get(c.newIntentId);
+  const targetIntentData = intentData.get(c.targetIntentId);
   const formatTimeAgo = (date: Date | undefined) => date ? format(date) : 'unknown';
   
-  return `${i + 1}. ${c.type.toUpperCase()} - Intent ${c.newIntentId} (created ${formatTimeAgo(newIntentDate)}) ↔ Intent ${c.targetIntentId} (created ${formatTimeAgo(targetIntentDate)})
-   Reasoning: ${c.reasoning}`;
+  return `<pair index="${i + 1}" type="${c.type.toUpperCase()}">
+  <intent_a>
+    <id>${c.newIntentId}</id>
+    <created>${formatTimeAgo(newIntentData?.createdAt)}</created>
+    <payload>${newIntentData?.payload || 'unknown'}</payload>
+  </intent_a>
+  <intent_b>
+    <id>${c.targetIntentId}</id>
+    <created>${formatTimeAgo(targetIntentData?.createdAt)}</created>
+    <payload>${targetIntentData?.payload || 'unknown'}</payload>
+  </intent_b>
+  <reasoning>${c.reasoning}</reasoning>
+</pair>`;
 }).join('\n\n')}
+</candidate_pairs>
 
 Return the top 10 pairs with new scores based on semantic quality and contextual recency.`
     };
