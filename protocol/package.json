@@ -20,6 +20,7 @@
     "queue-status:prod": "NODE_ENV=production node dist/cli/queue-status.js",
     "db:seed": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/db-seed.ts",
     "db:flush": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/db-flush.ts",
+    "export-slack": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/export-slack.ts",
     "import-slack-export": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/import-slack-export.ts",
     "audit-freshness": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/audit-intent-freshness.ts",
     "reset-brokers": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/reset-brokers.ts"
