@@ -43,7 +43,7 @@ Atonomous agents compete to provide the best matches by staking tokens on their 
 ## How It Works
 
 1. **Users Define Intents**: Express specific discovery needs privately
-2. **Agents Compete**: Broker agents stake tokens on match recommendations  
+2. **Agents Compete**: Broker agents stake tokens on match recommendations
 3. **Double Opt-In**: Both parties must accept for the match to succeed
 4. **Economic Settlement**: Successful agents earn rewards, failed matches lose stake
 5. **Network Learning**: Each interaction improves the overall discovery quality
@@ -71,8 +71,11 @@ The protocol leverages:
 
 ### Prerequisites
 
-- Node.js 18+
-- PostgreSQL 14+ (will serve as a local cache)
+- Node.js 18+: Install from [nodejs.org](https://nodejs.org/en/download) or use a version manager such as `nvm`.
+- PostgreSQL 14+: Install locally via [postgresql.org/download](https://www.postgresql.org/download/) and ensure the server is running on `localhost`.
+- Privy developer account: Create an app in the [Privy Console](https://dashboard.privy.io/apps) to obtain `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, and a client ID for the frontend.
+- OpenRouter API key: Generate a key at [openrouter.ai/keys](https://openrouter.ai/keys) for intent agents.
+- OpenAI API key: Create one in the [OpenAI dashboard](https://platform.openai.com/api-keys) if you plan to enable embeddings or Crawl4AI LLM features.
 
 ### Quick Start
 
@@ -95,9 +98,9 @@ yarn install
 ```bash
 # Copy example environment files
 cp protocol/env.example protocol/.env
-cp frontend/.env.example frontend/.env
+cp frontend/.env.example frontend/.env.local
 
-# Configure your database URL and API keys
+# Configure your database URL and API keys (see tables below)
 ```
 
 4. **Initialize the database**
@@ -116,11 +119,29 @@ cd protocol
 yarn dev
 
 # Terminal 2: Start the frontend
-cd frontend  
+cd frontend
 yarn dev
 ```
 
 Visit `http://localhost:3000` to see the application.
+
+### Environment Variables
+
+| Location              | Variable                      | Description                                                                     | How to obtain                                                    | Required                                |
+| --------------------- | ----------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------- |
+| `protocol/.env`       | `DATABASE_URL`                | PostgreSQL connection string used by Drizzle                                    | Local Postgres; create DB `protocol_db`                          | ✅                                      |
+| `protocol/.env`       | `PRIVY_APP_ID`                | Server-side Privy app identifier                                                | [Privy Console](https://dashboard.privy.io/apps) → App Settings  | ✅                                      |
+| `protocol/.env`       | `PRIVY_APP_SECRET`            | Server-side Privy secret                                                        | [Privy Console](https://dashboard.privy.io/apps) → App Settings  | ✅                                      |
+| `protocol/.env`       | `OPENROUTER_API_KEY`          | LLM access for intent agents                                                    | [OpenRouter Keys](https://openrouter.ai/keys)                    | ✅                                      |
+| `protocol/.env`       | `OPENAI_API_KEY`              | Used for embeddings & Crawl4AI LLM tasks                                        | [OpenAI Dashboard](https://platform.openai.com/api-keys)         | ✅ (features that depend on embeddings) |
+| `protocol/.env`       | `PORT`                        | API server port (default `3001`)                                                | Local configuration                                              | ➖                                      |
+| `protocol/.env`       | `NODE_ENV`                    | Node environment (`development`, `production`, …)                               | Local configuration                                              | ➖                                      |
+| `frontend/.env.local` | `NEXT_PUBLIC_API_URL`         | Base URL for API requests (e.g., `http://localhost:3001/api`)                   | Local configuration                                              | ✅                                      |
+| `frontend/.env.local` | `NEXT_PUBLIC_PRIVY_APP_ID`    | Client-side Privy app ID                                                        | [Privy Console](https://dashboard.privy.io/apps) → App Settings  | ✅                                      |
+| `frontend/.env.local` | `NEXT_PUBLIC_PRIVY_CLIENT_ID` | Privy client ID used by the React SDK                                           | [Privy Console](https://dashboard.privy.io/apps) → Client Config | ✅                                      |
+| `frontend/.env.local` | `NEXT_PUBLIC_STATIC_URL`      | Optional static assets origin for uploads (defaults to `http://localhost:3001`) | Local configuration or CDN URL                                   | ➖                                      |
+
+> **Tip:** Keep secrets out of source control. Commit only the `.env.example` and `.env.local` templates.
 
 ## Development
 
@@ -155,7 +176,7 @@ yarn build
 
 # Database operations
 yarn drizzle:generate    # Generate Drizzle client
-yarn drizzle:migrate     # Run database migrations  
+yarn drizzle:migrate     # Run database migrations
 yarn drizzle:studio      # Open database GUI
 
 # Code quality
@@ -178,7 +199,7 @@ We welcome contributions! Before submitting a Pull Request:
 # Clone your fork
 git clone https://github.com/YOUR_USERNAME/index.git
 
-# Create feature branch  
+# Create feature branch
 git checkout -b feature/your-feature-name
 
 # Make changes and test
