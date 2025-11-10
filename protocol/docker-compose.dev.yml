@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: local-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "54321:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # * Persists the initial schema setup if you mount migrations here
+    # volumes:
+    #   - ./protocol/drizzle:/docker-entrypoint-initdb.d:ro
+
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: local-minio
+    command: server /data --address ":9000" --console-address ":9001"
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: YOUR_MINIO_ACCESS_KEY     # * Use at least 8 chars
+      MINIO_ROOT_PASSWORD: YOUR_MINIO_SECRET_KEY # * Use at least 8 chars
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Console UI
+    volumes:
+      - minio_data:/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: local-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # * Persists Redis state for local debugging
+    # volumes:
+    #   - ./redis:/data
+
+volumes:
+  postgres_data:
+  minio_data:
+  redis_data:
