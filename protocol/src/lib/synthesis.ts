@@ -9,183 +9,154 @@ import { getAccessibleIntents } from './intent-access';
 
 interface SynthesisOptions extends VibeCheckOptions {}
 
-interface IntroOptions {}
-
 function createCacheHash(data: any, options?: any): string {
-  const hashData = { data, options: options || {} };
-  const dataString = JSON.stringify(hashData);
-  return crypto.createHash('sha256').update(dataString).digest('hex');
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify({ data, options: options || {} }))
+    .digest('hex');
 }
 
 // Main synthesis function - analyzes how targetUser can help with contextUser's intents
-export async function synthesizeVibeCheck(params: {
-  targetUserId: string; // User being analyzed - their profile info will be used
-  targetUserName?: string;
-  contextUserId?: string; // User requesting analysis - their intents will be analyzed
-  initiatorId?: string; // For 3rd person admin view - the person initiating connection
-  intentIds?: string[]; // Specific context user's intents to focus on (if no contextUserId)
-  indexIds?: string[]; // Index filtering for secure access
-  options?: SynthesisOptions;
-}): Promise<string> {
+export async function synthesizeVibeCheck(
+  contextUserId: string,
+  targetUserId: string,
+  opts?: {
+    initiatorId?: string;
+    intentIds?: string[];
+    indexIds?: string[];
+    vibeOptions?: SynthesisOptions;
+  }
+): Promise<string> {
   try {
-    const { targetUserId, contextUserId, initiatorId, intentIds, indexIds, options } = params;
+    const { initiatorId, intentIds, indexIds, vibeOptions } = opts || {};
 
     // Get target user info
     const userIds = initiatorId ? [targetUserId, initiatorId] : [targetUserId];
-    const userRecords = await db.select({
-      id: usersTable.id,
-      name: usersTable.name,
-      intro: usersTable.intro
-    })
-    .from(usersTable)
-    .where(inArray(usersTable.id, userIds));
+    const users = await db
+      .select({ id: usersTable.id, name: usersTable.name, intro: usersTable.intro })
+      .from(usersTable)
+      .where(inArray(usersTable.id, userIds));
 
-    if (userRecords.length === 0) {
-      return "";
-    }
+    if (!users.length) return "";
 
-    const targetUser = userRecords.find(u => u.id === targetUserId);
-    const initiatorUser = initiatorId ? userRecords.find(u => u.id === initiatorId) : undefined;
+    const targetUser = users.find(u => u.id === targetUserId);
+    const initiatorUser = initiatorId ? users.find(u => u.id === initiatorId) : undefined;
     
-    if (!targetUser) {
-      return "";
-    }
+    if (!targetUser) return "";
 
-    // Get context intents using secure generic function
-    let contextIntentIds: string[] = [];
-    if (contextUserId) {
-      const contextIntentsResult = await getAccessibleIntents(contextUserId, {
-        indexIds: indexIds,
-        intentIds: intentIds,
-        includeOwnIntents: true
-      });
-      contextIntentIds = contextIntentsResult.intents.map(i => i.id);
-    } else if (intentIds) {
-      // Even when intentIds are provided, we need to validate them through proper access control
-      // This requires a contextUserId - without it, we can't validate access
-      console.warn('Synthesis called with intentIds but no contextUserId - cannot validate access');
-      return "";
-    }
-
-    if (contextIntentIds.length === 0) {
-      return "";
-    }
-
-    // Ensure contextUserId is defined before proceeding
-    if (!contextUserId) {
-      console.warn('Synthesis called without contextUserId');
-      return "";
-    }
-
-    // Get stakes data - find stakes that connect context user's intents with target user's intents
-    // Filter to only include intents that exist in the specified indexes
-    const stakes = await db.select({
-      stake: intentStakes.stake,
-      reasoning: intentStakes.reasoning,
-      stakeIntents: intentStakes.intents,
-      agentName: agents.name,
-      agentAvatar: agents.avatar,
-      intentId: intents.id,
-      intentSummary: intents.summary,
-      intentPayload: intents.payload
-    })
-    .from(intentStakes)
-    .innerJoin(agents, eq(intentStakes.agentId, agents.id))
-    .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
-    .where(and(
-      isNull(agents.deletedAt),
-      eq(intents.userId, contextUserId), // Context user's intents (authenticated user)
-      sql`array_length(${intentStakes.intents}, 1) > 1`, // Exclude single-intent confidence stakes
-      sql`EXISTS(
-        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-        WHERE intent_id IN (${sql.join(contextIntentIds.map(id => sql`${id}`), sql`, `)})
-      )`,
-      // Stakes must also include at least one intent OWNED by target user
-      sql`EXISTS(
-        SELECT 1 FROM ${intents} i2
-        WHERE i2.id::text = ANY(${intentStakes.intents})
-        AND i2.user_id = ${targetUserId}
-      )`,
-      // Filter: both context and target intents must exist in the specified indexes
-      ...(indexIds && indexIds.length > 0 ? [sql`EXISTS(
-        SELECT 1 FROM ${intentIndexes} ii1
-        WHERE ii1.intent_id = ${intents.id}
-        AND ii1.index_id IN (${sql.join(indexIds.map(id => sql`${id}`), sql`, `)})
-      )`,
-      sql`EXISTS(
-        SELECT 1 FROM ${intents} i2
-        INNER JOIN ${intentIndexes} ii2 ON ii2.intent_id = i2.id
-        WHERE i2.id::text = ANY(${intentStakes.intents})
-        AND i2.user_id = ${targetUserId}
-        AND ii2.index_id IN (${sql.join(indexIds.map(id => sql`${id}`), sql`, `)})
-      )`] : [])
-    ))
-    .orderBy(sql`${intentStakes.stake} DESC`)
-    .limit(3);
-
-    if (stakes.length === 0) {
-      return "";
-    }
-
-    
-    // Group by intent and keep only the most valuable reason (highest stake)
-    const intentGroups = new Map();
-    stakes.forEach(stake => {
-      if (!intentGroups.has(stake.intentId)) {
-        intentGroups.set(stake.intentId, {
-          id: stake.intentId,
-          summary: stake.intentSummary,
-          payload: stake.intentPayload,
-          most_valuable_reason: {
-            agent_name: stake.agentName,
-            agent_id: stake.agentName,
-            reasoning: stake.reasoning,
-            stake: Number(stake.stake)
-          }
-        });
-      } else {
-        // Update if this stake is higher
-        const current = intentGroups.get(stake.intentId).most_valuable_reason;
-        if (Number(stake.stake) > current.stake) {
-          intentGroups.get(stake.intentId).most_valuable_reason = {
-            agent_name: stake.agentName,
-            agent_id: stake.agentName,
-            reasoning: stake.reasoning,
-            stake: Number(stake.stake)
-          };
-        }
-      }
+    // Get context intents using secure access control
+    const contextIntents = await getAccessibleIntents(contextUserId, {
+      indexIds,
+      intentIds,
+      includeOwnIntents: true
     });
+    const contextIntentIds = contextIntents.intents.map(i => i.id);
+    
+    if (!contextIntentIds.length) return "";
 
-    // Prepare data for vibe checker - target user info with context user's intents
-    const userData = {
+    // Get top 3 stakes connecting context and target user intents
+    const stakes = await db
+      .select({ stake: intentStakes.stake, stakeIntents: intentStakes.intents })
+      .from(intentStakes)
+      .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+      .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
+      .where(and(
+        isNull(agents.deletedAt),
+        eq(intents.userId, contextUserId),
+        sql`array_length(${intentStakes.intents}, 1) = 2`,
+        sql`EXISTS(
+          SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
+          WHERE intent_id IN (${sql.join(contextIntentIds.map(id => sql`${id}`), sql`, `)})
+        )`,
+        sql`EXISTS(
+          SELECT 1 FROM ${intents} i2
+          WHERE i2.id::text = ANY(${intentStakes.intents})
+          AND i2.user_id = ${targetUserId}
+        )`,
+        ...(indexIds?.length ? [
+          sql`EXISTS(
+            SELECT 1 FROM ${intentIndexes} ii1
+            WHERE ii1.intent_id = ${intents.id}
+            AND ii1.index_id IN (${sql.join(indexIds.map(id => sql`${id}`), sql`, `)})
+          )`,
+          sql`EXISTS(
+            SELECT 1 FROM ${intents} i2
+            INNER JOIN ${intentIndexes} ii2 ON ii2.intent_id = i2.id
+            WHERE i2.id::text = ANY(${intentStakes.intents})
+            AND i2.user_id = ${targetUserId}
+            AND ii2.index_id IN (${sql.join(indexIds.map(id => sql`${id}`), sql`, `)})
+          )`
+        ] : [])
+      ))
+      .orderBy(sql`${intentStakes.stake} DESC`)
+      .limit(3);
+
+    if (!stakes.length) return "";
+
+    // Fetch intent details and build pairs
+    const allIntentIds = stakes.flatMap(s => s.stakeIntents);
+    const intentDetails = await db
+      .select({ id: intents.id, payload: intents.payload, userId: intents.userId, createdAt: intents.createdAt })
+      .from(intents)
+      .where(inArray(intents.id, allIntentIds));
+
+    type IntentPair = {
+      stake: number;
+      contextUserIntent: { id: string; payload: string; createdAt: Date };
+      targetUserIntent: { id: string; payload: string; createdAt: Date };
+    };
+
+    const intentPairs = stakes
+      .map(stake => {
+        const [id1, id2] = stake.stakeIntents;
+        const intent1 = intentDetails.find(i => i.id === id1);
+        const intent2 = intentDetails.find(i => i.id === id2);
+        
+        const contextIntent = intent1?.userId === contextUserId ? intent1 : intent2;
+        const targetIntent = intent1?.userId === targetUserId ? intent1 : intent2;
+        
+        if (!contextIntent || !targetIntent) return null;
+        
+        return {
+          stake: Number(stake.stake),
+          contextUserIntent: {
+            id: contextIntent.id,
+            payload: contextIntent.payload,
+            createdAt: contextIntent.createdAt
+          },
+          targetUserIntent: {
+            id: targetIntent.id,
+            payload: targetIntent.payload,
+            createdAt: targetIntent.createdAt
+          }
+        };
+      })
+      .filter((p): p is IntentPair => p !== null);
+
+    // Prepare vibe check data
+    const vibeData = {
       id: targetUser.id,
       name: targetUser.name,
       intro: targetUser.intro || "",
-      intents: Array.from(intentGroups.values()),
+      intentPairs,
       initiatorName: initiatorUser?.name
     };
 
-    // Check cache (include initiatorId in cache key for proper segmentation)
-    const hashKey = 'synthesis';
-    const cacheData = initiatorId ? { ...userData, initiatorId } : userData;
-    const fieldKey = createCacheHash(cacheData, options);
-    const cachedResult = await cache.hget(hashKey, fieldKey);
-    
-    if (cachedResult) {
-      return cachedResult;
-    }
+    // Check cache
+    const cacheData = initiatorId ? { ...vibeData, initiatorId } : vibeData;
+    const cacheKey = createCacheHash(cacheData, vibeOptions);
+    const cached = await cache.hget('synthesis', cacheKey);
+    if (cached) return cached;
 
     // Generate synthesis
-    const vibeResult = await vibeCheck(userData, options);
+    const result = await vibeCheck(vibeData, vibeOptions);
     
-    if (vibeResult.success && vibeResult.synthesis) {
-      await cache.hset(hashKey, fieldKey, vibeResult.synthesis);
-      return vibeResult.synthesis;
+    if (result.success && result.synthesis) {
+      await cache.hset('synthesis', cacheKey, result.synthesis);
+      return result.synthesis;
     }
 
     return "";
-    
   } catch (error) {
     console.error('Synthesis error:', error);
     return "";
@@ -193,94 +164,62 @@ export async function synthesizeVibeCheck(params: {
 }
 
 // Intro synthesis function - handles all data preparation internally
-export async function synthesizeIntro(params: {
-  senderUserId: string;
-  recipientUserId: string;
-  indexIds?: string[]; // Index filtering for secure access
-  options?: IntroOptions;
-}): Promise<string> {
+export async function synthesizeIntro(
+  senderUserId: string,
+  recipientUserId: string,
+  indexIds?: string[]
+): Promise<string> {
   try {
-    const { senderUserId, recipientUserId, indexIds } = params;
-
     // Get users
-    const userRecords = await db.select({
-      id: usersTable.id,
-      name: usersTable.name
-    })
-    .from(usersTable)
-    .where(inArray(usersTable.id, [senderUserId, recipientUserId]));
+    const users = await db
+      .select({ id: usersTable.id, name: usersTable.name })
+      .from(usersTable)
+      .where(inArray(usersTable.id, [senderUserId, recipientUserId]));
 
-    if (userRecords.length !== 2) {
-      return "";
-    }
+    if (users.length !== 2) return "";
 
-    const senderUser = userRecords.find(u => u.id === senderUserId);
-    const recipientUser = userRecords.find(u => u.id === recipientUserId);
+    const sender = users.find(u => u.id === senderUserId)!;
+    const recipient = users.find(u => u.id === recipientUserId)!;
 
-    // Get shared stakes - stakes must include intents OWNED by both users
-    const sharedStakes = await db.select({
-      reasoning: intentStakes.reasoning,
-      stakeIntents: intentStakes.intents
-    })
-    .from(intentStakes)
-    .innerJoin(agents, eq(intentStakes.agentId, agents.id))
-    .where(and(
-      isNull(agents.deletedAt),
-      sql`array_length(${intentStakes.intents}, 1) > 1`, // Exclude single-intent confidence stakes
-      sql`EXISTS(
-        SELECT 1 FROM ${intents} i1
-        WHERE i1.id::text = ANY(${intentStakes.intents})
-        AND i1.user_id = ${senderUserId}
-      )`,
-      sql`EXISTS(
-        SELECT 1 FROM ${intents} i2
-        WHERE i2.id::text = ANY(${intentStakes.intents})
-        AND i2.user_id = ${recipientUserId}
-      )`
-    ));
+    // Get shared stakes between both users
+    const stakes = await db
+      .select({ reasoning: intentStakes.reasoning, stakeIntents: intentStakes.intents })
+      .from(intentStakes)
+      .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+      .where(and(
+        isNull(agents.deletedAt),
+        sql`array_length(${intentStakes.intents}, 1) > 1`,
+        sql`EXISTS(SELECT 1 FROM ${intents} i1 WHERE i1.id::text = ANY(${intentStakes.intents}) AND i1.user_id = ${senderUserId})`,
+        sql`EXISTS(SELECT 1 FROM ${intents} i2 WHERE i2.id::text = ANY(${intentStakes.intents}) AND i2.user_id = ${recipientUserId})`
+      ));
 
-    console.log('Shared stakes:', sharedStakes);
+    if (!stakes.length) return "";
 
-    // Get intent IDs for both users to group reasonings
-    const senderIntentIds = await db.select({ id: intents.id })
-      .from(intents)
-      .where(eq(intents.userId, senderUserId))
-      .then(rows => rows.map(r => r.id));
-    
-    const recipientIntentIds = await db.select({ id: intents.id })
-      .from(intents)
-      .where(eq(intents.userId, recipientUserId))
-      .then(rows => rows.map(r => r.id));
+    // Get intent IDs for both users
+    const [senderIntentIds, recipientIntentIds] = await Promise.all([
+      db.select({ id: intents.id }).from(intents).where(eq(intents.userId, senderUserId)).then(r => r.map(i => i.id)),
+      db.select({ id: intents.id }).from(intents).where(eq(intents.userId, recipientUserId)).then(r => r.map(i => i.id))
+    ]);
 
+    // Group reasonings by user
     const senderReasonings: string[] = [];
     const recipientReasonings: string[] = [];
 
-    sharedStakes.forEach(stake => {
-      const hasSenderIntent = stake.stakeIntents.some(id => senderIntentIds.includes(id));
-      const hasRecipientIntent = stake.stakeIntents.some(id => recipientIntentIds.includes(id));
-      
-      if (hasSenderIntent) senderReasonings.push(stake.reasoning);
-      if (hasRecipientIntent) recipientReasonings.push(stake.reasoning);
+    stakes.forEach(stake => {
+      if (stake.stakeIntents.some(id => senderIntentIds.includes(id))) {
+        senderReasonings.push(stake.reasoning);
+      }
+      if (stake.stakeIntents.some(id => recipientIntentIds.includes(id))) {
+        recipientReasonings.push(stake.reasoning);
+      }
     });
 
-    if (senderReasonings.length === 0 || recipientReasonings.length === 0) {
-      return "";
-    }
+    if (!senderReasonings.length || !recipientReasonings.length) return "";
 
     const introData: IntroMakerData = {
-      sender: {
-        id: senderUser!.id,
-        userName: senderUser!.name,
-        reasonings: senderReasonings
-      },
-      recipient: {
-        id: recipientUser!.id,
-        userName: recipientUser!.name,
-        reasonings: recipientReasonings
-      }
+      sender: { id: sender.id, userName: sender.name, reasonings: senderReasonings },
+      recipient: { id: recipient.id, userName: recipient.name, reasonings: recipientReasonings }
     };
-
-    console.log('Intro data:', introData);
 
     const result = await introMaker(introData);
     return result.success && result.synthesis ? result.synthesis : "";

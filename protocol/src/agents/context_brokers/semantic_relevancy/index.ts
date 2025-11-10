@@ -442,10 +442,6 @@ Are these mutually relevant with high confidence (>= 70 score)? Consider timing 
 
 Task: Select the TOP 10 intent pairs that represent the BEST mutual value opportunities and assign NEW quality scores (1-100) based on comprehensive evaluation.
 
-Candidates include:
-- NEW pairs: From recent mutuality evaluation (scored >= 70)
-- EXISTING pairs: Current stakes between these users
-
 Ranking criteria (evaluate holistically):
 1. **Semantic Quality**: How well do the intents complement each other?
 2. **Contextual Recency**: Evaluate whether timing matters based on intent nature
@@ -462,7 +458,6 @@ Scoring guidelines for NEW scores:
 - 40-59: Acceptable match - has value but notable limitations
 
 Strategy:
-- Don't just reorder existing scores - evaluate each pair fresh
 - Consider the overall value profile for the user relationship
 - Quality always matters most, but let timing influence scores for time-sensitive intents
 - Return up to 10 pairs, ranked by your new scores (highest first)

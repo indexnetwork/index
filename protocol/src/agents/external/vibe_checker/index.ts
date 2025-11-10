@@ -1,21 +1,12 @@
-/**
- * Vibe Checker Agent
- * 
- * Generates "What Could Happen Here" synthesis text for user collaboration opportunities.
- */
-
 import { traceableLlm } from "../../../lib/agents";
+import { format } from 'timeago.js';
 
 // Type definitions
 export interface VibeCheckResult {
   success: boolean;
   synthesis?: string;
   error?: string;
-  timing?: {
-    startTime: Date;
-    endTime: Date;
-    durationMs: number;
-  };
+  timing?: { startTime: Date; endTime: Date; durationMs: number };
 }
 
 export interface VibeCheckOptions {
@@ -23,63 +14,102 @@ export interface VibeCheckOptions {
   characterLimit?: number;
 }
 
-export interface AuthenticatedUserIntent {
+export interface IntentWithTime {
   id: string;
   payload: string;
-  most_valuable_reason: {
-    agent_name: string;
-    agent_id: string;
-    reasoning: string;
-    stake: number;
-  };
+  createdAt: Date;
+}
+
+export interface IntentPair {
+  stake: number;
+  contextUserIntent: IntentWithTime;
+  targetUserIntent: IntentWithTime;
 }
 
 export interface OtherUserData {
   id: string;
   name: string;
   intro: string;
-  intents: AuthenticatedUserIntent[]; // Authenticated user's intents matched to this other user
-  initiatorName?: string; // For 3rd person perspective (admin view)
+  intentPairs: IntentPair[];
+  initiatorName?: string;
 }
 
 /**
- * Generate collaboration synthesis between authenticated user and another user
+ * Generate collaboration synthesis showing why two people are mutual matches
  */
 export async function vibeCheck(
-  otherUserData: OtherUserData,
-  options: VibeCheckOptions = {}
+  data: OtherUserData,
+  opts: VibeCheckOptions = {}
 ): Promise<VibeCheckResult> {
   const startTime = new Date();
-  console.log(`🚀 Starting vibe check for ${otherUserData?.name || 'unknown user'} at ${startTime.toISOString()}`);
   
   try {
-
-    console.log('Other user data:', JSON.stringify(otherUserData, null, 2));
-    if (!otherUserData || !otherUserData.intents?.length) {
-      const endTime = new Date();
-      const durationMs = endTime.getTime() - startTime.getTime();
-      console.log(`❌ Vibe check failed (no data) after ${durationMs}ms`);
-      return { 
-        success: false, 
-        error: 'No other user data or matched intents provided',
-        timing: {
-          startTime,
-          endTime,
-          durationMs
-        }
+    if (!data?.intentPairs?.length) {
+      return {
+        success: false,
+        error: 'No intent pairs provided',
+        timing: getTiming(startTime)
       };
     }
 
-    const { timeout = 30000, characterLimit } = options;
+    const { timeout = 30000, characterLimit } = opts;
+    const isThirdPerson = !!data.initiatorName;
+    const initiator = data.initiatorName || 'you';
+    const target = data.name;
 
-    const isThirdPerson = !!otherUserData.initiatorName;
-    const initiatorName = otherUserData.initiatorName || 'you';
-    const targetName = otherUserData.name;
+    // System prompt
+    const systemMsg = buildSystemMessage(initiator, target, isThirdPerson, characterLimit);
+    
+    // User prompt with intent pairs
+    const userMsg = buildUserMessage(data, initiator, target, isThirdPerson);
 
-    // System message: Define role, tone, and format
-    const systemMessage = {
-      role: "system",
-      content: `You are a collaboration synthesis generator. Create a warm, practical paragraph explaining why two people are mutual matches based on what they're explicitly looking for.
+    // Execute vibe check with timeout
+    const response = await Promise.race([
+      traceableLlm("vibe-checker", {
+        other_user_id: data.id,
+        other_user_name: data.name,
+        intent_pairs_count: data.intentPairs.length
+      })([systemMsg, userMsg], { reasoning: { exclude: true, effort: 'minimal' } }),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Vibe check timeout')), timeout)
+      )
+    ]);
+
+    const synthesis = (response.content as string).trim();
+
+    return {
+      success: true,
+      synthesis,
+      timing: getTiming(startTime)
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timing: getTiming(startTime)
+    };
+  }
+}
+
+// Helper functions
+function getTiming(startTime: Date) {
+  const endTime = new Date();
+  return {
+    startTime,
+    endTime,
+    durationMs: endTime.getTime() - startTime.getTime()
+  };
+}
+
+function buildSystemMessage(
+  initiator: string,
+  target: string,
+  isThirdPerson: boolean,
+  characterLimit?: number
+) {
+  return {
+    role: "system",
+    content: `You are a collaboration synthesis generator. Create a warm, practical paragraph explaining why two people are mutual matches based on what they're explicitly looking for.
 
 Style:
 - Warm and friendly, not formal (we're introducing humans, not robots)
@@ -89,117 +119,113 @@ Style:
 
 Format:
 - Markdown with 2-3 inline hyperlinks: [descriptive phrase](https://index.network/intents/ID)
+- ONLY hyperlink ${isThirdPerson ? `${initiator}'s` : 'your'} intents - NEVER link ${target}'s intents
 - Link natural phrases like "UX designers crafting interfaces" not "UX designers (link)"
 - Place links in beginning/middle of paragraph, not at the end
 - No bold, italic, or title${characterLimit ? `\n- Maximum ${characterLimit} characters` : ''}
 
+Time Awareness:
+- Each intent includes a <created> timestamp (e.g., "2 months ago", "3 days ago")
+- Only mention timing when it adds meaningful value:
+  - Timing contrast (fresh need meets years of experience)
+  - Target's dedication (been working on this for months)
+  - Urgency from target (launching soon, ready now)
+- Skip mentioning ${isThirdPerson ? `${initiator}'s` : 'your'} fresh timestamps—they're noise unless creating contrast
+- Use timing naturally in the flow, not as a parenthetical afterthought
+
 Structure:
-- Start with what ${initiatorName} ${isThirdPerson ? 'is' : 'are'} explicitly looking for
-- State what ${targetName} provides or is looking for (based on relevance analysis)
+- Start with what ${initiator} ${isThirdPerson ? 'is' : 'are'} explicitly looking for
+- State what ${target} provides or is looking for
 - Explain the mutual fit using present tense and direct language
-- Address ${isThirdPerson ? `${initiatorName} and ${targetName} in third person` : `reader as "${initiatorName}" vs the other person by first name only`}
+- Weave in timing references naturally where relevant
+- Address ${isThirdPerson ? `${initiator} and ${target} in third person` : `reader as "${initiator}" vs the other person by first name only`}
 - Single paragraph, can use line breaks`
-    };
+  };
+}
 
-    // User message: Provide authenticated user's intents and their relevance to other user
-    const intentsLabel = isThirdPerson ? `${initiatorName}_intents` : 'your_intents';
-    const intentsXml = otherUserData.intents
-      .slice(0, 10)
-      .map((intent) => {
-        const wantLabel = isThirdPerson ? 'what_they_want' : 'what_you_want';
-        return `  <${intentsLabel.slice(0, -1)} id="${intent.id}">
-    <${wantLabel}>${intent.payload}</${wantLabel}>
-    <relevance_to_${targetName.toLowerCase().replace(/\s+/g, '_')}>${intent.most_valuable_reason.reasoning}</relevance_to_${targetName.toLowerCase().replace(/\s+/g, '_')}>
-  </${intentsLabel.slice(0, -1)}>`;
-      })
-      .join('\n');
+function buildUserMessage(
+  data: OtherUserData,
+  initiator: string,
+  target: string,
+  isThirdPerson: boolean
+) {
+  const pairsXml = data.intentPairs
+    .slice(0, 3)
+    .map((pair, i) => {
+      const contextLabel = isThirdPerson ? `${initiator}_intent` : 'your_intent';
+      const targetLabel = `${target.toLowerCase().replace(/\s+/g, '_')}_intent`;
+      
+      return `  <pair_${i + 1}>
+    <${contextLabel} id="${pair.contextUserIntent.id}">
+      <what_they_want>${pair.contextUserIntent.payload}</what_they_want>
+      <created>${format(pair.contextUserIntent.createdAt)}</created>
+    </${contextLabel}>
+    <${targetLabel} id="${pair.targetUserIntent.id}">
+      <what_they_want>${pair.targetUserIntent.payload}</what_they_want>
+      <created>${format(pair.targetUserIntent.createdAt)}</created>
+    </${targetLabel}>
+  </pair_${i + 1}>`;
+    })
+    .join('\n');
 
-    const userMessage = {
-      role: "user",
-      content: `Generate collaboration synthesis between ${initiatorName} ${isThirdPerson ? `and ${targetName}` : `(authenticated user) and ${targetName}`}.
+  const pronoun = isThirdPerson ? 'is' : 'are';
+  const needs = isThirdPerson ? 'needs' : 'need';
+
+  return {
+    role: "user",
+    content: `Generate collaboration synthesis between ${initiator} ${isThirdPerson ? `and ${target}` : `(authenticated user) and ${target}`}.
 
 <other_person>
-  <name>${targetName}</name>
-  <bio>${otherUserData.intro}</bio>
+  <name>${target}</name>
+  <bio>${data.intro}</bio>
 </other_person>
 
-<${intentsLabel}>
-${intentsXml}
-</${intentsLabel}>
+<intent_pairs>
+${pairsXml}
+</intent_pairs>
+
+Note: Use the actual <created> timestamps from the intent pairs above. The examples show timing references - yours should reflect the real data.
 
 <examples>
-  <good>"${initiatorName} ${isThirdPerson ? 'is' : 'are'} looking for [coordination without platforms](https://index.network/intents/ID) and ${targetName} is designing agent-led systems to negotiate access. They're working on exactly the context-aware coordination primitives ${isThirdPerson ? initiatorName + ' needs' : 'you need'}—this is the match."</good>
+  <good>"${initiator} ${needs} [help scaling APIs](https://index.network/intents/ID) and ${target} has scaled infrastructure at three startups. They have the exact backend expertise ${isThirdPerson ? initiator + ' is' : "you're"} looking for."</good>
   
-  <good>"${initiatorName} ${isThirdPerson ? 'wants' : 'want'} to [build better dashboards](https://index.network/intents/ID) and ${targetName} is obsessed with data viz. They've got the visual design expertise ${isThirdPerson ? initiatorName + ' is' : "you're"} looking for (shocking how rare this combo is)."</good>
+  <good>"${initiator} ${isThirdPerson ? 'wants' : 'want'} to [build better dashboards](https://index.network/intents/ID) and ${target} is obsessed with data viz. They've got the visual design expertise ${isThirdPerson ? initiator + ' is' : "you're"} looking for (shocking how rare this combo is)."</good>
   
-  <good>"${targetName} runs [community events for developers](https://index.network/intents/ID) and ${initiatorName} ${isThirdPerson ? 'needs' : 'need'} beta testers. They have exactly the developer audience ${isThirdPerson ? initiatorName + ' is' : "you're"} trying to reach."</good>
+  <good>"${initiator} ${pronoun} building [DAO governance tools](https://index.network/intents/ID) and ${target} researches token-based coordination. ${isThirdPerson ? `${initiator}'s` : 'Your'} implementation focus matches their research—exactly the kind of theory-practice bridge both sides need."</good>
   
-  <good>"${initiatorName} ${isThirdPerson ? 'is' : 'are'} building [alignment tools](https://index.network/intents/ID) and ${targetName} writes about AI safety frameworks. ${isThirdPerson ? `${initiatorName}'s` : 'Your'} implementation work matches their theoretical expertise—bridges theory and practice, pretty rare combo."</good>
+  <good>"${initiator} ${pronoun} working on [AI safety alignment](https://index.network/intents/ID) and ${target} writes about formal verification methods (been at this for years). ${isThirdPerson ? 'They complement' : 'You complement'} each other—practical implementation meets theoretical rigor, pretty rare combo."</good>
   
-  <good>"${initiatorName} ${isThirdPerson ? 'is' : 'are'} looking for [someone to jam on music](https://index.network/intents/ID) and ${targetName} built a collaborative music app. They're actively looking for musicians to test it with."</good>
+  <good>"${target} runs community events for developers and ${initiator} ${needs} [beta testers](https://index.network/intents/ID). They have exactly the developer audience ${isThirdPerson ? initiator + ' is' : "you're"} trying to reach."</good>
   
-  <good>"${initiatorName} ${isThirdPerson ? 'needs' : 'need'} help [scaling APIs](https://index.network/intents/ID) and ${targetName} has done this twice before. They have the exact experience ${isThirdPerson ? initiatorName + ' is' : "you're"} looking for."</good>
+  <good>"Alice wants [fundraising advice](https://index.network/intents/ID) and Maya has backed 40+ startups (been investing for 5 years). Alice needs exactly what Maya's spent years learning—the timing contrast actually helps here."</good>
   
-  <good>"${initiatorName} ${isThirdPerson ? 'is' : 'are'} trying to [understand Web3 gaming](https://index.network/intents/ID) and ${targetName} shipped three games. They're looking to advise people getting into the space—perfect fit."</good>
+  <good>"${initiator} ${pronoun} looking for [someone to jam on music](https://index.network/intents/ID) and ${target} built a collaborative music app. They're actively looking for musicians to test it with."</good>
+  
+  <good>"${initiator} ${isThirdPerson ? 'wants' : 'want'} to [understand Web3 gaming economics](https://index.network/intents/ID) and ${target} designed token systems for three games. They're looking to advise people getting into the space—perfect fit."</good>
+  
+  <good>"${initiator} ${pronoun} researching [carbon credit verification](https://index.network/intents/ID) and ${target} is building climate impact dashboards. They both need data infrastructure—should probably just collaborate (finally, someone in the same niche)."</good>
+  
+  <good>"${initiator} ${needs} [visual branding](https://index.network/intents/ID) and ${target} specializes in minimal brand systems. ${isThirdPerson ? 'They offer' : 'They offer'} exactly the clean aesthetic ${isThirdPerson ? initiator + ' described' : 'you described'}—hard to find designers who get that less-is-more thing."</good>
+  
+  <good>"${initiator} ${pronoun} [automating deployment pipelines](https://index.network/intents/ID) (been stuck on this for months) and ${target} lives in CI/CD tooling. They know the exact pain points ${isThirdPerson ? initiator + ' is' : "you're"} hitting."</good>
+  
+  <good>"${initiator} ${isThirdPerson ? 'wants' : 'want'} to [study emergent behavior in markets](https://index.network/intents/ID) and ${target} has simulation frameworks ready to go. Perfect timing—research question meets tooling (rare to find both at once)."</good>
+  
+  <good>"Dev needs a [technical co-founder](https://index.network/intents/ID) for a fintech startup and Priya is looking for early-stage projects. Dev's vision matches Priya's 5 years of backend experience—the co-founder search is brutal, this is the kind of match that actually works."</good>
+  
+  <good>"${initiator} ${needs} [help with content strategy](https://index.network/intents/ID) and ${target} is a content strategist with 50+ clients. They specialize in technical content—exactly ${isThirdPerson ? initiator + "'s" : 'your'} domain."</good>
+  
+  <good>"Jordan is building [treasury management tools](https://index.network/intents/ID) (been iterating for 4 months) and Sam researches on-chain governance patterns. Jordan's building what Sam's been studying—that theory-implementation loop is gold."</good>
+  
+  <good>"${initiator} ${pronoun} [organizing a developer conference](https://index.network/intents/ID) (happening in 2 months) and ${target} is looking for speaking gigs. Perfect match—${isThirdPerson ? 'they need' : 'you need'} speakers, they want stages (it's almost too obvious)."</good>
+  
+  <good>"${initiator} ${needs} [growth marketing tactics](https://index.network/intents/ID) and ${target} has grown 6 products from 0 to 100k users. They know the playbook ${isThirdPerson ? initiator + ' needs' : 'you need'}."</good>
+  
+  <good>"${initiator} ${pronoun} [building observability infrastructure](https://index.network/intents/ID) (started 6 months ago, gaining traction) and ${target} wants to contribute to monitoring tools. ${isThirdPerson ? 'They want' : 'You want'} contributors, they want to contribute—timing's right for this to work."</good>
+  
+  <good>"Emma hosts a [podcast about indie makers](https://index.network/intents/ID) and is looking for guests, while Leo just launched his third side project (now profitable). Emma needs exactly Leo's story—scrappy builder who actually ships."</good>
+  
+  <good>"${initiator} ${isThirdPerson ? 'wants' : 'want'} to [measure social impact](https://index.network/intents/ID) and ${target} has frameworks for impact metrics. They've done the hard work of figuring out what actually matters—saves ${isThirdPerson ? initiator : 'you'} months of wandering."</good>
 </examples>`
-    };
-
-    // Set up timeout
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Vibe check timeout')), timeout);
-    });
-
-    const vibeCall = traceableLlm(
-      "vibe-checker",
-      {
-        other_user_id: otherUserData.id,
-        other_user_name: otherUserData.name,
-        matched_intents_count: otherUserData.intents.length
-      }
-    );
-
-    console.log(JSON.stringify([systemMessage, userMessage], null, 2));
-
-    //console.log('Vibe check call:', [systemMessage, userMessage]);
-    const response = await Promise.race([
-      vibeCall([systemMessage, userMessage], { reasoning: { exclude: true, effort: 'minimal' } }),
-      timeoutPromise
-    ]);
-
-    const synthesis = (response.content as string).trim();
-
-    console.log(`Synthesis: ${synthesis}`);
-    const endTime = new Date();
-    const durationMs = endTime.getTime() - startTime.getTime();
-
-    console.log(`✅ Generated vibe check for ${otherUserData.name}: ${synthesis.length} characters in ${durationMs}ms`);
-    console.log(`🏁 Vibe check completed at ${endTime.toISOString()}`);
-
-    return {
-      success: true,
-      synthesis,
-      timing: {
-        startTime,
-        endTime,
-        durationMs
-      }
-    };
-
-  } catch (error) {
-    const endTime = new Date();
-    const durationMs = endTime.getTime() - startTime.getTime();
-    
-    console.error(`❌ Error checking vibe for ${otherUserData?.name || 'unknown user'} after ${durationMs}ms:`, error);
-    console.log(`🏁 Vibe check failed at ${endTime.toISOString()}`);
-    
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timing: {
-        startTime,
-        endTime,
-        durationMs
-      }
-    };
-  }
+  };
 }

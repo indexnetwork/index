@@ -32,8 +32,10 @@ router.post('/vibecheck',
       const contextUserId = req.user!.id;
       const { targetUserId, initiatorId, intentIds, indexIds, options } = req.body;
 
-      // Prevent self-synthesis
-      if (contextUserId === targetUserId) {
+      // Prevent self-synthesis: block when target and initiator are the same
+      // Allow viewing synthesis from another user's perspective (initiatorId different from target)
+      const effectiveInitiatorId = initiatorId || contextUserId;
+      if (effectiveInitiatorId === targetUserId) {
         return res.status(400).json({ error: 'Cannot generate synthesis for yourself' });
       }
 
@@ -51,14 +53,16 @@ router.post('/vibecheck',
         return res.status(400).json({ error: 'No accessible indexes found for synthesis' });
       }
 
-      const synthesis = await synthesizeVibeCheck({
+      const synthesis = await synthesizeVibeCheck(
+        initiatorId || contextUserId,
         targetUserId,
-        contextUserId: initiatorId || contextUserId,
-        initiatorId,
-        intentIds,
-        indexIds: validIndexIds,
-        options
-      });
+        {
+          initiatorId,
+          intentIds,
+          indexIds: validIndexIds,
+          vibeOptions: options
+        }
+      );
 
 
       return res.json({
