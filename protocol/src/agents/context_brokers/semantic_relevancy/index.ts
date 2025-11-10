@@ -170,7 +170,6 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   private async findMutualIntents(newIntent: any, targetIntents: any[]) {
     const mutualityPromises = targetIntents.map(async (targetIntent) => {
       const evaluation = await this.evaluateMutualityStrict(newIntent, targetIntent);
-      console.log(`   🔍 Evaluation: ${evaluation?.isMutual} ${evaluation?.confidenceScore}`);
       
       if (evaluation && evaluation.isMutual && evaluation.confidenceScore >= 70) {
         return {
@@ -268,7 +267,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   ): Promise<{ isMutual: boolean; confidenceScore: number; reasoning: string } | null> {
     const MutualIntentSchema = z.object({
       isMutual: z.boolean().describe("Whether the two intents have mutual intent (both relate to or depend on each other)"),
-      reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. Refer to intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research') rather than by position or ordinal references. Do not use 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'. If not mutual, provide empty string.").max(400),
+      reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. Refer to intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research') rather than by position or ordinal references. Do not use 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'. If not mutual, provide empty string."),
       confidenceScore: z.number().min(0).max(100).describe("Precise confidence score 0-100. Use full range 70-100 for mutual matches. Avoid round numbers like 100, 90, 80. Be specific: 87, 76, 92, etc.")
     });
 
@@ -372,13 +371,16 @@ Are these mutually relevant with high confidence (>= 70 score)? Consider timing 
       );
       
       const response = await reasoningCall([systemMessage, userMessage], MutualIntentSchema);
+      
       return {
         isMutual: response.isMutual,
         confidenceScore: response.confidenceScore,
         reasoning: response.reasoning
       };
-    } catch (error) {
-      console.error(`Error evaluating mutuality:`, error);
+    } catch (error: any) {
+      console.error(`📋 Intent Pair That Failed:`);
+      console.error(`   New: "${newIntent.payload}" (${newIntent.id})`);
+      console.error(`   Target: "${targetIntent.payload}" (${targetIntent.id})`);
       return null;
     }
   }
