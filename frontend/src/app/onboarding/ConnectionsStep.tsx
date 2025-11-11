@@ -3,7 +3,6 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import Image from "next/image";
 import { IntegrationState, OnboardingStep } from "@/types/onboarding";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -14,6 +13,7 @@ import { useFiles, useLinks } from "@/contexts/APIContext";
 import { QueueStatus } from "@/services/queue";
 import { formatDate } from "@/lib/utils";
 import { useOnboardingContext } from "@/contexts/OnboardingContext";
+import Integration from "./components/Integration";
 
 interface ConnectionsStepProps {
   handleCompleteOnboarding: () => void;
@@ -44,7 +44,14 @@ export default function ConnectionsStep({
   const { success, error } = useNotifications();
   const { user } = useAuthContext();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
+  const availableIntegrations = integrations
+    .filter((integration) => {
+      // Filter out Slack/Discord if not enabled for this flow
+      if (!flowConfig.features.showSlackDiscord && (integration.type === 'slack' || integration.type === 'discord')) {
+        return false;
+      }
+      return true;
+    })
   // Load integrations status
   const loadIntegrations = useCallback(async () => {
     try {
@@ -106,75 +113,80 @@ export default function ConnectionsStep({
           await integrationsService.disconnectIntegration(item.id);
           // Refresh integrations from API to get real status
           await loadIntegrations();
+
           success(`${item.name} disconnected`);
-        } else {
-          const popup =
-            typeof window !== "undefined"
-              ? window.open("", `oauth_${type}`, "width=560,height=720")
-              : null;
+          
+          return;
+        }
 
-          // Build payload based on flow configuration
-          const payload: { indexId?: string; enableUserAttribution: boolean } =
-            {
-              enableUserAttribution: flowConfig.features.enableUserAttribution,
-            };
+        const popup =
+          typeof window !== "undefined"
+            ? window.open("", `oauth_${type}`, "width=560,height=720")
+            : null;
 
-          if (flowConfig.features.requireIndexId) {
-            const indexId = user?.onboarding?.indexId || createdIndex?.id;
-            if (!indexId) {
-              error("Index ID is required to connect integrations");
-              return;
-            }
-            payload.indexId = indexId;
+        // Build payload based on flow configuration
+        const payload: { indexId?: string; enableUserAttribution: boolean } =
+          {
+            enableUserAttribution: flowConfig.features.enableUserAttribution,
+          };
+
+        if (flowConfig.features.requireIndexId) {
+          const indexId = user?.onboarding?.indexId || createdIndex?.id;
+          if (!indexId) {
+            error("Index ID is required to connect integrations");
+            return;
           }
+          payload.indexId = indexId;
+        }
 
-          const res = await integrationsService.connectIntegration(
-            type,
-            payload
-          );
-          const redirect = res.redirectUrl;
-          const integrationId = res.integrationId;
+        const res = await integrationsService.connectIntegration(
+          type,
+          payload
+        );
+        const redirect = res.redirectUrl;
+        const integrationId = res.integrationId;
 
-          if (popup && redirect) {
-            popup.location.href = redirect;
-          } else if (redirect) {
-            window.location.href = redirect;
+        if (popup && redirect) {
+          popup.location.href = redirect;
+        } else if (redirect) {
+          window.location.href = redirect;
+          return;
+        }
+
+        if (!integrationId) {
+          return
+        }
+        
+        const started = Date.now();
+
+        const poll = setInterval(async () => {
+          if (popup && popup.closed) {
+            clearInterval(poll);
             return;
           }
 
-          if (integrationId) {
-            const started = Date.now();
+          try {
+            // Use the new status endpoint with integrationId
+            const s = await integrationsService.getIntegrationStatus(
+              integrationId
+            );
 
-            const poll = setInterval(async () => {
-              if (popup && popup.closed) {
-                clearInterval(poll);
-                return;
-              }
-
-              try {
-                // Use the new status endpoint with integrationId
-                const s = await integrationsService.getIntegrationStatus(
-                  integrationId
-                );
-
-                if (s.status === "connected") {
-                  clearInterval(poll);
-                  if (popup && !popup.closed) popup.close();
-                  // Refresh integrations from API to get real status
-                  await loadIntegrations();
-                  success(`${item.name} connected`);
-                }
-                if (Date.now() - started > 90000) {
-                  clearInterval(poll);
-                  if (popup && !popup.closed) popup.close();
-                  error("Connection timeout - please try again");
-                }
-              } catch (err) {
-                console.error("Error checking connection status:", err);
-              }
-            }, 1500);
+            if (s.status === "connected") {
+              clearInterval(poll);
+              if (popup && !popup.closed) popup.close();
+              // Refresh integrations from API to get real status
+              await loadIntegrations();
+              success(`${item.name} connected`);
+            }
+            if (Date.now() - started > 90000) {
+              clearInterval(poll);
+              if (popup && !popup.closed) popup.close();
+              error("Connection timeout - please try again");
+            }
+          } catch (err) {
+            console.error("Error checking connection status:", err);
           }
-        }
+        }, 1500);
       } catch {
         // ignore
       } finally {
@@ -311,62 +323,15 @@ export default function ConnectionsStep({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        {integrations
-          .filter((integration) => {
-            // Filter out Slack/Discord if not enabled for this flow
-            if (!flowConfig.features.showSlackDiscord && (integration.type === 'slack' || integration.type === 'discord')) {
-              return false;
-            }
-            return true;
-          })
-          .map((integration) => {
-            return (
-              <div
-                key={integration.type}
-                className="border border-b-2 border-[#000] p-4 bg-white"
-              >
-                <div className="flex items-center justify-between mb-0">
-                  <div className="flex items-center gap-3">
-                    <Image
-                      src={`/integrations/${integration.type}.png?3`}
-                      width={24}
-                      height={24}
-                      alt={integration.name}
-                    />
-                    <span className="font-small text-black font-ibm-plex-mono text-[14px]">{integration.name}</span>
-                  </div>
-                  {!integrationsLoaded ? (
-                    // Show loading placeholder for toggle only
-                    <div className="w-11 h-6 bg-[#F5F5F5] rounded-full animate-pulse" />
-                  ) : (
-                    <button
-                      onClick={() => toggleIntegration(integration.type)}
-                      disabled={pendingIntegration === integration.type}
-                      className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${
-                        integration.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                      } ${pendingIntegration === integration.type ? 'opacity-70' : ''}`}
-                    >
-                      <span
-                        className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
-                          integration.connected ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                      {pendingIntegration === integration.type && (
-                        <span className="absolute inset-0 grid place-items-center">
-                        <span
-                          className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
-                          style={{
-                            marginLeft: integration.connected ? "-20px" : "20px"
-                          }}
-                        />
-                      </span>
-                      )}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        {availableIntegrations.map((integration) => (
+          <Integration
+            key={integration.type}
+            integration={integration}
+            integrationsLoaded={integrationsLoaded}
+            pendingIntegration={pendingIntegration}
+            onToggle={toggleIntegration}
+          />
+        ))}
       </div>
 
       <div className="mb-2">
