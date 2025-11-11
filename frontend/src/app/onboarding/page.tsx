@@ -22,70 +22,19 @@ import { useIndexesState } from "@/contexts/IndexesContext";
 import { useAuth as useAuthService, useFiles, useLinks } from "@/contexts/APIContext";
 import { QueueStatus } from "@/services/queue";
 
-type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
-type OnboardingFlow = 1 | 2 | 3;
-
-interface IntegrationState {
-  id: string | null;           // The actual integration UUID
-  type: IntegrationName;       // The integration type (slack, discord, etc.)
-  name: string;
-  connected: boolean;
-  indexId?: string | null;
-}
-
-// Flow configuration
-interface FlowConfig {
-  steps: OnboardingStep[];
-  features: {
-    showSlackDiscord: boolean;
-    enableUserAttribution: boolean;
-    requireIndexId: boolean;
-  };
-  descriptions: {
-    connections: string;
-  };
-}
-
-const FLOW_CONFIGS: Record<OnboardingFlow, FlowConfig> = {
-  1: { // Personal flow
-    steps: ['profile', 'connections', 'join_indexes'],
-    features: {
-      showSlackDiscord: false,
-      enableUserAttribution: false,
-      requireIndexId: false,
-    },
-    descriptions: {
-      connections: "Link the places you already work and share. Nobody gets notified, and it's only used to understand what you're looking for.",
-    },
-  },
-  2: { // Community flow
-    steps: ['profile', 'create_index', 'connections', 'invite_members'],
-    features: {
-      showSlackDiscord: true,
-      enableUserAttribution: true,
-      requireIndexId: true,
-    },
-    descriptions: {
-      connections: "Link the platforms where your people already works and shares. Nobody gets notified for now. We recommend connecting every account you use regularly so Index has a full picture of your ecosystem.",
-    },
-  },
-  3: { // Invitation flow
-    steps: ['profile', 'connections'],
-    features: {
-      showSlackDiscord: false,
-      enableUserAttribution: false,
-      requireIndexId: false,
-    },
-    descriptions: {
-      connections: "Link the places you already work and share. Nobody gets notified, and it's only used to understand what you're looking for.",
-    },
-  },
-};
+import {
+  IntegrationState,
+  OnboardingFlow,
+  OnboardingStep,
+} from "@/types/onboarding";
+import { FLOW_CONFIGS, MOCK_INDEXES } from "./config";
 
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('profile');
   const [isLoading, setIsLoading] = useState(false);
-  const [currentFlow, setCurrentFlow] = useState<OnboardingFlow>(1);
+  const [currentFlow, setCurrentFlow] = useState<OnboardingFlow>(
+    OnboardingFlow.Personal
+  );
   const router = useRouter();
   const searchParams = useSearchParams();
   const api = useAuthenticatedAPI();
@@ -112,6 +61,9 @@ export default function OnboardingPage() {
   const [pendingIntegration, setPendingIntegration] = useState<string | null>(null);
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
 
+  // Navigation helpers using flow configuration
+  const flowConfig = FLOW_CONFIGS[currentFlow];
+  const flowSteps = flowConfig.steps as ReadonlyArray<OnboardingStep>;
   // Library step states
   const [linkUrl, setLinkUrl] = useState("");
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -124,15 +76,6 @@ export default function OnboardingPage() {
   const [publicIndexesLoaded, setPublicIndexesLoaded] = useState(false);
   const [isJoiningIndex, setIsJoiningIndex] = useState<string | null>(null);
 
-  // Mock indexes for the final step (fallback if no public indexes)
-  const mockIndexes = [
-    { id: 'index-early', name: 'Index Early', description: 'AI, Web3, Decentralization', members: 1250 },
-    { id: 'techstars', name: 'Techstars Universe', description: 'AI, Web3, Decentralization', members: 890 },
-    { id: 'base', name: 'Base', description: 'AI, Web3, Decentralization', members: 2100 },
-    { id: 'consensys', name: 'Consensys', description: 'AI, Web3, Decentralization', members: 750 },
-    { id: 'protocol-labs', name: 'Protocol Labs', description: 'AI, Web3, Decentralization', members: 1400 },
-    { id: 'kernel', name: 'Kernel', description: 'AI, Web3, Decentralization', members: 680 },
-  ];
   const [selectedIndexes, setSelectedIndexes] = useState<Set<string>>(new Set());
 
   // Create index step states
@@ -155,19 +98,18 @@ export default function OnboardingPage() {
   // Load integrations status
   const loadIntegrations = useCallback(async () => {
     try {
-      const config = FLOW_CONFIGS[currentFlow];
-      
       // Determine if we should filter by indexId based on flow config
       let queryIndexId: string | undefined;
-      if (config.features.requireIndexId) {
-        queryIndexId = user?.onboarding?.indexId || createdIndex?.id || undefined;
+      if (flowConfig.features.requireIndexId) {
+        queryIndexId =
+          user?.onboarding?.indexId || createdIndex?.id || undefined;
       }
-      
+
       const response = await integrationsService.getIntegrations(queryIndexId);
-      
+
       const connectedIntegrations = response.integrations || [];
       const availableTypes = response.availableTypes || [];
-      
+
       // Create integration state combining connected and available types
       const updatedIntegrations = availableTypes.map(availableType => {
         const connectedIntegration = connectedIntegrations.find(i => i.type === availableType.type);
