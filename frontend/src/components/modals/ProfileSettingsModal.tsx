@@ -76,25 +76,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   );
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const introTextareaRef = useRef<HTMLTextAreaElement>(null);
   const authService = useAuth();
-
-  // Auto-resize textarea based on content
-  const handleIntroChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setIntro(e.target.value);
-    if (introTextareaRef.current) {
-      introTextareaRef.current.style.height = 'auto';
-      introTextareaRef.current.style.height = `${introTextareaRef.current.scrollHeight}px`;
-    }
-  };
-
-  // Initialize textarea height on mount and when modal opens
-  React.useEffect(() => {
-    if (open && introTextareaRef.current) {
-      introTextareaRef.current.style.height = 'auto';
-      introTextareaRef.current.style.height = `${introTextareaRef.current.scrollHeight}px`;
-    }
-  }, [open, intro]);
 
   const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -269,11 +251,10 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               <span className="text-sm text-gray-500">{intro.length}/500</span>
             </div>
             <Textarea
-              ref={introTextareaRef}
               id="intro"
               value={intro}
-              onChange={handleIntroChange}
-              className="min-h-[70px] resize-none overflow-hidden"
+              onChange={(e) => setIntro(e.target.value)}
+              className="min-h-[70px] resize-none [field-sizing:content]"
               placeholder="Tell others about yourself..."
               maxLength={500}
             />

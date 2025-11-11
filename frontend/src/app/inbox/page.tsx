@@ -504,12 +504,12 @@ export default function InboxPage() {
             
             {/* Requests view button */}
             {activeTab === 'requests' && (
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-end">
                 {/* Tab buttons */}
                 <div className="flex gap-0">
                   <button
                     onClick={() => setRequestsView('received')}
-                    className={`font-ibm-plex-mono px-4 py-3 border border-b-2 border-r-0 border-black flex items-center gap-2 ${
+                    className={`font-ibm-plex-mono px-6 py-2 border border-black  border-b-2 border-r-0 flex items-center gap-2 ${
                       requestsView === 'received' 
                         ? 'bg-black text-white' 
                         : 'bg-white text-black hover:bg-gray-50'
@@ -528,7 +528,7 @@ export default function InboxPage() {
                   </button>
                   <button
                     onClick={() => setRequestsView('sent')}
-                    className={`font-ibm-plex-mono px-4 py-3 border border-b-2 border-r-0 border-black flex items-center gap-2 ${
+                    className={`font-ibm-plex-mono px-6 py-2 border border-black border-b-2 border-r-0 border-l-0 flex items-center gap-2 ${
                       requestsView === 'sent' 
                         ? 'bg-black text-white' 
                         : 'bg-white text-black hover:bg-gray-50'
@@ -547,7 +547,7 @@ export default function InboxPage() {
                   </button>
                   <button
                     onClick={() => setRequestsView('history')}
-                    className={`font-ibm-plex-mono px-4 py-3 border border-b-2 border-black flex items-center gap-2 ${
+                    className={`font-ibm-plex-mono px-6 py-2 border border-b-2 border-black border-l-0 flex items-center gap-2 ${
                       requestsView === 'history' 
                         ? 'bg-black text-white' 
                         : 'bg-white text-black hover:bg-gray-50'
