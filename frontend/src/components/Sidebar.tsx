@@ -8,8 +8,8 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { Index as IndexType } from '@/lib/types';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
 import OwnerSettingsModal from '@/components/modals/OwnerSettingsModal';
-import ContextMenu from '@/components/ContextMenu';
-import { User as UserIcon, Crown, Link2, Check, Shield, ArrowLeft } from 'lucide-react';
+import { User as UserIcon, Shield, ArrowLeft, Inbox, Users, Settings, Plug, ArrowDownUp, Crown, Waypoints } from 'lucide-react';
+import { useAdmin } from '@/contexts/APIContext';
 
 interface IndexItem {
   id: string;
@@ -24,16 +24,17 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { indexes: rawIndexes, loading } = useIndexesState();
   const { user: currentUser } = useAuthContext();
+  const adminService = useAdmin();
   const [indexes, setIndexes] = useState<IndexItem[]>([]);
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
   const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
   const [ownerSettingsIndex, setOwnerSettingsIndex] = useState<IndexType | null>(null);
-  const [copiedLink, setCopiedLink] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState<number>(0);
   const { setSelectedIndexIds } = useIndexFilter();
   
   // Check if we're in admin mode
   const isAdminMode = pathname?.startsWith('/admin/');
-  const adminIndexId = isAdminMode ? pathname?.split('/admin/')[1] : null;
+  const adminIndexId = isAdminMode ? pathname?.split('/admin/')[1]?.split('/')[0] : null;
   const adminIndex = rawIndexes?.find(idx => idx.id === adminIndexId);
   
   
@@ -71,6 +72,24 @@ export default function Sidebar() {
     );
   }, [selectedIndexId]);
 
+  // Fetch pending count when in admin mode
+  useEffect(() => {
+    if (isAdminMode && adminIndexId) {
+      const fetchPendingCount = async () => {
+        try {
+          const response = await adminService.getPendingCount(adminIndexId);
+          setPendingCount(response.count);
+        } catch (error) {
+          console.error('Failed to fetch pending count:', error);
+        }
+      };
+      fetchPendingCount();
+      // Poll every 30 seconds
+      const interval = setInterval(fetchPendingCount, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isAdminMode, adminIndexId, adminService]);
+
   const handleIndexClick = (indexId: string) => {
     console.log('Index clicked:', indexId);
     setSelectedIndexId(indexId);
@@ -92,59 +111,85 @@ export default function Sidebar() {
     setOwnerSettingsIndex(index);
   };
 
-  // Handle copy link functionality
-  const handleCopyLink = async (index: IndexType) => {
-    // Determine which link to copy based on join policy
-    let linkUrl = '';
-    const anyoneCanJoin = index.permissions?.joinPolicy === 'anyone';
-
-    if (anyoneCanJoin) {
-      // If anyone can join, copy the index link
-      linkUrl = `${window.location.origin}/index/${index.id}`;
-    } else if (index.permissions?.invitationLink?.code) {
-      // If private, copy the invitation link
-      linkUrl = `${window.location.origin}/l/${index.permissions.invitationLink.code}`;
-    } else {
-      // Fallback to index link if no specific permissions are set
-      linkUrl = `${window.location.origin}/index/${index.id}`;
-    }
-
-    try {
-      await navigator.clipboard.writeText(linkUrl);
-      setCopiedLink(index.id);
-      setTimeout(() => setCopiedLink(null), 2000);
-    } catch (error) {
-      console.error('Failed to copy link:', error);
-    }
-  };
-
   return (
     <div className="space-y-6 font-mono">
       {/* Admin Mode Sidebar */}
       {isAdminMode && adminIndex ? (
-        <div className="bg-white rounded-sm border-black border p-4">
-          <button
-            onClick={() => router.push('/inbox')}
-            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-ibm-plex-mono text-sm mb-6 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to User Mode
-          </button>
-          
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-              <Shield className="w-5 h-5 text-gray-600" />
+        <>
+          <div className="bg-white rounded-sm border-black border p-4">
+            <button
+              onClick={() => router.push('/inbox')}
+              className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-ibm-plex-mono text-sm mb-6 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to User Mode
+            </button>
+            
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                <Shield className="w-5 h-5 text-gray-600" />
+              </div>
+              <div>
+                <h2 className="font-bold text-lg text-black font-ibm-plex-mono">
+                  {adminIndex.title}
+                </h2>
+                <p className="text-sm text-gray-600 font-ibm-plex-mono">
+                  Admin Mode
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-bold text-lg text-black font-ibm-plex-mono">
-                {adminIndex.title}
-              </h2>
-              <p className="text-sm text-gray-600 font-ibm-plex-mono">
-                Admin Mode
-              </p>
+
+            {/* Admin Menu */}
+            <div className="space-y-1">
+              <div
+                onClick={() => router.push(`/admin/${adminIndexId}/approvals`)}
+                className={`flex items-center justify-between px-3 py-2 rounded cursor-pointer transition-colors ${
+                  pathname?.includes('/approvals') ? 'bg-gray-200' : 'hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Inbox className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm text-black font-ibm-plex-mono">Approval</span>
+                </div>
+                {pendingCount > 0 && (
+                  <span className="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full font-ibm-plex-mono">
+                    {pendingCount}
+                  </span>
+                )}
+              </div>
+
+              <div
+                onClick={() => router.push(`/admin/${adminIndexId}/directory`)}
+                className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
+                  pathname?.includes('/directory') ? 'bg-gray-200' : 'hover:bg-gray-50'
+                }`}
+              >
+                <Users className="w-4 h-4 text-gray-600" />
+                <span className="text-sm text-black font-ibm-plex-mono">Directory</span>
+              </div>
+
+              <div
+                onClick={() => router.push(`/admin/${adminIndexId}/settings`)}
+                className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
+                  pathname?.includes('/settings') ? 'bg-gray-200' : 'hover:bg-gray-50'
+                }`}
+              >
+                <Settings className="w-4 h-4 text-gray-600" />
+                <span className="text-sm text-black font-ibm-plex-mono">Settings</span>
+              </div>
+
+              <div
+                onClick={() => router.push(`/admin/${adminIndexId}/integrations`)}
+                className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
+                  pathname?.includes('/integrations') ? 'bg-gray-200' : 'hover:bg-gray-50'
+                }`}
+              >
+                <Plug className="w-4 h-4 text-gray-600" />
+                <span className="text-sm text-black font-ibm-plex-mono">Integrations</span>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       ) : (
         /* Normal Sidebar */
         <div className="bg-white rounded-sm border-black border p-3 pb-6">
@@ -180,37 +225,7 @@ export default function Sidebar() {
                   );
                 }
 
-                // Create context menu items for non-"All Indexes" items
-                const contextMenuItems = [];
-
-                // 1. Copy Link (always show for now - will determine link type in handler)
-                const isCopied = copiedLink === index.id;
-                contextMenuItems.push({
-                  id: 'copy-link',
-                  label: isCopied ? 'Copied!' : 'Copy Link',
-                  icon: isCopied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />,
-                  onClick: () => index.fullIndex && handleCopyLink(index.fullIndex),
-                  disabled: isCopied
-                });
-
-                // 2. Configure Index (if user is owner)
                 const isOwner = currentUser && index.fullIndex?.user && currentUser.id === index.fullIndex.user.id;
-                if (isOwner) {
-                  contextMenuItems.push({
-                    id: 'index-settings',
-                    label: 'Configure Index',
-                    icon: <Crown className="w-4 h-4" />,
-                    onClick: () => index.fullIndex && handleOwnerSettings(index.fullIndex)
-                  });
-                }
-
-                // 3. Member Settings (always available)
-                contextMenuItems.push({
-                  id: 'member-settings',
-                  label: 'Manage what you\'re sharing',
-                  icon: <UserIcon className="w-4 h-4" />,
-                  onClick: () => index.fullIndex && handleMemberSettings(index.fullIndex)
-                });
 
                 return (
                   <div
@@ -239,13 +254,20 @@ export default function Sidebar() {
                           className="p-1 cursor-pointer rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-200"
                           title="Admin - Approve Connections"
                         >
-                          <Shield className="w-4 h-4 text-blue-600" />
+                          <Crown className="w-4 h-4 text-blue-600" />
                         </button>
                       )}
-                      <ContextMenu 
-                        items={contextMenuItems} 
-                        trigger="click"
-                      />
+                      {/* Manage what you're sharing button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          index.fullIndex && handleMemberSettings(index.fullIndex);
+                        }}
+                        className="p-1 cursor-pointer rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-200"
+                        title="Manage what you're sharing"
+                      >
+                        <Users className="w-4 h-4 text-gray-600" />
+                      </button>
                     </div>
                   </div>
                 );
