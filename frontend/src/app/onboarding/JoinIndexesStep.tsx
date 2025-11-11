@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Index } from "@/lib/types";
+import { Index as IndexType } from "@/lib/types";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useIndexService } from "@/services/indexes";
 import { useIndexesState } from "@/contexts/IndexesContext";
 import { OnboardingStep } from "@/types/onboarding";
 import { MOCK_INDEXES } from "./config";
 import { useOnboardingContext } from "@/contexts/OnboardingContext";
+import IndexCard from "./components/Index";
 
 interface JoinIndexesStepProps {
   handleCompleteOnboarding: () => Promise<void>;
@@ -23,7 +24,7 @@ export default function JoinIndexesStep({
   const { refreshIndexes } = useIndexesState();
 
   // Public indexes for join_indexes step
-  const [publicIndexes, setPublicIndexes] = useState<Array<Index & { isMember?: boolean }>>([]);
+  const [publicIndexes, setPublicIndexes] = useState<Array<IndexType & { isMember?: boolean }>>([]);
   const [publicIndexesLoaded, setPublicIndexesLoaded] = useState(false);
   const [isJoiningIndex, setIsJoiningIndex] = useState<string | null>(null);
   const [selectedIndexes, setSelectedIndexes] = useState<Set<string>>(new Set());
@@ -66,12 +67,11 @@ export default function JoinIndexesStep({
   const handleToggleJoin = async (
     index: (typeof indexesToShow)[number]
   ) => {
-    // Skip if this is mock data
+    // Just toggle for mock data
     if (
       !publicIndexes.length &&
       MOCK_INDEXES.find((m) => m.id === index.id)
     ) {
-      // Just toggle for mock data
       setSelectedIndexes(prev => {
         const next = new Set(prev);
         if (next.has(index.id)) {
@@ -81,11 +81,12 @@ export default function JoinIndexesStep({
         }
         return next;
       });
+
       return;
     }
 
+    // Already joined, don't do anything
     if (index.isMember || selectedIndexes.has(index.id)) {
-      // Already joined, don't do anything
       return;
     }
 
@@ -128,35 +129,13 @@ export default function JoinIndexesStep({
             const isJoining = isJoiningIndex === index.id;
 
             return (
-              <div key={index.id} className="border border-[#E0E0E0] rounded-lg p-6 bg-white">
-                <div className="text-center">
-                  <h3 className="text-lg font-bold text-black mb-2 font-ibm-plex-mono">{index.title}</h3>
-                  <p className="text-xs text-[#888] mb-4 font-ibm-plex-mono">
-                    {index._count.members.toLocaleString()} members
-                  </p>
-                  <Button
-                    variant={isJoined ? "default" : "outline"}
-                    onClick={() => handleToggleJoin(index)}
-                    disabled={isJoined || isJoining}
-                    className={`w-full font-ibm-plex-mono ${
-                      isJoined
-                        ? 'bg-[#006D4B] text-white hover:bg-[#005A3E]'
-                        : 'border-[#E0E0E0] text-black hover:bg-[#F0F0F0]'
-                    }`}
-                  >
-                    {isJoining ? (
-                      <>
-                        <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2 inline-block" />
-                        Joining...
-                      </>
-                    ) : isJoined ? (
-                      'Joined'
-                    ) : (
-                      'Join'
-                    )}
-                  </Button>
-                </div>
-              </div>
+              <IndexCard
+                key={index.id}
+                index={index}
+                isJoined={isJoined}
+                isJoining={isJoining}
+                onToggleJoin={handleToggleJoin}
+              />
             );
           })}
         </div>
