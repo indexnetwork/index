@@ -30,9 +30,9 @@ function OnboardingPageContent() {
   const { currentFlow, setCurrentFlow, flowConfig, currentStep, setCurrentStep } = useOnboardingContext();
 
   // Detect flow from query string, user onboarding state, or default
+  // f used for dev testing
   useEffect(() => {
     const f = searchParams.get("f");
-    console.log("flowParam", f);
 
     // Only f=2 is allowed to override flow
     if (f === OnboardingFlow.Community.toString()) {
