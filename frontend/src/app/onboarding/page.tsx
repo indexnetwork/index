@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, ChangeEvent } from "react";
+import React, {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  ChangeEvent,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,7 +23,6 @@ import { useIntegrationsService } from "@/services/integrations";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import LibraryModal from "@/components/modals/LibraryModal";
 import { validateFiles, getSupportedFileExtensions, formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
-import { formatDate } from "@/lib/utils";
 import { useIndexesState } from "@/contexts/IndexesContext";
 import { useAuth as useAuthService, useFiles, useLinks } from "@/contexts/APIContext";
 import { QueueStatus } from "@/services/queue";
@@ -28,6 +33,10 @@ import {
   OnboardingStep,
 } from "@/types/onboarding";
 import { FLOW_CONFIGS, MOCK_INDEXES } from "./config";
+import CreateIndexStep from "./CreateIndexStep";
+import InviteMembersStep from "./InviteMembersStep";
+import { OnboardingProvider } from "@/contexts/OnboardingContext";
+import { formatDate } from "@/lib/utils";
 
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('profile');
@@ -52,6 +61,12 @@ export default function OnboardingPage() {
   const [intro, setIntro] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [profileInitialized, setProfileInitialized] = useState(false);
+  const lastSyncedUserRef = useRef<{
+    id: string | null;
+    name: string;
+    intro: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Connections step states
@@ -79,20 +94,12 @@ export default function OnboardingPage() {
   const [selectedIndexes, setSelectedIndexes] = useState<Set<string>>(new Set());
 
   // Create index step states
-  const [indexName, setIndexName] = useState('');
-  const [isPrivate, setIsPrivate] = useState(false);
-  const [createdIndex, setCreatedIndex] = useState<{ id: string; name: string; inviteCode?: string } | null>(null);
+  const [createdIndex, setCreatedIndex] = useState<{
+    id: string;
+    name: string;
+    inviteCode?: string;
+  } | null>(null);
 
-  // Invite members step states
-  const [inviteMethod, setInviteMethod] = useState<'automatic' | 'link' | null>(null);
-
-  const [, setMemberCount] = useState(0);
-  const [summaryLoaded, setSummaryLoaded] = useState(false);
-  
-  // Memoized display values to prevent glitching during reloads
-  const [displayIntents, setDisplayIntents] = useState<Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }>>([]);
-  const [displayMembers, setDisplayMembers] = useState<Array<{ id: string; name: string; avatar: string | null }>>([]);
-  const [displayTotalIntents, setDisplayTotalIntents] = useState(0);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
 
   // Load integrations status
@@ -132,87 +139,35 @@ export default function OnboardingPage() {
       setIntegrationsLoaded(true);
       setIntegrationsIndexId(undefined);
     }
-  }, [integrationsService, currentFlow, createdIndex?.id, user?.onboarding?.indexId]);
-
-  // Load index summary for invite members step
-  const loadIndexSummary = useCallback(async () => {
-    try {
-      const wasLoaded = summaryLoaded;
-      if (!wasLoaded) {
-        setSummaryLoaded(false);
-      }
-      
-      // Get indexId from user onboarding state or createdIndex state
-      const indexId = user?.onboarding?.indexId || createdIndex?.id;
-      
-      if (!indexId) {
-        setCurrentStep('create_index');
-        return;
-      }
-
-      const response = await api.get<{
-        exampleIntents: Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }>;
-        totalIntents: number;
-        members: Array<{ id: string; name: string; avatar: string | null }>;
-      }>(`/indexes/${indexId}/summary`);
-      
-      const newIntents = response.exampleIntents || [];
-      const newMembers = response.members || [];
-      const newTotalIntents = response.totalIntents || 0;
-      
-      // Update member count
-      setMemberCount(newMembers.length);
-      
-      // Only update display values if there are meaningful changes or first load
-      if (!wasLoaded || 
-          JSON.stringify(newIntents) !== JSON.stringify(displayIntents) ||
-          JSON.stringify(newMembers) !== JSON.stringify(displayMembers) ||
-          newTotalIntents !== displayTotalIntents) {
-        setDisplayIntents(newIntents);
-        setDisplayMembers(newMembers);
-        setDisplayTotalIntents(newTotalIntents);
-      }
-      
-      if (!wasLoaded) {
-        setSummaryLoaded(true);
-      }
-    } catch (error) {
-      console.error('Failed to fetch index summary:', error);
-      // Fallback to mock data only on first load
-      if (!summaryLoaded) {
-        const fallbackIntents: Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }> = [];
-        const fallbackMembers: Array<{ id: string; name: string; avatar: string | null }> = [];
-        
-        setMemberCount(0);
-        
-        setDisplayIntents(fallbackIntents);
-        setDisplayMembers(fallbackMembers);
-        setDisplayTotalIntents(0);
-        
-        setSummaryLoaded(true);
-      }
-    }
-  }, [api, createdIndex?.id, summaryLoaded, displayIntents, displayMembers, displayTotalIntents, user?.onboarding?.indexId]);
+  }, [
+    integrationsService,
+    createdIndex?.id,
+    user?.onboarding?.indexId,
+    flowConfig.features.requireIndexId,
+  ]);
 
   // Detect flow from query string, user onboarding state, or default
   useEffect(() => {
-    const f = searchParams.get('f');
-    
+    const f = searchParams.get("f");
+
     // Only f=2 is allowed to override flow
-    if (f === '2') {
-      setCurrentFlow(2);
+    if (f === OnboardingFlow.Community.toString()) {
+      setCurrentFlow(OnboardingFlow.Community);
       // Reset onboarding to flow 2 if user's current flow is different
-      if (user && user.onboarding?.flow !== 2) {
-        authService.updateOnboardingState({
-          flow: 2,
-          currentStep: 'profile',
-          indexId: null, // Clear any previous index
-          completedAt: null // Mark as not completed
-        }).then(() => {
-          refetchUser();
-        }).catch((err) => {
-          console.error('Failed to reset onboarding to flow 2:', err);
-        });
+      if (user && user.onboarding?.flow !== OnboardingFlow.Community) {
+        authService
+          .updateOnboardingState({
+            flow: OnboardingFlow.Community,
+            currentStep: "profile",
+            indexId: null, // Clear any previous index
+            completedAt: null, // Mark as not completed
+          })
+          .then(() => {
+            refetchUser();
+          })
+          .catch((err) => {
+            console.error("Failed to reset onboarding to flow 2:", err);
+          });
       }
     } else if (user?.onboarding?.flow) {
       setCurrentFlow(user.onboarding.flow);
@@ -223,70 +178,102 @@ export default function OnboardingPage() {
 
   // Initialize form fields when user data is available and determine starting step
   useEffect(() => {
-    if (user) {
-      setName(user.name || '');
-      setIntro(user.intro || '');
-      
-      const config = FLOW_CONFIGS[currentFlow];
-      const f = searchParams.get('f');
-      
-      // If onboarding is already completed, redirect to inbox UNLESS f=2 is present
-      if (user.onboarding?.completedAt && f !== '2') {
-        router.push('/inbox');
-        return;
-      }
-      
-      
-      // If user has a saved step in onboarding state, resume from there
-      if (user.onboarding?.currentStep && config.steps.includes(user.onboarding.currentStep)) {
-        setCurrentStep(user.onboarding.currentStep);
-        return;
-      }
-      
-      // Start with profile if intro not filled
-      if (!user.intro) {
-        setCurrentStep('profile');
-        return;
-      }
-      
-      // For flows requiring index creation, check if index exists
-      if (config.steps.includes('create_index') && !user.onboarding?.indexId) {
-        setCurrentStep('create_index');
-        return;
-      }
-      
-      // Otherwise, go to connections (next step after profile/create_index)
-      const profileIndex = config.steps.indexOf('profile');
-      const nextAfterProfile = config.steps[profileIndex + 1];
-      
-      // For community flow with index already created, skip to connections
-      if (config.steps.includes('create_index') && user.onboarding?.indexId) {
-        const createIndexIdx = config.steps.indexOf('create_index');
-        setCurrentStep(config.steps[createIndexIdx + 1] || nextAfterProfile);
-      } else {
-        setCurrentStep(nextAfterProfile);
-      }
+    if (!user) {
+      setName("");
+      setIntro("");
+      lastSyncedUserRef.current = null;
+      setProfileInitialized(false);
+      return;
     }
-  }, [user, currentFlow, router, searchParams]);
+
+    const normalizedName = user.name ?? "";
+    const normalizedIntro = user.intro ?? "";
+    const snapshot = lastSyncedUserRef.current;
+    const normalizedId = user.id ?? null;
+
+    const shouldSyncProfile =
+      !profileInitialized ||
+      !snapshot ||
+      snapshot.id !== normalizedId ||
+      snapshot.name !== normalizedName ||
+      snapshot.intro !== normalizedIntro;
+
+    if (shouldSyncProfile) {
+      setName(normalizedName);
+      setIntro(normalizedIntro);
+      lastSyncedUserRef.current = {
+        id: normalizedId,
+        name: normalizedName,
+        intro: normalizedIntro,
+      };
+      setProfileInitialized(true);
+    }
+  }, [user, profileInitialized]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const f = searchParams.get("f");
+
+    // If onboarding is already completed, redirect to inbox UNLESS f=2 is present
+    if (user.onboarding?.completedAt && !f) {
+      router.push("/inbox");
+      return;
+    }
+
+    // If user has a saved step in onboarding state, resume from there
+    if (
+      user.onboarding?.currentStep &&
+      flowSteps.includes(user.onboarding.currentStep)
+    ) {
+      setCurrentStep(user.onboarding.currentStep);
+      return;
+    }
+
+    // Start with profile if intro not filled
+    if (!user.intro) {
+      setCurrentStep("profile");
+      return;
+    }
+
+    // For flows requiring index creation, check if index exists
+    if (flowSteps.includes("create_index") && !user.onboarding?.indexId) {
+      setCurrentStep("create_index");
+      return;
+    }
+
+    // Otherwise, go to connections (next step after profile/create_index)
+    const profileIndex = flowSteps.indexOf("profile");
+    const nextAfterProfile = flowSteps[profileIndex + 1];
+
+    // For community flow with index already created, skip to connections
+    if (flowSteps.includes("create_index") && user.onboarding?.indexId) {
+      const createIndexIdx = flowSteps.indexOf("create_index");
+      setCurrentStep(flowSteps[createIndexIdx + 1] || nextAfterProfile);
+    } else {
+      setCurrentStep(nextAfterProfile);
+    }
+  }, [user, currentFlow, router, searchParams, flowSteps]);
 
   // Load integrations when appropriate
   useEffect(() => {
-    if (currentStep === 'connections') {
-      const config = FLOW_CONFIGS[currentFlow];
-      
+    if (currentStep === "connections") {
       // Determine current indexId
       let currentIndexId: string | undefined;
-      if (config.features.requireIndexId) {
-        currentIndexId = user?.onboarding?.indexId || createdIndex?.id || undefined;
+      if (flowConfig.features.requireIndexId) {
+        currentIndexId =
+          user?.onboarding?.indexId || createdIndex?.id || undefined;
       }
-      
+
       // Load integrations if not loaded yet OR if the indexId has changed
       const indexIdChanged = currentIndexId !== integrationsIndexId;
       const shouldLoad = !integrationsLoaded || indexIdChanged;
-      
+
       if (shouldLoad) {
         // If flow requires indexId, only load when we have one
-        if (config.features.requireIndexId) {
+        if (flowConfig.features.requireIndexId) {
           if (currentIndexId) {
             loadIntegrations();
           }
@@ -302,7 +289,16 @@ export default function OnboardingPage() {
         setIntegrationsIndexId(undefined);
       }
     }
-  }, [currentStep, currentFlow, createdIndex?.id, user?.onboarding?.indexId, integrationsLoaded, integrationsIndexId, loadIntegrations]);
+  }, [
+    currentStep,
+    currentFlow,
+    createdIndex?.id,
+    user?.onboarding?.indexId,
+    integrationsLoaded,
+    integrationsIndexId,
+    loadIntegrations,
+    flowConfig.features.requireIndexId,
+  ]);
 
   // Poll queue status when on connections step
   useEffect(() => {
@@ -361,20 +357,7 @@ export default function OnboardingPage() {
   }, [currentStep, publicIndexesLoaded, indexService]);
 
   // Load index summary when reaching invite_members step and reload every second
-  useEffect(() => {
-    if (currentStep === 'invite_members') {
-      // Load immediately
-      loadIndexSummary();
-      
-      // Set up interval to reload every second
-      const interval = setInterval(() => {
-        loadIndexSummary();
-      }, 1000);
-      
-      // Cleanup interval when leaving the step or component unmounts
-      return () => clearInterval(interval);
-    }
-  }, [currentStep, loadIndexSummary]);
+  // This is now handled by the InviteMembersStep component using the OnboardingContext
 
   const uploadAvatar = async (file: File): Promise<string> => {
     return await authService.uploadAvatar(file);
@@ -398,36 +381,33 @@ export default function OnboardingPage() {
     }
   };
 
-  // Navigation helpers using flow configuration
-  const flowConfig = FLOW_CONFIGS[currentFlow];
-  
   const getNextStep = (currentStep: OnboardingStep): OnboardingStep => {
-    const currentIndex = flowConfig.steps.indexOf(currentStep);
-    if (currentIndex >= 0 && currentIndex < flowConfig.steps.length - 1) {
-      return flowConfig.steps[currentIndex + 1];
+    const currentIndex = flowSteps.indexOf(currentStep);
+    if (currentIndex >= 0 && currentIndex < flowSteps.length - 1) {
+      return flowSteps[currentIndex + 1];
     }
     return currentStep; // Stay on current step if it's the last one
   };
 
   const getPreviousStep = (currentStep: OnboardingStep): OnboardingStep => {
-    const currentIndex = flowConfig.steps.indexOf(currentStep);
+    const currentIndex = flowSteps.indexOf(currentStep);
     if (currentIndex > 0) {
-      return flowConfig.steps[currentIndex - 1];
+      return flowSteps[currentIndex - 1];
     }
-    return flowConfig.steps[0]; // Return to first step if already at the beginning
+    return flowSteps[0]; // Return to first step if already at the beginning
   };
 
   const handleProfileSubmit = async () => {
     if (!user || !name.trim()) return;
-    
+
     setIsLoading(true);
     try {
       let avatarFilename = user.avatar;
-      
+
       if (avatarFile) {
         avatarFilename = await uploadAvatar(avatarFile);
       }
-      
+
       const updatedUser = await authService.updateProfile({
         name: name.trim(),
         intro: intro.trim(),
@@ -456,85 +436,105 @@ export default function OnboardingPage() {
     }
   };
 
-  const toggleIntegration = useCallback(async (type: string) => {
-    const item = integrations.find(i => i.type === type);
-    if (!item) return;
-    
-    try {
-      setPendingIntegration(type);
-      if (item.connected && item.id) {
-        // Disconnect using integration UUID
-        await integrationsService.disconnectIntegration(item.id);
-        // Refresh integrations from API to get real status
-        await loadIntegrations();
-        success(`${item.name} disconnected`);
-      } else {
-        const popup = typeof window !== 'undefined' ? window.open('', `oauth_${type}`, 'width=560,height=720') : null;
-        
-        const config = FLOW_CONFIGS[currentFlow];
-        
-        // Build payload based on flow configuration
-        const payload: { indexId?: string; enableUserAttribution: boolean } = {
-          enableUserAttribution: config.features.enableUserAttribution
-        };
-        
-        if (config.features.requireIndexId) {
-          const indexId = user?.onboarding?.indexId || createdIndex?.id;
-          if (!indexId) {
-            error('Index ID is required to connect integrations');
-            return;
-          }
-          payload.indexId = indexId;
-        }
-        
-        const res = await integrationsService.connectIntegration(type, payload);
-        const redirect = res.redirectUrl;
-        const integrationId = res.integrationId;
-        
-        if (popup && redirect) {
-          popup.location.href = redirect;
-        } else if (redirect) {
-          window.location.href = redirect;
-          return;
-        }
-        
-        if (integrationId) {
-          const started = Date.now();
-          
-          const poll = setInterval(async () => {
-            if (popup && popup.closed) {
-              clearInterval(poll);
+  const toggleIntegration = useCallback(
+    async (type: string) => {
+      const item = integrations.find((i) => i.type === type);
+      if (!item) return;
+
+      try {
+        setPendingIntegration(type);
+        if (item.connected && item.id) {
+          // Disconnect using integration UUID
+          await integrationsService.disconnectIntegration(item.id);
+          // Refresh integrations from API to get real status
+          await loadIntegrations();
+          success(`${item.name} disconnected`);
+        } else {
+          const popup =
+            typeof window !== "undefined"
+              ? window.open("", `oauth_${type}`, "width=560,height=720")
+              : null;
+
+          // Build payload based on flow configuration
+          const payload: { indexId?: string; enableUserAttribution: boolean } =
+            {
+              enableUserAttribution: flowConfig.features.enableUserAttribution,
+            };
+
+          if (flowConfig.features.requireIndexId) {
+            const indexId = user?.onboarding?.indexId || createdIndex?.id;
+            if (!indexId) {
+              error("Index ID is required to connect integrations");
               return;
             }
-            
-            try {
-              // Use the new status endpoint with integrationId
-              const s = await integrationsService.getIntegrationStatus(integrationId);
-              
-              if (s.status === 'connected') {
+            payload.indexId = indexId;
+          }
+
+          const res = await integrationsService.connectIntegration(
+            type,
+            payload
+          );
+          const redirect = res.redirectUrl;
+          const integrationId = res.integrationId;
+
+          if (popup && redirect) {
+            popup.location.href = redirect;
+          } else if (redirect) {
+            window.location.href = redirect;
+            return;
+          }
+
+          if (integrationId) {
+            const started = Date.now();
+
+            const poll = setInterval(async () => {
+              if (popup && popup.closed) {
                 clearInterval(poll);
-                if (popup && !popup.closed) popup.close();
-                // Refresh integrations from API to get real status
-                await loadIntegrations();
-                success(`${item.name} connected`);
+                return;
               }
-              if (Date.now() - started > 90000) {
-                clearInterval(poll);
-                if (popup && !popup.closed) popup.close();
-                error('Connection timeout - please try again');
+
+              try {
+                // Use the new status endpoint with integrationId
+                const s = await integrationsService.getIntegrationStatus(
+                  integrationId
+                );
+
+                if (s.status === "connected") {
+                  clearInterval(poll);
+                  if (popup && !popup.closed) popup.close();
+                  // Refresh integrations from API to get real status
+                  await loadIntegrations();
+                  success(`${item.name} connected`);
+                }
+                if (Date.now() - started > 90000) {
+                  clearInterval(poll);
+                  if (popup && !popup.closed) popup.close();
+                  error("Connection timeout - please try again");
+                }
+              } catch (err) {
+                console.error("Error checking connection status:", err);
               }
-            } catch (err) {
-              console.error('Error checking connection status:', err);
-            }
-          }, 1500);
+            }, 1500);
+          }
         }
+      } catch {
+        // ignore
+      } finally {
+        setPendingIntegration(null);
       }
-    } catch {
-      // ignore
-    } finally {
-      setPendingIntegration(null);
-    }
-  }, [integrationsService, integrations, success, error, loadIntegrations, createdIndex?.id, currentFlow, user?.onboarding?.indexId]);
+    },
+    [
+      integrationsService,
+      integrations,
+      success,
+      error,
+      flowConfig.features.enableUserAttribution,
+      flowConfig.features.requireIndexId,
+      loadIntegrations,
+      createdIndex?.id,
+      user?.onboarding?.indexId,
+    ]
+  );
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
@@ -569,7 +569,7 @@ export default function OnboardingPage() {
 
   const handleAddLink = useCallback(async () => {
     if (!linkUrl.trim()) return;
-    
+
     let normalizedUrl = linkUrl.trim();
     if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
       normalizedUrl = `https://${normalizedUrl}`;
@@ -592,81 +592,31 @@ export default function OnboardingPage() {
     }
   }, [linksService, linkUrl, success, error]);
 
-  const handleDeleteFile = useCallback(async (fileId: string) => {
-    try {
-      await filesService.deleteFile(fileId);
-      setFiles(prev => prev.filter(f => f.id !== fileId));
-      success('File deleted');
-    } catch {
-      error('Failed to delete file');
-    }
-  }, [filesService, success, error]);
-
-  const handleDeleteLink = useCallback(async (linkId: string) => {
-    try {
-      await linksService.deleteLink(linkId);
-      setLinks(prev => prev.filter(l => l.id !== linkId));
-      success('Link deleted');
-    } catch {
-      error('Failed to delete link');
-    }
-  }, [linksService, success, error]);
-
-  const handleCreateIndex = async () => {
-    if (!indexName.trim() || !user?.id) return;
-    
-    setIsLoading(true);
-    try {
-      const createRequest = {
-        title: indexName.trim(),
-        joinPolicy: isPrivate ? 'invite_only' as const : 'anyone' as const,
-      };
-      
-      const response = await indexService.createIndex(createRequest);
-      
-      const indexData = {
-        id: response.id,
-        name: response.title,
-        inviteCode: response.permissions?.invitationLink?.code
-      };
-      
-      setCreatedIndex(indexData);
-      
-      // Save index ID to onboarding state in database
-      const nextStep = getNextStep('create_index');
-      await authService.updateOnboardingState({
-        indexId: indexData.id,
-        currentStep: nextStep
-      });
-      
-      // Refresh indexes context to include the newly created index
-      await refreshIndexes();
-      
-      // Refetch user to get updated onboarding state
-      await refetchUser();
-      
-      success('Index created successfully!');
-      setCurrentStep(nextStep);
-    } catch (err) {
-      console.error('Error creating index:', err);
-      error('Failed to create index');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleInviteMembers = async () => {
-    if (inviteMethod === 'automatic') {
-      // In a real implementation, this would send invites
-      success('Invitations will be sent!');
-    } else if (inviteMethod === 'link') {
-      success('Invite link copied to clipboard!');
-      if (createdIndex?.inviteCode) {
-        const inviteLink = `${window.location.origin}/l/${createdIndex.inviteCode}`;
-        await navigator.clipboard.writeText(inviteLink);
+  const handleDeleteFile = useCallback(
+    async (fileId: string) => {
+      try {
+        await filesService.deleteFile(fileId);
+        setFiles((prev) => prev.filter((f) => f.id !== fileId));
+        success("File deleted");
+      } catch {
+        error("Failed to delete file");
       }
-    }
-  };
+    },
+    [filesService, success, error]
+  );
+
+  const handleDeleteLink = useCallback(
+    async (linkId: string) => {
+      try {
+        await linksService.deleteLink(linkId);
+        setLinks((prev) => prev.filter((l) => l.id !== linkId));
+        success("Link deleted");
+      } catch {
+        error("Failed to delete link");
+      }
+    },
+    [linksService, success, error]
+  );
 
   const handleCompleteOnboarding = async () => {
     if (!user?.id) return;
@@ -1053,264 +1003,50 @@ export default function OnboardingPage() {
           </div>
         );
 
-      case 'create_index':
+      case "create_index":
         return (
-          <div className="max-w-2xl mx-auto">
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Create your index.</h1>
-              <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
-                Create a space for your network to discover and share opportunities.
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-bold text-black mb-3 font-ibm-plex-mono">Index Name</label>
-                <Input
-                  type="text"
-                  placeholder="John"
-                  value={indexName}
-                  onChange={(e) => setIndexName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && indexName.trim() && !isLoading) {
-                      handleCreateIndex();
-                    }
-                  }}
-                  className="w-full"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-black mb-2 font-ibm-plex-mono">Choose who can discover</label>
-                
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                  <button
-                    type="button"
-                    onClick={() => setIsPrivate(false)}
-                    className={`border-2 p-4 rounded-md text-left transition-all ${
-                      !isPrivate 
-                        ? 'border-[#007EFF] bg-white' 
-                        : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={!isPrivate ? "text-[#007EFF]" : "text-black"}>
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <path d="M12 6v6l4 2"></path>
-                      </svg>
-                      <h3 className={`font-bold font-ibm-plex-mono ${!isPrivate ? "text-black" : "text-[#666]"}`}>Anyone can join</h3>
-                    </div>
-                    <p className="text-sm text-black font-ibm-plex-mono">
-                      People can discover and join your network freely.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsPrivate(true)}
-                    className={`border-2 p-4 rounded-md text-left transition-all ${
-                      isPrivate 
-                        ? 'border-[#007EFF] bg-white' 
-                        : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={isPrivate ? "text-[#007EFF]" : "text-black"}>
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                        <circle cx="12" cy="16" r="1"></circle>
-                        <path d="m7 11 0-4a5 5 0 0 1 10 0v4"></path>
-                      </svg>
-                      <h3 className={`font-bold font-ibm-plex-mono ${isPrivate ? "text-black" : "text-[#666]"}`}>Private</h3>
-                    </div>
-                    <p className="text-sm text-[#666] font-ibm-plex-mono">
-                      Only people you invited or people with the invitation link can join.
-                    </p>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-8">
-              <Button
-                variant="outline"
-                onClick={() => setCurrentStep(getPreviousStep('create_index'))}
-                className="flex-1 border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
-              >
-                Back
-              </Button>
-              <Button
-                onClick={handleCreateIndex}
-                disabled={!indexName.trim() || isLoading}
-                className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
-              >
-                {isLoading ? 'Creating...' : 'Next'}
-              </Button>
-              
-            </div>
-          </div>
+          <CreateIndexStep
+            getNextStep={getNextStep}
+            getPreviousStep={getPreviousStep}
+            setCurrentStep={setCurrentStep}
+            setIsLoading={setIsLoading}
+            isLoading={isLoading}
+          />
         );
 
-      case 'invite_members':
+      case "invite_members":
         return (
-          <div className="max-w-3xl mx-auto" >
-            <div className="mb-2">
-              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">You're all set—here's a quick snapshot.</h1>
-              {summaryLoaded && displayIntents.length > 0 ? (
-                <p className="text-black text-[14px] font-ibm-plex-mono mb-2">
-                  Here are <strong>your intents</strong> from your connected sources. You can{' '}
-                  <button
-                    type="button"
-                    onClick={() => loadIndexSummary()}
-                    className="inline p-0 m-0 align-baseline text-black italic underline hover:opacity-80 font-ibm-plex-mono text-[14px] bg-transparent border-0 cursor-pointer"
-                    style={{ display: 'inline', background: 'none' }}
-                  >
-                    edit or add more
-                  </button>{' '}
-                  anytime.
-                </p>
-              ) : summaryLoaded ? (
-                null
-              ) : (
-                <p className="text-black text-[14px] font-ibm-plex-mono mb-2">
-                  Loading your intents from connected sources...
-                </p>
-              )}
-            </div>
-
-            {/* Intent tags - only show if there are intents or still loading */}
-            {(!summaryLoaded || displayIntents.length > 0) && (
-              <div className="space-y-1.5 mb-4">
-                {summaryLoaded ? (
-                  displayIntents.map((intent) => (
-                    <span
-                      key={intent.id}
-                      className="inline-block text-left px-2 py-1 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm"
-                    >
-                      <span className="text-[#1976D2] text-[13px] font-ibm-plex-mono">
-                        {intent.summary || intent.payload}
-                      </span>
-                    </span>
-                  ))
-                ) : (
-                  // Loading placeholders
-                  Array.from({ length: 5 }).map((_, index) => (
-                    <div key={index} className="px-2 py-2.5  bg-[#F5F5F5] rounded-sm animate-pulse mb-1.5">
-                      <div className="h-[13px] bg-[#E0E0E0] rounded" style={{ width: `${Math.random() * 200 + 200}px` }}></div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-
-            
-
-            {/* Member invitation section */}
-            <div className="mt-6 mb-12">
-            {summaryLoaded ? (
-                (displayMembers.length > 1 ) ? (
-                  <div className="mt-4">
-                    {/* Show member info when there are multiple members and intents */}
-                    <div>
-                      <span className="text-black text-[14px] font-ibm-plex-mono">
-                        We found {displayMembers.slice(0, 3).map((member, index) => (
-                          <span key={member.id}>
-                            <strong>{member.name}</strong>
-                            {index < Math.min(3, displayMembers.length) - 1 && index < 2 ? ', ' : ''}
-                          </span>
-                        ))}
-                        {displayMembers.length > 3 && (
-                          <span> and <strong>{displayMembers.length - 3} more members</strong></span>
-                        )}  sharing <strong>{displayTotalIntents.toLocaleString()}</strong> intents.
-                      </span>
-                    </div>
-                    <p className="text-black text-[14px] font-ibm-plex-mono mb-4 mt-4">
-                      Now, invite them to add their intents! The more intents people share, the easier it becomes to discover each other and connect at the right moment.
-                    </p>
-                    
-                    <div className="flex gap-3">
-                      <Button
-                        onClick={() => {
-                          setInviteMethod('automatic');
-                          handleInviteMembers();
-                        }}
-                        className="bg-[#1976D2] text-white hover:bg-[#1565C0] font-ibm-plex-mono"
-                      >
-                        Invite Automatically
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          setInviteMethod('link');
-                          handleInviteMembers();
-                        }}
-                        variant="outline" className="font-ibm-plex-mono"
-                      >
-                        Copy invite link
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-4 flex flex-col items-center justify-center pb-8">
-                    <p className="text-black text-[14px] font-ibm-plex-mono mt-4">
-                      We're still processing your connected sources to generate your intents and find potential members. This usually takes a few minutes. Check back later to see your results.
-                    </p>
-                    <Image 
-                      className="h-auto"
-                      src={'/loading2.gif'} 
-                      alt="Loading..." 
-                      width={300} 
-                      height={200} 
-                      style={{
-                        mixBlendMode: 'multiply',
-                        imageRendering: 'auto',
-                      }}
-                    />
-                  </div>
-                )
-              ) : (
-                <div className="mt-4 mb-4">
-                  {/* Loading state */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="h-5 bg-[#F5F5F5] rounded animate-pulse w-64"></div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setCurrentStep(getPreviousStep('invite_members'))}
-                className="flex-1 border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
-              >
-                Back
-              </Button>
-              <Button
-                onClick={handleCompleteOnboarding}
-                className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
-              >
-                Complete setup
-              </Button>
-            </div>
-          </div>
+          <InviteMembersStep
+            setCurrentStep={setCurrentStep}
+            getPreviousStep={getPreviousStep}
+            handleCompleteOnboarding={handleCompleteOnboarding}
+          />
         );
 
-      case 'join_indexes':
-        const indexesToShow = publicIndexes.length > 0 ? publicIndexes : mockIndexes.map(m => ({
-          id: m.id,
-          title: m.name,
-          prompt: m.description,
-          permissions: null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          user: { id: '', name: '', email: null, avatar: null },
-          _count: { members: m.members, files: 0 },
-          isMember: false
-        }));
+      case "join_indexes":
+        const indexesToShow =
+          publicIndexes.length > 0
+            ? publicIndexes
+            : MOCK_INDEXES.map((m) => ({
+                id: m.id,
+                title: m.name,
+                prompt: m.description,
+                permissions: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                user: { id: "", name: "", email: null, avatar: null },
+                _count: { members: m.members, files: 0 },
+                isMember: false,
+              }));
 
-        const handleToggleJoin = async (index: typeof indexesToShow[number]) => {
+        const handleToggleJoin = async (
+          index: (typeof indexesToShow)[number]
+        ) => {
           // Skip if this is mock data
-          if (!publicIndexes.length && mockIndexes.find(m => m.id === index.id)) {
+          if (
+            !publicIndexes.length &&
+            MOCK_INDEXES.find((m) => m.id === index.id)
+          ) {
             // Just toggle for mock data
             setSelectedIndexes(prev => {
               const next = new Set(prev);
@@ -1428,24 +1164,27 @@ export default function OnboardingPage() {
 
   return (
     <ClientLayout>
-      <div className="bg-[#FAFAFA]">
-        {/* Main content */}
-        <div className="px-6 py-12">
-          {renderStepContent()}
+      <OnboardingProvider
+        createdIndex={createdIndex}
+        setCreatedIndex={setCreatedIndex}
+      >
+        <div className="bg-[#FAFAFA]">
+          {/* Main content */}
+          <div className="px-6 py-12">{renderStepContent()}</div>
         </div>
-      </div>
-      
-      {/* Library Modal */}
-      <LibraryModal
-        open={showLibraryModal}
-        onOpenChange={setShowLibraryModal}
-        onChanged={() => {
-          // Optionally refresh index summary when library changes
-          if (currentStep === 'invite_members') {
-            loadIndexSummary(); 
-          }
-        }}  
-      />
+
+        {/* Library Modal */}
+        <LibraryModal
+          open={showLibraryModal}
+          onOpenChange={setShowLibraryModal}
+          onChanged={() => {
+            // Optionally refresh index summary when library changes
+            if (currentStep === "invite_members") {
+              // loadIndexSummary will be called from context in the component
+            }
+          }}
+        />
+      </OnboardingProvider>
     </ClientLayout>
   );
 }
