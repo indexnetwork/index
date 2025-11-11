@@ -17,10 +17,10 @@ interface IntegrationItem {
 }
 
 const SUPPORTED_INTEGRATIONS = [
-  { type: 'airtable', name: 'Airtable' },
-  { type: 'notion', name: 'Notion' },
+  { type: 'slack', name: 'Slack' },
   { type: 'discord', name: 'Discord' },
-  { type: 'slack', name: 'Slack' }
+  { type: 'notion', name: 'Notion' },
+  { type: 'googledocs', name: 'Google Docs' }
 ];
 
 export default function IntegrationsPage({ params }: { params: Promise<{ indexId: string }> }) {
@@ -126,7 +126,7 @@ export default function IntegrationsPage({ params }: { params: Promise<{ indexId
               await loadIntegrations();
               setPendingIntegration(null);
             }
-          } catch (err) {
+          } catch {
             // Continue polling
           }
         }, 2000);

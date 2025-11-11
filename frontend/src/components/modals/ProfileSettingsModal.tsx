@@ -269,7 +269,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               id="location"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="San Francisco, CA"
+              placeholder="Brooklyn, NY"
             />
           </div>
 

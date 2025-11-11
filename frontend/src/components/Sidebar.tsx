@@ -8,7 +8,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { Index as IndexType } from '@/lib/types';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
 import OwnerSettingsModal from '@/components/modals/OwnerSettingsModal';
-import { User as UserIcon, Shield, ArrowLeft, Inbox, Users, Settings, Plug, ArrowDownUp, Crown, Waypoints } from 'lucide-react';
+import { Shield, ArrowLeft, Inbox, Users, Settings, Plug, Crown } from 'lucide-react';
 import { useAdmin } from '@/contexts/APIContext';
 
 interface IndexItem {
@@ -105,10 +105,6 @@ export default function Sidebar() {
   // Handle context menu actions
   const handleMemberSettings = async (index: IndexType) => {
     setMemberSettingsIndex(index);
-  };
-
-  const handleOwnerSettings = async (index: IndexType) => {
-    setOwnerSettingsIndex(index);
   };
 
   return (
@@ -261,7 +257,9 @@ export default function Sidebar() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          index.fullIndex && handleMemberSettings(index.fullIndex);
+                          if (index.fullIndex) {
+                            handleMemberSettings(index.fullIndex);
+                          }
                         }}
                         className="p-1 cursor-pointer rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-200"
                         title="Manage what you're sharing"

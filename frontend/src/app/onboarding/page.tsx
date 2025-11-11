@@ -787,14 +787,14 @@ export default function OnboardingPage() {
       case 'profile':
         return (
           <div className="max-w-3xl mx-auto">
-            <div className="mb-8">
+            <div className="mb-5">
               <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Introduce yourself</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
                 Set up your profile to get started with Index Network.
               </p>
             </div>
 
-            <div className="max-w-md space-y-6">
+            <div className="max-w-md space-y-4">
               <div className="flex">
                 <div className="relative">
                   <div className="w-20 h-20 rounded-full overflow-hidden bg-[#F5F5F5] flex items-center justify-center">
@@ -836,7 +836,7 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Name</label>
+                <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Name</label>
                 <Input
                   type="text"
                   placeholder="John Doe"
@@ -847,20 +847,20 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Intro</label>
+                <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Intro</label>
                 <Textarea
                   placeholder="Tell us about yourself in a few words"
                   value={intro}
                   onChange={(e) => setIntro(e.target.value)}
-                  className="w-full min-h-[100px]"
+                  className="w-full min-h-[60px]"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Location</label>
+                <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Location</label>
                 <Input
                   type="text"
-                  placeholder="San Francisco, CA"
+                  placeholder="Brooklyn, NY"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                   className="w-full"
@@ -868,8 +868,8 @@ export default function OnboardingPage() {
               </div>
 
               {/* Social Links Section */}
-              <div className="space-y-3 pt-2">
-                <h3 className="text-sm font-medium text-black font-ibm-plex-mono mb-3">Socials</h3>
+              <div className="space-y-2 pt-0">
+                <h3 className="text-sm font-medium text-black font-ibm-plex-mono mb-2">Socials</h3>
                 
                 {/* X (Twitter) */}
                 <div className="flex items-center border border-gray-300">
@@ -946,7 +946,7 @@ export default function OnboardingPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 mt-8 max-w-md">
+            <div className="flex gap-3 mt-5 max-w-md">
               <Button
                 onClick={handleProfileSubmit}
                 disabled={!name.trim() || isLoading}
@@ -1535,7 +1535,7 @@ export default function OnboardingPage() {
             </div>
 
             {!publicIndexesLoaded ? (
-              <div className="flex justify-center py-12">
+              <div className="flex justify-center pb-12">
                 <div className="h-8 w-8 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
               </div>
             ) : (
@@ -1607,7 +1607,7 @@ export default function OnboardingPage() {
     <ClientLayout>
       <div className="bg-[#FAFAFA]">
         {/* Main content */}
-        <div className="px-6 py-12">
+        <div className="px-6 pb-12">
           {renderStepContent()}
         </div>
       </div>

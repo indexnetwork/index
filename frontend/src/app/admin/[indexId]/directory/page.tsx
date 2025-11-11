@@ -4,7 +4,7 @@ import { use } from 'react';
 import ClientLayout from '@/components/ClientLayout';
 
 export default function DirectoryPage({ params }: { params: Promise<{ indexId: string }> }) {
-  const { indexId } = use(params);
+  use(params);
 
   return (
     <ClientLayout>
