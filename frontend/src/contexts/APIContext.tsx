@@ -13,6 +13,7 @@ import { createLinksService } from '@/services/links';
 import { createAuthService } from '@/services/auth';
 import { createIntegrationsService } from '@/services/integrations';
 import { createAdminService } from '@/services/admin';
+import { createUsersService } from '@/services/users';
 
 interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
@@ -26,6 +27,7 @@ interface APIContextType {
   authService: ReturnType<typeof createAuthService>;
   integrationsService: ReturnType<typeof createIntegrationsService>;
   adminService: ReturnType<typeof createAdminService>;
+  usersService: ReturnType<typeof createUsersService>;
 }
 
 const APIContext = createContext<APIContextType | undefined>(undefined);
@@ -50,7 +52,8 @@ export function APIProvider({ children }: { children: ReactNode }) {
       linksService: createLinksService(api),
       authService: createAuthService(api),
       integrationsService: createIntegrationsService(api),
-      adminService: createAdminService(api)
+      adminService: createAdminService(api),
+      usersService: createUsersService(api)
     };
     apiRef.current = api;
   }
@@ -124,4 +127,9 @@ export function useIntegrations() {
 export function useAdmin() {
   const { adminService } = useAPI();
   return adminService;
+}
+
+export function useUsers() {
+  const { usersService } = useAPI();
+  return usersService;
 }

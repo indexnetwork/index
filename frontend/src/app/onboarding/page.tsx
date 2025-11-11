@@ -101,9 +101,16 @@ export default function OnboardingPage() {
   // Profile step states
   const [name, setName] = useState('');
   const [intro, setIntro] = useState('');
+  const [location, setLocation] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Social links state
+  const [socialX, setSocialX] = useState('');
+  const [socialLinkedin, setSocialLinkedin] = useState('');
+  const [socialGithub, setSocialGithub] = useState('');
+  const [websites, setWebsites] = useState<Array<{ label: string; url: string }>>([]);
 
   // Connections step states
   const [integrations, setIntegrations] = useState<IntegrationState[]>([]);
@@ -284,6 +291,17 @@ export default function OnboardingPage() {
     if (user) {
       setName(user.name || '');
       setIntro(user.intro || '');
+      setLocation(user.location || '');
+      
+      // Pre-fill socials if they exist
+      if (user.socials) {
+        setSocialX(user.socials.x || '');
+        setSocialLinkedin(user.socials.linkedin || '');
+        setSocialGithub(user.socials.github || '');
+        if (user.socials.websites && user.socials.websites.length > 0) {
+          setWebsites(user.socials.websites.map(w => ({ label: w.label || '', url: w.url })));
+        }
+      }
       
       const config = FLOW_CONFIGS[currentFlow];
       const f = searchParams.get('f');
@@ -486,10 +504,22 @@ export default function OnboardingPage() {
         avatarFilename = await uploadAvatar(avatarFile);
       }
       
+      // Build socials object
+      const socials = {
+        ...(socialX && { x: socialX }),
+        ...(socialLinkedin && { linkedin: socialLinkedin }),
+        ...(socialGithub && { github: socialGithub }),
+        ...(websites.length > 0 && { 
+          websites: websites.filter(w => w.url).map(w => ({ label: '', url: w.url }))
+        })
+      };
+      
       const updatedUser = await authService.updateProfile({
         name: name.trim(),
         intro: intro.trim(),
+        location: location.trim() || undefined,
         avatar: avatarFilename || undefined,
+        socials: Object.keys(socials).length > 0 ? socials : undefined,
       });
       
       if (updatedUser) {
@@ -824,6 +854,95 @@ export default function OnboardingPage() {
                   onChange={(e) => setIntro(e.target.value)}
                   className="w-full min-h-[100px]"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Location</label>
+                <Input
+                  type="text"
+                  placeholder="San Francisco, CA"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Social Links Section */}
+              <div className="space-y-3 pt-2">
+                <h3 className="text-sm font-medium text-black font-ibm-plex-mono mb-3">Socials</h3>
+                
+                {/* X (Twitter) */}
+                <div className="flex items-center border border-gray-300">
+                  <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+                    x.com/
+                  </div>
+                  <Input
+                    type="text"
+                    value={socialX}
+                    onChange={(e) => setSocialX(e.target.value)}
+                    className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  />
+                </div>
+
+                {/* LinkedIn */}
+                <div className="flex items-center border border-gray-300">
+                  <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+                    linkedin.com/in/
+                  </div>
+                  <Input
+                    type="text"
+                    value={socialLinkedin}
+                    onChange={(e) => setSocialLinkedin(e.target.value)}
+                    className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  />
+                </div>
+
+                {/* GitHub */}
+                <div className="flex items-center border border-gray-300">
+                  <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+                    github.com/
+                  </div>
+                  <Input
+                    type="text"
+                    value={socialGithub}
+                    onChange={(e) => setSocialGithub(e.target.value)}
+                    className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  />
+                </div>
+
+                {/* Custom Websites */}
+                {websites.map((website, index) => (
+                  <div key={index} className="flex items-center border border-gray-300">
+                    <Input
+                      value={website.url}
+                      onChange={(e) => {
+                        const updated = [...websites];
+                        updated[index].url = e.target.value;
+                        setWebsites(updated);
+                      }}
+                      placeholder="https://example.com"
+                      className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setWebsites(websites.filter((_, i) => i !== index))}
+                      className="px-3 py-2 text-gray-500 hover:text-red-600 transition-colors border-l border-gray-300"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+
+                {/* Add Website Button */}
+                {websites.length < 3 && (
+                  <button
+                    type="button"
+                    onClick={() => setWebsites([...websites, { label: '', url: '' }])}
+                    className="w-full flex items-center justify-center px-3 py-2 border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors font-ibm-plex-mono text-sm"
+                  >
+                    +
+                  </button>
+                )}
               </div>
             </div>
 

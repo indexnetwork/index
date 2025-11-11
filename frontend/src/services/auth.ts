@@ -6,6 +6,13 @@ export interface UpdateProfileRequest {
   name?: string;
   intro?: string;
   avatar?: string;
+  location?: string;
+  socials?: {
+    x?: string;
+    linkedin?: string;
+    github?: string;
+    websites?: Array<{ label: string; url: string }>;
+  };
 }
 
 export const createAuthService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({

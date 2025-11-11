@@ -76,7 +76,6 @@ router.post('/list',
         archivedAt: intents.archivedAt,
         userId: intents.userId,
         userName: users.name,
-        userEmail: users.email,
         userAvatar: users.avatar
       };
 
@@ -108,7 +107,6 @@ router.post('/list',
             user: {
               id: intent.userId,
               name: intent.userName,
-              email: intent.userEmail,
               avatar: intent.userAvatar
             },
             _count: { indexes: indexCount[0]?.count || 0 }
@@ -242,7 +240,6 @@ router.get('/:id',
         archivedAt: intents.archivedAt,
         userId: intents.userId,
         userName: users.name,
-        userEmail: users.email,
         userAvatar: users.avatar
       }).from(intents)
         .innerJoin(users, eq(intents.userId, users.id))
@@ -281,7 +278,6 @@ router.get('/:id',
         user: {
           id: intentData.userId,
           name: intentData.userName,
-          email: intentData.userEmail,
           avatar: intentData.userAvatar
         },
         indexes: associatedIndexes,

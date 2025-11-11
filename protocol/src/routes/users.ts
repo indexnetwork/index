@@ -22,10 +22,11 @@ router.get('/:id',
 
       const user = await db.select({
         id: users.id,
-        email: users.email,
         name: users.name,
         intro: users.intro,
         avatar: users.avatar,
+        location: users.location,
+        socials: users.socials,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
       }).from(users)
@@ -52,6 +53,7 @@ router.put('/:id',
     body('name').optional().trim().isLength({ min: 2, max: 100 }),
     body('intro').optional().trim().isLength({ max: 500 }),
     body('avatar').optional().isURL(),
+    body('socials').optional().isObject(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -61,7 +63,7 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { name, intro, avatar } = req.body;
+      const { name, intro, avatar, location, socials } = req.body;
 
       if (req.user!.id !== id) {
         return res.status(403).json({ error: 'Access denied' });
@@ -71,16 +73,19 @@ router.put('/:id',
       if (name !== undefined) updateData.name = name;
       if (intro !== undefined) updateData.intro = intro;
       if (avatar !== undefined) updateData.avatar = avatar;
+      if (location !== undefined) updateData.location = location;
+      if (socials !== undefined) updateData.socials = socials;
 
       const updatedUser = await db.update(users)
         .set(updateData)
         .where(and(eq(users.id, id), isNull(users.deletedAt)))
         .returning({
           id: users.id,
-          email: users.email,
           name: users.name,
           intro: users.intro,
           avatar: users.avatar,
+          location: users.location,
+          socials: users.socials,
           createdAt: users.createdAt,
           updatedAt: users.updatedAt
         });

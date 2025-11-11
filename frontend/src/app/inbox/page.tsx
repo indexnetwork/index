@@ -15,6 +15,7 @@ import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 import DiscoveryForm, { DiscoveryFormRef } from "@/components/DiscoveryForm";
 import SynthesisMarkdown from "@/components/SynthesisMarkdown";
+import UserProfileModal from "@/components/modals/UserProfileModal";
 
 const validTabs = ['discover', 'requests', 'history'];
 
@@ -41,6 +42,8 @@ export default function InboxPage() {
   const [requestsView, setRequestsView] = useState<'received' | 'sent' | 'history'>('received');
   const [isDragging, setIsDragging] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<{ id: string; name: string; avatar: string | null } | null>(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // Refs
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
@@ -225,6 +228,12 @@ export default function InboxPage() {
     }
   }, [connectionsService, fetchData]);
 
+  // Handler for opening user profile modal
+  const handleUserClick = useCallback((user: { id: string; name: string; avatar: string | null }) => {
+    setSelectedUser(user);
+    setProfileModalOpen(true);
+  }, []);
+
   // Helper: Get connection status for rendering
   const getConnectionStatus = (tabType: 'discover' | 'requests', viewType?: 'received' | 'sent' | 'history'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
     if (tabType === 'discover') {
@@ -333,15 +342,25 @@ export default function InboxPage() {
           {/* User Header */}
           <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-4">
             <div className="flex items-center gap-4 w-full sm:w-auto mb-2 sm:mb-0">
-              <Image
-                src={getAvatarUrl(user)}
-                alt={user.name}
-                width={48}
-                height={48}
-                className="rounded-full"
-              />
+              <button
+                onClick={() => handleUserClick(user)}
+                className="flex-shrink-0 cursor-pointer transition-opacity hover:opacity-80"
+              >
+                <Image
+                  src={getAvatarUrl(user)}
+                  alt={user.name}
+                  width={48}
+                  height={48}
+                  className="rounded-full"
+                />
+              </button>
               <div>
-                <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{user.name}</h2>
+                <button
+                  onClick={() => handleUserClick(user)}
+                  className="cursor-pointer transition-opacity hover:opacity-80"
+                >
+                  <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono text-left">{user.name}</h2>
+                </button>
                 <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
                   {intents !== undefined ? (
                     intents.length > 0 ? (
@@ -396,7 +415,7 @@ export default function InboxPage() {
         </div>
       </div>
     );
-  }, [synthesisLoading, syntheses, requestsView, handleConnectionAction, fetchData]);
+  }, [synthesisLoading, syntheses, requestsView, handleConnectionAction, handleUserClick, fetchData]);
 
 
   return (
@@ -640,6 +659,13 @@ export default function InboxPage() {
           </Tabs.Root>
         </div>
       </div>
+
+      {/* User Profile Modal */}
+      <UserProfileModal
+        open={profileModalOpen}
+        onOpenChange={setProfileModalOpen}
+        user={selectedUser}
+      />
     </ClientLayout>
   );
 }
