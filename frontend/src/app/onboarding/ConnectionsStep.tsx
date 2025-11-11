@@ -288,6 +288,8 @@ export default function ConnectionsStep({
     [linksService, success, error]
   );
 
+  const nextStep = getNextStep(OnboardingStep.Connections);
+
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-4">
@@ -355,6 +357,7 @@ export default function ConnectionsStep({
                   id="onboarding-file-upload"
                   accept={getSupportedFileExtensions('general')}
                   onChange={(e) => handleFilesSelected(e.target.files)}
+                  aria-label="Upload files"
                 />
                 <button
                   type="button"
@@ -495,7 +498,6 @@ export default function ConnectionsStep({
         </Button>
         <Button
           onClick={() => {
-            const nextStep = getNextStep(OnboardingStep.Connections);
             // If this is the last step, complete onboarding
             if (nextStep === OnboardingStep.Connections) {
               handleCompleteOnboarding();
@@ -505,7 +507,7 @@ export default function ConnectionsStep({
           }}
           className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
         >
-          {getNextStep(OnboardingStep.Connections) === OnboardingStep.Connections ? 'Complete Onboarding' : 'Next'}
+          {nextStep === OnboardingStep.Connections ? 'Complete Onboarding' : 'Next'}
         </Button>
 
       </div>

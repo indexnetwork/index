@@ -83,10 +83,14 @@ export default function CreateIndexStep({
 
       <div className="space-y-6">
         <div>
-          <label className="block text-sm font-bold text-black mb-3 font-ibm-plex-mono">
+          <label
+            htmlFor="indexName"
+            className="block text-sm font-bold text-black mb-3 font-ibm-plex-mono"
+          >
             Index Name
           </label>
           <Input
+            id="indexName"
             type="text"
             placeholder="John"
             value={indexName}
@@ -96,6 +100,7 @@ export default function CreateIndexStep({
                 handleCreateIndex();
               }
             }}
+            disabled={isLoading}
             className="w-full"
           />
         </div>
@@ -109,6 +114,7 @@ export default function CreateIndexStep({
             <button
               type="button"
               onClick={() => setIsPrivate(false)}
+              disabled={isLoading}
               className={`border-2 p-4 rounded-md text-left transition-all ${
                 !isPrivate
                   ? "border-[#007EFF] bg-white"
@@ -144,6 +150,7 @@ export default function CreateIndexStep({
             <button
               type="button"
               onClick={() => setIsPrivate(true)}
+              disabled={isLoading}
               className={`border-2 p-4 rounded-md text-left transition-all ${
                 isPrivate
                   ? "border-[#007EFF] bg-white"
@@ -192,6 +199,7 @@ export default function CreateIndexStep({
         <Button
           variant="outline"
           onClick={() => setCurrentStep(getPreviousStep(OnboardingStep.CreateIndex))}
+          disabled={isLoading}
           className="flex-1 border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
         >
           Back

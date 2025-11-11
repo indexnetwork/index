@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, ChangeEvent } from "react";
+import React, { useState, useRef, useEffect, ChangeEvent, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,6 +23,9 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
   const authService = useAuthService();
   const { error } = useNotifications();
   const { currentFlow, getNextStep, setCurrentStep } = useOnboardingContext();
+
+  const nameInputId = useId();
+  const introInputId = useId();
 
   // Profile step states
   const [name, setName] = useState('');
@@ -98,17 +101,23 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
 
     setIsLoading(true);
     try {
-      let avatarFilename = user.avatar;
-
-      if (avatarFile) {
-        avatarFilename = await uploadAvatar(avatarFile);
-      }
-
-      const updatedUser = await authService.updateProfile({
+      const profilePayload: {
+        name: string;
+        intro: string;
+        avatar?: string;
+      } = {
         name: name.trim(),
         intro: intro.trim(),
-        avatar: avatarFilename || undefined,
-      });
+      };
+
+      if (avatarFile) {
+        const avatarFilename = await uploadAvatar(avatarFile);
+        if (avatarFilename) {
+          profilePayload.avatar = avatarFilename;
+        }
+      }
+
+      const updatedUser = await authService.updateProfile(profilePayload);
 
       if (updatedUser) {
         // Save onboarding state: flow and next step
@@ -177,14 +186,16 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
               type="file"
               accept={getSupportedFileExtensions('avatar')}
               onChange={handleAvatarChange}
+              aria-label="Avatar upload"
               className="hidden"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Name</label>
+          <label htmlFor={nameInputId} className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Name</label>
           <Input
+            id={nameInputId}
             type="text"
             placeholder="John Doe"
             value={name}
@@ -194,8 +205,9 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Intro</label>
+          <label htmlFor={introInputId} className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Intro</label>
           <Textarea
+            id={introInputId}
             placeholder="Tell us about yourself in a few words"
             value={intro}
             onChange={(e) => setIntro(e.target.value)}
