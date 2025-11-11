@@ -21,13 +21,19 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     const newIntent = await this.getIntent(intentId);
     if (!newIntent) return;
 
+    // Stage 1: Finding users
+    const findUsersStart = Date.now();
     const topUsers = await this.findTopUsersByIntentSimilarity(newIntent);
-    console.log(`🔍 Found ${topUsers.length} relevant users`);
+    const findUsersDuration = Date.now() - findUsersStart;
+    console.log(`🔍 Found ${topUsers.length} relevant users (${findUsersDuration}ms)`);
 
+    // Stage 2: Processing relationships
+    const processStart = Date.now();
     await this.processUserRelationships(newIntent, topUsers);
+    const processDuration = Date.now() - processStart;
     
     const duration = Date.now() - startTime;
-    console.log(`✅ Completed in ${duration}ms`);
+    console.log(`✅ Completed in ${duration}ms (find: ${findUsersDuration}ms, process: ${processDuration}ms)`);
   }
 
   /**
@@ -47,19 +53,23 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   }
 
   /**
-   * Process all user relationships
+   * Process all user relationships in parallel
    */
   private async processUserRelationships(
     newIntent: any,
     topUsers: Array<{ userId: string; intents: any[]; maxSimilarity: number }>
   ): Promise<void> {
-    for (const targetUser of topUsers) {
+    const userEvaluations = topUsers.map(async (targetUser) => {
       try {
         await this.evaluateUserRelationship(newIntent, targetUser);
+        return { success: true };
       } catch (error) {
         console.error(`Error evaluating relationship with user ${targetUser.userId}:`, error);
+        return { success: false };
       }
-    }
+    });
+    
+    await Promise.all(userEvaluations);
   }
 
   /**
@@ -267,7 +277,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   ): Promise<{ isMutual: boolean; confidenceScore: number; reasoning: string } | null> {
     const MutualIntentSchema = z.object({
       isMutual: z.boolean().describe("Whether the two intents have mutual intent (both relate to or depend on each other)"),
-      reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. Refer to intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research') rather than by position or ordinal references. Do not use 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'. If not mutual, provide empty string."),
+      reasoning: z.string().describe("One sentence explanation. If mutual, explain why using subject matter. If not mutual, provide empty string."),
       confidenceScore: z.number().min(0).max(100).describe("Precise confidence score 0-100. Use full range 70-100 for mutual matches. Avoid round numbers like 100, 90, 80. Be specific: 87, 76, 92, etc.")
     });
 
@@ -276,6 +286,13 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       content: `You are a semantic relationship analyst. Determine if two intents have MUTUAL relevance (both relate to or complement each other).
 
 CRITICAL: You MUST provide specific scores. 
+
+REASONING GUIDELINES:
+- When isMutual is true: Explain the complementary relationship in one clear sentence
+- Reference intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research')
+- NEVER use position references: 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'
+- Focus on why the connection creates bidirectional value
+- When isMutual is false: Return empty string
 
 STRICT Mutual criteria (INCREASED RIGOR):
 - Both intents seek things that complement each other (e.g., investor + startup, designer + developer)
