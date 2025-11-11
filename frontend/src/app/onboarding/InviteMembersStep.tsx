@@ -10,20 +10,16 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 interface InviteMembersStepProps {
-  setCurrentStep: (step: OnboardingStep) => void;
-  getPreviousStep: (step: OnboardingStep) => OnboardingStep;
   handleCompleteOnboarding: () => Promise<void>;
 }
 
 export default function InviteMembersStep({
-  setCurrentStep,
-  getPreviousStep,
   handleCompleteOnboarding,
 }: InviteMembersStepProps) {
   const api = useAuthenticatedAPI();
   const { success } = useNotifications();
   const { user } = useAuthContext();
-  const { createdIndex } = useOnboardingContext();
+  const { createdIndex, setCurrentStep, getPreviousStep } = useOnboardingContext();
 
   // Local state for invite members step
   const [summaryLoaded, setSummaryLoaded] = useState(false);
@@ -288,7 +284,7 @@ export default function InviteMembersStep({
         <Button
           variant="outline"
           onClick={() =>
-            setCurrentStep(getPreviousStep("invite_members" as OnboardingStep))
+            setCurrentStep(getPreviousStep(OnboardingStep.InviteMembers))
           }
           className="flex-1 border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
         >

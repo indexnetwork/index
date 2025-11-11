@@ -1,9 +1,9 @@
-import { FlowConfigMap, OnboardingFlow } from "@/types/onboarding";
+import { FlowConfigBase, OnboardingFlow, OnboardingStep } from "@/types/onboarding";
 
 export const FLOW_CONFIGS = {
   [OnboardingFlow.Personal]: {
     flow: OnboardingFlow.Personal,
-    steps: ["profile", "connections", "join_indexes"],
+    steps: [OnboardingStep.Profile, OnboardingStep.Connections, OnboardingStep.JoinIndexes],
     features: {
       showSlackDiscord: false,
       enableUserAttribution: false,
@@ -16,7 +16,7 @@ export const FLOW_CONFIGS = {
   },
   [OnboardingFlow.Community]: {
     flow: OnboardingFlow.Community,
-    steps: ["profile", "create_index", "connections", "invite_members"],
+    steps: [OnboardingStep.Profile, OnboardingStep.CreateIndex, OnboardingStep.Connections, OnboardingStep.InviteMembers],
     features: {
       showSlackDiscord: true,
       enableUserAttribution: true,
@@ -29,7 +29,7 @@ export const FLOW_CONFIGS = {
   },
   [OnboardingFlow.Invitation]: {
     flow: OnboardingFlow.Invitation,
-    steps: ["profile", "connections"],
+    steps: [OnboardingStep.Profile, OnboardingStep.Connections],
     features: {
       showSlackDiscord: false,
       enableUserAttribution: false,
@@ -40,44 +40,44 @@ export const FLOW_CONFIGS = {
         "Link the places you already work and share. Nobody gets notified, and it's only used to understand what you're looking for.",
     },
   },
-} satisfies FlowConfigMap;
+} satisfies Record<OnboardingFlow, FlowConfigBase>;
 
-// Mock indexes for the final step (fallback if no public indexes)
-export const MOCK_INDEXES = [
-  {
-    id: "index-early",
-    name: "Index Early",
-    description: "AI, Web3, Decentralization",
-    members: 1250,
-  },
-  {
-    id: "techstars",
-    name: "Techstars Universe",
-    description: "AI, Web3, Decentralization",
-    members: 890,
-  },
-  {
-    id: "base",
-    name: "Base",
-    description: "AI, Web3, Decentralization",
-    members: 2100,
-  },
-  {
-    id: "consensys",
-    name: "Consensys",
-    description: "AI, Web3, Decentralization",
-    members: 750,
-  },
-  {
-    id: "protocol-labs",
-    name: "Protocol Labs",
-    description: "AI, Web3, Decentralization",
-    members: 1400,
-  },
-  {
-    id: "kernel",
-    name: "Kernel",
-    description: "AI, Web3, Decentralization",
-    members: 680,
-  },
-];
+  // Mock indexes for the final step (fallback if no public indexes)
+  export const MOCK_INDEXES = [
+    {
+      id: "index-early",
+      name: "Index Early",
+      description: "AI, Web3, Decentralization",
+      members: 1250,
+    },
+    {
+      id: "techstars",
+      name: "Techstars Universe",
+      description: "AI, Web3, Decentralization",
+      members: 890,
+    },
+    {
+      id: "base",
+      name: "Base",
+      description: "AI, Web3, Decentralization",
+      members: 2100,
+    },
+    {
+      id: "consensys",
+      name: "Consensys",
+      description: "AI, Web3, Decentralization",
+      members: 750,
+    },
+    {
+      id: "protocol-labs",
+      name: "Protocol Labs",
+      description: "AI, Web3, Decentralization",
+      members: 1400,
+    },
+    {
+      id: "kernel",
+      name: "Kernel",
+      description: "AI, Web3, Decentralization",
+      members: 680,
+    },
+  ];

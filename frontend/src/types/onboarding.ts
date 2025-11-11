@@ -1,11 +1,12 @@
 import { IntegrationName } from "@/config/integrations";
 
-export type OnboardingStep =
-  | "profile"
-  | "connections"
-  | "create_index"
-  | "invite_members"
-  | "join_indexes";
+export enum OnboardingStep {
+  Profile = "profile",
+  Connections = "connections",
+  CreateIndex = "create_index",
+  InviteMembers = "invite_members",
+  JoinIndexes = "join_indexes",
+}
 
 export enum OnboardingFlow {
   Personal = 1,
@@ -31,30 +32,24 @@ export type FlowDescriptions = {
   connections: string;
 };
 
-export type FlowConfigBase<
-  Flow extends OnboardingFlow,
-  Steps extends readonly OnboardingStep[]
-> = {
-  flow: Flow;
-  steps: Steps;
+export type FlowConfigBase = {
+  flow: OnboardingFlow;
+  steps: readonly OnboardingStep[];
   features: FlowFeatures;
   descriptions: FlowDescriptions;
 };
 
-export type PersonalFlowConfig = FlowConfigBase<
-  OnboardingFlow.Personal,
-  ["profile", "connections", "join_indexes"]
->;
+export type PersonalFlowConfig = FlowConfigBase & {
+  flow: OnboardingFlow.Personal;
+};
 
-export type CommunityFlowConfig = FlowConfigBase<
-  OnboardingFlow.Community,
-  ["profile", "create_index", "connections", "invite_members"]
->;
+export type CommunityFlowConfig = FlowConfigBase & {
+  flow: OnboardingFlow.Community;
+};
 
-export type InvitationFlowConfig = FlowConfigBase<
-  OnboardingFlow.Invitation,
-  ["profile", "connections"]
->;
+export type InvitationFlowConfig = FlowConfigBase & {
+  flow: OnboardingFlow.Invitation;
+};
 
 export type FlowConfigMap = {
   [OnboardingFlow.Personal]: PersonalFlowConfig;

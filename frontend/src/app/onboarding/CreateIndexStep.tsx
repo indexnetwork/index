@@ -10,17 +10,11 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useOnboardingContext } from "@/contexts/OnboardingContext";
 
 interface CreateIndexStepProps {
-  getNextStep: (currentStep: OnboardingStep) => OnboardingStep;
-  getPreviousStep: (currentStep: OnboardingStep) => OnboardingStep;
-  setCurrentStep: (step: OnboardingStep) => void;
   setIsLoading: (loading: boolean) => void;
   isLoading: boolean;
 }
 
 export default function CreateIndexStep({
-  getNextStep,
-  getPreviousStep,
-  setCurrentStep,
   setIsLoading,
   isLoading,
 }: CreateIndexStepProps) {
@@ -31,7 +25,7 @@ export default function CreateIndexStep({
   const { user, refetchUser } = useAuthContext();
   const { refreshIndexes } = useIndexesState();
   const { success, error } = useNotifications();
-  const { setCreatedIndex } = useOnboardingContext();
+  const { setCreatedIndex, setCurrentStep, getNextStep, getPreviousStep } = useOnboardingContext();
 
   const handleCreateIndex = async () => {
     if (!indexName.trim() || !user) return;
@@ -54,7 +48,7 @@ export default function CreateIndexStep({
       setCreatedIndex(indexData);
 
       // Save index ID to onboarding state in database
-      const nextStep = getNextStep("create_index");
+      const nextStep = getNextStep(OnboardingStep.CreateIndex);
       await authService.updateOnboardingState({
         indexId: indexData.id,
         currentStep: nextStep,
@@ -197,7 +191,7 @@ export default function CreateIndexStep({
       <div className="flex gap-3 mt-8">
         <Button
           variant="outline"
-          onClick={() => setCurrentStep(getPreviousStep("create_index"))}
+          onClick={() => setCurrentStep(getPreviousStep(OnboardingStep.CreateIndex))}
           className="flex-1 border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
         >
           Back
