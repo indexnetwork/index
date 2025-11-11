@@ -16,7 +16,6 @@ import IntentList from "@/components/IntentList";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import { validateFiles, getSupportedFileExtensions, formatFileSize } from "../../lib/file-validation";
 import { getFileCategoryBadge } from '../../lib/file-validation';
-import { useAuthContext } from "@/contexts/AuthContext";
 import { QueueStatus } from "@/services/queue";
 
 type Props = {
@@ -39,11 +38,10 @@ type LibrarySourceIntent = {
 
 export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
-  const { syncService, filesService, linksService, intentsService, integrationsService, indexesService } = useAPI();
+  const { syncService, filesService, linksService, intentsService, integrationsService } = useAPI();
   const api = useAuthenticatedAPI(); // Keep for specialized endpoints
   const router = useRouter();
   const { setDiscoveryIntents } = useDiscoveryFilter();
-  const { user: currentUser } = useAuthContext();
   const [isUploading, setIsUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -326,14 +324,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       setIntegrationsLoaded(true);
     }
   }, [integrationsService]);
-
-  const loadOwnedIndexes = useCallback(async () => {
-    try {
-      const response = await indexesService.getIndexes(1, 100);
-    } catch (error) {
-      console.error('Failed to fetch user indexes:', error);
-    }
-  }, [indexesService, currentUser]);
 
   const loadQueueStatus = useCallback(async (options?: { silent?: boolean }) => {
     try {
