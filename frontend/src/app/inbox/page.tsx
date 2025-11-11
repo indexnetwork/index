@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import * as Tabs from "@radix-ui/react-tabs";
 import { Upload } from "lucide-react";
 import { useConnections, useSynthesis, useDiscover } from "@/contexts/APIContext";
 import { useIndexFilter } from "@/contexts/IndexFilterContext";
@@ -505,24 +504,84 @@ export default function InboxPage() {
             
             {/* Requests view button */}
             {activeTab === 'requests' && (
-              <div className="flex justify-end">
+              <div className="flex justify-between items-center">
+                {/* Tab buttons */}
+                <div className="flex gap-0">
+                  <button
+                    onClick={() => setRequestsView('received')}
+                    className={`font-ibm-plex-mono px-4 py-3 border border-b-2 border-r-0 border-black flex items-center gap-2 ${
+                      requestsView === 'received' 
+                        ? 'bg-black text-white' 
+                        : 'bg-white text-black hover:bg-gray-50'
+                    }`}
+                  >
+                    Inbox
+                    {inboxConnections.length > 0 && (
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        requestsView === 'received'
+                          ? 'bg-white text-black'
+                          : 'bg-black text-white'
+                      }`}>
+                        {inboxConnections.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setRequestsView('sent')}
+                    className={`font-ibm-plex-mono px-4 py-3 border border-b-2 border-r-0 border-black flex items-center gap-2 ${
+                      requestsView === 'sent' 
+                        ? 'bg-black text-white' 
+                        : 'bg-white text-black hover:bg-gray-50'
+                    }`}
+                  >
+                    Sent
+                    {pendingConnections.length > 0 && (
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        requestsView === 'sent'
+                          ? 'bg-white text-black'
+                          : 'bg-black text-white'
+                      }`}>
+                        {pendingConnections.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setRequestsView('history')}
+                    className={`font-ibm-plex-mono px-4 py-3 border border-b-2 border-black flex items-center gap-2 ${
+                      requestsView === 'history' 
+                        ? 'bg-black text-white' 
+                        : 'bg-white text-black hover:bg-gray-50'
+                    }`}
+                  >
+                    History
+                    {historyConnections.length > 0 && (
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        requestsView === 'history'
+                          ? 'bg-white text-black'
+                          : 'bg-black text-white'
+                      }`}>
+                        {historyConnections.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Back to Discovery button */}
                 <button
                   onClick={() => handleTabChange('discover')}
-                  className="font-ibm-plex-mono px-4 py-3 border border-black bg-black text-white hover:bg-gray-800 flex items-center gap-2"
+                  className="font-ibm-plex-mono px-4 py-3 border border-b-2 border-black bg-black text-white hover:bg-gray-800 flex items-center gap-2"
                 >
                   Back to Discovery
                   <span className="bg-white text-black text-xs px-2 py-1 rounded">
                     {discoverStakes.length}
                   </span>
                 </button>
-                </div>
+              </div>
             )}
             </div>
 
-          <Tabs.Root value={activeTab} onValueChange={handleTabChange} className="flex-grow">
-
-            {/* Discover Content */}
-            {activeTab === 'discover' && (
+          {/* Discover Content */}
+          {activeTab === 'discover' && (
               <div className="mt-4">
                 {discoveryLoading ? (
                   <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
@@ -588,75 +647,44 @@ export default function InboxPage() {
 
             {/* Requests Content */}
             {activeTab === 'requests' && (
-              <div>
-                <Tabs.Root value={requestsView} onValueChange={(value) => setRequestsView(value as 'received' | 'sent' | 'history')}>
-                  <Tabs.List className="overflow-x-auto inline-flex text-sm text-black">
-                    <Tabs.Trigger 
-                      value="received" 
-                      className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
-                    >
-                      Inbox
-                      {inboxConnections.length > 0 && (
-                        <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
-                          {inboxConnections.length}
-                        </span>
-                      )}
-                    </Tabs.Trigger>
-                    <Tabs.Trigger 
-                      value="sent" 
-                      className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
-                    >
-                      Sent
-                      {pendingConnections.length > 0 && (
-                        <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
-                          {pendingConnections.length}
-                        </span>
-                      )}
-                    </Tabs.Trigger>
-                    <Tabs.Trigger 
-                      value="history" 
-                      className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
-                    >
-                      History
-                      {historyConnections.length > 0 && (
-                        <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
-                          {historyConnections.length}
-                        </span>
-                      )}
-                    </Tabs.Trigger>
-                  </Tabs.List>
-
-                  <Tabs.Content value="received" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
+              <div className="mt-4">
+                {requestsView === 'received' && (
+                  <>
                     {inboxConnections.length === 0 ? (
-                      <div className="py-8 text-center text-gray-500">
+                      <div className="py-8 text-center text-gray-500 bg-white border border-b-2 border-gray-800">
                         No incoming connection requests. All caught up!
                       </div>
                     ) : (
                       inboxConnections.map((connection) => renderUserCard(connection, 'requests'))
                     )}
-                  </Tabs.Content>
+                  </>
+                )}
 
-                  <Tabs.Content value="sent" className="p-0 mt-0 bg-white">
+                {requestsView === 'sent' && (
+                  <>
                     {pendingConnections.length === 0 ? (
-                      <div className="py-8 text-center text-gray-500">No sent requests.</div>
+                      <div className="py-8 text-center text-gray-500 bg-white border border-b-2 border-gray-800">
+                        No sent requests.
+                      </div>
                     ) : (
                       pendingConnections.map((connection) => renderUserCard(connection, 'requests'))
                     )}
-                  </Tabs.Content>
+                  </>
+                )}
 
-                  <Tabs.Content value="history" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
+                {requestsView === 'history' && (
+                  <>
                     {historyConnections.length === 0 ? (
-                      <div className="py-8 text-center text-gray-500">
+                      <div className="py-8 text-center text-gray-500 bg-white border border-b-2 border-gray-800">
                         No connection history yet.
                       </div>
                     ) : (
                       historyConnections.map((connection) => renderUserCard(connection, 'requests'))
                     )}
-                  </Tabs.Content>
-                </Tabs.Root>
+                  </>
+                )}
               </div>
             )}
-          </Tabs.Root>
         </div>
       </div>
 
