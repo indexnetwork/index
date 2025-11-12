@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { useOnboardingContext } from "@/contexts/OnboardingContext";
-import { OnboardingStep } from "@/types/onboarding";
+import { OnboardingStep, OnboardingMember } from "@/types/onboarding";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -33,9 +33,7 @@ export default function InviteMembersStep({
       updatedAt: string;
     }>
   >([]);
-  const [displayMembers, setDisplayMembers] = useState<
-    Array<{ id: string; name: string; avatar: string | null }>
-  >([]);
+  const [displayMembers, setDisplayMembers] = useState<OnboardingMember[]>([]);
   const [displayTotalIntents, setDisplayTotalIntents] = useState(0);
 
   const isFetchingSummary = useRef(false);
@@ -70,7 +68,7 @@ export default function InviteMembersStep({
           updatedAt: string;
         }>;
         totalIntents: number;
-        members: Array<{ id: string; name: string; avatar: string | null }>;
+        members: OnboardingMember[];
       }>(`/indexes/${indexId}/summary`);
 
       const newIntents = response.exampleIntents || [];
@@ -97,7 +95,7 @@ export default function InviteMembersStep({
       // Fallback to empty data only on first load
       if (!wasSummaryLoaded) {
         const fallbackIntents: Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }> = [];
-        const fallbackMembers: Array<{ id: string; name: string; avatar: string | null }> = [];
+        const fallbackMembers: OnboardingMember[] = [];
         
         
         setDisplayIntents(fallbackIntents);

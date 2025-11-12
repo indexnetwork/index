@@ -3,16 +3,11 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
-
-interface Member {
-  id: string;
-  name: string;
-  avatar: string | null;
-}
+import { OnboardingMember } from "@/types/onboarding";
 
 interface MemberInvitationSectionProps {
   wasSummaryLoaded: boolean;
-  displayMembers: Member[];
+  displayMembers: OnboardingMember[];
   displayTotalIntents: number;
   handleInviteMembers: (method: "automatic" | "link") => void;
 }

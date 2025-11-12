@@ -56,3 +56,8 @@ export type FlowConfigMap = {
   [OnboardingFlow.Community]: CommunityFlowConfig;
   [OnboardingFlow.Invitation]: InvitationFlowConfig;
 };
+
+export interface OnboardingMember {
+  id: string;
+  name: string;
+}
