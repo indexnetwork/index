@@ -32,6 +32,14 @@ export interface OnboardingState {
   invitationCode?: string;  // Store which invitation was used (reference only)
 }
 
+// Social links type
+export interface UserSocials {
+  x?: string;  // X (formerly Twitter)
+  linkedin?: string;
+  github?: string;
+  websites?: Array<{ label: string; url: string }>;
+}
+
 // Tables
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -41,6 +49,8 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   intro: text('intro'),
   avatar: text('avatar'),
+  location: text('location'),
+  socials: json('socials').$type<UserSocials>(),
   onboarding: json('onboarding').$type<OnboardingState>().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

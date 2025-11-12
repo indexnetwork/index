@@ -4,6 +4,7 @@ import { eq, sql, and, desc } from 'drizzle-orm';
 import { traceableStructuredLlm } from "../../../lib/agents";
 import { z } from "zod";
 import { INTENT_INFERRER_AGENT_ID } from '../../../lib/agent-ids';
+import { format } from 'timeago.js';
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
   constructor(agentId: string) {
@@ -20,13 +21,19 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     const newIntent = await this.getIntent(intentId);
     if (!newIntent) return;
 
+    // Stage 1: Finding users
+    const findUsersStart = Date.now();
     const topUsers = await this.findTopUsersByIntentSimilarity(newIntent);
-    console.log(`🔍 Found ${topUsers.length} relevant users`);
+    const findUsersDuration = Date.now() - findUsersStart;
+    console.log(`🔍 Found ${topUsers.length} relevant users (${findUsersDuration}ms)`);
 
+    // Stage 2: Processing relationships
+    const processStart = Date.now();
     await this.processUserRelationships(newIntent, topUsers);
+    const processDuration = Date.now() - processStart;
     
     const duration = Date.now() - startTime;
-    console.log(`✅ Completed in ${duration}ms`);
+    console.log(`✅ Completed in ${duration}ms (find: ${findUsersDuration}ms, process: ${processDuration}ms)`);
   }
 
   /**
@@ -46,19 +53,23 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   }
 
   /**
-   * Process all user relationships
+   * Process all user relationships in parallel
    */
   private async processUserRelationships(
     newIntent: any,
     topUsers: Array<{ userId: string; intents: any[]; maxSimilarity: number }>
   ): Promise<void> {
-    for (const targetUser of topUsers) {
+    const userEvaluations = topUsers.map(async (targetUser) => {
       try {
         await this.evaluateUserRelationship(newIntent, targetUser);
+        return { success: true };
       } catch (error) {
         console.error(`Error evaluating relationship with user ${targetUser.userId}:`, error);
+        return { success: false };
       }
-    }
+    });
+    
+    await Promise.all(userEvaluations);
   }
 
   /**
@@ -100,7 +111,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     // Sort by max similarity and take top 10 users
     return Array.from(userMap.values())
       .sort((a, b) => b.maxSimilarity - a.maxSimilarity)
-      .slice(0, 10);
+      .slice(0, 20);
   }
 
   /**
@@ -126,14 +137,14 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       return;
     }
 
-    // Stage 2: Rank all candidates and get top 3
+    // Stage 2: Rank all candidates and get top 10
     const candidatePairs = this.buildCandidatePairs(newIntent.id, mutualResults, existingStakes);
     const rankingResult = await this.rankIntentPairs(candidatePairs);
-    console.log(`   ✅ Stage 2: Selected top ${rankingResult.top3IntentPairs.length} pairs`);
+    console.log(`   ✅ Stage 2: Selected top ${rankingResult.rankedPairs.length} pairs`);
 
-    // Execute: Delete all existing, insert top 3
-    await this.updateStakes(this.db, existingStakes, rankingResult.top3IntentPairs, candidatePairs);
-    console.log(`   ✔️  Committed - ${rankingResult.top3IntentPairs.length} stakes`);
+    // Execute: Delete all existing, insert top 10
+    await this.updateStakes(this.db, existingStakes, rankingResult.rankedPairs, candidatePairs);
+    console.log(`   ✔️  Committed - ${rankingResult.rankedPairs.length} stakes`);
   }
 
   /**
@@ -169,7 +180,6 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   private async findMutualIntents(newIntent: any, targetIntents: any[]) {
     const mutualityPromises = targetIntents.map(async (targetIntent) => {
       const evaluation = await this.evaluateMutualityStrict(newIntent, targetIntent);
-      console.log(`   🔍 Evaluation: ${evaluation?.isMutual} ${evaluation?.confidenceScore}`);
       
       if (evaluation && evaluation.isMutual && evaluation.confidenceScore >= 70) {
         return {
@@ -213,12 +223,12 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   }
 
   /**
-   * Update stakes: delete existing and insert top 3
+   * Update stakes: delete existing and insert top 10
    */
   private async updateStakes(
     db: any,
     existingStakes: Array<{ id: string }>,
-    top3Pairs: Array<{ newIntentId: string; targetIntentId: string }>,
+    rankedPairs: Array<{ newIntentId: string; targetIntentId: string; score: number }>,
     candidatePairs: Array<{ newIntentId: string; targetIntentId: string; score: number; reasoning: string }>
   ) {
     // Delete all existing stakes
@@ -226,8 +236,8 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       await db.delete(intentStakes).where(eq(intentStakes.id, stake.id));
     }
 
-    // Insert top 3
-    for (const pair of top3Pairs) {
+    // Insert top 10
+    for (const pair of rankedPairs) {
       const pairData = candidatePairs.find(
         c => c.newIntentId === pair.newIntentId && c.targetIntentId === pair.targetIntentId
       );
@@ -237,12 +247,12 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
         
         const stake1 = await this.calculateWeightedStake(
           pair.newIntentId, 
-          BigInt(Math.round(pairData.score)),
+          BigInt(Math.round(pair.score)),
           INTENT_INFERRER_AGENT_ID
         );
         const stake2 = await this.calculateWeightedStake(
           pair.targetIntentId,
-          BigInt(Math.round(pairData.score)),
+          BigInt(Math.round(pair.score)),
           INTENT_INFERRER_AGENT_ID
         );
         
@@ -267,7 +277,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   ): Promise<{ isMutual: boolean; confidenceScore: number; reasoning: string } | null> {
     const MutualIntentSchema = z.object({
       isMutual: z.boolean().describe("Whether the two intents have mutual intent (both relate to or depend on each other)"),
-      reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. Refer to intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research') rather than by position or ordinal references. Do not use 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'. If not mutual, provide empty string."),
+      reasoning: z.string().describe("One sentence explanation. If mutual, explain why using subject matter. If not mutual, provide empty string."),
       confidenceScore: z.number().min(0).max(100).describe("Precise confidence score 0-100. Use full range 70-100 for mutual matches. Avoid round numbers like 100, 90, 80. Be specific: 87, 76, 92, etc.")
     });
 
@@ -276,6 +286,13 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       content: `You are a semantic relationship analyst. Determine if two intents have MUTUAL relevance (both relate to or complement each other).
 
 CRITICAL: You MUST provide specific scores. 
+
+REASONING GUIDELINES:
+- When isMutual is true: Explain the complementary relationship in one clear sentence
+- Reference intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research')
+- NEVER use position references: 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'
+- Focus on why the connection creates bidirectional value
+- When isMutual is false: Return empty string
 
 STRICT Mutual criteria (INCREASED RIGOR):
 - Both intents seek things that complement each other (e.g., investor + startup, designer + developer)
@@ -288,6 +305,13 @@ STRICT Mutual criteria (INCREASED RIGOR):
 - **STRICTLY EXCLUDE** A-seeks-Role AND B-seeks-Role (e.g., A needs an engineer, B needs a designer) - these are company-level needs, not a mutual intent pair.
 Score threshold: Must be >= 70 to qualify as mutual
 
+TIMING CONSIDERATION:
+- Evaluate whether timing matters based on intent nature
+- Time-sensitive intents (hiring, funding, events, deadlines, immediate needs): older intents reduce relevance
+- Evergreen intents (interests, skills, learning, broad topics): age matters less
+- If one or both intents are clearly stale for their context, reduce confidence score accordingly
+- For time-sensitive intents older than a few months, consider reducing score by 5-15 points
+
 CONFIDENCE SCORING RUBRIC (BE PRECISE AND VARIED):
 
 95-100: EXCEPTIONAL MATCH
@@ -295,6 +319,7 @@ CONFIDENCE SCORING RUBRIC (BE PRECISE AND VARIED):
 - Highly specific and aligned
 - Both parties' exact needs met
 - Immediate, obvious value
+- Good timing alignment for the intent type
 
 85-94: STRONG MATCH
 - Clear complementary value but with minor gaps
@@ -316,6 +341,7 @@ CONFIDENCE SCORING RUBRIC (BE PRECISE AND VARIED):
 
 Below 70: NOT MUTUAL
 - Reject these outright
+- Includes time-sensitive intents that are too stale
 
 SCORING EXAMPLES (study these closely):
 - "Seeking pre-seed AI investors" + "Investing in pre-seed AI companies" → 98 (perfect stage + sector match)
@@ -334,17 +360,20 @@ IMPORTANT:
 - Be critical and precise
 - Most matches should be 75-90, not 95-100
 - Only exceptional perfect matches deserve 95+
-- Differentiate based on specificity, clarity, and actionability`
+- Differentiate based on specificity, clarity, actionability, and timing context`
     };
+
+    const newIntentAge = format(new Date(newIntent.createdAt));
+    const targetIntentAge = format(new Date(targetIntent.createdAt));
 
     const userMessage = {
       role: "user",
       content: `Analyze these intents for mutual relevance:
 
-"${newIntent.payload}" (Intent ID: ${newIntent.id})
-"${targetIntent.payload}" (Intent ID: ${targetIntent.id})
+"${newIntent.payload}" (Intent ID: ${newIntent.id}, created ${newIntentAge})
+"${targetIntent.payload}" (Intent ID: ${targetIntent.id}, created ${targetIntentAge})
 
-Are these mutually relevant with high confidence (>= 70 score)? Provide score and reasoning.`
+Are these mutually relevant with high confidence (>= 70 score)? Consider timing in your evaluation. Provide score and reasoning.`
     };
 
     try {
@@ -359,19 +388,22 @@ Are these mutually relevant with high confidence (>= 70 score)? Provide score an
       );
       
       const response = await reasoningCall([systemMessage, userMessage], MutualIntentSchema);
+      
       return {
         isMutual: response.isMutual,
         confidenceScore: response.confidenceScore,
         reasoning: response.reasoning
       };
-    } catch (error) {
-      console.error(`Error evaluating mutuality:`, error);
+    } catch (error: any) {
+      console.error(`📋 Intent Pair That Failed:`);
+      console.error(`   New: "${newIntent.payload}" (${newIntent.id})`);
+      console.error(`   Target: "${targetIntent.payload}" (${targetIntent.id})`);
       return null;
     }
   }
 
   /**
-   * Rank all candidate pairs and return top 3
+   * Rank all candidate pairs and return top 10 with new scores
    */
   private async rankIntentPairs(
     candidatePairs: Array<{
@@ -382,64 +414,106 @@ Are these mutually relevant with high confidence (>= 70 score)? Provide score an
       reasoning: string;
       stakeId?: string;
     }>
-  ): Promise<{ top3IntentPairs: Array<{ newIntentId: string; targetIntentId: string }> }> {
+  ): Promise<{ rankedPairs: Array<{ newIntentId: string; targetIntentId: string; score: number }> }> {
     if (candidatePairs.length === 0) {
-      return { top3IntentPairs: [] };
+      return { rankedPairs: [] };
     }
 
-    // If 3 or fewer candidates, return all
-    if (candidatePairs.length <= 3) {
+    // If 10 or fewer candidates, return all
+    if (candidatePairs.length <= 10) {
       return {
-        top3IntentPairs: candidatePairs.map(c => ({
+        rankedPairs: candidatePairs.map(c => ({
           newIntentId: c.newIntentId,
-          targetIntentId: c.targetIntentId
+          targetIntentId: c.targetIntentId,
+          score: c.score
         }))
       };
     }
 
+    // Fetch intent data for contextual recency evaluation and payloads
+    const intentIds = new Set<string>();
+    candidatePairs.forEach(c => {
+      intentIds.add(c.newIntentId);
+      intentIds.add(c.targetIntentId);
+    });
+
+    const intentData = new Map<string, { createdAt: Date; payload: string }>();
+    const intentRecords = await this.db
+      .select({ id: intents.id, createdAt: intents.createdAt, payload: intents.payload })
+      .from(intents)
+      .where(sql`${intents.id} IN (${sql.join([...intentIds].map(id => sql`${id}`), sql`, `)})`);
+    
+    intentRecords.forEach(record => {
+      intentData.set(record.id, {
+        createdAt: new Date(record.createdAt),
+        payload: record.payload
+      });
+    });
+
     const RankingSchema = z.object({
-      top3IntentPairs: z.array(z.object({
+      rankedPairs: z.array(z.object({
         newIntentId: z.string(),
-        targetIntentId: z.string()
-      })).max(3).describe("Top 3 intent pair IDs ranked by mutual value quality")
+        targetIntentId: z.string(),
+        score: z.number().min(1).max(100).describe("New quality score 1-100 based on all ranking criteria including contextual recency")
+      })).max(10).describe("Top 10 intent pairs with new scores based on comprehensive evaluation")
     });
 
     const systemMessage = {
       role: "system",
       content: `You are a ranking system for intent pairs between two users.
 
-Task: Select the TOP 3 intent pairs that represent the BEST mutual value opportunities.
+Task: Select the TOP 10 intent pairs that represent the BEST mutual value opportunities and assign NEW quality scores (1-100) based on comprehensive evaluation.
 
-Candidates include:
-- NEW pairs: From recent mutuality evaluation (scored >= 70)
-- EXISTING pairs: Current stakes between these users
+Ranking criteria (evaluate holistically):
+1. **Semantic Quality**: How well do the intents complement each other?
+2. **Contextual Recency**: Evaluate whether timing matters based on intent nature
+   - Time-sensitive intents (hiring, funding, events, immediate needs) strongly favor recent matches
+   - Evergreen intents (interests, skills, learning, broad topics) prioritize quality over recency
+   - Mixed pairs: weight recency based on which side is time-sensitive
+3. **Specificity**: More specific intents are more actionable than vague ones
+4. **Actionability**: Can both parties immediately act on this connection?
 
-Ranking criteria (in priority order):
-1. **Score/Quality**: Higher confidence scores indicate stronger mutual value
-2. **Specificity**: More specific intents are more actionable than vague ones
-3. **Actionability**: Can both parties immediately act on this connection?
-4. **Complementarity**: How well do the intents complement each other?
+Scoring guidelines for NEW scores:
+- 90-100: Exceptional match - perfect complementarity, highly actionable, optimal timing
+- 75-89: Strong match - clear value, good timing for intent type
+- 60-74: Good match - solid potential but may have timing or specificity gaps
+- 40-59: Acceptable match - has value but notable limitations
 
 Strategy:
-- Don't just pick the 3 highest scores mechanically
 - Consider the overall value profile for the user relationship
-- Diversity can be valuable (different types of collaboration)
-- But quality always trumps diversity
+- Quality always matters most, but let timing influence scores for time-sensitive intents
+- Return up to 10 pairs, ranked by your new scores (highest first)
 
-Return exactly 3 pairs (or fewer if less than 3 candidates exist).`
+Return the top 10 pairs with new scores.`
     };
 
     const userMessage = {
       role: "user",
-      content: `Rank these intent pairs and return the top 3:
+      content: `Rank these intent pairs and return the top 10 with new quality scores:
 
-${candidatePairs.map((c, i) => 
-  `${i + 1}. ${c.type.toUpperCase()} - Pair between Intent ${c.newIntentId} and Intent ${c.targetIntentId}
-   Score: ${c.score}
-   Reasoning: ${c.reasoning}`
-).join('\n\n')}
+<candidate_pairs>
+${candidatePairs.map((c, i) => {
+  const newIntentData = intentData.get(c.newIntentId);
+  const targetIntentData = intentData.get(c.targetIntentId);
+  const formatTimeAgo = (date: Date | undefined) => date ? format(date) : 'unknown';
+  
+  return `<pair index="${i + 1}" type="${c.type.toUpperCase()}">
+  <intent_a>
+    <id>${c.newIntentId}</id>
+    <created>${formatTimeAgo(newIntentData?.createdAt)}</created>
+    <payload>${newIntentData?.payload || 'unknown'}</payload>
+  </intent_a>
+  <intent_b>
+    <id>${c.targetIntentId}</id>
+    <created>${formatTimeAgo(targetIntentData?.createdAt)}</created>
+    <payload>${targetIntentData?.payload || 'unknown'}</payload>
+  </intent_b>
+  <reasoning>${c.reasoning}</reasoning>
+</pair>`;
+}).join('\n\n')}
+</candidate_pairs>
 
-Return the top 3 pairs by quality (prioritize higher scores).`
+Return the top 10 pairs with new scores based on semantic quality and contextual recency.`
     };
 
     try {
@@ -454,18 +528,19 @@ Return the top 3 pairs by quality (prioritize higher scores).`
       
       const response = await rankingCall([systemMessage, userMessage], RankingSchema);
       return {
-        top3IntentPairs: response.top3IntentPairs || []
+        rankedPairs: response.rankedPairs || []
       };
     } catch (error) {
       console.error(`Error ranking pairs:`, error);
-      // Fallback: return top 3 by score
+      // Fallback: return top 10 by existing score
       return {
-        top3IntentPairs: candidatePairs
+        rankedPairs: candidatePairs
           .sort((a, b) => b.score - a.score)
-          .slice(0, 3)
+          .slice(0, 10)
           .map(c => ({
             newIntentId: c.newIntentId,
-            targetIntentId: c.targetIntentId
+            targetIntentId: c.targetIntentId,
+            score: c.score
           }))
       };
     }

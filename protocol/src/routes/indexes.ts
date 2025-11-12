@@ -57,7 +57,6 @@ router.get('/discover/public',
           updatedAt: indexes.updatedAt,
           ownerId: indexMembers.userId,
           userName: users.name,
-          userEmail: users.email,
           userAvatar: users.avatar
         }).from(indexes)
           .innerJoin(indexMembers, and(
@@ -101,7 +100,6 @@ router.get('/discover/public',
             user: {
               id: index.ownerId,
               name: index.userName,
-              email: index.userEmail,
               avatar: index.userAvatar
             },
             _count: {
@@ -188,7 +186,6 @@ router.get('/',
           updatedAt: indexes.updatedAt,
           ownerId: indexMembers.userId,
           userName: users.name,
-          userEmail: users.email,
           userAvatar: users.avatar
         }).from(indexes)
           .innerJoin(indexMembers, and(
@@ -228,7 +225,6 @@ router.get('/',
             user: {
               id: index.ownerId,
               name: index.userName,
-              email: index.userEmail,
               avatar: index.userAvatar
             },
             _count: {
@@ -273,16 +269,12 @@ router.get('/search-users',
 
       let whereCondition = and(
         isNull(users.deletedAt),
-        or(
-          ilike(users.name, searchQuery),
-          ilike(users.email, searchQuery)
-        )
+        ilike(users.name, searchQuery)
       );
 
       const searchResults = await db.select({
         id: users.id,
         name: users.name,
-        email: users.email,
         avatar: users.avatar
       }).from(users)
         .where(whereCondition)
@@ -334,7 +326,6 @@ router.get('/:id',
         updatedAt: indexes.updatedAt,
         ownerId: indexMembers.userId,
         userName: users.name,
-        userEmail: users.email,
         userAvatar: users.avatar
       }).from(indexes)
         .innerJoin(indexMembers, and(
@@ -375,7 +366,6 @@ router.get('/:id',
         user: {
           id: indexData.ownerId,
           name: indexData.userName,
-          email: indexData.userEmail,
           avatar: indexData.userAvatar
         },
         members: indexMembersData.map(member => ({
@@ -450,7 +440,6 @@ router.post('/',
       // Get user information
       const userData = await db.select({
         name: users.name,
-        email: users.email,
         avatar: users.avatar
       }).from(users)
         .where(eq(users.id, req.user!.id))
@@ -465,7 +454,6 @@ router.post('/',
         user: {
           id: req.user!.id, // Use the requesting user ID as owner
           name: userData[0].name,
-          email: userData[0].email,
           avatar: userData[0].avatar
         },
         _count: {
@@ -684,7 +672,6 @@ router.post('/:id/members',
       const memberData = await db.select({
         id: users.id,
         name: users.name,
-        email: users.email,
         avatar: users.avatar,
         permissions: indexMembers.permissions,
         createdAt: indexMembers.createdAt
@@ -856,7 +843,6 @@ router.patch('/:id/members/:userId',
       const memberData = await db.select({
         id: users.id,
         name: users.name,
-        email: users.email,
         avatar: users.avatar,
         permissions: indexMembers.permissions,
         updatedAt: indexMembers.updatedAt
@@ -1625,7 +1611,6 @@ router.get('/:indexId/intents',
         archivedAt: intents.archivedAt,
         userId: intents.userId,
         userName: users.name,
-        userEmail: users.email,
         userAvatar: users.avatar
       };
 
@@ -1657,7 +1642,6 @@ router.get('/:indexId/intents',
             user: {
               id: intent.userId,
               name: intent.userName,
-              email: intent.userEmail,
               avatar: intent.userAvatar
             },
             _count: { indexes: indexCount[0]?.count || 0 }

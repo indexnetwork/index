@@ -16,6 +16,13 @@ export interface User {
   name: string;
   intro: string | null;
   avatar: string | null;
+  location?: string | null;
+  socials?: {
+    x?: string;  // X (formerly Twitter)
+    linkedin?: string;
+    github?: string;
+    websites?: Array<{ label: string; url: string }>;
+  };
   onboarding?: OnboardingState;
   createdAt: string;
   updatedAt: string;
@@ -39,7 +46,6 @@ export interface Index {
   user: {
     id: string;
     name: string;
-    email: string | null;
     avatar: string | null;
   };
   _count: {
@@ -63,7 +69,6 @@ export interface FileRecord {
 export interface IndexMember {
   userId: string;
   userName: string;
-  userEmail: string | null;
   userAvatar: string | null;
   permissions?: string[];
   createdAt?: string;
@@ -87,7 +92,6 @@ export interface Intent {
   user: {
     id: string;
     name: string;
-    email: string | null;
     avatar: string | null;
   };
   _count: {
@@ -224,6 +228,13 @@ export interface UpdateProfileRequest {
   name?: string;
   intro?: string;
   avatar?: string;
+  location?: string;
+  socials?: {
+    x?: string;
+    linkedin?: string;
+    github?: string;
+    websites?: Array<{ label: string; url: string }>;
+  };
 }
 
 export interface CreateMarketPositionRequest {

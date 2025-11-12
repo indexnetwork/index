@@ -28,7 +28,7 @@ function createAgentLlm(preset: string): ChatOpenAI {
 // Traceable LLM wrapper with Langfuse integration
 export function traceableLlm(preset: string, metadata: Record<string, any>) {
   return async (messages: Array<{role: string, content: string}>, options?: { reasoning?: { exclude?: boolean; effort?: 'minimal' | 'low' | 'medium' | 'high'; max_tokens?: number } }) => {
-    const handler = createLangfuseHandler(preset, metadata);
+    // const handler = createLangfuseHandler(preset, metadata); // DISABLED
     
     // Build modelKwargs with reasoning config if provided
     const modelKwargs: any = {};
@@ -46,7 +46,7 @@ export function traceableLlm(preset: string, metadata: Record<string, any>) {
       modelKwargs
     });
     
-    const response = await llm.invoke(messages, { runName: preset, callbacks: [handler] });
+    const response = await llm.invoke(messages, { runName: preset }); // callbacks removed
     return response;
   };
 }
@@ -56,13 +56,13 @@ export function traceableStructuredLlm(preset: string, metadata: Record<string, 
   const llm = createAgentLlm(preset);
   
   return async (messages: Array<{role: string, content: string}>, schema: any) => {
-    const handler = createLangfuseHandler(preset, metadata);
+    // const handler = createLangfuseHandler(preset, metadata); // DISABLED
     const structuredLlm = llm.withStructuredOutput(schema, {
       name: schema.name || 'structured_output'
     });
     const response = await structuredLlm.invoke(messages, { 
-      runName: preset, 
-      callbacks: [handler] 
+      runName: preset
+      // callbacks removed
     });
     return response;
   };

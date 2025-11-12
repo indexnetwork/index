@@ -13,10 +13,11 @@ router.get('/me', authenticatePrivy, async (req: AuthRequest, res: Response) => 
     const user = await db.select({
       id: users.id,
       privyId: users.privyId,
-      email: users.email,
       name: users.name,
       intro: users.intro,
       avatar: users.avatar,
+      location: users.location,
+      socials: users.socials,
       onboarding: users.onboarding,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt
@@ -38,23 +39,26 @@ router.get('/me', authenticatePrivy, async (req: AuthRequest, res: Response) => 
 // Update user profile
 router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, intro, avatar } = req.body;
+    const { name, intro, avatar, location, socials } = req.body;
     
     const updatedUser = await db.update(users)
       .set({
         ...(name && { name }),
         ...(intro !== undefined && { intro }),
         ...(avatar && { avatar }),
+        ...(location !== undefined && { location }),
+        ...(socials !== undefined && { socials }),
         updatedAt: new Date()
       })
       .where(eq(users.id, req.user!.id))
       .returning({
         id: users.id,
         privyId: users.privyId,
-        email: users.email,
         name: users.name,
         intro: users.intro,
         avatar: users.avatar,
+        location: users.location,
+        socials: users.socials,
         onboarding: users.onboarding,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt
@@ -107,10 +111,11 @@ router.patch('/onboarding-state', authenticatePrivy, async (req: AuthRequest, re
       .returning({
         id: users.id,
         privyId: users.privyId,
-        email: users.email,
         name: users.name,
         intro: users.intro,
         avatar: users.avatar,
+        location: users.location,
+        socials: users.socials,
         onboarding: users.onboarding,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt

@@ -28,7 +28,7 @@ function OnboardingPageContent() {
   const { user, refetchUser } = useAuthContext();
   const { refreshIndexes } = useIndexesState();
   const { currentFlow, setCurrentFlow, flowConfig, currentStep, setCurrentStep } = useOnboardingContext();
-
+  
   // Detect flow from query string, user onboarding state, or default
   // f used for dev testing
   useEffect(() => {

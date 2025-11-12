@@ -126,7 +126,7 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
 
             <div>
               <label htmlFor="prompt" className="text-md font-medium font-ibm-plex-mono text-black">
-                <div className="mb-2">Prompt (Optional)</div>
+                <div className="mb-2">Agent instructions (Optional)</div>
               </label>
               <Textarea
                 id="prompt"

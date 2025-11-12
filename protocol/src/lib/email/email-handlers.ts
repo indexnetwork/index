@@ -77,11 +77,11 @@ export async function sendConnectionRequestEmail(initiatorUserId: string, receiv
     console.log('initiatorUserId', initiatorUserId);
 
     // Generate synthesis for the receiver
-    const synthesisMarkdown = await synthesizeVibeCheck({
-      contextUserId: receiverUserId,
-      targetUserId: initiatorUserId,
-      options: { characterLimit: 500 }
-    });
+    const synthesisMarkdown = await synthesizeVibeCheck(
+      receiverUserId,
+      initiatorUserId,
+      { vibeOptions: { characterLimit: 500 } }
+    );
 
     // Convert markdown to HTML
     const { marked } = await import('marked');
@@ -124,10 +124,10 @@ export async function sendConnectionAcceptedEmail(accepterUserId: string, initia
     console.log('initiatorUserId', initiatorUserId);
 
     // Generate intro synthesis
-    const synthesisMarkdown = await synthesizeIntro({
-      senderUserId: accepterUserId,
-      recipientUserId: initiatorUserId
-    });
+    const synthesisMarkdown = await synthesizeIntro(
+      accepterUserId,
+      initiatorUserId
+    );
 
     // Convert markdown to HTML
     const { marked } = await import('marked');
