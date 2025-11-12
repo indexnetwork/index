@@ -5,7 +5,7 @@ import { indexes, users, indexMembers, intentIndexes, intents } from '../lib/sch
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists, sql } from 'drizzle-orm';
 import { 
-  checkIndexOwnership,
+  checkIndexOwnership, 
   checkIndexAdminAccess,
   getUserAccessibleIndexIds,
   checkMultipleIndexesMembership,
@@ -1208,7 +1208,10 @@ router.patch('/:id/regenerate-invitation',
 // Get members of an index
 router.get('/:id/members',
   authenticatePrivy,
-  [param('id').isUUID()],
+  [
+    param('id').isUUID(),
+    query('q').optional().isString()
+  ],
   async (req: AuthRequest, res: Response) => {
     try {
       const errors = validationResult(req);
@@ -1217,10 +1220,17 @@ router.get('/:id/members',
       }
 
       const { id } = req.params;
+      const searchQuery = req.query.q as string | undefined;
 
       const accessCheck = await checkUserIndexAccess(id, req.user!.id);
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      // Build the where clause with optional search filter
+      const whereConditions = [eq(indexMembers.indexId, id)];
+      if (searchQuery && searchQuery.trim()) {
+        whereConditions.push(ilike(users.name, `%${searchQuery.trim()}%`));
       }
 
       const members = await db.select({
@@ -1232,7 +1242,7 @@ router.get('/:id/members',
         updatedAt: indexMembers.updatedAt
       }).from(indexMembers)
         .innerJoin(users, eq(indexMembers.userId, users.id))
-        .where(eq(indexMembers.indexId, id))
+        .where(and(...whereConditions))
         .orderBy(desc(indexMembers.createdAt))
         .limit(5);
 

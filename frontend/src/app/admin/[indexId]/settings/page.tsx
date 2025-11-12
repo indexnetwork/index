@@ -65,16 +65,17 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
   const [invitationLink, setInvitationLink] = useState<{ code: string; createdAt: string } | null>(null);
   const [currentUserPermissions, setCurrentUserPermissions] = useState<string[]>([]);
   const [roleDropdownOpen, setRoleDropdownOpen] = useState<string | null>(null);
+  const [memberFilterQuery, setMemberFilterQuery] = useState('');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
   // Load members on mount
-  const loadMembers = useCallback(async () => {
+  const loadMembers = useCallback(async (searchQuery?: string) => {
     if (!indexId || !user?.id) return;
     try {
-      const membersList = await indexesService.getMembers(indexId);
+      const membersList = await indexesService.getMembers(indexId, searchQuery);
       setMembers(membersList);
       
       // Find current user's permissions
@@ -130,7 +131,16 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
     }
   }, [indexesService, indexId]);
 
-  // Debounced user search
+  // Debounced member search (backend)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      loadMembers(memberFilterQuery || undefined);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [memberFilterQuery, loadMembers]);
+
+  // Debounced user search (for adding members)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (memberSearchQuery) {
@@ -708,35 +718,23 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                   </Button>
                 </div>
                 
-                {/* Member picker input */}
+                  {/* Member search/filter input */}
                 <div className="relative mb-4">
-                  <div className="flex items-center gap-2">
-                    <div ref={searchContainerRef} className="relative flex-1">
-                      <Plus className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input
-                        ref={searchInputRef}
-                        placeholder="Search people by name..."
-                        value={memberSearchQuery}
-                        onChange={(e) => handleSearchInputChange(e.target.value)}
-                        onFocus={() => {
-                          if (memberSearchQuery) {
-                            if (searchContainerRef.current) {
-                              calculateDropdownPosition(searchContainerRef.current, 'suggestions', searchContainerRef.current.offsetWidth);
-                            }
-                            setShowSuggestions(true);
-                          }
-                        }}
-                        className="pl-10 pr-4 py-2 text-sm"
+                      placeholder="Search members..."
+                      value={memberFilterQuery}
+                      onChange={(e) => setMemberFilterQuery(e.target.value)}
+                      className="pl-4 pr-4 py-2 text-sm"
                       />
-                    </div>
-                  </div>
                 </div>
                 
                 {/* Members list */}
-                <div className="space-y-2">
+                  <div className="space-y-2 mb-4">
                   {members.length === 0 ? (
                     <div className="p-3 text-center">
-                      <p className="text-xs text-gray-500">No members added yet</p>
+                        <p className="text-xs text-gray-500">
+                          {memberFilterQuery ? 'No members found' : 'No members added yet'}
+                        </p>
                     </div>
                   ) : (
                     members.map((member) => (
@@ -775,15 +773,15 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                                   : 'bg-gray-50'
                               } ${(currentUserPermissions.includes('owner') || currentUserPermissions.includes('admin')) && !member.permissions.includes('owner') ? 'cursor-pointer hover:opacity-75' : 'cursor-default'}`}
                             >
-                              <span className={`${
+                            <span className={`${
                                 member.permissions.includes('owner') 
                                   ? 'text-blue-700 font-medium' 
                                   : member.permissions.includes('admin')
                                   ? 'text-amber-700 font-medium'
                                   : 'text-gray-700'
-                              }`}>
-                                {getMemberRoleText(member.permissions)}
-                              </span>
+                            }`}>
+                              {getMemberRoleText(member.permissions)}
+                            </span>
                               {(!member.permissions.includes('owner')) && (
                                 <ChevronDown className="h-3 w-3 text-black" />
                               )}
@@ -851,6 +849,30 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                     ))
                   )}
                 </div>
+                  
+                  {/* Add member input */}
+                  <div className="relative mt-4">
+                    <div className="flex items-center gap-2">
+                      <div ref={searchContainerRef} className="relative flex-1">
+                        <Plus className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          ref={searchInputRef}
+                          placeholder="Add people by name..."
+                          value={memberSearchQuery}
+                          onChange={(e) => handleSearchInputChange(e.target.value)}
+                          onFocus={() => {
+                            if (memberSearchQuery) {
+                              if (searchContainerRef.current) {
+                                calculateDropdownPosition(searchContainerRef.current, 'suggestions', searchContainerRef.current.offsetWidth);
+                              }
+                              setShowSuggestions(true);
+                            }
+                          }}
+                          className="pl-10 pr-4 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
               </div>
             </div>
           </Tabs.Content>

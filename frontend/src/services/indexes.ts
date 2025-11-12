@@ -122,8 +122,13 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Get members of an index
-  getMembers: async (indexId: string): Promise<Member[]> => {
-    const response = await api.get<{ members: Member[] }>(`/indexes/${indexId}/members`);
+  getMembers: async (indexId: string, searchQuery?: string): Promise<Member[]> => {
+    const params = new URLSearchParams();
+    if (searchQuery) {
+      params.append('q', searchQuery);
+    }
+    const url = `/indexes/${indexId}/members${searchQuery ? `?${params.toString()}` : ''}`;
+    const response = await api.get<{ members: Member[] }>(url);
     return response.members || [];
   },
 
