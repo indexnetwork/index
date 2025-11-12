@@ -241,7 +241,7 @@ export default function Sidebar() {
                     </div>
                     <div className="flex items-center gap-1">
                       {/* Admin button for owners */}
-                      {isOwner && index.fullIndex?.permissions?.requireApproval && (
+                      {isOwner && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
