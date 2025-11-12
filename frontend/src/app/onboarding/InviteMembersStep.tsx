@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { useOnboardingContext } from "@/contexts/OnboardingContext";
 import { OnboardingStep } from "@/types/onboarding";
@@ -38,8 +38,16 @@ export default function InviteMembersStep({
   >([]);
   const [displayTotalIntents, setDisplayTotalIntents] = useState(0);
 
+  const isFetchingSummary = useRef(false);
+
   // Load index summary for invite members step
   const loadIndexSummary = useCallback(async () => {
+    if (isFetchingSummary.current) {
+      return;
+    }
+
+    isFetchingSummary.current = true;
+
     try {
       if (!wasSummaryLoaded) {
         setWasSummaryLoaded(false);
@@ -94,6 +102,8 @@ export default function InviteMembersStep({
         setDisplayTotalIntents(0);
         setWasSummaryLoaded(true);
       }
+    } finally {
+      isFetchingSummary.current = false;
     }
   }, [
     api,
