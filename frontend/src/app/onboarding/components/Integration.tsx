@@ -19,7 +19,6 @@ export default function Integration({
 }: IntegrationProps) {
   return (
     <div
-      key={integration.type}
       className="border border-b-2 border-[#000] p-4 bg-white"
     >
       <div className="flex items-center justify-between mb-0">
