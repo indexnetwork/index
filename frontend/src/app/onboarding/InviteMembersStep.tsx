@@ -232,7 +232,7 @@ export default function InviteMembersStep({
         </Button>
         <Button
           onClick={handleCompleteOnboarding}
-          className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
+          className="flex-1 bg-black text-white hover:bg-black font-ibm-plex-mono"
         >
           Complete setup
         </Button>
