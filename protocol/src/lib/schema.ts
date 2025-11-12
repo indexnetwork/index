@@ -23,7 +23,7 @@ export interface UserSocials {
   x?: string;  // X (formerly Twitter)
   linkedin?: string;
   github?: string;
-  websites?: Array<{ label: string; url: string }>;
+  websites?: string[];
 }
 
 // Tables
@@ -91,7 +91,7 @@ export const indexMembers = pgTable('index_members', {
   permissions: text('permissions').array().notNull().default([]),
   prompt: text('prompt'), // Defines what the member is sharing (defaults to index prompt)
   autoAssign: boolean('auto_assign').notNull().default(false), // Whether system auto-generates or respects manual edits
-  metadata: json('metadata').$type<Record<string, string>>(), // Custom metadata for the member in this index
+  metadata: json('metadata').$type<Record<string, string | string[]>>(), // Custom metadata for the member in this index
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({

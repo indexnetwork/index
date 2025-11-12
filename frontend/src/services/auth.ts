@@ -11,7 +11,7 @@ export interface UpdateProfileRequest {
     x?: string;
     linkedin?: string;
     github?: string;
-    websites?: Array<{ label: string; url: string }>;
+    websites?: string[];
   };
 }
 

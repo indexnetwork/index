@@ -27,7 +27,6 @@ export default function Sidebar() {
   const [indexes, setIndexes] = useState<IndexItem[]>([]);
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
   const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
-  const [ownerSettingsIndex, setOwnerSettingsIndex] = useState<IndexType | null>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const { setSelectedIndexIds } = useIndexFilter();
   

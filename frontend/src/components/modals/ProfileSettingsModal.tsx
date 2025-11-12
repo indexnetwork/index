@@ -71,7 +71,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   const [socialX, setSocialX] = useState(user?.socials?.x || '');
   const [socialLinkedin, setSocialLinkedin] = useState(user?.socials?.linkedin || '');
   const [socialGithub, setSocialGithub] = useState(user?.socials?.github || '');
-  const [websites, setWebsites] = useState<Array<{ label: string; url: string }>>(
+  const [websites, setWebsites] = useState<string[]>(
     user?.socials?.websites || []
   );
   
@@ -104,7 +104,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
 
   const addWebsite = () => {
     if (websites.length < 3) {
-      setWebsites([...websites, { label: '', url: '' }]);
+      setWebsites([...websites, '']);
     }
   };
 
@@ -112,9 +112,9 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
     setWebsites(websites.filter((_, i) => i !== index));
   };
 
-  const updateWebsite = (index: number, field: 'label' | 'url', value: string) => {
+  const updateWebsite = (index: number, value: string) => {
     const updated = [...websites];
-    updated[index][field] = value;
+    updated[index] = value;
     setWebsites(updated);
   };
 
@@ -137,7 +137,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
         ...(socialLinkedin && { linkedin: socialLinkedin }),
         ...(socialGithub && { github: socialGithub }),
         ...(websites.length > 0 && { 
-          websites: websites.filter(w => w.url).map(w => ({ label: '', url: w.url }))
+          websites: websites.filter(w => w)
         })
       };
       
@@ -320,8 +320,8 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
             {websites.map((website, index) => (
               <div key={index} className="flex items-center border border-gray-300">
                 <Input
-                  value={website.url}
-                  onChange={(e) => updateWebsite(index, 'url', e.target.value)}
+                  value={website}
+                  onChange={(e) => updateWebsite(index, e.target.value)}
                   placeholder="https://example.com"
                   className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                 />

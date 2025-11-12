@@ -156,7 +156,7 @@ export default function UserProfileModal({ open, onOpenChange, user }: UserProfi
                   {profileData.socials.websites && profileData.socials.websites.map((website, index) => (
                     <a
                       key={index}
-                      href={website.url.startsWith('http') ? website.url : `https://${website.url}`}
+                      href={website.startsWith('http') ? website : `https://${website}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-gray-700 hover:text-black transition-colors"

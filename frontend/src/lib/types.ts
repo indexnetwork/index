@@ -20,7 +20,7 @@ export interface User {
     x?: string;  // X (formerly Twitter)
     linkedin?: string;
     github?: string;
-    websites?: Array<{ label: string; url: string }>;
+    websites?: string[];
   };
   onboarding?: OnboardingState;
   createdAt: string;
@@ -232,7 +232,7 @@ export interface UpdateProfileRequest {
     x?: string;
     linkedin?: string;
     github?: string;
-    websites?: Array<{ label: string; url: string }>;
+    websites?: string[];
   };
 }
 

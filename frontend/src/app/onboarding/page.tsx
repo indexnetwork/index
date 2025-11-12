@@ -110,7 +110,7 @@ export default function OnboardingPage() {
   const [socialX, setSocialX] = useState('');
   const [socialLinkedin, setSocialLinkedin] = useState('');
   const [socialGithub, setSocialGithub] = useState('');
-  const [websites, setWebsites] = useState<Array<{ label: string; url: string }>>([]);
+  const [websites, setWebsites] = useState<string[]>([]);
 
   // Connections step states
   const [integrations, setIntegrations] = useState<IntegrationState[]>([]);
@@ -299,7 +299,7 @@ export default function OnboardingPage() {
         setSocialLinkedin(user.socials.linkedin || '');
         setSocialGithub(user.socials.github || '');
         if (user.socials.websites && user.socials.websites.length > 0) {
-          setWebsites(user.socials.websites.map(w => ({ label: w.label || '', url: w.url })));
+          setWebsites(user.socials.websites);
         }
       }
       
@@ -510,7 +510,7 @@ export default function OnboardingPage() {
         ...(socialLinkedin && { linkedin: socialLinkedin }),
         ...(socialGithub && { github: socialGithub }),
         ...(websites.length > 0 && { 
-          websites: websites.filter(w => w.url).map(w => ({ label: '', url: w.url }))
+          websites: websites.filter(w => w)
         })
       };
       
@@ -914,10 +914,10 @@ export default function OnboardingPage() {
                 {websites.map((website, index) => (
                   <div key={index} className="flex items-center border border-gray-300">
                     <Input
-                      value={website.url}
+                      value={website}
                       onChange={(e) => {
                         const updated = [...websites];
-                        updated[index].url = e.target.value;
+                        updated[index] = e.target.value;
                         setWebsites(updated);
                       }}
                       placeholder="https://example.com"
@@ -937,7 +937,7 @@ export default function OnboardingPage() {
                 {websites.length < 3 && (
                   <button
                     type="button"
-                    onClick={() => setWebsites([...websites, { label: '', url: '' }])}
+                    onClick={() => setWebsites([...websites, ''])}
                     className="w-full flex items-center justify-center px-3 py-2 border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors font-ibm-plex-mono text-sm"
                   >
                     +
