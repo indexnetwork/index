@@ -543,9 +543,11 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
               <div className="pt-4 my-1">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-sm font-medium font-ibm-plex-mono text-black">Allow people to check how they vibe with your network before joining</h4>
-                    <p className="text-xs text-gray-600 mt-1">
+                    <h4 className="text-sm font-medium font-ibm-plex-mono text-black">
                       Approve connection requests before members can connect
+                    </h4>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Members will need your approval for each connection request.
                     </p>
                   </div>
                   <label className="relative inline-flex cursor-pointer">
