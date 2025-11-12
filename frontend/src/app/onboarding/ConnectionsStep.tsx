@@ -44,6 +44,13 @@ export default function ConnectionsStep({
   const { success, error } = useNotifications();
   const { user } = useAuthContext();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const clearPollingInterval = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, []);
   const availableIntegrations = integrations
     .filter((integration) => {
       // Filter out Slack/Discord if not enabled for this flow
@@ -101,10 +108,19 @@ export default function ConnectionsStep({
     loadIntegrations();
   }, [loadIntegrations]);
 
+  useEffect(() => {
+    return () => {
+      clearPollingInterval();
+    };
+  }, [clearPollingInterval]);
+
   const toggleIntegration = useCallback(
     async (type: string) => {
       const item = integrations.find((i) => i.type === type);
       if (!item) return;
+
+      const actionLabel = item.connected ? "disconnect" : "connect";
+      let popup: Window | null = null;
 
       try {
         setPendingIntegration(type);
@@ -119,7 +135,7 @@ export default function ConnectionsStep({
           return;
         }
 
-        const popup =
+        popup =
           typeof window !== "undefined"
             ? window.open("", `oauth_${type}`, "width=560,height=720")
             : null;
@@ -159,9 +175,11 @@ export default function ConnectionsStep({
         
         const started = Date.now();
 
+        clearPollingInterval();
+
         const poll = setInterval(async () => {
           if (popup && popup.closed) {
-            clearInterval(poll);
+            clearPollingInterval();
             return;
           }
 
@@ -172,14 +190,14 @@ export default function ConnectionsStep({
             );
 
             if (s.status === "connected") {
-              clearInterval(poll);
+              clearPollingInterval();
               if (popup && !popup.closed) popup.close();
               // Refresh integrations from API to get real status
               await loadIntegrations();
               success(`${item.name} connected`);
             }
             if (Date.now() - started > 90000) {
-              clearInterval(poll);
+              clearPollingInterval();
               if (popup && !popup.closed) popup.close();
               error("Connection timeout - please try again");
             }
@@ -187,8 +205,18 @@ export default function ConnectionsStep({
             console.error("Error checking connection status:", err);
           }
         }, 1500);
-      } catch {
-        // ignore
+        pollingIntervalRef.current = poll;
+      } catch (err) {
+        clearPollingInterval();
+        if (popup && !popup.closed) {
+          popup.close();
+        }
+        console.error(`Failed to ${actionLabel} ${item.name}:`, err);
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : `Failed to ${actionLabel} ${item.name}. Please try again.`;
+        error(message);
       } finally {
         setPendingIntegration(null);
       }
@@ -203,6 +231,7 @@ export default function ConnectionsStep({
       loadIntegrations,
       createdIndex?.id,
       user?.onboarding?.indexId,
+      clearPollingInterval,
     ]
   );
 
