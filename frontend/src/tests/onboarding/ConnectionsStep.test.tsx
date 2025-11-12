@@ -1,6 +1,6 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ConnectionsStep from '@/app/onboarding/ConnectionsStep';
 import { OnboardingFlow, OnboardingStep } from '@/types/onboarding';
 
@@ -100,6 +100,10 @@ describe('ConnectionsStep', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIntegrationsService.getIntegrations.mockResolvedValue(mockIntegrationsResponse);
+  });
+
+  afterEach(() => {
+    mockOnboardingContext.getNextStep.mockImplementation(() => OnboardingStep.InviteMembers);
   });
 
   describe('Integration Loading', () => {
@@ -376,48 +380,59 @@ describe('ConnectionsStep', () => {
   });
 
   describe('Navigation', () => {
-    it('navigates to previous step', () => {
+    it('navigates to previous step', async () => {
       renderConnectionsStep();
 
-      const backButton = screen.getByRole('button', { name: /back/i });
-      fireEvent.click(backButton);
+      const backButton = await screen.findByRole('button', { name: /back/i });
+
+      act(() => {
+        fireEvent.click(backButton);
+      });
 
       expect(mockOnboardingContext.setCurrentStep).toHaveBeenCalledWith(OnboardingStep.CreateIndex);
     });
 
-    it('completes onboarding when on last step', () => {
+    it('completes onboarding when on last step', async () => {
       const handleCompleteOnboarding = vi.fn();
 
       // Mock the context to return the same step (meaning it's the last)
-      mockOnboardingContext.getNextStep.mockReturnValueOnce(OnboardingStep.Connections);
+      mockOnboardingContext.getNextStep.mockImplementation(() => OnboardingStep.Connections);
 
       render(<ConnectionsStep handleCompleteOnboarding={handleCompleteOnboarding} />);
 
-      const nextButton = screen.getByRole('button', { name: /complete onboarding/i });
-      fireEvent.click(nextButton);
+      const nextButton = await screen.findByRole('button', { name: /complete onboarding/i });
+
+      act(() => {
+        fireEvent.click(nextButton);
+      });
 
       expect(handleCompleteOnboarding).toHaveBeenCalled();
     });
 
-    it('navigates to next step when not last step', () => {
+    it('navigates to next step when not last step', async () => {
       renderConnectionsStep();
 
-      const nextButton = screen.getByRole('button', { name: /next/i });
-      fireEvent.click(nextButton);
+      const nextButton = await screen.findByRole('button', { name: /next/i });
+
+      act(() => {
+        fireEvent.click(nextButton);
+      });
 
       expect(mockOnboardingContext.setCurrentStep).toHaveBeenCalledWith(OnboardingStep.InviteMembers);
     });
   });
 
   describe('UI Elements', () => {
-    it('renders all required sections', () => {
+    it('renders all required sections', async () => {
       renderConnectionsStep();
 
-      expect(screen.getByText('Connect your context')).toBeInTheDocument();
-      expect(screen.getByText('Connect accounts')).toBeInTheDocument();
-      expect(screen.getByText('Add from files & web')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /upload files/i })).toBeInTheDocument();
-      expect(screen.getByPlaceholderText('Paste URL here')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Connect your context')).toBeInTheDocument();
+        expect(screen.getByText('Connect accounts')).toBeInTheDocument();
+        expect(screen.getByText('Add from files & web')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /upload files/i })).toBeInTheDocument();
+        expect(screen.getByPlaceholderText('Paste URL here')).toBeInTheDocument();
+      });
     });
   });
 });
