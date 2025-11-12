@@ -9,11 +9,25 @@ export const connectionAction = pgEnum('connection_action', [
 // Polymorphic source type for intents
 export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 'discovery_form']);
 
+export enum OnboardingFlow {
+  Personal = 1,
+  Community = 2,
+  Invitation = 3,
+}
+
+export enum OnboardingStep {
+  Profile = 'profile',
+  Connections = 'connections',
+  CreateIndex = 'create_index',
+  InviteMembers = 'invite_members',
+  JoinIndexes = 'join_indexes',
+}
+
 // Onboarding state type
 export interface OnboardingState {
   completedAt?: string;  // ISO timestamp when completed
-  flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
+  flow?: OnboardingFlow;
+  currentStep?: OnboardingStep;
   indexId?: string;  // Persisted index ID for flow 2
   invitationCode?: string;  // Store which invitation was used (reference only)
 }
