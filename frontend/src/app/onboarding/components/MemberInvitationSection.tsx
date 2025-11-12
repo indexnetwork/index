@@ -14,15 +14,13 @@ interface MemberInvitationSectionProps {
   wasSummaryLoaded: boolean;
   displayMembers: Member[];
   displayTotalIntents: number;
-  setInviteMethod: (method: "automatic" | "link") => void;
-  handleInviteMembers: () => void;
+  handleInviteMembers: (method: "automatic" | "link") => void;
 }
 
 export default function MemberInvitationSection({
   wasSummaryLoaded,
   displayMembers,
   displayTotalIntents,
-  setInviteMethod,
   handleInviteMembers,
 }: MemberInvitationSectionProps) {
   if (!wasSummaryLoaded) {
@@ -97,8 +95,7 @@ export default function MemberInvitationSection({
         <div className="flex gap-3">
           <Button
             onClick={() => {
-              setInviteMethod("automatic");
-              handleInviteMembers();
+              handleInviteMembers("automatic");
             }}
             className="bg-[#1976D2] text-white hover:bg-[#1565C0] font-ibm-plex-mono"
           >
@@ -106,8 +103,7 @@ export default function MemberInvitationSection({
           </Button>
           <Button
             onClick={() => {
-              setInviteMethod("link");
-              handleInviteMembers();
+              handleInviteMembers("link");
             }}
             variant="outline"
             className="font-ibm-plex-mono"

@@ -17,7 +17,7 @@ export default function InviteMembersStep({
   handleCompleteOnboarding,
 }: InviteMembersStepProps) {
   const api = useAuthenticatedAPI();
-  const { success } = useNotifications();
+  const { success, error } = useNotifications();
   const { user } = useAuthContext();
   const { createdIndex, setCurrentStep, getPreviousStep } = useOnboardingContext();
 
@@ -37,9 +37,6 @@ export default function InviteMembersStep({
     Array<{ id: string; name: string; avatar: string | null }>
   >([]);
   const [displayTotalIntents, setDisplayTotalIntents] = useState(0);
-  const [inviteMethod, setInviteMethod] = useState<"automatic" | "link" | null>(
-    null
-  );
 
   // Load index summary for invite members step
   const loadIndexSummary = useCallback(async () => {
@@ -108,18 +105,32 @@ export default function InviteMembersStep({
     user?.onboarding?.indexId,
   ]);
 
-  const handleInviteMembers = useCallback(() => {
-    if (inviteMethod === "automatic") {
-      // In a real implementation, this would send invites
-      success("Invitations will be sent!");
-    } else if (inviteMethod === "link") {
-      success("Invite link copied to clipboard!");
-      if (createdIndex?.inviteCode) {
-        const inviteLink = `${window.location.origin}/l/${createdIndex.inviteCode}`;
-        navigator.clipboard.writeText(inviteLink);
+  const handleInviteMembers = useCallback(
+    async (method: "automatic" | "link") => {
+      if (method === "automatic") {
+        // In a real implementation, this would send invites
+        success("Invitations will be sent!");
+      } else if (method === "link") {
+        if (createdIndex?.inviteCode) {
+          const inviteLink = `${window.location.origin}/l/${createdIndex.inviteCode}`;
+          if (!navigator.clipboard?.writeText) {
+            error("Clipboard access is unavailable in this environment.");
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(inviteLink);
+            success("Invite link copied to clipboard!");
+          } catch (clipboardError) {
+            console.error("Failed to copy invite link to clipboard:", clipboardError);
+            error("Unable to copy invite link. Please copy it manually.");
+          }
+        } else {
+          error("No invite code to copy!");
+        }
       }
-    }
-  }, [inviteMethod, success, createdIndex?.inviteCode]);
+    },
+    [success, error, createdIndex?.inviteCode]
+  );
 
   // Load index summary when component mounts and reload every second
   useEffect(() => {
@@ -196,7 +207,6 @@ export default function InviteMembersStep({
         wasSummaryLoaded={wasSummaryLoaded}
         displayMembers={displayMembers}
         displayTotalIntents={displayTotalIntents}
-        setInviteMethod={setInviteMethod}
         handleInviteMembers={handleInviteMembers}
       />
 
