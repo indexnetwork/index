@@ -840,7 +840,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
               />
               
               {/* Animated Placeholder with react-typed - only when not focused */}
-              {!hasContent && !inputFocused && (
+              {!hasContent && attachments.length === 0 && !inputFocused && (
                 <div 
                   className="absolute top-0 left-0 text-lg font-ibm-plex-mono text-gray-500 py-1 pointer-events-none"
                   style={{ lineHeight: '1.5' }}
