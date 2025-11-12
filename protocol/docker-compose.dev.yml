@@ -21,7 +21,7 @@ services:
     #   - ./protocol/drizzle:/docker-entrypoint-initdb.d:ro
 
   minio:
-    image: cgr.dev/chainguard/minio:latest
+    image: cgr.dev/chainguard/minio:0.20251015
     container_name: local-minio
     command: server /data --address ":9000" --console-address ":9001"
     restart: unless-stopped
