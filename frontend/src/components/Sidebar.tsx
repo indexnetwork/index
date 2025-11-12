@@ -7,7 +7,6 @@ import { useIndexesState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Index as IndexType } from '@/lib/types';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
-import OwnerSettingsModal from '@/components/modals/OwnerSettingsModal';
 import { Shield, ArrowLeft, Inbox, Users, Settings, Plug, Crown } from 'lucide-react';
 import { useAdmin } from '@/contexts/APIContext';
 
@@ -280,14 +279,6 @@ export default function Sidebar() {
           open={!!memberSettingsIndex}
           onOpenChange={(open) => !open && setMemberSettingsIndex(null)}
           index={memberSettingsIndex}
-        />
-      )}
-
-      {ownerSettingsIndex && (
-        <OwnerSettingsModal
-          open={!!ownerSettingsIndex}
-          onOpenChange={(open) => !open && setOwnerSettingsIndex(null)}
-          index={ownerSettingsIndex}
         />
       )}
     </div>
