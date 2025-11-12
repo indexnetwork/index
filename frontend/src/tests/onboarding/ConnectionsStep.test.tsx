@@ -170,7 +170,7 @@ describe('ConnectionsStep', () => {
 
       // Mock window.open
       const mockPopup = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
-      vi.spyOn(window, 'open').mockReturnValue(mockPopup);
+      const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockPopup);
 
       renderConnectionsStep();
 
@@ -194,6 +194,7 @@ describe('ConnectionsStep', () => {
           expect(mockNotificationService.success).toHaveBeenCalledWith('Slack connected');
         });
       }
+      openSpy.mockRestore();
     });
   });
 
