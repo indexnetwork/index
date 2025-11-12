@@ -737,7 +737,7 @@ router.post('/:id/members/bulk-import',
       }
 
       // Profile fields that update the user's profile if empty
-      const profileFields = ['name', 'bio', 'twitter', 'website', 'location'];
+      const profileFields = ['name', 'intro', 'twitter', 'website', 'location'];
       
       const addedMembers: string[] = [];
       const importErrors: any[] = [];
@@ -765,7 +765,7 @@ router.post('/:id/members/bulk-import',
             email,
             name: row.name?.trim() || email.split('@')[0],
             avatar: undefined,
-            intro: row.bio?.trim() || undefined,
+            intro: row.intro?.trim() || undefined,
             location: row.location?.trim() || undefined,
             socials: Object.keys(socials).length > 0 ? socials : undefined
           });

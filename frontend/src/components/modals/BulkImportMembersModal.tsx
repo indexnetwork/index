@@ -28,7 +28,7 @@ export default function BulkImportMembersModal({
   const indexService = useIndexService();
 
   const handleDownloadExample = () => {
-    const csvContent = 'email,name,bio,twitter,website,location,role,expertise\njohn@example.com,John Smith,Product designer focused on AI,@johnsmith,https://johnsmith.com,San Francisco,Senior Designer,"UI design, prototyping"\njane@example.com,Jane Doe,Backend engineer,@janedoe,https://janedoe.dev,New York,Tech Lead,"Node.js, databases, APIs"\n';
+    const csvContent = 'email,name,intro,twitter,website,location,role,expertise\njohn@example.com,John Smith,Product designer focused on AI,@johnsmith,https://johnsmith.com,San Francisco,Senior Designer,"UI design, prototyping"\njane@example.com,Jane Doe,Backend engineer,@janedoe,https://janedoe.dev,New York,Tech Lead,"Node.js, databases, APIs"\n';
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -132,7 +132,7 @@ export default function BulkImportMembersModal({
               <ol className="text-xs text-blue-800 space-y-1.5 font-ibm-plex-mono list-decimal list-inside">
                 <li>Download the example CSV template below</li>
                 <li>Fill in your members&apos; details (email is required)</li>
-                <li>Profile fields (name, bio, twitter, website, location) update user profiles if empty</li>
+                <li>Profile fields (name, intro, twitter, website, location) update user profiles if empty</li>
                 <li>Any extra columns become member-specific metadata in this index</li>
                 <li>Upload the completed CSV file</li>
               </ol>
