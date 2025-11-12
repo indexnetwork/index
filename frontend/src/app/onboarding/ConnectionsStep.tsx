@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { IntegrationState, OnboardingStep } from "@/types/onboarding";
+import { IntegrationState, OnboardingStep } from "@/lib/onboardingTypes";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntegrationsService } from "@/services/integrations";

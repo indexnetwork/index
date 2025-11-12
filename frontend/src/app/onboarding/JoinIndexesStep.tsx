@@ -6,7 +6,7 @@ import { Index as IndexType } from "@/lib/types";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useIndexService } from "@/services/indexes";
 import { useIndexesState } from "@/contexts/IndexesContext";
-import { OnboardingStep } from "@/types/onboarding";
+import { OnboardingStep } from "@/lib/onboardingTypes";
 import { MOCK_INDEXES } from "./config";
 import { useOnboardingContext } from "@/contexts/OnboardingContext";
 import IndexCard from "./components/Index";

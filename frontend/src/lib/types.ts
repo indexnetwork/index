@@ -1,4 +1,4 @@
-import { OnboardingFlow, OnboardingStep } from "@/types/onboarding";
+import { OnboardingFlow, OnboardingStep } from "@/lib/onboardingTypes";
 // Onboarding state type
 export interface OnboardingState {
   completedAt?: string | null; // ISO timestamp when completed

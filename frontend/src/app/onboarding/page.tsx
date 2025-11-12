@@ -12,7 +12,7 @@ import { useAuth as useAuthService } from "@/contexts/APIContext";
 import {
   OnboardingFlow,
   OnboardingStep,
-} from "@/types/onboarding";
+} from "@/lib/onboardingTypes";
 import CreateIndexStep from "./CreateIndexStep";
 import InviteMembersStep from "./InviteMembersStep";
 import ConnectionsStep from "./ConnectionsStep";

@@ -1,4 +1,4 @@
-import { FlowConfigBase, OnboardingFlow, OnboardingStep } from "@/types/onboarding";
+import { FlowConfigBase, OnboardingFlow, OnboardingStep } from "@/lib/onboardingTypes";
 
 export const FLOW_CONFIGS = {
   [OnboardingFlow.Personal]: {

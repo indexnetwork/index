@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ConnectionsStep from '@/app/onboarding/ConnectionsStep';
-import { OnboardingFlow, OnboardingStep } from '@/types/onboarding';
+import { OnboardingFlow, OnboardingStep } from '@/lib/onboardingTypes';
 
 // Mock services
 const mockIntegrationsService = {

@@ -3,7 +3,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
-import { OnboardingMember } from "@/types/onboarding";
+import { OnboardingMember } from "@/lib/onboardingTypes";
 
 interface MemberInvitationSectionProps {
   wasSummaryLoaded: boolean;

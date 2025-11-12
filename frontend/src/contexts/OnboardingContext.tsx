@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, ReactNode, useState } from "react";
-import { OnboardingFlow, OnboardingStep, FlowConfigBase } from "@/types/onboarding";
+import { OnboardingFlow, OnboardingStep, FlowConfigBase } from "@/lib/onboardingTypes";
 import { FLOW_CONFIGS } from "@/app/onboarding/config";
 
 interface OnboardingContextType {

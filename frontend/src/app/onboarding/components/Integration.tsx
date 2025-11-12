@@ -2,7 +2,7 @@
 
 import React from "react";
 import Image from "next/image";
-import { IntegrationState } from "@/types/onboarding";
+import { IntegrationState } from "@/lib/onboardingTypes";
 
 interface IntegrationProps {
   integration: IntegrationState;

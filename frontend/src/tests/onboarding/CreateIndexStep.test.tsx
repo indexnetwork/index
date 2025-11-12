@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import CreateIndexStep from '@/app/onboarding/CreateIndexStep';
-import { OnboardingStep } from '@/types/onboarding';
+import { OnboardingStep } from '@/lib/onboardingTypes';
 
 // Mock services
 const mockIndexService = {

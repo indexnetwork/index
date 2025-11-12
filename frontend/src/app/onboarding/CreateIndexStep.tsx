@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { OnboardingStep } from "@/types/onboarding";
+import { OnboardingStep } from "@/lib/onboardingTypes";
 import { useIndexService } from "@/services/indexes";
 import { useAuthService } from "@/services/auth";
 import { useAuthContext } from "@/contexts/AuthContext";

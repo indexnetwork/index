@@ -11,7 +11,7 @@ import type { UpdateProfileRequest } from "@/services/auth";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth as useAuthService } from "@/contexts/APIContext";
 import { getSupportedFileExtensions, validateFiles } from "@/lib/file-validation";
-import { OnboardingStep } from "@/types/onboarding";
+import { OnboardingStep } from "@/lib/onboardingTypes";
 import { useOnboardingContext } from "@/contexts/OnboardingContext";
 
 interface ProfileStepProps {

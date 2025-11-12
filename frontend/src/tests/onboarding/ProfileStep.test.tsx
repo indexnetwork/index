@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ProfileStep from '@/app/onboarding/ProfileStep';
-import { OnboardingFlow, OnboardingStep } from '@/types/onboarding';
+import { OnboardingFlow, OnboardingStep } from '@/lib/onboardingTypes';
 
 // Mock contexts
 const mockUser = {
