@@ -5,7 +5,8 @@ import { indexes, users, indexMembers, intentIndexes, intents } from '../lib/sch
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists, sql } from 'drizzle-orm';
 import { 
-  checkIndexOwnership, 
+  checkIndexOwnership,
+  checkIndexAdminAccess,
   getUserAccessibleIndexIds,
   checkMultipleIndexesMembership,
   validateOwnershipChange,
@@ -621,10 +622,12 @@ router.post('/:id/members',
       const { id } = req.params;
       const { userId, permissions } = req.body;
 
-      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
-      if (!ownershipCheck.hasAccess) {
-        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      const adminCheck = await checkIndexAdminAccess(id, req.user!.id);
+      if (!adminCheck.hasAccess) {
+        return res.status(adminCheck.status!).json({ error: adminCheck.error });
       }
+
+      const isOwner = adminCheck.memberPermissions?.includes('owner') || false;
 
       // Validate user exists
       const userExists = await db.select({ id: users.id })
@@ -637,12 +640,19 @@ router.post('/:id/members',
       }
 
       // Validate permissions
-      const validPermissions = ['owner', 'member'];
+      const validPermissions = ['owner', 'admin', 'member'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
           error: 'Invalid permissions',
           invalidPermissions 
+        });
+      }
+
+      // Admins cannot add members as owners
+      if (!isOwner && permissions.includes('owner')) {
+        return res.status(403).json({ 
+          error: 'Only owners can add new owners' 
         });
       }
 
@@ -854,9 +864,9 @@ router.delete('/:id/members/:userId',
 
       const { id, userId } = req.params;
 
-      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
-      if (!ownershipCheck.hasAccess) {
-        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      const adminCheck = await checkIndexAdminAccess(id, req.user!.id);
+      if (!adminCheck.hasAccess) {
+        return res.status(adminCheck.status!).json({ error: adminCheck.error });
       }
 
       // Check if member exists
@@ -947,13 +957,15 @@ router.patch('/:id/members/:userId',
       const { id, userId } = req.params;
       const { permissions } = req.body;
 
-      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
-      if (!ownershipCheck.hasAccess) {
-        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      const adminCheck = await checkIndexAdminAccess(id, req.user!.id);
+      if (!adminCheck.hasAccess) {
+        return res.status(adminCheck.status!).json({ error: adminCheck.error });
       }
 
+      const isOwner = adminCheck.memberPermissions?.includes('owner') || false;
+
       // Validate permissions
-      const validPermissions = ['owner', 'member'];
+      const validPermissions = ['owner', 'admin', 'member'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -962,14 +974,35 @@ router.patch('/:id/members/:userId',
         });
       }
 
-      // Check if member exists
-      const existingMember = await db.select({ userId: indexMembers.userId })
+      // Check if member exists and get their current permissions
+      const existingMember = await db.select({ 
+        userId: indexMembers.userId,
+        permissions: indexMembers.permissions 
+      })
         .from(indexMembers)
         .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)))
         .limit(1);
 
       if (existingMember.length === 0) {
         return res.status(404).json({ error: 'Member not found' });
+      }
+
+      const currentPermissions = existingMember[0].permissions || [];
+      const isTargetOwner = currentPermissions.includes('owner');
+      const wantsToMakeOwner = permissions.includes('owner');
+
+      // Admins cannot promote to owner or modify existing owners
+      if (!isOwner) {
+        if (wantsToMakeOwner) {
+          return res.status(403).json({ 
+            error: 'Only owners can promote members to owner' 
+          });
+        }
+        if (isTargetOwner) {
+          return res.status(403).json({ 
+            error: 'Only owners can modify owner permissions' 
+          });
+        }
       }
 
       // Validate ownership change to ensure at least one owner remains

@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useIndexes } from '@/contexts/APIContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 import ClientLayout from '@/components/ClientLayout';
 import BulkImportMembersModal from '@/components/modals/BulkImportMembersModal';
 
@@ -25,6 +26,7 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
   const indexesService = useIndexes();
   const { indexes, updateIndex, removeIndex } = useIndexesState();
   const { success, error } = useNotifications();
+  const { user } = useAuthContext();
   
   const index = indexes?.find(idx => idx.id === indexId);
   
@@ -61,6 +63,8 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
   const [isCopied, setIsCopied] = useState<string | null>(null);
   const [dropdownPositions, setDropdownPositions] = useState<Record<string, { top: number; left: number; width: number }>>({});
   const [invitationLink, setInvitationLink] = useState<{ code: string; createdAt: string } | null>(null);
+  const [currentUserPermissions, setCurrentUserPermissions] = useState<string[]>([]);
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState<string | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -68,14 +72,20 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
 
   // Load members on mount
   const loadMembers = useCallback(async () => {
-    if (!indexId) return;
+    if (!indexId || !user?.id) return;
     try {
       const membersList = await indexesService.getMembers(indexId);
       setMembers(membersList);
+      
+      // Find current user's permissions
+      const currentMember = membersList.find(m => m.id === user.id);
+      if (currentMember) {
+        setCurrentUserPermissions(currentMember.permissions || []);
+      }
     } catch (error) {
       console.error('Error loading members:', error);
     }
-  }, [indexesService, indexId]);
+  }, [indexesService, indexId, user?.id]);
 
   useEffect(() => {
     loadMembers();
@@ -145,11 +155,19 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
           searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
         setShowSuggestions(false);
       }
+      
+      // Close role dropdown if clicking outside
+      if (roleDropdownOpen) {
+        const dropdown = document.querySelector(`[data-role-dropdown="${roleDropdownOpen}"]`);
+        if (dropdown && !dropdown.contains(event.target as Node)) {
+          setRoleDropdownOpen(null);
+        }
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [roleDropdownOpen]);
 
   const handleSaveSettings = async () => {
     if (!title.trim() || !indexId) {
@@ -294,6 +312,21 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
     }
   };
 
+  const handleChangeRole = async (memberId: string, newRole: 'owner' | 'admin' | 'member') => {
+    if (!indexId) return;
+    try {
+      const updatedMember = await indexesService.updateMemberPermissions(indexId, memberId, [newRole]);
+      setMembers(prev => prev.map(member => 
+        member.id === memberId ? { ...member, permissions: updatedMember.permissions } : member
+      ));
+      setRoleDropdownOpen(null);
+      success(`Role updated to ${newRole}`);
+    } catch (err) {
+      console.error('Error updating role:', err);
+      error('Failed to update member role');
+    }
+  };
+
   const handleSearchInputChange = (value: string) => {
     setMemberSearchQuery(value);
     const shouldShow = value.length > 0;
@@ -324,6 +357,9 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
   const getMemberRoleText = (permissions: string[]) => {
     if (permissions.includes('owner')) {
       return 'Owner';
+    }
+    if (permissions.includes('admin')) {
+      return 'Admin';
     }
     return 'Member';
   };
@@ -668,7 +704,7 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                     className="font-ibm-plex-mono"
                   >
                     <Upload className="h-4 w-4 mr-2" />
-                    Import Members
+                    Import
                   </Button>
                 </div>
                 
@@ -717,14 +753,87 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <div className={`px-2 py-1 border border-gray-300 rounded text-xs ${
-                            member.permissions.includes('owner') ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'
-                          }`}>
-                            <span className={`${
-                              member.permissions.includes('owner') ? 'text-blue-700 font-medium' : 'text-gray-700'
-                            }`}>
-                              {getMemberRoleText(member.permissions)}
-                            </span>
+                          {/* Role dropdown */}
+                          <div className="relative" data-role-dropdown={member.id}>
+                            <button
+                              onClick={() => {
+                                // Only allow role changes if current user is owner or admin
+                                // and the member is not an owner (owners cannot be changed)
+                                const isOwner = currentUserPermissions.includes('owner');
+                                const isAdmin = currentUserPermissions.includes('admin');
+                                const canChange = (isOwner || isAdmin) && !member.permissions.includes('owner');
+                                
+                                if (canChange) {
+                                  setRoleDropdownOpen(roleDropdownOpen === member.id ? null : member.id);
+                                }
+                              }}
+                              className={`px-2 py-1 border border-gray-300 rounded text-xs flex items-center gap-1 ${
+                                member.permissions.includes('owner') 
+                                  ? 'bg-blue-50 border-blue-200' 
+                                  : member.permissions.includes('admin')
+                                  ? 'bg-amber-50 border-amber-200'
+                                  : 'bg-gray-50'
+                              } ${(currentUserPermissions.includes('owner') || currentUserPermissions.includes('admin')) && !member.permissions.includes('owner') ? 'cursor-pointer hover:opacity-75' : 'cursor-default'}`}
+                            >
+                              <span className={`${
+                                member.permissions.includes('owner') 
+                                  ? 'text-blue-700 font-medium' 
+                                  : member.permissions.includes('admin')
+                                  ? 'text-amber-700 font-medium'
+                                  : 'text-gray-700'
+                              }`}>
+                                {getMemberRoleText(member.permissions)}
+                              </span>
+                              {(!member.permissions.includes('owner')) && (
+                                <ChevronDown className="h-3 w-3 text-black" />
+                              )}
+                            </button>
+                            
+                            {/* Role dropdown menu */}
+                            {roleDropdownOpen === member.id && (
+                              <div className="absolute right-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                                {currentUserPermissions.includes('owner') && (
+                                  <>
+                                    {!member.permissions.includes('admin') && (
+                                      <button
+                                        onClick={() => handleChangeRole(member.id, 'admin')}
+                                        className="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 text-amber-700"
+                                      >
+                                        Admin 
+                                      </button>
+                                    )}
+                                    {!member.permissions.includes('member') && (
+                                      <button
+                                        onClick={() => handleChangeRole(member.id, 'member')}
+                                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-700"
+                                      >
+                                        Member 
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                                {!currentUserPermissions.includes('owner') && currentUserPermissions.includes('admin') && (
+                                  <>
+                                    {!member.permissions.includes('admin') && !member.permissions.includes('owner') && (
+                                      <button
+                                        onClick={() => handleChangeRole(member.id, 'admin')}
+                                        className="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 text-amber-700"
+                                      >
+                                        Admin
+                                      </button>
+                                    )}
+                                    {!member.permissions.includes('member') && !member.permissions.includes('owner') && (
+                                      <button
+                                        onClick={() => handleChangeRole(member.id, 'member')}
+                                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-700"
+                                      >
+                                        Member
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </div>
                           {!member.permissions.includes('owner') && (
                             <Button

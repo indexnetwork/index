@@ -110,6 +110,17 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     await api.delete(`/indexes/${indexId}/members/${userId}`);
   },
 
+  // Update member permissions
+  updateMemberPermissions: async (indexId: string, userId: string, permissions: string[]): Promise<Member> => {
+    const response = await api.patch<{ member: Member; message: string }>(`/indexes/${indexId}/members/${userId}`, { 
+      permissions 
+    });
+    if (!response.member) {
+      throw new Error('Failed to update member permissions');
+    }
+    return response.member;
+  },
+
   // Get members of an index
   getMembers: async (indexId: string): Promise<Member[]> => {
     const response = await api.get<{ members: Member[] }>(`/indexes/${indexId}/members`);

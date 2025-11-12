@@ -177,6 +177,23 @@ export const checkIndexOwnership = async (indexId: string, userId: string): Prom
   };
 };
 
+/**
+ * Checks if a user has admin or owner access to an index.
+ * This is used for member management operations where admins should also have access.
+ */
+export const checkIndexAdminAccess = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
+  const result = await checkUserIndexAccess(indexId, userId);
+  if (!result.hasAccess || (!result.permissions.includes('owner') && !result.permissions.includes('admin'))) {
+    return { hasAccess: false, error: 'Access denied', status: 403 };
+  }
+  // Convert UserAccessResult to IndexAccessResult for backward compatibility
+  return {
+    hasAccess: true,
+    indexData: result.indexData,
+    memberPermissions: result.permissions
+  };
+};
+
 export interface MultipleIndexAccessResult {
   hasAccess: boolean;
   validIndexIds: string[];
