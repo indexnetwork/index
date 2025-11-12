@@ -42,6 +42,11 @@ export default function Sidebar() {
       setIndexes([{ id: 'all', name: 'All Indexes', isSelectAll: true, isSelected: selectedIndexId === 'all' }]);
       return;
     }
+
+    // Deduplication if needed
+    const uniqueIndexes = Array.from(
+      new Map(rawIndexes.map((index: IndexType) => [index.id, index])).values()
+    );
     
     const indexItems: IndexItem[] = [
       { 
@@ -50,7 +55,7 @@ export default function Sidebar() {
         isSelectAll: true,
         isSelected: selectedIndexId === 'all'
       },
-      ...rawIndexes.map((index: IndexType) => ({
+      ...uniqueIndexes.map((index: IndexType) => ({
         id: index.id,
         name: index.title,
         isSelected: selectedIndexId === index.id,
