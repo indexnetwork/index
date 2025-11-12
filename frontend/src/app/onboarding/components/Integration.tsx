@@ -38,6 +38,7 @@ export default function Integration({
           <div className="w-11 h-6 bg-[#F5F5F5] rounded-full animate-pulse" />
         ) : (
           <button
+            aria-label={`${integration.connected ? 'Connected' : 'Disconnected'} ${integration.name}`}
             onClick={() => onToggle(integration.type)}
             disabled={pendingIntegration === integration.type}
             className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${
@@ -45,7 +46,7 @@ export default function Integration({
             } ${pendingIntegration === integration.type ? 'opacity-70' : ''}`}
           >
             <span
-              className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
+              className={`absolute top-px left-px h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
                 integration.connected ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
