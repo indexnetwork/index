@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import Image from "next/image";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { useNotifications } from "@/contexts/NotificationContext";
+import type { UpdateProfileRequest } from "@/services/auth";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth as useAuthService } from "@/contexts/APIContext";
 import { getSupportedFileExtensions, validateFiles } from "@/lib/file-validation";
@@ -29,6 +30,7 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
 
   // Profile step states
   const [name, setName] = useState('');
+  const [location, setLocation] = useState('');
   const [intro, setIntro] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -37,14 +39,30 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
     id: string | null;
     name: string;
     intro: string;
+    location: string;
+    socialX: string;
+    socialLinkedin: string;
+    socialGithub: string;
+    websites: Array<{ label: string; url: string }>;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+   // Social links state
+  const [socialX, setSocialX] = useState('');
+  const [socialLinkedin, setSocialLinkedin] = useState('');
+  const [socialGithub, setSocialGithub] = useState('');
+  const [websites, setWebsites] = useState<Array<{ label: string; url: string }>>([]);
 
   // Initialize form fields when user data is available
   useEffect(() => {
     if (!user) {
       setName("");
       setIntro("");
+      setLocation("");
+      setSocialX("");
+      setSocialLinkedin("");
+      setSocialGithub("");
+      setWebsites([]);
       lastSyncedUserRef.current = null;
       setProfileInitialized(false);
       return;
@@ -54,21 +72,44 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
     const normalizedIntro = user.intro ?? "";
     const snapshot = lastSyncedUserRef.current;
     const normalizedId = user.id ?? null;
-
+    const normalizedLocation = user.location ?? '';
+    const normalizedSocialX = user.socials?.x ?? '';
+    const normalizedSocialLinkedin = user.socials?.linkedin ?? '';
+    const normalizedSocialGithub = user.socials?.github ?? '';
+    const normalizedWebsites =
+      (user.socials?.websites ?? []).map((w) => ({
+        label: w?.label ?? '',
+        url: w?.url ?? '',
+      }));
     const shouldSyncProfile =
-      !profileInitialized ||
-      !snapshot ||
+    !profileInitialized ||
+    !snapshot ||
       snapshot.id !== normalizedId ||
       snapshot.name !== normalizedName ||
-      snapshot.intro !== normalizedIntro;
-
+      snapshot.intro !== normalizedIntro ||
+      snapshot.location !== normalizedLocation ||
+      snapshot.socialX !== normalizedSocialX ||
+      snapshot.socialLinkedin !== normalizedSocialLinkedin ||
+      snapshot.socialGithub !== normalizedSocialGithub ||
+      JSON.stringify(snapshot.websites) !== JSON.stringify(normalizedWebsites);
+    
     if (shouldSyncProfile) {
+      setLocation(normalizedLocation);
       setName(normalizedName);
       setIntro(normalizedIntro);
+      setSocialX(normalizedSocialX);
+      setSocialLinkedin(normalizedSocialLinkedin);
+      setSocialGithub(normalizedSocialGithub);
+      setWebsites(normalizedWebsites);
       lastSyncedUserRef.current = {
         id: normalizedId,
         name: normalizedName,
         intro: normalizedIntro,
+        location: normalizedLocation,
+        socialX: normalizedSocialX,
+        socialLinkedin: normalizedSocialLinkedin,
+        socialGithub: normalizedSocialGithub,
+        websites: normalizedWebsites,
       };
       setProfileInitialized(true);
     }
@@ -95,20 +136,45 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
       reader.readAsDataURL(file);
     }
   };
-
+  
   const handleProfileSubmit = async () => {
     if (!user || !name.trim()) return;
 
     setIsLoading(true);
     try {
-      const profilePayload: {
-        name: string;
-        intro: string;
-        avatar?: string;
-      } = {
+      const socialWebsites = websites
+        .map((website) => ({
+          label: website.label?.trim() || '',
+          url: website.url.trim(),
+        }))
+        .filter((website) => website.url);
+
+      const socialsPayload: NonNullable<UpdateProfileRequest["socials"]> = {};
+
+      if (socialX.trim()) {
+        socialsPayload.x = socialX.trim();
+      }
+
+      if (socialLinkedin.trim()) {
+        socialsPayload.linkedin = socialLinkedin.trim();
+      }
+
+      if (socialGithub.trim()) {
+        socialsPayload.github = socialGithub.trim();
+      }
+
+      if (socialWebsites.length > 0) {
+        socialsPayload.websites = socialWebsites;
+      }
+
+      const profilePayload: UpdateProfileRequest = {
         name: name.trim(),
         intro: intro.trim(),
       };
+
+      if (location.trim()) {
+        profilePayload.location = location.trim();
+      }
 
       if (avatarFile) {
         const avatarFilename = await uploadAvatar(avatarFile);
@@ -117,8 +183,13 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
         }
       }
 
-      const updatedUser = await authService.updateProfile(profilePayload);
+      if (Object.keys(socialsPayload).length > 0) {
+        profilePayload.socials = socialsPayload;
+      }
 
+      const updatedUser = await authService.updateProfile(profilePayload);
+          
+        
       if (updatedUser) {
         // Save onboarding state: flow and next step
         const nextStep = getNextStep(OnboardingStep.Profile);
@@ -204,6 +275,7 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
           />
         </div>
 
+
         <div>
           <label htmlFor={introInputId} className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Intro</label>
           <Textarea
@@ -214,13 +286,102 @@ export default function ProfileStep({ isLoading, setIsLoading }: ProfileStepProp
             className="w-full min-h-[100px]"
           />
         </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Location</label>
+          <Input
+            type="text"
+            placeholder="San Francisco, CA"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            className="w-full"
+          />
+        </div>
+      </div>
+
+      {/* Social Links Section */}
+      <div className="space-y-3 pt-2">
+        <h3 className="text-sm font-medium text-black font-ibm-plex-mono mb-3">Socials</h3>
+        
+        {/* X (Twitter) */}
+        <div className="flex items-center border border-gray-300">
+          <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+            x.com/
+          </div>
+          <Input
+            type="text"
+            value={socialX}
+            onChange={(e) => setSocialX(e.target.value)}
+            className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+
+        {/* LinkedIn */}
+        <div className="flex items-center border border-gray-300">
+          <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+            linkedin.com/in/
+          </div>
+          <Input
+            type="text"
+            value={socialLinkedin}
+            onChange={(e) => setSocialLinkedin(e.target.value)}
+            className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+
+        {/* GitHub */}
+        <div className="flex items-center border border-gray-300">
+          <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+            github.com/
+          </div>
+          <Input
+            type="text"
+            value={socialGithub}
+            onChange={(e) => setSocialGithub(e.target.value)}
+            className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+
+        {/* Custom Websites */}
+        {websites.map((website, index) => (
+          <div key={index} className="flex items-center border border-gray-300">
+            <Input
+              value={website.url}
+              onChange={(e) => {
+                const updated = [...websites];
+                updated[index].url = e.target.value;
+                setWebsites(updated);
+              }}
+              placeholder="https://example.com"
+              className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            />
+            <button
+              type="button"
+              onClick={() => setWebsites(websites.filter((_, i) => i !== index))}
+              className="px-3 py-2 text-gray-500 hover:text-red-600 transition-colors border-l border-gray-300"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+
+        {/* Add Website Button */}
+        {websites.length < 3 && (
+          <button
+            type="button"
+            onClick={() => setWebsites([...websites, { label: '', url: '' }])}
+            className="w-full flex items-center justify-center px-3 py-2 border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors font-ibm-plex-mono text-sm"
+          >
+            +
+          </button>
+        )}
       </div>
 
       <div className="flex gap-3 mt-8 max-w-md">
         <Button
           onClick={handleProfileSubmit}
           disabled={!name.trim() || isLoading}
-          className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
+          className="flex-1 bg-black text-white hover:bg-black font-ibm-plex-mono"
         >
           {isLoading ? 'Saving...' : 'Next'}
         </Button>

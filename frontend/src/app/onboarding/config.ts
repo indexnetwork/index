@@ -42,42 +42,42 @@ export const FLOW_CONFIGS = {
   },
 } satisfies Record<OnboardingFlow, FlowConfigBase>;
 
-  // Mock indexes for the final step (fallback if no public indexes)
-  export const MOCK_INDEXES = [
-    {
-      id: "index-early",
-      name: "Index Early",
-      description: "AI, Web3, Decentralization",
-      members: 1250,
-    },
-    {
-      id: "techstars",
-      name: "Techstars Universe",
-      description: "AI, Web3, Decentralization",
-      members: 890,
-    },
-    {
-      id: "base",
-      name: "Base",
-      description: "AI, Web3, Decentralization",
-      members: 2100,
-    },
-    {
-      id: "consensys",
-      name: "Consensys",
-      description: "AI, Web3, Decentralization",
-      members: 750,
-    },
-    {
-      id: "protocol-labs",
-      name: "Protocol Labs",
-      description: "AI, Web3, Decentralization",
-      members: 1400,
-    },
-    {
-      id: "kernel",
-      name: "Kernel",
-      description: "AI, Web3, Decentralization",
-      members: 680,
-    },
-  ];
+// Mock indexes for the final step (fallback if no public indexes)
+export const MOCK_INDEXES = [
+  {
+    id: "index-early",
+    name: "Index Early",
+    description: "AI, Web3, Decentralization",
+    members: 1250,
+  },
+  {
+    id: "techstars",
+    name: "Techstars Universe",
+    description: "AI, Web3, Decentralization",
+    members: 890,
+  },
+  {
+    id: "base",
+    name: "Base",
+    description: "AI, Web3, Decentralization",
+    members: 2100,
+  },
+  {
+    id: "consensys",
+    name: "Consensys",
+    description: "AI, Web3, Decentralization",
+    members: 750,
+  },
+  {
+    id: "protocol-labs",
+    name: "Protocol Labs",
+    description: "AI, Web3, Decentralization",
+    members: 1400,
+  },
+  {
+    id: "kernel",
+    name: "Kernel",
+    description: "AI, Web3, Decentralization",
+    members: 680,
+  },
+];

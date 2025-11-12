@@ -14,6 +14,7 @@ import { QueueStatus } from "@/services/queue";
 import { formatDate } from "@/lib/utils";
 import { useOnboardingContext } from "@/contexts/OnboardingContext";
 import Integration from "./components/Integration";
+import { api } from "@/lib/api";
 
 interface ConnectionsStepProps {
   handleCompleteOnboarding: () => void;
@@ -26,9 +27,8 @@ export default function ConnectionsStep({
   // Connections step states
   const [integrations, setIntegrations] = useState<IntegrationState[]>([]);
   const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
-  const [, setIntegrationsIndexId] = useState<string | undefined>(undefined);
   const [pendingIntegration, setPendingIntegration] = useState<string | null>(null);
-  const [queueStatus] = useState<QueueStatus | null>(null);
+  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
 
   // File and link states
   const [linkUrl, setLinkUrl] = useState("");
@@ -51,6 +51,13 @@ export default function ConnectionsStep({
       pollingIntervalRef.current = null;
     }
   }, []);
+  const queuePollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const clearQueuePollingInterval = useCallback(() => {
+    if (queuePollingIntervalRef.current) {
+      clearInterval(queuePollingIntervalRef.current);
+      queuePollingIntervalRef.current = null;
+    }
+  }, []);
   const availableIntegrations = integrations
     .filter((integration) => {
       // Filter out Slack/Discord if not enabled for this flow
@@ -59,14 +66,23 @@ export default function ConnectionsStep({
       }
       return true;
     })
+
   // Load integrations status
   const loadIntegrations = useCallback(async () => {
     try {
       // Determine if we should filter by indexId based on flow config
       let queryIndexId: string | undefined;
-      if (flowConfig.features.requireIndexId) {
+      const requiresIndexId = flowConfig.features.requireIndexId;
+
+      if (requiresIndexId) {
         queryIndexId =
           user?.onboarding?.indexId || createdIndex?.id || undefined;
+
+        if (!queryIndexId) {
+          setIntegrations([]);
+          setIntegrationsLoaded(false);
+          return;
+        }
       }
 
       const response = await integrationsService.getIntegrations(queryIndexId);
@@ -88,13 +104,11 @@ export default function ConnectionsStep({
 
       setIntegrations(updatedIntegrations);
       setIntegrationsLoaded(true);
-      setIntegrationsIndexId(queryIndexId);
     } catch (error) {
       console.error('Failed to fetch integrations:', error);
       // Fallback to default integrations if API fails
       setIntegrations(getIntegrationsList());
       setIntegrationsLoaded(true);
-      setIntegrationsIndexId(undefined);
     }
   }, [
     integrationsService,
@@ -113,6 +127,46 @@ export default function ConnectionsStep({
       clearPollingInterval();
     };
   }, [clearPollingInterval]);
+
+  // * Polls queue status while this component is mounted
+  useEffect(() => {
+    let isActive = true;
+    const fetchQueueStatus = async () => {
+      try {
+        const response = await api.get<{ jobCounts?: Record<string, { pending: number; active: number; completed: number }>; totalPending?: number }>('/queue/status');
+        // Map the response from jobCounts to friendly property names
+        if (response?.jobCounts && isActive) {
+          const status: QueueStatus = {
+            indexIntent: response.jobCounts['index_intent'] || { pending: 0, active: 0, completed: 0 },
+            generateIntents: response.jobCounts['generate_intents'] || { pending: 0, active: 0, completed: 0 },
+            semanticRelevancy: response.jobCounts['broker_semantic_relevancy'] || { pending: 0, active: 0, completed: 0 },
+            totalPending: response.totalPending || 0
+          };
+          setQueueStatus(status);
+        }
+      } catch {
+        // Silently fail - queue status is not critical
+        if (isActive) {
+          setQueueStatus(null);
+        }
+      }
+    };
+
+    // * Performs initial fetch
+    fetchQueueStatus();
+
+    // * Polls queue status every second
+    queuePollingIntervalRef.current = setInterval(() => {
+      fetchQueueStatus();
+    }, 1000);
+
+    return () => {
+      isActive = false;
+      clearQueuePollingInterval();
+      setQueueStatus(null);
+    };
+  }, [clearQueuePollingInterval]);
+
 
   const toggleIntegration = useCallback(
     async (type: string) => {
@@ -134,7 +188,6 @@ export default function ConnectionsStep({
           
           return;
         }
-
         popup =
           typeof window !== "undefined"
             ? window.open("", `oauth_${type}`, "width=560,height=720")
@@ -154,7 +207,6 @@ export default function ConnectionsStep({
           }
           payload.indexId = indexId;
         }
-
         const res = await integrationsService.connectIntegration(
           type,
           payload
@@ -234,7 +286,6 @@ export default function ConnectionsStep({
       clearPollingInterval,
     ]
   );
-
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
 

@@ -39,7 +39,7 @@ export default function InviteMembersStep({
   const [displayTotalIntents, setDisplayTotalIntents] = useState(0);
 
   const isFetchingSummary = useRef(false);
-
+    
   // Load index summary for invite members step
   const loadIndexSummary = useCallback(async () => {
     if (isFetchingSummary.current) {
@@ -60,7 +60,6 @@ export default function InviteMembersStep({
         // If no indexId, we can't load summary - this will be handled by the component
         return;
       }
-
       const response = await api.get<{
         exampleIntents: Array<{
           id: string;
@@ -97,8 +96,12 @@ export default function InviteMembersStep({
       console.error("Failed to fetch index summary:", err);
       // Fallback to empty data only on first load
       if (!wasSummaryLoaded) {
-        setDisplayIntents([]);
-        setDisplayMembers([]);
+        const fallbackIntents: Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }> = [];
+        const fallbackMembers: Array<{ id: string; name: string; avatar: string | null }> = [];
+        
+        
+        setDisplayIntents(fallbackIntents);
+        setDisplayMembers(fallbackMembers);
         setDisplayTotalIntents(0);
         setWasSummaryLoaded(true);
       }
