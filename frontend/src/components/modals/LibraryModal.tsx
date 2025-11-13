@@ -294,7 +294,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       const availableTypes = response.availableTypes || [];
       
       // Filter to only show single-user integrations: Notion, Airtable, LinkedIn, Google Docs
-      const singleUserIntegrationTypes = ['notion', 'airtable', 'linkedin', 'googledocs'];
+      const singleUserIntegrationTypes = ['notion', 'airtable'];
       const filteredAvailableTypes = availableTypes.filter(type => 
         singleUserIntegrationTypes.includes(type.type.toLowerCase())
       );

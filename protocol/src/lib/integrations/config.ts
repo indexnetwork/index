@@ -18,30 +18,30 @@ export const INTEGRATIONS = {
     toolkit: 'SLACK',
     authConfigId: process.env.COMPOSIO_AUTH_CONFIG_SLACK
   },
-  discord: { 
-    name: 'discord', 
-    displayName: 'Discord', 
-    toolkit: 'DISCORDBOT',
-    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_DISCORD
-  },
+//  discord: { 
+//    name: 'discord', 
+//    displayName: 'Discord', 
+//    toolkit: 'DISCORDBOT',
+//    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_DISCORD
+//  },
   airtable: { 
     name: 'airtable', 
     displayName: 'Airtable', 
     toolkit: 'AIRTABLE',
     authConfigId: process.env.COMPOSIO_AUTH_CONFIG_AIRTABLE
   },
-  linkedin: { 
-    name: 'linkedin', 
-    displayName: 'LinkedIn', 
-    toolkit: 'LINKEDIN',
-    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_LINKEDIN
-  },
-  googledocs: { 
-    name: 'googledocs', 
-    displayName: 'Google Docs', 
-    toolkit: 'GOOGLEDOCS',
-    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_GOOGLEDOCS
-  },
+//  linkedin: { 
+//    name: 'linkedin', 
+//    displayName: 'LinkedIn', 
+//    toolkit: 'LINKEDIN',
+//    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_LINKEDIN
+//  },
+//  googledocs: { 
+//    name: 'googledocs', 
+//    displayName: 'Google Docs', 
+//    toolkit: 'GOOGLEDOCS',
+//    authConfigId: process.env.COMPOSIO_AUTH_CONFIG_GOOGLEDOCS
+//  },
 } as const satisfies Record<string, IntegrationConfig>;
 
 export type IntegrationName = keyof typeof INTEGRATIONS;

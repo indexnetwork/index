@@ -18,9 +18,10 @@ interface IntegrationItem {
 
 const SUPPORTED_INTEGRATIONS = [
   { type: 'slack', name: 'Slack' },
-  { type: 'discord', name: 'Discord' },
+  //{ type: 'discord', name: 'Discord' },
   { type: 'notion', name: 'Notion' },
-  { type: 'googledocs', name: 'Google Docs' }
+  { type: 'airtable', name: 'Airtable' },
+  //{ type: 'googledocs', name: 'Google Docs' }
 ];
 
 export default function IntegrationsPage({ params }: { params: Promise<{ indexId: string }> }) {
