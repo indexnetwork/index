@@ -138,6 +138,7 @@ describe('ConnectionsStep', () => {
   describe('Integration Connection/Disconnection', () => {
     it('disconnects an integration successfully', async () => {
       mockIntegrationsService.disconnectIntegration.mockResolvedValue(undefined);
+      mockIntegrationsService.getIntegrations.mockResolvedValueOnce(mockIntegrationsResponse);
       mockIntegrationsService.getIntegrations.mockResolvedValue({
         integrations: [],
         availableTypes: mockIntegrationsResponse.availableTypes,
