@@ -31,7 +31,6 @@ export default function JoinIndexesStep({
 
   // Load public indexes when on join_indexes step
   useEffect(() => {
-    console.log("loadPublicIndexes", "test");
     const loadPublicIndexes = async () => {
       if (currentStep === OnboardingStep.JoinIndexes && !publicIndexesLoaded) {
         try {
