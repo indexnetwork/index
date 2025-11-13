@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, use } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import ClientLayout from '@/components/ClientLayout';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { createIntegrationsService } from '@/services/integrations';
+import { createIntegrationsService, type DirectorySyncConfig } from '@/services/integrations';
 import { useAuthenticatedAPI } from '@/lib/api';
 import DirectoryConfigModal from '@/components/modals/DirectoryConfigModal';
 import { INTEGRATIONS } from '@/config/integrations';
@@ -34,7 +34,7 @@ export default function IntegrationsPage({ params }: { params: Promise<{ indexId
   const [integrations, setIntegrations] = useState<IntegrationItem[]>([]);
   const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
   const [pendingIntegration, setPendingIntegration] = useState<string | null>(null);
-  const [directoryConfigs, setDirectoryConfigs] = useState<Record<string, any>>({});
+  const [directoryConfigs, setDirectoryConfigs] = useState<Record<string, DirectorySyncConfig>>({});
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedIntegrationForConfig, setSelectedIntegrationForConfig] = useState<IntegrationItem | null>(null);
   const [syncingDirectory, setSyncingDirectory] = useState<string | null>(null);
@@ -68,7 +68,7 @@ export default function IntegrationsPage({ params }: { params: Promise<{ indexId
       setIntegrationsLoaded(true);
 
       // Load directory configs for directory-enabled integrations
-      const configs: Record<string, any> = {};
+      const configs: Record<string, DirectorySyncConfig> = {};
       for (const integration of formattedIntegrations) {
         const integrationDef = INTEGRATIONS.find(i => i.type === integration.type);
         if (integrationDef?.requiresDirectoryConfig && integration.id) {
@@ -77,7 +77,7 @@ export default function IntegrationsPage({ params }: { params: Promise<{ indexId
             if (configResponse.config) {
               configs[integration.id] = configResponse.config;
             }
-          } catch (err) {
+          } catch {
             // Config not set yet, that's fine
           }
         }
@@ -311,7 +311,7 @@ export default function IntegrationsPage({ params }: { params: Promise<{ indexId
                                           await integrationsService.syncDirectory(it.id);
                                           success('Directory sync started');
                                           await loadIntegrations();
-                                        } catch (err) {
+                                        } catch {
                                           showError('Failed to sync directory');
                                         } finally {
                                           setSyncingDirectory(null);

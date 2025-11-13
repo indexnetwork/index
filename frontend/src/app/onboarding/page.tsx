@@ -14,7 +14,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
 import { useIndexService } from "@/services/indexes";
 import { useIntegrationsService } from "@/services/integrations";
-import { IntegrationName, getIntegrationsList, getIndexIntegrations, getUserIntegrations } from "@/config/integrations";
+import { IntegrationName, getIndexIntegrations, getUserIntegrations } from "@/config/integrations";
 import LibraryModal from "@/components/modals/LibraryModal";
 import { validateFiles, getSupportedFileExtensions, formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
 import { formatDate } from "@/lib/utils";

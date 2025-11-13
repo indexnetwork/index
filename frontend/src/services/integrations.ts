@@ -32,6 +32,35 @@ export interface IntegrationStatusResponse {
   connectedAt?: string;
 }
 
+export interface DirectorySyncConfig {
+  enabled: boolean;
+  source: {
+    id: string;
+    name: string;
+    subId?: string;
+    subName?: string;
+  };
+  columnMappings: {
+    email: string;
+    name?: string;
+    intro?: string;
+    location?: string;
+    twitter?: string;
+    linkedin?: string;
+    github?: string;
+    website?: string;
+  };
+  lastSyncAt?: string;
+  lastSyncStatus?: 'success' | 'error' | 'partial';
+  lastSyncError?: string;
+  memberCount?: number;
+}
+
+export interface DirectorySyncError {
+  record: Record<string, unknown>;
+  error: string;
+}
+
 // Service functions factory that takes an authenticated API instance
 export const createIntegrationsService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Get all integrations, optionally filtered by indexId
@@ -74,15 +103,15 @@ export const createIntegrationsService = (api: ReturnType<typeof useAuthenticate
     return api.get(`/integrations/${integrationId}/directory/sources/${sourceId}/schema${params}`);
   },
 
-  getDirectoryConfig: async (integrationId: string): Promise<{ config: any }> => {
+  getDirectoryConfig: async (integrationId: string): Promise<{ config: DirectorySyncConfig | null }> => {
     return api.get(`/integrations/${integrationId}/directory/config`);
   },
 
-  saveDirectoryConfig: async (integrationId: string, config: any): Promise<{ success: boolean; config: any }> => {
+  saveDirectoryConfig: async (integrationId: string, config: Omit<DirectorySyncConfig, 'enabled' | 'lastSyncAt' | 'lastSyncStatus' | 'lastSyncError' | 'memberCount'>): Promise<{ success: boolean; config: DirectorySyncConfig }> => {
     return api.post(`/integrations/${integrationId}/directory/config`, { config });
   },
 
-  syncDirectory: async (integrationId: string): Promise<{ success: boolean; membersAdded: number; errors: any[]; status: string }> => {
+  syncDirectory: async (integrationId: string): Promise<{ success: boolean; membersAdded: number; errors: DirectorySyncError[]; status: 'success' | 'error' | 'partial' }> => {
     return api.post(`/integrations/${integrationId}/directory/sync`);
   },
 });

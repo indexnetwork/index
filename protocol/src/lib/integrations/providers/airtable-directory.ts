@@ -80,7 +80,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
           sources.push({
             id: base.id,
             name: base.name || base.id,
-            subSources: tables.map(table => ({
+            subSources: tables.map((table: AirtableTable) => ({
               id: table.id,
               name: table.name || table.id
             }))
@@ -136,7 +136,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
         throw new Error('Table not found');
       }
 
-      const columns: Column[] = (table.fields || []).map(field => ({
+      const columns: Column[] = (table.fields || []).map((field: { id: string; name: string; type: string }) => ({
         id: field.id,
         name: field.name,
         type: field.type

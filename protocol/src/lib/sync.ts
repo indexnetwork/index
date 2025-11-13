@@ -68,7 +68,9 @@ export async function syncIntegration(
 
     // Check if this is an index integration with directory sync enabled
     if (integrationDetails.indexId && 
-        integrationConfig?.capabilities.indexSyncModes?.directorySync &&
+        integrationConfig?.capabilities.indexSyncModes && 
+        'directorySync' in integrationConfig.capabilities.indexSyncModes &&
+        integrationConfig.capabilities.indexSyncModes.directorySync &&
         integrationDetails.config?.directorySync?.enabled) {
       const provider = getDirectoryProvider(integrationType);
       if (!provider) {

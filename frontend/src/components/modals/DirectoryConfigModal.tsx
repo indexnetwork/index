@@ -64,6 +64,7 @@ export default function DirectoryConfigModal({
     if (open && step === 'source') {
       loadSources();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, step]);
 
   const loadSources = async () => {
@@ -369,7 +370,16 @@ function detectColumnMappings(columns: Column[]): Partial<{
   github?: string;
   website?: string;
 }> {
-  const mappings: any = {};
+  const mappings: Partial<{
+    email: string;
+    name?: string;
+    intro?: string;
+    location?: string;
+    twitter?: string;
+    linkedin?: string;
+    github?: string;
+    website?: string;
+  }> = {};
   const columnNames = columns.map(c => c.name.toLowerCase());
   const usedColumns = new Set<string>();
 
