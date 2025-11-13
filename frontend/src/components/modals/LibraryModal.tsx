@@ -299,15 +299,19 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
         singleUserIntegrationTypes.includes(type.type.toLowerCase())
       );
       
+      // Filter out index integrations - only show user integrations (no indexId)
+      const userOnlyIntegrations = connectedIntegrations.filter(i => !i.indexId);
+      
       // Create integration state combining connected and available types
       const updatedIntegrations = filteredAvailableTypes.map(availableType => {
-        const connectedIntegration = connectedIntegrations.find(i => i.type === availableType.type);
+        // Only find user integrations (no indexId)
+        const connectedIntegration = userOnlyIntegrations.find(i => i.type === availableType.type);
         return {
           id: connectedIntegration?.id || null, // The actual UUID
           type: availableType.type as IntegrationName, // The integration type
           name: availableType.name,
           connected: !!connectedIntegration,
-          indexId: connectedIntegration?.indexId || null
+          indexId: null // User integrations don't have indexId
         };
       });
       

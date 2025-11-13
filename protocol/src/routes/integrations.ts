@@ -9,6 +9,12 @@ import { runSync } from '../lib/sync';
 import { INTEGRATIONS } from '../lib/integrations/config';
 import { getClient } from '../lib/integrations/composio';
 import { checkIndexOwnership } from '../lib/index-access';
+import { getIntegrationById } from '../lib/integrations/integration-utils';
+import { airtableDirectoryProvider } from '../lib/integrations/providers/airtable-directory';
+import { notionDirectoryProvider } from '../lib/integrations/providers/notion-directory';
+import { googledocsDirectoryProvider } from '../lib/integrations/providers/googledocs-directory';
+import { syncDirectoryMembers } from '../lib/integrations/directory-sync';
+import type { DirectorySyncConfig } from '../lib/schema';
 
 const router = Router();
 
@@ -72,12 +78,24 @@ router.get('/',
         status: integration.status
       }));
 
-      // Also return available integration types for frontend
-      const availableTypes = Object.entries(INTEGRATION_MAPPINGS).map(([key, config]) => ({
-        type: key,
-        name: config.name,
-        toolkit: config.toolkit
-      }));
+      // Filter available types based on context
+      // If indexId provided: show only index integrations
+      // If no indexId: show only user integrations
+      const availableTypes = Object.entries(INTEGRATIONS)
+        .filter(([key, config]) => {
+          if (!config.enabled) return false;
+          if (indexId) {
+            return config.capabilities.indexIntegration;
+          } else {
+            return config.capabilities.userIntegration;
+          }
+        })
+        .map(([key, config]) => ({
+          type: key,
+          name: config.displayName,
+          toolkit: config.toolkit,
+          capabilities: config.capabilities
+        }));
 
       return res.json({ 
         integrations: connectedIntegrations,
@@ -110,6 +128,27 @@ router.post('/connect/:integrationType',
       const indexId = req.body.indexId;
       const enableUserAttribution = req.body.enableUserAttribution ?? false; // Default to false
       const integrationConfig = INTEGRATIONS[integrationType as keyof typeof INTEGRATIONS];
+
+      if (!integrationConfig) {
+        return res.status(400).json({ error: 'Invalid integration type' });
+      }
+
+      if (!integrationConfig.enabled) {
+        return res.status(400).json({ error: 'Integration is disabled' });
+      }
+
+      // Validate integration is appropriate for context
+      if (indexId) {
+        // Index integration: must support indexIntegration
+        if (!integrationConfig.capabilities.indexIntegration) {
+          return res.status(400).json({ error: 'This integration does not support index integrations' });
+        }
+      } else {
+        // User integration: must support userIntegration
+        if (!integrationConfig.capabilities.userIntegration) {
+          return res.status(400).json({ error: 'This integration does not support user integrations' });
+        }
+      }
 
       // Validate: if attribution enabled, indexId is required
       if (enableUserAttribution && !indexId) {
@@ -145,12 +184,14 @@ router.post('/connect/:integrationType',
             .where(eq(userIntegrations.id, existing[0].id));
         }
       } else {
-        // No indexId - check if user has any non-attributed integration of this type
+        // No indexId - check if user has any user integration (no indexId) of this type
+        // Allow separate index and user integrations to coexist
         const existing = await db.select()
           .from(userIntegrations)
           .where(and(
             eq(userIntegrations.userId, userId),
             eq(userIntegrations.integrationType, integrationType),
+            isNull(userIntegrations.indexId), // Only check user integrations (no indexId)
             isNull(userIntegrations.deletedAt)
           ))
           .limit(1);
@@ -158,7 +199,7 @@ router.post('/connect/:integrationType',
         if (existing.length > 0) {
           // If there's a connected integration, block the request
           if (existing[0].status === 'connected') {
-            return res.status(409).json({ error: 'Integration already connected' });
+            return res.status(409).json({ error: 'User integration already connected' });
           }
           // If there's a pending integration, clean it up before creating a new one
           await db.update(userIntegrations)
@@ -365,6 +406,320 @@ router.delete('/:integrationId',
     } catch (error) {
       console.error('Disconnect integration error:', error);
       return res.status(500).json({ error: 'Failed to disconnect integration' });
+    }
+  }
+);
+
+// Directory sync endpoints
+
+// Get directory sync sources (bases/databases/spreadsheets)
+router.get('/:integrationId/directory/sources',
+  authenticatePrivy,
+  [
+    param('integrationId').isUUID().withMessage('Integration ID must be a valid UUID')
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = req.user!.id;
+      const integrationId = req.params.integrationId;
+
+      const integration = await getIntegrationById(integrationId);
+      if (!integration) {
+        return res.status(404).json({ error: 'Integration not found' });
+      }
+
+      if (integration.userId !== userId) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      if (!integration.indexId) {
+        return res.status(400).json({ error: 'Directory sync requires an index integration' });
+      }
+
+      // Check ownership
+      const ownershipCheck = await checkIndexOwnership(integration.indexId, userId);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      }
+
+      // Get provider
+      let provider;
+      switch (integration.integrationType) {
+        case 'airtable':
+          provider = airtableDirectoryProvider;
+          break;
+        case 'notion':
+          provider = notionDirectoryProvider;
+          break;
+        case 'googledocs':
+          provider = googledocsDirectoryProvider;
+          break;
+        default:
+          return res.status(400).json({ error: 'Integration does not support directory sync' });
+      }
+
+      const sources = await provider.listSources(integrationId);
+      return res.json({ sources });
+    } catch (error) {
+      log.error('Get directory sources error', { error: error instanceof Error ? error.message : String(error) });
+      return res.status(500).json({ error: 'Failed to fetch directory sources' });
+    }
+  }
+);
+
+// Get source schema (columns)
+router.get('/:integrationId/directory/sources/:sourceId/schema',
+  authenticatePrivy,
+  [
+    param('integrationId').isUUID().withMessage('Integration ID must be a valid UUID'),
+    param('sourceId').notEmpty().withMessage('Source ID is required'),
+    query('subSourceId').optional().notEmpty().withMessage('Sub-source ID must not be empty')
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = req.user!.id;
+      const integrationId = req.params.integrationId;
+      const sourceId = req.params.sourceId;
+      const subSourceId = req.query.subSourceId as string | undefined;
+
+      const integration = await getIntegrationById(integrationId);
+      if (!integration) {
+        return res.status(404).json({ error: 'Integration not found' });
+      }
+
+      if (integration.userId !== userId) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      if (!integration.indexId) {
+        return res.status(400).json({ error: 'Directory sync requires an index integration' });
+      }
+
+      // Check ownership
+      const ownershipCheck = await checkIndexOwnership(integration.indexId, userId);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      }
+
+      // Get provider
+      let provider;
+      switch (integration.integrationType) {
+        case 'airtable':
+          provider = airtableDirectoryProvider;
+          break;
+        case 'notion':
+          provider = notionDirectoryProvider;
+          break;
+        case 'googledocs':
+          provider = googledocsDirectoryProvider;
+          break;
+        default:
+          return res.status(400).json({ error: 'Integration does not support directory sync' });
+      }
+
+      const columns = await provider.getSourceSchema(integrationId, sourceId, subSourceId);
+      return res.json({ columns });
+    } catch (error) {
+      log.error('Get directory source schema error', { error: error instanceof Error ? error.message : String(error) });
+      return res.status(500).json({ error: 'Failed to fetch source schema' });
+    }
+  }
+);
+
+// Get directory sync configuration
+router.get('/:integrationId/directory/config',
+  authenticatePrivy,
+  [
+    param('integrationId').isUUID().withMessage('Integration ID must be a valid UUID')
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = req.user!.id;
+      const integrationId = req.params.integrationId;
+
+      const integration = await getIntegrationById(integrationId);
+      if (!integration) {
+        return res.status(404).json({ error: 'Integration not found' });
+      }
+
+      if (integration.userId !== userId) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      if (!integration.indexId) {
+        return res.status(400).json({ error: 'Directory sync requires an index integration' });
+      }
+
+      // Check ownership
+      const ownershipCheck = await checkIndexOwnership(integration.indexId, userId);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      }
+
+      return res.json({ config: integration.config?.directorySync || null });
+    } catch (error) {
+      log.error('Get directory config error', { error: error instanceof Error ? error.message : String(error) });
+      return res.status(500).json({ error: 'Failed to fetch directory config' });
+    }
+  }
+);
+
+// Save directory sync configuration
+router.post('/:integrationId/directory/config',
+  authenticatePrivy,
+  [
+    param('integrationId').isUUID().withMessage('Integration ID must be a valid UUID'),
+    body('config').isObject().withMessage('Config must be an object'),
+    body('config.source').isObject().withMessage('Source is required'),
+    body('config.source.id').notEmpty().withMessage('Source ID is required'),
+    body('config.source.name').notEmpty().withMessage('Source name is required'),
+    body('config.columnMappings').isObject().withMessage('Column mappings are required'),
+    body('config.columnMappings.email').notEmpty().withMessage('Email column mapping is required')
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = req.user!.id;
+      const integrationId = req.params.integrationId;
+      const config = req.body.config as DirectorySyncConfig;
+
+      const integration = await getIntegrationById(integrationId);
+      if (!integration) {
+        return res.status(404).json({ error: 'Integration not found' });
+      }
+
+      if (integration.userId !== userId) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      if (!integration.indexId) {
+        return res.status(400).json({ error: 'Directory sync requires an index integration' });
+      }
+
+      // Check ownership
+      const ownershipCheck = await checkIndexOwnership(integration.indexId, userId);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      }
+
+      // Validate integration supports directory sync
+      const integrationConfig = INTEGRATIONS[integration.integrationType as keyof typeof INTEGRATIONS];
+      const hasDirectorySync = integrationConfig?.capabilities.indexSyncModes && 'directorySync' in integrationConfig.capabilities.indexSyncModes && integrationConfig.capabilities.indexSyncModes.directorySync;
+      if (!hasDirectorySync) {
+        return res.status(400).json({ error: 'Integration does not support directory sync' });
+      }
+
+      // Update integration config
+      const updatedConfig = {
+        ...integration.config,
+        directorySync: {
+          ...config,
+          enabled: true
+        }
+      };
+
+      await db.update(userIntegrations)
+        .set({
+          config: updatedConfig,
+          updatedAt: new Date()
+        } as any)
+        .where(eq(userIntegrations.id, integrationId));
+
+      return res.json({ success: true, config: updatedConfig.directorySync });
+    } catch (error) {
+      log.error('Save directory config error', { error: error instanceof Error ? error.message : String(error) });
+      return res.status(500).json({ error: 'Failed to save directory config' });
+    }
+  }
+);
+
+// Trigger directory sync
+router.post('/:integrationId/directory/sync',
+  authenticatePrivy,
+  [
+    param('integrationId').isUUID().withMessage('Integration ID must be a valid UUID')
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = req.user!.id;
+      const integrationId = req.params.integrationId;
+
+      const integration = await getIntegrationById(integrationId);
+      if (!integration) {
+        return res.status(404).json({ error: 'Integration not found' });
+      }
+
+      if (integration.userId !== userId) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      if (!integration.indexId) {
+        return res.status(400).json({ error: 'Directory sync requires an index integration' });
+      }
+
+      // Check ownership
+      const ownershipCheck = await checkIndexOwnership(integration.indexId, userId);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      }
+
+      const config = integration.config?.directorySync;
+      if (!config || !config.enabled) {
+        return res.status(400).json({ error: 'Directory sync not configured' });
+      }
+
+      // Get provider
+      let provider;
+      switch (integration.integrationType) {
+        case 'airtable':
+          provider = airtableDirectoryProvider;
+          break;
+        case 'notion':
+          provider = notionDirectoryProvider;
+          break;
+        case 'googledocs':
+          provider = googledocsDirectoryProvider;
+          break;
+        default:
+          return res.status(400).json({ error: 'Integration does not support directory sync' });
+      }
+
+      // Run sync
+      const result = await syncDirectoryMembers(integrationId, provider);
+
+      return res.json({
+        success: result.success,
+        membersAdded: result.membersAdded,
+        errors: result.errors,
+        status: result.status
+      });
+    } catch (error) {
+      log.error('Directory sync error', { error: error instanceof Error ? error.message : String(error) });
+      return res.status(500).json({ error: 'Failed to sync directory' });
     }
   }
 );

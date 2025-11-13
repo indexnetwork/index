@@ -6,6 +6,12 @@ import { log } from './log';
 import { handlers, processObjects } from './integrations';
 import { processFiles } from './integrations/files/processor';
 import { crawlLinksForIndex } from './crawl/web_crawler';
+import { INTEGRATIONS } from './integrations/config';
+import { syncDirectoryMembers, type DirectorySyncProvider } from './integrations/directory-sync';
+import { airtableDirectoryProvider } from './integrations/providers/airtable-directory';
+import { notionDirectoryProvider } from './integrations/providers/notion-directory';
+import { googledocsDirectoryProvider } from './integrations/providers/googledocs-directory';
+import { getIntegrationById } from './integrations/integration-utils';
 
 interface SyncResult {
   success: boolean;
@@ -16,6 +22,20 @@ interface SyncResult {
   error?: string;
 }
 
+// Get directory sync provider for integration type
+function getDirectoryProvider(integrationType: string): DirectorySyncProvider | null {
+  switch (integrationType) {
+    case 'airtable':
+      return airtableDirectoryProvider;
+    case 'notion':
+      return notionDirectoryProvider;
+    case 'googledocs':
+      return googledocsDirectoryProvider;
+    default:
+      return null;
+  }
+}
+
 // Main sync function - handles all integration types
 export async function syncIntegration(
   integrationId: string
@@ -23,7 +43,13 @@ export async function syncIntegration(
   try {
     log.info('Integration sync start', { integrationId });
 
-    // Get integration record
+    // Get integration details (including config)
+    const integrationDetails = await getIntegrationById(integrationId);
+    if (!integrationDetails) {
+      return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Integration not connected' };
+    }
+
+    // Get integration record for lastSyncAt
     const integration = await db.select()
       .from(userIntegrations)
       .where(and(
@@ -38,6 +64,35 @@ export async function syncIntegration(
     }
 
     const { lastSyncAt, integrationType } = integration[0];
+    const integrationConfig = INTEGRATIONS[integrationType as keyof typeof INTEGRATIONS];
+
+    // Check if this is an index integration with directory sync enabled
+    if (integrationDetails.indexId && 
+        integrationConfig?.capabilities.indexSyncModes?.directorySync &&
+        integrationDetails.config?.directorySync?.enabled) {
+      const provider = getDirectoryProvider(integrationType);
+      if (!provider) {
+        return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Directory sync provider not found' };
+      }
+
+      log.info('Running directory sync', { integrationId, integrationType });
+      const result = await syncDirectoryMembers(integrationId, provider);
+
+      // Update sync timestamp
+      await db.update(userIntegrations)
+        .set({ lastSyncAt: new Date() })
+        .where(eq(userIntegrations.id, integration[0].id));
+
+      return {
+        success: result.success,
+        filesImported: 0,
+        intentsGenerated: 0,
+        usersProcessed: result.membersAdded,
+        error: result.error
+      };
+    }
+
+    // Otherwise, use existing sync flow (intent generation or attribution)
     const handler = handlers[integrationType];
     if (!handler) {
       return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Unsupported integration type' };

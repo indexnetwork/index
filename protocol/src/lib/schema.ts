@@ -26,6 +26,36 @@ export interface UserSocials {
   websites?: string[];
 }
 
+// Directory sync configuration type
+export interface DirectorySyncConfig {
+  enabled: boolean;
+  source: {
+    id: string;       // baseId/databaseId/spreadsheetId
+    name: string;
+    subId?: string;   // tableId/sheetId (not used for Notion)
+    subName?: string;
+  };
+  columnMappings: {
+    email: string;
+    name?: string;
+    intro?: string;
+    location?: string;
+    twitter?: string;
+    linkedin?: string;
+    github?: string;
+    website?: string;
+  };
+  lastSyncAt?: string;
+  lastSyncStatus?: 'success' | 'error' | 'partial';
+  lastSyncError?: string;
+  memberCount?: number;
+}
+
+// Integration configuration type
+export interface IntegrationConfigType {
+  directorySync?: DirectorySyncConfig;
+}
+
 // Tables
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -138,6 +168,7 @@ export const userIntegrations = pgTable('integrations', {
   lastSyncAt: timestamp('last_sync_at'),
   indexId: uuid('index_id').references(() => indexes.id), // Optional: only required when enableUserAttribution is true
   enableUserAttribution: boolean('enable_user_attribution').default(false),
+  config: json('config').$type<IntegrationConfigType>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at')

@@ -14,7 +14,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
 import { useIndexService } from "@/services/indexes";
 import { useIntegrationsService } from "@/services/integrations";
-import { IntegrationName, getIntegrationsList } from "@/config/integrations";
+import { IntegrationName, getIntegrationsList, getIndexIntegrations, getUserIntegrations } from "@/config/integrations";
 import LibraryModal from "@/components/modals/LibraryModal";
 import { validateFiles, getSupportedFileExtensions, formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
 import { formatDate } from "@/lib/utils";
@@ -192,8 +192,24 @@ export default function OnboardingPage() {
       setIntegrationsIndexId(queryIndexId);
     } catch (error) {
       console.error('Failed to fetch integrations:', error);
-      // Fallback to default integrations if API fails
-      setIntegrations(getIntegrationsList());
+      // Fallback to default integrations if API fails - filter by flow
+      const config = FLOW_CONFIGS[currentFlow];
+      const fallbackIntegrations = config.features.requireIndexId 
+        ? getIndexIntegrations().map(i => ({
+            id: null,
+            type: i.type as IntegrationName,
+            name: i.name,
+            connected: false,
+            indexId: null
+          }))
+        : getUserIntegrations().map(i => ({
+            id: null,
+            type: i.type as IntegrationName,
+            name: i.name,
+            connected: false,
+            indexId: null
+          }));
+      setIntegrations(fallbackIntegrations);
       setIntegrationsLoaded(true);
       setIntegrationsIndexId(undefined);
     }

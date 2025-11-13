@@ -113,11 +113,18 @@ interface SlackApiResponse {
 
 
 // Return raw Slack messages as objects
+// Slack only supports index integrations (attribution mode)
 async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<SlackMessage[]> {
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
       log.error('Integration not found', { integrationId });
+      return [];
+    }
+
+    // Slack requires index integration
+    if (!integration.indexId) {
+      log.warn('Slack integration requires an index (attribution mode)', { integrationId });
       return [];
     }
 

@@ -63,6 +63,28 @@ export const createIntegrationsService = (api: ReturnType<typeof useAuthenticate
   disconnectIntegration: async (integrationId: string): Promise<{ success: boolean }> => {
     return api.delete<{ success: boolean }>(`/integrations/${integrationId}`);
   },
+
+  // Directory sync methods
+  getDirectorySources: async (integrationId: string): Promise<{ sources: Array<{ id: string; name: string; subSources?: Array<{ id: string; name: string }> }> }> => {
+    return api.get(`/integrations/${integrationId}/directory/sources`);
+  },
+
+  getDirectorySourceSchema: async (integrationId: string, sourceId: string, subSourceId?: string): Promise<{ columns: Array<{ id: string; name: string; type?: string }> }> => {
+    const params = subSourceId ? `?subSourceId=${encodeURIComponent(subSourceId)}` : '';
+    return api.get(`/integrations/${integrationId}/directory/sources/${sourceId}/schema${params}`);
+  },
+
+  getDirectoryConfig: async (integrationId: string): Promise<{ config: any }> => {
+    return api.get(`/integrations/${integrationId}/directory/config`);
+  },
+
+  saveDirectoryConfig: async (integrationId: string, config: any): Promise<{ success: boolean; config: any }> => {
+    return api.post(`/integrations/${integrationId}/directory/config`, { config });
+  },
+
+  syncDirectory: async (integrationId: string): Promise<{ success: boolean; membersAdded: number; errors: any[]; status: string }> => {
+    return api.post(`/integrations/${integrationId}/directory/sync`);
+  },
 });
 
 // Hook for using integrations service with proper error handling

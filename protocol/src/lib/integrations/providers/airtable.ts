@@ -67,12 +67,20 @@ interface AirtableApiResponse {
 /**
  * Fetches Airtable records with comments for intent generation.
  * Processes all accessible bases and tables for the authenticated user.
+ * For user integrations: generates intents for single user.
+ * For index integrations: skips (directory sync handles this).
  */
 async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<AirtableRecord[]> {
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
       log.error('Integration not found', { integrationId });
+      return [];
+    }
+
+    // Index integration: skip intent generation (directory sync handles this)
+    if (integration.indexId) {
+      log.info('Skipping intent generation for index integration', { integrationId });
       return [];
     }
 

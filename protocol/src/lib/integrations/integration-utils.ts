@@ -3,6 +3,8 @@ import { userIntegrations } from '../schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { log } from '../log';
 
+import { IntegrationConfigType } from '../schema';
+
 export interface IntegrationDetails {
   id: string;
   userId: string;
@@ -11,6 +13,7 @@ export interface IntegrationDetails {
   connectedAccountId: string | null;
   lastSyncAt: Date | null;
   enableUserAttribution?: boolean | null;
+  config?: IntegrationConfigType | null;
 }
 
 /**
@@ -25,7 +28,8 @@ export async function getIntegrationById(integrationId: string): Promise<Integra
       integrationType: userIntegrations.integrationType,
       connectedAccountId: userIntegrations.connectedAccountId,
       lastSyncAt: userIntegrations.lastSyncAt,
-      enableUserAttribution: userIntegrations.enableUserAttribution
+      enableUserAttribution: userIntegrations.enableUserAttribution,
+      config: userIntegrations.config
     })
     .from(userIntegrations)
     .where(and(

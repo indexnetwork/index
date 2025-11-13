@@ -6,6 +6,8 @@ import ClientLayout from '@/components/ClientLayout';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { createIntegrationsService } from '@/services/integrations';
 import { useAuthenticatedAPI } from '@/lib/api';
+import DirectoryConfigModal from '@/components/modals/DirectoryConfigModal';
+import { INTEGRATIONS } from '@/config/integrations';
 
 interface IntegrationItem {
   id: string | null;
@@ -32,6 +34,10 @@ export default function IntegrationsPage({ params }: { params: Promise<{ indexId
   const [integrations, setIntegrations] = useState<IntegrationItem[]>([]);
   const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
   const [pendingIntegration, setPendingIntegration] = useState<string | null>(null);
+  const [directoryConfigs, setDirectoryConfigs] = useState<Record<string, any>>({});
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [selectedIntegrationForConfig, setSelectedIntegrationForConfig] = useState<IntegrationItem | null>(null);
+  const [syncingDirectory, setSyncingDirectory] = useState<string | null>(null);
 
   const loadIntegrations = useCallback(async () => {
     try {
@@ -60,6 +66,23 @@ export default function IntegrationsPage({ params }: { params: Promise<{ indexId
       
       setIntegrations(formattedIntegrations);
       setIntegrationsLoaded(true);
+
+      // Load directory configs for directory-enabled integrations
+      const configs: Record<string, any> = {};
+      for (const integration of formattedIntegrations) {
+        const integrationDef = INTEGRATIONS.find(i => i.type === integration.type);
+        if (integrationDef?.requiresDirectoryConfig && integration.id) {
+          try {
+            const configResponse = await integrationsService.getDirectoryConfig(integration.id);
+            if (configResponse.config) {
+              configs[integration.id] = configResponse.config;
+            }
+          } catch (err) {
+            // Config not set yet, that's fine
+          }
+        }
+      }
+      setDirectoryConfigs(configs);
     } catch (err) {
       console.error('Failed to load integrations:', err);
       showError('Failed to load integrations');
@@ -125,6 +148,26 @@ export default function IntegrationsPage({ params }: { params: Promise<{ indexId
               popup?.close();
               success(`${integration.name} connected successfully`);
               await loadIntegrations();
+              
+              // If integration requires directory config, open config modal
+              const integrationDef = INTEGRATIONS.find(i => i.type === integration.type);
+              if (integrationDef?.requiresDirectoryConfig) {
+                // Find the connected integration to get its ID
+                const updatedIntegrations = await service.getIntegrations(indexId);
+                const connectedIntegration = updatedIntegrations.integrations.find(
+                  i => i.type === integration.type && i.id === integrationId
+                );
+                if (connectedIntegration?.id) {
+                  setSelectedIntegrationForConfig({
+                    id: connectedIntegration.id,
+                    type: integration.type,
+                    name: integration.name,
+                    connected: true
+                  });
+                  setConfigModalOpen(true);
+                }
+              }
+              
               setPendingIntegration(null);
             }
           } catch {
@@ -181,8 +224,12 @@ export default function IntegrationsPage({ params }: { params: Promise<{ indexId
                     Connect external services to sync data with your index. Attribution is always enabled.
                   </p>
 
-                  <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5 sm:gap-3 mb-4">
+                  <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-1.5 sm:gap-3 mb-4">
                     {integrations.map((it) => {
+                      const integrationDef = INTEGRATIONS.find(i => i.type === it.type);
+                      const requiresDirectoryConfig = integrationDef?.requiresDirectoryConfig;
+                      const directoryConfig = it.id ? directoryConfigs[it.id] : null;
+
                       return (
                         <div 
                           key={it.type} 
@@ -230,70 +277,94 @@ export default function IntegrationsPage({ params }: { params: Promise<{ indexId
                               )}
                             </div>
                           </div>
+                          {it.connected && requiresDirectoryConfig && it.id && (
+                            <div className="mt-2 pt-2 border-t border-gray-200">
+                              {directoryConfig ? (
+                                <div className="space-y-1">
+                                  <p className="text-[10px] text-gray-600 font-ibm-plex-mono">
+                                    {directoryConfig.source.name}
+                                    {directoryConfig.source.subName && ` • ${directoryConfig.source.subName}`}
+                                  </p>
+                                  {directoryConfig.lastSyncAt && (
+                                    <p className="text-[10px] text-gray-500 font-ibm-plex-mono">
+                                      Last sync: {new Date(directoryConfig.lastSyncAt).toLocaleDateString()}
+                                    </p>
+                                  )}
+                                  <div className="flex gap-1 mt-1">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedIntegrationForConfig(it);
+                                        setConfigModalOpen(true);
+                                      }}
+                                      className="text-[10px] px-2 py-0.5 bg-gray-100 hover:bg-gray-200 rounded font-ibm-plex-mono text-black"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        if (!it.id) return;
+                                        setSyncingDirectory(it.id);
+                                        try {
+                                          const integrationsService = createIntegrationsService(api);
+                                          await integrationsService.syncDirectory(it.id);
+                                          success('Directory sync started');
+                                          await loadIntegrations();
+                                        } catch (err) {
+                                          showError('Failed to sync directory');
+                                        } finally {
+                                          setSyncingDirectory(null);
+                                        }
+                                      }}
+                                      disabled={syncingDirectory === it.id}
+                                      className="text-[10px] px-2 py-0.5 bg-blue-100 hover:bg-blue-200 rounded font-ibm-plex-mono disabled:opacity-50 text-black"
+                                    >
+                                      {syncingDirectory === it.id ? 'Syncing...' : 'Sync'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedIntegrationForConfig(it);
+                                    setConfigModalOpen(true);
+                                  }}
+                                  className="w-full text-[10px] px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded font-ibm-plex-mono text-black"
+                                >
+                                  Configure Directory Sync
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
                   </div>
 
-                  <div className="mt-6 p-4 bg-[#E3F2FD] border border-[#BBDEFB] rounded-sm space-y-3">
-                    <h4 className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-2">What happens when you connect:</h4>
-                    
-                    <div className="flex items-start gap-2">
-                      <div className="w-4 h-4 rounded-full bg-[#1976D2] flex-shrink-0 mt-0.5">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
-                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                          <circle cx="12" cy="7" r="4"></circle>
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-1">
-                          Auto-add Members
-                        </p>
-                        <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
-                          People from the connected service will automatically join this index.
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start gap-2">
-                      <div className="w-4 h-4 rounded-full bg-[#1976D2] flex-shrink-0 mt-0.5">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
-                          <path d="M9 11l3 3L22 4"></path>
-                          <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c1.67 0 3.22.46 4.56 1.26"></path>
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-1">
-                          Generate Intents
-                        </p>
-                        <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
-                          We&apos;ll analyze their data to understand key topics and goals.
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start gap-2">
-                      <div className="w-4 h-4 rounded-full bg-[#1976D2] flex-shrink-0 mt-0.5">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="p-0.5">
-                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-[#1976D2] font-ibm-plex-mono mb-1">
-                          Enable Discovery
-                        </p>
-                        <p className="text-xs text-[#1565C0] font-ibm-plex-mono">
-                          Others in this index can discover shared interests to spark collaboration.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+
                 </section>
               </div>
             </Tabs.Content>
           </Tabs.Root>
         </div>
       </div>
+
+      {selectedIntegrationForConfig && selectedIntegrationForConfig.id && (
+        <DirectoryConfigModal
+          open={configModalOpen}
+          onOpenChange={setConfigModalOpen}
+          integration={{
+            id: selectedIntegrationForConfig.id,
+            type: selectedIntegrationForConfig.type as 'notion' | 'airtable' | 'googledocs',
+            name: selectedIntegrationForConfig.name
+          }}
+          onSuccess={() => {
+            loadIntegrations();
+          }}
+        />
+      )}
     </ClientLayout>
   );
 }

@@ -1,26 +1,34 @@
-export interface IntegrationConfig {
+export interface IntegrationDefinition {
+  type: string;
   name: string;
-  displayName: string;
-  toolkit?: string;
+  userIntegration: boolean;
+  indexIntegration: boolean;
+  requiresDirectoryConfig: boolean;
+  enabled: boolean;
 }
 
-export const INTEGRATIONS = {
-  notion: { name: 'notion', displayName: 'Notion', toolkit: 'NOTION' },
-  slack: { name: 'slack', displayName: 'Slack', toolkit: 'SLACK' },
-  discord: { name: 'discord', displayName: 'Discord', toolkit: 'DISCORDBOT' },
-  airtable: { name: 'airtable', displayName: 'Airtable', toolkit: 'AIRTABLE' },
-  linkedin: { name: 'linkedin', displayName: 'LinkedIn', toolkit: 'LINKEDIN' },
-  googledocs: { name: 'googledocs', displayName: 'Google Docs', toolkit: 'GOOGLEDOCS' },
-} as const;
+export const INTEGRATIONS: IntegrationDefinition[] = [
+  { type: 'slack', name: 'Slack', userIntegration: false, indexIntegration: true, requiresDirectoryConfig: false, enabled: true },
+  { type: 'discord', name: 'Discord', userIntegration: false, indexIntegration: true, requiresDirectoryConfig: false, enabled: false },
+  { type: 'notion', name: 'Notion', userIntegration: true, indexIntegration: true, requiresDirectoryConfig: true, enabled: true },
+  { type: 'airtable', name: 'Airtable', userIntegration: true, indexIntegration: true, requiresDirectoryConfig: true, enabled: true },
+  { type: 'googledocs', name: 'Google Docs', userIntegration: true, indexIntegration: true, requiresDirectoryConfig: true, enabled: false },
+];
 
-export type IntegrationName = keyof typeof INTEGRATIONS;
+export type IntegrationName = 'slack' | 'discord' | 'notion' | 'airtable' | 'googledocs';
 
-// Get array of integration configs for UI display
+export const getIndexIntegrations = () => 
+  INTEGRATIONS.filter(i => i.indexIntegration && i.enabled);
+
+export const getUserIntegrations = () => 
+  INTEGRATIONS.filter(i => i.userIntegration && i.enabled);
+
+// Get array of integration configs for UI display (backward compatibility)
 export const getIntegrationsList = () => {
-  return Object.entries(INTEGRATIONS).map(([type, config]) => ({
+  return INTEGRATIONS.map(config => ({
     id: null, // Will be set when connected
-    type: type as IntegrationName,
-    name: config.displayName,
+    type: config.type as IntegrationName,
+    name: config.name,
     connected: false, // Default, will be updated from API
     indexId: null
   }));

@@ -171,12 +171,20 @@ function extractContentFromDocument(responseData: any): string {
  * Fetches Google Docs documents owned by the connected user.
  * Only processes documents owned by the authenticated user to avoid creating
  * intents for other users' content. Supports incremental sync via lastSyncAt.
+ * For user integrations: generates intents for single user.
+ * For index integrations: skips (directory sync handles this).
  */
 async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<GoogleDocsDocument[]> {
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
       log.error('Integration not found', { integrationId });
+      return [];
+    }
+
+    // Index integration: skip intent generation (directory sync handles this)
+    if (integration.indexId) {
+      log.info('Skipping intent generation for index integration', { integrationId });
       return [];
     }
 
