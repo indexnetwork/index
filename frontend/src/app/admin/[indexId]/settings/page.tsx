@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, use } from 'react';
 import { createPortal } from 'react-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Button } from '@/components/ui/button';
-import { Copy, Globe, Lock, Trash2, Plus, Check, X, ChevronRight, ChevronDown, Upload } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useIndexes } from '@/contexts/APIContext';
@@ -12,7 +12,6 @@ import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import ClientLayout from '@/components/ClientLayout';
-import BulkImportMembersModal from '@/components/modals/BulkImportMembersModal';
 
 interface Member {
   id: string;
@@ -43,7 +42,6 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
   const [isDangerZoneExpanded, setIsDangerZoneExpanded] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
-  const [showBulkImportModal, setShowBulkImportModal] = useState(false);
   
   // Access control state
   const [isUpdatingVibeCheckPermission, setIsUpdatingVibeCheckPermission] = useState(false);
@@ -707,15 +705,6 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                     <h3 className="text-sm font-medium text-gray-900 font-ibm-plex-mono">Members</h3>
                     <p className="text-xs text-gray-600 mb-3">Assign specific access to individuals</p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowBulkImportModal(true)}
-                    className="font-ibm-plex-mono"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Import
-                  </Button>
                 </div>
                 
                   {/* Member search/filter input */}
@@ -923,14 +912,6 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
           )}
         </>
       )}
-
-      {/* Bulk Import Members Modal */}
-      <BulkImportMembersModal
-        open={showBulkImportModal}
-        onOpenChange={setShowBulkImportModal}
-        indexId={indexId}
-        onSuccess={loadMembers}
-      />
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirmation && typeof window !== 'undefined' && createPortal(

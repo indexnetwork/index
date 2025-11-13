@@ -132,19 +132,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response.members || [];
   },
 
-  // Bulk import members from CSV
-  bulkImportMembers: async (indexId: string, file: File): Promise<{ count: number; added: string[]; errors?: Array<{ row: number; error: string }> }> => {
-    const response = await api.uploadFile<{ message: string; count: number; added: string[]; errors?: Array<{ row: number; error: string }> }>(
-      `/indexes/${indexId}/members/bulk-import`, 
-      file
-    );
-    return {
-      count: response.count,
-      added: response.added,
-      errors: response.errors
-    };
-  },
-
   // Permissions Management
   // Update index permissions (joinPolicy)
   updatePermissions: async (indexId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }): Promise<Index> => {
