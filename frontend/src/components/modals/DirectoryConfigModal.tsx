@@ -150,6 +150,16 @@ export default function DirectoryConfigModal({
 
       await integrationsService.saveDirectoryConfig(integration.id, config);
       success('Directory sync configured successfully');
+      
+      // Trigger first sync after configuration
+      try {
+        await integrationsService.syncDirectory(integration.id);
+        success('Directory sync started');
+      } catch (syncErr) {
+        console.error('Failed to start sync:', syncErr);
+        // Don't show error - config was saved successfully, sync can be triggered manually later
+      }
+      
       onSuccess?.();
       onOpenChange(false);
     } catch (err) {
