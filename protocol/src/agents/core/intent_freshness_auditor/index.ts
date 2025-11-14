@@ -20,7 +20,6 @@ const CONFIDENCE_THRESHOLD = 70;
 
 export interface FreshnessResult {
   isExpired: boolean;
-  reasoning: string;
   confidenceScore: number;
 }
 
@@ -103,7 +102,6 @@ export async function auditIntentFreshness(intentId: string): Promise<FreshnessR
 
     const FreshnessSchema = z.object({
       isExpired: z.boolean().describe("Whether the intent has expired"),
-      reasoning: z.string().describe("Brief explanation of why the intent is or isn't expired"),
       confidenceScore: z.number().min(0).max(100).describe("Confidence score 0-100")
     });
 
@@ -117,8 +115,9 @@ export async function auditIntentFreshness(intentId: string): Promise<FreshnessR
 Intent: "${intent.payload}"
 Created: ${timeAgo}
 
-Is this intent expired? Provide confidence score and reasoning.`
+Is this intent expired? Provide confidence score.`
     };
+    
 
     const freshnessCall = traceableStructuredLlm(
       "intent-freshness-auditor",
@@ -129,6 +128,7 @@ Is this intent expired? Provide confidence score and reasoning.`
       }
     );
 
+    console.log('🔍 Calling intent freshness auditor...', JSON.stringify([{ role: "system", content: SYSTEM_PROMPT }, userMessage], null, 2));
     const response = await freshnessCall(
       [{ role: "system", content: SYSTEM_PROMPT }, userMessage],
       FreshnessSchema
@@ -136,7 +136,6 @@ Is this intent expired? Provide confidence score and reasoning.`
 
     return {
       isExpired: response.isExpired,
-      reasoning: response.reasoning,
       confidenceScore: response.confidenceScore
     };
   } catch (error) {
@@ -150,7 +149,7 @@ Is this intent expired? Provide confidence score and reasoning.`
  */
 async function archiveIntent(intentId: string, userId: string): Promise<void> {
 
-  return;
+  
   await db.update(intents)
     .set({ 
       archivedAt: new Date(),
@@ -186,52 +185,71 @@ export async function auditAllIntents(): Promise<{
 
   console.log(`📊 Found ${allIntents.length} non-archived intents to audit`);
 
-  const results = await Promise.allSettled(
-    allIntents.map(async (intent) => {
-      const result = await auditIntentFreshness(intent.id);
-      
-      // Get time ago for this intent
-      const intentData = await db.select({ createdAt: intents.createdAt })
-        .from(intents)
-        .where(eq(intents.id, intent.id))
-        .limit(1);
-      const timeAgo = intentData[0] ? format(intentData[0].createdAt) : 'unknown';
-      
-      // Always log the full analysis for debugging
-      console.log('\n' + '='.repeat(80));
-      console.log(`📝 Intent: "${intent.summary}`);
-      console.log(`⏰ Created: ${timeAgo}`);
-      console.log(`❓ Is Expired: ${result.isExpired ? '✅ YES' : '❌ NO'}`);
-      console.log(`💭 Reasoning: ${result.reasoning}`);
-      console.log(`📊 Confidence: ${result.confidenceScore}%`);
-      
-      if (result.isExpired && result.confidenceScore >= CONFIDENCE_THRESHOLD) {
-        console.log(`🗑️  ACTION: Archiving (above ${CONFIDENCE_THRESHOLD}% threshold)`);
-        await archiveIntent(intent.id, intent.userId);
-        return { archived: true };
-      } else if (result.isExpired) {
-        console.log(`⏭️  ACTION: Skipping (below ${CONFIDENCE_THRESHOLD}% confidence threshold)`);
-      } else {
-        console.log(`✨ ACTION: Keeping (not expired)`);
+  const CHUNK_SIZE = 100;
+  let totalAudited = 0;
+  let totalArchived = 0;
+  let totalErrors = 0;
+
+  // Process in chunks of 100
+  for (let i = 0; i < allIntents.length; i += CHUNK_SIZE) {
+    const chunk = allIntents.slice(i, i + CHUNK_SIZE);
+    const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
+    const totalChunks = Math.ceil(allIntents.length / CHUNK_SIZE);
+    
+    console.log(`\n📦 Processing chunk ${chunkNum}/${totalChunks} (${chunk.length} intents)...`);
+
+    const results = await Promise.allSettled(
+      chunk.map(async (intent) => {
+        const result = await auditIntentFreshness(intent.id);
+        
+        // Get time ago for this intent
+        const intentData = await db.select({ createdAt: intents.createdAt })
+          .from(intents)
+          .where(eq(intents.id, intent.id))
+          .limit(1);
+        const timeAgo = intentData[0] ? format(intentData[0].createdAt) : 'unknown';
+        
+        // Always log the full analysis for debugging
+        console.log('\n' + '='.repeat(80));
+        console.log(`📝 Intent: "${intent.summary}`);
+        console.log(`⏰ Created: ${timeAgo}`);
+        console.log(`❓ Is Expired: ${result.isExpired ? '✅ YES' : '❌ NO'}`);
+        console.log(`📊 Confidence: ${result.confidenceScore}%`);
+        
+        if (result.isExpired && result.confidenceScore >= CONFIDENCE_THRESHOLD) {
+          console.log(`🗑️  ACTION: Archiving (above ${CONFIDENCE_THRESHOLD}% threshold)`);
+          await archiveIntent(intent.id, intent.userId);
+          return { archived: true };
+        } else if (result.isExpired) {
+          console.log(`⏭️  ACTION: Skipping (below ${CONFIDENCE_THRESHOLD}% confidence threshold)`);
+        } else {
+          console.log(`✨ ACTION: Keeping (not expired)`);
+        }
+        console.log('='.repeat(80));
+        
+        return { archived: false };
+      })
+    );
+
+    const chunkAudited = results.filter(r => r.status === 'fulfilled').length;
+    const chunkArchived = results.filter(r => r.status === 'fulfilled' && r.value.archived).length;
+    const chunkErrors = results.filter(r => r.status === 'rejected').length;
+
+    results.forEach((result, idx) => {
+      if (result.status === 'rejected') {
+        console.error(`❌ Error processing intent ${chunk[idx].id}:`, result.reason);
       }
-      console.log('='.repeat(80));
-      
-      return { archived: false };
-    })
-  );
+    });
 
-  const audited = results.filter(r => r.status === 'fulfilled').length;
-  const archived = results.filter(r => r.status === 'fulfilled' && r.value.archived).length;
-  const errors = results.filter(r => r.status === 'rejected').length;
+    totalAudited += chunkAudited;
+    totalArchived += chunkArchived;
+    totalErrors += chunkErrors;
 
-  results.forEach((result, idx) => {
-    if (result.status === 'rejected') {
-      console.error(`❌ Error processing intent ${allIntents[idx].id}:`, result.reason);
-    }
-  });
+    console.log(`✅ Chunk ${chunkNum} complete: ${chunkAudited} audited, ${chunkArchived} archived, ${chunkErrors} errors`);
+  }
 
-  console.log(`✅ Audit complete: ${audited} audited, ${archived} archived, ${errors} errors`);
+  console.log(`\n✅ Audit complete: ${totalAudited} audited, ${totalArchived} archived, ${totalErrors} errors`);
 
-  return { audited, archived, errors };
+  return { audited: totalAudited, archived: totalArchived, errors: totalErrors };
 }
 
