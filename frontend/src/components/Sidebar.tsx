@@ -7,7 +7,7 @@ import { useIndexesState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Index as IndexType } from '@/lib/types';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
-import { Shield, ArrowLeft, Inbox, Users, Settings, Plug, Crown } from 'lucide-react';
+import { Shield, ArrowLeft, Inbox, Users, Settings, Crown } from 'lucide-react';
 import { useAdmin } from '@/contexts/APIContext';
 
 interface IndexItem {
@@ -175,16 +175,6 @@ export default function Sidebar() {
               >
                 <Settings className="w-4 h-4 text-gray-600" />
                 <span className="text-sm text-black font-ibm-plex-mono">Settings</span>
-              </div>
-
-              <div
-                onClick={() => router.push(`/admin/${adminIndexId}/integrations`)}
-                className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
-                  pathname?.includes('/integrations') ? 'bg-gray-200' : 'hover:bg-gray-50'
-                }`}
-              >
-                <Plug className="w-4 h-4 text-gray-600" />
-                <span className="text-sm text-black font-ibm-plex-mono">Integrations</span>
               </div>
             </div>
           </div>
