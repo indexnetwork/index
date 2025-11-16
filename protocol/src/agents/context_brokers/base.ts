@@ -130,14 +130,14 @@ export abstract class BaseContextBroker {
               AND ${intents.archivedAt} IS NULL`
         )
         .orderBy(sql`${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`)
-        .limit(50);
+        .limit(10);
 
       console.log(`Found ${similarIntents.length} similar intents using vector search`);
       console.log(similarIntents);
 
       // Filter by similarity threshold (equivalent to 0.7 LLM score)
       const relatedIntents = similarIntents
-        .filter(intent => intent.similarity > 0.30) // 50% cosine similarity threshold
+        .filter(intent => intent.similarity > 0.44) // 50% cosine similarity threshold
         .map(intent => ({
           intent: {
             id: intent.id,
