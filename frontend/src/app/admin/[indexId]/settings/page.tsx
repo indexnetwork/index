@@ -591,13 +591,13 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
           <Tabs.List className="overflow-x-auto inline-flex text-sm text-black mb-0">
             <Tabs.Trigger 
               value="settings" 
-              className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
+              className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
             >
               Index Settings
             </Tabs.Trigger>
             <Tabs.Trigger 
               value="access" 
-              className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
+              className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0  border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white"
             >
               Access Control
             </Tabs.Trigger>
