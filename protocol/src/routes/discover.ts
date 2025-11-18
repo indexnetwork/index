@@ -114,12 +114,17 @@ router.post('/new',
         }
       }
 
-      // 2. Extract and save URLs from payload
+      // 2. Extract, process, and reference URLs from payload
+      let instructionText = payload || '';
       if (payload) {
         const urls = extractUrlsFromText(payload);
         console.log(`🔗 Found ${urls.length} URLs in payload`);
+        let linkCounter = 1;
 
         for (const url of urls) {
+          const linkReference = `[LINK_${linkCounter}]`;
+          instructionText = instructionText.replace(url, linkReference);
+          
           try {
             // Save link to database
             const linkRecord = await db.insert(indexLinks)
@@ -141,7 +146,7 @@ router.post('/new',
                 const filepath = path.join(linksDir, `${linkRecord[0].id}.md`);
                 await fs.promises.writeFile(filepath, crawledFiles[0].content);
                 
-                combinedContent += `=== ${url} ===\n${crawledFiles[0].content.substring(0, 5000)}\n\n`;
+                combinedContent += `Content of ${linkReference}\n${crawledFiles[0].content.substring(0, 5000)}\n\n`;
                 
                 await db.update(indexLinks)
                   .set({ lastSyncAt: new Date(), lastStatus: 'ok', lastError: null })
@@ -163,15 +168,13 @@ router.post('/new',
           } catch (error) {
             console.error(`❌ Failed to save link ${url}:`, error);
           }
+          linkCounter++;
         }
       }
 
-      // 3. Add instruction text to combined content
-      if (payload) {
-        const instructionText = payload.replace(/https?:\/\/[^\s]+/g, '').trim();
-        if (instructionText) {
-          combinedContent = `User instruction: ${instructionText}\n\n${combinedContent}`;
-        }
+      // 3. Prepend instruction text to combined content
+      if (instructionText.trim()) {
+        combinedContent = `User instruction: ${instructionText.trim()}\n\n${combinedContent}`;
       }
 
       // 4. Generate intents from combined content
@@ -211,7 +214,7 @@ router.post('/new',
 
         const intentResult = await analyzeObjects(
           contentObjects,
-          payload || undefined,
+          instructionText.trim() || undefined,
           [], // no existing intents
           1,  // generate 1 intent
           60000 // 60 second timeout
