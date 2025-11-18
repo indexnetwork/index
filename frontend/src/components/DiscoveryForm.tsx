@@ -7,7 +7,6 @@ import { useAPI } from "@/contexts/APIContext";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { validateFiles, getSupportedFileExtensions } from "../lib/file-validation";
-import { handleAddLink } from "@/lib/link-utils";
 
 interface DiscoveryFormProps {
   onSubmit?: (intents: Array<{id: string; payload: string; summary?: string; createdAt: string}>) => void;
@@ -31,7 +30,6 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isAddingLink, setIsAddingLink] = useState(false);
 
   const [recentIntents, setRecentIntents] = useState<Array<{id: string; payload: string; summary: string | null; createdAt: Date}>>([]);
   const [hasContent, setHasContent] = useState(false);
@@ -42,7 +40,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   const undoStack = useRef<Array<{html: string; attachments: AttachmentItem[]; cursorPos: {start: number; end: number} | null}>>([]);
   const redoStack = useRef<Array<{html: string; attachments: AttachmentItem[]; cursorPos: {start: number; end: number} | null}>>([]);
   const isUndoRedoing = useRef(false);
-  const { discoverService, intentsService, linksService } = useAPI();
+  const { discoverService, intentsService } = useAPI();
   const { getAccessToken } = usePrivy();
   const { error } = useNotifications();
 
@@ -519,19 +517,23 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     setIsProcessing(true);
     
     try {
-      // Get text content from contentEditable div
-      const textContent = contentRef.current?.innerText || '';
+      // Get text content from contentEditable div, excluding attachment tags
+      let textContent = '';
+      if (contentRef.current) {
+        contentRef.current.childNodes.forEach(node => {
+          // Add text only from text nodes, ignoring attachment spans
+          if (node.nodeType === Node.TEXT_NODE) {
+            textContent += node.textContent;
+          }
+        });
+      }
       
       // Get files from attachments
       const files = attachments.filter(att => att.type === 'file').map(att => att.file!);
       const links = attachments.filter(att => att.type === 'link').map(att => att.url!);
 
-      // Create links via linksService
-      if (links.length > 0) {
-        setIsAddingLink(true)
-        await Promise.all(links.map(url => handleAddLink(url, linksService)));
-        setIsAddingLink(false)
-      }
+      // The backend's /discover/new endpoint now handles link creation and crawling within the same request.
+      // Calling linksService from the client here would be redundant and use the wrong workflow.
       
       // Validate that we have either files or text or links
       if (files.length === 0 && !textContent.trim() && links.length === 0) {
@@ -540,8 +542,11 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
         return;
       }
       
+      // Combine text and links for the payload
+      const payload = [textContent, ...links].join('\n').trim();
+
       // Submit discovery request
-      const result = await discoverService.submitDiscoveryRequest(files, textContent)(getAccessToken);
+      const result = await discoverService.submitDiscoveryRequest(files, payload)(getAccessToken);
       
       // After processing, clear attachments and reset form state
       setAttachments([]);
@@ -969,12 +974,12 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
                       className="flex items-center gap-2 px-3 py-2 bg-black border border-black hover:bg-gray-800 text-sm font-ibm-plex-mono text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={handleDiscoverySubmit}
-                      disabled={isAddingLink || isProcessing}
+                      disabled={isProcessing}
                     >
-                      {isProcessing || isAddingLink ? (
+                      {isProcessing ? (
                         <>
                           <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
-                          {isAddingLink ? 'Adding link...' : 'Signal processing'}
+                          Signal processing
                         </>
                       ) : (
                         <>
