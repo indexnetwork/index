@@ -7,9 +7,9 @@ export const handleAddLink = async (
   onSuccess?: (id: string) => void,
   onError?: (message: string) => void
 ) => {
-  if (!url) return;
+  let normalizedUrl = url?.trim();
+  if (!normalizedUrl) return;
 
-  let normalizedUrl = url.trim();
   if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
     normalizedUrl = `https://${normalizedUrl}`;
   }
