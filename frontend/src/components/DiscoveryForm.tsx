@@ -7,6 +7,7 @@ import { useAPI } from "@/contexts/APIContext";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { validateFiles, getSupportedFileExtensions } from "../lib/file-validation";
+import { handleAddLink } from "@/lib/link-utils";
 
 interface DiscoveryFormProps {
   onSubmit?: (intents: Array<{id: string; payload: string; summary?: string; createdAt: string}>) => void;
@@ -29,6 +30,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAddingLink, setIsAddingLink] = useState(false);
   const [recentIntents, setRecentIntents] = useState<Array<{id: string; payload: string; summary: string | null; createdAt: Date}>>([]);
   const [hasContent, setHasContent] = useState(false);
   const [showTypedAnimation, setShowTypedAnimation] = useState(false);
@@ -38,7 +40,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   const undoStack = useRef<Array<{html: string; attachments: AttachmentItem[]; cursorPos: {start: number; end: number} | null}>>([]);
   const redoStack = useRef<Array<{html: string; attachments: AttachmentItem[]; cursorPos: {start: number; end: number} | null}>>([]);
   const isUndoRedoing = useRef(false);
-  const { discoverService, intentsService } = useAPI();
+  const { discoverService, intentsService, linksService } = useAPI();
   const { getAccessToken } = usePrivy();
   const { error } = useNotifications();
 
@@ -700,32 +702,42 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
                 }}
                 onPaste={(e) => {
                   e.preventDefault();
-                  
-                  // Save state before paste
                   saveToUndoStack();
-                  
-                  // Get plain text from clipboard
                   const text = e.clipboardData?.getData('text/plain') || '';
-                  
-                  // Insert as plain text
-                  const selection = window.getSelection();
-                  if (selection && selection.rangeCount > 0) {
-                    const range = selection.getRangeAt(0);
-                    range.deleteContents();
-                    const textNode = document.createTextNode(text);
-                    range.insertNode(textNode);
-                    
-                    // Set cursor at the end of pasted text
-                    range.setStartAfter(textNode);
-                    range.setEndAfter(textNode);
-                    selection.removeAllRanges();
-                    selection.addRange(range);
+                  const urlMatch = text.match(URLInTextRegex);
+
+                  if (urlMatch) {
+                    setIsAddingLink(true);
+                    void handleAddLink(
+                      urlMatch[0],
+                      linksService,
+                      () => {
+                        setIsAddingLink(false);
+                        if (onSubmit) {
+                          onSubmit([]);
+                        }
+                      },
+                      (errorMessage) => {
+                        error(errorMessage);
+                        setIsAddingLink(false);
+                      }
+                    );
+                  } else {
+                    const selection = window.getSelection();
+                    if (selection && selection.rangeCount > 0) {
+                      const range = selection.getRangeAt(0);
+                      range.deleteContents();
+                      const textNode = document.createTextNode(text);
+                      range.insertNode(textNode);
+                      range.setStartAfter(textNode);
+                      range.setEndAfter(textNode);
+                      selection.removeAllRanges();
+                      selection.addRange(range);
+                    }
+                    setTimeout(() => {
+                      processContent();
+                    }, 0);
                   }
-                  
-                  // Process for URLs after paste
-                  setTimeout(() => {
-                    processContent();
-                  }, 0);
                 }}
                 onClick={(e) => {
                   const target = e.target as HTMLElement;
@@ -952,13 +964,13 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
                     <button 
                       className="flex items-center gap-2 px-3 py-2 bg-black border border-black hover:bg-gray-800 text-sm font-ibm-plex-mono text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       onMouseDown={(e) => e.preventDefault()}
-                      disabled={isProcessing}
                       onClick={handleDiscoverySubmit}
+                      disabled={isAddingLink || isProcessing}
                     >
-                      {isProcessing ? (
+                      {isProcessing || isAddingLink ? (
                         <>
                           <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
-                          Signal processing
+                          {isAddingLink ? 'Adding link...' : 'Signal processing'}
                         </>
                       ) : (
                         <>

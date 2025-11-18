@@ -17,6 +17,7 @@ import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import { validateFiles, getSupportedFileExtensions, formatFileSize } from "../../lib/file-validation";
 import { getFileCategoryBadge } from '../../lib/file-validation';
 import { QueueStatus } from "@/services/queue";
+import { handleAddLink as handleAddLinkUtil } from "@/lib/link-utils";
 
 type Props = {
   open: boolean;
@@ -560,35 +561,26 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const handleAddLink = useCallback(async (urlOverride?: string) => {
     const urlToUse = urlOverride || linkUrl;
     if (!urlToUse) return;
-    
-    // Normalize URL - add https:// if no protocol is specified
-    let normalizedUrl = urlToUse.trim();
-    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
-      normalizedUrl = `https://${normalizedUrl}`;
-    }
-    
-    try {
-      setIsAddingLink(true);
-      const link = await linksService.createLink(normalizedUrl);
-      setLinkUrl("");
-      onChanged?.();
 
-      if (link?.id) {
-        setSelectedIds(new Set([`l-${link.id}`]));
+    setIsAddingLink(true);
+    await handleAddLinkUtil(
+      urlToUse,
+      linksService,
+      (linkId) => {
+        setLinkUrl("");
+        onChanged?.();
+        setSelectedIds(new Set([`l-${linkId}`]));
         setActiveSourceFilters(new Set());
-      }      
-      await loadLists();
-      await loadLibraryIntents();
-      
-      // Reset all filters and only select the newly added link
-
-      
-      success('Link added successfully');
-    } catch {
-      error('Failed to add link. Please check the URL and try again.');
-    } finally {
-      setIsAddingLink(false);
-    }
+        void loadLists();
+        void loadLibraryIntents();
+        success('Link added successfully');
+        setIsAddingLink(false);
+      },
+      (errorMessage) => {
+        error(errorMessage);
+        setIsAddingLink(false);
+      }
+    );
   }, [linkUrl, onChanged, loadLists, loadLibraryIntents, success, error, linksService]);
 
   const handleSyncIntegration = useCallback(async (integrationType: string) => {
