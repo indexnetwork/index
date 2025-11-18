@@ -7,7 +7,7 @@ const openai = new OpenAI({
 
 export async function generateEmbedding(
   text: string, 
-  dimensions: number = 3072
+  dimensions: number = 2000
 ): Promise<number[]> {
   try {
     // Clean the text by removing newlines and extra whitespace
