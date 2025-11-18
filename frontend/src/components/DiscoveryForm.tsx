@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
-import { Paperclip, Radio } from "lucide-react";
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo } from "react";
+import { Link, Paperclip, Radio } from "lucide-react";
 import { ReactTyped } from "react-typed";
 import { useAPI } from "@/contexts/APIContext";
 import { usePrivy } from "@privy-io/react-auth";
@@ -669,6 +669,21 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     }
   }, [inputFocused, intentsService]);
 
+  const attachmentCounts = useMemo(() => {
+    return attachments.reduce(
+      (counts, attachment) => {
+        if (attachment.file) {
+          counts.files++;
+        }
+        if (attachment.url) {
+          counts.urls++;
+        }
+        return counts;
+      },
+      { files: 0, urls: 0 }
+    );
+  }, [attachments]);
+
   return (
     <div className="relative">
       {/* Focus Overlay */}
@@ -897,10 +912,16 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
             </div>
             
             <div className="flex items-center gap-2 ml-2">
-              {attachments.length > 0 && (
+              {attachmentCounts.files > 0 && (
                 <div className="flex items-center gap-1 text-gray-600">
                   <Paperclip className="w-4 h-4" />
-                  <span className="text-sm font-ibm-plex-mono">{attachments.length}</span>
+                  <span className="text-sm font-ibm-plex-mono">{attachmentCounts.files}</span>
+                </div>
+              )}
+              {attachmentCounts.urls > 0 && (
+                <div className="flex items-center gap-1 text-gray-600">
+                  <Link className="w-4 h-4" />
+                  <span className="text-sm font-ibm-plex-mono">{attachmentCounts.urls}</span>
                 </div>
               )}
             </div>
