@@ -2,7 +2,12 @@ import OpenAI from 'openai';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: 'https://openrouter.ai/api/v1',
+  defaultHeaders: {
+    'HTTP-Referer': 'https://index.network',
+    'X-Title': 'Index Network',
+  },
 });
 
 export async function generateEmbedding(
@@ -17,10 +22,10 @@ export async function generateEmbedding(
       throw new Error('Text cannot be empty');
     }
 
-    console.log('Generating embedding for:', cleanText);
+    console.log('Generating embedding using OpenAI for:', cleanText);
 
     const response = await openai.embeddings.create({
-      model: 'text-embedding-3-large',
+      model: 'openai/text-embedding-3-large',
       input: cleanText,
       dimensions,
       encoding_format: 'float',
