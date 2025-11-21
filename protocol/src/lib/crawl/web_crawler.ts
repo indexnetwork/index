@@ -59,7 +59,7 @@ function allPatternsFewShot(): string {
 }
 
 function buildInstruction(): string {
-  const base = 'Extract only the content from this page. Remove all non-content elements such as buttons, links, menus, ads, metadata, or boilerplate. Please provide a concise summary of the key points from the text. Extract as a markdown with a whole.';
+  const base = 'Extract only the content from this page. Remove all non-content elements such as buttons, links, menus, ads, metadata, or boilerplate. Do not paraphrase or summarize — return the exact original text only. Extract as a markdown with a whole.';
   return `${base}\n\n${allPatternsFewShot()}\nBe concise but complete. Keep original wording.`;
 }
 
