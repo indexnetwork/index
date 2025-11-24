@@ -1,6 +1,7 @@
 'use client';
 
 import { PropsWithChildren } from 'react';
+import FeedbackWidget from './FeedbackWidget';
 
 export default function ClientLayout({ children }: PropsWithChildren) {
   // Note: Header is now handled at the root level in ClientWrapper
@@ -8,6 +9,7 @@ export default function ClientLayout({ children }: PropsWithChildren) {
   return (
     <>
       {children}
+      <FeedbackWidget />
     </>
   );
 } 

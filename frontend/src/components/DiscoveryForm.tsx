@@ -577,7 +577,15 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
       // Check if any modal is open by looking for modal elements
       const hasModalOpen = document.querySelector('[data-radix-dialog-content], [role="dialog"]') !== null;
       
-      if (contentRef.current && !inputFocused && !hasModalOpen) {
+      // Check if user is already typing in an input/textarea
+      const activeElement = document.activeElement;
+      const isTypingInInput = activeElement && (
+        activeElement.tagName === 'INPUT' || 
+        activeElement.tagName === 'TEXTAREA' || 
+        (activeElement as HTMLElement).isContentEditable
+      );
+      
+      if (contentRef.current && !inputFocused && !hasModalOpen && !isTypingInInput) {
         // Focus on Enter or when typing regular characters
         if (e.key === 'Enter' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)) {
           e.preventDefault();
