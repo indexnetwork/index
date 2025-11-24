@@ -137,7 +137,7 @@ router.post('/connect/:integrationType',
         return res.status(400).json({ error: 'Integration is disabled' });
       }
 
-      const requiresAttribution = integrationConfig.capabilities.indexSyncModes?.attribution === true;
+      const requiresAttribution = integrationConfig.capabilities.indexSyncModes && 'attribution' in integrationConfig.capabilities.indexSyncModes && integrationConfig.capabilities.indexSyncModes.attribution === true;
       const enableUserAttribution = requiresAttribution
         ? true
         : (requestedEnableUserAttribution ?? false); // Default to false when not forced
