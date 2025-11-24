@@ -15,7 +15,7 @@ import { createIntegrationsService } from '@/services/integrations';
 import { createAdminService } from '@/services/admin';
 import { createUsersService } from '@/services/users';
 
-interface APIContextType {
+export interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
   intentsService: ReturnType<typeof createIntentsService>;
   connectionsService: ReturnType<typeof createConnectionsService>;

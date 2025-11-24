@@ -12,7 +12,11 @@ type Crawl4AIResult = {
   results?: Array<{
     url?: string;
     requested_url?: string;
-    markdown?: { fit_markdown?: string };
+    markdown?: {
+      fit_markdown?: string;
+      raw_markdown?: string;
+      markdown_with_citations?: string;
+    };
     error?: string | null;
   }>;
 };
@@ -127,8 +131,20 @@ export async function crawlLinksForIndex(urls: string[]): Promise<CrawlResult> {
   for (const r of results) {
     try {
       const url: string = r?.url || r?.requested_url || '';
-      const md: string = r?.markdown?.fit_markdown || '';
-      if (!url || !md) continue;
+      let md: string = r?.markdown?.fit_markdown || '';
+
+      if (!md || md.length < 10) {
+        if (r?.markdown?.markdown_with_citations && r.markdown.markdown_with_citations.length > 10) {
+          md = r.markdown.markdown_with_citations;
+        } else if (r?.markdown?.raw_markdown && r.markdown.raw_markdown.length > 10) {
+          md = r.markdown.raw_markdown;
+        }
+      }
+
+      if (!url || !md) {
+        console.warn(`Skipping result for ${url}: URL or MD missing (md len: ${md.length})`);
+        continue;
+      }
       const id = sha1(url);
       const name = sanitizeName(new URL(url).hostname + new URL(url).pathname) || id;
       files.push({

@@ -11,6 +11,7 @@ import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { UnstructuredClient } from 'unstructured-client';
 import { Strategy } from 'unstructured-client/sdk/models/shared';
+import { NodeHtmlMarkdown } from 'node-html-markdown';
 import { getUploadsPath, getTempPath } from './paths';
 
 // Type extension for requests with generated file ID
@@ -138,8 +139,12 @@ export async function loadFileContent(filePath: string): Promise<{ content: stri
   try {
     const ext = path.extname(filePath).toLowerCase();
     if ((FALLBACK_TEXT_EXTENSIONS as readonly string[]).includes(ext) || ext === '') {
-      const content = fs.readFileSync(filePath, 'utf8');
-      if (content.trim()) return { content, error: null };
+      const rawContent = fs.readFileSync(filePath, 'utf8');
+      if (ext === '.html') {
+        const markdownContent = NodeHtmlMarkdown.translate(rawContent);
+        if (markdownContent.trim()) return { content: markdownContent, error: null };
+      }
+      if (rawContent.trim()) return { content: rawContent, error: null };
     }
     return {
       content: null,
