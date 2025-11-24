@@ -249,7 +249,7 @@ export const agents = pgTable('agents', {
 
 export const intentStakes = pgTable('intent_stakes', {
   id: uuid('id').primaryKey().defaultRandom(),
-  intents: text('intents').array().notNull(), // Array of intent IDs
+  intents: uuid('intents').array().notNull(), // Array of intent IDs
   stake: bigint('stake', { mode: 'bigint' }).notNull(),
   reasoning: text('reasoning').notNull(),
   agentId: uuid('agent_id').notNull().references(() => agents.id),

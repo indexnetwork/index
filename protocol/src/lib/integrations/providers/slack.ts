@@ -343,7 +343,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
             
             // Convert Slack timestamp to Date
             const messageDate = new Date(parseFloat(msg.ts) * 1000);
-            console.log(`Processing Slack message with timestamp: ${messageDate.toISOString()}`);
             
             pageMessages.push({
               ts: msg.ts,
@@ -377,7 +376,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
                 id: integration.id,
                 indexId: integration.indexId || undefined,
                 userId: integration.userId,
-                enableUserAttribution: integration.enableUserAttribution ?? undefined
+                enableUserAttribution: true
               }, slackHandler);
             }
           }

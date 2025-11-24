@@ -32,10 +32,7 @@ export class QueueProcessor {
     this.concurrency = concurrency;
     // Initialize all workers as available
     for (let i = 0; i < concurrency; i++) {
-      console.log(`Initializing worker ${i}`);
-      console.log(`Worker ${i} initialized`);
       this.availableWorkers.add(i);
-      console.log(`Worker ${i} added to available workers`);
     }
   }
 
@@ -54,7 +51,7 @@ export class QueueProcessor {
         try {
           await this.distributeJobsToWorkers();
         } catch (error) {
-          console.error('Error during job distribution:', error);
+          // Error during job distribution
         }
         // Small delay to prevent busy waiting
         await new Promise(resolve => setTimeout(resolve, parseInt(process.env.QUEUE_POLL_INTERVAL_MS || '100')));
@@ -280,8 +277,7 @@ export class QueueProcessor {
       );
     }
 
-    // Create intents
-    if (result?.success) {
+    if (result?.success && result.intents) {
       for (const intentData of result.intents) {
         if (!existingIntents.has(intentData.payload)) {
           await IntentService.createIntent({
@@ -302,3 +298,4 @@ export class QueueProcessor {
 }
 
 export const queueProcessor = new QueueProcessor();
+

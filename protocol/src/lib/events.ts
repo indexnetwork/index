@@ -37,8 +37,6 @@ export class IntentEvents {
    * Triggered when a new intent is created
    */
   static async onCreated(event: IntentEvent): Promise<void> {
-    console.log(`🎯 Intent created: ${event.intentId}`);
-    
     try {
       // Get all eligible indexes for this user
       const eligibleIndexes = await db.select({
@@ -67,10 +65,8 @@ export class IntentEvents {
       
       // Trigger context brokers - they decide if they want to use queue or not
       await triggerBrokersOnIntentCreated(event.intentId);
-      
-      console.log(`✅ Queued ${eligibleIndexes.length} intent-index pairs and triggered brokers for ${event.intentId}`);
     } catch (error) {
-      console.error(`❌ Failed to queue intent indexing ${event.intentId}:`, error);
+      // Failed to queue intent indexing
     }
   }
   
@@ -78,8 +74,6 @@ export class IntentEvents {
    * Triggered when an intent is updated
    */
   static async onUpdated(event: IntentEvent): Promise<void> {
-    console.log(`🎯 Intent updated: ${event.intentId}`);
-    
     try {
       // Get all eligible indexes for this user
       const eligibleIndexes = await db.select({
@@ -108,10 +102,8 @@ export class IntentEvents {
       
       // Trigger context brokers - they decide if they want to use queue or not
       await triggerBrokersOnIntentUpdated(event.intentId, event.previousStatus);
-      
-      console.log(`✅ Queued ${eligibleIndexes.length} intent-index pairs and triggered brokers for ${event.intentId}`);
     } catch (error) {
-      console.error(`❌ Failed to queue intent indexing ${event.intentId}:`, error);
+      // Failed to queue intent indexing
     }
   }
   
@@ -119,13 +111,10 @@ export class IntentEvents {
    * Triggered when an intent is archived
    */
   static async onArchived(event: IntentEvent): Promise<void> {
-    console.log(`🎯 Intent archived: ${event.intentId}`);
-    
     try {
       await triggerBrokersOnIntentArchived(event.intentId);
-      console.log(`✅ Intent archived processed: ${event.intentId}`);
     } catch (error) {
-      console.error(`❌ Failed to process archived intent ${event.intentId}:`, error);
+      // Failed to process archived intent
     }
   }
 }
@@ -138,8 +127,6 @@ export class IndexEvents {
    * Triggered when index prompt is updated
    */
   static async onPromptUpdated(event: IndexEvent): Promise<void> {
-    console.log(`🎯 Index prompt updated: ${event.indexId}`);
-    
     try {
       // Get all intents from members of this index and queue them individually
       const memberIntents = await db.select({ 
@@ -166,10 +153,8 @@ export class IndexEvents {
       );
       
       await Promise.all(queuePromises);
-      
-      console.log(`✅ Queued ${memberIntents.length} intents for re-indexing from index ${event.indexId}`);
     } catch (error) {
-      console.error(`❌ Failed to queue index intents ${event.indexId}:`, error);
+      // Failed to queue index intents
     }
   }
 }
@@ -182,8 +167,6 @@ export class MemberEvents {
    * Triggered when member settings are updated
    */
   static async onSettingsUpdated(event: MemberEvent): Promise<void> {
-    console.log(`🎯 Member settings updated: user ${event.userId} in index ${event.indexId}`);
-    
     try {
       if (event.promptChanged || event.autoAssignChanged) {
         // Get all user's intents and queue them individually
@@ -206,11 +189,9 @@ export class MemberEvents {
         );
         
         await Promise.all(queuePromises);
-        
-        console.log(`✅ Queued ${userIntents.length} intents for re-indexing from user ${event.userId}`);
       }
     } catch (error) {
-      console.error(`❌ Failed to queue member intents ${event.userId}/${event.indexId}:`, error);
+      // Failed to queue member intents
     }
   }
 }

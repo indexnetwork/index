@@ -126,7 +126,7 @@ router.post('/connect/:integrationType',
       const userId = req.user!.id;
       const integrationType = req.params.integrationType;
       const indexId = req.body.indexId;
-      const enableUserAttribution = req.body.enableUserAttribution ?? false; // Default to false
+      const requestedEnableUserAttribution = req.body.enableUserAttribution;
       const integrationConfig = INTEGRATIONS[integrationType as keyof typeof INTEGRATIONS];
 
       if (!integrationConfig) {
@@ -136,6 +136,11 @@ router.post('/connect/:integrationType',
       if (!integrationConfig.enabled) {
         return res.status(400).json({ error: 'Integration is disabled' });
       }
+
+      const requiresAttribution = integrationConfig.capabilities.indexSyncModes?.attribution === true;
+      const enableUserAttribution = requiresAttribution
+        ? true
+        : (requestedEnableUserAttribution ?? false); // Default to false when not forced
 
       // Validate integration is appropriate for context
       if (indexId) {
@@ -389,7 +394,6 @@ router.delete('/:integrationId',
             connectedAccountId: integrationRecord.connectedAccountId 
           });
         } catch (composioError) {
-          console.error('Error disconnecting from Composio:', composioError);
           // Continue with local disconnection even if Composio fails
         }
       }
@@ -404,7 +408,6 @@ router.delete('/:integrationId',
 
       return res.json({ success: true });
     } catch (error) {
-      console.error('Disconnect integration error:', error);
       return res.status(500).json({ error: 'Failed to disconnect integration' });
     }
   }

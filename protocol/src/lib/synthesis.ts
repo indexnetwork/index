@@ -50,41 +50,41 @@ export async function synthesizeVibeCheck(
       intentIds,
       includeOwnIntents: true
     });
+
+    
     const contextIntentIds = contextIntents.intents.map(i => i.id);
     
     if (!contextIntentIds.length) return "";
 
     // Get top 3 stakes connecting context and target user intents
+    // Optimized: use uuid[] instead of text[], leverage GIN index, remove redundant checks
     const stakes = await db
       .select({ stake: intentStakes.stake, stakeIntents: intentStakes.intents })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
-      .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
+      .innerJoin(intents, sql`${intents.id} = ANY(${intentStakes.intents})`)
       .where(and(
         isNull(agents.deletedAt),
         eq(intents.userId, contextUserId),
         sql`array_length(${intentStakes.intents}, 1) = 2`,
-        sql`EXISTS(
-          SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-          WHERE intent_id IN (${sql.join(contextIntentIds.map(id => sql`${id}`), sql`, `)})
-        )`,
+        sql`${intentStakes.intents} && ARRAY[${sql.join(contextIntentIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`,
         sql`EXISTS(
           SELECT 1 FROM ${intents} i2
-          WHERE i2.id::text = ANY(${intentStakes.intents})
+          WHERE i2.id = ANY(${intentStakes.intents})
           AND i2.user_id = ${targetUserId}
         )`,
         ...(indexIds?.length ? [
           sql`EXISTS(
             SELECT 1 FROM ${intentIndexes} ii1
             WHERE ii1.intent_id = ${intents.id}
-            AND ii1.index_id IN (${sql.join(indexIds.map(id => sql`${id}`), sql`, `)})
+            AND ii1.index_id = ANY(ARRAY[${sql.join(indexIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[])
           )`,
           sql`EXISTS(
             SELECT 1 FROM ${intents} i2
             INNER JOIN ${intentIndexes} ii2 ON ii2.intent_id = i2.id
-            WHERE i2.id::text = ANY(${intentStakes.intents})
+            WHERE i2.id = ANY(${intentStakes.intents})
             AND i2.user_id = ${targetUserId}
-            AND ii2.index_id IN (${sql.join(indexIds.map(id => sql`${id}`), sql`, `)})
+            AND ii2.index_id = ANY(ARRAY[${sql.join(indexIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[])
           )`
         ] : [])
       ))
@@ -182,6 +182,7 @@ export async function synthesizeIntro(
     const recipient = users.find(u => u.id === recipientUserId)!;
 
     // Get shared stakes between both users
+    // Optimized: use uuid[] instead of text[], leverage GIN index
     const stakes = await db
       .select({ reasoning: intentStakes.reasoning, stakeIntents: intentStakes.intents })
       .from(intentStakes)
@@ -189,8 +190,8 @@ export async function synthesizeIntro(
       .where(and(
         isNull(agents.deletedAt),
         sql`array_length(${intentStakes.intents}, 1) > 1`,
-        sql`EXISTS(SELECT 1 FROM ${intents} i1 WHERE i1.id::text = ANY(${intentStakes.intents}) AND i1.user_id = ${senderUserId})`,
-        sql`EXISTS(SELECT 1 FROM ${intents} i2 WHERE i2.id::text = ANY(${intentStakes.intents}) AND i2.user_id = ${recipientUserId})`
+        sql`EXISTS(SELECT 1 FROM ${intents} i1 WHERE i1.id = ANY(${intentStakes.intents}) AND i1.user_id = ${senderUserId})`,
+        sql`EXISTS(SELECT 1 FROM ${intents} i2 WHERE i2.id = ANY(${intentStakes.intents}) AND i2.user_id = ${recipientUserId})`
       ));
 
     if (!stakes.length) return "";

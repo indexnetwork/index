@@ -1,7 +1,7 @@
 import { BaseContextBroker } from '../base';
 import { intents, intentStakes } from '../../../lib/schema';
 import { eq, sql, and, desc } from 'drizzle-orm';
-import { traceableStructuredLlm } from "../../../lib/agents";
+import { traceableStructuredLlm, withTimeoutAndRetry } from "../../../lib/agents";
 import { z } from "zod";
 import { INTENT_INFERRER_AGENT_ID } from '../../../lib/agent-ids';
 import { format } from 'timeago.js';
@@ -15,25 +15,14 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
    * Main entry point - processes intent and finds relevant user matches
    */
   async onIntentCreated(intentId: string): Promise<void> {
-    const startTime = Date.now();
-    console.log(`🤖 SemanticRelevancyBroker: Processing intent ${intentId}`);
-    
     const newIntent = await this.getIntent(intentId);
     if (!newIntent) return;
 
     // Stage 1: Finding users
-    const findUsersStart = Date.now();
     const topUsers = await this.findTopUsersByIntentSimilarity(newIntent);
-    const findUsersDuration = Date.now() - findUsersStart;
-    console.log(`🔍 Found ${topUsers.length} relevant users (${findUsersDuration}ms)`);
 
     // Stage 2: Processing relationships
-    const processStart = Date.now();
     await this.processUserRelationships(newIntent, topUsers);
-    const processDuration = Date.now() - processStart;
-    
-    const duration = Date.now() - startTime;
-    console.log(`✅ Completed in ${duration}ms (find: ${findUsersDuration}ms, process: ${processDuration}ms)`);
   }
 
   /**
@@ -45,7 +34,6 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       .where(eq(intents.id, intentId));
     
     if (rows.length === 0) {
-      console.error(`Intent ${intentId} not found`);
       return null;
     }
     
@@ -64,7 +52,6 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
         await this.evaluateUserRelationship(newIntent, targetUser);
         return { success: true };
       } catch (error) {
-        console.error(`Error evaluating relationship with user ${targetUser.userId}:`, error);
         return { success: false };
       }
     });
@@ -109,9 +96,11 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     }
 
     // Sort by max similarity and take top 10 users
-    return Array.from(userMap.values())
+    const topUsers = Array.from(userMap.values())
       .sort((a, b) => b.maxSimilarity - a.maxSimilarity)
       .slice(0, 20);
+    
+    return topUsers;
   }
 
   /**
@@ -121,30 +110,23 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     newIntent: any,
     targetUser: { userId: string; intents: any[]; maxSimilarity: number }
   ): Promise<void> {
-    console.log(`\n👥 Evaluating: ${newIntent.userId} ↔ ${targetUser.userId}`);
-
     // Get existing stakes between these users
     const existingStakes = await this.getExistingStakes(this.db, newIntent.userId, targetUser.userId);
-    console.log(`   🔒 Found ${existingStakes.length} existing stakes`);
 
     // Stage 1: Find mutual intents
     const mutualResults = await this.findMutualIntents(newIntent, targetUser.intents);
-    console.log(`   ✅ Stage 1: ${mutualResults.length} mutual intents (≥70 score)`);
 
     // Skip if no mutual intents and no existing stakes
     if (mutualResults.length === 0 && existingStakes.length === 0) {
-      console.log(`   ⏭️  Skipping - no mutual intents or existing stakes`);
       return;
     }
 
     // Stage 2: Rank all candidates and get top 10
     const candidatePairs = this.buildCandidatePairs(newIntent.id, mutualResults, existingStakes);
     const rankingResult = await this.rankIntentPairs(candidatePairs);
-    console.log(`   ✅ Stage 2: Selected top ${rankingResult.rankedPairs.length} pairs`);
 
     // Execute: Delete all existing, insert top 10
     await this.updateStakes(this.db, existingStakes, rankingResult.rankedPairs, candidatePairs);
-    console.log(`   ✔️  Committed - ${rankingResult.rankedPairs.length} stakes`);
   }
 
   /**
@@ -162,12 +144,12 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       eq(intentStakes.agentId, this.agentId),
       sql`EXISTS (
         SELECT 1 FROM ${intents} i1
-        WHERE i1.id::text = ANY(${intentStakes.intents})
+        WHERE i1.id = ANY(${intentStakes.intents})
         AND i1.user_id = ${userId1}
       )`,
       sql`EXISTS (
         SELECT 1 FROM ${intents} i2
-        WHERE i2.id::text = ANY(${intentStakes.intents})
+        WHERE i2.id = ANY(${intentStakes.intents})
         AND i2.user_id = ${userId2}
       )`
     ))
@@ -192,7 +174,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     });
 
     const results = await Promise.all(mutualityPromises);
-    return results.filter(r => r !== null);
+    return results.filter((r): r is { targetIntentId: string; score: number; reasoning: string } => r !== null);
   }
 
   /**
@@ -387,7 +369,13 @@ Are these mutually relevant with high confidence (>= 70 score)? Consider timing 
         }
       );
       
-      const response = await reasoningCall([systemMessage, userMessage], MutualIntentSchema);
+      const callWithRetry = withTimeoutAndRetry(reasoningCall, {
+        timeoutMs: 10000, // 30 seconds timeout
+        maxRetries: 2,
+        retryDelayMs: 1000
+      });
+      
+      const response = await callWithRetry([systemMessage, userMessage], MutualIntentSchema);
       
       return {
         isMutual: response.isMutual,
@@ -395,9 +383,6 @@ Are these mutually relevant with high confidence (>= 70 score)? Consider timing 
         reasoning: response.reasoning
       };
     } catch (error: any) {
-      console.error(`📋 Intent Pair That Failed:`);
-      console.error(`   New: "${newIntent.payload}" (${newIntent.id})`);
-      console.error(`   Target: "${targetIntent.payload}" (${targetIntent.id})`);
       return null;
     }
   }
@@ -526,12 +511,18 @@ Return the top 10 pairs with new scores based on semantic quality and contextual
         }
       );
       
-      const response = await rankingCall([systemMessage, userMessage], RankingSchema);
+      const callWithRetry = withTimeoutAndRetry(rankingCall, {
+        timeoutMs: 60000, // 60 seconds timeout for ranking (larger payload)
+        maxRetries: 2,
+        retryDelayMs: 1000
+      });
+      
+      const response = await callWithRetry([systemMessage, userMessage], RankingSchema);
+      
       return {
         rankedPairs: response.rankedPairs || []
       };
     } catch (error) {
-      console.error(`Error ranking pairs:`, error);
       // Fallback: return top 10 by existing score
       return {
         rankedPairs: candidatePairs
@@ -547,7 +538,6 @@ Return the top 10 pairs with new scores based on semantic quality and contextual
   }
 
   async onIntentUpdated(intentId: string): Promise<void> {
-    console.log(`🤖 SemanticRelevancyBroker: Processing updated intent ${intentId}`);
     // Reprocess like new intent
     await this.onIntentCreated(intentId);
   }
@@ -555,6 +545,6 @@ Return the top 10 pairs with new scores based on semantic quality and contextual
   async onIntentArchived(intentId: string): Promise<void> {
     // Remove all stakes that include this intent
     await this.db.delete(intentStakes)
-      .where(sql`${intentStakes.intents} @> ARRAY[${intentId}]`);
+      .where(sql`${intentStakes.intents} @> ARRAY[${intentId}::uuid]`);
   }
 }

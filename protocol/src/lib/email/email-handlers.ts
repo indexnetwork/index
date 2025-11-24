@@ -21,14 +21,8 @@ async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise
   const stakes = await db.select({ id: intentStakes.id })
     .from(intentStakes)
     .where(and(
-      sql`EXISTS(
-        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-        WHERE intent_id IN (${sql.join(user1IntentIds.map(id => sql`${id}`), sql`, `)})
-      )`,
-      sql`EXISTS(
-        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-        WHERE intent_id IN (${sql.join(user2IntentIds.map(id => sql`${id}`), sql`, `)})
-      )`
+      sql`${intentStakes.intents} && ARRAY[${sql.join(user1IntentIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`,
+      sql`${intentStakes.intents} && ARRAY[${sql.join(user2IntentIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`
     ))
     .limit(1);
 

@@ -63,7 +63,9 @@ export async function vibeCheck(
     // User prompt with intent pairs
     const userMsg = buildUserMessage(data, initiator, target, isThirdPerson);
 
+    
     // Execute vibe check with timeout
+    /*
     const response = await Promise.race([
       traceableLlm("vibe-checker", {
         other_user_id: data.id,
@@ -74,6 +76,12 @@ export async function vibeCheck(
         setTimeout(() => reject(new Error('Vibe check timeout')), timeout)
       )
     ]);
+    */
+    const response = await traceableLlm("vibe-checker", {
+      other_user_id: data.id,
+      other_user_name: data.name,
+      intent_pairs_count: data.intentPairs.length
+    })([systemMsg, userMsg], { reasoning: { exclude: true, effort: 'minimal' } });
 
     const synthesis = (response.content as string).trim();
 

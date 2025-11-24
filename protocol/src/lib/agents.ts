@@ -68,4 +68,58 @@ export function traceableStructuredLlm(preset: string, metadata: Record<string, 
   };
 }
 
+/**
+ * Wraps an LLM call function with timeout and retry logic
+ * @param llmCall - The LLM call function to wrap
+ * @param options - Configuration options
+ * @returns Wrapped function with timeout and retry
+ */
+export function withTimeoutAndRetry<T extends (...args: any[]) => Promise<any>>(
+  llmCall: T,
+  options: {
+    timeoutMs?: number;
+    maxRetries?: number;
+    retryDelayMs?: number;
+  } = {}
+): T {
+  const {
+    timeoutMs = 30000, // 30 seconds default
+    maxRetries = 2,
+    retryDelayMs = 1000
+  } = options;
+
+  return (async (...args: Parameters<T>): Promise<ReturnType<T>> => {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`LLM call timeout after ${timeoutMs}ms`)), timeoutMs);
+        });
+
+        const result = await Promise.race([
+          llmCall(...args),
+          timeoutPromise
+        ]);
+
+        return result as ReturnType<T>;
+      } catch (error: any) {
+        lastError = error;
+        const isTimeout = error?.message?.includes('timeout');
+        const isLastAttempt = attempt === maxRetries;
+
+        if (isLastAttempt) {
+          throw error;
+        }
+
+        // Exponential backoff: 1s, 2s, 4s...
+        const delay = retryDelayMs * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError || new Error('LLM call failed after retries');
+  }) as T;
+}
+
 export default db;

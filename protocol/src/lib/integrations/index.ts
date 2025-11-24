@@ -90,15 +90,25 @@ export async function processObjects<T = any>(
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 
+  // Use indexId from parameter, or fall back to integration's indexId from DB
+  const indexId = integration.indexId ?? integrationDetails.indexId ?? null;
+
   // Check if attribution is enabled (from DB or handler default)
   const enableAttribution = integration.enableUserAttribution ?? handler.enableUserAttribution ?? false;
 
-  if (enableAttribution && handler.extractUsers && integration.indexId) {
+  if (enableAttribution && handler.extractUsers && indexId) {
     // Attribution mode: extract users and process per user
-    return await attributeToUsers(objects, { id: integration.id, indexId: integration.indexId }, handler);
+    return await attributeToUsers(objects, { id: integration.id, indexId }, handler);
   } else {
     // No attribution mode: process for integration owner only
-    return await attributeToOwner(objects, integration, integrationDetails.userId);
+    if (enableAttribution && !indexId) {
+      log.warn('User attribution is enabled but indexId is missing. Attribution requires an indexId. Falling back to owner-only processing.', {
+        integrationId: integration.id,
+        enableUserAttribution: enableAttribution,
+        hasExtractUsers: !!handler.extractUsers
+      });
+    }
+    return await attributeToOwner(objects, { ...integration, indexId }, integrationDetails.userId);
   }
 }
 
@@ -127,11 +137,11 @@ async function attributeToUsers<T>(
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 
-  // Step 2: Resolve each user and add to index
+  // Step 2: Resolve each user and add to index (in parallel)
   const resolvedUsers = new Map<string, { id: string; name: string; email: string; isNewUser: boolean }>();
   let newUsersCreated = 0;
 
-  for (const userIdentifier of userIdentifiers) {
+  const userResolvePromises = userIdentifiers.map(async (userIdentifier) => {
     try {
       const resolvedUser = await resolveIntegrationUser({
         email: userIdentifier.email,
@@ -147,17 +157,11 @@ async function attributeToUsers<T>(
           providerId: userIdentifier.providerId,
           email: userIdentifier.email 
         });
-        continue;
-      }
-
-      if (resolvedUser.isNewUser) {
-        newUsersCreated++;
+        return null;
       }
 
       // Add user as index member
       await ensureIndexMembership(resolvedUser.id, integration.indexId);
-
-      resolvedUsers.set(userIdentifier.providerId, resolvedUser);
 
       log.debug('User resolved and added to index', {
         providerId: userIdentifier.providerId,
@@ -165,11 +169,24 @@ async function attributeToUsers<T>(
         email: resolvedUser.email,
         isNewUser: resolvedUser.isNewUser
       });
+
+      return { providerId: userIdentifier.providerId, user: resolvedUser };
     } catch (error) {
       log.error('Failed to resolve user', {
         providerId: userIdentifier.providerId,
         error: error instanceof Error ? error.message : String(error)
       });
+      return null;
+    }
+  });
+
+  const resolvedResults = await Promise.all(userResolvePromises);
+  for (const result of resolvedResults) {
+    if (result) {
+      if (result.user.isNewUser) {
+        newUsersCreated++;
+      }
+      resolvedUsers.set(result.providerId, result.user);
     }
   }
 
@@ -180,21 +197,18 @@ async function attributeToUsers<T>(
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated };
   }
 
-  // Step 3: Queue intent generation per user
-  let totalIntentsGenerated = 0;
+  // Step 3: Queue intent generation per user (in parallel)
+  // Extract datetime from objects if available (once, shared across all users)
+  let createdAt: Date | undefined;
+  if (objects.length > 0) {
+    const firstObj = objects[0] as any;
+    if (firstObj?.metadata?.createdAt) {
+      createdAt = firstObj.metadata.createdAt;
+    }
+  }
 
-
-  for (const [providerId, user] of resolvedUsers) {
+  const intentQueuePromises = Array.from(resolvedUsers.entries()).map(async ([providerId, user]) => {
     try {
-      // Extract datetime from objects if available
-      let createdAt: Date | undefined;
-      if (objects.length > 0) {
-        const firstObj = objects[0] as any;
-        if (firstObj?.metadata?.createdAt) {
-          createdAt = firstObj.metadata.createdAt;
-        }
-      }
-
       // Queue intent generation for this user
       await addGenerateIntentsJob({
         userId: user.id,
@@ -207,14 +221,18 @@ async function attributeToUsers<T>(
         ...(createdAt && { createdAt })
       }, 6);
 
-      totalIntentsGenerated++;
+      return true;
     } catch (error) {
       log.error('Failed to queue intent generation', {
         userId: user.id,
         error: error instanceof Error ? error.message : String(error)
       });
+      return false;
     }
-  }
+  });
+
+  const queueResults = await Promise.all(intentQueuePromises);
+  const totalIntentsGenerated = queueResults.filter(r => r).length;
 
   log.info('Object processing with attribution complete', {
     intentsGenerated: totalIntentsGenerated,
