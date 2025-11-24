@@ -439,6 +439,14 @@ router.post('/',
         autoAssign: true
       });
 
+      // Trigger indexing of creator's existing intents
+      await Events.Member.onSettingsUpdated({
+        userId: req.user!.id,
+        indexId: newIndex[0].id,
+        promptChanged: false,
+        autoAssignChanged: true
+      });
+
       // Get user information
       const userData = await db.select({
         name: users.name,
@@ -677,6 +685,14 @@ router.post('/:id/members',
         permissions,
         prompt: indexData[0]?.prompt || null, // Use index prompt as default member prompt
         autoAssign: true // Temporary: always set to true for now
+      });
+
+      // Trigger indexing of new member's existing intents
+      await Events.Member.onSettingsUpdated({
+        userId,
+        indexId: id,
+        promptChanged: false,
+        autoAssignChanged: true
       });
 
       // Get member details
@@ -1397,6 +1413,14 @@ router.post('/:id/join',
         autoAssign: true
       });
 
+      // Trigger indexing of user's existing intents
+      await Events.Member.onSettingsUpdated({
+        userId,
+        indexId: id,
+        promptChanged: false,
+        autoAssignChanged: true
+      });
+
       // Get membership details
       const memberData = await db.select({
         indexId: indexMembers.indexId,
@@ -1492,6 +1516,14 @@ router.post('/invitation/:code/accept',
         permissions: ['member'],
         prompt: indexData.prompt || null,
         autoAssign: true
+      });
+
+      // Trigger indexing of user's existing intents
+      await Events.Member.onSettingsUpdated({
+        userId,
+        indexId: indexId,
+        promptChanged: false,
+        autoAssignChanged: true
       });
 
       // Get full index data without owner info
