@@ -534,6 +534,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
       if (result.success && result.intents.length > 0) {
         // Clear only attachments, keep the text
         setAttachments([]);
+        setRecentIntents([]);
         setInputFocused(false);
         contentRef.current?.blur();
         
@@ -627,7 +628,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
 
   // Fetch recent discovery intents when input is focused
   useEffect(() => {
-    if (inputFocused && recentIntents.length === 0) {
+    if (inputFocused) {
       const fetchRecentIntents = async () => {
         try {
           const response = await intentsService.getIntents(1, 3, false, undefined, 'discovery_form');
@@ -641,11 +642,14 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
           }
         } catch (err) {
           console.error('Failed to fetch recent discovery intents:', err);
+          setRecentIntents([]); // Clear on error
         }
       };
       fetchRecentIntents();
+    } else {
+      setRecentIntents([]);
     }
-  }, [inputFocused, recentIntents.length, intentsService]);
+  }, [inputFocused, intentsService]);
 
   return (
     <div className="relative">
@@ -839,14 +843,17 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
                 data-placeholder="What do you want to discover?"
               />
               
-              {/* Animated Placeholder with react-typed - only when not focused */}
-              {!hasContent && attachments.length === 0 && !inputFocused && (
-                <div 
+              {/* Placeholder */}
+              {!hasContent && attachments.length === 0 && (
+                <div
                   className="absolute top-0 left-0 text-lg font-ibm-plex-mono text-gray-500 py-1 pointer-events-none"
                   style={{ lineHeight: '1.5' }}
                 >
-                  {!showTypedAnimation ? (
-                    // Show static text for first 3 seconds
+                  {inputFocused ? (
+                    // Static placeholder when focused
+                    <span>What do you want to discover?</span>
+                  ) : !showTypedAnimation ? (
+                    // Static text for first 3 seconds
                     <span>What do you want to discover?</span>
                   ) : (
                     // Then start animation
@@ -866,15 +873,6 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
                   )}
                 </div>
               )}
-              
-              {/* Static placeholder styling - shows when focused and empty */}
-              <style jsx>{`
-                [contenteditable][data-placeholder]:empty:focus::before {
-                  content: attr(data-placeholder);
-                  color: #6b7280;
-                  pointer-events: none;
-                }
-              `}</style>
             </div>
             
             <div className="flex items-center gap-2 ml-2">
