@@ -56,30 +56,7 @@ export async function addMemberToIndex(options: AddMemberOptions): Promise<AddMe
     }
 
     // Insert new member
-    const permissions = role === 'owner' ? ['owner'] : role === 'admin' ? ['admin', 'member'] : ['member'];
-    
-    // Ensure permissions array is correct based on schema usage in other files
-    // In indexes.ts: permissions: ['owner'] or ['member']
-    // It seems 'admin' might not be fully used or is just 'admin', 'member' combo?
-    // Let's stick to what was passed or simple mapping.
-    // The previous code used: permissions: ['member'] or permissions: ['owner']
-    // Let's use the passed role to determine permissions array.
-    // If role is 'owner', permissions is ['owner'].
-    // If role is 'member', permissions is ['member'].
-    // If role is 'admin', permissions is ['admin', 'member'] (common pattern) or just ['admin']?
-    // Looking at indexes.ts, it allows passing arbitrary strings in array.
-    // For safety, let's just wrap the role in an array if it's a single string, 
-    // but the type says role is one of the strings.
-    // Actually, let's just use [role] as the base, but maybe we want to allow passing the full array?
-    // For now, let's simplify: if role is 'owner', use ['owner']. If 'member', use ['member'].
-    // If 'admin', use ['admin', 'member'] to be safe? 
-    // Let's look at how it was done in indexes.ts:
-    // router.post('/:id/members') takes body('permissions').isArray()
-    // router.post('/:id/join') uses ['member']
-    // router.post('/', create index) uses ['owner']
-    
-    // I will use a simple mapping for now.
-    const finalPermissions = role === 'owner' ? ['owner'] : [role];
+    const finalPermissions = role === 'owner' ? ['owner'] : role === 'admin' ? ['admin', 'member'] : ['member'];
 
     await db.insert(indexMembers).values({
       indexId,
@@ -90,14 +67,6 @@ export async function addMemberToIndex(options: AddMemberOptions): Promise<AddMe
       metadata: metadata || null
     });
 
-    // Trigger indexing event
-    await Events.Member.onSettingsUpdated({
-      userId,
-      indexId,
-      promptChanged: false,
-      autoAssignChanged: true // Always true for new members with autoAssign=true
-    });
-
     // Fetch the newly created member to return
     const newMember = await db.select()
       .from(indexMembers)
@@ -106,6 +75,20 @@ export async function addMemberToIndex(options: AddMemberOptions): Promise<AddMe
         eq(indexMembers.userId, userId)
       ))
       .limit(1);
+
+    // Trigger indexing event (fire-and-forget to avoid coupling membership to indexing)
+    Events.Member.onSettingsUpdated({
+      userId,
+      indexId,
+      promptChanged: false,
+      autoAssignChanged: true // Always true for new members with autoAssign=true
+    }).catch(err => {
+      log.error('Failed to trigger member indexing', { 
+        userId, 
+        indexId, 
+        error: err instanceof Error ? err.message : String(err) 
+      });
+    });
 
     return {
       success: true,

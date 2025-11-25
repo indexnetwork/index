@@ -675,7 +675,7 @@ router.post('/:id/members',
       const addResult = await addMemberToIndex({
         indexId: id,
         userId,
-        role: permissions.includes('owner') ? 'owner' : 'member', // Simplified role mapping
+        role: permissions.includes('owner') ? 'owner' : permissions.includes('admin') ? 'admin' : 'member', // Simplified role mapping
         prompt: indexData[0]?.prompt || null,
         autoAssign: true
       });
