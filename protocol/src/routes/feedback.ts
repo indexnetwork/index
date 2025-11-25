@@ -26,15 +26,9 @@ router.post('/',
         return res.status(400).json({ error: 'Feedback or image is required' });
       }
 
-      // Log to console
-      console.log('Feedback received:', {
-        userId: req.user!.id,
-        feedback,
-        hasImage: !!image,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Send to Slack if webhook URL is configured
+      // Log to console use message with emoji
+      console.log(`📝 New feedback received`);
+      
       const slackWebhookUrl = process.env.SLACK_FEEDBACK_WEBHOOK_URL;
       if (slackWebhookUrl) {
         // Upload image to S3 if present and webhook is configured
@@ -104,7 +98,7 @@ router.post('/',
             }
           }
 
-          await axios.post(slackWebhookUrl, slackMessage);
+          await axios.post(slackWebhookUrl, slackMessage, { timeout: 5000 });
           console.log('Feedback sent to Slack');
         } catch (slackError) {
           console.error('Failed to send feedback to Slack:', slackError);
