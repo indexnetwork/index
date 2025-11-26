@@ -2,6 +2,7 @@ import db from '../db';
 import { indexMembers } from '../schema';
 import { eq, and } from 'drizzle-orm';
 import { log } from '../log';
+import { addMemberToIndex } from '../index-members';
 
 /**
  * Ensures a user is a member of the specified index.
@@ -20,10 +21,10 @@ export async function ensureIndexMembership(userId: string, indexId: string): Pr
 
     if (existingMember.length === 0) {
       // Add user as index member with basic permissions
-      await db.insert(indexMembers).values({
-        userId,
+      await addMemberToIndex({
         indexId,
-        permissions: ['member'],
+        userId,
+        role: 'member',
         autoAssign: true
       });
       log.info('Added integration user as index member', { userId, indexId });

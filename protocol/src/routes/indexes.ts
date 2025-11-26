@@ -17,6 +17,7 @@ import {
 import { Events } from '../lib/events';
 import { IntentService } from '../lib/intent-service';
 import { resolveFileUser } from '../lib/user-utils';
+import { addMemberToIndex } from '../lib/index-members';
 // Removed intent-filtering import - using existing suggestions system
 import crypto from 'crypto';
 
@@ -431,11 +432,11 @@ router.post('/',
       });
 
       // Add creator as owner member
-      await db.insert(indexMembers).values({
+      await addMemberToIndex({
         indexId: newIndex[0].id,
         userId: req.user!.id,
-        permissions: ['owner'],
-        prompt: prompt || null, // Use index prompt as default member prompt
+        role: 'owner',
+        prompt: prompt || null,
         autoAssign: true
       });
 
@@ -671,13 +672,17 @@ router.post('/:id/members',
         .limit(1);
 
       // Add member
-      await db.insert(indexMembers).values({
+      const addResult = await addMemberToIndex({
         indexId: id,
         userId,
-        permissions,
-        prompt: indexData[0]?.prompt || null, // Use index prompt as default member prompt
-        autoAssign: true // Temporary: always set to true for now
+        role: permissions.includes('owner') ? 'owner' : permissions.includes('admin') ? 'admin' : 'member', // Simplified role mapping
+        prompt: indexData[0]?.prompt || null,
+        autoAssign: true
       });
+
+      if (!addResult.success) {
+        return res.status(500).json({ error: addResult.error });
+      }
 
       // Get member details
       const memberData = await db.select({
@@ -1389,13 +1394,17 @@ router.post('/:id/join',
       }
 
       // Add user as member
-      await db.insert(indexMembers).values({
+      const addResult = await addMemberToIndex({
         indexId: id,
         userId,
-        permissions: ['member'],
+        role: 'member',
         prompt: index.prompt || null,
         autoAssign: true
       });
+
+      if (!addResult.success) {
+        return res.status(500).json({ error: addResult.error });
+      }
 
       // Get membership details
       const memberData = await db.select({
@@ -1486,13 +1495,17 @@ router.post('/invitation/:code/accept',
       }
 
       // Add user as member
-      await db.insert(indexMembers).values({
+      const addResult = await addMemberToIndex({
         indexId: indexId,
         userId,
-        permissions: ['member'],
+        role: 'member',
         prompt: indexData.prompt || null,
         autoAssign: true
       });
+
+      if (!addResult.success) {
+        return res.status(500).json({ error: addResult.error });
+      }
 
       // Get full index data without owner info
       const fullIndex = await db.select({
