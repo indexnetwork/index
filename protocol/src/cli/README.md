@@ -20,18 +20,6 @@ yarn db:flush
 
 ### Integration Management
 
-#### `sync-all`
-Syncs all integrations for all users.
-```bash
-yarn sync-all
-```
-
-#### `admin-sync`
-Admin-level sync operations.
-```bash
-yarn admin-sync
-```
-
 #### `trigger-integration`
 Manually triggers an integration sync.
 ```bash
@@ -108,17 +96,7 @@ yarn import-slack-export ./data.json \
 yarn import-slack-export ./data.json --json
 ```
 
-### Queue Management
 
-#### `queue-status`
-Shows the current status of background job queues.
-```bash
-# Development
-yarn queue-status
-
-# Production
-yarn queue-status:prod
-```
 
 ### Maintenance
 

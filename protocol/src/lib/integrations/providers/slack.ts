@@ -3,6 +3,8 @@ import { processObjects } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
+import { INTEGRATIONS } from '../config';
+import { getSlackLogger } from './slack-logger';
 
 // Constants
 const CHANNEL_LIMIT = 200;
@@ -12,12 +14,10 @@ const USER_LIMIT = 200;
 // - 15 messages per call
 // - Total: 15 messages per minute
 const MESSAGE_LIMIT = 15; // Messages per call
-const RATE_LIMIT_DELAY_MS = 60000; // 60 seconds between calls (1 call per minute)
-const RATE_LIMIT_RETRY_MS = 60000; // 1 minute wait on rate limit error
+// Get sync delay from config (defaults to 60 seconds)
+const RATE_LIMIT_DELAY_MS = INTEGRATIONS.slack.syncDelayMs || 60000;
+const RATE_LIMIT_RETRY_MS = INTEGRATIONS.slack.syncDelayMs || 60000; // Use same delay for retries
 const MAX_RETRIES = 3; // Max retries per API call
-
-// Filter channels to sync (set to empty array to sync all channels)
-const CHANNEL_FILTER: string[] = ['kernel-intros', 'kernel-asks']; // Add channel names here
 
 // Helper function to sleep
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -133,7 +133,12 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
       return [];
     }
 
-    log.info('Slack objects sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
+    const syncFrom = lastSyncAt ? lastSyncAt.toISOString() : 'all time';
+    log.info('Slack sync starting', { integrationId, since: syncFrom });
+    
+    const logger = getSlackLogger();
+    logger.updateIntegrationStart(integrationId, syncFrom);
+    
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 
@@ -161,31 +166,30 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
       channelCursor = channelsResp?.data?.response_metadata?.next_cursor;
     } while (channelCursor);
 
-    log.info('Slack channels fetched', { count: channels.length });
-    
-    // Apply channel filter from config or use hardcoded filter
+    // Apply channel filter from database config
     let filteredChannels = channels;
-    const selectedChannelIds = integration.config?.slack?.selectedChannels as string[] | undefined;
+    const selectedChannelIds = integration.config?.slack?.selectedChannels;
     
     if (selectedChannelIds && selectedChannelIds.length > 0) {
-      // Use configured channel IDs
       filteredChannels = channels.filter(ch => selectedChannelIds.includes(ch.id));
-      log.info('Slack channels filtered by config', { configuredCount: selectedChannelIds.length, matchedCount: filteredChannels.length });
-    } else if (CHANNEL_FILTER.length > 0) {
-      // Fallback to hardcoded filter by name
-      filteredChannels = channels.filter(ch => ch.name && CHANNEL_FILTER.includes(ch.name));
-      log.info('Slack channels filtered by hardcoded names', { filterCount: CHANNEL_FILTER.length, matchedCount: filteredChannels.length });
-    } else {
-      log.info('No channel filter applied, syncing all channels');
     }
+    
+    log.info('Slack channels', { total: channels.length, selected: filteredChannels.length });
+    
+    logger.updateChannelCounts(integrationId, channels.length, filteredChannels.length);
+    logger.setChannels(
+      integrationId,
+      filteredChannels.map(ch => ({
+        id: ch.id,
+        name: ch.name || ch.id
+      }))
+    );
     
     if (!filteredChannels.length) return [];
 
     // Fetch all users from Slack workspace for metadata
     const userMap = new Map<string, SlackUser>();
     try {
-      log.info('Fetching all Slack users');
-      
       let cursor: string | undefined;
       let allUsers: any[] = [];
       
@@ -199,7 +203,6 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
             ...(cursor && { cursor })
           }
         }) as SlackApiResponse;
-        
         
         const userData = usersResp?.data;
         if (userData?.members) {
@@ -217,7 +220,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
         }
       }
       
-      log.info('Slack users fetched', { count: userMap.size });
+      log.debug('Slack users fetched', { count: userMap.size });
     } catch (error) {
       log.error('Failed to fetch Slack users', { error: (error as Error).message });
     }
@@ -229,10 +232,9 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
       const channelId = ch.id;
       const channelName = ch.name || ch.id;
       
-      log.info(`Processing channel ${channelsProcessed + 1}/${filteredChannels.length}`, { 
-        channelName, 
-        channelId 
-      });
+      log.info(`Processing channel ${channelsProcessed + 1}/${filteredChannels.length}: ${channelName}`);
+      
+      logger.updateChannelStatus(integrationId, channelId, 'running');
       
       let channelMessages = 0;
       let messageCursor: string | undefined;
@@ -277,6 +279,8 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
               arguments: args 
             }) as SlackApiResponse;
             
+            // Success - clear any rate limit indicator
+            logger.clearRateLimit(integrationId, channelId);
             // Success - break out of retry loop
             break;
           } catch (error) {
@@ -284,12 +288,14 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
               retries++;
               if (retries <= MAX_RETRIES) {
                 const retryDelay = getRetryAfterDelay(error);
+                logger.updateRateLimit(integrationId, channelId, retryDelay);
                 log.warn(`Rate limit hit on page ${pageNum}, waiting ${retryDelay}ms before retry ${retries}/${MAX_RETRIES}`, {
                   channelName,
                   error: (error as Error).message,
                   errorDetails: JSON.stringify(error, null, 2)
                 });
                 await sleep(retryDelay);
+                logger.clearRateLimit(integrationId, channelId);
                 continue; // Retry the request
               } else {
                 log.error(`Rate limit exceeded max retries for channel`, {
@@ -318,21 +324,23 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
           channelMessages += messages.length;
           const hasMore = !!history?.data?.response_metadata?.next_cursor;
           
-          log.info(`Fetched page ${pageNum}`, { 
+          log.debug(`Fetched page ${pageNum}`, { 
             channelName,
             messagesInPage: messages.length,
             channelMessagesTotal: channelMessages,
             hasMore
           });
           
-          // Log full response when pagination ends to check for rate limits
-          if (!hasMore) {
-            log.info(`Pagination ended for channel`, {
-              channelName,
-              responseHeaders: (history as any).headers || 'No headers',
-              responseBody: JSON.stringify(history, null, 2)
-            });
-          }
+          // Update page progress (estimate total pages if we have cursor)
+          const lastMessage = messages[messages.length - 1];
+          const lastMessageAt = lastMessage?.ts ? new Date(parseFloat(lastMessage.ts) * 1000) : undefined;
+
+          logger.updateChannelProgress(integrationId, channelId, {
+            currentPage: pageNum,
+            hasMore,
+            lastMessageAt,
+            messagesProcessed: channelMessages
+          });
           
           // Process messages from this page immediately
           const pageMessages: SlackMessage[] = [];
@@ -376,18 +384,18 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
             });
           }
           
-          // Process this page of messages immediately
+          // Process this page of messages immediately (all at once for parallel user processing)
           if (pageMessages.length > 0) {
-            log.info(`Processing ${pageMessages.length} messages from page ${pageNum}`, { channelName });
+            const result = await processObjects(pageMessages, {
+              id: integration.id,
+              indexId: integration.indexId || undefined,
+              userId: integration.userId,
+              enableUserAttribution: true
+            }, slackHandler);
             
-            // Process each message individually to preserve its timestamp
-            for (const message of pageMessages) {
-              await processObjects([message], {
-                id: integration.id,
-                indexId: integration.indexId || undefined,
-                userId: integration.userId,
-                enableUserAttribution: true
-              }, slackHandler);
+            // Update user creation count
+            if (result.newUsersCreated > 0) {
+              logger.incrementUsersCreated(integrationId, result.newUsersCreated);
             }
           }
           
@@ -395,8 +403,9 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
           
           // Add delay before next API call to avoid rate limiting
           if (messageCursor) {
-            log.info(`Waiting ${RATE_LIMIT_DELAY_MS}ms before next page`, { channelName });
+            logger.updateRateLimit(integrationId, channelId, RATE_LIMIT_DELAY_MS);
             await sleep(RATE_LIMIT_DELAY_MS);
+            logger.clearRateLimit(integrationId, channelId);
           }
         } catch (error) {
           // This catch is for message processing errors, not API errors (those are caught above)
@@ -410,16 +419,17 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
       } while (messageCursor);
       
       channelsProcessed++;
-      log.info(`Channel processed`, { 
-        channelName, 
-        messagesInChannel: channelMessages
-      });
+      logger.updateChannelStatus(integrationId, channelId, 'done', channelMessages);
+      log.info(`Channel done: ${channelName}`, { messages: channelMessages });
+      
+      // Add delay between channels to respect rate limits (especially for non-Marketplace apps)
+      if (channelsProcessed < filteredChannels.length) {
+        await sleep(RATE_LIMIT_DELAY_MS);
+      }
     }
     
-    log.info('Slack objects sync done', { 
-      integrationId, 
-      channelsProcessed
-    });
+    logger.completeIntegration(integrationId);
+    log.info('Slack sync complete', { integrationId, channels: channelsProcessed });
     // Return empty array since messages are processed incrementally
     return [];
   } catch (error) {

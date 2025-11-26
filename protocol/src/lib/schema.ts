@@ -51,9 +51,15 @@ export interface DirectorySyncConfig {
   memberCount?: number;
 }
 
+// Slack-specific configuration
+export interface SlackConfig {
+  selectedChannels?: string[]; // Array of channel IDs to sync
+}
+
 // Integration configuration type
 export interface IntegrationConfigType {
   directorySync?: DirectorySyncConfig;
+  slack?: SlackConfig;
 }
 
 // Tables

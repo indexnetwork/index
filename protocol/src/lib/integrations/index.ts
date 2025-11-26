@@ -121,8 +121,6 @@ async function attributeToUsers<T>(
   integration: { id: string; indexId: string },
   handler: IntegrationHandler<T>
 ): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
-  log.info('Processing objects with user attribution', { count: objects.length });
-
   if (!handler.extractUsers) {
     log.error('Handler missing extractUsers function');
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
@@ -130,10 +128,8 @@ async function attributeToUsers<T>(
 
   // Step 1: Extract unique users from objects
   const userIdentifiers = handler.extractUsers(objects);
-  log.info('Extracted users', { count: userIdentifiers.length });
 
   if (userIdentifiers.length === 0) {
-    log.warn('No users extracted from objects');
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 
@@ -149,7 +145,7 @@ async function attributeToUsers<T>(
         name: userIdentifier.name,
         provider: userIdentifier.provider as any,
         avatar: userIdentifier.avatar,
-        updateEmptyFields: userIdentifier.provider === 'slack' // Only Slack has avatars
+        updateEmptyFields: userIdentifier.provider === 'slack'
       });
       
       if (!resolvedUser) {
@@ -162,13 +158,6 @@ async function attributeToUsers<T>(
 
       // Add user as index member
       await ensureIndexMembership(resolvedUser.id, integration.indexId);
-
-      log.debug('User resolved and added to index', {
-        providerId: userIdentifier.providerId,
-        userId: resolvedUser.id,
-        email: resolvedUser.email,
-        isNewUser: resolvedUser.isNewUser
-      });
 
       return { providerId: userIdentifier.providerId, user: resolvedUser };
     } catch (error) {
@@ -190,15 +179,11 @@ async function attributeToUsers<T>(
     }
   }
 
-  log.info('Users resolved', { resolvedCount: resolvedUsers.size, newUsersCreated });
-
   if (resolvedUsers.size === 0) {
-    log.warn('No users successfully resolved');
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated };
   }
 
   // Step 3: Queue intent generation per user (in parallel)
-  // Extract datetime from objects if available (once, shared across all users)
   let createdAt: Date | undefined;
   if (objects.length > 0) {
     const firstObj = objects[0] as any;
@@ -209,7 +194,6 @@ async function attributeToUsers<T>(
 
   const intentQueuePromises = Array.from(resolvedUsers.entries()).map(async ([providerId, user]) => {
     try {
-      // Queue intent generation for this user
       await addGenerateIntentsJob({
         userId: user.id,
         sourceId: integration.id,
@@ -234,12 +218,6 @@ async function attributeToUsers<T>(
   const queueResults = await Promise.all(intentQueuePromises);
   const totalIntentsGenerated = queueResults.filter(r => r).length;
 
-  log.info('Object processing with attribution complete', {
-    intentsGenerated: totalIntentsGenerated,
-    usersProcessed: resolvedUsers.size,
-    newUsersCreated
-  });
-
   return {
     intentsGenerated: totalIntentsGenerated,
     usersProcessed: resolvedUsers.size,
@@ -256,18 +234,11 @@ async function attributeToOwner<T>(
   integration: { id: string; indexId?: string | null },
   integrationOwnerId: string
 ): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
-  log.info('Processing objects without user attribution', {
-    count: objects.length,
-    ownerId: integrationOwnerId
-  });
-
   try {
-    // If there's an indexId, ensure integration owner is index member
     if (integration.indexId) {
       await ensureIndexMembership(integrationOwnerId, integration.indexId);
     }
 
-    // Extract datetime from objects if available
     let createdAt: Date | undefined;
     if (objects.length > 0) {
       const firstObj = objects[0] as any;
@@ -276,7 +247,6 @@ async function attributeToOwner<T>(
       }
     }
 
-    // Queue intent generation for integration owner with all objects
     await addGenerateIntentsJob({
       userId: integrationOwnerId,
       sourceId: integration.id,
@@ -287,12 +257,6 @@ async function attributeToOwner<T>(
       intentCount: MAX_INTENTS_PER_USER,
       ...(createdAt && { createdAt })
     }, 6);
-
-    log.info('Object processing without attribution complete', {
-      intentsGenerated: 1,
-      usersProcessed: 1,
-      newUsersCreated: 0
-    });
 
     return {
       intentsGenerated: 1,

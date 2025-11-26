@@ -41,7 +41,6 @@ export async function syncIntegration(
   integrationId: string
 ): Promise<SyncResult> {
   try {
-    log.info('Integration sync start', { integrationId });
 
     // Get integration details (including config)
     const integrationDetails = await getIntegrationById(integrationId);
@@ -123,7 +122,7 @@ export async function syncIntegration(
     } else if (handler.fetchFiles) {
       // File-based providers (Gmail, Google Calendar)
       const files = await handler.fetchFiles(integrationId, lastSyncAt || undefined);
-      log.info('Provider files', { count: files.length });
+      log.debug('Provider files', { count: files.length });
 
       if (files.length === 0) {
         await db.update(userIntegrations)
@@ -146,15 +145,6 @@ export async function syncIntegration(
     await db.update(userIntegrations)
       .set({ lastSyncAt: new Date() })
       .where(eq(userIntegrations.id, integration[0].id));
-
-    log.info('Integration sync done', { 
-      integrationId,
-      userId: integration[0].userId, 
-      integrationType: integration[0].integrationType, 
-      intentsGenerated, 
-      usersProcessed, 
-      newUsersCreated
-    });
 
     return {
       success: true,
