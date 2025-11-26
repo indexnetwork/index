@@ -1,0 +1,26 @@
+{
+    "folders": [
+        {
+            "name": "Index",
+            "path": "../"
+        },
+        {
+            "name": "Frontend",
+            "path": "../frontend"
+        },
+        {
+            "name": "Protocol",
+            "path": "../protocol"
+        }
+    ],
+    "settings": {
+        // Activate the theme (optional if you already selected it manually)
+        "workbench.iconTheme": "material-icon-theme",
+        // Map specific Root Folder Names (case-sensitive) to Icon Names
+        "material-icon-theme.rootFolders.associations": {
+            "Index": "core", // Maps "Index" to the 'core' icon
+            "Frontend": "client", // Maps "Frontend" to the 'client' icon
+            "Protocol": "api" // Maps "Protocol" to the 'api' icon
+        }
+    }
+}

@@ -5,3 +5,4 @@ AGENTS.md
 postgres/
 .cursor
 package.json
+.agent
