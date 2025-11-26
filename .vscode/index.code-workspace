@@ -1,4 +1,6 @@
 {
+    // This workspace file provides a basic multi-root setup for the Index project.
+    // Files such as tasks.json will be ignored and developers can implement their own freely.
     "folders": [
         {
             "name": "Index",
