@@ -15,6 +15,7 @@ import ClientLayout from '@/components/ClientLayout';
 import { createIntegrationsService, type DirectorySyncConfig } from '@/services/integrations';
 import { useAuthenticatedAPI } from '@/lib/api';
 import DirectoryConfigModal from '@/components/modals/DirectoryConfigModal';
+import SlackChannelModal from '@/components/modals/SlackChannelModal';
 import { INTEGRATIONS } from '@/config/integrations';
 
 interface Member {
@@ -95,6 +96,9 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedIntegrationForConfig, setSelectedIntegrationForConfig] = useState<IntegrationItem | null>(null);
   const [syncingDirectory, setSyncingDirectory] = useState<string | null>(null);
+  const [slackChannelModalOpen, setSlackChannelModalOpen] = useState(false);
+  const [selectedSlackIntegration, setSelectedSlackIntegration] = useState<IntegrationItem | null>(null);
+  const [slackChannelConfigs, setSlackChannelConfigs] = useState<Record<string, { selectedChannels: string[] }>>({});
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -448,6 +452,16 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
         }
       }
       setDirectoryConfigs(configs);
+
+      // Load Slack channel configs
+      const slackConfigs: Record<string, { selectedChannels: string[] }> = {};
+      for (const integration of formattedIntegrations) {
+        if (integration.type === 'slack' && integration.id && integration.connected) {
+          // Note: Backend doesn't have a get endpoint yet, will be stored in config
+          // For now we can skip loading existing config
+        }
+      }
+      setSlackChannelConfigs(slackConfigs);
     } catch (err) {
       console.error('Failed to load integrations:', err);
       error('Failed to load integrations');
@@ -532,6 +546,23 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                     connected: true
                   });
                   setConfigModalOpen(true);
+                }
+              }
+              
+              // If Slack integration, open channel selector modal
+              if (integration.type === 'slack') {
+                const updatedIntegrations = await service.getIntegrations(indexId);
+                const connectedIntegration = updatedIntegrations.integrations.find(
+                  i => i.type === integration.type && i.id === integrationId
+                );
+                if (connectedIntegration?.id) {
+                  setSelectedSlackIntegration({
+                    id: connectedIntegration.id,
+                    type: integration.type,
+                    name: integration.name,
+                    connected: true
+                  });
+                  setSlackChannelModalOpen(true);
                 }
               }
               
@@ -1076,6 +1107,8 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                   const integrationDef = INTEGRATIONS.find(i => i.type === it.type);
                   const requiresDirectoryConfig = integrationDef?.requiresDirectoryConfig;
                   const directoryConfig = it.id ? directoryConfigs[it.id] : null;
+                  const isSlack = it.type === 'slack';
+                  const slackConfig = it.id ? slackChannelConfigs[it.id] : null;
 
                   return (
                     <div 
@@ -1185,6 +1218,20 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                           )}
                         </div>
                       )}
+                      {it.connected && isSlack && it.id && (
+                        <div className="mt-2 pt-2 border-t border-gray-200">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedSlackIntegration(it);
+                              setSlackChannelModalOpen(true);
+                            }}
+                            className="w-full text-[10px] px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded font-ibm-plex-mono text-black"
+                          >
+                            {slackConfig ? 'Edit Channels' : 'Select Channels'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1202,6 +1249,21 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
             id: selectedIntegrationForConfig.id,
             type: selectedIntegrationForConfig.type as 'notion' | 'airtable' | 'googledocs',
             name: selectedIntegrationForConfig.name
+          }}
+          onSuccess={() => {
+            loadIntegrations();
+          }}
+        />
+      )}
+
+      {selectedSlackIntegration && selectedSlackIntegration.id && (
+        <SlackChannelModal
+          open={slackChannelModalOpen}
+          onOpenChange={setSlackChannelModalOpen}
+          integration={{
+            id: selectedSlackIntegration.id,
+            type: selectedSlackIntegration.type,
+            name: selectedSlackIntegration.name
           }}
           onSuccess={() => {
             loadIntegrations();

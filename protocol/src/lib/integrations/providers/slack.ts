@@ -163,12 +163,22 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<S
 
     log.info('Slack channels fetched', { count: channels.length });
     
-    // Apply channel filter if specified
-    const filteredChannels = CHANNEL_FILTER.length > 0 
-      ? channels.filter(ch => ch.name && CHANNEL_FILTER.includes(ch.name))
-      : channels;
+    // Apply channel filter from config or use hardcoded filter
+    let filteredChannels = channels;
+    const selectedChannelIds = integration.config?.slack?.selectedChannels as string[] | undefined;
     
-    log.info('Slack channels after filter', { count: filteredChannels.length, filter: CHANNEL_FILTER });
+    if (selectedChannelIds && selectedChannelIds.length > 0) {
+      // Use configured channel IDs
+      filteredChannels = channels.filter(ch => selectedChannelIds.includes(ch.id));
+      log.info('Slack channels filtered by config', { configuredCount: selectedChannelIds.length, matchedCount: filteredChannels.length });
+    } else if (CHANNEL_FILTER.length > 0) {
+      // Fallback to hardcoded filter by name
+      filteredChannels = channels.filter(ch => ch.name && CHANNEL_FILTER.includes(ch.name));
+      log.info('Slack channels filtered by hardcoded names', { filterCount: CHANNEL_FILTER.length, matchedCount: filteredChannels.length });
+    } else {
+      log.info('No channel filter applied, syncing all channels');
+    }
+    
     if (!filteredChannels.length) return [];
 
     // Fetch all users from Slack workspace for metadata
