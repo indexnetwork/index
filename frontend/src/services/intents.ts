@@ -1,8 +1,8 @@
-import { 
+import {
   Intent,
-  PaginatedResponse, 
+  PaginatedResponse,
   APIResponse,
-} from '../lib/types';
+} from '../types';
 
 // Service functions factory that takes an authenticated API instance
 export const createIntentsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({

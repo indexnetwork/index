@@ -10,6 +10,7 @@ import { getUploadsPath } from '../lib/paths';
 import { processUploadedFiles } from '../lib/uploads';
 import { createUploadClient } from '../lib/uploads';
 import { addGenerateIntentsJob } from '../lib/queue/llm-queue';
+import { FileRecord, FileUploadResponse } from '../types';
 
 // Extend the Request interface to include generatedFileId
 declare global {

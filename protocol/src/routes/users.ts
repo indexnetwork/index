@@ -4,6 +4,7 @@ import db from '../lib/db';
 import { users } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, ilike, or, and, count, desc } from 'drizzle-orm';
+import { User, UpdateProfileRequest } from '../types';
 
 const router = Router();
 

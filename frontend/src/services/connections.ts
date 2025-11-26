@@ -1,7 +1,7 @@
-import { 
+import {
   ConnectionEvent,
   ConnectionsByUserResponse,
-} from '../lib/types';
+} from '../types';
 
 // Service functions factory that takes an authenticated API instance
 export const createConnectionsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({

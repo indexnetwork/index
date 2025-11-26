@@ -127,7 +127,7 @@ export default function OnboardingPage() {
   const [links, setLinks] = useState<Array<{ id: string; url: string; createdAt?: string }>>([]);
 
   // Public indexes for join_indexes step
-  const [publicIndexes, setPublicIndexes] = useState<Array<Index & { isMember?: boolean }>>([]);
+  const [publicIndexes, setPublicIndexes] = useState<Array<Index>>([]);
   const [publicIndexesLoaded, setPublicIndexesLoaded] = useState(false);
   const [isJoiningIndex, setIsJoiningIndex] = useState<string | null>(null);
 
@@ -439,7 +439,7 @@ export default function OnboardingPage() {
       if (currentStep === 'join_indexes' && !publicIndexesLoaded) {
         try {
           const response = await indexService.discoverPublicIndexes(1, 20);
-          setPublicIndexes(response.indexes || []);
+          setPublicIndexes(response.data || []);
           setPublicIndexesLoaded(true);
         } catch (error) {
           console.error('Failed to load public indexes:', error);
@@ -1565,7 +1565,7 @@ export default function OnboardingPage() {
                       <div className="text-center">
                         <h3 className="text-lg font-bold text-black mb-2 font-ibm-plex-mono">{index.title}</h3>
                         <p className="text-xs text-[#888] mb-4 font-ibm-plex-mono">
-                          {index._count.members.toLocaleString()} members
+                          {index._count?.members.toLocaleString()} members
                         </p>
                         <Button
                           variant={isJoined ? "default" : "outline"}

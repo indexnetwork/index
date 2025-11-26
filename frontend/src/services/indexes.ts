@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { useAuthenticatedAPI, apiClient } from '../lib/api';
-import { 
-  Index, 
-  PaginatedResponse, 
-  APIResponse, 
-  CreateIndexRequest, 
+import {
+  Index,
+  PaginatedResponse,
+  APIResponse,
+  CreateIndexRequest,
   UpdateIndexRequest
-} from '../lib/types';
+} from '../types';
 
 // Re-export types for convenience
 export type { Index };

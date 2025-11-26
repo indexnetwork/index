@@ -4,8 +4,8 @@ import db from '../lib/db';
 import { indexes, users, indexMembers, intentIndexes, intents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists, sql } from 'drizzle-orm';
-import { 
-  checkIndexOwnership, 
+import {
+  checkIndexOwnership,
   checkIndexAdminAccess,
   getUserAccessibleIndexIds,
   checkMultipleIndexesMembership,
@@ -20,6 +20,7 @@ import { resolveFileUser } from '../lib/user-utils';
 import { addMemberToIndex } from '../lib/index-members';
 // Removed intent-filtering import - using existing suggestions system
 import crypto from 'crypto';
+import { Index, CreateIndexRequest, UpdateIndexRequest, PaginatedResponse, APIResponse } from '../types';
 
 
 
