@@ -5,3 +5,6 @@ AGENTS.md
 postgres/
 .cursor
 package.json
+.agent
+.vscode/
+!.vscode/index.code-workspace.default
