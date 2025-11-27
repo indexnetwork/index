@@ -1565,7 +1565,7 @@ export default function OnboardingPage() {
                       <div className="text-center">
                         <h3 className="text-lg font-bold text-black mb-2 font-ibm-plex-mono">{index.title}</h3>
                         <p className="text-xs text-[#888] mb-4 font-ibm-plex-mono">
-                          {index._count?.members.toLocaleString()} members
+                          {(index._count?.members ?? 0).toLocaleString()} members
                         </p>
                         <Button
                           variant={isJoined ? "default" : "outline"}
