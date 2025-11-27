@@ -1,4 +1,4 @@
-import type { IntegrationHandler, IntegrationFile } from '../index';
+import type { IntegrationFile } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
@@ -116,5 +116,4 @@ async function fetchFiles(integrationId: string, lastSyncAt?: Date): Promise<Int
   }
 }
 
-export const googleCalendarHandler: IntegrationHandler = { fetchFiles };
 

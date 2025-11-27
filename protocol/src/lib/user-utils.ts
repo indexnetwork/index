@@ -379,7 +379,7 @@ export async function resolveIntegrationUser(params: {
         }
       }
       
-      log.info('Integration user already exists', { email, provider, providerId, userId: user.id });
+      log.debug('Integration user already exists', { email, provider, providerId, userId: user.id });
       
       return {
         id: user.id,

@@ -1,4 +1,3 @@
-import type { IntegrationHandler, UserIdentifier } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { ensureIndexMembership } from '../membership-utils';
@@ -65,12 +64,83 @@ interface AirtableApiResponse {
 }
 
 /**
- * Fetches Airtable records with comments for intent generation.
- * Processes all accessible bases and tables for the authenticated user.
- * For user integrations: generates intents for single user.
+ * Initialize Airtable integration sync.
+ * Fetches records, processes them, and queues intent generation for the integration owner.
  * For index integrations: skips (directory sync handles this).
  */
-async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<AirtableRecord[]> {
+export async function initAirtable(
+  integrationId: string,
+  lastSyncAt?: Date
+): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
+  try {
+    const integration = await getIntegrationById(integrationId);
+    if (!integration) {
+      log.error('Integration not found', { integrationId });
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+    }
+
+    // Index integration: skip intent generation (directory sync handles this)
+    if (integration.indexId) {
+      log.info('Skipping intent generation for index integration', { integrationId });
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+    }
+
+    if (!integration.connectedAccountId) {
+      log.error('No connected account ID found for integration', { integrationId });
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+    }
+
+    log.info('Airtable sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
+    
+    // Fetch records
+    const records = await fetchRecords(integrationId, integration.userId, integration.connectedAccountId, lastSyncAt);
+    
+    if (!records.length) {
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+    }
+
+    // Process records for integration owner
+    if (integration.indexId) {
+      await ensureIndexMembership(integration.userId, integration.indexId);
+    }
+
+    await addGenerateIntentsJob({
+      userId: integration.userId,
+      sourceId: integrationId,
+      sourceType: 'integration',
+      objects: records,
+      instruction: `Generate intents based on Airtable records and comments`,
+      indexId: integration.indexId || undefined,
+      intentCount: MAX_INTENTS_PER_USER
+    }, 6);
+
+    log.info('Airtable sync complete', {
+      integrationId,
+      recordsProcessed: records.length,
+      intentsGenerated: 1,
+      usersProcessed: 1
+    });
+
+    return {
+      intentsGenerated: 1,
+      usersProcessed: 1,
+      newUsersCreated: 0
+    };
+  } catch (error) {
+    log.error('Airtable sync error', { integrationId, error: (error as Error).message });
+    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+  }
+}
+
+/**
+ * Fetches Airtable records with comments.
+ */
+async function fetchRecords(
+  integrationId: string,
+  userId: string,
+  connectedAccountId: string,
+  lastSyncAt?: Date
+): Promise<AirtableRecord[]> {
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
@@ -89,15 +159,13 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
       return [];
     }
 
-    log.info('Airtable objects sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
-    const connectedAccountId = integration.connectedAccountId;
 
     // Get authenticated user info
     let userInfoResp: AirtableApiResponse;
     try {
       userInfoResp = await composio.tools.execute('AIRTABLE_GET_USER_INFO', {
-        userId: integration.userId,
+        userId,
         connectedAccountId,
         arguments: {}
       }) as AirtableApiResponse;
@@ -132,7 +200,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
     
     do {
       const basesResp = await composio.tools.execute('AIRTABLE_LIST_BASES', {
-        userId: integration.userId,
+        userId,
         connectedAccountId,
         arguments: offset ? { offset } : {}
       }) as AirtableApiResponse;
@@ -156,7 +224,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
       try {
         // Discover tables in this base
         const schemaResp = await composio.tools.execute('AIRTABLE_GET_BASE_SCHEMA', {
-          userId: integration.userId,
+          userId,
           connectedAccountId,
           arguments: { baseId: base.id }
         }) as AirtableApiResponse;
@@ -179,7 +247,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
 
             do {
               const recordsResp = await composio.tools.execute('AIRTABLE_LIST_RECORDS', {
-                userId: integration.userId,
+                userId,
                 connectedAccountId,
                 arguments: {
                   baseId: base.id,
@@ -210,7 +278,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
                   let comments: any[] = [];
                   try {
                     const commentsResp = await composio.tools.execute('AIRTABLE_LIST_COMMENTS', {
-                      userId: integration.userId,
+                      userId,
                       connectedAccountId,
                       arguments: {
                         baseId: base.id,
@@ -291,115 +359,15 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<A
       }
     }
 
-    log.info('Airtable objects sync done', { 
+    log.info('Airtable records fetched', { 
       integrationId, 
-      objects: allRecords.length,
+      count: allRecords.length,
       recordsWithComments: allRecords.filter(r => r.comments && r.comments.length > 0).length
     });
     
     return allRecords;
   } catch (error) {
-    log.error('Airtable objects sync error', { integrationId, error: (error as Error).message });
+    log.error('Failed to fetch Airtable records', { integrationId, error: (error as Error).message });
     return [];
   }
 }
-
-/**
- * Processes Airtable records to generate intents for the existing user.
- * Uses the user who connected the Airtable integration and queues intent generation.
- */
-export async function processAirtableRecords(
-  records: AirtableRecord[],
-  integration: { id: string; indexId: string }
-): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
-  if (!records.length) {
-    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
-  }
-
-  log.info('Processing Airtable records', { 
-    count: records.length,
-    recordsWithComments: records.filter(r => r.comments && r.comments.length > 0).length
-  });
-
-  try {
-    // Get integration details
-    const integrationDetails = await getIntegrationById(integration.id);
-    if (!integrationDetails) {
-      log.error('Integration not found for processing', { integrationId: integration.id });
-      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
-    }
-
-    // Use the existing user who connected the integration
-    const existingUserId = integrationDetails.userId;
-
-    // Ensure index membership
-    await ensureIndexMembership(existingUserId, integration.indexId);
-
-    log.info('Processing Airtable records for existing user', {
-      userId: existingUserId,
-      integrationId: integration.id,
-      recordCount: records.length
-    });
-
-    // Queue intent generation job for the existing user
-    await addGenerateIntentsJob({
-      userId: existingUserId,
-      sourceId: integration.id,
-      sourceType: 'integration',
-      objects: records,
-      instruction: `Generate intents based on Airtable records and comments`,
-      indexId: integration.indexId,
-      intentCount: MAX_INTENTS_PER_USER
-    }, 6);
-
-    log.info('Airtable processing complete', {
-      intentsGenerated: 1,
-      usersProcessed: 1,
-      newUsersCreated: 0
-    });
-
-    return {
-      intentsGenerated: 1,
-      usersProcessed: 1,
-      newUsersCreated: 0
-    };
-  } catch (error) {
-    log.error('Failed to process Airtable records', {
-      error: error instanceof Error ? error.message : String(error)
-    });
-    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
-  }
-}
-
-/**
- * Extract unique users from Airtable records (from comment authors)
- */
-function extractUsers(records: AirtableRecord[]): UserIdentifier[] {
-  const userMap = new Map<string, UserIdentifier>();
-
-  for (const record of records) {
-    if (!record.comments) continue;
-
-    for (const comment of record.comments) {
-      const author = comment.author;
-      if (!author?.id || !author?.email) continue;
-      if (userMap.has(author.id)) continue;
-
-      userMap.set(author.id, {
-        id: author.id,
-        email: author.email,
-        name: author.email.split('@')[0],
-        provider: 'airtable',
-        providerId: author.id
-      });
-    }
-  }
-
-  return Array.from(userMap.values());
-}
-
-export const airtableHandler: IntegrationHandler<AirtableRecord> = {
-  enableUserAttribution: false, // Default: process for integration owner only
-  fetchObjects,
-  extractUsers
-};

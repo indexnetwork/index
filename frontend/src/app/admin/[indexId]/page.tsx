@@ -9,7 +9,7 @@ export default function AdminIndexPage({ params }: { params: Promise<{ indexId: 
 
   useEffect(() => {
     // Redirect to approvals page by default
-    router.replace(`/admin/${indexId}/approvals`);
+    router.replace(`/admin/${indexId}/settings`);
   }, [indexId, router]);
 
   return null;

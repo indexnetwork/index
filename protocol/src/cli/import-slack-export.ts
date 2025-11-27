@@ -7,7 +7,6 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import { Command } from 'commander';
 import * as fs from 'fs';
-import { slackHandler } from '../lib/integrations/providers/slack';
 import type { SlackMessage } from '../lib/integrations/providers/slack';
 import { log, setLevel } from '../lib/log';
 import { getIntegrationById } from '../lib/integrations/integration-utils';
@@ -97,8 +96,15 @@ class UserCache {
 }
 
 async function processMessage(message: SlackMessage, integrationId: string, indexId: string, userCache: UserCache) {
-  const [userIdentifier] = slackHandler.extractUsers!([message]);
-  if (!userIdentifier) return 0;
+  if (!message.user_profile) return 0;
+  
+  const userIdentifier = {
+    email: message.user_profile.email,
+    name: message.user_profile.name,
+    providerId: message.user,
+    provider: 'slack' as const,
+    avatar: message.user_profile.avatar
+  };
 
   const user = await userCache.resolve(userIdentifier, indexId);
   if (!user) return 0;

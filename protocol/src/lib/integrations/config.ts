@@ -6,15 +6,16 @@ export interface IntegrationConfig {
   capabilities: {
     // Can this integration be used for personal intent generation?
     userIntegration: boolean;
-    // Can this integration be used for index with attribution?
+    // Can this integration be used for index?
     indexIntegration: boolean;
     // What sync modes are supported for index integrations?
     indexSyncModes?: {
-      attribution?: boolean;    // Extract users from content (Slack, Discord)
       directorySync?: boolean;  // Map database/table to members (Notion, Airtable, Docs)
     };
   };
   enabled: boolean; // Global enable/disable flag
+  // Delay in milliseconds between API calls / sync operations (for rate limiting)
+  syncDelayMs?: number;
 }
 
 export const INTEGRATIONS = {
@@ -26,9 +27,10 @@ export const INTEGRATIONS = {
     capabilities: {
       userIntegration: false,
       indexIntegration: true,
-      indexSyncModes: { attribution: true }
+      indexSyncModes: {}
     },
-    enabled: true
+    enabled: true,
+    syncDelayMs: 60000 // 60 seconds - Slack rate limit: 1 call per minute for conversation history
   },
   discord: { 
     name: 'discord',
@@ -38,9 +40,10 @@ export const INTEGRATIONS = {
     capabilities: {
       userIntegration: false,
       indexIntegration: true,
-      indexSyncModes: { attribution: true }
+      indexSyncModes: {}
     },
-    enabled: false // Disabled for now
+    enabled: false, // Disabled for now
+    syncDelayMs: 1000 // 1 second - Discord rate limit: ~50 requests per second
   },
   notion: { 
     name: 'notion',
@@ -52,7 +55,8 @@ export const INTEGRATIONS = {
       indexIntegration: true,   // Can sync directory
       indexSyncModes: { directorySync: true }
     },
-    enabled: true
+    enabled: true,
+    syncDelayMs: 350 // 350ms - Notion rate limit: 3 requests per second
   },
   airtable: { 
     name: 'airtable',
@@ -64,7 +68,8 @@ export const INTEGRATIONS = {
       indexIntegration: true,
       indexSyncModes: { directorySync: true }
     },
-    enabled: true
+    enabled: true,
+    syncDelayMs: 200 // 200ms - Airtable rate limit: 5 requests per second
   },
   googledocs: { 
     name: 'googledocs',
@@ -76,7 +81,8 @@ export const INTEGRATIONS = {
       indexIntegration: true,
       indexSyncModes: { directorySync: true }
     },
-    enabled: false // Disabled for now
+    enabled: false, // Disabled for now
+    syncDelayMs: 100 // 100ms - Google Docs rate limit: ~10 requests per second
   },
 } as const satisfies Record<string, IntegrationConfig>;
 

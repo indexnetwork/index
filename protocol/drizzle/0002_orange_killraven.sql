@@ -1,1 +1,1 @@
-ALTER TABLE "integrations" ALTER COLUMN "enable_user_attribution" SET DEFAULT false;
+ALTER TABLE "integrations" DROP COLUMN "enable_user_attribution";

@@ -1,13 +1,13 @@
-import type { IntegrationHandler, UserIdentifier } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
 import { ensureIndexMembership } from '../membership-utils';
 import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
+const MAX_INTENTS_PER_DOCUMENT = 3;
+
 // Integration limits to prevent API rate limiting and excessive processing
 const MAX_DOCUMENTS = 100;
-const MAX_INTENTS_PER_DOCUMENT = 3;
 
 export interface GoogleDocsDocument {
   id: string;
@@ -168,29 +168,30 @@ function extractContentFromDocument(responseData: any): string {
 }
 
 /**
- * Fetches Google Docs documents owned by the connected user.
- * Only processes documents owned by the authenticated user to avoid creating
- * intents for other users' content. Supports incremental sync via lastSyncAt.
- * For user integrations: generates intents for single user.
+ * Initialize Google Docs integration sync.
+ * Fetches documents and queues intent generation for the integration owner.
  * For index integrations: skips (directory sync handles this).
  */
-async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<GoogleDocsDocument[]> {
+export async function initGoogleDocs(
+  integrationId: string,
+  lastSyncAt?: Date
+): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
       log.error('Integration not found', { integrationId });
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Index integration: skip intent generation (directory sync handles this)
     if (integration.indexId) {
       log.info('Skipping intent generation for index integration', { integrationId });
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     if (!integration.connectedAccountId) {
       log.error('No connected account ID found for integration', { integrationId });
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     log.info('Google Docs objects sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
@@ -229,13 +230,13 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
     // Check for API permission errors in search response
     if (searchResponse?.error && searchResponse.error.includes('PERMISSION_DENIED')) {
       log.error('🚫 Google Docs API permission denied during search');
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Check for API not enabled errors in search response
     if (searchResponse?.error && searchResponse.error.includes('Google Docs API has not been used')) {
       log.error('🔧 Google Docs API not enabled during search');
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Fallback: try alternative search if initial search returns no results
@@ -262,7 +263,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
 
     if (!documents.length) {
       log.warn('⚠️ No documents found in Google Docs search');
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
 
@@ -274,7 +275,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
     
     if (!account) {
       log.error('Connected account not found', { connectedAccountId, integrationId });
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Extract user email from account data using multiple fallback strategies
@@ -294,7 +295,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
     
     if (!userEmail) {
       log.error('❌ User email not found in connected account', { connectedAccountId });
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     log.info('👤 Processing documents', { userEmail, count: documents.length });
@@ -360,7 +361,7 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
           modifiedTime: doc.modifiedTime,
           webViewLink: doc.webViewLink,
           size: doc.size,
-          owners: doc.owners // Include owners for attribution
+          owners: doc.owners // Include owners for user extraction
         });
 
         log.info('✅ Document processed', { documentId: doc.id, documentName: doc.name, contentLength: content.length });
@@ -371,96 +372,48 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<G
       }
     }
 
-    log.info('✅ Google Docs sync done', { count: allDocuments.length });
-    return allDocuments;
+    log.info('✅ Google Docs documents fetched', { count: allDocuments.length });
+    
+    if (allDocuments.length === 0) {
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+    }
+    
+    // Process for integration owner
+    if (integration.indexId) {
+      await ensureIndexMembership(integration.userId, integration.indexId);
+    }
+    
+    // Process each document individually
+    let totalIntentsGenerated = 0;
+    for (const document of allDocuments) {
+      try {
+        await addGenerateIntentsJob({
+          userId: integration.userId,
+          sourceId: integrationId,
+          sourceType: 'integration',
+          objects: [document],
+          instruction: `Generate intents from Google Doc: "${document.name}"`,
+          indexId: integration.indexId || undefined,
+          intentCount: MAX_INTENTS_PER_DOCUMENT
+        }, 6);
+        totalIntentsGenerated++;
+      } catch (error) {
+        log.error('Error processing document', { documentId: document.id, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    
+    return {
+      intentsGenerated: totalIntentsGenerated,
+      usersProcessed: 1,
+      newUsersCreated: 0
+    };
 
   } catch (error) {
     log.error('❌ Google Docs sync error', { error: (error as Error).message });
-    return [];
-  }
-}
-
-/**
- * Processes Google Docs documents to generate intents for the connected user.
- * Unlike Slack/Discord integrations, this only creates intents for the connected user,
- * not for document collaborators, to maintain privacy and avoid creating unwanted user accounts.
- */
-export async function processGoogleDocsDocuments(
-  documents: GoogleDocsDocument[],
-  integration: { id: string; indexId: string; userId: string }
-): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
-  if (!documents.length) {
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
-
-  log.info('⚙️ Processing documents', { count: documents.length });
-
-  // Ensure the connected user has access to the index
-  await ensureIndexMembership(integration.userId, integration.indexId);
-
-  let totalIntentsGenerated = 0;
-
-  // Process each document individually to generate focused intents
-  for (const document of documents) {
-    try {
-      // Queue AI-powered intent generation for this specific document
-      await addGenerateIntentsJob({
-        userId: integration.userId, // Always use the connected user (not document collaborators)
-        sourceId: integration.id,
-        sourceType: 'integration',
-        objects: [document], // Single document per job for focused analysis
-        instruction: `Generate intents from Google Doc: "${document.name}"`,
-        indexId: integration.indexId,
-        intentCount: MAX_INTENTS_PER_DOCUMENT
-      }, 6);
-      
-      totalIntentsGenerated++; // Count queued jobs
-    } catch (error) {
-      log.error('Error processing document', { documentId: document.id, error: error instanceof Error ? error.message : String(error) });
-      // Continue processing remaining documents to maximize intent generation
-    }
-  }
-
-  log.info('🎯 Processing complete', { intentsGenerated: totalIntentsGenerated });
-
-  return { 
-    intentsGenerated: totalIntentsGenerated, 
-    usersProcessed: 1, // Always 1 - the connected user
-    newUsersCreated: 0  // Always 0 - we don't create new users from document collaborators
-  };
 }
 
-/**
- * Extract unique users from Google Docs documents (from owners)
- */
-function extractUsers(documents: GoogleDocsDocument[]): UserIdentifier[] {
-  const userMap = new Map<string, UserIdentifier>();
-
-  for (const document of documents) {
-    if (!document.owners) continue;
-
-    for (const owner of document.owners) {
-      if (!owner.emailAddress) continue;
-      if (userMap.has(owner.emailAddress)) continue;
-
-      userMap.set(owner.emailAddress, {
-        id: owner.emailAddress,
-        email: owner.emailAddress,
-        name: owner.displayName || owner.emailAddress.split('@')[0],
-        provider: 'googledocs',
-        providerId: owner.emailAddress
-      });
-    }
-  }
-
-  return Array.from(userMap.values());
-}
-
-export const googledocsHandler: IntegrationHandler<GoogleDocsDocument> = {
-  enableUserAttribution: false, // Default: process for integration owner only
-  fetchObjects,
-  extractUsers
-};
 
 // TODO: Add document categorization (meeting-notes, project-docs, research, etc.) for better intent generation
 // TODO: Implement document version history tracking and change-based intent generation

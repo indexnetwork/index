@@ -3,7 +3,6 @@ import db from './db';
 import { userIntegrations, indexLinks } from './schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { log } from './log';
-import { handlers, processObjects } from './integrations';
 import { processFiles } from './integrations/files/processor';
 import { crawlLinksForIndex } from './crawl/web_crawler';
 import { INTEGRATIONS } from './integrations/config';
@@ -12,6 +11,11 @@ import { airtableDirectoryProvider } from './integrations/providers/airtable-dir
 import { notionDirectoryProvider } from './integrations/providers/notion-directory';
 import { googledocsDirectoryProvider } from './integrations/providers/googledocs-directory';
 import { getIntegrationById } from './integrations/integration-utils';
+import { initAirtable } from './integrations/providers/airtable';
+import { initSlack } from './integrations/providers/slack';
+import { initDiscord } from './integrations/providers/discord';
+import { initNotion } from './integrations/providers/notion';
+import { initGoogleDocs } from './integrations/providers/googledocs';
 
 interface SyncResult {
   success: boolean;
@@ -41,7 +45,6 @@ export async function syncIntegration(
   integrationId: string
 ): Promise<SyncResult> {
   try {
-    log.info('Integration sync start', { integrationId });
 
     // Get integration details (including config)
     const integrationDetails = await getIntegrationById(integrationId);
@@ -94,67 +97,44 @@ export async function syncIntegration(
       };
     }
 
-    // Otherwise, use existing sync flow (intent generation or attribution)
-    const handler = handlers[integrationType];
-    if (!handler) {
-      return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Unsupported integration type' };
-    }
-
+    // Call integration-specific init functions
     let intentsGenerated = 0;
     let usersProcessed = 0;
     let newUsersCreated = 0;
     let filesImported = 0;
     
-    // Generic sync logic - works with any provider
-    if (handler.fetchObjects) {
-      // Object-based providers (Discord, Slack, Notion, Airtable, Google Docs)
-      const objects = await handler.fetchObjects(integrationId, lastSyncAt || undefined);
-      const result = await processObjects(objects, {
-        id: integration[0].id,
-        indexId: integration[0].indexId,
-        userId: integration[0].userId,
-        enableUserAttribution: integration[0].enableUserAttribution ?? undefined
-      }, handler);
-      
+    let result: { intentsGenerated: number; usersProcessed: number; newUsersCreated: number } | null = null;
+    
+    switch (integrationType) {
+      case 'airtable':
+        result = await initAirtable(integrationId, lastSyncAt || undefined);
+        break;
+      case 'slack':
+        result = await initSlack(integrationId, lastSyncAt || undefined);
+        break;
+      case 'discord':
+        result = await initDiscord(integrationId, lastSyncAt || undefined);
+        break;
+      case 'notion':
+        result = await initNotion(integrationId, lastSyncAt || undefined);
+        break;
+      case 'googledocs':
+        result = await initGoogleDocs(integrationId, lastSyncAt || undefined);
+        break;
+      default:
+        return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Unsupported integration type' };
+    }
+    
+    if (result) {
       intentsGenerated = result.intentsGenerated;
       usersProcessed = result.usersProcessed;
       newUsersCreated = result.newUsersCreated;
-      
-    } else if (handler.fetchFiles) {
-      // File-based providers (Gmail, Google Calendar)
-      const files = await handler.fetchFiles(integrationId, lastSyncAt || undefined);
-      log.info('Provider files', { count: files.length });
-
-      if (files.length === 0) {
-        await db.update(userIntegrations)
-          .set({ lastSyncAt: new Date() })
-          .where(eq(userIntegrations.id, integration[0].id));
-        return { success: true, filesImported: 0, intentsGenerated: 0 };
-      }
-
-      const result = await processFiles(integration[0].userId, files, {
-        id: integration[0].id,
-        indexId: integration[0].indexId ?? undefined
-      }, 'integration');
-      intentsGenerated = result.intentsGenerated;
-      filesImported = result.filesImported;
-    } else {
-      throw new Error(`Provider ${integrationType} has no valid sync methods`);
     }
 
     // Update sync timestamp
     await db.update(userIntegrations)
       .set({ lastSyncAt: new Date() })
       .where(eq(userIntegrations.id, integration[0].id));
-
-    log.info('Integration sync done', { 
-      integrationId,
-      userId: integration[0].userId, 
-      integrationType: integration[0].integrationType, 
-      intentsGenerated, 
-      usersProcessed, 
-      newUsersCreated
-    });
 
     return {
       success: true,

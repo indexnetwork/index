@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useAuthenticatedAPI } from '../lib/api';
 import {
   IntegrationResponse,
@@ -62,10 +63,19 @@ export const createIntegrationsService = (api: ReturnType<typeof useAuthenticate
   syncDirectory: async (integrationId: string): Promise<{ success: boolean; membersAdded: number; errors: DirectorySyncError[]; status: 'success' | 'error' | 'partial' }> => {
     return api.post(`/integrations/${integrationId}/directory/sync`);
   },
+
+  // Slack channel methods
+  getSlackChannels: async (integrationId: string): Promise<{ channels: Array<{ id: string; name: string }>; selectedChannels: string[] }> => {
+    return api.get(`/integrations/${integrationId}/slack/channels`);
+  },
+
+  saveSlackChannels: async (integrationId: string, channelIds: string[]): Promise<{ success: boolean; config: { selectedChannels: string[] } }> => {
+    return api.post(`/integrations/${integrationId}/slack/channels`, { channelIds });
+  },
 });
 
 // Hook for using integrations service with proper error handling
 export function useIntegrationsService() {
   const api = useAuthenticatedAPI();
-  return createIntegrationsService(api);
+  return useMemo(() => createIntegrationsService(api), [api]);
 }

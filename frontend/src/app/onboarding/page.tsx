@@ -38,7 +38,6 @@ interface FlowConfig {
   steps: OnboardingStep[];
   features: {
     showSlackDiscord: boolean;
-    enableUserAttribution: boolean;
     requireIndexId: boolean;
   };
   descriptions: {
@@ -51,7 +50,6 @@ const FLOW_CONFIGS: Record<OnboardingFlow, FlowConfig> = {
     steps: ['profile', 'connections', 'join_indexes'],
     features: {
       showSlackDiscord: false,
-      enableUserAttribution: false,
       requireIndexId: false,
     },
     descriptions: {
@@ -62,7 +60,6 @@ const FLOW_CONFIGS: Record<OnboardingFlow, FlowConfig> = {
     steps: ['profile', 'create_index', 'connections', 'invite_members'],
     features: {
       showSlackDiscord: true,
-      enableUserAttribution: true,
       requireIndexId: true,
     },
     descriptions: {
@@ -73,7 +70,6 @@ const FLOW_CONFIGS: Record<OnboardingFlow, FlowConfig> = {
     steps: ['profile', 'connections'],
     features: {
       showSlackDiscord: false,
-      enableUserAttribution: false,
       requireIndexId: false,
     },
     descriptions: {
@@ -578,9 +574,7 @@ export default function OnboardingPage() {
         const config = FLOW_CONFIGS[currentFlow];
         
         // Build payload based on flow configuration
-        const payload: { indexId?: string; enableUserAttribution: boolean } = {
-          enableUserAttribution: config.features.enableUserAttribution
-        };
+        const payload: { indexId?: string } = {};
         
         if (config.features.requireIndexId) {
           const indexId = user?.onboarding?.indexId || createdIndex?.id;

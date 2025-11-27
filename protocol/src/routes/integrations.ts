@@ -71,7 +71,7 @@ router.get('/',
         id: integration.id, // integrationId as the main ID
         type: integration.integrationType, // integration type (slack, discord, etc.)
         name: INTEGRATION_MAPPINGS[integration.integrationType as keyof typeof INTEGRATION_MAPPINGS]?.name || integration.integrationType,
-        connected: true,
+        connected: integration.status === 'connected',
         connectedAt: integration.connectedAt,
         lastSyncAt: integration.lastSyncAt,
         indexId: integration.indexId,
@@ -113,8 +113,7 @@ router.post('/connect/:integrationType',
   authenticatePrivy,
   [
     param('integrationType').isIn(Object.keys(INTEGRATION_MAPPINGS)).withMessage('Invalid integration type'),
-    body('indexId').optional().isUUID().withMessage('Index ID must be valid UUID'),
-    body('enableUserAttribution').optional().isBoolean().withMessage('enableUserAttribution must be a boolean')
+    body('indexId').optional().isUUID().withMessage('Index ID must be valid UUID')
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -126,7 +125,6 @@ router.post('/connect/:integrationType',
       const userId = req.user!.id;
       const integrationType = req.params.integrationType;
       const indexId = req.body.indexId;
-      const requestedEnableUserAttribution = req.body.enableUserAttribution;
       const integrationConfig = INTEGRATIONS[integrationType as keyof typeof INTEGRATIONS];
 
       if (!integrationConfig) {
@@ -137,10 +135,10 @@ router.post('/connect/:integrationType',
         return res.status(400).json({ error: 'Integration is disabled' });
       }
 
-      const requiresAttribution = integrationConfig.capabilities.indexSyncModes && 'attribution' in integrationConfig.capabilities.indexSyncModes && integrationConfig.capabilities.indexSyncModes.attribution === true;
-      const enableUserAttribution = requiresAttribution
-        ? true
-        : (requestedEnableUserAttribution ?? false); // Default to false when not forced
+      // Slack and Discord require indexId (they process per user)
+      if ((integrationType === 'slack' || integrationType === 'discord') && !indexId) {
+        return res.status(400).json({ error: 'Index ID is required for this integration' });
+      }
 
       // Validate integration is appropriate for context
       if (indexId) {
@@ -153,11 +151,6 @@ router.post('/connect/:integrationType',
         if (!integrationConfig.capabilities.userIntegration) {
           return res.status(400).json({ error: 'This integration does not support user integrations' });
         }
-      }
-
-      // Validate: if attribution enabled, indexId is required
-      if (enableUserAttribution && !indexId) {
-        return res.status(400).json({ error: 'Index ID is required when user attribution is enabled' });
       }
 
       // Validate indexId access if provided - must be owner
@@ -231,8 +224,7 @@ router.post('/connect/:integrationType',
         indexId: indexId || null, // Store null if not provided
         connectedAccountId: connection.id,
         redirectUrl: connection.redirectUrl,
-        status: 'pending',
-        enableUserAttribution
+        status: 'pending'
       }).returning();
 
       return res.json({ 
@@ -723,6 +715,148 @@ router.post('/:integrationId/directory/sync',
     } catch (error) {
       log.error('Directory sync error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to sync directory' });
+    }
+  }
+);
+
+// Slack-specific endpoints
+
+// Get Slack channels
+router.get('/:integrationId/slack/channels',
+  authenticatePrivy,
+  [
+    param('integrationId').isUUID().withMessage('Integration ID must be a valid UUID')
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = req.user!.id;
+      const integrationId = req.params.integrationId;
+
+      const integration = await getIntegrationById(integrationId);
+      if (!integration) {
+        return res.status(404).json({ error: 'Integration not found' });
+      }
+
+      if (integration.userId !== userId) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      if (integration.integrationType !== 'slack') {
+        return res.status(400).json({ error: 'This endpoint is only for Slack integrations' });
+      }
+
+      if (!integration.connectedAccountId) {
+        return res.status(400).json({ error: 'Integration not connected' });
+      }
+
+      // Check ownership if index integration
+      if (integration.indexId) {
+        const ownershipCheck = await checkIndexOwnership(integration.indexId, userId);
+        if (!ownershipCheck.hasAccess) {
+          return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+        }
+      }
+
+      // Fetch channels from Slack via Composio
+      const composio = await getClient();
+      const channels: Array<{ id: string; name: string }> = [];
+      let cursor: string | undefined;
+
+      do {
+        const channelsResp = await composio.tools.execute('SLACK_LIST_ALL_CHANNELS', {
+          userId: integration.userId,
+          connectedAccountId: integration.connectedAccountId,
+          arguments: {
+            limit: 200,
+            ...(cursor && { cursor })
+          }
+        }) as any;
+
+        const channelList = channelsResp?.data?.channels || [];
+        for (const ch of channelList) {
+          if (ch?.id && ch?.name && !channels.find((c) => c.id === ch.id)) {
+            channels.push({ id: ch.id, name: ch.name });
+          }
+        }
+
+        cursor = channelsResp?.data?.response_metadata?.next_cursor;
+      } while (cursor);
+
+      // Get selected channels from integration config
+      const selectedChannels = integration.config?.slack?.selectedChannels || [];
+
+      return res.json({ channels, selectedChannels });
+    } catch (error) {
+      log.error('Get Slack channels error', { error: error instanceof Error ? error.message : String(error) });
+      return res.status(500).json({ error: 'Failed to fetch Slack channels' });
+    }
+  }
+);
+
+// Save Slack channel configuration
+router.post('/:integrationId/slack/channels',
+  authenticatePrivy,
+  [
+    param('integrationId').isUUID().withMessage('Integration ID must be a valid UUID'),
+    body('channelIds').isArray().withMessage('Channel IDs must be an array'),
+    body('channelIds.*').isString().withMessage('Each channel ID must be a string')
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = req.user!.id;
+      const integrationId = req.params.integrationId;
+      const channelIds = req.body.channelIds as string[];
+
+      const integration = await getIntegrationById(integrationId);
+      if (!integration) {
+        return res.status(404).json({ error: 'Integration not found' });
+      }
+
+      if (integration.userId !== userId) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      if (integration.integrationType !== 'slack') {
+        return res.status(400).json({ error: 'This endpoint is only for Slack integrations' });
+      }
+
+      // Check ownership if index integration
+      if (integration.indexId) {
+        const ownershipCheck = await checkIndexOwnership(integration.indexId, userId);
+        if (!ownershipCheck.hasAccess) {
+          return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+        }
+      }
+
+      // Update integration config
+      const updatedConfig = {
+        ...integration.config,
+        slack: {
+          selectedChannels: channelIds
+        }
+      };
+
+      await db.update(userIntegrations)
+        .set({
+          config: updatedConfig,
+          updatedAt: new Date()
+        } as any)
+        .where(eq(userIntegrations.id, integrationId));
+
+      return res.json({ success: true, config: updatedConfig.slack });
+    } catch (error) {
+      log.error('Save Slack channels error', { error: error instanceof Error ? error.message : String(error) });
+      return res.status(500).json({ error: 'Failed to save Slack channel configuration' });
     }
   }
 );
