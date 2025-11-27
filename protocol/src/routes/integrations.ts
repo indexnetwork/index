@@ -113,8 +113,7 @@ router.post('/connect/:integrationType',
   authenticatePrivy,
   [
     param('integrationType').isIn(Object.keys(INTEGRATION_MAPPINGS)).withMessage('Invalid integration type'),
-    body('indexId').optional().isUUID().withMessage('Index ID must be valid UUID'),
-    body('enableUserAttribution').optional().isBoolean().withMessage('enableUserAttribution must be a boolean')
+    body('indexId').optional().isUUID().withMessage('Index ID must be valid UUID')
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -126,7 +125,6 @@ router.post('/connect/:integrationType',
       const userId = req.user!.id;
       const integrationType = req.params.integrationType;
       const indexId = req.body.indexId;
-      const requestedEnableUserAttribution = req.body.enableUserAttribution;
       const integrationConfig = INTEGRATIONS[integrationType as keyof typeof INTEGRATIONS];
 
       if (!integrationConfig) {
@@ -137,10 +135,10 @@ router.post('/connect/:integrationType',
         return res.status(400).json({ error: 'Integration is disabled' });
       }
 
-      const requiresAttribution = integrationConfig.capabilities.indexSyncModes && 'attribution' in integrationConfig.capabilities.indexSyncModes && integrationConfig.capabilities.indexSyncModes.attribution === true;
-      const enableUserAttribution = requiresAttribution
-        ? true
-        : (requestedEnableUserAttribution ?? false); // Default to false when not forced
+      // Slack and Discord require indexId (they process per user)
+      if ((integrationType === 'slack' || integrationType === 'discord') && !indexId) {
+        return res.status(400).json({ error: 'Index ID is required for this integration' });
+      }
 
       // Validate integration is appropriate for context
       if (indexId) {
@@ -153,11 +151,6 @@ router.post('/connect/:integrationType',
         if (!integrationConfig.capabilities.userIntegration) {
           return res.status(400).json({ error: 'This integration does not support user integrations' });
         }
-      }
-
-      // Validate: if attribution enabled, indexId is required
-      if (enableUserAttribution && !indexId) {
-        return res.status(400).json({ error: 'Index ID is required when user attribution is enabled' });
       }
 
       // Validate indexId access if provided - must be owner
@@ -231,8 +224,7 @@ router.post('/connect/:integrationType',
         indexId: indexId || null, // Store null if not provided
         connectedAccountId: connection.id,
         redirectUrl: connection.redirectUrl,
-        status: 'pending',
-        enableUserAttribution
+        status: 'pending'
       }).returning();
 
       return res.json({ 
@@ -795,7 +787,10 @@ router.get('/:integrationId/slack/channels',
         cursor = channelsResp?.data?.response_metadata?.next_cursor;
       } while (cursor);
 
-      return res.json({ channels });
+      // Get selected channels from integration config
+      const selectedChannels = integration.config?.slack?.selectedChannels || [];
+
+      return res.json({ channels, selectedChannels });
     } catch (error) {
       log.error('Get Slack channels error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to fetch Slack channels' });

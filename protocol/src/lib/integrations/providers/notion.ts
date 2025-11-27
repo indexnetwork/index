@@ -1,5 +1,8 @@
-import type { IntegrationHandler, UserIdentifier } from '../index';
 import { getIntegrationById } from '../integration-utils';
+import { ensureIndexMembership } from '../membership-utils';
+import { addGenerateIntentsJob } from '../../queue/llm-queue';
+
+const MAX_INTENTS_PER_USER = 3;
 
 export interface NotionPage {
   id: string;
@@ -16,26 +19,31 @@ import { getClient } from '../composio';
 import { log } from '../../log';
 
 
-// Return raw Notion pages as objects
-// For user integrations: generates intents for single user.
-// For index integrations: skips (directory sync handles this).
-async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<NotionPage[]> {
+/**
+ * Initialize Notion integration sync.
+ * Fetches pages and queues intent generation for the integration owner.
+ * For index integrations: skips (directory sync handles this).
+ */
+export async function initNotion(
+  integrationId: string,
+  lastSyncAt?: Date
+): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
       log.error('Integration not found', { integrationId });
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Index integration: skip intent generation (directory sync handles this)
     if (integration.indexId) {
       log.info('Skipping intent generation for index integration', { integrationId });
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     if (!integration.connectedAccountId) {
       log.error('No connected account ID found for integration', { integrationId });
-      return [];
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     log.info('🚀 Notion sync starting', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
@@ -112,12 +120,35 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<N
       }
     }
 
-    log.info('Notion objects sync done', { integrationId, objects: allPages.length });
+    log.info('Notion pages fetched', { integrationId, count: allPages.length });
     
-    return allPages;
+    if (allPages.length === 0) {
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+    }
+    
+    // Process for integration owner
+    if (integration.indexId) {
+      await ensureIndexMembership(integration.userId, integration.indexId);
+    }
+    
+    await addGenerateIntentsJob({
+      userId: integration.userId,
+      sourceId: integrationId,
+      sourceType: 'integration',
+      objects: allPages,
+      instruction: `Generate intents based on Notion pages`,
+      indexId: integration.indexId || undefined,
+      intentCount: MAX_INTENTS_PER_USER
+    }, 6);
+    
+    return {
+      intentsGenerated: 1,
+      usersProcessed: 1,
+      newUsersCreated: 0
+    };
   } catch (error) {
     log.error('💥 Notion sync failed', { integrationId, error: (error as Error).message });
-    return [];
+    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 }
 
@@ -156,31 +187,3 @@ function extractTitle(item: any): string {
   return item.id || 'Untitled';
 }
 
-// Extract Notion users from pages
-function extractUsers(pages: NotionPage[]): UserIdentifier[] {
-  const userMap = new Map<string, UserIdentifier>();
-  
-  for (const page of pages) {
-    const createdBy = page.created_by?.id;
-    if (!createdBy || userMap.has(createdBy)) continue;
-    
-    const name = page.created_by?.name || `notion-user-${createdBy}`;
-    const email = `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}+notion-${createdBy}@notion.local`;
-    
-    userMap.set(createdBy, {
-      id: createdBy,
-      email,
-      name,
-      provider: 'notion',
-      providerId: createdBy
-    });
-  }
-  
-  return Array.from(userMap.values());
-}
-
-export const notionHandler: IntegrationHandler<NotionPage> = {
-  enableUserAttribution: true,
-  fetchObjects,
-  extractUsers
-};

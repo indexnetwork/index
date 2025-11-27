@@ -447,14 +447,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [integrationsService, integrations, success, error]);
 
-  const handleConnectIntegration = useCallback(async (type: IntegrationName, indexId: string | null, enableUserAttribution: boolean) => {
+  const handleConnectIntegration = useCallback(async (type: IntegrationName, indexId: string | null) => {
     const item = integrations.find(i => i.type === type);
     if (!item) return;
     
     try {
       setPendingIntegration(type);
       const popup = typeof window !== 'undefined' ? window.open('', `oauth_${type}`, 'width=560,height=720') : null;
-      const payload: { indexId?: string; enableUserAttribution: boolean } = { enableUserAttribution };
+      const payload: { indexId?: string } = {};
       if (indexId) payload.indexId = indexId;
       const res = await integrationsService.connectIntegration(type, payload);
       const redirect = res.redirectUrl;
@@ -1212,7 +1212,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   Configure {configureIntegration?.name}
                 </Dialog.Title>
 
-                {/* Info Box - attribution disabled by default */}
+                {/* Info Box */}
                 <div className="mb-4 p-4 bg-[#F5F5F5] border border-[#E0E0E0] rounded-sm">
                   <div className="flex items-start gap-2">
                     <div className="w-4 h-4 rounded-full bg-[#757575] flex-shrink-0 mt-0.5">
@@ -1246,8 +1246,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       if (configureIntegration) {
                         handleConnectIntegration(
                           configureIntegration.type, 
-                          null,
-                          false
+                          null
                         );
                       }
                     }}

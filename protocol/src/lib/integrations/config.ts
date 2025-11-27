@@ -6,11 +6,10 @@ export interface IntegrationConfig {
   capabilities: {
     // Can this integration be used for personal intent generation?
     userIntegration: boolean;
-    // Can this integration be used for index with attribution?
+    // Can this integration be used for index?
     indexIntegration: boolean;
     // What sync modes are supported for index integrations?
     indexSyncModes?: {
-      attribution?: boolean;    // Extract users from content (Slack, Discord)
       directorySync?: boolean;  // Map database/table to members (Notion, Airtable, Docs)
     };
   };
@@ -28,7 +27,7 @@ export const INTEGRATIONS = {
     capabilities: {
       userIntegration: false,
       indexIntegration: true,
-      indexSyncModes: { attribution: true }
+      indexSyncModes: {}
     },
     enabled: true,
     syncDelayMs: 60000 // 60 seconds - Slack rate limit: 1 call per minute for conversation history
@@ -41,7 +40,7 @@ export const INTEGRATIONS = {
     capabilities: {
       userIntegration: false,
       indexIntegration: true,
-      indexSyncModes: { attribution: true }
+      indexSyncModes: {}
     },
     enabled: false, // Disabled for now
     syncDelayMs: 1000 // 1 second - Discord rate limit: ~50 requests per second

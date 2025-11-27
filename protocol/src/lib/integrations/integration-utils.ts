@@ -12,7 +12,6 @@ export interface IntegrationDetails {
   integrationType: string;
   connectedAccountId: string | null;
   lastSyncAt: Date | null;
-  enableUserAttribution?: boolean | null;
   config?: IntegrationConfigType | null;
 }
 
@@ -28,7 +27,6 @@ export async function getIntegrationById(integrationId: string): Promise<Integra
       integrationType: userIntegrations.integrationType,
       connectedAccountId: userIntegrations.connectedAccountId,
       lastSyncAt: userIntegrations.lastSyncAt,
-      enableUserAttribution: userIntegrations.enableUserAttribution,
       config: userIntegrations.config
     })
     .from(userIntegrations)

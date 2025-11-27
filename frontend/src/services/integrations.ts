@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useAuthenticatedAPI } from '../lib/api';
 
 export interface IntegrationResponse {
@@ -19,7 +20,6 @@ export interface AvailableIntegrationType {
 
 export interface ConnectIntegrationRequest {
   indexId?: string;
-  enableUserAttribution?: boolean;
 }
 
 export interface ConnectIntegrationResponse {
@@ -116,7 +116,7 @@ export const createIntegrationsService = (api: ReturnType<typeof useAuthenticate
   },
 
   // Slack channel methods
-  getSlackChannels: async (integrationId: string): Promise<{ channels: Array<{ id: string; name: string }> }> => {
+  getSlackChannels: async (integrationId: string): Promise<{ channels: Array<{ id: string; name: string }>; selectedChannels: string[] }> => {
     return api.get(`/integrations/${integrationId}/slack/channels`);
   },
 
@@ -128,5 +128,5 @@ export const createIntegrationsService = (api: ReturnType<typeof useAuthenticate
 // Hook for using integrations service with proper error handling
 export function useIntegrationsService() {
   const api = useAuthenticatedAPI();
-  return createIntegrationsService(api);
+  return useMemo(() => createIntegrationsService(api), [api]);
 }

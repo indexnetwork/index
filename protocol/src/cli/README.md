@@ -69,7 +69,6 @@ Imports Slack messages from an exported JSON file into the protocol.
 - `--integration-id <id>`: Integration ID (or set INTEGRATION_ID env var)
 - `--user-id <id>`: User ID (or set USER_ID env var)
 - `--index-id <id>`: Index ID (or set INDEX_ID env var)
-- `--enable-user-attribution`: Enable user attribution (or set ENABLE_USER_ATTRIBUTION=true)
 - `--batch-size <size>`: Number of messages to process per batch (default: 50)
 - `--json`: Output machine-readable JSON
 - `--silent`: Suppress non-error output
@@ -89,7 +88,6 @@ yarn import-slack-export ./data.json \
   --integration-id abc123 \
   --user-id xyz789 \
   --index-id def456 \
-  --enable-user-attribution \
   --batch-size 100
 
 # JSON output

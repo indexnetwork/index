@@ -172,8 +172,7 @@ export const userIntegrations = pgTable('integrations', {
   redirectUrl: text('redirect_url'),
   connectedAt: timestamp('connected_at'),
   lastSyncAt: timestamp('last_sync_at'),
-  indexId: uuid('index_id').references(() => indexes.id), // Optional: only required when enableUserAttribution is true
-  enableUserAttribution: boolean('enable_user_attribution').default(false),
+  indexId: uuid('index_id').references(() => indexes.id), // Required for Slack/Discord (always process per user)
   config: json('config').$type<IntegrationConfigType>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

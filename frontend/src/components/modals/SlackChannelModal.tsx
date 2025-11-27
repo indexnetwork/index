@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -36,25 +36,41 @@ export default function SlackChannelModal({
   const [searchQuery, setSearchQuery] = useState('');
   const { success, error } = useNotifications();
   const integrationsService = useIntegrationsService();
+  const loadingRef = useRef(false);
 
-  useEffect(() => {
-    if (open) {
-      loadChannels();
-    }
-  }, [open]);
-
-  const loadChannels = async () => {
+  const loadChannels = useCallback(async () => {
+    // Prevent multiple simultaneous requests
+    if (loadingRef.current) return;
+    
+    loadingRef.current = true;
     setLoading(true);
     try {
       const response = await integrationsService.getSlackChannels(integration.id);
       setChannels(response.channels);
+      // Initialize selected channels from the response
+      if (response.selectedChannels && response.selectedChannels.length > 0) {
+        setSelectedChannelIds(new Set(response.selectedChannels));
+      } else {
+        setSelectedChannelIds(new Set());
+      }
     } catch (err) {
       console.error('Failed to load channels:', err);
       error('Failed to load Slack channels');
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
-  };
+  }, [integration.id, integrationsService, error]);
+
+  useEffect(() => {
+    if (open) {
+      loadChannels();
+    } else {
+      // Reset state when modal closes
+      setSelectedChannelIds(new Set());
+      setSearchQuery('');
+    }
+  }, [open, loadChannels]);
 
   const handleToggleChannel = (channelId: string) => {
     setSelectedChannelIds(prev => {

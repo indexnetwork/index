@@ -1,9 +1,11 @@
-import type { IntegrationHandler, UserIdentifier } from '../index';
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
 import { ensureIndexMembership } from '../membership-utils';
 import { addGenerateIntentsJob } from '../../queue/llm-queue';
+import { resolveIntegrationUser } from '../../user-utils';
+
+const MAX_INTENTS_PER_USER = 3;
 
 // Constants
 const MESSAGE_LIMIT = 100;
@@ -31,6 +33,11 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
       log.error('Integration not found', { integrationId });
+      return [];
+    }
+
+    if (!integration.indexId) {
+      log.warn('Discord integration requires an index', { integrationId });
       return [];
     }
 
@@ -130,8 +137,14 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
   }
 }
 
-// Return raw Discord messages as objects
-async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<DiscordMessage[]> {
+/**
+ * Initialize Discord integration sync.
+ * Fetches messages, processes per user, resolves users, adds to index, and queues intent generation.
+ */
+export async function initDiscord(
+  integrationId: string,
+  lastSyncAt?: Date
+): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
   try {
     const messages = await fetchDiscordMessages(integrationId, lastSyncAt);
     const discordMessages: DiscordMessage[] = [];
@@ -186,42 +199,125 @@ async function fetchObjects(integrationId: string, lastSyncAt?: Date): Promise<D
     });
   }
   
-  log.info('Discord objects sync done', { integrationId, objects: discordMessages.length });
-  return discordMessages;
+  log.info('Discord messages fetched', { integrationId, count: discordMessages.length });
+  
+  if (discordMessages.length === 0) {
+    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+  }
+  
+  // Get integration to access indexId
+  const integration = await getIntegrationById(integrationId);
+  if (!integration?.indexId) {
+    log.error('Integration or indexId not found', { integrationId });
+    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+  }
+  
+  // Process per user
+  return await processMessagesPerUser(discordMessages, integrationId, integration.indexId);
   } catch (error) {
-    log.error('Discord objects sync error', { integrationId, error: (error as Error).message });
-    return [];
+    log.error('Discord sync error', { integrationId, error: (error as Error).message });
+    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 }
 
 /**
- * Extract unique users from Discord messages
+ * Process messages per user - extract users, resolve them, add to index, queue intents
  */
-function extractUsers(messages: DiscordMessage[]): UserIdentifier[] {
-  const userMap = new Map<string, UserIdentifier>();
-
+async function processMessagesPerUser(
+  messages: DiscordMessage[],
+  integrationId: string,
+  indexId: string
+): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
+  // Extract unique users
+  const userMap = new Map<string, { email: string; name: string; providerId: string }>();
+  
   for (const message of messages) {
     const discordUserId = message.author.id;
     if (userMap.has(discordUserId)) continue;
-
+    
     const username = message.author.username;
     const name = message.author.global_name || username;
     const email = `${username}@discord.local`;
-
-    userMap.set(discordUserId, {
-      id: discordUserId,
-      email,
-      name,
-      provider: 'discord',
-      providerId: discordUserId
-    });
+    
+    userMap.set(discordUserId, { email, name, providerId: discordUserId });
   }
-
-  return Array.from(userMap.values());
+  
+  if (userMap.size === 0) {
+    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
+  }
+  
+  // Resolve users and add to index
+  const resolvedUsers = new Map<string, { id: string; name: string; email: string; isNewUser: boolean }>();
+  let newUsersCreated = 0;
+  
+  for (const [providerId, userInfo] of userMap.entries()) {
+    try {
+      const resolvedUser = await resolveIntegrationUser({
+        email: userInfo.email,
+        providerId,
+        name: userInfo.name,
+        provider: 'discord'
+      });
+      
+      if (!resolvedUser) {
+        log.error('Failed to resolve user', { providerId, email: userInfo.email });
+        continue;
+      }
+      
+      await ensureIndexMembership(resolvedUser.id, indexId);
+      
+      if (resolvedUser.isNewUser) {
+        newUsersCreated++;
+      }
+      
+      resolvedUsers.set(providerId, resolvedUser);
+    } catch (error) {
+      log.error('Failed to resolve user', {
+        providerId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  
+  if (resolvedUsers.size === 0) {
+    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated };
+  }
+  
+  // Queue intent generation per user
+  let createdAt: Date | undefined;
+  if (messages.length > 0) {
+    const messageTime = new Date(messages[0].timestamp);
+    if (!isNaN(messageTime.getTime())) {
+      createdAt = messageTime;
+    }
+  }
+  
+  let intentsGenerated = 0;
+  for (const [providerId, user] of resolvedUsers.entries()) {
+    try {
+      await addGenerateIntentsJob({
+        userId: user.id,
+        sourceId: integrationId,
+        sourceType: 'integration',
+        objects: messages,
+        instruction: `Generate intents based on Discord messages`,
+        indexId,
+        intentCount: MAX_INTENTS_PER_USER,
+        ...(createdAt && { createdAt })
+      }, 6);
+      intentsGenerated++;
+    } catch (error) {
+      log.error('Failed to queue intent generation', {
+        userId: user.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  
+  return {
+    intentsGenerated,
+    usersProcessed: resolvedUsers.size,
+    newUsersCreated
+  };
 }
 
-export const discordHandler: IntegrationHandler<DiscordMessage> = {
-  enableUserAttribution: true,
-  fetchObjects,
-  extractUsers
-};

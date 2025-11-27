@@ -496,8 +496,7 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
       try {
         const integrationsService = createIntegrationsService(api);
         const response = await integrationsService.connectIntegration(integration.type, {
-          indexId,
-          enableUserAttribution: true
+          indexId
         });
         
         // Open OAuth popup
@@ -1099,7 +1098,7 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
           <Tabs.Content value="integrations" className="bg-white border border-gray-800 p-6">
             <section>
               <p className="text-sm text-[#666] font-ibm-plex-mono mb-4">
-                Connect external services to sync data with your index. Attribution is always enabled.
+                Connect external services to sync data with your index. Slack and Discord process messages per user automatically.
               </p>
 
               <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-1.5 sm:gap-3 mb-4">
