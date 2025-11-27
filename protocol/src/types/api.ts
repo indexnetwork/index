@@ -1,4 +1,4 @@
-import { UUID } from './common';
+import { UUID, PaginationInfo } from './common';
 import { User } from './users';
 import { Index } from './indexes';
 import { Intent, IntentStake } from './intents';
@@ -8,12 +8,14 @@ export interface APIResponse<T> {
   data?: T;
   user?: T; // For auth endpoints
   index?: T; // For single index
+  indexes?: T[]; // For list of indexes
   intent?: T; // For single intent
   stakes?: T[]; // For intent stakes
   stakesByUser?: T;
   aggregated_reasoning?: string; // For aggregated stake reasonings
   message?: string;
   error?: string;
+  pagination?: PaginationInfo;
 }
 
 // Error response structure
