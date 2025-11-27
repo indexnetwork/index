@@ -71,7 +71,7 @@ router.get('/',
         id: integration.id, // integrationId as the main ID
         type: integration.integrationType, // integration type (slack, discord, etc.)
         name: INTEGRATION_MAPPINGS[integration.integrationType as keyof typeof INTEGRATION_MAPPINGS]?.name || integration.integrationType,
-        connected: true,
+        connected: integration.status === 'connected',
         connectedAt: integration.connectedAt,
         lastSyncAt: integration.lastSyncAt,
         indexId: integration.indexId,

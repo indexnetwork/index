@@ -75,9 +75,9 @@ export default function Sidebar() {
     );
   }, [selectedIndexId]);
 
-  // Fetch pending count when in admin mode
+  // Fetch pending count when in admin mode and approval is enabled
   useEffect(() => {
-    if (isAdminMode && adminIndexId) {
+    if (isAdminMode && adminIndexId && adminIndex?.permissions?.requireApproval) {
       const fetchPendingCount = async () => {
         try {
           const response = await adminService.getPendingCount(adminIndexId);
@@ -91,7 +91,7 @@ export default function Sidebar() {
       const interval = setInterval(fetchPendingCount, 30000);
       return () => clearInterval(interval);
     }
-  }, [isAdminMode, adminIndexId, adminService]);
+  }, [isAdminMode, adminIndexId, adminIndex?.permissions?.requireApproval, adminService]);
 
   const handleIndexClick = (indexId: string) => {
     console.log('Index clicked:', indexId);
@@ -140,22 +140,24 @@ export default function Sidebar() {
 
             {/* Admin Menu */}
             <div className="space-y-1">
-              <div
-                onClick={() => router.push(`/admin/${adminIndexId}/approvals`)}
-                className={`flex items-center justify-between px-3 py-2 rounded cursor-pointer transition-colors ${
-                  pathname?.includes('/approvals') ? 'bg-gray-200' : 'hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Inbox className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm text-black font-ibm-plex-mono">Approval</span>
+              {adminIndex.permissions?.requireApproval && (
+                <div
+                  onClick={() => router.push(`/admin/${adminIndexId}/approvals`)}
+                  className={`flex items-center justify-between px-3 py-2 rounded cursor-pointer transition-colors ${
+                    pathname?.includes('/approvals') ? 'bg-gray-200' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Inbox className="w-4 h-4 text-gray-600" />
+                    <span className="text-sm text-black font-ibm-plex-mono">Approval</span>
+                  </div>
+                  {pendingCount > 0 && (
+                    <span className="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full font-ibm-plex-mono">
+                      {pendingCount}
+                    </span>
+                  )}
                 </div>
-                {pendingCount > 0 && (
-                  <span className="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full font-ibm-plex-mono">
-                    {pendingCount}
-                  </span>
-                )}
-              </div>
+              )}
 
               <div
                 onClick={() => router.push(`/admin/${adminIndexId}/directory`)}
