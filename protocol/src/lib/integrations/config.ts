@@ -69,7 +69,7 @@ export const INTEGRATIONS = {
       indexSyncModes: { directorySync: true }
     },
     enabled: true,
-    syncDelayMs: 200 // 200ms - Airtable rate limit: 5 requests per second
+    syncDelayMs: 300000
   },
   googledocs: { 
     name: 'googledocs',

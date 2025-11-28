@@ -144,7 +144,7 @@ async function main(): Promise<void> {
 
   program.addHelpText(
     'after',
-    '\nExamples:\n  yarn integration-worker --integration-type slack\n  yarn integration-worker --integration-type notion --silent\n'
+    '\nExamples:\n  yarn integration-worker --integration-type slack\n  yarn integration-worker --integration-type notion --silent\n  yarn integration-worker --integration-type airtable\n'
   );
 
   try {
