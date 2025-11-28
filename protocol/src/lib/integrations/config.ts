@@ -56,7 +56,7 @@ export const INTEGRATIONS = {
       indexSyncModes: { directorySync: true }
     },
     enabled: true,
-    syncDelayMs: 350 // 350ms - Notion rate limit: 3 requests per second
+    syncDelayMs: 100000 // 350ms - Notion rate limit: 3 requests per second
   },
   airtable: { 
     name: 'airtable',
