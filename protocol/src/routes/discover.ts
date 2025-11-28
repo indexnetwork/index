@@ -15,6 +15,7 @@ import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { analyzeObjects } from '../agents/core/intent_inferrer';
 import { IntentService } from '../lib/intent-service';
 import { createUploadClient, cleanupUploadedFiles } from '../lib/uploads';
+import { DiscoverResponse, DiscoverFilters, DiscoveryRequestResponse } from '../types';
 
 const router = Router();
 

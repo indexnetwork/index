@@ -650,8 +650,8 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
       const fetchRecentIntents = async () => {
         try {
           const response = await intentsService.getIntents(1, 3, false, undefined, 'discovery_form');
-          if (response.intents) {
-            setRecentIntents(response.intents.map(intent => ({
+          if (response.data) {
+            setRecentIntents(response.data.map(intent => ({
               id: intent.id,
               payload: intent.payload,
               summary: intent.summary ?? null,

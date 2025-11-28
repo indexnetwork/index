@@ -1,21 +1,4 @@
-// Types for synthesis requests and responses
-export interface SynthesisRequest {
-  targetUserId: string;
-  initiatorId?: string;
-  intentIds?: string[];
-  indexIds?: string[];
-  options?: {
-    characterLimit?: number;
-    [key: string]: unknown;
-  };
-}
-
-export interface SynthesisResponse {
-  synthesis: string;
-  targetUserId: string;
-  contextUserId: string;
-  connectingStakes: number;
-}
+import { SynthesisRequest, SynthesisResponse } from '../types';
 
 // Service functions factory that takes an authenticated API instance
 export const createSynthesisService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({

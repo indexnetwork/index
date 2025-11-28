@@ -7,6 +7,7 @@ import { eq, isNull, and, sql, inArray } from 'drizzle-orm';
 import { synthesizeVibeCheck } from '../lib/synthesis';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { getAccessibleIntents } from '../lib/intent-access';
+import { SynthesisRequest, SynthesisResponse } from '../types';
 
 const router = Router();
 

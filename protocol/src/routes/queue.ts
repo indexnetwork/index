@@ -3,21 +3,9 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { queueProcessor } from '../lib/queue/processor';
 import { getRedisClient } from '../lib/redis';
 import { userQueueManager } from '../lib/queue/llm-queue';
+import { QueueStatusResponse, JobTypeCounts } from '../types';
 
 const router = Router();
-
-interface JobTypeCounts {
-  pending: number;
-  active: number;
-  completed: number;
-}
-
-interface QueueStatusResponse {
-  jobCounts: {
-    [jobType: string]: JobTypeCounts;
-  };
-  totalPending: number;
-}
 
 async function getPendingJobsByType(userId: string): Promise<Map<string, number>> {
   const redis = getRedisClient();

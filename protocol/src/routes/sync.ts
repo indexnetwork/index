@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { runSync } from '../lib/sync';
 import { getSyncProviderNames } from '../lib/integrations/config';
+import { SyncResponse, SyncParams } from '../types';
 
 const router = Router();
 

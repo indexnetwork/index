@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useAuthenticatedAPI } from '../lib/api';
-import { FileRecord, FileUploadResponse } from '../lib/types';
+import { FileRecord, FileUploadResponse } from '../types';
 
 // Re-export types for convenience
 export type { FileRecord };

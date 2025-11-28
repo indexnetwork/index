@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { useAuthenticatedAPI, apiClient } from '../lib/api';
-import { 
-  Index, 
-  PaginatedResponse, 
-  APIResponse, 
-  CreateIndexRequest, 
+import {
+  Index,
+  PaginatedResponse,
+  APIResponse,
+  CreateIndexRequest,
   UpdateIndexRequest
-} from '../lib/types';
+} from '../types';
 
 // Re-export types for convenience
 export type { Index };
@@ -32,14 +32,20 @@ export interface SuggestedIntent {
 export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Get all indexes with pagination
   getIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index>> => {
-    const response = await api.get<PaginatedResponse<Index>>(`/indexes?page=${page}&limit=${limit}`);
-    return response;
+    const response = await api.get<APIResponse<Index>>(`/indexes?page=${page}&limit=${limit}`);
+    return {
+      data: response.indexes || [],
+      pagination: response.pagination || { current: 1, total: 0, count: 0, totalCount: 0 }
+    };
   },
 
   // Discover public indexes (indexes that anyone can join)
   discoverPublicIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index & { isMember?: boolean }>> => {
-    const response = await api.get<PaginatedResponse<Index & { isMember?: boolean }>>(`/indexes/discover/public?page=${page}&limit=${limit}`);
-    return response;
+    const response = await api.get<APIResponse<Index & { isMember?: boolean }>>(`/indexes/discover/public?page=${page}&limit=${limit}`);
+    return {
+      data: response.indexes || [],
+      pagination: response.pagination || { current: 1, total: 0, count: 0, totalCount: 0 }
+    };
   },
 
   // Get single index by ID
@@ -261,3 +267,4 @@ export function useIndexService() {
   const api = useAuthenticatedAPI();
   return useMemo(() => createIndexesService(api), [api]);
 } 
+

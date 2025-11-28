@@ -6,6 +6,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, or, desc, sql, inArray } from 'drizzle-orm';
 import { sendConnectionRequestEmail, sendConnectionAcceptedEmail, sendConnectionDeclinedEmail } from '../lib/email/email-handlers';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
+import { ConnectionEvent, ConnectionsByUserResponse, CreateConnectionActionRequest } from '../types';
 
 const router = Router();
 

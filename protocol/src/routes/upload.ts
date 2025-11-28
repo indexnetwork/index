@@ -6,6 +6,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import fs from 'fs';
 import { getUploadsPath } from '../lib/paths';
 import { createUploadClient, cleanupUploadedFiles } from '../lib/uploads';
+import { AvatarUploadResponse } from '../types';
 
 const router = Router();
 

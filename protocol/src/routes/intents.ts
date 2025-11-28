@@ -12,6 +12,7 @@ import { getDisplayName } from '../lib/integrations/config';
 import { suggestTags } from '../agents/core/intent_tag_suggester';
 import { generateEmbedding } from '../lib/embeddings';
 import { IntentService } from '../lib/intent-service';
+import { Intent, CreateIntentRequest, UpdateIntentRequest } from '../types';
 
 const router = Router();
 

@@ -5,6 +5,7 @@ import { users, userConnectionEvents, indexes, indexMembers } from '../lib/schem
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, or, desc, inArray } from 'drizzle-orm';
 import { checkIndexOwnership } from '../lib/index-access';
+import { ConnectionEvent } from '../types';
 
 const router = Router();
 

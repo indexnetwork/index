@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { addGenerateIntentsJob } from '../lib/queue/llm-queue';
+import { LinkRecord, LinkContentResponse } from '../types';
 
 const router = Router();
 

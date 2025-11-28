@@ -1,19 +1,6 @@
 import { useAuthenticatedAPI } from '../lib/api';
 import { useMemo } from 'react';
-import { User, AvatarUploadResponse, APIResponse, OnboardingState } from '../lib/types';
-
-export interface UpdateProfileRequest {
-  name?: string;
-  intro?: string;
-  avatar?: string;
-  location?: string;
-  socials?: {
-    x?: string;
-    linkedin?: string;
-    github?: string;
-    websites?: string[];
-  };
-}
+import { User, OnboardingState, AvatarUploadResponse, APIResponse, UpdateProfileRequest } from '../types';
 
 export const createAuthService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Upload avatar

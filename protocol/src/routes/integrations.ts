@@ -14,7 +14,7 @@ import { airtableDirectoryProvider } from '../lib/integrations/providers/airtabl
 import { notionDirectoryProvider } from '../lib/integrations/providers/notion-directory';
 import { googledocsDirectoryProvider } from '../lib/integrations/providers/googledocs-directory';
 import { syncDirectoryMembers } from '../lib/integrations/directory-sync';
-import type { DirectorySyncConfig } from '../lib/schema';
+import { DirectorySyncConfig, IntegrationResponse, AvailableIntegrationType, ConnectIntegrationRequest, ConnectIntegrationResponse, IntegrationStatusResponse } from '../types';
 
 const router = Router();
 
