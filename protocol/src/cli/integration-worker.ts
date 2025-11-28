@@ -196,7 +196,12 @@ async function runSlackIntegrationWorker(
       }
     }
 
-    await sleep(pollInterval);
+    if (integrationIds.length === 0) {
+      log.debug(`No active ${integrationType} integrations, waiting...`);
+      await sleep(syncDelayMs);
+    } else {
+      await sleep(pollInterval);
+    }
   }
 
   for (const handle of loops.values()) {
