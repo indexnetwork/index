@@ -295,11 +295,18 @@ async function processMessagesPerUser(
   let intentsGenerated = 0;
   for (const [providerId, user] of resolvedUsers.entries()) {
     try {
+      // Filter messages to only include messages from this user
+      const userMessages = messages.filter(msg => msg.author.id === providerId);
+      
+      if (userMessages.length === 0) {
+        continue; // Skip if no messages for this user
+      }
+      
       await addGenerateIntentsJob({
         userId: user.id,
         sourceId: integrationId,
         sourceType: 'integration',
-        objects: messages,
+        objects: userMessages,
         instruction: `Generate intents based on Discord messages`,
         indexId,
         intentCount: MAX_INTENTS_PER_USER,
