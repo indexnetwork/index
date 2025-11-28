@@ -45,6 +45,7 @@ export interface DirectorySyncConfig {
     github?: string;
     website?: string;
   };
+  excludedColumns?: string[];
   lastSyncAt?: string;
   lastSyncStatus?: 'success' | 'error' | 'partial';
   lastSyncError?: string;

@@ -222,9 +222,10 @@ export async function syncDirectoryMembers(
           config.columnMappings.github,
           config.columnMappings.website
         ].filter(Boolean) as string[];
+        const excludedColumns = config.excludedColumns || [];
 
         for (const [key, value] of Object.entries(record)) {
-          if (!mappedColumns.includes(key) && value) {
+          if (!mappedColumns.includes(key) && !excludedColumns.includes(key) && value) {
             const stringValue = String(value).trim();
             if (stringValue) {
               // Check if value contains multiple values (comma-separated)

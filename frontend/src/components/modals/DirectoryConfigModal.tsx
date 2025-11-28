@@ -53,6 +53,7 @@ export default function DirectoryConfigModal({
     github?: string;
     website?: string;
   }>({ email: '' });
+  const [excludedColumns, setExcludedColumns] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const { success, error } = useNotifications();
@@ -145,7 +146,8 @@ export default function DirectoryConfigModal({
             subName: selectedSubSource.name
           })
         },
-        columnMappings
+        columnMappings,
+        excludedColumns: excludedColumns.length > 0 ? excludedColumns : undefined
       };
 
       await integrationsService.saveDirectoryConfig(integration.id, config);
@@ -177,6 +179,7 @@ export default function DirectoryConfigModal({
       setSelectedSubSource(null);
       setColumns([]);
       setColumnMappings({ email: '' });
+      setExcludedColumns([]);
       onOpenChange(false);
     }
   };
@@ -318,9 +321,11 @@ export default function DirectoryConfigModal({
                   columnMappings.website
                 ].filter(Boolean) as string[];
                 
-                const unmappedColumns = columns.filter(col => !mappedColumns.includes(col.name));
+                const unmappedColumns = columns.filter(
+                  col => !mappedColumns.includes(col.name) && !excludedColumns.includes(col.name)
+                );
                 
-                if (unmappedColumns.length > 0) {
+                if (unmappedColumns.length > 0 || excludedColumns.length > 0) {
                   return (
                     <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                       <p className="text-xs font-medium text-black font-ibm-plex-mono mb-2">
@@ -330,14 +335,49 @@ export default function DirectoryConfigModal({
                         {unmappedColumns.map((col) => (
                           <span
                             key={col.id}
-                            className="text-xs px-2 py-1 bg-white border border-blue-200 rounded font-ibm-plex-mono text-black"
+                            className="text-xs px-2 py-1 bg-white border border-blue-200 rounded font-ibm-plex-mono text-black flex items-center gap-1"
                           >
                             {col.name}
+                            <button
+                              type="button"
+                              onClick={() => setExcludedColumns([...excludedColumns, col.name])}
+                              className="ml-1 hover:text-red-500 transition-colors"
+                              title="Exclude this field"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
                           </span>
                         ))}
                       </div>
+                      {excludedColumns.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-blue-200">
+                          <p className="text-xs font-medium text-black font-ibm-plex-mono mb-2">
+                            Excluded fields:
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {excludedColumns.map((colName) => (
+                              <span
+                                key={colName}
+                                className="text-xs px-2 py-1 bg-gray-100 border border-gray-300 rounded font-ibm-plex-mono text-gray-600 flex items-center gap-1"
+                              >
+                                {colName}
+                                <button
+                                  type="button"
+                                  onClick={() => setExcludedColumns(excludedColumns.filter(c => c !== colName))}
+                                  className="ml-1 hover:text-blue-500 transition-colors"
+                                  title="Include this field"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <p className="text-xs text-black font-ibm-plex-mono mt-2 italic">
-                        These fields will be stored as member-specific metadata in this index
+                        {unmappedColumns.length > 0 
+                          ? 'These fields will be stored as member-specific metadata in this index'
+                          : 'No additional fields will be included as metadata'}
                       </p>
                     </div>
                   );
