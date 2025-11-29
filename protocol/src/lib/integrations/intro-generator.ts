@@ -7,6 +7,7 @@ import { eq, isNull, and } from 'drizzle-orm';
 export interface IntroGenerationResult {
   introUpdated: boolean;
   locationUpdated: boolean;
+  biography?: string;
   success: boolean;
   error?: string;
 }
@@ -27,10 +28,8 @@ export async function generateUserIntro(userId: string): Promise<IntroGeneration
     const socials = user.socials || {};
 
     // Only generate intro if intro is empty
-    if (user.intro) {
-      log.info('User already has intro, skipping intro generation', { userId });
-      return { introUpdated: false, locationUpdated: false, success: true };
-    }
+    // But we still need to generate biography for intent generation
+    const shouldUpdateIntro = !user.intro;
 
     log.info('Preparing intro generation input', { userId, socials, userName: user.name, userEmail: user.email });
 
@@ -90,7 +89,8 @@ export async function generateUserIntro(userId: string): Promise<IntroGeneration
     let introUpdated = false;
     let locationUpdated = false;
 
-    if (result.intro && result.intro !== 'Intro unavailable' && result.intro !== 'Bio unavailable') {
+    // Only update intro if user doesn't have one
+    if (shouldUpdateIntro && result.intro && result.intro !== 'Intro unavailable' && result.intro !== 'Bio unavailable') {
       updates.intro = result.intro;
       introUpdated = true;
     }
@@ -112,6 +112,7 @@ export async function generateUserIntro(userId: string): Promise<IntroGeneration
     return {
       introUpdated,
       locationUpdated,
+      biography: result.biography,
       success: true,
     };
   } catch (error) {

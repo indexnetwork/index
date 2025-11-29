@@ -1,5 +1,5 @@
 import { log } from '../../log';
-import { extractUrlContent } from '../../parallels';
+import { generateIntro, GenerateIntroInput } from '../../parallels';
 import { analyzeContent } from '../../../agents/core/intent_inferrer';
 import { IntentService } from '../../intent-service';
 import { generateUserIntro } from '../intro-generator';
@@ -16,7 +16,7 @@ export interface LinkedInSyncResult {
 }
 
 /**
- * Low-level function: Extract LinkedIn content and generate intents only
+ * Low-level function: Generate intents from biography
  * Use this if you only need intent generation without intro
  */
 async function syncLinkedInIntents(userId: string): Promise<Omit<LinkedInSyncResult, 'introUpdated'>> {
@@ -32,35 +32,73 @@ async function syncLinkedInIntents(userId: string): Promise<Omit<LinkedInSyncRes
     }
 
     const user = userRecords[0];
-    const linkedinValue = user.socials?.linkedin;
+    const socials = user.socials || {};
 
-    if (!linkedinValue) {
-      return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'No LinkedIn URL found' };
+    // Prepare input for Parallels task
+    const input: GenerateIntroInput = {};
+    
+    if (user.name?.trim()) {
+      input.name = user.name.trim();
+    }
+    
+    if (user.email?.trim()) {
+      input.email = user.email.trim();
+    }
+    
+    // Convert LinkedIn username to URL if needed
+    if (socials.linkedin) {
+      const linkedinValue = String(socials.linkedin).trim();
+      if (linkedinValue) {
+        input.linkedin = linkedinValue.startsWith('http') 
+          ? linkedinValue 
+          : `https://www.linkedin.com/in/${linkedinValue}`;
+      }
+    }
+    
+    // Convert Twitter username to URL if needed
+    if (socials.x) {
+      const twitterValue = String(socials.x).trim();
+      if (twitterValue) {
+        if (twitterValue.startsWith('http')) {
+          input.twitter = twitterValue;
+        } else {
+          const username = twitterValue.replace(/^@/, '');
+          input.twitter = `https://x.com/${username}`;
+        }
+      }
     }
 
-    // Convert username to URL if needed
-    const linkedinUrl = linkedinValue.startsWith('http') 
-      ? linkedinValue 
-      : `https://www.linkedin.com/in/${linkedinValue.trim()}`;
-
-    log.info('Syncing LinkedIn user', { userId, linkedinUrl });
-
-    // Extract LinkedIn profile content
-    const content = await extractUrlContent(linkedinUrl);
-    if (!content) {
-      return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'Failed to extract LinkedIn content' };
+    // Ensure at least one field is provided
+    if (!input.name && !input.email && !input.linkedin && !input.twitter) {
+      return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'No valid input data available' };
     }
 
-    // Update location if user hasn't manually set it (only if location is empty)
-    // Note: We'll extract location from content if possible, but for now we rely on intro generator
+    log.info('Generating biography for LinkedIn sync', { userId });
+
+    // Generate biography using Parallels
+    const introResult = await generateIntro(input);
+    if (!introResult || !introResult.biography || introResult.biography === 'Biography unavailable') {
+      return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'Failed to generate biography' };
+    }
+
+    const biography = introResult.biography;
     let locationUpdated = false;
 
-    // Generate intents from LinkedIn profile content synchronously
+    // Update location if user hasn't manually set it (only if location is empty)
+    if (introResult.location && introResult.location !== 'Location unavailable' && !user.location) {
+      await db.update(users)
+        .set({ location: introResult.location, updatedAt: new Date() })
+        .where(eq(users.id, userId));
+      locationUpdated = true;
+      log.info('Updated user location from biography', { userId, location: introResult.location });
+    }
+
+    // Generate intents from biography synchronously
     const existingIntents = await IntentService.getUserIntents(userId);
     const result = await analyzeContent(
-      content,
+      biography,
       1, // itemCount
-      'Generate intents from LinkedIn profile',
+      'Generate intents from user biography',
       Array.from(existingIntents),
       undefined,
       60000
@@ -84,7 +122,7 @@ async function syncLinkedInIntents(userId: string): Promise<Omit<LinkedInSyncRes
       }
     }
 
-    log.info('LinkedIn intents sync complete', { userId, linkedinUrl, contentLength: content.length, intentsGenerated, locationUpdated });
+    log.info('LinkedIn intents sync complete', { userId, biographyLength: biography.length, intentsGenerated, locationUpdated });
 
     return {
       intentsGenerated,

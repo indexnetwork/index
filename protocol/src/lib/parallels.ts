@@ -76,6 +76,7 @@ export interface GenerateIntroInput {
 export interface GenerateIntroOutput {
   intro: string;
   location: string;
+  biography: string;
 }
 
 export async function generateIntro(input: GenerateIntroInput): Promise<GenerateIntroOutput | null> {
@@ -209,8 +210,12 @@ Derived from available information such as name, email, LinkedIn profile, and Tw
                 description: 'The primary geographical location (city, state, or country) associated with the individual, inferred from available information such as their name, email, LinkedIn profile, and Twitter profile. If a specific location cannot be determined, return \'Location unavailable\'.',
                 type: 'string',
               },
+              biography: {
+                description: 'A comprehensive biography or full profile description of the individual, derived from available information such as their name, email, LinkedIn profile, and Twitter profile. This should be a detailed, informative text that captures their background, work experience, interests, and current focus. If insufficient information is available to generate a meaningful biography, return \'Biography unavailable\'.',
+                type: 'string',
+              },
             },
-            required: ['intro', 'location'],
+            required: ['intro', 'location', 'biography'],
             type: 'object',
           },
           type: 'json',
@@ -235,6 +240,7 @@ Derived from available information such as name, email, LinkedIn profile, and Tw
       return {
         intro: content.intro || content.bio || 'Intro unavailable',
         location: content.location || 'Location unavailable',
+        biography: content.biography || content.bio || 'Biography unavailable',
       };
     }
 
