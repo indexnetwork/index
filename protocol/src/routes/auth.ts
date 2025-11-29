@@ -5,6 +5,7 @@ import db from '../lib/db';
 import { users } from '../lib/schema';
 import { eq, isNull } from 'drizzle-orm';
 import { User, UpdateProfileRequest, OnboardingState } from '../types';
+import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
 
 const router = Router();
 
@@ -42,6 +43,13 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
   try {
     const { name, intro, avatar, location, socials } = req.body;
     
+    // Get old socials before update
+    const currentUser = await db.select({ socials: users.socials })
+      .from(users)
+      .where(eq(users.id, req.user!.id))
+      .limit(1);
+    const oldSocials = currentUser[0]?.socials || null;
+    
     const updatedUser = await db.update(users)
       .set({
         ...(name && { name }),
@@ -67,6 +75,11 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
 
     if (updatedUser.length === 0) {
       return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Trigger social sync if socials changed
+    if (socials !== undefined) {
+      checkAndTriggerSocialSync(req.user!.id, oldSocials, socials);
     }
 
     return res.json({ user: updatedUser[0] });

@@ -5,6 +5,7 @@ import { users } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, ilike, or, and, count, desc } from 'drizzle-orm';
 import { User, UpdateProfileRequest } from '../types';
+import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
 
 const router = Router();
 
@@ -70,6 +71,13 @@ router.put('/:id',
         return res.status(403).json({ error: 'Access denied' });
       }
 
+      // Get old socials before update
+      const currentUser = await db.select({ socials: users.socials })
+        .from(users)
+        .where(eq(users.id, id))
+        .limit(1);
+      const oldSocials = currentUser[0]?.socials || null;
+
       const updateData: any = { updatedAt: new Date() };
       if (name !== undefined) updateData.name = name;
       if (intro !== undefined) updateData.intro = intro;
@@ -93,6 +101,11 @@ router.put('/:id',
 
       if (updatedUser.length === 0) {
         return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Trigger social sync if socials changed
+      if (socials !== undefined) {
+        checkAndTriggerSocialSync(id, oldSocials, socials);
       }
 
       return res.json({ 

@@ -20,6 +20,7 @@
     "maintenance:reset-brokers": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/reset-brokers.ts",
     "maintenance:update:embeddings": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/update-embeddings.ts",
     "integration-worker": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/integration-worker.ts",
+    "social-worker": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/social-worker.ts",
     "audit-freshness": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/audit-intent-freshness.ts"
   },
   "dependencies": {
@@ -51,8 +52,10 @@
     "multer": "^1.4.5-lts.1",
     "node-html-markdown": "^2.0.0",
     "openai": "^4.103.0",
+    "parallel-web": "^0.2.4",
     "postgres": "^3.4.7",
     "resend": "^4.0.1",
+    "snowflake-sdk": "^1.9.2",
     "tiktoken": "^1.0.21",
     "timeago.js": "^4.0.2",
     "unstructured-client": "^0.27.0",
