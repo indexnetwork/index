@@ -263,7 +263,7 @@ async function generateIntentsFromBiography(userId: string): Promise<void> {
 
     // Generate biography using Parallels
     const introResult = await generateIntro(input);
-    if (!introResult || !introResult.biography || introResult.biography === 'Biography unavailable') {
+    if (!introResult || !introResult.biography) {
       log.warn('Failed to generate biography for intent generation', { userId });
       return;
     }

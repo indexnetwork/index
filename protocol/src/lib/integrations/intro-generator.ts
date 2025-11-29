@@ -7,7 +7,7 @@ import { eq, isNull, and } from 'drizzle-orm';
 export interface IntroGenerationResult {
   introUpdated: boolean;
   locationUpdated: boolean;
-  biography?: string;
+  biography?: string | null;
   success: boolean;
   error?: string;
 }
@@ -89,14 +89,14 @@ export async function generateUserIntro(userId: string): Promise<IntroGeneration
     let introUpdated = false;
     let locationUpdated = false;
 
-    // Only update intro if user doesn't have one
-    if (shouldUpdateIntro && result.intro && result.intro !== 'Intro unavailable' && result.intro !== 'Bio unavailable') {
+    // Only update intro if user doesn't have one and result is valid (not null or unavailable)
+    if (shouldUpdateIntro && result.intro) {
       updates.intro = result.intro;
       introUpdated = true;
     }
 
-    // Only update location if user hasn't manually set it (location is empty)
-    if (result.location && result.location !== 'Location unavailable' && !user.location) {
+    // Only update location if user hasn't manually set it (location is empty) and result is valid
+    if (result.location && !user.location) {
       updates.location = result.location;
       locationUpdated = true;
     }

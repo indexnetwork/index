@@ -74,9 +74,9 @@ export interface GenerateIntroInput {
 }
 
 export interface GenerateIntroOutput {
-  intro: string;
-  location: string;
-  biography: string;
+  intro: string | null;
+  location: string | null;
+  biography: string | null;
 }
 
 export async function generateIntro(input: GenerateIntroInput): Promise<GenerateIntroOutput | null> {
@@ -237,10 +237,23 @@ Derived from available information such as name, email, LinkedIn profile, and Tw
       // Handle nested content structure (output.content.intro, output.content.location)
       const content = output.content || output;
       
+      // Return null for unavailable fields instead of placeholder strings
+      // Filter out any "unavailable" placeholder strings from the API response
+      const intro = content.intro || content.bio;
+      const location = content.location;
+      const biography = content.biography || content.bio;
+      
       return {
-        intro: content.intro || content.bio || 'Intro unavailable',
-        location: content.location || 'Location unavailable',
-        biography: content.biography || content.bio || 'Biography unavailable',
+        intro: intro && 
+               intro !== 'Intro unavailable' && 
+               intro !== 'Bio unavailable' && 
+               intro.trim() !== '' ? intro : null,
+        location: location && 
+                  location !== 'Location unavailable' && 
+                  location.trim() !== '' ? location : null,
+        biography: biography && 
+                   biography !== 'Biography unavailable' && 
+                   biography.trim() !== '' ? biography : null,
       };
     }
 

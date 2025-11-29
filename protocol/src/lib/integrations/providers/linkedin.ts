@@ -77,15 +77,15 @@ async function syncLinkedInIntents(userId: string): Promise<Omit<LinkedInSyncRes
 
     // Generate biography using Parallels
     const introResult = await generateIntro(input);
-    if (!introResult || !introResult.biography || introResult.biography === 'Biography unavailable') {
+    if (!introResult || !introResult.biography) {
       return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'Failed to generate biography' };
     }
 
     const biography = introResult.biography;
     let locationUpdated = false;
 
-    // Update location if user hasn't manually set it (only if location is empty)
-    if (introResult.location && introResult.location !== 'Location unavailable' && !user.location) {
+    // Update location if user hasn't manually set it (only if location is empty) and result is valid
+    if (introResult.location && !user.location) {
       await db.update(users)
         .set({ location: introResult.location, updatedAt: new Date() })
         .where(eq(users.id, userId));
