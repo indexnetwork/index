@@ -45,6 +45,14 @@ export async function syncTwitterUser(userId: string): Promise<TwitterSyncResult
       return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'Profile not found in Snowflake' };
     }
 
+    log.info('Twitter profile fetched', { 
+      username, 
+      profileId: profile.ID,
+      displayName: profile.DISPLAY_NAME,
+      hasLocation: !!profile.LOCATION,
+      hasBio: !!profile.BIO
+    });
+
     // Update location if user hasn't manually set it (only if location is empty)
     let locationUpdated = false;
     if (profile.LOCATION && !user.location) {

@@ -8,10 +8,7 @@ const SNOWFLAKE_WAREHOUSE = process.env.SNOWFLAKE_WAREHOUSE || 'twitter_index';
 const SNOWFLAKE_DATABASE = process.env.SNOWFLAKE_DATABASE || 'DATA_COLLECTOR_ICEBERG';
 const SNOWFLAKE_SCHEMA = process.env.SNOWFLAKE_SCHEMA || 'PUBLIC';
 
-interface SnowflakeConnection {
-  execute: (options: { sqlText: string; binds?: any[]; complete: (err: any, stmt: any, rows: any[]) => void }) => void;
-  destroy: () => void;
-}
+type SnowflakeConnection = any;
 
 function createConnection(): Promise<SnowflakeConnection> {
   return new Promise((resolve, reject) => {
@@ -24,13 +21,12 @@ function createConnection(): Promise<SnowflakeConnection> {
       schema: SNOWFLAKE_SCHEMA,
     });
 
-    connection.connect((err, conn) => {
+    connection.connect((err: any, conn: any) => {
       if (err) {
         log.error('Snowflake connection error', { error: err.message });
         reject(err);
         return;
       }
-      log.info('Snowflake connected');
       resolve(conn);
     });
   });
@@ -41,7 +37,7 @@ function executeQuery<T>(connection: SnowflakeConnection, sqlText: string, binds
     connection.execute({
       sqlText,
       binds,
-      complete: (err, stmt, rows) => {
+      complete: (err: any, stmt: any, rows: any) => {
         if (err) {
           log.error('Snowflake query error', { error: err.message, sqlText });
           reject(err);
@@ -88,12 +84,18 @@ export function extractTwitterUsername(input: string): string | null {
 
 export interface TwitterProfile {
   ID: string;
+  NAME: string;           // Twitter handle/username
+  DISPLAY_NAME?: string;  // Display name
+  BIO?: string;           // Biography
   LOCATION?: string;
-  USERNAME?: string;
-  NAME?: string;
+  FOLLOWING_COUNT?: number;
+  FOLLOWERS_COUNT?: number;
+  TWEETS_COUNT?: number;
 }
 
 export interface TwitterTweet {
+  ID: string;
+  POSTER_ID: string;
   TEXT: string;
   TIMESTAMP: Date | string;
   LIKES?: number;
@@ -106,7 +108,6 @@ export interface TwitterTweet {
  */
 export async function fetchTwitterProfile(username: string): Promise<TwitterProfile | null> {
   if (!SNOWFLAKE_ACCOUNT || !SNOWFLAKE_USERNAME || !SNOWFLAKE_PASSWORD) {
-    log.warn('Snowflake credentials not configured');
     return null;
   }
 
@@ -115,18 +116,19 @@ export async function fetchTwitterProfile(username: string): Promise<TwitterProf
   try {
     connection = await createConnection();
 
-    // Query for profile - adjust table/column names based on your Snowflake schema
+
+    // Query using actual schema columns
     const sqlText = `
-      SELECT ID, LOCATION, USERNAME, NAME
-      FROM TWITTER_PROFILES
-      WHERE USERNAME = UPPER(?)
+      SELECT ID, NAME, DISPLAY_NAME, BIO, LOCATION, 
+             FOLLOWING_COUNT, FOLLOWERS_COUNT, TWEETS_COUNT
+      FROM twitter_profiles
+      WHERE name = ?
       LIMIT 1
     `;
 
     const rows = await executeQuery<TwitterProfile>(connection, sqlText, [username]);
 
     if (rows.length === 0) {
-      log.warn('Twitter profile not found in Snowflake', { username });
       return null;
     }
 
@@ -136,7 +138,9 @@ export async function fetchTwitterProfile(username: string): Promise<TwitterProf
     return null;
   } finally {
     if (connection) {
-      connection.destroy();
+      connection.destroy((err: any) => {
+        if (err) log.error('Error destroying Snowflake connection', { error: err.message });
+      });
     }
   }
 }
@@ -144,9 +148,8 @@ export async function fetchTwitterProfile(username: string): Promise<TwitterProf
 /**
  * Fetch recent tweets from Snowflake by user ID
  */
-export async function fetchTwitterTweets(userId: string, limit: number = 50): Promise<TwitterTweet[]> {
+export async function fetchTwitterTweets(posterId: string, limit: number = 50): Promise<TwitterTweet[]> {
   if (!SNOWFLAKE_ACCOUNT || !SNOWFLAKE_USERNAME || !SNOWFLAKE_PASSWORD) {
-    log.warn('Snowflake credentials not configured');
     return [];
   }
 
@@ -155,24 +158,26 @@ export async function fetchTwitterTweets(userId: string, limit: number = 50): Pr
   try {
     connection = await createConnection();
 
-    // Query for tweets - adjust table/column names based on your Snowflake schema
+    // Query using actual schema columns
     const sqlText = `
-      SELECT TEXT, TIMESTAMP, LIKES, REPOSTS, VIEWS
+      SELECT ID, POSTER_ID, TEXT, TIMESTAMP, LIKES, REPOSTS, VIEWS
       FROM TWITTER_TWEETS
-      WHERE USER_ID = ?
+      WHERE POSTER_ID = ?
       ORDER BY TIMESTAMP DESC
       LIMIT ?
     `;
 
-    const rows = await executeQuery<TwitterTweet>(connection, sqlText, [userId, limit]);
+    const rows = await executeQuery<TwitterTweet>(connection, sqlText, [posterId, limit]);
 
     return rows;
   } catch (error) {
-    log.error('Failed to fetch Twitter tweets', { userId, error: (error as Error).message });
+    log.error('Failed to fetch Twitter tweets', { posterId, error: (error as Error).message });
     return [];
   } finally {
     if (connection) {
-      connection.destroy();
+      connection.destroy((err: any) => {
+        if (err) log.error('Error destroying Snowflake connection', { error: err.message });
+      });
     }
   }
 }

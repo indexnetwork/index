@@ -40,7 +40,13 @@ export async function extractUrlContent(url: string): Promise<string | null> {
     const extract = await parallelClient.beta.extract({
       urls: [url],
       excerpts: true,
-      full_content: false,
+      full_content: true,
+      objective: 'all',
+      fetch_policy: {
+        disable_cache_fallback: false,
+        max_age_seconds: 5184000, // 60 days
+        timeout_seconds: 30,
+      },
     });
     
     log.info('Parallel extract response received', { url, resultsCount: extract.results?.length || 0 });
