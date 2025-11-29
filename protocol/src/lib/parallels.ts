@@ -140,6 +140,7 @@ export async function generateIntro(input: GenerateIntroInput): Promise<Generate
     const taskRun = await parallelClient.taskRun.create({
       input: cleanedInput,
       processor: 'base',
+      
       task_spec: {
         input_schema: {
           json_schema: {
@@ -217,7 +218,7 @@ Derived from available information such as name, email, LinkedIn profile, and Tw
                 type: 'string',
               },
               biography: {
-                description: 'A comprehensive biography or full profile description of the individual, derived from available information such as their name, email, LinkedIn profile, and Twitter profile. This should be a detailed, informative text that captures their background, work experience, interests, and current focus. If insufficient information is available to generate a meaningful biography, return \'Biography unavailable\'.',
+                description: 'A comprehensive biography or full profile description of the individual, derived from available information such as their name, email, LinkedIn profile, and Twitter profile. This should be a detailed, informative text that captures their background, work experience, interests, and current focus. Include explicit times (dates, years, durations) for all work experience, education, and other timeline events. If insufficient information is available to generate a meaningful biography, return \'Biography unavailable\'.',
                 type: 'string',
               },
             },

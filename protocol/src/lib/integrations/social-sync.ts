@@ -1,6 +1,6 @@
 import { log } from '../log';
 import { syncTwitterUser } from './providers/twitter';
-import { syncLinkedInUser } from './providers/linkedin';
+import { enrichUserProfile } from './providers/profile-enrich';
 import { generateUserIntro } from './intro-generator';
 import { generateIntro, GenerateIntroInput } from '../parallels';
 import { analyzeContent } from '../../agents/core/intent_inferrer';
@@ -81,7 +81,7 @@ export async function syncAllTwitterUsers(): Promise<SocialSyncResult['twitter']
   }
 }
 
-export async function syncAllLinkedInUsers(): Promise<SocialSyncResult['linkedin']> {
+export async function enrichAllUsers(): Promise<SocialSyncResult['linkedin']> {
   const stats = {
     usersProcessed: 0,
     intentsGenerated: 0,
@@ -90,8 +90,8 @@ export async function syncAllLinkedInUsers(): Promise<SocialSyncResult['linkedin
   };
 
   try {
-    // Get all users with LinkedIn URL
-    const usersWithLinkedIn = await db.select()
+    // Get all users with LinkedIn or Twitter profiles for enrichment
+    const usersForEnrichment = await db.select()
       .from(users)
       .where(
         and(
@@ -100,15 +100,15 @@ export async function syncAllLinkedInUsers(): Promise<SocialSyncResult['linkedin
         )
       );
 
-    const linkedinUsers = usersWithLinkedIn.filter(
-      user => user.socials?.linkedin
+    const eligibleUsers = usersForEnrichment.filter(
+      user => user.socials?.linkedin || user.socials?.x
     );
 
-    log.info('Starting LinkedIn sync', { userCount: linkedinUsers.length });
+    log.info('Starting user enrichment', { userCount: eligibleUsers.length });
 
-    for (const user of linkedinUsers) {
+    for (const user of eligibleUsers) {
       try {
-        const result = await syncLinkedInUser(user.id);
+        const result = await enrichUserProfile(user.id);
         stats.usersProcessed++;
         
         if (result.success) {
@@ -116,18 +116,18 @@ export async function syncAllLinkedInUsers(): Promise<SocialSyncResult['linkedin
           if (result.locationUpdated) stats.locationUpdated++;
         } else {
           stats.errors++;
-          log.warn('LinkedIn sync failed for user', { userId: user.id, error: result.error });
+          log.warn('User enrichment failed', { userId: user.id, error: result.error });
         }
       } catch (error) {
         stats.errors++;
-        log.error('LinkedIn sync error for user', { userId: user.id, error: (error as Error).message });
+        log.error('User enrichment error', { userId: user.id, error: (error as Error).message });
       }
     }
 
-    log.info('LinkedIn sync complete', stats);
+    log.info('User enrichment complete', stats);
     return stats;
   } catch (error) {
-    log.error('LinkedIn sync batch error', { error: (error as Error).message });
+    log.error('User enrichment batch error', { error: (error as Error).message });
     return stats;
   }
 }
@@ -188,7 +188,7 @@ export async function syncAllSocialMedia(): Promise<SocialSyncResult> {
 
   const [twitter, linkedin, introGeneration] = await Promise.all([
     syncAllTwitterUsers(),
-    syncAllLinkedInUsers(),
+    enrichAllUsers(),
     generateIntrosForEligibleUsers(),
   ]);
 
@@ -317,7 +317,7 @@ export async function triggerSocialSync(userId: string, socialType: 'twitter' | 
         await generateIntentsFromBiography(userId);
       } else if (socialType === 'linkedin') {
         log.info('Triggering LinkedIn sync', { userId });
-        await syncLinkedInUser(userId); // Includes intro generation and intent generation from biography
+        await enrichUserProfile(userId); // Includes intro generation and intent generation from biography
       }
     } catch (error) {
       log.error('Social sync trigger error', { userId, socialType, error: (error as Error).message });

@@ -8,9 +8,9 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import { Command } from 'commander';
 import { log, setLevel } from '../lib/log';
-import { syncAllTwitterUsers, syncAllLinkedInUsers, syncAllSocialMedia } from '../lib/integrations/social-sync';
+import { syncAllTwitterUsers, enrichAllUsers, syncAllSocialMedia } from '../lib/integrations/social-sync';
 import { syncTwitterUser } from '../lib/integrations/providers/twitter';
-import { syncLinkedInUser } from '../lib/integrations/providers/linkedin';
+import { enrichUserProfile } from '../lib/integrations/providers/profile-enrich';
 
 // Helper function to sleep
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -24,15 +24,15 @@ type Opts = {
 let isShuttingDown = false;
 
 const TWITTER_SYNC_DELAY_MS = parseInt(process.env.TWITTER_SYNC_DELAY_MS || '3600000'); // 1 hour default
-const LINKEDIN_SYNC_DELAY_MS = parseInt(process.env.LINKEDIN_SYNC_DELAY_MS || '3600000'); // 1 hour default
+const ENRICHMENT_SYNC_DELAY_MS = parseInt(process.env.LINKEDIN_SYNC_DELAY_MS || '3600000'); // 1 hour default
 
 async function main(): Promise<void> {
   const program = new Command();
 
   program
     .name('social-worker')
-    .description('Run a continuous social media sync worker for Twitter and LinkedIn')
-    .option('--type <type>', 'Sync type: twitter, linkedin, or all (default: all)')
+    .description('Run a continuous social media sync worker for Twitter and profile enrichment')
+    .option('--type <type>', 'Sync type: twitter, linkedin (enrichment), or all (default: all)')
     .option('--userId <userId>', 'Sync specific user ID (if provided, runs once and exits)')
     .option('--silent', 'Suppress non-error output')
     .action(async (opts: Opts) => {
@@ -57,7 +57,7 @@ async function main(): Promise<void> {
         if (syncType === 'twitter') {
           await syncSingleTwitterUser(opts.userId);
         } else if (syncType === 'linkedin') {
-          await syncSingleLinkedInUser(opts.userId);
+          await syncSingleEnrichmentUser(opts.userId);
         } else {
           await syncSingleUserAll(opts.userId);
         }
@@ -70,7 +70,7 @@ async function main(): Promise<void> {
       if (syncType === 'twitter') {
         await runTwitterWorker();
       } else if (syncType === 'linkedin') {
-        await runLinkedInWorker();
+        await runEnrichmentWorker();
       } else {
         await runAllSocialWorkers();
       }
@@ -109,18 +109,18 @@ async function syncSingleTwitterUser(userId: string): Promise<void> {
   }
 }
 
-async function syncSingleLinkedInUser(userId: string): Promise<void> {
+async function syncSingleEnrichmentUser(userId: string): Promise<void> {
   try {
-    log.info('Syncing single LinkedIn user', { userId });
-    const result = await syncLinkedInUser(userId);
+    log.info('Syncing single user enrichment', { userId });
+    const result = await enrichUserProfile(userId);
     if (result.success) {
-      log.info('LinkedIn sync successful', { userId, intentsGenerated: result.intentsGenerated, locationUpdated: result.locationUpdated });
+      log.info('Enrichment sync successful', { userId, intentsGenerated: result.intentsGenerated, locationUpdated: result.locationUpdated });
     } else {
-      log.error('LinkedIn sync failed', { userId, error: result.error });
+      log.error('Enrichment sync failed', { userId, error: result.error });
       process.exit(1);
     }
   } catch (error) {
-    log.error('LinkedIn sync error', { userId, error: error instanceof Error ? error.message : String(error) });
+    log.error('Enrichment sync error', { userId, error: error instanceof Error ? error.message : String(error) });
     process.exit(1);
   }
 }
@@ -128,15 +128,15 @@ async function syncSingleLinkedInUser(userId: string): Promise<void> {
 async function syncSingleUserAll(userId: string): Promise<void> {
   try {
     log.info('Syncing all social media for single user', { userId });
-    const [twitterResult, linkedinResult] = await Promise.all([
+    const [twitterResult, enrichmentResult] = await Promise.all([
       syncTwitterUser(userId).catch(err => ({ success: false, error: err instanceof Error ? err.message : String(err) })),
-      syncLinkedInUser(userId).catch(err => ({ success: false, error: err instanceof Error ? err.message : String(err) })),
+      enrichUserProfile(userId).catch(err => ({ success: false, error: err instanceof Error ? err.message : String(err) })),
     ]);
     
     log.info('Social sync complete', {
       userId,
       twitter: twitterResult.success ? 'success' : `failed: ${twitterResult.error}`,
-      linkedin: linkedinResult.success ? 'success' : `failed: ${linkedinResult.error}`,
+      enrichment: enrichmentResult.success ? 'success' : `failed: ${enrichmentResult.error}`,
     });
   } catch (error) {
     log.error('Social sync error', { userId, error: error instanceof Error ? error.message : String(error) });
@@ -163,21 +163,21 @@ async function runTwitterWorker(): Promise<void> {
   }
 }
 
-async function runLinkedInWorker(): Promise<void> {
+async function runEnrichmentWorker(): Promise<void> {
   while (!isShuttingDown) {
     try {
-      log.info('Starting LinkedIn sync cycle');
-      await syncAllLinkedInUsers();
+      log.info('Starting enrichment sync cycle');
+      await enrichAllUsers();
       
       if (!isShuttingDown) {
-        log.info(`LinkedIn cycle complete, next sync in ${LINKEDIN_SYNC_DELAY_MS / 1000 / 60} minutes`);
-        await sleep(LINKEDIN_SYNC_DELAY_MS);
+        log.info(`Enrichment cycle complete, next sync in ${ENRICHMENT_SYNC_DELAY_MS / 1000 / 60} minutes`);
+        await sleep(ENRICHMENT_SYNC_DELAY_MS);
       }
     } catch (error) {
-      log.error('LinkedIn worker error', {
+      log.error('Enrichment worker error', {
         error: error instanceof Error ? error.message : String(error)
       });
-      await sleep(LINKEDIN_SYNC_DELAY_MS);
+      await sleep(ENRICHMENT_SYNC_DELAY_MS);
     }
   }
 }
@@ -190,7 +190,7 @@ async function runAllSocialWorkers(): Promise<void> {
       
       if (!isShuttingDown) {
         // Use the longer delay for full sync
-        const delayMs = Math.max(TWITTER_SYNC_DELAY_MS, LINKEDIN_SYNC_DELAY_MS);
+        const delayMs = Math.max(TWITTER_SYNC_DELAY_MS, ENRICHMENT_SYNC_DELAY_MS);
         log.info(`Full social sync cycle complete, next sync in ${delayMs / 1000 / 60} minutes`);
         await sleep(delayMs);
       }
@@ -198,7 +198,7 @@ async function runAllSocialWorkers(): Promise<void> {
       log.error('Social worker error', {
         error: error instanceof Error ? error.message : String(error)
       });
-      const delayMs = Math.max(TWITTER_SYNC_DELAY_MS, LINKEDIN_SYNC_DELAY_MS);
+      const delayMs = Math.max(TWITTER_SYNC_DELAY_MS, ENRICHMENT_SYNC_DELAY_MS);
       await sleep(delayMs);
     }
   }
