@@ -30,7 +30,7 @@
     "@bull-board/api": "^6.15.0",
     "@bull-board/express": "^6.15.0",
     "@composio/core": "^0.1.55",
-    "@langchain/core": "^0.3.77",
+    "@langchain/core": "^0.3.80",
     "@langchain/openai": "^0.6.13",
     "@privy-io/server-auth": "^1.26.1",
     "@sentry/node": "^10.29.0",
