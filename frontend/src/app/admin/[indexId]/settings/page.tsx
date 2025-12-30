@@ -1324,26 +1324,25 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirmation && typeof window !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
-          <div className="fixed inset-0 bg-black/50" onClick={handleCancelDelete} />
-          <div className="relative bg-[#2f3136] rounded-lg shadow-lg p-6 w-full max-w-md z-[70]">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-white">
+          <div className="relative bg-white border border-gray-200 rounded-lg shadow-lg p-6 w-full max-w-md z-[70]">
             <div className="mb-4">
-              <h2 className="text-xl font-bold text-white mb-4">
+              <h2 className="text-xl font-bold text-black mb-4">
                 Delete '{index.title}'
               </h2>
-              <p className="text-[#b9bbbe] text-sm mb-6">
-                Are you sure you want to delete <span className="text-orange-400 font-medium">{index.title}</span>? This action cannot be undone.
+              <p className="text-gray-700 text-sm mb-6">
+                Are you sure you want to delete <span className="text-red-600 font-medium">{index.title}</span>? This action cannot be undone.
               </p>
               
               <div className="mb-6">
-                <label className="block text-sm font-medium text-[#b9bbbe] mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Enter index name
                 </label>
                 <Input
                   value={deleteConfirmationText}
                   onChange={(e) => setDeleteConfirmationText(e.target.value)}
                   placeholder=""
-                  className="bg-[#40444b] border-[#40444b] text-white placeholder-[#72767d]"
+                  className="bg-white border-gray-300 text-black placeholder-gray-400"
                   autoFocus
                 />
               </div>
@@ -1354,7 +1353,7 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                 variant="outline"
                 onClick={handleCancelDelete}
                 disabled={isDeletingIndex}
-                className="bg-transparent border-[#4f545c] text-white hover:bg-[#4f545c] hover:border-[#4f545c]"
+                className="bg-transparent border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-gray-400"
               >
                 Cancel
               </Button>

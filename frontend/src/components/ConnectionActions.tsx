@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { UserPlus, X, Check, RotateCcw } from "lucide-react";
+import { MessageCircle, X, Check, RotateCcw } from "lucide-react";
 import { useNotifications } from "@/contexts/NotificationContext";
 
 export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
@@ -73,8 +73,8 @@ export default function ConnectionActions({
               disabled={disabled || isLoading}
               className="flex items-center gap-2"
             >
-              <UserPlus className="h-4 w-4" />
-              Connect
+              <MessageCircle className="h-4 w-4" />
+              Start Conversation
             </Button>
             <Button
               variant="outline"

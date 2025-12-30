@@ -24,10 +24,12 @@
 @layer base {
   html {
     @apply scroll-smooth;
+    @apply bg-white;
   }
   
   body {
     @apply text-gray-900 dark:text-gray-100;
+    @apply bg-white;
   }
   
   ::selection {
@@ -93,4 +95,59 @@ a#protected-by-privy {
 
 button {
   cursor: pointer;
+}
+
+@layer utilities {
+  /* Sidebar line - blue repeating gradient */
+  .sidebar-line {
+    background: repeating-linear-gradient(
+      to bottom,
+      #3b82f6 0px,
+      #3b82f6 8px,
+      transparent 8px,
+      transparent 16px
+    );
+  }
+  
+  /* Document link styles */
+  .document-link {
+    color: #0066cc;
+    text-decoration: underline;
+    text-decoration-color: rgba(0, 102, 204, 0.3);
+    cursor: pointer;
+  }
+  
+  .document-link:hover {
+    text-decoration-color: #0066cc;
+    background-color: rgba(0, 102, 204, 0.05);
+  }
+  
+  /* Person entry styles */
+  .person-entry {
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .person-entry:last-child {
+    border-bottom: none;
+  }
+  
+  /* Overlap tags */
+  .overlap-tag {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    background-color: #f3f4f6;
+    color: #6b7280;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    margin: 0 0.25rem;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  
+  .overlap-tag:hover {
+    background-color: #e5e7eb;
+    color: #374151;
+  }
 }

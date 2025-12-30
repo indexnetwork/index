@@ -31,7 +31,6 @@ interface DialogDescriptionProps extends React.HTMLAttributes<HTMLParagraphEleme
 // Create simple wrapper components for dialog parts
 const DialogContent = ({ className, children, ...props }: DialogComponentProps) => (
   <Dialog.Portal>
-    <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
     <Dialog.Content
       className={`fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white p-6 shadow-lg duration-200 sm:rounded-lg ${className}`}
       {...props}

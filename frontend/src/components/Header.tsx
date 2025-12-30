@@ -8,12 +8,14 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { useIndexes } from '@/contexts/APIContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
+import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 import PreferencesModal from '@/components/modals/PreferencesModal';
 import LibraryModal from '@/components/modals/LibraryModal';
 import CreateIndexModal from '@/components/modals/CreateIndexModal';
+import { ChevronDown } from 'lucide-react';
 
 interface HeaderProps {
   showNavigation?: boolean;
@@ -34,10 +36,14 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
   const [libraryModalOpen, setLibraryModalOpen] = useState(false);
   const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [networksDropdownOpen, setNetworksDropdownOpen] = useState(false);
   const indexesService = useIndexes();
+  const { indexes: rawIndexes, loading: indexesLoading } = useIndexesState();
   const { addIndex } = useIndexesState();
+  const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   const { success, error } = useNotifications();
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const networksDropdownRef = useRef<HTMLDivElement>(null);
 
   // Memoize alpha parameter check to prevent unnecessary re-runs
   const alphaParam = searchParams.get('alpha');
@@ -88,21 +94,42 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
   }, [indexesService, addIndex, success, error]);
 
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownOpen && dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false);
       }
+      if (networksDropdownOpen && networksDropdownRef.current && !networksDropdownRef.current.contains(event.target as Node)) {
+        setNetworksDropdownOpen(false);
+      }
     };
 
-    if (dropdownOpen) {
+    if (dropdownOpen || networksDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [dropdownOpen]);
+  }, [dropdownOpen, networksDropdownOpen]);
+
+  // Get selected network name
+  const selectedNetworkName = useMemo(() => {
+    if (selectedIndexIds.length === 0 || selectedIndexIds.length > 1) {
+      return 'All Networks';
+    }
+    const selectedIndex = rawIndexes?.find(idx => idx.id === selectedIndexIds[0]);
+    return selectedIndex?.title || 'All Networks';
+  }, [selectedIndexIds, rawIndexes]);
+
+  const handleNetworkSelect = (indexId: string) => {
+    if (indexId === 'all') {
+      setSelectedIndexIds([]);
+    } else {
+      setSelectedIndexIds([indexId]);
+    }
+    setNetworksDropdownOpen(false);
+  };
 
   // Memoize the navigation logic to avoid recalculating on every render
   const navigationItems = useMemo(() => [
@@ -189,6 +216,49 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
               />
             </div>
           </Link>
+          
+          {/* Networks Dropdown */}
+          {authenticated && (
+            <div className="relative" ref={networksDropdownRef}>
+              <button
+                onClick={() => setNetworksDropdownOpen(!networksDropdownOpen)}
+                className="flex items-center gap-1 px-3 py-1.5 bg-white border border-black rounded-sm hover:bg-gray-50 transition-colors font-ibm-plex-mono text-sm text-black"
+              >
+                <span>{selectedNetworkName}</span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${networksDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {networksDropdownOpen && (
+                <div className="absolute left-0 mt-1 w-64 bg-white border border-black rounded-sm shadow-lg z-[10000] max-h-96 overflow-y-auto">
+                  <div className="py-1">
+                    <button
+                      onClick={() => handleNetworkSelect('all')}
+                      className={`w-full px-3 py-2 text-left text-[14px] font-ibm-plex-mono transition-colors ${
+                        selectedIndexIds.length === 0
+                          ? 'bg-gray-200 font-bold text-black'
+                          : 'text-black hover:bg-gray-50'
+                      }`}
+                    >
+                      All Networks
+                    </button>
+                    {rawIndexes?.map((index) => (
+                      <button
+                        key={index.id}
+                        onClick={() => handleNetworkSelect(index.id)}
+                        className={`w-full px-3 py-2 text-left text-[14px] font-ibm-plex-mono transition-colors ${
+                          selectedIndexIds.length === 1 && selectedIndexIds[0] === index.id
+                            ? 'bg-gray-200 font-bold text-black'
+                            : 'text-black hover:bg-gray-50'
+                        }`}
+                      >
+                        {index.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         {showHeaderButtons && (
           authenticated ? (

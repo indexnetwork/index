@@ -32,7 +32,6 @@ interface DialogTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
 // Create simple wrapper components for dialog parts
 const DialogContent = ({ className, children, ...props }: DialogComponentProps) => (
   <Dialog.Portal>
-    <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
     <Dialog.Content
       className={`fixed left-[50%] top-[50%] z-50 w-full max-w-2xl max-h-[90vh] translate-x-[-50%] translate-y-[-50%] border bg-white shadow-lg duration-200 sm:rounded-lg flex flex-col ${className}`}
       {...props}

@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { Upload } from "lucide-react";
-import { useConnections, useSynthesis, useDiscover } from "@/contexts/APIContext";
+import { Upload, ArrowLeft, MessageCircle } from "lucide-react";
+import { useConnections, useSynthesis, useDiscover, useAPI } from "@/contexts/APIContext";
 import { useIndexFilter } from "@/contexts/IndexFilterContext";
 import { useDiscoveryFilter } from "@/contexts/DiscoveryFilterContext";
 import { StakesByUserResponse, UserConnection } from "@/lib/types";
@@ -15,6 +15,7 @@ import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActi
 import DiscoveryForm, { DiscoveryFormRef } from "@/components/DiscoveryForm";
 import SynthesisMarkdown from "@/components/SynthesisMarkdown";
 import UserProfileModal from "@/components/modals/UserProfileModal";
+import FloatingChatInput, { IntentChange } from "@/components/FloatingChatInput";
 
 const validTabs = ['discover', 'requests', 'history'];
 
@@ -44,6 +45,43 @@ export default function InboxPage() {
   const [selectedUser, setSelectedUser] = useState<{ id: string; name: string; avatar: string | null } | null>(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [optimisticStatus, setOptimisticStatus] = useState<Record<string, ConnectionAction | null>>({});
+  const [intentHistory, setIntentHistory] = useState<IntentChange[]>([]);
+  const [currentIntentText, setCurrentIntentText] = useState<string>('');
+  const [historyIndex, setHistoryIndex] = useState<number>(-1); // -1 means current/latest
+
+  // Conversations list - derived from connections
+  const conversations = useMemo(() => {
+    // Combine all connections for conversations list
+    const allConnections = [...inboxConnections, ...pendingConnections, ...historyConnections];
+    // Sort by lastUpdated, most recent first
+    return allConnections
+      .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())
+      .slice(0, 10) // Limit to 10 most recent
+      .map(conn => ({
+        id: conn.user.id,
+        name: conn.user.name,
+        avatar: conn.user.avatar,
+        status: conn.status,
+        lastUpdated: conn.lastUpdated,
+        preview: conn.status === 'ACCEPT' ? 'Connection established' : 
+                 conn.status === 'REQUEST' ? 'Connection request sent' :
+                 conn.status === 'DECLINE' ? 'Connection declined' :
+                 'Pending connection'
+      }));
+  }, [inboxConnections, pendingConnections, historyConnections]);
+
+  // Network connections for "Your network can help" section - derived from history connections
+  const networkConnectionsForDisplay = useMemo(() => {
+    // Filter out people already shown in discoverStakes and limit to 2
+    const discoverUserIds = discoverStakes.map(stake => stake.user.id);
+    return historyConnections
+      .filter(conn => !discoverUserIds.includes(conn.user.id))
+      .slice(0, 2)
+      .map(conn => ({
+        user: conn.user,
+        intents: [] // History connections don't have intents
+      }));
+  }, [discoverStakes, historyConnections]);
 
   // Refs
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
@@ -63,6 +101,8 @@ export default function InboxPage() {
   const connectionsService = useConnections();
   const synthesisService = useSynthesis();
   const discoverService = useDiscover();
+  const apiContext = useAPI();
+  const intentsService = apiContext.intentsService;
 
   // Memoize API parameters to prevent unnecessary recreations
   const apiIndexIds = useMemo(() =>
@@ -129,7 +169,8 @@ export default function InboxPage() {
         }))
       }));
 
-      setDiscoverStakes(transformedStakesData);
+      // Limit to max 5 people
+      setDiscoverStakes(transformedStakesData.slice(0, 5));
 
       // Fetch synthesis for discovery users
       transformedStakesData.forEach(stake => {
@@ -294,10 +335,138 @@ export default function InboxPage() {
   }, [connectionsService, fetchData, inboxConnections, pendingConnections, historyConnections]);
 
   // Handler for opening user profile modal
-  const handleUserClick = useCallback((user: { id: string; name: string; avatar: string | null }) => {
+  const handleUserClick = useCallback((user: { id: string; name: string; avatar: string | null }, connectionStatus?: string) => {
+    // If clicking from conversations sidebar, switch to requests tab
+    if (connectionStatus) {
+      handleTabChange('requests');
+      // Set the appropriate view based on connection status
+      if (connectionStatus === 'ACCEPT' || connectionStatus === 'DECLINE') {
+        setRequestsView('history');
+      } else if (inboxConnections.some(c => c.user.id === user.id)) {
+        setRequestsView('received');
+      } else if (pendingConnections.some(c => c.user.id === user.id)) {
+        setRequestsView('sent');
+      }
+    }
     setSelectedUser(user);
     setProfileModalOpen(true);
+  }, [inboxConnections, pendingConnections]);
+
+  // Format time for changelog
+  const formatTime = useCallback((date: Date): string => {
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    return `${Math.floor(diff / 3600)}h ago`;
   }, []);
+
+  // Get change text for changelog
+  const getChangeText = useCallback((change: IntentChange): string => {
+    switch (change.type) {
+      case 'location':
+        return change.value;
+      case 'timeframe':
+        return change.value;
+      case 'stage':
+        return change.value;
+      case 'role':
+        return change.value;
+      case 'refinement':
+        return change.value.substring(0, 40) + (change.value.length > 40 ? '...' : '');
+      default:
+        return 'Intent updated';
+    }
+  }, []);
+
+  // Get displayed intent text based on history index
+  const getDisplayedIntent = useCallback((): string => {
+    if (historyIndex === -1) {
+      return currentIntentText || discoveryIntents?.[0]?.summary || discoveryIntents?.[0]?.payload || '';
+    }
+    if (historyIndex === 0) {
+      return intentHistory[0]?.original || '';
+    }
+    return intentHistory[historyIndex - 1]?.newIntent || '';
+  }, [historyIndex, currentIntentText, discoveryIntents, intentHistory]);
+
+  // Navigate to previous version (older)
+  const navigateHistoryPrevious = useCallback(() => {
+    if (historyIndex === -1) {
+      // Move from current to last change
+      if (intentHistory.length > 0) {
+        setHistoryIndex(intentHistory.length - 1);
+      }
+    } else if (historyIndex > 0) {
+      setHistoryIndex(historyIndex - 1);
+    }
+  }, [historyIndex, intentHistory.length]);
+
+  // Navigate to next version (newer)
+  const navigateHistoryNext = useCallback(() => {
+    if (historyIndex < intentHistory.length - 1) {
+      setHistoryIndex(historyIndex + 1);
+    } else if (historyIndex === intentHistory.length - 1) {
+      // Move to current
+      setHistoryIndex(-1);
+    }
+  }, [historyIndex, intentHistory.length]);
+
+  // Restore intent to selected version
+  const restoreIntentFromHistory = useCallback(async () => {
+    if (historyIndex === -1 || !discoveryIntents?.[0]?.id) return;
+    
+    const restoredIntent = historyIndex === 0 
+      ? intentHistory[0].original 
+      : intentHistory[historyIndex - 1].newIntent;
+    
+    try {
+      // Update intent via API
+      await intentsService.updateIntent(discoveryIntents[0].id, restoredIntent);
+      
+      // Update local state
+      setCurrentIntentText(restoredIntent);
+      // Remove changes after this index
+      setIntentHistory(prev => prev.slice(0, historyIndex));
+      setHistoryIndex(-1);
+      
+      // Refresh discovery results
+      await fetchData({ showLoading: false, clearSyntheses: false });
+    } catch (err) {
+      console.error('Failed to restore intent:', err);
+    }
+  }, [historyIndex, intentHistory, discoveryIntents, intentsService, fetchData]);
+
+  // Undo intent change (kept for backward compatibility)
+  const undoIntentChange = useCallback(async (index: number) => {
+    if (index < 0 || index >= intentHistory.length || !discoveryIntents?.[0]?.id) return;
+    
+    const change = intentHistory[index];
+    
+    // Restore previous intent
+    let restoredIntent: string;
+    if (index === 0) {
+      restoredIntent = change.original;
+    } else {
+      restoredIntent = intentHistory[index - 1].newIntent;
+    }
+    
+    try {
+      // Update intent via API
+      await intentsService.updateIntent(discoveryIntents[0].id, restoredIntent);
+      
+      // Update local state
+      setCurrentIntentText(restoredIntent);
+      setIntentHistory(prev => prev.filter((_, i) => i !== index));
+      setHistoryIndex(-1);
+      
+      // Refresh discovery results
+      await fetchData({ showLoading: false, clearSyntheses: false });
+    } catch (err) {
+      console.error('Failed to undo change:', err);
+    }
+  }, [intentHistory, discoveryIntents, intentsService, fetchData]);
 
   // Helper: Get connection status for rendering
   const getConnectionStatus = (tabType: 'discover' | 'requests', viewType: 'received' | 'sent' | 'history' | undefined, userId: string): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
@@ -442,7 +611,124 @@ export default function InboxPage() {
     const user = data.user;
     const intents = isStakeCard ? data.intents : undefined;
     const lastUpdated = !isStakeCard ? (data as UserConnection).lastUpdated : undefined;
+    const isDocumentStyle = tabType === 'discover' && discoveryIntents && discoveryIntents.length > 0;
 
+    if (isDocumentStyle) {
+      // Document style person entry
+      return (
+        <article key={user.id} className="person-entry">
+          <div className="flex items-start gap-2 mb-1">
+            <Image
+              src={getAvatarUrl(user)}
+              alt={user.name}
+              width={48}
+              height={48}
+              className="w-12 h-12 rounded-full shrink-0 object-cover border-2 border-gray-200"
+            />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-bold text-gray-900 font-ibm-plex-mono mb-0.5">
+                {user.name}
+              </h3>
+              <p className="text-sm text-gray-600 mb-2">
+                {intents && intents.length > 0 ? (
+                  <>
+                    {(() => {
+                      const summary = intents[0].intent.summary;
+                      const payload = intents[0].intent.payload;
+                      
+                      // Check if summary or payload is a URL
+                      const isUrl = (str: string) => str.startsWith('http://') || str.startsWith('https://');
+                      
+                      // Use summary if available and not a URL, otherwise use payload if not a URL
+                      const displayText = summary && !isUrl(summary) 
+                        ? summary 
+                        : payload && !isUrl(payload) 
+                        ? payload 
+                        : null;
+                      
+                      if (displayText) {
+                        const parts = displayText.split(' at ');
+                        if (parts.length > 1) {
+                          return (
+                            <>
+                              {parts[0]} at{' '}
+                              <span className="document-link">{parts[1]}</span>
+                            </>
+                          );
+                        } else {
+                          return <span>{displayText}</span>;
+                        }
+                      } else {
+                        return <span>Founder/Executive</span>;
+                      }
+                    })()}
+                  </>
+                ) : (
+                  <span>Potential connection</span>
+                )}
+              </p>
+            </div>
+            <div className="flex gap-1.5 shrink-0">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleConnectionAction('REQUEST', user.id);
+                }}
+                className="px-2 py-1 text-xs font-medium rounded-sm bg-black text-white hover:bg-gray-800 transition-colors flex items-center gap-1"
+              >
+                <MessageCircle className="w-3 h-3" />
+                Start Conversation
+              </button>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleConnectionAction('SKIP', user.id);
+                }}
+                className="px-2 py-1 text-xs font-medium rounded-sm bg-white text-black hover:bg-gray-50 transition-colors border border-gray-300"
+              >
+                Pass
+              </button>
+            </div>
+          </div>
+          
+          {(synthesisLoading[user.id] || syntheses[user.id]) && (
+            <div className="text-sm text-gray-800 leading-relaxed mb-1">
+              {synthesisLoading[user.id] ? (
+                <span className="text-gray-400">Loading...</span>
+              ) : (
+                <SynthesisMarkdown
+                  content={syntheses[user.id] || ''}
+                  className="text-sm text-gray-800 leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm line-clamp-3"
+                  onArchive={fetchData}
+                  popoverControlRef={popoverControlRef}
+                />
+              )}
+            </div>
+          )}
+          
+          {intents && intents.length > 1 && (
+            <div className="mb-1.5">
+              <span className="text-xs text-gray-500">Also matches: </span>
+              {intents.slice(1, 3).map((intent, idx) => {
+                const isUrl = (str: string) => str.startsWith('http://') || str.startsWith('https://');
+                const displayText = intent.intent.summary && !isUrl(intent.intent.summary)
+                  ? intent.intent.summary
+                  : intent.intent.payload && !isUrl(intent.intent.payload)
+                  ? intent.intent.payload
+                  : 'Intent';
+                return (
+                  <a key={idx} href="#" className="overlap-tag">
+                    {displayText}
+                  </a>
+                );
+              })}
+            </div>
+          )}
+        </article>
+      );
+    }
+
+    // Original card style for requests tab
     return (
       <div key={user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
         <div className="py-4 px-2 sm:px-4 ">
@@ -522,7 +808,7 @@ export default function InboxPage() {
         </div>
       </div>
     );
-  }, [synthesisLoading, syntheses, requestsView, handleConnectionAction, handleUserClick, fetchData, getConnectionStatus]);
+  }, [synthesisLoading, syntheses, requestsView, handleConnectionAction, handleUserClick, fetchData, getConnectionStatus, discoveryIntents]);
 
 
   return (
@@ -530,21 +816,11 @@ export default function InboxPage() {
       {/* Drag and Drop Overlay */}
       {isDragging && (
         <div
-          className="fixed inset-0 z-[99999] flex items-center justify-center transition-opacity backdrop-blur-xs"
+          className="fixed inset-0 z-[99999] flex items-center justify-center transition-opacity bg-white"
           style={{
             minHeight: '100vh',
-            //opacity: 0.9,
-            backgroundColor: 'rgba(0, 0, 0, 0.2)'
           }}
         >
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage: 'url(/noise.jpg)',
-              backgroundSize: 'cover',
-              opacity: 0.3
-            }}
-          />
           <div className="relative z-10 bg-white border-1 rounded-sm border-black px-6 py-4 flex flex-col items-center gap-3 w-[340px]">
             <Upload className="w-8 h-8 text-black" />
             <p className="text-base font-ibm-plex-mono text-gray-700 text-center leading-snug">
@@ -554,64 +830,222 @@ export default function InboxPage() {
         </div>
       )}
 
-      <div className="w-full border border-gray-800 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
-        backgroundImage: 'url(/grid.png)',
-        backgroundColor: 'white',
-        backgroundSize: '888px'
-      }}>
+      {/* Sidebar Line - only show on discover tab when intent is active */}
+      {activeTab === 'discover' && discoveryIntents && discoveryIntents.length > 0 && (
+        <div className="sidebar-line fixed left-0 top-0 bottom-0 w-1 z-[9998] hidden md:block" />
+      )}
 
-        <div className="flex flex-col justify-between mb-4">
-          {/* Header section */}
-          <div className="space-y-4">
-            {/* Discovery input section */}
-            {activeTab === 'discover' && (
-              <div className="flex gap-4 items-start">
-                {!discoveryIntents ? (
-                  <div className="flex-1">
-                    <DiscoveryForm
-                      ref={discoveryFormRef}
-                      onSubmit={(intents) => {
-                        setDiscoveryIntents(intents);
-                        setShowSuccessMessage(true);
-                        setTimeout(() => setShowSuccessMessage(false), 20000);
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 px-4 py-3 bg-black text-white border border-b-2 border-black font-ibm-plex-mono text-xs h-[54px]">
-                      <span>{discoveryIntents[0]?.summary || discoveryIntents[0]?.payload || 'Discovery filter'}</span>
-                      <button
-                        onClick={() => setDiscoveryIntents(undefined)}
-                        className="ml-2 hover:opacity-70 transition-opacity flex-shrink-0"
-                        aria-label="Clear filter"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12 4L4 12M4 4L12 12" stroke="white" strokeWidth="2" strokeLinecap="round" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="flex-1"></div>
-                  </>
-                )}
-                <button
-                  onClick={() => handleTabChange('requests')}
-                  className="font-ibm-plex-mono px-4 py-3 border border-b-2 border-black bg-white hover:bg-gray-50 flex items-center gap-2 text-black whitespace-nowrap h-[54px]"
-                >
-                  View Requests
-                  {connectionsLoading ? (
-                    <span className="bg-black text-white text-xs px-2 py-1 rounded">0</span>
-                  ) : (
-                    <span className="bg-black text-white text-xs px-2 py-1 rounded">
-                      {inboxConnections.length + pendingConnections.length + historyConnections.length}
-                    </span>
-                  )}
-                </button>
+      {activeTab === 'discover' && discoveryIntents && discoveryIntents.length > 0 ? (
+        /* Document Style Layout for Discover Tab */
+          <div className="flex gap-6 w-full">
+            {/* Main Content Area - matches inbox view width */}
+            <div className="flex-1 border border-gray-800 rounded-md px-2 sm:px-4 py-4 sm:py-8 relative bg-white z-[9999] max-h-[calc(100vh-120px)] overflow-y-auto pb-32">
+          {/* Back to inbox button */}
+          <button
+            onClick={() => {
+              setDiscoveryIntents(undefined);
+              setIntentHistory([]);
+              setCurrentIntentText('');
+            }}
+            className="mb-6 flex items-center gap-1.5 px-2.5 py-1.5 bg-black text-white rounded-md hover:bg-gray-800 transition-colors font-ibm-plex-mono text-xs"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            Back to inbox
+          </button>
+          
+          {/* Minimal Header */}
+          <header className="mb-4 pb-3 border-b border-gray-400">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 font-ibm-plex-mono mb-2 leading-tight">
+                  {getDisplayedIntent() || discoveryIntents[0]?.summary || discoveryIntents[0]?.payload || 'Discovery filter'}
+                </h1>
               </div>
-            )}
+              <button
+                onClick={() => {
+                  setDiscoveryIntents(undefined);
+                  setIntentHistory([]);
+                  setCurrentIntentText('');
+                  setHistoryIndex(-1);
+                }}
+                className="hover:opacity-70 transition-opacity shrink-0"
+                aria-label="Clear filter"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          </header>
 
-            {/* Requests view button */}
-            {activeTab === 'requests' && (
+          {/* Main Document Content */}
+          <main className="space-y-3">
+            {discoveryLoading ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Image
+                  className="h-auto"
+                  src="/loading2.gif"
+                  alt="Loading..."
+                  width={300}
+                  height={200}
+                  style={{ imageRendering: 'auto' }}
+                />
+                <h3 className="text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
+                  Finding your people...
+                </h3>
+              </div>
+            ) : discoverStakes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Image
+                  className="h-auto"
+                  src="/loading2.gif"
+                  alt="Loading..."
+                  width={300}
+                  height={200}
+                  style={{ imageRendering: 'auto' }}
+                />
+                <h3 className="text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
+                  No relevant connections for now.
+                </h3>
+                <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
+                  It's not you, the world's just being shy. Don't worry, I'll keep looking.
+                </p>
+              </div>
+            ) : (
+              <>
+                {discoverStakes.map((userStake) => renderUserCard(userStake, 'discover'))}
+                
+                {/* Your network can help with this section */}
+                {networkConnectionsForDisplay.length > 0 && (
+                  <div className="mt-4 pt-4">
+                    <h3 className="text-lg font-bold text-black font-ibm-plex-mono mb-4">
+                      Your network can help with this
+                    </h3>
+                    <div className="flex flex-col gap-4">
+                      {networkConnectionsForDisplay.map((networkStake) => {
+                        const user = networkStake.user;
+                        // Find the original connection to get intro/title
+                        const originalConnection = historyConnections.find(c => c.user.id === user.id);
+                        const displayTitle = originalConnection?.user.intro || 'Connected';
+                        return (
+                          <div
+                            key={user.id}
+                            className="flex items-center gap-3 p-3 border border-[#007EFF] rounded-sm bg-white"
+                          >
+                            <Image
+                              src={getAvatarUrl(user)}
+                              alt={user.name}
+                              width={48}
+                              height={48}
+                              className="w-12 h-12 rounded-full shrink-0 object-cover"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-black font-ibm-plex-mono truncate">
+                                {user.name}
+                              </p>
+                              <p className="text-xs text-gray-600 font-ibm-plex-mono truncate">
+                                {displayTitle.length > 40 ? displayTitle.substring(0, 40) + '...' : displayTitle}
+                              </p>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleConnectionAction('REQUEST', user.id);
+                              }}
+                              className="px-3 py-1.5 text-xs font-medium rounded-sm bg-black text-white hover:bg-gray-800 transition-colors font-ibm-plex-mono whitespace-nowrap"
+                            >
+                              Let them know
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </main>
+          </div>
+          {/* Conversations Sidebar - Right Side */}
+          <div className="w-80 bg-white border border-gray-200 rounded-md p-4 shrink-0 max-h-[calc(100vh-120px)] overflow-y-auto">
+            {/* Conversations Header */}
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-200">
+              <MessageCircle className="w-5 h-5 text-gray-700" />
+              <h2 className="text-sm font-semibold text-gray-900 font-ibm-plex-mono">Conversations</h2>
+            </div>
+            
+            {/* Conversations List */}
+            <div className="space-y-3">
+              {conversations.length === 0 ? (
+                <p className="text-sm text-gray-500 font-ibm-plex-mono text-center py-8">
+                  No conversations yet
+                </p>
+              ) : (
+                conversations.map((conversation) => (
+                  <button
+                    key={conversation.id}
+                    onClick={() => handleUserClick({
+                      id: conversation.id,
+                      name: conversation.name,
+                      avatar: conversation.avatar
+                    }, conversation.status)}
+                    className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <Image
+                      src={getAvatarUrl({ id: conversation.id, name: conversation.name, avatar: conversation.avatar })}
+                      alt={conversation.name}
+                      width={40}
+                      height={40}
+                      className="rounded-full shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 font-ibm-plex-mono truncate">
+                        {conversation.name}
+                      </p>
+                      <p className="text-xs text-gray-600 truncate">
+                        {conversation.preview}
+                      </p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+          </div>
+      ) : (
+        /* Original Layout for other tabs or when no intent */
+        <div className="flex gap-6 w-full">
+          {/* Main Content Area */}
+          <div className="flex-1 border border-gray-800 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
+            backgroundImage: 'url(/grid.png)',
+            backgroundColor: 'white',
+            backgroundSize: '888px'
+          }}>
+            <div className="flex flex-col justify-between mb-4">
+            {/* Header section */}
+            <div className="space-y-4">
+              {/* Discovery input section */}
+              {activeTab === 'discover' && (
+                <div className="flex gap-4 items-start">
+                  {!discoveryIntents ? (
+                    <div className="flex-1">
+                      <DiscoveryForm
+                        ref={discoveryFormRef}
+                        onSubmit={(intents) => {
+                          setDiscoveryIntents(intents);
+                          setCurrentIntentText(intents[0]?.summary || intents[0]?.payload || '');
+                          setIntentHistory([]);
+                          setShowSuccessMessage(true);
+                          setTimeout(() => setShowSuccessMessage(false), 20000);
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Requests view button */}
+              {activeTab === 'requests' && (
               <div className="flex justify-between items-end">
                 {/* Tab buttons */}
                 <div className="flex gap-0">
@@ -787,8 +1221,58 @@ export default function InboxPage() {
               )}
             </div>
           )}
+          </div>
+          </div>
+
+          {/* Conversations Sidebar - Right Side */}
+          {activeTab === 'discover' && (
+            <div className="w-80 bg-white border border-gray-200 rounded-md p-4 shrink-0">
+              {/* Conversations Header */}
+              <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-200">
+                <MessageCircle className="w-5 h-5 text-gray-700" />
+                <h2 className="text-sm font-semibold text-gray-900 font-ibm-plex-mono">Conversations</h2>
+              </div>
+              
+              {/* Conversations List */}
+              <div className="space-y-3">
+                {conversations.length === 0 ? (
+                  <p className="text-sm text-gray-500 font-ibm-plex-mono text-center py-8">
+                    No conversations yet
+                  </p>
+                ) : (
+                  conversations.map((conversation) => (
+                    <button
+                      key={conversation.id}
+                      onClick={() => handleUserClick({
+                        id: conversation.id,
+                        name: conversation.name,
+                        avatar: conversation.avatar
+                      }, conversation.status)}
+                      className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-gray-50 transition-colors text-left"
+                    >
+                      <Image
+                        src={getAvatarUrl({ id: conversation.id, name: conversation.name, avatar: conversation.avatar })}
+                        alt={conversation.name}
+                        width={40}
+                        height={40}
+                        className="rounded-full shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 font-ibm-plex-mono truncate">
+                          {conversation.name}
+                        </p>
+                        <p className="text-xs text-gray-600 truncate">
+                          {conversation.preview}
+                        </p>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {/* User Profile Modal */}
       <UserProfileModal
@@ -796,6 +1280,27 @@ export default function InboxPage() {
         onOpenChange={setProfileModalOpen}
         user={selectedUser}
       />
+
+      {/* Floating Chat Input - appears after discovery form submission */}
+      {activeTab === 'discover' && discoveryIntents && discoveryIntents.length > 0 && (
+        <FloatingChatInput
+          intentId={discoveryIntents[0]?.id}
+          currentIntent={currentIntentText || discoveryIntents[0]?.summary || discoveryIntents[0]?.payload || ''}
+          onIntentUpdate={async (updatedIntent: string, change?: IntentChange) => {
+            // Update local state - only update intent text, don't refresh results
+            setCurrentIntentText(updatedIntent);
+            if (change) {
+              setIntentHistory(prev => [...prev, change]);
+            }
+            // Reset to latest version when new change is made
+            setHistoryIndex(-1);
+          }}
+          onFeedback={async (feedback: string) => {
+            // General feedback - just log for now
+            console.log('Feedback received:', feedback);
+          }}
+        />
+      )}
     </ClientLayout>
   );
 }

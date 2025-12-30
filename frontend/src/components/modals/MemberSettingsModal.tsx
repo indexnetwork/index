@@ -252,9 +252,8 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
-        <Dialog.Content className="fixed inset-0 w-screen h-[85dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[72vh] sm:min-h-[500px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6 transition-all sm:duration-300 sm:max-w-[1020px]">
-          <div className="flex items-center justify-between mb-8 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
+        <Dialog.Content className="fixed inset-0 w-screen h-[85dvh] p-4 rounded-none bg-white border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[72vh] sm:min-h-[500px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6 transition-all sm:duration-300 sm:max-w-[1020px]">
+          <div className="flex items-center justify-between mb-8 sm:mb-6 sticky top-0 bg-white z-10">
             <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">
               {index.title} - Member Settings
             </Dialog.Title>
@@ -361,7 +360,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
             </div>
 
             {/* Intents Panel */}
-            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full pr-3 flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-x-hidden lg:w-[340px]`}>
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full pr-3 flex-shrink-0 rounded-lg bg-white shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-x-hidden lg:w-[340px]`}>
               <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3 pr-3">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">My Intents in this Index</h3>
                 <span className="text-xs text-[#666] font-ibm-plex-mono">{indexedIntents.length}</span>
@@ -403,8 +402,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
         {showConfirmLeave && (
           <Dialog.Root open={showConfirmLeave} onOpenChange={setShowConfirmLeave}>
             <Dialog.Portal>
-              <Dialog.Overlay className="fixed inset-0 bg-black/60 animate-in fade-in duration-200 z-50" />
-              <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[420px] bg-[#FAFAFA] border border-[#E0E0E0] rounded-lg p-6 shadow-xl focus:outline-none animate-in fade-in zoom-in-95 duration-200 z-50">
+              <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[420px] bg-white border border-[#E0E0E0] rounded-lg p-6 shadow-xl focus:outline-none animate-in fade-in zoom-in-95 duration-200 z-50">
                 <Dialog.Title className="text-lg font-bold text-[#333] font-ibm-plex-mono mb-3">
                   Leave Index
                 </Dialog.Title>

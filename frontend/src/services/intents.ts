@@ -29,6 +29,21 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     return response.intent;
   },
 
+  // Update intent
+  updateIntent: async (id: string, payload: string, options?: { isIncognito?: boolean; indexIds?: string[] }): Promise<Intent> => {
+    const requestBody: { payload: string; isIncognito?: boolean; indexIds?: string[] } = {
+      payload,
+      ...(options?.isIncognito !== undefined && { isIncognito: options.isIncognito }),
+      ...(options?.indexIds && options.indexIds.length > 0 && { indexIds: options.indexIds })
+    };
+    
+    const response = await api.put<APIResponse<Intent>>(`/intents/${id}`, requestBody);
+    if (!response.intent) {
+      throw new Error('Intent not found');
+    }
+    return response.intent;
+  },
+
   // Archive intent
   archiveIntent: async (id: string): Promise<void> => {
     await api.patch(`/intents/${id}/archive`);

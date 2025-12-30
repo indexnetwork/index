@@ -3,7 +3,7 @@
 import { PropsWithChildren, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Header from "@/components/Header";
-import Sidebar from "@/components/Sidebar";
+import LatestIntents from "@/components/LatestIntents";
 import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
 import { IndexesProvider } from "@/contexts/IndexesContext";
 
@@ -68,10 +68,10 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
           {/* Page content with sidebar */}
           <main>
             <div className={`max-w-7xl mx-auto px-2 mt-10 flex ${showSidebar ? 'flex-col lg:flex-row' : 'flex-col'}`}>
-              {/* Sidebar */}
+              {/* Latest Intents Sidebar */}
               {showSidebar && (
                 <aside id="app-sidebar" className={`w-full lg:w-1/4 lg:pr-6 lg:top-6 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block`}>
-                  <Sidebar />
+                  <LatestIntents />
                 </aside>
               )}
 

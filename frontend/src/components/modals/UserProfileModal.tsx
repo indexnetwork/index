@@ -30,7 +30,6 @@ interface DialogTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
 
 const DialogContent = ({ className, children, ...props }: DialogComponentProps) => (
   <Dialog.Portal>
-    <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
     <Dialog.Content
       className={`fixed left-[50%] top-[50%] z-50 grid w-full max-w-2xl translate-x-[-50%] translate-y-[-50%] border border-gray-800 bg-white shadow-lg duration-200 ${className}`}
       {...props}
