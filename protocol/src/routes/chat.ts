@@ -3,6 +3,16 @@ import { body, validationResult } from 'express-validator';
 import { StreamChat } from 'stream-chat';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
+
+declare module 'stream-chat' {
+  interface CustomChannelData {
+    pending?: boolean;
+    requestedBy?: string;
+    awaitingAdminApproval?: boolean;
+    declined?: boolean;
+    skipped?: boolean;
+  }
+}
 import { users, userConnectionEvents, indexMembers, indexes } from '../lib/schema';
 import { eq, isNull, and, or, desc, inArray, sql } from 'drizzle-orm';
 import { sendConnectionRequestNotification, sendConnectionAcceptedNotification } from '../lib/notification-service';
@@ -51,7 +61,7 @@ async function getConnectionStatus(userId1: string, userId2: string): Promise<{ 
     )
     .orderBy(desc(userConnectionEvents.createdAt))
     .limit(1);
-  
+
   return {
     status: latestEvent[0]?.eventType || null,
     isInitiator: latestEvent[0]?.initiatorUserId === userId1
@@ -73,7 +83,7 @@ async function requiresAdminApproval(userId1: string, userId2: string): Promise<
   // Build map of indexes per user
   const userIndexMap = new Map<string, Set<string>>();
   const indexApprovalMap = new Map<string, boolean>();
-  
+
   memberships.forEach(m => {
     if (!userIndexMap.has(m.userId)) userIndexMap.set(m.userId, new Set());
     userIndexMap.get(m.userId)!.add(m.indexId);
@@ -82,12 +92,12 @@ async function requiresAdminApproval(userId1: string, userId2: string): Promise<
 
   const user1Indexes = userIndexMap.get(userId1) || new Set();
   const user2Indexes = userIndexMap.get(userId2) || new Set();
-  
+
   // Find shared indexes
   const sharedIndexIds = [...user1Indexes].filter(id => user2Indexes.has(id));
-  
+
   if (sharedIndexIds.length === 0) return false;
-  
+
   // If ALL shared indexes require approval, return true
   return sharedIndexIds.every(id => indexApprovalMap.get(id) === true);
 }
@@ -215,14 +225,14 @@ router.post('/request',
 
       // Check connection status
       const connectionStatus = await getConnectionStatus(userId, targetUserId);
-      
+
       // If already connected, just return channel info (they can message directly)
       if (connectionStatus.status === 'ACCEPT') {
         const channelId = generateChannelId(userId, targetUserId);
-        return res.json({ 
-          channelId, 
+        return res.json({
+          channelId,
           pending: false,
-          alreadyConnected: true 
+          alreadyConnected: true
         });
       }
 
@@ -279,7 +289,7 @@ router.post('/request',
       // Send notification email (fire-and-forget)
       sendConnectionRequestNotification(userId, targetUserId).catch(console.error);
 
-      return res.json({ 
+      return res.json({
         channelId,
         pending: true,
         awaitingAdminApproval: needsAdminApproval
@@ -309,7 +319,7 @@ router.post('/request/respond',
       const { channelId, action } = req.body;
 
       const serverClient = StreamChat.getInstance(STREAM_API_KEY, STREAM_SECRET);
-      
+
       // Get channel
       const channels = await serverClient.queryChannels({ id: channelId });
       if (channels.length === 0) {
@@ -356,24 +366,24 @@ router.post('/request/respond',
         // Send acceptance notification
         sendConnectionAcceptedNotification(userId, requesterId).catch(console.error);
 
-        return res.json({ 
+        return res.json({
           message: 'Message request accepted',
-          channelId 
+          channelId
         });
       } else {
         // DECLINE or SKIP - hide or delete the channel
         // For now, just mark as not pending and let it be hidden
         await channel.updatePartial({
-          set: { 
-            pending: false, 
+          set: {
+            pending: false,
             declined: action === 'DECLINE',
             skipped: action === 'SKIP'
           }
         });
 
-        return res.json({ 
+        return res.json({
           message: `Message request ${action.toLowerCase()}ed`,
-          channelId 
+          channelId
         });
       }
     } catch (error) {
