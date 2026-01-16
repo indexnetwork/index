@@ -4,7 +4,7 @@ import { forwardRef, useImperativeHandle, useRef, useState, useCallback, useEffe
 import { useAPI } from "@/contexts/APIContext";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { validateFiles, getSupportedFileExtensions, formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
+import { validateFiles, getSupportedFileExtensions, getFileCategoryBadge } from "@/lib/file-validation";
 import { ArrowUp, X, Loader2, Zap, Type } from "lucide-react";
 import { Intent } from "@/types";
 
@@ -275,6 +275,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
               className="group inline-flex items-center gap-2 bg-gray-100 border border-gray-300 rounded-sm px-2 py-1 hover:border-gray-400 transition-colors"
             >
               {attachment.preview ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={attachment.preview}
                   alt={attachment.file.name}

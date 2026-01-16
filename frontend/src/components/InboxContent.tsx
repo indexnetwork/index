@@ -15,7 +15,6 @@ import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActi
 import DiscoveryForm, { DiscoveryFormRef } from "@/components/DiscoveryForm";
 import SynthesisMarkdown from "@/components/SynthesisMarkdown";
 import { InboxProvider, setGlobalInboxState } from "@/contexts/InboxContext";
-import ConnectorMatches from "@/components/ConnectorMatches";
 
 const validTabs = ['discover', 'requests', 'history'];
 
@@ -41,7 +40,7 @@ export default function InboxContent() {
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [requestsView, setRequestsView] = useState<'received' | 'sent' | 'history'>('received');
   const [isDragging, setIsDragging] = useState(false);
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showSuccessMessage] = useState(false);
   const [optimisticStatus, setOptimisticStatus] = useState<Record<string, ConnectionAction | null>>({});
 
   // Refs
@@ -200,7 +199,7 @@ export default function InboxContent() {
   }, [fetchDiscovery, fetchConnections]);
 
   // Tab change handler
-  const handleTabChange = (newTab: 'discover' | 'requests' | 'history') => {
+  const handleTabChange = useCallback((newTab: 'discover' | 'requests' | 'history') => {
     if (!validTabs.includes(newTab)) return;
 
     setActiveTab(newTab);
@@ -214,7 +213,7 @@ export default function InboxContent() {
       params.set('tab', newTab);
       router.push(`/?${params.toString()}`);
     }
-  };
+  }, [searchParams, router]);
 
   // Connection action handler
   const handleConnectionAction = useCallback(async (action: ConnectionAction, userId: string) => {
@@ -298,7 +297,7 @@ export default function InboxContent() {
   }, [router]);
 
   // Helper: Get connection status for rendering
-  const getConnectionStatus = (tabType: 'discover' | 'requests', viewType: 'received' | 'sent' | 'history' | undefined, userId: string): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
+  const getConnectionStatus = useCallback((tabType: 'discover' | 'requests', viewType: 'received' | 'sent' | 'history' | undefined, userId: string): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
     // Check optimistic status first
     if (optimisticStatus[userId]) {
       const action = optimisticStatus[userId];
@@ -320,7 +319,7 @@ export default function InboxContent() {
       if (viewType === 'history') return 'connected';
     }
     return 'none';
-  };
+  }, [optimisticStatus]);
 
   // Sync tab state with URL changes
   useEffect(() => {
@@ -523,7 +522,7 @@ export default function InboxContent() {
 
 
   // Create context value
-  const inboxContextValue = {
+  const inboxContextValue = useMemo(() => ({
     activeTab,
     setActiveTab: handleTabChange,
     requestsView,
@@ -533,7 +532,7 @@ export default function InboxContent() {
     historyConnectionsCount: historyConnections.length,
     connectionsLoading,
     discoverStakesCount: discoverStakes.length,
-  };
+  }), [activeTab, handleTabChange, requestsView, inboxConnections.length, pendingConnections.length, historyConnections.length, connectionsLoading, discoverStakes.length]);
 
   // Update global state so ChatSidebar can access it
   useEffect(() => {
@@ -541,7 +540,7 @@ export default function InboxContent() {
     return () => {
       setGlobalInboxState(null);
     };
-  }, [activeTab, requestsView, inboxConnections.length, pendingConnections.length, historyConnections.length, connectionsLoading, discoverStakes.length]);
+  }, [inboxContextValue]);
 
   // Handle back navigation - clear intent and navigate to root
   const handleBackToInbox = useCallback(() => {

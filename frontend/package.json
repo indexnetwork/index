@@ -59,6 +59,7 @@
     "js-yaml": "^4.1.1",
     "mdast-util-to-hast": "^13.2.1",
     "mermaid": "^11.10.0",
-    "@noble/curves": "1.9.1"
+    "@noble/curves": "1.9.1",
+    "@noble/hashes": "1.8.0"
   }
 }

@@ -42,7 +42,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { syncService, filesService, linksService, intentsService, integrationsService } = useAPI();
   const api = useAuthenticatedAPI(); // Keep for specialized endpoints
   const router = useRouter();
-  const { setDiscoveryIntents } = useDiscoveryFilter();
+  useDiscoveryFilter(); // Context hook kept for future use
   const [isUploading, setIsUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [isAddingLink, setIsAddingLink] = useState(false);

@@ -23,7 +23,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
   const popoverRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const intentsService = useIntents();
-  const { setDiscoveryIntents } = useDiscoveryFilter();
+  useDiscoveryFilter(); // Context hook kept for future use
   const { success, error } = useNotifications();
 
   const closePopover = () => setPopoverOpen(false);

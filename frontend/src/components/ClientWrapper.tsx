@@ -55,21 +55,19 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   // Show right chat sidebar when authenticated and sidebar is visible
   const showChatSidebar = isAuthenticated && showSidebar;
 
-  // Check if we're on inbox page (root or intent route) - if so, InboxProvider will wrap children from inbox page
-  const isInboxPage = pathname === '/' || pathname?.startsWith('/i/');
-
   return (
     <IndexesProvider>
       <IndexFilterProvider>
         <StreamChatProvider>
           <ClientWrapperContent
-            children={children}
             showSidebar={showSidebar}
             showChatSidebar={showChatSidebar}
             showHeaderButtons={showHeaderButtons}
             mobileSidebarOpen={mobileSidebarOpen}
             setMobileSidebarOpen={setMobileSidebarOpen}
-          />
+          >
+            {children}
+          </ClientWrapperContent>
         </StreamChatProvider>
       </IndexFilterProvider>
     </IndexesProvider>

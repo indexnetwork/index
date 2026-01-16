@@ -24,7 +24,6 @@ export default function ConnectionActions({
   connectionStatus = 'none',
   onAction,
   disabled = false,
-  size = 'sm',
 }: ConnectionActionsProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { success, error } = useNotifications();

@@ -1,11 +1,20 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { Channel } from 'stream-chat';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { MessageSquare, Inbox, Check, X, SkipForward, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { getAvatarUrl } from '@/lib/file-utils';
+
+interface ChannelMember {
+  user?: {
+    id: string;
+    name?: string;
+    image?: string;
+  };
+}
 
 export default function ChatSidebar() {
   const { 
@@ -19,7 +28,7 @@ export default function ChatSidebar() {
     respondToMessageRequest,
   } = useStreamChat();
   const { success, error: showError } = useNotifications();
-  const [channels, setChannels] = useState<any[]>([]);
+  const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
 
@@ -75,12 +84,12 @@ export default function ChatSidebar() {
   }, [isReady, client]);
 
   const handleChannelClick = useCallback(
-    (channel: any) => {
+    (channel: Channel) => {
       // Get the other member (not current user)
-      const members = Object.values(channel.state.members || {});
+      const members = Object.values(channel.state.members || {}) as ChannelMember[];
       const otherMember = members.find(
-        (m: any) => m.user?.id !== client?.userID
-      ) as any;
+        (m) => m.user?.id !== client?.userID
+      );
 
       if (otherMember?.user) {
         // Open chat and set as active
@@ -116,9 +125,9 @@ export default function ChatSidebar() {
           success('Request skipped', 'You can revisit this later.');
           break;
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to respond to message request:', err);
-      showError('Failed', err?.message || 'Please try again later.');
+      showError('Failed', err instanceof Error ? err.message : 'Please try again later.');
     } finally {
       setRespondingTo(null);
     }
@@ -262,10 +271,10 @@ export default function ChatSidebar() {
         ) : (
           <div className="divide-y divide-gray-200">
             {channels.map((channel) => {
-              const members = Object.values(channel.state.members || {});
+              const members = Object.values(channel.state.members || {}) as ChannelMember[];
               const otherMember = members.find(
-                (m: any) => m.user?.id !== client?.userID
-              ) as any;
+                (m) => m.user?.id !== client?.userID
+              );
               const otherUser = otherMember?.user;
 
               if (!otherUser) return null;

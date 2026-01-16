@@ -57,7 +57,7 @@ export default function Sidebar() {
         setLoadingIntents(true);
         const response = await intentsService.getIntents(1, 5, false);
         // API returns { intents, pagination } not { data, pagination }
-        setLatestIntents((response as any).intents?.slice(0, 5) || []);
+        setLatestIntents((response as { intents?: LatestIntent[] }).intents?.slice(0, 5) || []);
       } catch (error) {
         console.error('Failed to fetch latest intents:', error);
       } finally {

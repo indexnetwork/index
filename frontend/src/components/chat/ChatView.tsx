@@ -1,12 +1,34 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { Channel, MessageResponse, LocalMessage } from 'stream-chat';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useDiscover } from '@/contexts/APIContext';
-import { X, ArrowLeft, Send, Clock, Check, SkipForward, Loader2, ArrowUp } from 'lucide-react';
+import { X, ArrowLeft, Clock, Check, SkipForward, Loader2, ArrowUp } from 'lucide-react';
 import Image from 'next/image';
 import { getAvatarUrl } from '@/lib/file-utils';
+
+interface ChatMessage {
+  id: string;
+  text?: string;
+  user?: { id: string; name?: string } | null;
+  created_at?: Date | string;
+  status?: string;
+}
+
+// Transform MessageResponse or LocalMessage to ChatMessage
+const transformMessage = (msg: MessageResponse | LocalMessage): ChatMessage => ({
+  id: msg.id,
+  text: msg.text,
+  user: msg.user ? { id: msg.user.id, name: msg.user.name } : null,
+  created_at: msg.created_at instanceof Date ? msg.created_at : msg.created_at,
+  status: msg.status,
+});
+
+interface ChannelEvent {
+  channel?: { id: string };
+}
 
 interface ChatViewProps {
   userId: string;
@@ -31,11 +53,14 @@ export default function ChatView({
   onClose,
   onToggleMinimize: _onToggleMinimize,
 }: ChatViewProps) {
+  // Suppress unused variable warnings - kept for API compatibility
+  void _minimized;
+  void _onToggleMinimize;
   const { client, isReady, getOrCreateChannel, clearActiveChat, respondToMessageRequest, refreshMessageRequests, sendMessageRequest, checkCanMessage } = useStreamChat();
   const { success, error: showError } = useNotifications();
   const discoverService = useDiscover();
-  const [channel, setChannel] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [channel, setChannel] = useState<Channel | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(true);
   const [pendingState, setPendingState] = useState<ChannelPendingState>({ isPending: false, isRequester: false, awaitingAdminApproval: false });
@@ -60,7 +85,10 @@ export default function ChatView({
     }
 
     let mounted = true;
-    let currentChannel: any = null;
+    let currentChannel: Channel | null = null;
+    let handleMessage: ((event: ChannelEvent) => void) | null = null;
+    let handleMessageUpdated: ((event: ChannelEvent) => void) | null = null;
+    let syncMessagesHandler: (() => void) | null = null;
 
     const initChannel = async () => {
       try {
@@ -89,9 +117,10 @@ export default function ChatView({
         
         try {
           await ch.watch();
-        } catch (watchError: any) {
+        } catch (watchError) {
           // Channel might not exist yet for new conversations
-          if (watchError?.message?.includes('does not exist') || watchError?.code === 16) {
+          const err = watchError as { message?: string; code?: number };
+          if (err?.message?.includes('does not exist') || err?.code === 16) {
             // This is a new conversation - channel doesn't exist yet
             if (!canMessageDirectly) {
               setIsNewConversation(true);
@@ -109,7 +138,7 @@ export default function ChatView({
         setChannel(ch);
 
         // Check pending state from channel data
-        const channelData = ch.data as any;
+        const channelData = ch.data as { pending?: boolean; requestedBy?: string; awaitingAdminApproval?: boolean };
         if (channelData?.pending) {
           setPendingState({
             isPending: true,
@@ -132,28 +161,28 @@ export default function ChatView({
           setIsNewConversation(true);
         }
         
-        setMessages(response.messages || []);
+        setMessages((response.messages || []).map(transformMessage));
         setLoading(false);
 
         // Sync messages from channel state
-        const syncMessages = () => {
+        syncMessagesHandler = () => {
           if (mounted && ch.state.messages) {
-            setMessages([...ch.state.messages]);
+            setMessages(ch.state.messages.map(transformMessage));
             scrollToBottom();
           }
         };
 
         // Listen for new messages
-        const handleMessage = (event: any) => {
+        handleMessage = (event: ChannelEvent) => {
           if (mounted && event.channel?.id === ch.id) {
-            syncMessages();
+            syncMessagesHandler?.();
           }
         };
 
         // Listen for message updates (including sent messages)
-        const handleMessageUpdated = (event: any) => {
+        handleMessageUpdated = (event: ChannelEvent) => {
           if (mounted && event.channel?.id === ch.id) {
-            syncMessages();
+            syncMessagesHandler?.();
           }
         };
 
@@ -161,7 +190,7 @@ export default function ChatView({
         ch.on('message.updated', handleMessageUpdated);
         
         // Also listen to channel state changes
-        ch.on('channel.updated', syncMessages);
+        ch.on('channel.updated', syncMessagesHandler);
       } catch (error) {
         console.error('Error initializing channel:', error);
         if (mounted) {
@@ -175,12 +204,18 @@ export default function ChatView({
     return () => {
       mounted = false;
       if (currentChannel) {
-        currentChannel.off('message.new');
-        currentChannel.off('message.updated');
-        currentChannel.off('channel.updated');
+        if (handleMessage) {
+          currentChannel.off('message.new', handleMessage);
+        }
+        if (handleMessageUpdated) {
+          currentChannel.off('message.updated', handleMessageUpdated);
+        }
+        if (syncMessagesHandler) {
+          currentChannel.off('channel.updated', syncMessagesHandler);
+        }
       }
     };
-  }, [isReady, client, userId, userName, userAvatar, getOrCreateChannel, scrollToBottom]);
+  }, [isReady, client, userId, userName, userAvatar, getOrCreateChannel, scrollToBottom, checkCanMessage]);
 
   useEffect(() => {
     scrollToBottom();
@@ -194,10 +229,10 @@ export default function ChatView({
     
     // Optimistic update - add message immediately
     const tempId = `temp-${Date.now()}`;
-    const optimisticMessage = {
+    const optimisticMessage: ChatMessage = {
       id: tempId,
       text,
-      user: { id: client?.userID, name: client?.user?.name },
+      user: client?.userID ? { id: client.userID, name: client?.user?.name } : null,
       created_at: new Date(),
       status: 'sending',
     };
@@ -241,18 +276,18 @@ export default function ChatView({
       // Replace optimistic message with real one
       setMessages((prev) => {
         const filtered = prev.filter((m) => m.id !== tempId);
-        return [...filtered, response.message];
+        return [...filtered, transformMessage(response.message)];
       });
       setSendingMessageId(null);
       scrollToBottom();
       inputRef.current?.focus();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error sending message:', error);
       // Remove failed optimistic message
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setSendingMessageId(null);
       setMessageText(text); // Restore message text
-      showError('Failed to send', error?.message || 'Please try again.');
+      showError('Failed to send', error instanceof Error ? error.message : 'Please try again.');
     }
   }, [channel, messageText, client, sendingMessageId, scrollToBottom, isNewConversation, sendMessageRequest, userId, userName, userAvatar, success, showError]);
 
@@ -318,9 +353,9 @@ export default function ChatView({
       
       // Refresh the message requests list
       await refreshMessageRequests();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to respond to request:', err);
-      showError('Failed', err?.message || 'Please try again later.');
+      showError('Failed', err instanceof Error ? err.message : 'Please try again later.');
     } finally {
       setRespondingAction(null);
     }

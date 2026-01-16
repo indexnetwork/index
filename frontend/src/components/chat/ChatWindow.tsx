@@ -1,9 +1,31 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { Channel, MessageResponse, LocalMessage } from 'stream-chat';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { X, ArrowLeft, Send } from 'lucide-react';
 import Image from 'next/image';
+
+interface ChatMessage {
+  id: string;
+  text?: string;
+  user?: { id: string; name?: string } | null;
+  created_at?: Date | string;
+  status?: string;
+}
+
+// Transform MessageResponse or LocalMessage to ChatMessage
+const transformMessage = (msg: MessageResponse | LocalMessage): ChatMessage => ({
+  id: msg.id,
+  text: msg.text,
+  user: msg.user ? { id: msg.user.id, name: msg.user.name } : null,
+  created_at: msg.created_at instanceof Date ? msg.created_at : msg.created_at,
+  status: msg.status,
+});
+
+interface ChannelEvent {
+  channel?: { id: string };
+}
 
 interface ChatViewProps {
   userId: string;
@@ -22,9 +44,12 @@ export default function ChatView({
   onClose,
   onToggleMinimize: _onToggleMinimize,
 }: ChatViewProps) {
+  // Suppress unused variable warnings - kept for API compatibility
+  void _minimized;
+  void _onToggleMinimize;
   const { client, isReady, getOrCreateChannel, clearActiveChat } = useStreamChat();
-  const [channel, setChannel] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [channel, setChannel] = useState<Channel | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -45,7 +70,10 @@ export default function ChatView({
     }
 
     let mounted = true;
-    let currentChannel: any = null;
+    let currentChannel: Channel | null = null;
+    let handleMessage: ((event: ChannelEvent) => void) | null = null;
+    let handleMessageUpdated: ((event: ChannelEvent) => void) | null = null;
+    let syncMessagesHandler: (() => void) | null = null;
 
     const initChannel = async () => {
       try {
@@ -69,28 +97,28 @@ export default function ChatView({
         
         if (!mounted) return;
         
-        setMessages(response.messages || []);
+        setMessages((response.messages || []).map(transformMessage));
         setLoading(false);
 
         // Sync messages from channel state
-        const syncMessages = () => {
+        syncMessagesHandler = () => {
           if (mounted && ch.state.messages) {
-            setMessages([...ch.state.messages]);
+            setMessages(ch.state.messages.map(transformMessage));
             scrollToBottom();
           }
         };
 
         // Listen for new messages
-        const handleMessage = (event: any) => {
+        handleMessage = (event: ChannelEvent) => {
           if (mounted && event.channel?.id === ch.id) {
-            syncMessages();
+            syncMessagesHandler?.();
           }
         };
 
         // Listen for message updates (including sent messages)
-        const handleMessageUpdated = (event: any) => {
+        handleMessageUpdated = (event: ChannelEvent) => {
           if (mounted && event.channel?.id === ch.id) {
-            syncMessages();
+            syncMessagesHandler?.();
           }
         };
 
@@ -98,7 +126,7 @@ export default function ChatView({
         ch.on('message.updated', handleMessageUpdated);
         
         // Also listen to channel state changes
-        ch.on('channel.updated', syncMessages);
+        ch.on('channel.updated', syncMessagesHandler);
       } catch (error) {
         console.error('Error initializing channel:', error);
         if (mounted) {
@@ -112,9 +140,15 @@ export default function ChatView({
     return () => {
       mounted = false;
       if (currentChannel) {
-        currentChannel.off('message.new');
-        currentChannel.off('message.updated');
-        currentChannel.off('channel.updated');
+        if (handleMessage) {
+          currentChannel.off('message.new', handleMessage);
+        }
+        if (handleMessageUpdated) {
+          currentChannel.off('message.updated', handleMessageUpdated);
+        }
+        if (syncMessagesHandler) {
+          currentChannel.off('channel.updated', syncMessagesHandler);
+        }
       }
     };
   }, [isReady, client, userId, userName, userAvatar, getOrCreateChannel, scrollToBottom]);
@@ -131,10 +165,10 @@ export default function ChatView({
     
     // Optimistic update - add message immediately
     const tempId = `temp-${Date.now()}`;
-    const optimisticMessage = {
+    const optimisticMessage: ChatMessage = {
       id: tempId,
       text,
-      user: { id: client?.userID, name: client?.user?.name },
+      user: client?.userID ? { id: client.userID, name: client?.user?.name } : null,
       created_at: new Date(),
       status: 'sending',
     };
@@ -151,7 +185,7 @@ export default function ChatView({
       // Replace optimistic message with real one
       setMessages((prev) => {
         const filtered = prev.filter((m) => m.id !== tempId);
-        return [...filtered, response.message];
+        return [...filtered, transformMessage(response.message)];
       });
       setSendingMessageId(null);
       scrollToBottom();

@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
-import { StreamChat, Channel, User as StreamUser } from 'stream-chat';
+import { StreamChat, Channel } from 'stream-chat';
 import { useAuthContext } from './AuthContext';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { useAuthenticatedAPI } from '@/lib/api';
@@ -90,6 +90,8 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     }
 
     let mounted = true;
+    const userId = user.id;
+    const userName = user.name;
 
     const initStreamChat = async () => {
       try {
@@ -97,13 +99,13 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
         const streamClient = StreamChat.getInstance(STREAM_API_KEY);
 
         // Generate token via backend API
-        const token = await generateToken(user.id);
+        const token = await generateToken(userId);
 
         // Connect user
         await streamClient.connectUser(
           {
-            id: user.id,
-            name: user.name || 'Anonymous',
+            id: userId,
+            name: userName || 'Anonymous',
             image: getAvatarUrl(user),
           },
           token
@@ -123,6 +125,7 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, user?.id, user?.name, generateToken]);
 
   // Cleanup on unmount
@@ -253,16 +256,6 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     return response;
   }, [api]);
 
-  // Respond to a message request
-  const respondToMessageRequest = useCallback(async (
-    channelId: string, 
-    action: 'ACCEPT' | 'DECLINE' | 'SKIP'
-  ): Promise<void> => {
-    await api.post('/chat/request/respond', { channelId, action });
-    // Refresh message requests after responding
-    await refreshMessageRequests();
-  }, [api]);
-
   // Fetch pending message requests
   const refreshMessageRequests = useCallback(async (): Promise<void> => {
     if (!isReady) return;
@@ -277,6 +270,16 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
       setMessageRequestsLoading(false);
     }
   }, [api, isReady]);
+
+  // Respond to a message request
+  const respondToMessageRequest = useCallback(async (
+    channelId: string, 
+    action: 'ACCEPT' | 'DECLINE' | 'SKIP'
+  ): Promise<void> => {
+    await api.post('/chat/request/respond', { channelId, action });
+    // Refresh message requests after responding
+    await refreshMessageRequests();
+  }, [api, refreshMessageRequests]);
 
   // Fetch message requests when ready
   useEffect(() => {
