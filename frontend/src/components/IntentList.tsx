@@ -49,14 +49,14 @@ export default function IntentList<T extends BaseIntent>({
   if (isLoading) {
     return (
       <div className={`flex items-center justify-center py-6 ${className}`}>
-        <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
+        <span className="h-6 w-6 border-2 border-border border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (sortedIntents.length === 0) {
     return (
-      <div className={`text-xs text-[#666] font-ibm-plex-mono py-4 text-center ${className}`}>
+      <div className={`text-xs text-muted-foreground font-ibm-plex-mono py-4 text-center ${className}`}>
         <p>{emptyMessage}</p>
       </div>
     );
@@ -76,17 +76,17 @@ export default function IntentList<T extends BaseIntent>({
         const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
         
         const cardClasses = `relative border rounded-sm px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isSelectedSource
-          ? 'border-[#99CFFF] bg-[#F0F7FF] shadow-sm shadow-[rgba(0,126,255,0.16)]'
+          ? 'border-blue-400 bg-blue-50 dark:bg-blue-950 dark:border-blue-700 shadow-sm shadow-blue-500/20'
           : isFresh
-            ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]'
-            : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
+            ? 'border-green-600 bg-green-50 dark:bg-green-950 dark:border-green-700 shadow-sm shadow-green-500/20'
+            : 'border-border bg-card hover:border-muted-foreground'}`;
 
         return (
           <div key={intent.id} className={`group ${cardClasses}`}>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 {createdLabel && (
-                  <span className="flex items-center gap-1 text-[10px] text-[#777] font-ibm-plex-mono whitespace-nowrap">
+                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground font-ibm-plex-mono whitespace-nowrap">
                     <svg
                       width="12"
                       height="12"
@@ -96,7 +96,7 @@ export default function IntentList<T extends BaseIntent>({
                       strokeWidth="1.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      className="text-[#777]"
+                      className="text-muted-foreground"
                     >
                       <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
                       <line x1="16" y1="2" x2="16" y2="6" />
@@ -107,7 +107,7 @@ export default function IntentList<T extends BaseIntent>({
                   </span>
                 )}
                 {isFresh && !isSelectedSource && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
+                  <span className="px-1.5 py-0.5 rounded-full bg-green-600 text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
                 )}
               </div>
               
@@ -125,7 +125,7 @@ export default function IntentList<T extends BaseIntent>({
                       }
                     }}
                     disabled={removingIntentIds.has(intent.id)}
-                    className="h-6 w-6 grid place-items-center rounded-md bg-[#F2F2F2] text-red-600 hover:text-red-700 hover:bg-[#E6E6E6]"
+                    className="h-6 w-6 grid place-items-center rounded-md bg-muted text-red-600 hover:text-red-700 hover:bg-muted/80 dark:text-red-400 dark:hover:text-red-300"
                     aria-label={onRemoveIntent ? "Remove intent" : "Archive intent"}
                   >
                     {removingIntentIds.has(intent.id) ? (
@@ -149,8 +149,8 @@ export default function IntentList<T extends BaseIntent>({
                       onOpenIntentSource(intent);
                     }}
                     className={canOpenSource
-                      ? 'h-6 w-6 grid place-items-center rounded-sm bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]'
-                      : 'h-6 w-6 grid place-items-center rounded-sm bg-[#EEF5FF] text-[#3563E9]'}
+                      ? 'h-6 w-6 grid place-items-center rounded-sm bg-muted text-muted-foreground hover:bg-muted/80'
+                      : 'h-6 w-6 grid place-items-center rounded-sm bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'}
                     aria-label={canOpenSource ? 'Open source' : 'View source details'}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -161,7 +161,7 @@ export default function IntentList<T extends BaseIntent>({
                 )}
               </div>
             </div>
-            <div className="mt-1 text-xs text-[#333] font-medium leading-snug line-clamp-3 break-words">{summary}</div>
+            <div className="mt-1 text-xs text-foreground font-medium leading-snug line-clamp-3 break-words">{summary}</div>
           </div>
         );
       })}

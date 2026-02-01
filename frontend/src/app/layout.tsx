@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { APIProvider } from "@/contexts/APIContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
@@ -49,21 +50,23 @@ export default function RootLayout({
           data-domain="index.network"
           src="https://plausible.io/js/script.outbound-links.js"
         />
-        <AuthProvider>
-          <APIProvider>
-            <NotificationProvider>
-              <DiscoveryFilterProvider>
-                <AIChatSessionsProvider>
-                  <AIChatProvider>
-                    <ClientWrapper>
-                      {children}
-                    </ClientWrapper>
-                  </AIChatProvider>
-                </AIChatSessionsProvider>
-              </DiscoveryFilterProvider>
-            </NotificationProvider>
-          </APIProvider>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <APIProvider>
+              <NotificationProvider>
+                <DiscoveryFilterProvider>
+                  <AIChatSessionsProvider>
+                    <AIChatProvider>
+                      <ClientWrapper>
+                        {children}
+                      </ClientWrapper>
+                    </AIChatProvider>
+                  </AIChatSessionsProvider>
+                </DiscoveryFilterProvider>
+              </NotificationProvider>
+            </APIProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

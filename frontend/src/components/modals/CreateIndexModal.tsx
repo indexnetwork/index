@@ -33,12 +33,12 @@ const DialogContent = ({ className, children, ...props }: DialogComponentProps) 
   <Dialog.Portal>
     <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
     <Dialog.Content
-      className={`fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white p-6 shadow-lg duration-200 sm:rounded-lg ${className}`}
+      className={`fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-lg dark:shadow-none duration-200 sm:rounded-lg ${className}`}
       {...props}
     >
       {children}
-      <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
-        <X className="h-4 w-4" />
+      <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100">
+        <X className="h-4 w-4 text-muted-foreground" />
         <span className="sr-only">Close</span>
       </Dialog.Close>
     </Dialog.Content>

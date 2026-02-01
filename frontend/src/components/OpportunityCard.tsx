@@ -24,24 +24,24 @@ export default function OpportunityCard({
 
   // Score color based on value
   const getScoreColor = (score: number) => {
-    if (score >= 90) return 'bg-green-100 text-green-800 border-green-300';
-    if (score >= 80) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    return 'bg-gray-100 text-gray-800 border-gray-300';
+    if (score >= 90) return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 border-green-300 dark:border-green-700';
+    if (score >= 80) return 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700';
+    return 'bg-muted text-muted-foreground border-border';
   };
 
   // Type badge color
   const getTypeBadge = (type: string) => {
     const colors: Record<string, string> = {
-      collaboration: 'bg-blue-100 text-blue-700',
-      mentorship: 'bg-purple-100 text-purple-700',
-      networking: 'bg-orange-100 text-orange-700',
-      other: 'bg-gray-100 text-gray-700'
+      collaboration: 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300',
+      mentorship: 'bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300',
+      networking: 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300',
+      other: 'bg-muted text-muted-foreground'
     };
     return colors[type] || colors.other;
   };
 
   return (
-    <div className="bg-white border border-b-2 border-gray-800 p-4">
+    <div className="bg-card border border-b-2 border-foreground p-4">
       {/* Header: Source -> Target with Score */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
@@ -54,13 +54,13 @@ export default function OpportunityCard({
               height={32}
               className="rounded-full"
             />
-            <span className="font-ibm-plex-mono text-sm font-medium text-gray-900">
+            <span className="font-ibm-plex-mono text-sm font-medium text-foreground">
               {sourceUser.name}
             </span>
           </div>
 
           {/* Arrow */}
-          <ArrowRight className="w-4 h-4 text-gray-400" />
+          <ArrowRight className="w-4 h-4 text-muted-foreground" />
 
           {/* Target User */}
           <div className="flex items-center gap-2">
@@ -71,7 +71,7 @@ export default function OpportunityCard({
               height={32}
               className="rounded-full"
             />
-            <span className="font-ibm-plex-mono text-sm font-medium text-gray-900">
+            <span className="font-ibm-plex-mono text-sm font-medium text-foreground">
               {targetUser.name}
             </span>
           </div>
@@ -91,12 +91,12 @@ export default function OpportunityCard({
       </div>
 
       {/* Title */}
-      <h3 className="font-ibm-plex-mono text-sm font-bold text-gray-900 mb-1">
+      <h3 className="font-ibm-plex-mono text-sm font-bold text-foreground mb-1">
         {opp.title}
       </h3>
 
       {/* Description */}
-      <p className="font-ibm-plex-mono text-xs text-gray-600 mb-4 line-clamp-2">
+      <p className="font-ibm-plex-mono text-xs text-muted-foreground mb-4 line-clamp-2">
         {opp.description}
       </p>
 
@@ -106,7 +106,7 @@ export default function OpportunityCard({
           <button
             onClick={onSendToSource}
             disabled={isProcessing}
-            className="flex items-center gap-1 px-3 py-1.5 bg-black text-white text-xs font-ibm-plex-mono rounded hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-ibm-plex-mono rounded hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-3 h-3" />
             Send to {sourceUser.name.split(' ')[0]}
@@ -116,7 +116,7 @@ export default function OpportunityCard({
           <button
             onClick={onSendToBoth}
             disabled={isProcessing}
-            className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-ibm-plex-mono rounded hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 px-3 py-1.5 bg-muted text-foreground text-xs font-ibm-plex-mono rounded hover:bg-muted/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-3 h-3" />
             Send to both
@@ -126,7 +126,7 @@ export default function OpportunityCard({
           <button
             onClick={onDismiss}
             disabled={isProcessing}
-            className="flex items-center gap-1 px-3 py-1.5 text-gray-500 text-xs font-ibm-plex-mono hover:text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 px-3 py-1.5 text-muted-foreground text-xs font-ibm-plex-mono hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="w-3 h-3" />
             Dismiss

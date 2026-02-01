@@ -32,13 +32,13 @@ export default function ConnectorMatches({ matches, onMatch, onPass }: Connector
 
   return (
     <div className="mt-6">
-      <h2 className="font-ibm-plex-mono text-black text-lg font-bold mb-4 text-center">
+      <h2 className="font-ibm-plex-mono text-foreground text-lg font-bold mb-4 text-center">
         You're the connector they need
       </h2>
       
       <div className="space-y-6">
         {matches.map((match) => (
-          <div key={match.id} className="bg-white border border-gray-300 rounded-sm p-4">
+          <div key={match.id} className="bg-card border border-border rounded-sm p-4">
             {/* Match Card */}
             <div className="flex items-center justify-between mb-4">
               {/* Person 1 */}
@@ -50,11 +50,11 @@ export default function ConnectorMatches({ matches, onMatch, onPass }: Connector
                   height={64}
                   className="rounded-full mb-2"
                 />
-                <h3 className="font-bold text-gray-900 font-ibm-plex-mono text-sm mb-1">
+                <h3 className="font-bold text-foreground font-ibm-plex-mono text-sm mb-1">
                   {match.person1.name}
                 </h3>
                 {(match.person1.title || match.person1.company) && (
-                  <p className="text-xs text-gray-500 font-ibm-plex-mono text-center">
+                  <p className="text-xs text-muted-foreground font-ibm-plex-mono text-center">
                     {match.person1.title}
                     {match.person1.title && match.person1.company && ' at '}
                     {match.person1.company}
@@ -64,7 +64,7 @@ export default function ConnectorMatches({ matches, onMatch, onPass }: Connector
 
               {/* Double Arrow */}
               <div className="mx-4 flex-shrink-0">
-                <ArrowLeftRight className="w-6 h-6 text-gray-400" />
+                <ArrowLeftRight className="w-6 h-6 text-muted-foreground" />
               </div>
 
               {/* Person 2 */}
@@ -76,11 +76,11 @@ export default function ConnectorMatches({ matches, onMatch, onPass }: Connector
                   height={64}
                   className="rounded-full mb-2"
                 />
-                <h3 className="font-bold text-gray-900 font-ibm-plex-mono text-sm mb-1">
+                <h3 className="font-bold text-foreground font-ibm-plex-mono text-sm mb-1">
                   {match.person2.name}
                 </h3>
                 {(match.person2.title || match.person2.company) && (
-                  <p className="text-xs text-gray-500 font-ibm-plex-mono text-center">
+                  <p className="text-xs text-muted-foreground font-ibm-plex-mono text-center">
                     {match.person2.title}
                     {match.person2.title && match.person2.company && ' at '}
                     {match.person2.company}
@@ -90,8 +90,8 @@ export default function ConnectorMatches({ matches, onMatch, onPass }: Connector
             </div>
 
             {/* Description */}
-            <div className="bg-gray-100 rounded-sm p-3 mb-4">
-              <p className="text-sm text-gray-700 font-ibm-plex-mono leading-relaxed">
+            <div className="bg-muted rounded-sm p-3 mb-4">
+              <p className="text-sm text-muted-foreground font-ibm-plex-mono leading-relaxed">
                 {match.description}
               </p>
             </div>
@@ -100,13 +100,13 @@ export default function ConnectorMatches({ matches, onMatch, onPass }: Connector
             <div className="flex gap-3">
               <button
                 onClick={() => onMatch(match.id)}
-                className="flex-1 bg-black text-white px-4 py-2 font-ibm-plex-mono text-sm hover:bg-gray-800 transition-colors"
+                className="flex-1 bg-primary text-primary-foreground px-4 py-2 font-ibm-plex-mono text-sm hover:opacity-90 transition-colors"
               >
                 This is a good match
               </button>
               <button
                 onClick={() => onPass(match.id)}
-                className="flex-1 bg-white border border-gray-300 text-gray-900 px-4 py-2 font-ibm-plex-mono text-sm hover:bg-gray-50 transition-colors"
+                className="flex-1 bg-card border border-border text-foreground px-4 py-2 font-ibm-plex-mono text-sm hover:bg-muted transition-colors"
               >
                 Pass
               </button>

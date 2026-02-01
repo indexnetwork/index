@@ -148,11 +148,11 @@ export default function ChatSidebar() {
       <div className="flex flex-col">
         <div className="flex items-center gap-3 mb-3 min-h-[54px] flex-shrink-0 px-3">
           <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-            <MessageSquare className="w-5 h-5 text-gray-600" />
+            <MessageSquare className="w-5 h-5 text-muted-foreground" />
           </div>
-          <h2 className="font-bold text-sm text-black font-ibm-plex-mono">Conversations</h2>
+          <h2 className="font-bold text-sm text-foreground font-ibm-plex-mono">Conversations</h2>
         </div>
-        <div className="text-center text-gray-500 text-sm py-8">
+        <div className="text-center text-muted-foreground text-sm py-8">
           Loading...
         </div>
       </div>
@@ -164,9 +164,9 @@ export default function ChatSidebar() {
       {/* Message Requests section */}
       {messageRequests.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 px-3 py-3 bg-amber-50">
-            <Inbox className="w-5 h-5 text-amber-600" />
-            <h2 className="font-bold text-sm text-black font-ibm-plex-mono">
+          <div className="flex items-center gap-2 px-3 py-3 bg-amber-50 dark:bg-amber-950">
+            <Inbox className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            <h2 className="font-bold text-sm text-foreground font-ibm-plex-mono">
               Message Requests
             </h2>
             <span className="ml-auto text-xs px-2 py-1 rounded bg-amber-600 text-white">
@@ -176,16 +176,16 @@ export default function ChatSidebar() {
           <div className="max-h-[200px] overflow-y-auto">
             {messageRequestsLoading ? (
               <div className="flex items-center justify-center py-4">
-                <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-border">
                 {messageRequests.map((request) => {
                   const isResponding = respondingTo === request.channelId;
                   return (
                     <div
                       key={request.channelId}
-                      className="px-3 py-3 bg-white hover:bg-gray-50"
+                      className="px-3 py-3 bg-card hover:bg-muted"
                     >
                       <div className="flex items-start gap-3">
                         <Image
@@ -200,11 +200,11 @@ export default function ChatSidebar() {
                           className="rounded-full flex-shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <span className="font-bold text-sm font-ibm-plex-mono text-gray-900 block truncate">
+                          <span className="font-bold text-sm font-ibm-plex-mono text-foreground block truncate">
                             {request.requester?.name || 'User'}
                           </span>
                           {request.firstMessage && (
-                            <p className="text-xs text-gray-500 font-ibm-plex-mono truncate mt-0.5">
+                            <p className="text-xs text-muted-foreground font-ibm-plex-mono truncate mt-0.5">
                               {request.firstMessage}
                             </p>
                           )}
@@ -232,7 +232,7 @@ export default function ChatSidebar() {
                                 request.requester?.name || 'User'
                               )}
                               disabled={isResponding}
-                              className="flex items-center gap-1 px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs rounded transition-colors disabled:opacity-50"
+                              className="flex items-center gap-1 px-2 py-1 bg-muted hover:bg-muted/80 text-muted-foreground text-xs rounded transition-colors disabled:opacity-50"
                             >
                               <SkipForward className="w-3 h-3" />
                               Skip
@@ -244,7 +244,7 @@ export default function ChatSidebar() {
                                 request.requester?.name || 'User'
                               )}
                               disabled={isResponding}
-                              className="flex items-center gap-1 px-2 py-1 text-red-500 hover:bg-red-50 text-xs rounded transition-colors disabled:opacity-50"
+                              className="flex items-center gap-1 px-2 py-1 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 text-xs rounded transition-colors disabled:opacity-50"
                             >
                               <X className="w-3 h-3" />
                               Decline
@@ -264,22 +264,22 @@ export default function ChatSidebar() {
       {/* Conversations header - min-h-[54px] aligns with ChatView header bar; w-10 matches avatar width for alignment */}
       <div className="flex items-center gap-3 mb-3 min-h-[54px] flex-shrink-0 px-3">
         <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-          <MessageSquare className="w-5 h-5 text-gray-600" />
+          <MessageSquare className="w-5 h-5 text-muted-foreground" />
         </div>
-        <h2 className="font-bold text-sm text-black font-ibm-plex-mono flex-1 min-w-0">Conversations</h2>
+        <h2 className="font-bold text-sm text-foreground font-ibm-plex-mono flex-1 min-w-0">Conversations</h2>
         {totalUnreadCount > 0 && (
-          <span className="ml-auto text-xs px-2 py-1 rounded-full bg-black text-white font-ibm-plex-mono">
+          <span className="ml-auto text-xs px-2 py-1 rounded-full bg-primary text-primary-foreground font-ibm-plex-mono">
             {totalUnreadCount}
           </span>
         )}
       </div>
       <div className="flex-1 overflow-y-auto min-h-[300px]">
         {loading ? (
-          <div className="text-center text-gray-500 text-sm py-8">
+          <div className="text-center text-muted-foreground text-sm py-8">
             Loading conversations...
           </div>
         ) : channels.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm py-8 px-3">
+          <div className="text-center text-muted-foreground text-sm py-8 px-3">
             No conversations yet
           </div>
         ) : (
@@ -304,10 +304,10 @@ export default function ChatSidebar() {
                   onClick={() => handleChannelClick(channel)}
                   className={`w-full py-3 px-3 transition-colors text-left ${
                     isActive
-                      ? 'bg-gray-100'
+                      ? 'bg-muted'
                       : hasUnread
-                        ? 'bg-gray-50'
-                        : 'hover:bg-gray-50'
+                        ? 'bg-muted/50'
+                        : 'hover:bg-muted/50'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -321,19 +321,19 @@ export default function ChatSidebar() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <span className={`text-sm font-ibm-plex-mono truncate ${
-                          hasUnread ? 'font-bold text-black' : 'font-medium text-gray-900'
+                          hasUnread ? 'font-bold text-foreground' : 'font-medium text-foreground'
                         }`}>
                           {otherUser.name || 'User'}
                         </span>
                         {hasUnread && (
-                          <span className="bg-black text-white text-xs px-2 py-0.5 rounded-full font-ibm-plex-mono">
+                          <span className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full font-ibm-plex-mono">
                             {unreadCount}
                           </span>
                         )}
                       </div>
                       {lastMessage && (
                         <p className={`text-xs font-ibm-plex-mono truncate ${
-                          hasUnread ? 'text-gray-800' : 'text-gray-500'
+                          hasUnread ? 'text-foreground/80' : 'text-muted-foreground'
                         }`}>
                           {lastMessage.text || 'Attachment'}
                         </p>

@@ -250,29 +250,29 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
   return (
     <>
       {/* Sticky header - full width */}
-      <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center justify-between min-h-[68px]">
+      <div className="sticky top-0 bg-background z-10 px-4 py-3 flex items-center justify-between min-h-[68px]">
         <div className="flex items-center gap-3">
-          <button onClick={handleBack} className="text-gray-600 hover:text-black transition-colors text-xl mr-2">←</button>
+          <button onClick={handleBack} className="text-muted-foreground hover:text-foreground transition-colors text-xl mr-2">←</button>
           <Link href={`/u/${userId}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="relative">
               <Image src={avatarUrl} alt={userName} width={44} height={44} className="rounded-full" />
             </div>
-            <h2 className="font-ibm-plex-mono font-bold text-lg text-black">{userName}</h2>
+            <h2 className="font-ibm-plex-mono font-bold text-lg text-foreground">{userName}</h2>
           </Link>
         </div>
         <div className="relative" ref={menuRef}>
           <button 
             onClick={() => setShowMenu(!showMenu)}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-2 hover:bg-muted rounded-full transition-colors"
           >
-            <MoreHorizontal className="w-5 h-5 text-gray-500" />
+            <MoreHorizontal className="w-5 h-5 text-muted-foreground" />
           </button>
           {showMenu && (
-            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[160px] z-20">
+            <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg dark:shadow-none py-1 min-w-[160px] z-20">
               <button
                 onClick={handleDeleteChat}
                 disabled={isDeleting || !channel}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 transition-colors disabled:opacity-50"
               >
                 {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 Delete chat
@@ -299,7 +299,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
                     <button onClick={() => handleRespondToRequest('ACCEPT')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors disabled:opacity-50">
                       {respondingAction === 'ACCEPT' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Accept
                     </button>
-                    <button onClick={() => handleRespondToRequest('SKIP')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded transition-colors disabled:opacity-50">
+                    <button onClick={() => handleRespondToRequest('SKIP')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground text-sm rounded transition-colors disabled:opacity-50">
                       {respondingAction === 'SKIP' ? <Loader2 className="w-4 h-4 animate-spin" /> : <SkipForward className="w-4 h-4" />} Skip
                     </button>
                     <button onClick={() => handleRespondToRequest('DECLINE')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 text-red-600 hover:bg-red-50 text-sm rounded transition-colors disabled:opacity-50">
@@ -313,9 +313,9 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
 
           {/* Messages */}
           {loading ? (
-            <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+            <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
           ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-500"><p className="font-ibm-plex-mono text-sm">Start a conversation with {userName}</p></div>
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground"><p className="font-ibm-plex-mono text-sm">Start a conversation with {userName}</p></div>
           ) : (
             <div className="space-y-4">
               {messages.map((message, index) => {
@@ -325,16 +325,16 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
                 return (
                   <div key={message.id}>
                     {showTimestamp && message.created_at && (
-                      <div className="text-center text-xs text-gray-400 font-ibm-plex-mono uppercase tracking-wider my-4">Today, {formatTime(message.created_at)}</div>
+                      <div className="text-center text-xs text-muted-foreground font-ibm-plex-mono uppercase tracking-wider my-4">Today, {formatTime(message.created_at)}</div>
                     )}
                     <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
                       {!isOwn && <Image src={avatarUrl} alt={userName} width={32} height={32} className="rounded-full flex-shrink-0" />}
-                      <div className={cn('max-w-[70%] rounded-2xl px-4 py-2', isOwn ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900')}>
-                        <article className={cn('font-ibm-plex-mono text-sm', isOwn && 'text-white')}>
+                      <div className={cn('max-w-[70%] rounded-2xl px-4 py-2', isOwn ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground')}>
+                        <article className={cn('font-ibm-plex-mono text-sm', isOwn && 'text-primary-foreground')}>
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text || ''}</ReactMarkdown>
                         </article>
                       </div>
-                      {isOwn && <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 text-xs font-ibm-plex-mono font-bold text-gray-600">{client?.user?.name?.charAt(0) || 'U'}</div>}
+                      {isOwn && <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0 text-xs font-ibm-plex-mono font-bold text-muted-foreground">{client?.user?.name?.charAt(0) || 'U'}</div>}
                     </div>
                   </div>
                 );
@@ -350,12 +350,12 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
         <div className="px-6 lg:px-8 py-4">
           <ContentContainer>
             {pendingState.isPending && pendingState.isRequester ? (
-              <div className="text-center text-gray-500 font-ibm-plex-mono text-sm">Waiting for {userName} to accept your message request</div>
+              <div className="text-center text-muted-foreground font-ibm-plex-mono text-sm">Waiting for {userName} to accept your message request</div>
             ) : pendingState.isPending && !pendingState.isRequester ? (
-              <div className="text-center text-gray-500 font-ibm-plex-mono text-sm">Accept the request to continue the conversation</div>
+              <div className="text-center text-muted-foreground font-ibm-plex-mono text-sm">Accept the request to continue the conversation</div>
             ) : (
               <>
-                <div className="flex items-center gap-3 bg-gray-100 rounded-full px-4 py-3">
+                <div className="flex items-center gap-3 bg-muted rounded-full px-4 py-3">
                   <input
                     ref={inputRef}
                     type="text"
@@ -364,12 +364,12 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
                     onKeyDown={handleKeyPress}
                     placeholder={`Type a message to ${userName}...`}
                     disabled={sendingMessageId !== null}
-                    className="flex-1 bg-transparent border-none outline-none font-ibm-plex-mono text-gray-900 placeholder-gray-500 h-6"
+                    className="flex-1 bg-transparent border-none outline-none font-ibm-plex-mono text-foreground placeholder-muted-foreground h-6"
                   />
                   <button
                     onClick={handleSend}
                     disabled={!messageText.trim() || sendingMessageId !== null}
-                    className="shrink-0 h-8 w-8 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="shrink-0 h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ArrowUp className="h-4 w-4" />
                   </button>

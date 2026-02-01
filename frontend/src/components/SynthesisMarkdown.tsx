@@ -160,7 +160,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
       {popoverOpen && typeof window !== 'undefined' && createPortal(
         <div
           ref={popoverRef}
-          className="fixed z-[200] bg-white flex gap-1"
+          className="fixed z-[200] bg-card flex gap-1"
           style={{
             top: popoverPosition.y,
             left: popoverPosition.x,
@@ -169,16 +169,16 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
           <button
             onClick={handleFocus}
             title="Focus on this intent"
-            className="flex items-center justify-center w-9 h-9 border border-b-2 rounded-[2px] border-black hover:bg-gray-100 transition-colors cursor-pointer"
+            className="flex items-center justify-center w-9 h-9 border border-b-2 rounded-[2px] border-foreground hover:bg-muted transition-colors cursor-pointer"
           >
-            <Focus strokeWidth={1.5} className="w-6 h-6 text-gray-900" />
+            <Focus strokeWidth={1.5} className="w-6 h-6 text-foreground" />
           </button>
           <button
             onClick={handleArchive}
             title="Archive this intent"
-            className="flex items-center justify-center w-9 h-9 border border-b-2 rounded-[2px] border-black hover:bg-gray-100 transition-colors cursor-pointer"
+            className="flex items-center justify-center w-9 h-9 border border-b-2 rounded-[2px] border-foreground hover:bg-muted transition-colors cursor-pointer"
           >
-            <Archive strokeWidth={1.5} className="w-6 h-6 text-red-500" />
+            <Archive strokeWidth={1.5} className="w-6 h-6 text-red-500 dark:text-red-400" />
           </button>
         </div>,
         document.body

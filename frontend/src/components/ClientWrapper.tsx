@@ -66,7 +66,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                 <aside 
                   id="app-sidebar"
                   className={`
-                    fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200
+                    fixed inset-y-0 left-0 z-50 w-64 bg-background border-r border-border
                     transform transition-transform duration-200 ease-in-out
                     lg:translate-x-0 lg:relative lg:z-auto
                     ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -86,10 +86,10 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                 {/* Main content area - takes remaining width, scrollable */}
                 <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
                   {/* Mobile header */}
-                  <div className="lg:hidden flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3">
+                  <div className="lg:hidden flex-shrink-0 bg-background border-b border-border px-4 py-3">
                     <button
                       onClick={() => setMobileSidebarOpen(true)}
-                      className="p-2 -ml-2 rounded-md hover:bg-gray-100"
+                      className="p-2 -ml-2 rounded-md hover:bg-muted text-foreground"
                     >
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M3 6h18M3 12h18M3 18h18" />
@@ -107,7 +107,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
               // Public layout without sidebar
               <>
                 {showHeader && (
-                  <div className={isLandingOrBlog ? 'z-40' : 'sticky top-0 z-40 border-b border-gray-300 bg-white/95 backdrop-blur-md'}>
+                  <div className={isLandingOrBlog ? 'z-40' : 'sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-md'}>
                     <div className="max-w-7xl mx-auto px-4">
                       <Header 
                         showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/')}

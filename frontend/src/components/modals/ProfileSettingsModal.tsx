@@ -34,11 +34,11 @@ const DialogContent = ({ className, children, ...props }: DialogComponentProps) 
   <Dialog.Portal>
     <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
     <Dialog.Content
-      className={`fixed left-[50%] top-[50%] z-50 w-full max-w-2xl max-h-[90vh] translate-x-[-50%] translate-y-[-50%] border bg-white shadow-lg duration-200 sm:rounded-lg flex flex-col ${className}`}
+      className={`fixed left-[50%] top-[50%] z-50 w-full max-w-2xl max-h-[90vh] translate-x-[-50%] translate-y-[-50%] border border-border bg-card text-card-foreground shadow-lg dark:shadow-none duration-200 sm:rounded-lg flex flex-col ${className}`}
       {...props}
     >
       {children}
-      <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
+      <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100">
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </Dialog.Close>
@@ -47,13 +47,13 @@ const DialogContent = ({ className, children, ...props }: DialogComponentProps) 
 );
 
 const DialogHeader = ({ className, children, ...props }: DialogComponentProps) => (
-  <div className={`flex flex-col space-y-1.5 text-center sm:text-left px-6 pt-6 pb-4 border-b ${className}`} {...props}>
+  <div className={`flex flex-col space-y-1.5 text-center sm:text-left px-6 pt-6 pb-4 border-b border-border ${className}`} {...props}>
     {children}
   </div>
 );
 
 const DialogTitle = ({ className, children, ...props }: DialogTitleProps) => (
-  <Dialog.Title className={`text-lg font-semibold leading-none tracking-tight ${className}`} {...props}>
+  <Dialog.Title className={`text-lg font-semibold leading-none tracking-tight text-foreground ${className}`} {...props}>
     {children}
   </Dialog.Title>
 );
@@ -181,7 +181,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">
+          <DialogTitle className="text-xl font-bold text-foreground font-ibm-plex-mono">
             Profile Settings
           </DialogTitle>
         </DialogHeader>
@@ -192,7 +192,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
             {/* Avatar Section */}
             <div className="flex flex-col items-center space-y-4">
               <div className="relative">
-                <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-200 border-2 border-gray-300">
+                <div className="w-24 h-24 rounded-full overflow-hidden bg-muted border-2 border-border">
                   {avatarPreview ? (
                     <Image src={avatarPreview} alt="Avatar preview" width={96} height={96} className="w-full h-full object-cover" />
                   ) : user?.avatar ? (
@@ -204,7 +204,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
                       <Camera className="w-8 h-8" />
                     </div>
                   )}
@@ -212,9 +212,9 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="absolute -bottom-2 -right-2 bg-white border-2 border-gray-300 rounded-full p-2 hover:bg-gray-50 transition-colors"
+                  className="absolute -bottom-2 -right-2 bg-card border-2 border-border rounded-full p-2 hover:bg-muted transition-colors"
                 >
-                  <ImagePlus className="w-4 h-4 text-gray-600" />
+                  <ImagePlus className="w-4 h-4 text-muted-foreground" />
                 </button>
               </div>
               <input
@@ -233,7 +233,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
 
             {/* Name Field */}
             <div>
-              <label htmlFor="name" className="text-md font-medium font-ibm-plex-mono text-black">
+              <label htmlFor="name" className="text-md font-medium font-ibm-plex-mono text-foreground">
                 <div className="mb-2">Name *</div>
               </label>
               <Input
@@ -248,10 +248,10 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
             {/* Intro Field */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label htmlFor="intro" className="text-md font-medium font-ibm-plex-mono text-black">
+                <label htmlFor="intro" className="text-md font-medium font-ibm-plex-mono text-foreground">
                   Introduction
                 </label>
-                <span className="text-sm text-gray-500">{intro.length}/500</span>
+                <span className="text-sm text-muted-foreground">{intro.length}/500</span>
               </div>
               <Textarea
                 id="intro"
@@ -265,7 +265,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
 
             {/* Location Field */}
             <div>
-              <label htmlFor="location" className="text-md font-medium font-ibm-plex-mono text-black">
+              <label htmlFor="location" className="text-md font-medium font-ibm-plex-mono text-foreground">
                 <div className="mb-2">Location</div>
               </label>
               <Input
@@ -278,7 +278,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
 
             {/* Timezone Field */}
             <div>
-              <label htmlFor="timezone" className="text-md font-medium font-ibm-plex-mono text-black">
+              <label htmlFor="timezone" className="text-md font-medium font-ibm-plex-mono text-foreground">
                 <div className="mb-2">Timezone</div>
               </label>
               <div className="relative">
@@ -286,7 +286,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                   id="timezone"
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
-                  className="flex h-10 w-full rounded-sm border border-gray-400 bg-white px-3 py-2 text-md text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-200 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
+                  className="flex h-10 w-full rounded-sm border border-border bg-background px-3 py-2 text-md text-foreground focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
                 >
                   {Intl.supportedValuesOf('timeZone').map((tz) => (
                     <option key={tz} value={tz}>
@@ -295,7 +295,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                   ))}
                 </select>
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
                     <path d="m6 9 6 6 6-6" />
                   </svg>
                 </div>
@@ -304,11 +304,11 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
 
             {/* Social Links Section */}
             <div className="space-y-3">
-              <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-4">Socials</h3>
+              <h3 className="text-md font-medium font-ibm-plex-mono text-foreground mb-4">Socials</h3>
 
               {/* X (Twitter) */}
-              <div className="flex items-center border border-gray-300">
-                <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+              <div className="flex items-center border border-border">
+                <div className="px-3 py-2 bg-muted text-muted-foreground font-ibm-plex-mono text-sm border-r border-border whitespace-nowrap">
                   x.com/
                 </div>
                 <Input
@@ -320,8 +320,8 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               </div>
 
               {/* LinkedIn */}
-              <div className="flex items-center border border-gray-300">
-                <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+              <div className="flex items-center border border-border">
+                <div className="px-3 py-2 bg-muted text-muted-foreground font-ibm-plex-mono text-sm border-r border-border whitespace-nowrap">
                   linkedin.com/in/
                 </div>
                 <Input
@@ -333,8 +333,8 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               </div>
 
               {/* GitHub */}
-              <div className="flex items-center border border-gray-300">
-                <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+              <div className="flex items-center border border-border">
+                <div className="px-3 py-2 bg-muted text-muted-foreground font-ibm-plex-mono text-sm border-r border-border whitespace-nowrap">
                   github.com/
                 </div>
                 <Input
@@ -347,7 +347,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
 
               {/* Custom Websites */}
               {websites.map((website, index) => (
-                <div key={index} className="flex items-center border border-gray-300">
+                <div key={index} className="flex items-center border border-border">
                   <Input
                     value={website}
                     onChange={(e) => updateWebsite(index, e.target.value)}
@@ -357,7 +357,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                   <button
                     type="button"
                     onClick={() => removeWebsite(index)}
-                    className="px-3 py-2 text-gray-500 hover:text-red-600 transition-colors border-l border-gray-300"
+                    className="px-3 py-2 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors border-l border-border"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -369,7 +369,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                 <button
                   type="button"
                   onClick={addWebsite}
-                  className="w-full flex items-center justify-center px-3 py-2 border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors font-ibm-plex-mono text-sm"
+                  className="w-full flex items-center justify-center px-3 py-2 border border-border text-muted-foreground hover:bg-muted transition-colors font-ibm-plex-mono text-sm"
                 >
                   +
                 </button>
@@ -378,7 +378,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
           </div>
 
           {/* Fixed Footer */}
-          <div className="flex justify-end space-x-3 px-6 py-4 border-t bg-white">
+          <div className="flex justify-end space-x-3 px-6 py-4 border-t border-border bg-card">
             <Button
               type="button"
               variant="outline"

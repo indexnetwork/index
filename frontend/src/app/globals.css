@@ -2,33 +2,61 @@
 @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
+@config "../../tailwind.config.js";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@custom-variant dark (&:where(.dark, .dark *));
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+@theme inline {
+  --color-background: rgb(var(--tw-background));
+  --color-foreground: rgb(var(--tw-foreground));
+  --color-muted: rgb(var(--tw-muted));
+  --color-muted-foreground: rgb(var(--tw-muted-foreground));
+  --color-border: rgb(var(--tw-border));
+  --color-card: rgb(var(--tw-card));
+  --color-card-foreground: rgb(var(--tw-card-foreground));
+  --color-accent: rgb(var(--tw-accent));
+  --color-accent-foreground: rgb(var(--tw-accent-foreground));
+  --color-primary: rgb(var(--tw-primary));
+  --color-primary-foreground: rgb(var(--tw-primary-foreground));
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+:root {
+  --tw-background: 255 255 255;
+  --tw-foreground: 10 10 10;
+  --tw-muted: 245 245 245;
+  --tw-muted-foreground: 115 115 115;
+  --tw-border: 229 229 229;
+  --tw-card: 255 255 255;
+  --tw-card-foreground: 10 10 10;
+  --tw-accent: 0 119 255;
+  --tw-accent-foreground: 255 255 255;
+  --tw-primary: 10 10 10;              /* Primary buttons/bubbles - dark in light mode */
+  --tw-primary-foreground: 255 255 255;
+}
+
+.dark {
+  --tw-background: 0 0 0;              /* Pure black background */
+  --tw-foreground: 245 245 245;        /* Off-white text */
+  --tw-muted: 32 32 32;                /* Subtle dark gray for inputs, message bubbles */
+  --tw-muted-foreground: 161 161 170;  /* Muted text - zinc-400 */
+  --tw-border: 39 39 42;               /* Subtle borders - zinc-800 */
+  --tw-card: 9 9 11;                   /* Card background - zinc-950 */
+  --tw-card-foreground: 245 245 245;   /* Card text */
+  --tw-accent: 99 102 241;             /* Indigo-500 accent */
+  --tw-accent-foreground: 255 255 255;
+  --tw-primary: 47 47 47;              /* Charcoal for user message bubbles */
+  --tw-primary-foreground: 245 245 245;
 }
 
 @layer base {
   html {
-    @apply scroll-smooth;
+    scroll-behavior: smooth;
     overscroll-behavior: none;
   }
   
   body {
-    @apply text-gray-900 dark:text-gray-100;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
     overscroll-behavior: none;
   }
   
@@ -36,62 +64,101 @@
     background-color: #f999f9;
     color: black;
   }
+  
+  .dark ::selection {
+    background-color: #9333ea;
+    color: white;
+  }
 }
 
-@layer utilities {
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .scrollbar-hide::-webkit-scrollbar {
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
     display: none;
   }
 }
 
-@layer components {
-  .btn-primary {
-    @apply px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors dark:bg-blue-500 dark:hover:bg-blue-600;
+@utility btn-primary {
+  padding: 0.5rem 1rem;
+  background-color: var(--color-foreground);
+  color: var(--color-background);
+  border-radius: 0.5rem;
+  transition: opacity 0.2s;
+  &:hover {
+    opacity: 0.9;
   }
-  
-  .btn-secondary {
-    @apply bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 
-           transition-all duration-200 ease-in-out;
-  }
-  
-  .card {
-    @apply bg-white dark:bg-gray-800 rounded-lg shadow-md p-6;
-  }
+}
 
-  .input {
-    @apply w-full px-4 py-2 rounded-lg border border-gray-300 
-           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-           transition-all duration-200 ease-in-out;
+@utility btn-secondary {
+  background-color: var(--color-muted);
+  color: var(--color-foreground);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease-in-out;
+  &:hover {
+    opacity: 0.8;
   }
+}
 
-  .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
-  }
+@utility card {
+  background-color: var(--color-card);
+  color: var(--color-card-foreground);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  padding: 1.5rem;
+}
 
-  .badge-primary {
-    @apply bg-blue-100 text-blue-800;
-  }
+.dark .card {
+  box-shadow: none;
+  border: 1px solid var(--color-border);
+}
 
-  .badge-secondary {
-    @apply bg-gray-100 text-gray-800;
+@utility input-style {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  transition: all 0.2s ease-in-out;
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgb(var(--tw-accent) / 0.5);
+    border-color: transparent;
   }
+}
 
-  .font-hanken {
-    @apply font-['Hanken_Grotesk'];
-  }
+@utility badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
 
-  .font-garamond {
-    @apply font-['EB_Garamond'];
-  }
+@utility badge-primary {
+  background-color: rgb(var(--tw-accent) / 0.2);
+  color: var(--color-accent);
+}
 
-  .font-ibm-plex-mono {
-    @apply font-['IBM_Plex_Mono'];
-  }
-} 
+@utility badge-secondary {
+  background-color: var(--color-muted);
+  color: var(--color-muted-foreground);
+}
+
+@utility font-hanken {
+  font-family: 'Hanken Grotesk', sans-serif;
+}
+
+@utility font-garamond {
+  font-family: 'EB Garamond', serif;
+}
+
+@utility font-ibm-plex-mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
 
 #privy-modal-content {
   border-radius: 0px;
@@ -159,6 +226,10 @@ button {
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
 }
 
+.dark .chat-markdown code {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
 .chat-markdown pre {
   border-radius: 2px;
   padding: 0.75em 1em;
@@ -190,14 +261,27 @@ button {
   text-align: left;
 }
 
+.dark .chat-markdown th,
+.dark .chat-markdown td {
+  border-color: #374151;
+}
+
 .chat-markdown th {
   font-weight: 600;
   background-color: #f3f4f6;
 }
 
+.dark .chat-markdown th {
+  background-color: #1f2937;
+}
+
 .chat-markdown thead th {
   border-bottom-width: 2px;
   border-bottom-color: #d1d5db;
+}
+
+.dark .chat-markdown thead th {
+  border-bottom-color: #4b5563;
 }
 
 .chat-markdown a {
@@ -217,6 +301,10 @@ button {
 .chat-markdown hr {
   border-color: #e5e7eb;
   margin: 0.75em 0;
+}
+
+.dark .chat-markdown hr {
+  border-color: #374151;
 }
 
 /* Inverted (user message – dark bubble) */

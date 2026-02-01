@@ -10,6 +10,7 @@ import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { usePrivy } from '@privy-io/react-auth';
+import { useTheme } from 'next-themes';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { Channel } from 'stream-chat';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
@@ -38,6 +39,14 @@ export default function Sidebar() {
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
   const { getAccessToken } = usePrivy();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  const logoSrc = mounted && resolvedTheme === 'dark' 
+    ? "/logos/logo-white-full.svg" 
+    : "/logos/logo-black-full.svg";
   
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
@@ -239,7 +248,7 @@ export default function Sidebar() {
       <div className="flex-shrink-0 px-4 py-6">
         <Link href="/">
           <Image
-            src="/logos/logo-black-full.svg"
+            src={logoSrc}
             alt="Index Network"
             width={160}
             height={28}
@@ -254,8 +263,8 @@ export default function Sidebar() {
           onClick={handleDiscoverClick}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
             isHomeView
-              ? 'bg-gray-100 text-black font-medium'
-              : 'text-gray-600 hover:bg-gray-50 hover:text-black'
+              ? 'bg-muted text-foreground font-medium'
+              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
           }`}
         >
           <Compass className="w-5 h-5" />
@@ -267,14 +276,14 @@ export default function Sidebar() {
           disabled={navigatingToChat}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
             isMessagesView
-              ? 'bg-gray-100 text-black font-medium'
-              : 'text-gray-600 hover:bg-gray-50 hover:text-black'
+              ? 'bg-muted text-foreground font-medium'
+              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
           } ${navigatingToChat ? 'opacity-50 cursor-wait' : ''}`}
         >
           <MessageCircle className="w-5 h-5" />
           <span className="flex-1 text-left">Chat</span>
           {totalUnreadCount > 0 && (
-            <span className="bg-black text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
+            <span className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
               {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
             </span>
           )}
@@ -286,14 +295,14 @@ export default function Sidebar() {
         {isHomeView && (
           <>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Recent
               </h3>
             </div>
             {loadingSessions ? (
-              <div className="text-sm text-gray-400">Loading...</div>
+              <div className="text-sm text-muted-foreground">Loading...</div>
             ) : chatSessions.length === 0 ? (
-              <div className="text-sm text-gray-400">No conversations yet</div>
+              <div className="text-sm text-muted-foreground">No conversations yet</div>
             ) : (
               <div className="space-y-1">
                 {chatSessions.slice(0, 4).map((session) => {
@@ -304,8 +313,8 @@ export default function Sidebar() {
                       onClick={() => router.push(`/?sessionId=${session.id}`)}
                       className={`w-full text-left py-2 px-2 -mx-2 rounded-md text-sm transition-colors truncate ${
                         isSelected
-                          ? 'bg-gray-50 text-black font-medium'
-                          : 'text-gray-700 hover:text-black hover:bg-gray-50'
+                          ? 'bg-muted text-foreground font-medium'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                       }`}
                     >
                       {session.title || 'Untitled conversation'}
@@ -319,13 +328,13 @@ export default function Sidebar() {
 
         {isMessagesView && (
           <>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               Recent
             </h3>
             {loadingChats ? (
-              <div className="text-sm text-gray-400">Loading...</div>
+              <div className="text-sm text-muted-foreground">Loading...</div>
             ) : recentChats.length === 0 ? (
-              <div className="text-sm text-gray-400">No messages yet</div>
+              <div className="text-sm text-muted-foreground">No messages yet</div>
             ) : (
               <div className="space-y-1">
                 {recentChats.slice(0, 4).map((chat) => {
@@ -335,16 +344,16 @@ export default function Sidebar() {
                     key={chat.id} 
                     className={`relative group flex items-center py-2 px-2 -mx-2 rounded-md transition-colors ${
                       isSelected 
-                        ? 'bg-gray-50' 
-                        : 'hover:bg-gray-50'
+                        ? 'bg-muted' 
+                        : 'hover:bg-muted/50'
                     }`}
                   >
                     <button
                       onClick={() => router.push(`/u/${chat.recipientId}/chat`)}
                       className={`flex-1 flex items-center gap-3 text-sm text-left ${
                         isSelected 
-                          ? 'text-black font-medium' 
-                          : 'text-gray-700 hover:text-black'
+                          ? 'text-foreground font-medium' 
+                          : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
                       <Image
@@ -361,19 +370,19 @@ export default function Sidebar() {
                         e.stopPropagation();
                         setChatMenuOpen(chatMenuOpen === chat.id ? null : chat.id);
                       }}
-                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-100 rounded transition-all flex-shrink-0"
+                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-muted rounded transition-all flex-shrink-0"
                     >
-                      <MoreHorizontal className="w-4 h-4 text-gray-400" />
+                      <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
                     </button>
                     {chatMenuOpen === chat.id && (
                       <div 
                         ref={chatMenuRef}
-                        className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[140px] z-30"
+                        className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg dark:shadow-none py-1 min-w-[140px] z-30"
                       >
                         <button
                           onClick={() => handleDeleteChat(chat.id, chat.name)}
                           disabled={deletingChat === chat.id}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 transition-colors disabled:opacity-50"
                         >
                           {deletingChat === chat.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                           Delete
@@ -397,7 +406,7 @@ export default function Sidebar() {
         <div className="flex-shrink-0 px-4 py-4">
           <button
             onClick={() => setIsProfileModalOpen(true)}
-            className="w-full flex items-center gap-3 hover:bg-gray-50 rounded-md p-2 -m-2 transition-colors"
+            className="w-full flex items-center gap-3 hover:bg-muted/50 rounded-md p-2 -m-2 transition-colors"
           >
             <Image
               src={getAvatarUrl(user)}
@@ -407,14 +416,14 @@ export default function Sidebar() {
               className="rounded-full flex-shrink-0"
             />
             <div className="flex-1 min-w-0 text-left">
-              <div className="text-sm font-medium text-black truncate">
+              <div className="text-sm font-medium text-foreground truncate">
                 {user.name}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-muted-foreground">
                 Member
               </div>
             </div>
-            <Settings className="w-4 h-4 text-gray-400" />
+            <Settings className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
       )}

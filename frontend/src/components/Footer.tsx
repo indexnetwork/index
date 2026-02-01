@@ -32,8 +32,7 @@ export default function Footer() {
 
   return (
     <footer
-      className="text-white py-8 px-6 lg:px-12 border-t-4 border-black relative overflow-hidden w-full"
-      style={{ backgroundColor: "#0a0a0a" }}
+      className="text-white py-8 px-6 lg:px-12 border-t-4 border-foreground relative overflow-hidden w-full bg-foreground dark:bg-card dark:border-border"
     >
       <div className="max-w-[1200px] mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -57,7 +56,7 @@ export default function Footer() {
                     href="https://x.com/indexnetwork_"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[#CCC] hover:text-white transition-colors"
+                    className="text-background/70 hover:text-background dark:text-foreground/70 dark:hover:text-foreground transition-colors"
                     aria-label="Follow us on Twitter"
                   >
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -70,7 +69,7 @@ export default function Footer() {
                     href="https://linkedin.com/company/indexnetwork"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[#CCC] hover:text-white transition-colors"
+                    className="text-background/70 hover:text-background dark:text-foreground/70 dark:hover:text-foreground transition-colors"
                     aria-label="Follow us on LinkedIn"
                   >
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -83,7 +82,7 @@ export default function Footer() {
                     href="https://github.com/indexnetwork/index"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[#CCC] hover:text-white transition-colors"
+                    className="text-background/70 hover:text-background dark:text-foreground/70 dark:hover:text-foreground transition-colors"
                     aria-label="View our GitHub repository"
                   >
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -98,7 +97,7 @@ export default function Footer() {
                 <li>
                   <a
                     href="mailto:hello@index.network"
-                    className="text-[#CCC] hover:text-white transition-colors"
+                    className="text-background/70 hover:text-background dark:text-foreground/70 dark:hover:text-foreground transition-colors"
                     aria-label="Send us an email"
                   >
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -113,7 +112,7 @@ export default function Footer() {
 
           {/* Right Column: Newsletter */}
           <div className="md:text-right">
-              <p className="text-[14px] text-[#CCC] mb-2 leading-relaxed font-hanken">Join our corner of the internet</p>
+              <p className="text-[14px] text-background/70 dark:text-foreground/70 mb-2 leading-relaxed font-hanken">Join our corner of the internet</p>
               <form className="flex flex-col gap-2 items-start md:items-end" aria-label="Newsletter subscription" onSubmit={handleSubscribe}>
                 <label htmlFor="footer-newsletter-email" className="sr-only">
                   Email address
@@ -125,7 +124,7 @@ export default function Footer() {
                   placeholder="Enter your email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="bg-transparent border border-[#333] text-white px-4 py-2.5 text-[14px] focus:outline-none focus:border-white transition-colors placeholder:text-[#666] w-full md:w-64 rounded-sm font-hanken"
+                  className="bg-transparent border border-background/30 dark:border-border text-background dark:text-foreground px-4 py-2.5 text-[14px] focus:outline-none focus:border-background dark:focus:border-foreground transition-colors placeholder:text-background/50 dark:placeholder:text-foreground/50 w-full md:w-64 rounded-sm font-hanken"
                   required
                   aria-required="true"
                   disabled={subscribeStatus === "loading"}
@@ -133,7 +132,7 @@ export default function Footer() {
                 <button
                   type="submit"
                   disabled={subscribeStatus === "loading"}
-                  className="bg-white text-black hover:bg-[#F5F5F5] active:bg-[#E5E5E5] uppercase tracking-wider text-xs px-4 py-2.5 w-full md:w-64 rounded-sm transition-colors font-hanken border-none disabled:opacity-50"
+                  className="bg-background dark:bg-foreground text-foreground dark:text-background hover:opacity-90 uppercase tracking-wider text-xs px-4 py-2.5 w-full md:w-64 rounded-sm transition-colors font-hanken border-none disabled:opacity-50"
                 >
                   {subscribeStatus === "loading" ? "Subscribing..." : subscribeStatus === "success" ? "Subscribed!" : "Subscribe"}
                 </button>
@@ -144,7 +143,7 @@ export default function Footer() {
             </div>
         </div>
         <div className="mt-8">
-          <p className="text-[13px] text-[#999]">© Index Network Inc. 2026</p>
+          <p className="text-[13px] text-background/60 dark:text-foreground/60">© Index Network Inc. 2026</p>
         </div>
       </div>
     </footer>

@@ -99,8 +99,8 @@ export default function FeedbackWidget() {
   return (
     <div 
       ref={containerRef}
-      className={`fixed bottom-6 right-6 bg-white border border-gray-200 shadow-lg transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden z-50 ${
-        isOpen ? "rounded-lg" : "rounded-md hover:bg-gray-50 hover:shadow-md"
+      className={`fixed bottom-6 right-6 bg-card border border-border shadow-lg dark:shadow-none transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden z-50 ${
+        isOpen ? "rounded-lg" : "rounded-md hover:bg-muted hover:shadow-md"
       }`}
       style={{
         width: isOpen ? "388px" : "111px",
@@ -110,7 +110,7 @@ export default function FeedbackWidget() {
       {!isOpen ? (
         <button
           onClick={() => setIsOpen(true)}
-          className="w-full h-full flex items-center justify-center font-medium text-black text-sm"
+          className="w-full h-full flex items-center justify-center font-medium text-foreground text-sm"
           style={{
             gap: "8px",
           }}
@@ -121,7 +121,7 @@ export default function FeedbackWidget() {
       ) : (
         <div className="relative w-full h-full flex flex-col p-4">
           <textarea
-            className="w-full flex-1 resize-none focus:outline-none text-sm text-black placeholder-gray-400 mb-2"
+            className="w-full flex-1 resize-none focus:outline-none text-sm text-foreground bg-transparent placeholder-muted-foreground mb-2"
             placeholder="Unleash your thoughts! How can we make your experience better? (Stories, rants, metaphors, and wild suggestions welcome.)"
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
@@ -131,12 +131,12 @@ export default function FeedbackWidget() {
           />
           
           {selectedImage && (
-            <div className="relative w-full h-24 mb-3 bg-gray-50 rounded border border-gray-100 flex items-center justify-center overflow-hidden group">
+            <div className="relative w-full h-24 mb-3 bg-muted rounded border border-border flex items-center justify-center overflow-hidden group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={selectedImage} alt="Preview" className="h-full object-contain" />
               <button
                 onClick={() => setSelectedImage(undefined)}
-                className="absolute top-1 right-1 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 transition-colors"
+                className="absolute top-1 right-1 bg-foreground/50 hover:bg-foreground/70 text-background rounded-full p-1 transition-colors"
                 disabled={isSubmitting}
               >
                 <X className="w-3 h-3" />
@@ -148,7 +148,7 @@ export default function FeedbackWidget() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded hover:bg-gray-100"
+                className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-muted"
                 title="Attach image"
                 disabled={isSubmitting}
               >
@@ -164,7 +164,7 @@ export default function FeedbackWidget() {
             </div>
 
             <button
-              className="bg-black text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-gray-800 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-primary text-primary-foreground px-4 py-1.5 rounded text-sm font-medium hover:opacity-90 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleSubmit}
               disabled={isSubmitting || (!feedback && !selectedImage)}
             >

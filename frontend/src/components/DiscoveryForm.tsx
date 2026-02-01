@@ -549,7 +549,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
       {(allSuggestions.length > 0 || isLoadingSuggestions) && (
         <div className="px-3 pt-2 pb-1 flex gap-1.5 overflow-x-auto scrollbar-hide">
           {isLoadingSuggestions ? (
-            <div className="flex items-center gap-1.5 text-gray-500">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
               <Loader2 className="w-3 h-3 animate-spin" />
               <span className="font-ibm-plex-mono text-xs">Loading...</span>
             </div>
@@ -559,7 +559,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
                 key={index}
                 onClick={() => handleSuggestionClick(suggestion, index)}
                 disabled={isProcessing}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-gray-300 rounded-full text-xs font-ibm-plex-mono text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex-shrink-0"
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-card border border-border rounded-full text-xs font-ibm-plex-mono text-foreground hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex-shrink-0"
               >
                 {applyingSuggestionIndex === index ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -583,7 +583,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
           {attachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="group inline-flex items-center gap-1.5 bg-white border border-gray-300 rounded-full px-3 py-1 hover:border-gray-400 transition-colors"
+              className="group inline-flex items-center gap-1.5 bg-card border border-border rounded-full px-3 py-1 hover:border-muted-foreground transition-colors"
             >
               {attachment.preview ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
@@ -593,18 +593,18 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
                   className="w-4 h-4 object-cover rounded"
                 />
               ) : (
-                <div className="px-2 py-0.5 bg-gray-300 rounded flex items-center justify-center">
-                  <span className="text-[8px] font-ibm-plex-mono text-gray-600 font-bold">
+                <div className="px-2 py-0.5 bg-muted rounded flex items-center justify-center">
+                  <span className="text-[8px] font-ibm-plex-mono text-muted-foreground font-bold">
                     {getFileCategoryBadge(attachment.file.name)}
                   </span>
                 </div>
               )}
-              <span className="text-xs font-ibm-plex-mono text-gray-900">
+              <span className="text-xs font-ibm-plex-mono text-foreground">
                 {attachment.file.name}
               </span>
               <button
                 onClick={() => removeAttachment(attachment.id)}
-                className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-600 hover:text-black"
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
                 aria-label="Remove attachment"
               >
                 <X className="w-3 h-3" />
@@ -704,7 +704,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
             document.execCommand('insertText', false, text);
           }}
           data-placeholder={placeholder || (intentId ? "Ask a follow-up question..." : (floating ? "Ask a follow-up question..." : "What's your most important work?"))}
-          className={`flex-1 font-ibm-plex-mono text-black ${floating ? 'text-md' : 'text-lg'} focus:outline-none bg-transparent min-h-[24px] empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 ${isProcessing ? 'opacity-0 pointer-events-none' : ''}`}
+          className={`flex-1 font-ibm-plex-mono text-foreground ${floating ? 'text-md' : 'text-lg'} focus:outline-none bg-transparent min-h-[24px] empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground ${isProcessing ? 'opacity-0 pointer-events-none' : ''}`}
           suppressContentEditableWarning
         />
         
@@ -713,7 +713,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
           <div className="absolute inset-0 flex items-center px-3 pointer-events-none">
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${LOADING_STATES[loadingMessageIndex].color} animate-pulse`} />
-              <span className="font-ibm-plex-mono text-gray-500 text-sm">
+              <span className="font-ibm-plex-mono text-muted-foreground text-sm">
                 {LOADING_STATES[loadingMessageIndex].message}
               </span>
             </div>
@@ -724,10 +724,10 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
         {enableMentions && mentionQuery !== null && (mentionResults.length > 0 || isMentionLoading) && (
           <div 
             ref={mentionDropdownRef}
-            className="absolute left-3 right-3 bottom-full mb-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto z-50"
+            className="absolute left-3 right-3 bottom-full mb-1 bg-card border border-border rounded-md shadow-lg dark:shadow-none max-h-48 overflow-y-auto z-50"
           >
             {isMentionLoading ? (
-              <div className="px-3 py-2 text-xs text-gray-500 font-ibm-plex-mono flex items-center gap-2">
+              <div className="px-3 py-2 text-xs text-muted-foreground font-ibm-plex-mono flex items-center gap-2">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Searching...
               </div>
@@ -737,13 +737,13 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
                   key={user.id}
                   onClick={() => handleSelectMention(user)}
                   className={`w-full px-3 py-2 text-left text-sm font-ibm-plex-mono flex items-center gap-2 transition-colors ${
-                    index === selectedMentionIndex ? 'bg-gray-100' : 'hover:bg-gray-50'
+                    index === selectedMentionIndex ? 'bg-muted' : 'hover:bg-muted/50'
                   }`}
                 >
                   {user.avatar && (
                     <Image src={user.avatar} alt="" width={20} height={20} className="w-5 h-5 rounded-full" unoptimized />
                   )}
-                  <span className="text-gray-900">{user.name}</span>
+                  <span className="text-foreground">{user.name}</span>
                 </button>
               ))
             )}
@@ -752,7 +752,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
         {isProcessing ? (
           <button
             onClick={() => setIsProcessing(false)}
-            className="h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors cursor-pointer ml-2"
+            className="h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition-colors cursor-pointer ml-2"
           >
             <X className="w-4 h-4" />
           </button>
@@ -760,7 +760,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
           <button
             onClick={handleSubmit}
             disabled={intentId ? !inputValue.trim() : (!inputValue.trim() && attachments.length === 0)}
-            className="h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ml-2"
+            className="h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ml-2"
           >
             <ArrowUp className="w-4 h-4" />
           </button>
@@ -770,8 +770,8 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
   );
 
   const formClasses = floating
-    ? "bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col"
-    : "w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col";
+    ? "bg-card border border-foreground rounded-sm shadow-lg dark:shadow-none flex flex-col"
+    : "w-full bg-card border border-foreground rounded-sm shadow-lg dark:shadow-none flex flex-col";
 
   const formElement = (
     <div className={`space-y-4 rounded-lg ${floating ? 'mb-0' : 'mb-4'}`}>
@@ -787,7 +787,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
 
   if (floating) {
     return (
-      <div className="sticky bottom-0 z-30 pb-4 pt-2 bg-gradient-to-t from-white via-white to-transparent">
+      <div className="sticky bottom-0 z-30 pb-4 pt-2 bg-gradient-to-t from-background via-background to-transparent">
         {formElement}
       </div>
     );

@@ -231,7 +231,7 @@ export default function ChatContent() {
   if (!sessionLoaded) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -244,7 +244,7 @@ export default function ChatContent() {
           {selectedFiles.map(({ id, file }) => (
             <span
               key={id}
-              className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-gray-100 text-gray-800 text-sm font-ibm-plex-mono max-w-[200px]"
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-muted text-foreground text-sm font-ibm-plex-mono max-w-[200px]"
             >
               <span className="truncate" title={file.name}>
                 {file.name}
@@ -252,7 +252,7 @@ export default function ChatContent() {
               <button
                 type="button"
                 onClick={() => removeFile(id)}
-                className="shrink-0 p-0.5 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-800 focus:outline-none"
+                className="shrink-0 p-0.5 rounded hover:bg-muted/80 text-muted-foreground hover:text-foreground focus:outline-none"
                 aria-label={`Remove ${file.name}`}
               >
                 <X className="w-3.5 h-3.5" />
@@ -261,7 +261,7 @@ export default function ChatContent() {
           ))}
         </div>
       )}
-      <form onSubmit={handleSubmit} className="flex items-center gap-3 bg-gray-100 rounded-full px-4 py-3">
+      <form onSubmit={handleSubmit} className="flex items-center gap-3 bg-muted rounded-full px-4 py-3">
         <input
           ref={fileInputRef}
           type="file"
@@ -277,7 +277,7 @@ export default function ChatContent() {
           size="icon"
           disabled={isBusy}
           onClick={() => fileInputRef.current?.click()}
-          className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#006D4B] hover:bg-gray-200 p-0"
+          className="shrink-0 h-8 w-8 rounded-full text-muted-foreground hover:text-accent hover:bg-muted/80 p-0"
           title="Attach files"
           aria-label="Attach files"
         >
@@ -289,13 +289,13 @@ export default function ChatContent() {
           onChange={(e) => setInput(e.target.value)}
           placeholder="What are you looking for?"
           disabled={isBusy}
-          className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-gray-700"
+          className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground"
         />
         <Button
           type="submit"
           size="icon"
           disabled={isBusy || !canSend}
-          className="shrink-0 h-8 w-8 rounded-full bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed p-0"
+          className="shrink-0 h-8 w-8 rounded-full bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed p-0"
         >
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -317,10 +317,10 @@ export default function ChatContent() {
 
           {!discoveryLoading && discoverStakes.length > 0 && (
             <div className="mt-12">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 font-ibm-plex-mono">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 font-ibm-plex-mono">
                 Waiting for action
               </h3>
-              <div className="space-y-4 divide-y divide-gray-100">
+              <div className="space-y-4 divide-y divide-border">
                 {discoverStakes.slice(0, 3).map((stake) => (
                   <DiscoveryCard
                     key={stake.user.id}
@@ -338,7 +338,7 @@ export default function ChatContent() {
 
           {discoveryLoading && (
             <div className="mt-8 flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           )}
         </ContentContainer>
@@ -350,8 +350,8 @@ export default function ChatContent() {
   return (
     <>
       {/* Sticky header - full width, min-h-[68px] matches ChatView header height */}
-      <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-[68px]">
-        <Sparkles className="h-5 w-5 shrink-0 text-[#006D4B]" aria-hidden />
+      <div className="sticky top-0 bg-background z-10 px-4 py-3 flex items-center gap-3 min-h-[68px]">
+        <Sparkles className="h-5 w-5 shrink-0 text-accent" aria-hidden />
         {isEditingTitle ? (
           <input
             ref={titleInputRef}
@@ -368,7 +368,7 @@ export default function ChatContent() {
                 setIsEditingTitle(false);
               }
             }}
-            className="flex-1 min-w-0 font-semibold font-ibm-plex-mono text-gray-900 bg-transparent border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#006D4B]/30 focus:border-[#006D4B]"
+            className="flex-1 min-w-0 font-semibold font-ibm-plex-mono text-foreground bg-transparent border border-border rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
             placeholder="Conversation title"
           />
         ) : (
@@ -377,7 +377,7 @@ export default function ChatContent() {
               type="button"
               onClick={startEditingTitle}
               disabled={!sessionId}
-              className="text-left font-bold font-ibm-plex-mono text-lg text-black truncate hover:text-gray-700 disabled:pointer-events-none focus:outline-none rounded"
+              className="text-left font-bold font-ibm-plex-mono text-lg text-foreground truncate hover:text-muted-foreground disabled:pointer-events-none focus:outline-none rounded"
             >
               {displayTitle}
             </button>
@@ -386,7 +386,7 @@ export default function ChatContent() {
                 type="button"
                 onClick={startEditingTitle}
                 title="Rename conversation"
-                className="shrink-0 p-1 rounded text-gray-500 hover:text-[#006D4B] hover:bg-gray-100 focus:outline-none"
+                className="shrink-0 p-1 rounded text-muted-foreground hover:text-accent hover:bg-muted focus:outline-none"
                 aria-label="Rename conversation"
               >
                 <Pencil className="h-4 w-4" />
@@ -422,12 +422,12 @@ export default function ChatContent() {
                       className={cn(
                         'max-w-[80%] rounded-sm px-3 py-2',
                         msg.role === 'user'
-                          ? 'bg-black text-white'
-                          : 'bg-gray-100 text-gray-900'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-foreground'
                       )}
                     >
                       {msg.role === 'assistant' && (
-                        <span className="text-[10px] uppercase tracking-wider text-[#006D4B]/70 font-ibm-plex-mono mb-1 block">
+                        <span className="text-[10px] uppercase tracking-wider text-accent/70 font-ibm-plex-mono mb-1 block">
                           AI Assistant
                         </span>
                       )}

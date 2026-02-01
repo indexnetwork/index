@@ -127,22 +127,22 @@ export default function SlackChannelModal({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200 z-50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[600px] bg-white border border-gray-200 rounded-lg p-6 shadow-xl focus:outline-none animate-in fade-in zoom-in-95 duration-200 z-50 max-h-[90vh] overflow-y-auto">
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[600px] bg-card border border-border rounded-lg p-6 shadow-xl dark:shadow-none focus:outline-none animate-in fade-in zoom-in-95 duration-200 z-50 max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-6">
-            <Dialog.Title className="text-lg font-bold text-black font-ibm-plex-mono">
+            <Dialog.Title className="text-lg font-bold text-foreground font-ibm-plex-mono">
               Select Channels
             </Dialog.Title>
             <button
               onClick={() => onOpenChange(false)}
               disabled={saving}
-              className="rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 disabled:opacity-50"
+              className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 disabled:opacity-50"
             >
-              <X className="h-4 w-4 text-gray-600" />
+              <X className="h-4 w-4 text-muted-foreground" />
               <span className="sr-only">Close</span>
             </button>
           </div>
 
-          <p className="text-sm text-black font-ibm-plex-mono mb-4">
+          <p className="text-sm text-foreground font-ibm-plex-mono mb-4">
             Choose which Slack channels to sync messages from. You can select multiple channels.
           </p>
 
@@ -153,7 +153,7 @@ export default function SlackChannelModal({
               placeholder="Search channels..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-ibm-plex-mono text-black"
+              className="w-full px-3 py-2 border border-border rounded-md text-sm font-ibm-plex-mono text-foreground bg-background"
             />
             
             <div className="flex items-center justify-between">

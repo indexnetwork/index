@@ -29,12 +29,12 @@ const DialogContent = ({ className, children, ...props }: DialogComponentProps) 
     <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
         <Dialog.Content
-            className={`fixed left-[50%] top-[50%] z-50 w-full max-w-lg max-h-[90vh] translate-x-[-50%] translate-y-[-50%] border bg-white shadow-lg duration-200 sm:rounded-lg flex flex-col ${className}`}
+            className={`fixed left-[50%] top-[50%] z-50 w-full max-w-lg max-h-[90vh] translate-x-[-50%] translate-y-[-50%] border border-border bg-card shadow-lg dark:shadow-none duration-200 sm:rounded-lg flex flex-col ${className}`}
             {...props}
         >
             {children}
-            <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
-                <X className="h-4 w-4" />
+            <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100">
+                <X className="h-4 w-4 text-muted-foreground" />
                 <span className="sr-only">Close</span>
             </Dialog.Close>
         </Dialog.Content>
@@ -42,7 +42,7 @@ const DialogContent = ({ className, children, ...props }: DialogComponentProps) 
 );
 
 const DialogHeader = ({ className, children, ...props }: DialogComponentProps) => (
-    <div className={`flex flex-col space-y-1.5 text-center sm:text-left px-6 pt-6 pb-4 border-b ${className}`} {...props}>
+    <div className={`flex flex-col space-y-1.5 text-center sm:text-left px-6 pt-6 pb-4 border-b border-border ${className}`} {...props}>
         {children}
     </div>
 );
@@ -95,7 +95,7 @@ export default function PreferencesModal({ open, onOpenChange, user, onUserUpdat
         <Dialog.Root open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">
+                    <DialogTitle className="text-xl font-bold text-foreground font-ibm-plex-mono">
                         Preferences
                     </DialogTitle>
                 </DialogHeader>
@@ -106,32 +106,32 @@ export default function PreferencesModal({ open, onOpenChange, user, onUserUpdat
 
                         {/* Email Notifications Section */}
                         <div className="space-y-3">
-                            <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-4">Email Notifications</h3>
+                            <h3 className="text-md font-medium font-ibm-plex-mono text-foreground mb-4">Email Notifications</h3>
 
                             <div className="space-y-4">
-                                <label className="flex items-start justify-between p-3 border border-gray-300 cursor-pointer hover:bg-gray-50 transition-colors">
+                                <label className="flex items-start justify-between p-3 border border-border cursor-pointer hover:bg-muted transition-colors">
                                     <div className="flex flex-col gap-1">
-                                        <span className="text-sm font-ibm-plex-mono font-medium text-gray-900">Connection Updates</span>
-                                        <span className="text-xs text-gray-500">Receive an email when someone requests to connect with you or accepts your request.</span>
+                                        <span className="text-sm font-ibm-plex-mono font-medium text-foreground">Connection Updates</span>
+                                        <span className="text-xs text-muted-foreground">Receive an email when someone requests to connect with you or accepts your request.</span>
                                     </div>
                                     <input
                                         type="checkbox"
                                         checked={notificationPreferences.connectionUpdates}
                                         onChange={(e) => setNotificationPreferences(prev => ({ ...prev, connectionUpdates: e.target.checked }))}
-                                        className="w-4 h-4 mt-1 text-black border-gray-300 rounded focus:ring-black accent-black"
+                                        className="w-4 h-4 mt-1 text-foreground border-border rounded focus:ring-accent accent-accent"
                                     />
                                 </label>
 
-                                <label className="flex items-start justify-between p-3 border border-gray-300 cursor-pointer hover:bg-gray-50 transition-colors">
+                                <label className="flex items-start justify-between p-3 border border-border cursor-pointer hover:bg-muted transition-colors">
                                     <div className="flex flex-col gap-1">
-                                        <span className="text-sm font-ibm-plex-mono font-medium text-gray-900">Weekly Newsletter</span>
-                                        <span className="text-xs text-gray-500">Receive a weekly summary of new relevant indexes and connections.</span>
+                                        <span className="text-sm font-ibm-plex-mono font-medium text-foreground">Weekly Newsletter</span>
+                                        <span className="text-xs text-muted-foreground">Receive a weekly summary of new relevant indexes and connections.</span>
                                     </div>
                                     <input
                                         type="checkbox"
                                         checked={notificationPreferences.weeklyNewsletter}
                                         onChange={(e) => setNotificationPreferences(prev => ({ ...prev, weeklyNewsletter: e.target.checked }))}
-                                        className="w-4 h-4 mt-1 text-black border-gray-300 rounded focus:ring-black accent-black"
+                                        className="w-4 h-4 mt-1 text-foreground border-border rounded focus:ring-accent accent-accent"
                                     />
                                 </label>
                             </div>
@@ -139,7 +139,7 @@ export default function PreferencesModal({ open, onOpenChange, user, onUserUpdat
                     </div>
 
                     {/* Fixed Footer */}
-                    <div className="flex justify-end space-x-3 px-6 py-4 border-t bg-white">
+                    <div className="flex justify-end space-x-3 px-6 py-4 border-t border-border bg-card">
                         <Button
                             type="button"
                             variant="outline"
