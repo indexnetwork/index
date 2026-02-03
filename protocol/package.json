@@ -26,7 +26,8 @@
     "audit-freshness": "bun ./src/cli/audit-intent-freshness.ts",
     "admin-queues": "bun ./src/admin-queues.ts",
     "admin-queues:prod": "bun dist/admin-queues.js",
-    "test": "bun test"
+    "test": "bun test",
+    "eval:chat": "bun ./src/lib/protocol/graphs/chat/chat.evaluator.run.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",

@@ -1,0 +1,954 @@
+{
+  "timestamp": "2026-02-03T02:06:25.238Z",
+  "summary": {
+    "total": 24,
+    "success": 6,
+    "partial": 2,
+    "failure": 16,
+    "successRate": "29.2%",
+    "duration": 236864
+  },
+  "toolUsage": {
+    "create_intent": 9,
+    "find_opportunities": 17
+  },
+  "results": [
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "hiring-ml-engineer",
+        "message": "I'm looking to hire ML engineers for my startup",
+        "need": "express_want",
+        "persona": "busy_founder"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "I'm looking to hire ML engineers for my startup"
+        },
+        {
+          "role": "assistant",
+          "content": "Great! I've created an intent for you: \"Hiring ML engineers for my startup.\"\n\nNow that I've captured your intent, would you like me to help you find opportunities or connections related to hiring ML engineers? We can search for people with relevant skills or experience on Index Network."
+        }
+      ],
+      "evaluation": {
+        "verdict": "success",
+        "score": 0.9,
+        "reasoning": "The assistant successfully identified the user's need to hire ML engineers and immediately created an intent for it, which was a primary success signal. It then proactively offered relevant next steps without asking too many questions, demonstrating an understanding of the user's persona and addressing the need efficiently. The intent captured was accurate and the interaction felt natural.",
+        "successSignals": [
+          "intent created",
+          "want acknowledged and captured"
+        ],
+        "failureSignals": []
+      },
+      "metadata": {
+        "toolsUsed": [
+          "create_intent"
+        ],
+        "turnCount": 1,
+        "duration": 33077
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "hiring-frontend",
+        "message": "Need a React developer, someone senior who knows Next.js",
+        "need": "express_want",
+        "persona": "busy_founder"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "Need a React developer, someone senior who knows Next.js"
+        },
+        {
+          "role": "assistant",
+          "content": "I couldn't find any opportunities for a senior React developer with Next.js experience at the moment. Please try again later."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The user's underlying need was to find a React developer. While the assistant understood the request and used the correct tool, it failed to fulfill the need because it found no opportunities and did not offer any alternative, such as creating an intent to notify the user when such opportunities arise. This directly contradicts the success signal of 'intent created' and triggers the failure signal of 'no intent created'. The user is left with no path forward.",
+        "successSignals": [],
+        "failureSignals": [
+          "no intent created"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 4024
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "hiring-designer",
+        "message": "Looking for a product designer to help with our mobile app",
+        "need": "express_want",
+        "persona": "detail_oriented"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "Looking for a product designer to help with our mobile app"
+        },
+        {
+          "role": "assistant",
+          "content": "I encountered an error when trying to find opportunities for a product designer for your mobile app. Please try again."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The assistant failed to fulfill the user's need because it immediately encountered an error when trying to use the `find_opportunities` tool. No intent was created, and the user's request to find a product designer was not addressed in any meaningful way. The conversation ended with an error message, indicating a complete failure to assist the user.",
+        "successSignals": [],
+        "failureSignals": [
+          "no intent created"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 3071
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "cofounder-technical",
+        "message": "I'm a business guy looking for a technical co-founder",
+        "need": "express_want",
+        "persona": "new_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "I'm a business guy looking for a technical co-founder"
+        },
+        {
+          "role": "assistant",
+          "content": "Great! I've created an intent for you: \"Find a technical co-founder.\" This will help you get matched with relevant connections.\n\nWould you like me to help you search for technical co-founders now, or is there anything else I can help you with?"
+        }
+      ],
+      "evaluation": {
+        "verdict": "success",
+        "score": 0.9,
+        "reasoning": "The assistant successfully identified the user's underlying need to find a technical co-founder and immediately took a proactive step by creating an intent. This directly addresses the user's stated goal and acknowledges their want. The follow-up question is also appropriate, offering further assistance without being overly prescriptive or asking too many questions upfront, which aligns with the user's persona as someone new to the system. The intent created ('Find a technical co-founder') accurately captures the user's request.",
+        "successSignals": [
+          "intent created",
+          "want acknowledged and captured"
+        ],
+        "failureSignals": []
+      },
+      "metadata": {
+        "toolsUsed": [
+          "create_intent"
+        ],
+        "turnCount": 1,
+        "duration": 6396
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "cofounder-business",
+        "message": "I'm an engineer, need someone who can handle sales and fundraising",
+        "need": "express_want",
+        "persona": "power_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "I'm an engineer, need someone who can handle sales and fundraising"
+        },
+        {
+          "role": "assistant",
+          "content": "I encountered an error when trying to find opportunities for you. Please try again."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The user clearly stated their need to find someone with specific skills (sales and fundraising). The assistant attempted to use the `find_opportunities` tool, which seems appropriate for the request. However, the tool execution resulted in an error, preventing any progress. Consequently, no intent was created, and the user's need was not fulfilled in any way. The experience was poor as the assistant immediately failed without providing any alternative or clarification.",
+        "successSignals": [],
+        "failureSignals": [
+          "no intent created"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 3358
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "learn-ai",
+        "message": "I want to learn about AI and machine learning, looking for a mentor",
+        "need": "express_want",
+        "persona": "new_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "I want to learn about AI and machine learning, looking for a mentor"
+        },
+        {
+          "role": "assistant",
+          "content": "That's a great goal! I've created an intent for you: \"Learn about AI and machine learning, looking for a mentor.\" I've actually broken this down into two separate intents to make it easier to track and match you with opportunities.\n\nNow that this is set, I can help you find people who could be mentors or resources for learning. Would you like me to search for opportunities related to AI and machine learning mentorship?\n"
+        },
+        {
+          "role": "user",
+          "content": "Yes, please search for opportunities related to AI and machine learning mentorship."
+        },
+        {
+          "role": "assistant",
+          "content": "I encountered an error when trying to search for opportunities. Please try again in a moment."
+        }
+      ],
+      "evaluation": {
+        "verdict": "partial",
+        "score": 0.3,
+        "reasoning": "The assistant successfully created an intent based on the user's request and acknowledged their goal, which aligns with the success signals. However, it failed to proceed with the subsequent step of finding opportunities due to an error. This means the user's underlying need to 'find something they're looking for' (mentorship opportunities) was not ultimately fulfilled, even though the initial setup was correct. The experience is partial because the first part of the request was handled well, but the critical second part failed.",
+        "successSignals": [
+          "intent created",
+          "want acknowledged and captured"
+        ],
+        "failureSignals": []
+      },
+      "metadata": {
+        "toolsUsed": [
+          "create_intent",
+          "find_opportunities"
+        ],
+        "turnCount": 2,
+        "duration": 9428
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "startup-advice",
+        "message": "First time founder here, looking for experienced founders to learn from",
+        "need": "express_want",
+        "persona": "new_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "First time founder here, looking for experienced founders to learn from"
+        },
+        {
+          "role": "assistant",
+          "content": "Great! I've created an intent for you: \"Find experienced founders to learn from.\" I'll use this to help you find relevant connections.\n\nWould you like me to search for experienced founders now, or is there anything else you'd like to add to your profile or intents?"
+        },
+        {
+          "role": "user",
+          "content": "Yes, please search for experienced founders now."
+        },
+        {
+          "role": "assistant",
+          "content": "I encountered an error when trying to search for experienced founders. Please try again in a moment."
+        }
+      ],
+      "evaluation": {
+        "verdict": "partial",
+        "score": 0.3,
+        "reasoning": "The assistant successfully identified the user's need and created an intent, which are good initial steps. However, the critical action of searching for experienced founders failed due to an error, leaving the user's primary need unfulfilled. While the intent was captured, the actual 'finding' part, which is the core of the user's request, did not happen. This makes it a partial fulfillment rather than a complete failure, as some progress was made.",
+        "successSignals": [
+          "intent created",
+          "want acknowledged and captured"
+        ],
+        "failureSignals": []
+      },
+      "metadata": {
+        "toolsUsed": [
+          "create_intent",
+          "find_opportunities"
+        ],
+        "turnCount": 2,
+        "duration": 18832
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "seeking-investment",
+        "message": "We're raising a seed round, looking for angels interested in AI",
+        "need": "express_want",
+        "persona": "busy_founder"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "We're raising a seed round, looking for angels interested in AI"
+        },
+        {
+          "role": "assistant",
+          "content": "Great! I've created an intent for you: \"Raise a seed round for an AI-focused venture.\"\n\nI'll notify you if I find any angels interested in AI. Is there anything else I can help with?"
+        }
+      ],
+      "evaluation": {
+        "verdict": "success",
+        "score": 1,
+        "reasoning": "The assistant successfully identified the user's need to find angels interested in AI for a seed round and immediately created an appropriate intent. It also confirmed that it would notify the user, which aligns with the user's desire for quick results and acknowledged their want. No unnecessary questions were asked, and the interaction was efficient and effective.",
+        "successSignals": [
+          "intent created",
+          "want acknowledged and captured"
+        ],
+        "failureSignals": []
+      },
+      "metadata": {
+        "toolsUsed": [
+          "create_intent"
+        ],
+        "turnCount": 1,
+        "duration": 25868
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "looking-to-invest",
+        "message": "I'm an angel investor looking for early-stage AI startups",
+        "need": "express_offer",
+        "persona": "power_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "I'm an angel investor looking for early-stage AI startups"
+        },
+        {
+          "role": "assistant",
+          "content": "Great! I've created an intent for you: \"Angel investor looking for early-stage AI startups.\"\n\nI'll notify you when I find relevant opportunities. Is there anything else I can help you with?"
+        }
+      ],
+      "evaluation": {
+        "verdict": "misunderstood",
+        "score": 0,
+        "reasoning": "The user explicitly states 'I'm an angel investor looking for early-stage AI startups,' which implies they are offering their services/capital. The assistant, however, interpreted this as a 'want' and created an intent to notify the user of opportunities, rather than capturing the user's offer to invest. This directly contradicts the user's underlying need to offer something to others.",
+        "successSignals": [],
+        "failureSignals": [
+          "treated as a want instead of offer",
+          "not captured"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "create_intent"
+        ],
+        "turnCount": 1,
+        "duration": 7331
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "collaboration-research",
+        "message": "Looking for researchers to collaborate on an open source LLM project",
+        "need": "express_want",
+        "persona": "detail_oriented"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "Looking for researchers to collaborate on an open source LLM project"
+        },
+        {
+          "role": "assistant",
+          "content": "I've created an intent for you: \"Collaborate with researchers on an open-source LLM project.\" I'll let you know if I find anyone!"
+        }
+      ],
+      "evaluation": {
+        "verdict": "success",
+        "score": 1,
+        "reasoning": "The user's underlying need was to find collaborators for an open-source LLM project. The assistant successfully captured this need by creating an intent, acknowledging the user's request, and indicating future action. This directly aligns with the success signals and demonstrates a high-quality interaction.",
+        "successSignals": [
+          "intent created",
+          "want acknowledged and captured"
+        ],
+        "failureSignals": []
+      },
+      "metadata": {
+        "toolsUsed": [
+          "create_intent"
+        ],
+        "turnCount": 1,
+        "duration": 7721
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "freelance-work",
+        "message": "I'm available for freelance backend work, especially Python/Django",
+        "need": "express_offer",
+        "persona": "power_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "I'm available for freelance backend work, especially Python/Django"
+        },
+        {
+          "role": "assistant",
+          "content": "Great! I've created an intent for you: \"Find freelance backend work using Python/Django.\"\n\nI'll let you know if I find any opportunities that match. Would you like me to refine this intent or add more details?"
+        }
+      ],
+      "evaluation": {
+        "verdict": "success",
+        "score": 0.9,
+        "reasoning": "The assistant successfully captured the user's offer for freelance backend work, specifically Python/Django, by creating an intent. This directly addresses the user's underlying need to make their availability and skills known. The response was natural and offered further interaction, indicating a good quality experience.",
+        "successSignals": [
+          "intent/offer captured",
+          "availability noted"
+        ],
+        "failureSignals": []
+      },
+      "metadata": {
+        "toolsUsed": [
+          "create_intent"
+        ],
+        "turnCount": 1,
+        "duration": 7410
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "vague-networking",
+        "message": "Just want to meet interesting people in tech",
+        "need": "express_want",
+        "persona": "vague_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "Just want to meet interesting people in tech"
+        },
+        {
+          "role": "assistant",
+          "content": "I am sorry, I am unable to find opportunities at this time. Please try again later."
+        }
+      ],
+      "evaluation": {
+        "verdict": "misunderstood",
+        "score": 0,
+        "reasoning": "The user expressed a desire to 'meet interesting people in tech,' which is a social networking or community-building need, not a job opportunity search. The assistant incorrectly interpreted this as a request to 'find opportunities' and then failed to do so, providing a generic error message. This indicates a complete misunderstanding of the user's underlying need and a failure to use the correct tools or provide a helpful response.",
+        "successSignals": [],
+        "failureSignals": [
+          "no intent created"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 9404
+      }
+    },
+    {
+      "category": "intent",
+      "scenario": {
+        "id": "vague-help",
+        "message": "need some help with my startup stuff",
+        "need": "express_want",
+        "persona": "mobile_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "need some help with my startup stuff"
+        },
+        {
+          "role": "assistant",
+          "content": "I can help with that! To get started, could you tell me a little more about what you need help with? For example, are you looking to:\n\n*   **Create or update your profile** to reflect your startup experience or goals?\n*   **Create an intent** related to your startup, like \"finding co-founders\" or \"seeking seed funding\"?\n*   **Discover opportunities** to connect with other founders or investors?\n*   **Manage an index** (community) related to your startup?\n\nOnce I understand what you're trying to do, I can suggest the best way to use Index to help your startup."
+        },
+        {
+          "role": "user",
+          "content": "I want to create an intent related to my startup."
+        },
+        {
+          "role": "assistant",
+          "content": "Great! Please tell me more about this intent. What is the goal, want, or need you're trying to express for your startup? For example, are you \"seeking seed funding,\" \"looking for a technical co-founder,\" or something else?"
+        },
+        {
+          "role": "user",
+          "content": "I'm looking for a technical co-founder."
+        },
+        {
+          "role": "assistant",
+          "content": "Okay, I've created an intent for you: \"Looking for a technical co-founder.\"\n\nIs there anything else I can help you with regarding your startup or other aspects of your Index profile?"
+        }
+      ],
+      "evaluation": {
+        "verdict": "success",
+        "score": 1,
+        "reasoning": "The user's underlying need was to create an intent related to their startup. The assistant successfully guided the user to articulate this intent and then used the `create_intent` tool to fulfill it. The conversation was natural, and the assistant's questions were pertinent to clarifying the user's request. All success signals were met, and no failure signals were triggered.",
+        "successSignals": [
+          "intent created",
+          "want acknowledged and captured"
+        ],
+        "failureSignals": []
+      },
+      "metadata": {
+        "toolsUsed": [
+          "create_intent"
+        ],
+        "turnCount": 3,
+        "duration": 28453
+      }
+    },
+    {
+      "category": "discovery",
+      "scenario": {
+        "id": "find-ml-people",
+        "message": "Who in this network works with machine learning?",
+        "need": "find_people",
+        "persona": "power_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "Who in this network works with machine learning?"
+        },
+        {
+          "role": "assistant",
+          "content": "I'm sorry, I wasn't able to find opportunities related to machine learning at the moment. Please try again later."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The user's underlying need was to discover relevant connections (people working with machine learning). The assistant completely misunderstood the request, attempting to find 'opportunities' instead of 'people'. This resulted in a generic error message and no attempt to fulfill the actual need. The wrong tool was used, and no search for connections was performed.",
+        "successSignals": [],
+        "failureSignals": [
+          "no search done",
+          "generic advice instead of results"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 3546
+      }
+    },
+    {
+      "category": "discovery",
+      "scenario": {
+        "id": "find-founders",
+        "message": "Show me other founders in my space",
+        "need": "find_people",
+        "persona": "busy_founder"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "Show me other founders in my space"
+        },
+        {
+          "role": "assistant",
+          "content": "What space are you referring to? Could you please provide more details about your interests or the specific area you're focused on? This will help me find relevant founders."
+        },
+        {
+          "role": "user",
+          "content": "I'm interested in the AI space, specifically founders working on large language models or generative AI."
+        },
+        {
+          "role": "assistant",
+          "content": "I encountered an error when trying to find opportunities. Please try again later."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The user's underlying need was to discover relevant connections (founders in their space). The assistant initially asked for clarification, which was a good step. However, after receiving the clarification, the assistant failed to perform the search and instead returned a generic error message. This directly contradicts the success signals (search performed, results presented) and triggers a failure signal (no search done). The user's need was not fulfilled at all.",
+        "successSignals": [],
+        "failureSignals": [
+          "no search done"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 2,
+        "duration": 5159
+      }
+    },
+    {
+      "category": "discovery",
+      "scenario": {
+        "id": "find-investors",
+        "message": "Are there any investors here interested in healthcare startups?",
+        "need": "find_people",
+        "persona": "new_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "Are there any investors here interested in healthcare startups?"
+        },
+        {
+          "role": "assistant",
+          "content": "I'm sorry, I wasn't able to search for opportunities at this time. Please try again."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The user's underlying need was to discover relevant connections (investors in healthcare startups). The assistant explicitly stated it was unable to perform the search, directly failing to meet this need. Although the `find_opportunities` tool was used, it did not yield any results or provide a reason for the failure, leading to a generic error message. This directly aligns with the 'no search done' failure signal and provides no value to the user.",
+        "successSignals": [],
+        "failureSignals": [
+          "no search done"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 4222
+      }
+    },
+    {
+      "category": "discovery",
+      "scenario": {
+        "id": "find-designers",
+        "message": "I need to find UX designers who have worked on B2B products",
+        "need": "find_people",
+        "persona": "detail_oriented"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "I need to find UX designers who have worked on B2B products"
+        },
+        {
+          "role": "assistant",
+          "content": "I'm sorry, I wasn't able to find opportunities related to \"UX designers with B2B product experience\". Please try again with a different query."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The user's underlying need was to find relevant connections (UX designers with B2B product experience). The assistant failed to fulfill this need as it immediately stated it couldn't find opportunities and did not perform any search or offer any alternative. The `find_opportunities` tool was called, but it seems the input was not correctly processed or the tool itself returned an immediate failure without attempting a search based on the user's query. This indicates a failure to understand the query and utilize the available tool effectively.",
+        "successSignals": [],
+        "failureSignals": [
+          "no search done"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 3514
+      }
+    },
+    {
+      "category": "discovery",
+      "scenario": {
+        "id": "explore-opportunities",
+        "message": "What opportunities are available for someone with my background?",
+        "need": "explore_serendipity",
+        "persona": "new_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "What opportunities are available for someone with my background?"
+        },
+        {
+          "role": "assistant",
+          "content": "Could you please tell me more about your background? For example, what are your skills, interests, or what kind of opportunities are you looking for? This will help me find the most relevant matches for you."
+        },
+        {
+          "role": "user",
+          "content": "I'm open to anything. I just want to see what's out there."
+        },
+        {
+          "role": "assistant",
+          "content": "I'm sorry, I couldn't find any opportunities with such a broad request. To help me find suitable opportunities, please provide some keywords related to your skills, interests, or the type of roles you are exploring."
+        },
+        {
+          "role": "user",
+          "content": "Okay, let's try 'marketing' or 'project management'."
+        },
+        {
+          "role": "assistant",
+          "content": "I encountered an error when trying to search for opportunities with \"marketing or project management\". It seems there might be an issue with the search functionality at the moment. Please try again later, or give me a single, more specific keyword to search with."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The user's underlying need was to explore opportunities without a specific goal, essentially 'seeing what's out there'. The assistant failed to facilitate this exploration. Initially, it asked for more specifics, which goes against the user's 'open to anything' stance. When the user did provide keywords, the `find_opportunities` tool encountered an error, leading to no suggestions being provided at all. This directly triggered failure signals: the user was forced to specify before exploring, and ultimately received no suggestions. The experience was frustrating and did not help the user in any way.",
+        "successSignals": [],
+        "failureSignals": [
+          "forced to specify before exploring",
+          "no suggestions"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 3,
+        "duration": 6251
+      }
+    },
+    {
+      "category": "discovery",
+      "scenario": {
+        "id": "explore-matches",
+        "message": "Who might be a good match for me?",
+        "need": "explore_serendipity",
+        "persona": "vague_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "Who might be a good match for me?"
+        },
+        {
+          "role": "assistant",
+          "content": "What kind of connections or opportunities are you looking for? Please provide a search query."
+        },
+        {
+          "role": "user",
+          "content": "I'm not looking for anything specific. Just show me some interesting connections or opportunities that might be relevant to someone in tech."
+        },
+        {
+          "role": "assistant",
+          "content": "I encountered an error when trying to find opportunities. Please try again or provide a more specific query."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The user explicitly stated they were 'not looking for anything specific' and wanted to be shown 'interesting connections or opportunities'. The assistant immediately asked for a specific query, then failed with an error, providing no suggestions whatsoever. This directly contradicts the user's need for exploration and triggered both failure signals.",
+        "successSignals": [],
+        "failureSignals": [
+          "forced to specify before exploring",
+          "no suggestions"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 2,
+        "duration": 30808
+      }
+    },
+    {
+      "category": "discovery",
+      "scenario": {
+        "id": "explore-network",
+        "message": "What's happening in the network? Any interesting people?",
+        "need": "explore_serendipity",
+        "persona": "power_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "What's happening in the network? Any interesting people?"
+        },
+        {
+          "role": "assistant",
+          "content": "I can help you find interesting people! What kind of people are you looking for? Do you have any specific skills, interests, or goals in mind?"
+        },
+        {
+          "role": "user",
+          "content": "I don't have anyone specific in mind. Just show me some interesting people."
+        },
+        {
+          "role": "assistant",
+          "content": "Since you don't have anyone specific in mind, I can search for general opportunities or interesting profiles. Can you give me a general idea of what you consider \"interesting\"? For example, are you looking for people in a particular field, with certain skills, or working on specific types of projects?"
+        },
+        {
+          "role": "user",
+          "content": "I'm interested in people working on AI or machine learning projects."
+        },
+        {
+          "role": "assistant",
+          "content": "I was unable to find opportunities for people working on AI or machine learning projects. Please try again with a different query."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The user explicitly stated they didn't have anyone specific in mind and wanted to 'just show me some interesting people' to explore. The assistant, however, kept pushing for specific criteria, which goes against the user's exploratory intent. When the user finally provided a specific area (AI/ML), the tool returned no results, completely failing to provide any 'interesting people' or facilitate exploration. The assistant's behavior forced the user to specify before exploring, and ultimately provided no suggestions, directly triggering failure signals.",
+        "successSignals": [],
+        "failureSignals": [
+          "forced to specify before exploring",
+          "no suggestions"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 3,
+        "duration": 5667
+      }
+    },
+    {
+      "category": "discovery",
+      "scenario": {
+        "id": "discover-after-intent",
+        "message": "I just said I'm looking for ML engineers - can you find me some?",
+        "need": "find_people",
+        "persona": "frustrated_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "I just said I'm looking for ML engineers - can you find me some?"
+        },
+        {
+          "role": "assistant",
+          "content": "I couldn't find any opportunities for \"ML engineers\" right now. Please try again with a different query."
+        }
+      ],
+      "evaluation": {
+        "verdict": "misunderstood",
+        "score": 0.1,
+        "reasoning": "The user explicitly stated they were looking for 'ML engineers' to 'find me some', which clearly indicates a need to discover relevant connections (people). The assistant, however, interpreted this as a search for 'opportunities' and used the `find_opportunities` tool, which is incorrect. This led to a response stating no opportunities were found, completely missing the user's actual need to find people. The assistant provided generic advice ('Please try again with a different query') instead of attempting to find connections, which is a failure signal. The underlying need was not fulfilled because the assistant addressed the wrong need entirely.",
+        "successSignals": [],
+        "failureSignals": [
+          "no search done",
+          "generic advice instead of results"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 3611
+      }
+    },
+    {
+      "category": "combined",
+      "scenario": {
+        "id": "intent-and-find",
+        "message": "I'm hiring ML engineers - who's available?",
+        "need": "express_want",
+        "persona": "busy_founder"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "I'm hiring ML engineers - who's available?"
+        },
+        {
+          "role": "assistant",
+          "content": "I encountered an error when trying to find opportunities for ML engineers. Please try again in a moment."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The assistant failed to fulfill the user's need because it encountered an error and could not proceed with finding ML engineers. No intent was created, and the user's request was not addressed, leading to a complete failure.",
+        "successSignals": [],
+        "failureSignals": [
+          "no intent created"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 3176
+      }
+    },
+    {
+      "category": "combined",
+      "scenario": {
+        "id": "offer-and-find",
+        "message": "I do freelance React work, who needs a developer?",
+        "need": "express_offer",
+        "persona": "power_user"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "I do freelance React work, who needs a developer?"
+        },
+        {
+          "role": "assistant",
+          "content": "I wasn't able to find any opportunities using that query. Please try again with a different query."
+        }
+      ],
+      "evaluation": {
+        "verdict": "misunderstood",
+        "score": 0,
+        "reasoning": "The user's underlying need was to offer their freelance React work. The assistant completely misunderstood this, interpreting it as a request to 'find opportunities' for the user, rather than recognizing the user was making an offer. This led to the use of an inappropriate tool and a response that did not address the user's actual need at all. The core failure was misinterpreting an offer as a want.",
+        "successSignals": [],
+        "failureSignals": [
+          "treated as a want instead of offer",
+          "not captured"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 3314
+      }
+    },
+    {
+      "category": "combined",
+      "scenario": {
+        "id": "cofounder-and-find",
+        "message": "Looking for a technical co-founder, any engineers here building in AI?",
+        "need": "express_want",
+        "persona": "busy_founder"
+      },
+      "conversation": [
+        {
+          "role": "user",
+          "content": "Looking for a technical co-founder, any engineers here building in AI?"
+        },
+        {
+          "role": "assistant",
+          "content": "I was unable to search for opportunities at this time. Please try again later."
+        }
+      ],
+      "evaluation": {
+        "verdict": "failure",
+        "score": 0,
+        "reasoning": "The assistant failed to fulfill the user's need to find a technical co-founder. It explicitly stated it was unable to search for opportunities, which directly translates to not creating an intent or acknowledging the user's want. The response was a generic error, providing no value or path forward for the user.",
+        "successSignals": [],
+        "failureSignals": [
+          "no intent created"
+        ]
+      },
+      "metadata": {
+        "toolsUsed": [
+          "find_opportunities"
+        ],
+        "turnCount": 1,
+        "duration": 3216
+      }
+    }
+  ]
+}
