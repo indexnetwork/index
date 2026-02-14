@@ -10,6 +10,13 @@ import { protocolLogger } from "../support/protocol.logger";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
+/**
+ * Creates and returns three tool definitions for managing opportunities: create_opportunities, list_opportunities, and update_opportunity.
+ *
+ * @param defineTool - Factory used to declare tools with name, description, schema, and handler.
+ * @param deps - Runtime dependencies required by the tools (database, graphs, embedder).
+ * @returns An array containing the three tool definitions: `[create_opportunities, list_opportunities, update_opportunity]`.
+ */
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const { database, graphs, embedder } = deps;
   const presenter = new OpportunityPresenter();
@@ -181,7 +188,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             opportunityId: created.id,
             matchReason: reasoning,
             score: confidence,
-            status: 'latent',
+            status: created.status ?? 'latent',
           }],
         });
       }
