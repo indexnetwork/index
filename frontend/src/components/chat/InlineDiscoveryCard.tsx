@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { MessageCircle, User } from 'lucide-react';
 import { getAvatarUrl } from '@/lib/file-utils';
-import type { DiscoveryOpportunity } from '@/contexts/AIChatContext';
+import type { DiscoveryOpportunity } from '@/components/ChatContent';
 
 interface InlineDiscoveryCardProps {
   discovery: DiscoveryOpportunity;

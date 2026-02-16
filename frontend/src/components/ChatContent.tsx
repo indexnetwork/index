@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowUp, Loader2, Pencil, Paperclip, X, Globe, Zap, Type, ChevronDown, Lock, ChevronLeft, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MentionsTextInput } from '@/components/MentionsInput';
-import { useAIChat } from '@/contexts/AIChatContext';
+import { useXMTP } from '@/contexts/XMTPContext';
 import { useUploadServiceV2 } from '@/services/v2/upload.service';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useOpportunities } from '@/contexts/APIContext';
@@ -24,11 +24,36 @@ import { mentionsToMarkdownLinks } from '@/lib/mentions';
 import type { HomeViewSection, HomeViewCardItem } from '@/services/opportunities';
 import { DynamicIcon, type IconName } from 'lucide-react/dynamic';
 import { useTypewriter } from '@/hooks/useTypewriter';
+import { GroupMessageKind } from '@xmtp/browser-sdk';
+import type { Group } from '@xmtp/browser-sdk';
+import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 
 /**
  * When true, use GET /opportunities/home for dynamic sections; when false, use static/mock data.
  */
 const USE_HOME_API = true;
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface DiscoveryOpportunity {
+  candidateId: string;
+  candidateName?: string;
+  candidateAvatar?: string;
+  score: number;
+  sourceDescription: string;
+}
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  isStreaming?: boolean;
+  attachmentNames?: string[];
+  discoveries?: DiscoveryOpportunity[];
+}
 
 interface PendingFile {
   id: string;
@@ -39,14 +64,14 @@ interface ChatContentProps {
   sessionIdParam?: string | null;
 }
 
-/**
- * Sub-component for assistant message content so React hooks (useTypewriter)
- * can be called per-message inside the .map() loop.
- */
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
 /**
  * Ensure blockquote lines are always followed by a blank line so that
  * subsequent non-blockquote text isn't absorbed via markdown "lazy continuation".
- * e.g. "> Retrieving…\nHere is…" → "> Retrieving…\n\nHere is…"
+ * e.g. "> Retrieving...\nHere is..." -> "> Retrieving...\n\nHere is..."
  */
 function normalizeBlockquotes(text: string): string {
   return text.replace(/^(>.*)\n(?!>|\n)/gm, '$1\n\n');
@@ -63,7 +88,7 @@ function AssistantMessageContent({ content, isStreaming }: { content: string; is
   // Show cursor while streaming (even before first token) or during catch-up
   const showCursor = isStreaming || isAnimating;
 
-  // No text yet — render a standalone blinking cursor
+  // No text yet -- render a standalone blinking cursor
   if (!displayedContent && showCursor) {
     return <span className="inline-block w-2 h-4 bg-current animate-pulse" />;
   }
@@ -77,10 +102,25 @@ function AssistantMessageContent({ content, isStreaming }: { content: string; is
   );
 }
 
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const router = useRouter();
   const sessionIdFromUrl = sessionIdParam ?? null;
-  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId, sessionTitle, updateSessionTitle, setScopeIndexId } = useAIChat();
+
+  // XMTP context
+  const {
+    client,
+    isReady: xmtpReady,
+    agentAddress,
+    createAIChat,
+    streamAIResponse,
+  } = useXMTP();
+
+  const { refetchSessions } = useAIChatSessions();
+
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError } = useNotifications();
   const [input, setInput] = useState('');
@@ -94,33 +134,39 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [editTitleValue, setEditTitleValue] = useState('');
   const titleInputRef = useRef<HTMLInputElement>(null);
   const navigatingToHomeRef = useRef(false);
-  const sessionIdRef = useRef(sessionId);
   const [isIndexDropdownOpen, setIsIndexDropdownOpen] = useState(false);
 
-  // Keep ref in sync with sessionId
+  // Local message + conversation state
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [sessionTitle, setSessionTitle] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const conversationRef = useRef<Group | null>(null);
+  // Keep conversationId in a ref so callbacks can read the latest value
+  const conversationIdRef = useRef<string | null>(null);
   useEffect(() => {
-    sessionIdRef.current = sessionId;
-  }, [sessionId]);
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   const opportunitiesService = useOpportunities();
 
   // Home view from API (when USE_HOME_API)
   const [homeViewData, setHomeViewData] = useState<{ sections: HomeViewSection[]; meta: { totalOpportunities: number; totalSections: number } } | null>(null);
   const [homeViewLoading, setHomeViewLoading] = useState(false);
-  const [homeViewError, setHomeViewError] = useState<string | null>(null);
   const [homeActionLoadingByOpportunity, setHomeActionLoadingByOpportunity] = useState<Record<string, boolean>>({});
 
   // Index filter
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   const { indexes } = useIndexesState();
   const selectedIndexId = selectedIndexIds.length === 1 ? selectedIndexIds[0] : null;
-  
+
   // Suggestions (for conversation mode)
   const { suggestions } = useSuggestions({
     indexId: selectedIndexId,
     enabled: messages.length > 0,
   });
-  
+
   const handleIndexSelect = useCallback((indexId: string | null) => {
     if (indexId === null) {
       setSelectedIndexIds([]);
@@ -129,11 +175,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     }
   }, [setSelectedIndexIds]);
 
-  // Sync index filter selection to chat scope so backend receives indexId when user has selected an index
-  useEffect(() => {
-    setScopeIndexId(selectedIndexId);
-  }, [selectedIndexId, setScopeIndexId]);
-
   // Fetch home view when on home (no messages) and USE_HOME_API
   useEffect(() => {
     if (!USE_HOME_API || messages.length > 0) {
@@ -141,15 +182,13 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       return;
     }
     setHomeViewLoading(true);
-    setHomeViewError(null);
     opportunitiesService
       .getHomeView({ indexId: selectedIndexId ?? undefined, limit: 50 })
       .then((res) => {
         setHomeViewData(res);
         setHomeViewLoading(false);
       })
-      .catch((err) => {
-        setHomeViewError(err?.message ?? 'Failed to load home view');
+      .catch(() => {
         setHomeViewData(null);
         setHomeViewLoading(false);
       });
@@ -168,20 +207,84 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     }
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // Load XMTP messages from a Group
+  // ---------------------------------------------------------------------------
+  const loadMessagesFromGroup = useCallback(async (group: Group) => {
+    try {
+      await group.sync();
+      const xmtpMessages = await group.messages();
+      const chatMessages: ChatMessage[] = [];
+      const clientInboxId = client?.inboxId;
+
+      for (const msg of xmtpMessages) {
+        // Skip membership change messages
+        if (msg.kind !== GroupMessageKind.Application) continue;
+        // Only process text content
+        if (typeof msg.content !== 'string' || !msg.content.trim()) continue;
+
+        const isUser = msg.senderInboxId === clientInboxId;
+        chatMessages.push({
+          id: msg.id,
+          role: isUser ? 'user' : 'assistant',
+          content: msg.content,
+          timestamp: msg.sentAt,
+          isStreaming: false,
+        });
+      }
+
+      setMessages(chatMessages);
+    } catch (err) {
+      console.error('[ChatContent] Failed to load XMTP messages:', err);
+    }
+  }, [client]);
+
+  // ---------------------------------------------------------------------------
+  // Load existing session from URL param (XMTP conversation ID)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (!xmtpReady || !client) return;
+
     if (sessionIdFromUrl) {
-      // Skip loading if we already have this session in memory (e.g., we just created it)
-      if (sessionIdRef.current === sessionIdFromUrl) {
+      // Skip loading if we already have this conversation in memory
+      if (conversationIdRef.current === sessionIdFromUrl) {
         setSessionLoaded(true);
         return;
       }
-      loadSession(sessionIdFromUrl).finally(() => setSessionLoaded(true));
+
+      const loadConversation = async () => {
+        try {
+          const conversation = await client.conversations.getConversationById(sessionIdFromUrl);
+          if (conversation && 'name' in conversation) {
+            const group = conversation as Group;
+            conversationRef.current = group;
+            setConversationId(group.id);
+            setSessionTitle(group.name || null);
+            await loadMessagesFromGroup(group);
+          } else {
+            console.warn('[ChatContent] Conversation not found or not a group:', sessionIdFromUrl);
+          }
+        } catch (err) {
+          console.error('[ChatContent] Failed to load conversation:', err);
+        } finally {
+          setSessionLoaded(true);
+        }
+      };
+
+      loadConversation();
     } else {
       navigatingToHomeRef.current = true;
-      clearChat();
+      // Clear chat state
+      setMessages([]);
+      setConversationId(null);
+      setSessionTitle(null);
+      conversationRef.current = null;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
       setSessionLoaded(true);
     }
-  }, [sessionIdFromUrl, loadSession, clearChat]);
+  }, [sessionIdFromUrl, xmtpReady, client, loadMessagesFromGroup]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -189,16 +292,16 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     }
   }, [messages]);
 
-  // Update URL when session changes: push so back from /d/id returns to /
+  // Update URL when conversation changes: push so back from /d/id returns to /
   useEffect(() => {
     if (navigatingToHomeRef.current) {
       navigatingToHomeRef.current = false;
       return;
     }
-    if (sessionId && !sessionIdFromUrl) {
-      router.push(`/d/${sessionId}`);
+    if (conversationId && !sessionIdFromUrl) {
+      router.push(`/d/${conversationId}`);
     }
-  }, [sessionId, sessionIdFromUrl, router]);
+  }, [conversationId, sessionIdFromUrl, router]);
 
   const handleHomeOpportunityAction = useCallback(async (
     opportunityId: string,
@@ -208,7 +311,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   ) => {
     setHomeActionLoadingByOpportunity((prev) => ({ ...prev, [opportunityId]: true }));
     try {
-      // Introducers "send" the intro (latent → pending) instead of accepting
+      // Introducers "send" the intro (latent -> pending) instead of accepting
       const isIntroducer = viewerRole === 'introducer';
       const effectiveStatus = isIntroducer && action === 'accepted' ? 'pending' : action;
 
@@ -239,6 +342,183 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       setHomeActionLoadingByOpportunity((prev) => ({ ...prev, [opportunityId]: false }));
     }
   }, [opportunitiesService, router, showError]);
+
+  // ---------------------------------------------------------------------------
+  // Parse SSE stream from backend
+  // ---------------------------------------------------------------------------
+  const processSSEStream = useCallback(async (
+    stream: ReadableStream,
+    assistantMessageId: string,
+  ) => {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6));
+
+              switch (event.type) {
+                case 'token':
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: msg.content + event.content }
+                      : msg
+                  ));
+                  break;
+                case 'done':
+                  setMessages(prev => prev.map(msg => {
+                    if (msg.id !== assistantMessageId) return msg;
+                    // Keep streamed content; fall back to event.response if empty
+                    const finalContent = msg.content.trim()
+                      ? msg.content
+                      : (event.response || msg.content);
+                    return { ...msg, content: finalContent, isStreaming: false };
+                  }));
+                  // Update session title if provided by backend
+                  if (event.title) {
+                    setSessionTitle(event.title);
+                    // Also update the XMTP group name for persistence
+                    if (conversationRef.current) {
+                      conversationRef.current.updateName(event.title).catch((err: unknown) => {
+                        console.error('[ChatContent] Failed to update group name:', err);
+                      });
+                    }
+                  }
+                  // Refetch sessions after streaming completes
+                  refetchSessions();
+                  break;
+                case 'error':
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: `Error: ${event.message}`, isStreaming: false }
+                      : msg
+                  ));
+                  break;
+              }
+            } catch (e) {
+              console.error('Failed to parse SSE event:', e);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log('[ChatContent] SSE stream aborted');
+      } else {
+        console.error('[ChatContent] SSE stream error:', err);
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: 'Failed to get response. Please try again.', isStreaming: false }
+            : msg
+        ));
+      }
+    }
+  }, [refetchSessions]);
+
+  // ---------------------------------------------------------------------------
+  // Send message
+  // ---------------------------------------------------------------------------
+  const sendMessage = useCallback(async (
+    message: string,
+    fileIds?: string[],
+    attachmentNames?: string[],
+  ) => {
+    if (!client || !agentAddress) return;
+
+    const displayContent = message.trim() || (fileIds?.length ? 'Attached file(s).' : '');
+    if (!displayContent) return;
+
+    // Add user message to local state
+    const userMessageId = crypto.randomUUID();
+    const userMessage: ChatMessage = {
+      id: userMessageId,
+      role: 'user',
+      content: displayContent,
+      timestamp: new Date(),
+      ...(attachmentNames?.length ? { attachmentNames } : {}),
+    };
+    setMessages(prev => [...prev, userMessage]);
+
+    // Add placeholder for assistant response
+    const assistantMessageId = crypto.randomUUID();
+    setMessages(prev => [...prev, {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+      isStreaming: true,
+    }]);
+
+    setIsLoading(true);
+    abortControllerRef.current = new AbortController();
+
+    try {
+      let activeConvId = conversationIdRef.current;
+      let activeGroup = conversationRef.current;
+
+      // If no conversation yet, create a new AI chat group
+      if (!activeConvId || !activeGroup) {
+        const group = await createAIChat(agentAddress);
+        activeGroup = group;
+        activeConvId = group.id;
+        conversationRef.current = group;
+        setConversationId(activeConvId);
+        // Show new session in sidebar immediately
+        refetchSessions();
+      }
+
+      // Send user message to XMTP group
+      await activeGroup.sendText(displayContent);
+
+      // Open SSE sideband for real-time streaming tokens
+      const stream = await streamAIResponse(
+        activeConvId,
+        displayContent,
+        fileIds?.length ? fileIds : undefined,
+        selectedIndexId ?? undefined,
+      );
+
+      // Process the SSE stream
+      await processSSEStream(stream, assistantMessageId);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('[ChatContent] Send aborted');
+      } else {
+        console.error('[ChatContent] Send error:', error);
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: 'Failed to get response. Please try again.', isStreaming: false }
+            : msg
+        ));
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [client, agentAddress, createAIChat, streamAIResponse, selectedIndexId, processSSEStream, refetchSessions]);
+
+  // ---------------------------------------------------------------------------
+  // Clear chat (go home)
+  // ---------------------------------------------------------------------------
+  const clearChat = useCallback(() => {
+    setMessages([]);
+    setConversationId(null);
+    setSessionTitle(null);
+    conversationRef.current = null;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  }, []);
 
   const canSend = input.trim() || selectedFiles.length > 0;
   const isBusy = isLoading || isUploadingFiles;
@@ -316,7 +596,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const displayTitle = sessionTitle || 'Untitled chat';
 
   const startEditingTitle = () => {
-    if (!sessionId) return;
+    if (!conversationId) return;
     setEditTitleValue(displayTitle);
     setIsEditingTitle(true);
     setTimeout(() => titleInputRef.current?.focus(), 0);
@@ -325,8 +605,18 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const saveTitle = async () => {
     setIsEditingTitle(false);
     const trimmed = editTitleValue.trim();
-    if (!sessionId || !trimmed || trimmed === displayTitle) return;
-    await updateSessionTitle(sessionId, trimmed);
+    if (!conversationId || !trimmed || trimmed === displayTitle) return;
+    // Update local state
+    setSessionTitle(trimmed);
+    // Persist to XMTP group name
+    if (conversationRef.current) {
+      try {
+        await conversationRef.current.updateName(trimmed);
+      } catch (err) {
+        console.error('[ChatContent] Failed to update group name:', err);
+      }
+    }
+    refetchSessions();
   };
 
   if (!sessionLoaded) {
@@ -537,7 +827,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     }
 
 
-    // Empty state — no opportunities to show
+    // Empty state -- no opportunities to show
     return (
       <div className="px-6 lg:px-8 bg-[#FDFDFD] min-h-full">
         <ContentContainer className="text-left">
@@ -652,12 +942,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             <button
               type="button"
               onClick={startEditingTitle}
-              disabled={!sessionId}
+              disabled={!conversationId}
               className="text-left font-bold font-ibm-plex-mono text-lg text-black truncate hover:text-gray-700 disabled:pointer-events-none focus:outline-none rounded"
             >
               {displayTitle}
             </button>
-            {sessionId && (
+            {conversationId && (
               <button
                 type="button"
                 onClick={startEditingTitle}
