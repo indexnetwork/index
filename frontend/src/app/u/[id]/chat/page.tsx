@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers } from "@/contexts/APIContext";
-import { useStreamChat } from "@/contexts/StreamChatContext";
+import { useXMTP } from "@/contexts/XMTPContext";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { User } from "@/lib/types";
 import ChatView from "@/components/chat/ChatView";
@@ -28,10 +28,16 @@ function ChatPageContent({ params }: ChatPageProps) {
   const resolvedParams = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialChannelId = searchParams.get('channelId') ?? undefined;
+  // Support both conversationId (XMTP) and channelId (legacy) query params
+  const conversationId =
+    searchParams.get('conversationId') ??
+    searchParams.get('channelId') ??
+    undefined;
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const usersService = useUsers();
-  const { openChat, closeChat } = useStreamChat();
+  // useXMTP() is called to ensure the provider context is established;
+  // ChatView handles the actual XMTP readiness checks internally.
+  useXMTP();
 
   const [profileData, setProfileData] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,7 +58,6 @@ function ChatPageContent({ params }: ChatPageProps) {
         setError(null);
         const profile = await usersService.getUserProfile(resolvedParams.id);
         setProfileData(profile);
-        openChat(profile.id, profile.name, getAvatarUrl(profile));
       } catch (err) {
         console.error('Failed to fetch profile:', err);
         setError('User not found');
@@ -62,12 +67,9 @@ function ChatPageContent({ params }: ChatPageProps) {
     };
 
     fetchData();
-  }, [resolvedParams.id, isAuthenticated, authLoading, usersService, openChat]);
+  }, [resolvedParams.id, isAuthenticated, authLoading, usersService]);
 
   const handleClose = () => {
-    if (profileData) {
-      closeChat(profileData.id);
-    }
     router.push('/');
   };
 
@@ -106,7 +108,7 @@ function ChatPageContent({ params }: ChatPageProps) {
       userName={profileData.name}
       userAvatar={getAvatarUrl(profileData)}
       userTitle={profileData.location || undefined}
-      initialChannelId={initialChannelId}
+      conversationId={conversationId}
       onClose={handleClose}
       onBack={handleBack}
     />

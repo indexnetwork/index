@@ -9,7 +9,7 @@ import Sidebar from "@/components/Sidebar";
 import ChatSidebar from "@/components/ChatSidebar";
 import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
 import { IndexesProvider } from "@/contexts/IndexesContext";
-import { StreamChatProvider } from "@/contexts/StreamChatContext";
+import { XMTPProvider } from "@/contexts/XMTPContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
@@ -50,7 +50,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   return (
     <IndexesProvider>
       <IndexFilterProvider>
-        <StreamChatProvider>
+        <XMTPProvider>
           <div className="backdrop relative min-h-screen bg-[#FDFDFD]">
             <style jsx>{`
               .backdrop:after {
@@ -156,7 +156,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
               </>
             )}
           </div>
-        </StreamChatProvider>
+        </XMTPProvider>
       </IndexFilterProvider>
     </IndexesProvider>
   );

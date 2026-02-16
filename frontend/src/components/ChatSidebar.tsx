@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
-import { MoreHorizontal, Trash2, Loader2 } from 'lucide-react';
-import { useStreamChat } from '@/contexts/StreamChatContext';
+import { MoreHorizontal } from 'lucide-react';
+import { useXMTP } from '@/contexts/XMTPContext';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useOpportunities, useUsers } from '@/contexts/APIContext';
+import { useUsers } from '@/contexts/APIContext';
 import { getAvatarUrl } from '@/lib/file-utils';
-import { Channel, type Event as StreamEvent } from 'stream-chat';
+import type { Group } from '@xmtp/browser-sdk';
 
 interface RecentChat {
   id: string;
@@ -53,240 +53,115 @@ export default function ChatSidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuthContext();
-  const opportunitiesService = useOpportunities();
   const usersService = useUsers();
-  const { client, isReady } = useStreamChat();
-  
+  const { isReady, humanChats, client } = useXMTP();
+
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [chatMenuOpen, setChatMenuOpen] = useState<string | null>(null);
-  const [deletingChat, setDeletingChat] = useState<string | null>(null);
   const chatMenuRef = useRef<HTMLDivElement>(null);
-  const chatsRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const getOpportunitiesRef = useRef(opportunitiesService.getOpportunities);
-  const getUserProfilesRef = useRef(usersService.getUserProfiles);
-  const optimisticUnreadRef = useRef<Map<string, number>>(new Map());
   const hasLoadedChatsRef = useRef(false);
+  const getUserProfilesRef = useRef(usersService.getUserProfiles);
 
-  const currentChatUserId = pathname?.match(/^\/u\/([^/]+)\/chat/)?.[1] || null;
+  const currentChatUserId =
+    pathname?.match(/^\/u\/([^/]+)\/chat/)?.[1] || null;
 
   useEffect(() => {
-    getOpportunitiesRef.current = opportunitiesService.getOpportunities;
     getUserProfilesRef.current = usersService.getUserProfiles;
-  }, [opportunitiesService, usersService]);
+  }, [usersService]);
 
-  // Fetch user-to-user chats
-  useEffect(() => {
-    if (!isReady || !client || !user?.id) return;
-
-    let acceptedByRecipientSnapshot = new Map<string, number>();
-
-    const fetchAcceptedRecipients = async () => {
-      try {
-        const acceptedOpportunities = await getOpportunitiesRef.current({ status: 'accepted', limit: 300 });
-        const acceptedByRecipient = new Map<string, number>();
-        for (const opportunity of acceptedOpportunities) {
-          const counterpart = opportunity.actors.find(
-            (actor) => actor.userId !== user.id && actor.role !== 'introducer'
-          ) ?? opportunity.actors.find((actor) => actor.userId !== user.id);
-
-          if (!counterpart?.userId) continue;
-          const ts = new Date(opportunity.updatedAt).getTime();
-          const existing = acceptedByRecipient.get(counterpart.userId) ?? 0;
-          if (ts > existing) acceptedByRecipient.set(counterpart.userId, ts);
-        }
-        acceptedByRecipientSnapshot = acceptedByRecipient;
-      } catch (error) {
-        console.error('Failed to fetch accepted opportunities for chats:', error);
+  // ---------------------------------------------------------------------------
+  // Build chat list from XMTP humanChats
+  // ---------------------------------------------------------------------------
+  const buildChatList = useCallback(async () => {
+    if (!isReady || !client || !user?.id || humanChats.length === 0) {
+      if (!hasLoadedChatsRef.current && isReady) {
+        setLoadingChats(false);
+        hasLoadedChatsRef.current = true;
       }
-    };
+      return;
+    }
 
-    const fetchChats = async () => {
-      try {
-        if (!hasLoadedChatsRef.current) {
-          setLoadingChats(true);
-        }
-        const streamFilter = {
-          type: 'messaging',
-          members: { $in: [client.userID || ''] },
-        };
-        const streamSort = [{ last_message_at: -1 as const }];
-        const channels = await client.queryChannels(streamFilter, streamSort, {
-          limit: 50,
-          watch: false,
-          state: true,
-        });
-
-        const streamByRecipient = new Map<string, {
-          id: string;
-          name: string;
-          avatar: string | null;
-          lastMessage: string;
-          sortTimestamp: number;
-          unreadCount: number;
-        }>();
-
-        channels.forEach((channel: Channel) => {
-          const members = Object.values(channel.state.members || {});
-          const otherMember = members.find(m => m.user_id !== client.userID);
-          const otherUser = otherMember?.user;
-          if (!otherUser?.id) return;
-          streamByRecipient.set(otherUser.id, {
-            id: channel.id || '',
-            name: otherUser?.name || 'Unknown',
-            avatar: otherUser?.image || null,
-            lastMessage: channel.state.messages?.[channel.state.messages.length - 1]?.text || '',
-            sortTimestamp: new Date(
-              channel.state.last_message_at ||
-              channel.state.messages?.[channel.state.messages.length - 1]?.created_at ||
-              0
-            ).getTime(),
-            unreadCount: channel.countUnread(),
-          });
-        });
-
-        // Only show recipients where the user is still a channel member.
-        // Accepted-opportunity counterparts without a Stream channel are excluded.
-        const allRecipientIds = Array.from(streamByRecipient.keys());
-        const profilesCap = 50;
-        const idsToFetch = allRecipientIds.slice(0, profilesCap);
-        const profileMap = await getUserProfilesRef.current(idsToFetch);
-
-        const chats: RecentChat[] = allRecipientIds.map((recipientId) => {
-          const stream = streamByRecipient.get(recipientId);
-          const profile = profileMap.get(recipientId);
-          const acceptedTs = acceptedByRecipientSnapshot.get(recipientId) ?? 0;
-          const serverUnread = stream?.unreadCount || 0;
-          const optimisticUnread = optimisticUnreadRef.current.get(recipientId) || 0;
-          return {
-            id: stream?.id || `accepted-${recipientId}`,
-            recipientId,
-            name: profile?.name || stream?.name || 'Unknown',
-            avatar: profile?.avatar || stream?.avatar || null,
-            lastMessage: stream?.lastMessage || 'Connected via accepted opportunities',
-            sortTimestamp: Math.max(stream?.sortTimestamp ?? 0, acceptedTs),
-            unreadCount: Math.max(serverUnread, optimisticUnread),
-          };
-        }).sort(sortChats);
-
-        setRecentChats(chats.slice(0, 10));
-      } catch (error) {
-        console.error('Failed to fetch chats:', error);
-      } finally {
-        if (!hasLoadedChatsRef.current) {
-          hasLoadedChatsRef.current = true;
-          setLoadingChats(false);
-        }
-      }
-    };
-
-    const initialize = async () => {
-      await fetchAcceptedRecipients();
-      await fetchChats();
-    };
-    void initialize();
-
-    const scheduleChatsRefresh = () => {
-      if (chatsRefreshTimerRef.current) return;
-      chatsRefreshTimerRef.current = setTimeout(() => {
-        chatsRefreshTimerRef.current = null;
-        void fetchChats();
-      }, 1200);
-    };
-    const handleSync = (event?: StreamEvent) => {
-      if (!event) {
-        scheduleChatsRefresh();
-        return;
+    try {
+      if (!hasLoadedChatsRef.current) {
+        setLoadingChats(true);
       }
 
-      if (event.type === 'message.new' || event.type === 'notification.message_new') {
-        const senderId = event.user?.id ?? event.message?.user?.id;
-        const messageText = event.message?.text?.trim();
-        const channelId =
-          event.channel_id ??
-          (typeof event.cid === 'string' && event.cid.includes(':') ? event.cid.split(':')[1] : undefined);
+      const chatPromises = humanChats.map(async (group: Group) => {
+        try {
+          // Get the last message for preview & timestamp
+          const lastMsg = await group.lastMessage();
 
-        if (senderId && senderId !== user.id) {
-          setRecentChats((prev) => {
-            const next = [...prev];
-            const idx = next.findIndex((chat) => chat.recipientId === senderId || (channelId ? chat.id === channelId : false));
-            if (idx >= 0) {
-              const current = next[idx];
-              const unreadIncrement = currentChatUserId === senderId ? 0 : 1;
-              const nextUnread = current.unreadCount + unreadIncrement;
-              if (unreadIncrement > 0) {
-                optimisticUnreadRef.current.set(senderId, nextUnread);
-              }
-              next[idx] = {
-                ...current,
-                lastMessage: messageText || current.lastMessage,
-                sortTimestamp: Date.now(),
-                unreadCount: nextUnread,
-              };
-              return next.sort(sortChats);
-            }
-            return prev;
-          });
-        }
-        scheduleChatsRefresh();
-        return;
-      }
-
-      if (event.type === 'message.read' || event.type === 'notification.mark_read') {
-        const channelId =
-          event.channel_id ??
-          (typeof event.cid === 'string' && event.cid.includes(':') ? event.cid.split(':')[1] : undefined);
-        if (channelId) {
-          setRecentChats((prev) =>
-            prev.map((chat) => {
-              if (chat.id !== channelId) return chat;
-              optimisticUnreadRef.current.set(chat.recipientId, 0);
-              return { ...chat, unreadCount: 0 };
-            })
+          // Get members to find the other human participant
+          const members = await group.members();
+          // Filter out self and the agent
+          const otherMembers = members.filter(
+            (m) => m.inboxId !== client.inboxId,
           );
+
+          return {
+            groupId: group.id,
+            lastMessageText:
+              lastMsg && typeof lastMsg.content === 'string'
+                ? lastMsg.content
+                : '',
+            lastMessageTime: lastMsg?.sentAt
+              ? lastMsg.sentAt.getTime()
+              : group.createdAt?.getTime() ?? 0,
+            otherInboxIds: otherMembers.map((m) => m.inboxId),
+            groupName: group.name,
+          };
+        } catch {
+          return null;
         }
-        scheduleChatsRefresh();
-        return;
+      });
+
+      const chatInfos = (await Promise.all(chatPromises)).filter(
+        Boolean,
+      ) as NonNullable<Awaited<(typeof chatPromises)[number]>>[];
+
+      // We don't have a direct inboxId -> userId mapping on the frontend,
+      // so we use the group name (which may have been set during creation)
+      // or show the conversation with available metadata.
+      // For a richer experience, we could call a backend endpoint to resolve
+      // inbox IDs to user profiles.
+
+      const chats: RecentChat[] = chatInfos.map((info) => ({
+        id: info.groupId,
+        // recipientId is tricky without inbox->user mapping; use groupId as fallback
+        recipientId: info.groupId,
+        name: info.groupName || 'Chat',
+        avatar: null,
+        lastMessage: info.lastMessageText
+          ? info.lastMessageText.replace(/[*_~`#>]/g, '')
+          : 'No messages yet',
+        sortTimestamp: info.lastMessageTime,
+        unreadCount: 0, // XMTP doesn't have built-in unread tracking yet
+      }));
+
+      chats.sort(sortChats);
+      setRecentChats(chats.slice(0, 10));
+    } catch (error) {
+      console.error('Failed to build chat list:', error);
+    } finally {
+      if (!hasLoadedChatsRef.current) {
+        hasLoadedChatsRef.current = true;
+        setLoadingChats(false);
       }
-
-      scheduleChatsRefresh();
-    };
-
-    client.on('message.new', handleSync);
-    client.on('notification.message_new', handleSync);
-    client.on('message.read', handleSync);
-    client.on('notification.mark_read', handleSync);
-    client.on('notification.mark_unread', handleSync);
-    client.on('channel.updated', handleSync);
-
-    return () => {
-      if (chatsRefreshTimerRef.current) {
-        clearTimeout(chatsRefreshTimerRef.current);
-        chatsRefreshTimerRef.current = null;
-      }
-      client.off('message.new', handleSync);
-      client.off('notification.message_new', handleSync);
-      client.off('message.read', handleSync);
-      client.off('notification.mark_read', handleSync);
-      client.off('notification.mark_unread', handleSync);
-      client.off('channel.updated', handleSync);
-    };
-  }, [isReady, client, user?.id, currentChatUserId]);
+    }
+  }, [isReady, client, user?.id, humanChats]);
 
   useEffect(() => {
-    if (!currentChatUserId) return;
-    optimisticUnreadRef.current.set(currentChatUserId, 0);
-    setRecentChats((prev) =>
-      prev.map((chat) =>
-        chat.recipientId === currentChatUserId ? { ...chat, unreadCount: 0 } : chat
-      )
-    );
-  }, [currentChatUserId]);
+    buildChatList();
+  }, [buildChatList]);
 
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (chatMenuRef.current && !chatMenuRef.current.contains(event.target as Node)) {
+      if (
+        chatMenuRef.current &&
+        !chatMenuRef.current.contains(event.target as Node)
+      ) {
         setChatMenuOpen(null);
       }
     };
@@ -295,21 +170,6 @@ export default function ChatSidebar() {
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [chatMenuOpen]);
-
-  const handleDeleteChat = async (channelId: string) => {
-    if (!client?.userID || deletingChat) return;
-    setDeletingChat(channelId);
-    try {
-      const channel = client.channel('messaging', channelId);
-      await channel.removeMembers([client.userID]);
-      setRecentChats(prev => prev.filter(c => c.id !== channelId));
-      setChatMenuOpen(null);
-    } catch (error) {
-      console.error('Failed to delete chat:', error);
-    } finally {
-      setDeletingChat(null);
-    }
-  };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -328,16 +188,18 @@ export default function ChatSidebar() {
               const isSelected = currentChatUserId === chat.recipientId;
               const isUnread = chat.unreadCount > 0;
               return (
-                <div 
-                  key={chat.id} 
+                <div
+                  key={chat.id}
                   className={`relative group flex items-center py-2 px-2 -mx-2 rounded-md transition-colors ${
-                    isSelected
-                      ? 'bg-gray-100'
-                      : 'hover:bg-gray-50'
+                    isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
                   }`}
                 >
                   <button
-                    onClick={() => router.push(`/u/${chat.recipientId}/chat`)}
+                    onClick={() =>
+                      router.push(
+                        `/u/${chat.recipientId}/chat?conversationId=${encodeURIComponent(chat.id)}`,
+                      )
+                    }
                     className={`flex-1 flex items-center gap-3 text-sm text-left pr-10 min-w-0 ${
                       isSelected
                         ? 'text-black font-semibold'
@@ -347,24 +209,34 @@ export default function ChatSidebar() {
                     }`}
                   >
                     <Image
-                      src={getAvatarUrl({ avatar: chat.avatar, id: chat.recipientId, name: chat.name })}
+                      src={getAvatarUrl({
+                        avatar: chat.avatar,
+                        id: chat.recipientId,
+                        name: chat.name,
+                      })}
                       alt={chat.name}
                       width={28}
                       height={28}
                       className="rounded-full flex-shrink-0"
                     />
                     <div className="min-w-0">
-                      <p className={`truncate ${isUnread ? 'text-sm font-bold text-black' : 'text-sm font-medium text-black'}`}>
+                      <p
+                        className={`truncate ${isUnread ? 'text-sm font-bold text-black' : 'text-sm font-medium text-black'}`}
+                      >
                         {chat.name}
                       </p>
-                      <p className={`truncate ${isUnread ? 'text-sm font-semibold text-gray-900' : 'text-sm font-normal text-gray-500'}`}>
-                        {(chat.lastMessage || 'No messages yet').replace(/[*_~`#>]/g, '')}
+                      <p
+                        className={`truncate ${isUnread ? 'text-sm font-semibold text-gray-900' : 'text-sm font-normal text-gray-500'}`}
+                      >
+                        {chat.lastMessage || 'No messages yet'}
                       </p>
                     </div>
                   </button>
                   <span
                     className={`absolute right-8 top-2 text-[11px] leading-none ${
-                      isUnread ? 'font-semibold text-gray-700' : 'font-normal text-gray-400'
+                      isUnread
+                        ? 'font-semibold text-gray-700'
+                        : 'font-normal text-gray-400'
                     }`}
                   >
                     {formatConversationTime(chat.sortTimestamp)}
@@ -372,24 +244,24 @@ export default function ChatSidebar() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setChatMenuOpen(chatMenuOpen === chat.id ? null : chat.id);
+                      setChatMenuOpen(
+                        chatMenuOpen === chat.id ? null : chat.id,
+                      );
                     }}
                     className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-100 rounded transition-all flex-shrink-0"
                   >
                     <MoreHorizontal className="w-4 h-4 text-gray-400" />
                   </button>
                   {chatMenuOpen === chat.id && (
-                    <div 
+                    <div
                       ref={chatMenuRef}
                       className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[140px] z-30"
                     >
                       <button
-                        onClick={() => handleDeleteChat(chat.id)}
-                        disabled={deletingChat === chat.id}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                        onClick={() => setChatMenuOpen(null)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 transition-colors"
                       >
-                        {deletingChat === chat.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                        Delete
+                        Close
                       </button>
                     </div>
                   )}

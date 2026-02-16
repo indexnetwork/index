@@ -4,9 +4,9 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Compass, MessagesSquare, Settings, Loader2, ChevronDown, User as UserIcon, LogIn, Library, History } from 'lucide-react';
+import { Compass, MessagesSquare, Settings, ChevronDown, User as UserIcon, LogIn, Library, History } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useStreamChat } from '@/contexts/StreamChatContext';
+import { useXMTP } from '@/contexts/XMTPContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { usePrivy } from '@privy-io/react-auth';
@@ -30,8 +30,8 @@ interface ChatSession {
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, updateUser, refetchUser } = useAuthContext();
-  const { client, isReady, requestBrowserNotifications } = useStreamChat();
+  const { user, refetchUser } = useAuthContext();
+  const { isReady, humanChats } = useXMTP();
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
   const { getAccessToken, logout } = usePrivy();
@@ -50,7 +50,6 @@ export default function Sidebar() {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
-  const unreadRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
   const isLibraryView = pathname?.startsWith('/library');
@@ -87,9 +86,6 @@ export default function Sidebar() {
     if (!user?.id) {
       return;
     }
-
-    // Prompt once so native browser notifications can be shown for new chat messages.
-    void requestBrowserNotifications();
 
     setNavigatingToChat(true);
     try {
@@ -148,62 +144,15 @@ export default function Sidebar() {
   }, [sessionsVersion, getAccessToken]);
 
 
-  // Track unread message count
+  // Track unread indicator from XMTP human chats
+  // XMTP doesn't have built-in unread counts yet, so we use a simple
+  // indicator: show a dot if there are any human chat conversations.
   useEffect(() => {
-    if (!isReady || !client) return;
-
-    const fetchUnreadCount = async () => {
-      try {
-        const channels = await client.queryChannels(
-          {
-            type: 'messaging',
-            members: { $in: [client.userID || ''] },
-          },
-          {},
-          { limit: 50, watch: false, state: true }
-        );
-        const total = channels.reduce((sum, channel) => sum + channel.countUnread(), 0);
-        setTotalUnreadCount(total);
-      } catch (error) {
-        console.error('Failed to fetch unread count:', error);
-      }
-    };
-
-    void fetchUnreadCount();
-
-    // Stream emits total_unread_count on many events; prefer that, with API fallback.
-    const scheduleUnreadRefresh = () => {
-      if (unreadRefreshTimerRef.current) return;
-      unreadRefreshTimerRef.current = setTimeout(() => {
-        unreadRefreshTimerRef.current = null;
-        void fetchUnreadCount();
-      }, 250);
-    };
-    const handleEvent = (event?: { total_unread_count?: number; type?: string }) => {
-      if (typeof event?.total_unread_count === 'number') {
-        setTotalUnreadCount(event.total_unread_count);
-        return;
-      }
-      scheduleUnreadRefresh();
-    };
-    client.on('message.new', handleEvent);
-    client.on('notification.message_new', handleEvent);
-    client.on('message.read', handleEvent);
-    client.on('notification.mark_read', handleEvent);
-    client.on('notification.mark_unread', handleEvent);
-
-    return () => {
-      if (unreadRefreshTimerRef.current) {
-        clearTimeout(unreadRefreshTimerRef.current);
-        unreadRefreshTimerRef.current = null;
-      }
-      client.off('message.new', handleEvent);
-      client.off('notification.message_new', handleEvent);
-      client.off('message.read', handleEvent);
-      client.off('notification.mark_read', handleEvent);
-      client.off('notification.mark_unread', handleEvent);
-    };
-  }, [isReady, client]);
+    if (!isReady) return;
+    // For now, show the count of human chats as a simple indicator.
+    // A proper unread system would track last-read timestamps per conversation.
+    setTotalUnreadCount(humanChats.length > 0 ? humanChats.length : 0);
+  }, [isReady, humanChats]);
 
   // Close menus when clicking outside
   useEffect(() => {

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, Check, RotateCcw } from "lucide-react";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useStreamChat } from "@/contexts/StreamChatContext";
+import { useXMTP } from "@/contexts/XMTPContext";
 
 export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
 
@@ -40,12 +40,11 @@ export default function ConnectionActions({
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const { success, error } = useNotifications();
-  const { openChat, isReady: isChatReady } = useStreamChat();
+  const { isReady: isChatReady } = useXMTP();
 
   // Handle message button click - navigates to chat page
-  // The chat view will show appropriate notice for non-connected users
+  // The actual conversation creation happens in the opportunity acceptance flow
   const handleMessage = () => {
-    openChat(userId, userName, userAvatar);
     router.push(`/u/${userId}/chat`);
   };
 
@@ -176,4 +175,4 @@ export default function ConnectionActions({
       {renderActions()}
     </div>
   );
-} 
+}
