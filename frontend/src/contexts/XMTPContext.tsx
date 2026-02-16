@@ -203,6 +203,22 @@ export function XMTPProvider({ children }: { children: ReactNode }) {
         connectedUserRef.current = user.id;
         setClient(xmtpClient);
 
+        // Register the XMTP inbox ID with the backend so the agent can
+        // resolve this user from their XMTP sender inbox ID.
+        try {
+          const token = await getAccessToken();
+          await fetch(`${API_BASE_URL}/chat/register-inbox`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ inboxId: xmtpClient.inboxId }),
+          });
+        } catch (error) {
+          console.error('[XMTP] Failed to register inbox ID:', error);
+        }
+
         // Initial sync
         await xmtpClient.conversations.syncAll();
         const allGroups = await xmtpClient.conversations.listGroups();

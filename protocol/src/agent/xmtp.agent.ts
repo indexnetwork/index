@@ -1,6 +1,9 @@
 import { Agent, type MessageContext } from '@xmtp/agent-sdk';
 import type { Group } from '@xmtp/node-sdk';
+import { eq } from 'drizzle-orm';
 import { HumanMessage, AIMessage } from '@langchain/core/messages';
+import db from '../lib/drizzle/drizzle';
+import { users } from '../schemas/database.schema';
 import { chatSessionService } from '../services/chat.service';
 import { log } from '../lib/log';
 import { CONVERSATION_TYPES, type ConversationAppData } from './xmtp.types';
@@ -22,19 +25,16 @@ let agentInstance: Agent | null = null;
 /**
  * Resolve a platform user ID from an XMTP sender inbox ID.
  *
- * TODO (Task 7): Once the `xmtpInboxId` column is added to the `users` table,
- * implement the actual DB lookup here:
- *   const user = await db.select().from(users).where(eq(users.xmtpInboxId, inboxId)).limit(1);
- *   return user[0]?.id ?? null;
- *
- * For now we return the inboxId itself so that the chat graph has a stable
- * identifier for the user. The graph's tools will gracefully degrade when the
- * userId does not match a real DB user row (tool calls that require profile
- * data will return empty results rather than crashing).
+ * Looks up the `xmtpInboxId` column on the `users` table (populated when the
+ * frontend registers its XMTP client via POST /chat/register-inbox).
  */
 async function resolveUserIdFromInboxId(inboxId: string): Promise<string | null> {
-  // TODO (Task 7): Replace with real DB lookup once xmtpInboxId column exists.
-  return inboxId;
+  const result = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.xmtpInboxId, inboxId))
+    .limit(1);
+  return result[0]?.id ?? null;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

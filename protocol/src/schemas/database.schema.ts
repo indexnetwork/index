@@ -91,6 +91,7 @@ export const users = pgTable('users', {
   socials: json('socials').$type<UserSocials>(),
   onboarding: json('onboarding').$type<OnboardingState>().default({}),
   timezone: text('timezone').default('UTC'),
+  xmtpInboxId: text('xmtp_inbox_id').unique(),
   lastWeeklyEmailSentAt: timestamp('last_weekly_email_sent_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

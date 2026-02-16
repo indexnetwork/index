@@ -1,7 +1,10 @@
+import { eq } from 'drizzle-orm';
 import { getAgentAddress } from '../agent/xmtp.agent';
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
+import { users } from '../schemas/database.schema';
 import { chatSessionService } from '../services/chat.service';
 import { fileService } from '../services/file.service';
 import { createDoneEvent, createErrorEvent, createStatusEvent, formatSSEEvent } from '../types/chat-streaming.types';
@@ -21,6 +24,23 @@ export class ChatController {
       return Response.json({ error: 'Agent not ready' }, { status: 503 });
     }
     return Response.json({ address });
+  }
+
+  /**
+   * Register the caller's XMTP inbox ID so the agent can resolve
+   * XMTP senders back to platform user IDs.
+   */
+  @Post('/register-inbox')
+  @UseGuards(AuthGuard)
+  async registerInbox(req: Request, user: AuthenticatedUser) {
+    const body = await req.json() as { inboxId?: unknown };
+    const { inboxId } = body;
+    if (!inboxId || typeof inboxId !== 'string') {
+      return Response.json({ error: 'inboxId is required' }, { status: 400 });
+    }
+
+    await db.update(users).set({ xmtpInboxId: inboxId }).where(eq(users.id, user.id));
+    return Response.json({ success: true });
   }
 
   /**
