@@ -186,7 +186,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       config={{
         loginMethods: ['email', 'google'],
         embeddedWallets: {
-          createOnLogin: 'all-users',
+          ethereum: {
+            createOnLogin: 'all-users',
+          },
         },
       }}
     >

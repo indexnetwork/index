@@ -344,7 +344,7 @@ export function XMTPProvider({ children }: { children: ReactNode }) {
         },
         body: JSON.stringify({
           message,
-          sessionId: conversationId,
+          conversationId,
           fileIds: fileIds ?? [],
           ...(indexId ? { indexId } : {}),
         }),

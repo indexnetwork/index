@@ -308,6 +308,35 @@ export async function sendOpportunityToHomeFeed(
   }
 }
 
+/**
+ * Send an agent message to an XMTP conversation by ID.
+ * Used by the SSE stream path to persist agent responses when the web app
+ * streams tokens via POST /chat/stream instead of relying on the agent's
+ * text handler.
+ */
+export async function sendAgentResponseToConversation(
+  conversationId: string,
+  responseText: string,
+): Promise<void> {
+  const agent = agentInstance;
+  if (!agent || !responseText.trim()) return;
+
+  try {
+    const conversation = await agent.client.conversations.getConversationById(conversationId);
+    if (!conversation) {
+      logger.warn('Conversation not found for agent response', { conversationId });
+      return;
+    }
+    await conversation.sendText(responseText);
+    logger.info('Persisted agent response to XMTP', { conversationId, length: responseText.length });
+  } catch (err) {
+    logger.error('Failed to persist agent response to XMTP', {
+      conversationId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // AGENT LIFECYCLE
 // ══════════════════════════════════════════════════════════════════════════════
@@ -389,13 +418,19 @@ export function getAgentAddress(): string | null {
   return agentInstance?.address ?? null;
 }
 
+/** Agent's inbox ID (raw hex). Use this for createGroup — not the Ethereum address. */
+export function getAgentInboxId(): string | null {
+  return agentInstance?.client?.inboxId ?? null;
+}
+
 function getAppData(conversation: any): ConversationAppData | null {
   try {
-    const metadata = conversation.metadata;
-    if (!metadata?.appData) return null;
-    return typeof metadata.appData === 'string'
-      ? JSON.parse(metadata.appData)
-      : metadata.appData;
+    const raw =
+      conversation.metadata?.appData ??
+      conversation.appData ??
+      (conversation as { appData?: string }).appData;
+    if (!raw) return null;
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
   } catch {
     return null;
   }

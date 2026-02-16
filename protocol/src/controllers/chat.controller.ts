@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { getAgentAddress } from '../agent/xmtp.agent';
+import { getAgentInboxId, sendAgentResponseToConversation } from '../agent/xmtp.agent';
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
@@ -14,16 +14,17 @@ const logger = log.controller.from("chat");
 @Controller('/chat')
 export class ChatController {
   /**
-   * Get the XMTP agent's public address.
-   * No auth required -- callers need this to start conversations with the agent.
+   * Get the XMTP agent's inbox ID (raw hex). Required for createGroup — do not use
+   * Ethereum address; XMTP expects inbox IDs, and passing 0x-prefixed addresses
+   * causes hex parse errors on their backend.
    */
   @Get('/agent-address')
   async getAgentAddress(_req: Request) {
-    const address = getAgentAddress();
-    if (!address) {
+    const inboxId = getAgentInboxId();
+    if (!inboxId) {
       return Response.json({ error: 'Agent not ready' }, { status: 503 });
     }
-    return Response.json({ address });
+    return Response.json({ address: inboxId });
   }
 
   /**
@@ -56,9 +57,9 @@ export class ChatController {
   @UseGuards(AuthGuard)
   async messageStream(req: Request, user: AuthenticatedUser): Promise<Response> {
     // 1. Parse request body
-    let body: { message?: string; conversationId?: string; fileIds?: string[]; indexId?: string };
+    let body: { message?: string; conversationId?: string; sessionId?: string; fileIds?: string[]; indexId?: string };
     try {
-      body = await req.json() as { message?: string; conversationId?: string; fileIds?: string[]; indexId?: string };
+      body = await req.json() as { message?: string; conversationId?: string; sessionId?: string; fileIds?: string[]; indexId?: string };
     } catch {
       return Response.json(
         { error: 'Invalid request body. Expected { message: string, conversationId?: string, fileIds?: string[], indexId?: string }' },
@@ -83,8 +84,8 @@ export class ChatController {
       );
     }
 
-    // 2. Use conversationId as the stream identifier (fallback to a random ID)
-    const conversationId = body.conversationId?.trim() || crypto.randomUUID();
+    // 2. Use conversationId as the stream identifier (fallback to sessionId, then random ID)
+    const conversationId = body.conversationId?.trim() || body.sessionId?.trim() || crypto.randomUUID();
     const indexId = typeof body.indexId === 'string' && body.indexId.trim() ? body.indexId.trim() : undefined;
     const factory = chatSessionService.getGraphFactory();
 
@@ -126,6 +127,9 @@ export class ChatController {
               }
             }
           }
+
+          // Persist agent response to XMTP so it appears when loading conversation
+          await sendAgentResponseToConversation(conversationId, fullResponse);
 
           // Generate a suggested title from the exchange
           const suggestedTitle = await chatSessionService.generateTitle(messageContent, fullResponse);

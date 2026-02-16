@@ -6,11 +6,24 @@ const frontendRoot = path.resolve(__dirname);
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Absolute asset prefix so WASM URLs resolve inside Web Workers (which may
+  // have an opaque/blob origin where root-relative URLs like /_next/… fail).
+  assetPrefix: process.env.NEXT_PUBLIC_APP_URL || undefined,
   turbopack: {
     root: frontendRoot,
+    resolveAlias: {
+      // Help Turbopack locate the XMTP WASM binary
+      'bindings_wasm_bg.wasm':
+        './node_modules/@xmtp/wasm-bindings/dist/bindings_wasm_bg.wasm',
+    },
   },
   webpack: (config) => {
     config.context = frontendRoot;
+    // Handle WASM files from @xmtp/wasm-bindings loaded inside Web Workers
+    config.module.rules.push({
+      test: /\.wasm$/,
+      type: 'asset/resource',
+    });
     return config;
   },
   images: {
