@@ -339,9 +339,17 @@ export async function startXMTPAgent(): Promise<Agent> {
         case CONVERSATION_TYPES.HOME_FEED:
           logger.debug('Home feed message (no-op)', { conversationId: ctx.conversation.id });
           break;
-        case CONVERSATION_TYPES.HUMAN_CHAT:
-          logger.debug('Human chat message (no-op)', { conversationId: ctx.conversation.id });
+        case CONVERSATION_TYPES.HUMAN_CHAT: {
+          const content = ctx.message.content as string;
+          // Check if agent is mentioned -- respond to AI requests
+          if (content.includes('@agent') || content.includes('@Index')) {
+            await handleAiChatMessage(ctx);
+          } else {
+            // Silent observation: agent stays quiet unless mentioned
+            logger.debug('Human chat message (silent)', { conversationId: ctx.conversation.id });
+          }
           break;
+        }
       }
     } catch (error) {
       logger.error('Error handling message', {

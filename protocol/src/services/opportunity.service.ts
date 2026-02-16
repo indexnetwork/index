@@ -16,19 +16,9 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
 import { canUserSeeOpportunity } from '../lib/protocol/support/opportunity.utils';
 import { enrichOrCreate } from '../lib/protocol/support/opportunity.enricher';
-import type { OpportunityChatProvider, ChatChannel } from '../lib/protocol/interfaces/chat.interface';
-import { getChatProvider } from '../adapters/chat.adapter';
-import {
-  getDirectChannelId,
-  ensureStreamUsers,
-  ensureIndexBotUser,
-  sendBotMessage,
-  channelHasMessageForOpportunity,
-  getChannelIntroOpportunityIds,
-  addChannelIntroOpportunityId,
-} from '../lib/protocol/support/chat-provider.utils';
-import { sendOpportunityToHomeFeed } from '../agent/xmtp.agent';
-import type { OpportunityCardContent } from '../agent/content-types';
+import { getXMTPAgent, sendOpportunityToHomeFeed } from '../agent/xmtp.agent';
+import { CONVERSATION_TYPES } from '../agent/xmtp.types';
+import { serializeContent, type OpportunityCardContent, type OpportunityUpdateContent } from '../agent/content-types';
 import db from '../lib/drizzle/drizzle';
 import { users } from '../schemas/database.schema';
 
@@ -43,6 +33,7 @@ interface OpportunityStatusUpdateResult {
   opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
   chat?: {
     channelId: string;
+    conversationId?: string;
     counterpartUserId: string;
     acceptedOpportunities?: AcceptedOpportunityChannelMeta[];
   };
@@ -85,7 +76,6 @@ export class OpportunityServiceEvents extends EventEmitter {
  */
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
-  private chatProvider: OpportunityChatProvider | null;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
@@ -93,10 +83,8 @@ export class OpportunityService {
 
   constructor(
     database?: OpportunityControllerDatabase,
-    chatProvider?: OpportunityChatProvider | null,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
-    this.chatProvider = chatProvider ?? getChatProvider();
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -306,121 +294,79 @@ export class OpportunityService {
       acceptedAt: toIso(candidate.updatedAt),
     }));
 
-    const chatProvider = this.chatProvider;
-    const channelId = getDirectChannelId(userId, counterpart.userId);
+    // ── XMTP group chat creation ────────────────────────────────────────
+    let conversationId: string | undefined;
 
-    if (!chatProvider) {
-      logger.warn('[OpportunityService] Chat provider not configured; skipping chat activation', {
-        opportunityId,
-        channelId,
-      });
-      return {
-        opportunity: updated,
-        chat: {
-          channelId,
-          counterpartUserId: counterpart.userId,
-          acceptedOpportunities: acceptedOpportunitiesMeta,
-        },
-      };
-    }
+    const agent = getXMTPAgent();
+    if (agent) {
+      // Look up both users' XMTP inbox IDs
+      const [user1Result, user2Result] = await Promise.all([
+        db.select({ xmtpInboxId: users.xmtpInboxId }).from(users).where(eq(users.id, userId)).limit(1),
+        db.select({ xmtpInboxId: users.xmtpInboxId }).from(users).where(eq(users.id, counterpart.userId)).limit(1),
+      ]);
 
-    const [accepterUser, counterpartUser] = await Promise.all([
-      this.db.getUser(userId),
-      this.db.getUser(counterpart.userId),
-    ]);
-    await ensureStreamUsers(chatProvider, [
-      { id: userId, name: accepterUser?.name, image: accepterUser?.avatar ?? undefined },
-      { id: counterpart.userId, name: counterpartUser?.name, image: counterpartUser?.avatar ?? undefined },
-    ]);
-    await ensureIndexBotUser(chatProvider);
+      const user1InboxId = user1Result[0]?.xmtpInboxId;
+      const user2InboxId = user2Result[0]?.xmtpInboxId;
 
-    let channel: ChatChannel;
-    let existingMessages: unknown[] = [];
-
-    const existingChannels = await chatProvider.queryChannels(
-      { type: 'messaging', id: channelId },
-      {},
-      { state: true, watch: false, messages: { limit: 50 } },
-    );
-
-    if (existingChannels.length > 0) {
-      channel = existingChannels[0];
-      existingMessages = channel.state?.messages ?? [];
-    } else {
-      channel = chatProvider.channel('messaging', channelId, {
-        members: [userId, counterpart.userId],
-        pending: false,
-        created_by_id: userId,
-      });
-      try {
-        await channel.create?.();
-      } catch (error) {
-        logger.debug('[OpportunityService] Stream channel create failed', { opportunityId, channelId, error });
-      }
-    }
-
-    try {
-      await channel.updatePartial({
-        set: {
-          pending: false,
-          acceptedOpportunities: acceptedOpportunitiesMeta,
-        },
-        unset: ['requestedBy'],
-      });
-    } catch (error) {
-      logger.warn('[OpportunityService] Failed to update channel partial', { opportunityId, channelId, error });
-    }
-
-    try {
-      // Same idempotency signal as reinjection (opportunity.chat-injection): channel.data.introOpportunityIds.
-      // Fall back to recent-message scan for legacy channels that may not have metadata yet.
-      const introOpportunityIds = getChannelIntroOpportunityIds(channel);
-      const introExists =
-        introOpportunityIds.includes(opportunityId) ||
-        channelHasMessageForOpportunity(existingMessages, opportunityId);
-      if (!introExists) {
-        let introText: string;
-        let presentation: { headline: string; personalizedSummary: string; suggestedAction: string } | undefined;
+      if (user1InboxId && user2InboxId) {
         try {
-          const context = await gatherPresenterContext(this.db, opp, userId);
-          const presenter = new OpportunityPresenter();
-          const result = await presenter.present(context);
-          presentation = result;
-          introText = `**${result.headline}**\n\n${result.personalizedSummary}\n\n${result.suggestedAction}`;
-        } catch (presenterError) {
-          logger.warn('[OpportunityService] Presenter failed; using fallback intro', {
-            opportunityId,
-            channelId,
-            error: presenterError,
-          });
-          const counterpartUser = await this.db.getUser(counterpart.userId);
-          introText = [
-            `Index intro: you are now connected with ${counterpartUser?.name ?? 'this member'}.`,
-            `Accepted opportunities between you: ${acceptedOpportunitiesMeta.length}.`,
-            'Start by sharing what you are currently working on and what help you need.',
-          ].join('\n');
-        }
+          // Create a 3-member XMTP group chat (user A + user B + agent)
+          const group = await agent.client.conversations.createGroup(
+            [user1InboxId, user2InboxId],
+            {
+              name: '',
+              description: '',
+              appData: JSON.stringify({
+                type: CONVERSATION_TYPES.HUMAN_CHAT,
+                opportunityIds: [opportunityId],
+              }),
+            }
+          );
 
-        logger.info('[OpportunityService] Sending Index intro message', { opportunityId, channelId });
-        await sendBotMessage(channel, {
-          type: 'system',
-          text: introText,
-          introType: 'opportunity_intro',
+          // Generate intro message via OpportunityPresenter
+          let presentation: { headline: string; personalizedSummary: string; suggestedAction: string } | undefined;
+          try {
+            const context = await gatherPresenterContext(this.db, opp, userId);
+            const presenter = new OpportunityPresenter();
+            presentation = await presenter.present(context);
+          } catch (presenterError) {
+            logger.warn('[OpportunityService] Presenter failed; using fallback intro', {
+              opportunityId,
+              error: presenterError,
+            });
+          }
+
+          // Send intro message as structured content
+          const introContent: OpportunityUpdateContent = {
+            type: 'opportunity_update',
+            opportunityId,
+            headline: presentation?.headline ?? 'You are now connected',
+            summary: presentation?.personalizedSummary ?? 'Start by sharing what you are currently working on and what help you need.',
+          };
+          await group.sendText(serializeContent(introContent));
+
+          conversationId = group.id;
+          logger.info('[OpportunityService] XMTP group chat created', {
+            opportunityId,
+            conversationId,
+          });
+        } catch (error) {
+          logger.error('[OpportunityService] Failed to create XMTP group chat', {
+            opportunityId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      } else {
+        logger.warn('[OpportunityService] Missing XMTP inbox IDs; skipping group chat creation', {
           opportunityId,
-          ...(presentation && { presentation }),
-          acceptedOpportunityIds: acceptedOpportunitiesMeta.map((item) => item.opportunityId),
-          acceptedAt: toIso(updated.updatedAt),
+          user1HasInboxId: !!user1InboxId,
+          user2HasInboxId: !!user2InboxId,
         });
-        await addChannelIntroOpportunityId(channel, opportunityId);
-        logger.info('[OpportunityService] Index intro message sent', { opportunityId, channelId });
       }
-    } catch (error) {
-      logger.error('[OpportunityService] Failed to send Index intro message; rethrowing', {
-        error,
+    } else {
+      logger.warn('[OpportunityService] XMTP agent not running; skipping group chat creation', {
         opportunityId,
-        channelId,
       });
-      throw error;
     }
 
     // Fire-and-forget: also send accepted opportunity notification to XMTP home feeds
@@ -434,7 +380,8 @@ export class OpportunityService {
     return {
       opportunity: updated,
       chat: {
-        channelId,
+        channelId: conversationId ?? '',
+        conversationId,
         counterpartUserId: counterpart.userId,
         acceptedOpportunities: acceptedOpportunitiesMeta,
       },
