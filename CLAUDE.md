@@ -98,10 +98,11 @@ index/
 - `src/queues/` - BullMQ job queue definitions
 - `src/jobs/` - Scheduled cron jobs
 - `src/events/` - Event emitters for agent system
+- `src/agent/` - XMTP agent process (`xmtp.agent.ts`, `content-types.ts`, `xmtp.types.ts`)
 
 ### Server Entry Point
 
-The protocol server is `protocol/src/main.ts`: Bun native server on port 3001, controller classes registered via `RouteRegistry` (`@Controller`, `@Get`, `@Post`, etc.) in `src/lib/router/router.decorators.ts`, guards, and adapter-injected controllers (e.g. `ChatDatabaseAdapter` for opportunity controller). Started with `bun run dev` / `bun run start`.
+The protocol server is `protocol/src/main.ts`: Bun native server on port 3001, controller classes registered via `RouteRegistry` (`@Controller`, `@Get`, `@Post`, etc.) in `src/lib/router/router.decorators.ts`, guards, and adapter-injected controllers. The XMTP agent process runs alongside the HTTP server. Started with `bun run dev` / `bun run start`.
 
 ### Agent System (LangGraph-Based)
 
@@ -144,12 +145,32 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 // Brokers react to events asynchronously (they implement onIntentCreated(intentId), etc.)
 ```
 
+### XMTP Messaging Agent
+
+The project uses XMTP (Extensible Message Transport Protocol) for all real-time messaging, replacing the previous Stream Chat integration. XMTP provides end-to-end encrypted, decentralized messaging.
+
+**Server-Side Agent** (`protocol/src/agent/`):
+- `xmtp.agent.ts` - Main agent process using `@xmtp/agent-sdk`. Runs alongside the HTTP server and listens to all XMTP conversations.
+- `content-types.ts` - Custom XMTP content types for structured messages (opportunity cards, status updates).
+- `xmtp.types.ts` - TypeScript type definitions for XMTP message payloads.
+
+**Conversation Types**:
+- `home_feed` - One per user. A group chat where the agent posts opportunity cards and system updates.
+- `ai_chat` - 1:1 style AI conversations. The user sends messages and the agent responds via the chat LangGraph.
+- `human_chat` - Direct messages between two users. The agent is a silent member (can facilitate introductions or moderate).
+
+**Key Design Decisions**:
+- The XMTP agent is a member of every conversation, enabling server-side message processing.
+- AI response tokens are streamed to the frontend via an SSE sideband (`POST /chat/stream`) rather than through XMTP itself, for low-latency display. The final complete response is then sent as an XMTP message.
+- User identity is linked via `xmtpInboxId` on the `users` table, registered through `POST /chat/register-inbox`.
+- The agent's XMTP address is exposed via `GET /chat/agent-address` so the frontend can create conversations with the agent as a member.
+
 ### Database Layer (Drizzle ORM)
 
 **Schema Location**: `protocol/src/schemas/database.schema.ts`. The Drizzle client is in `protocol/src/lib/drizzle/drizzle.ts`.
 
 **Core Tables**:
-- `users` - User accounts (Privy authentication)
+- `users` - User accounts (Privy authentication, `xmtpInboxId` for XMTP identity)
 - `user_profiles` - User identity with vector embeddings (2000-dim, text-embedding-3-large)
 - `intents` - User intents with vector embeddings and confidence scores
 - `indexes` - Communities/collections of related intents
@@ -159,7 +180,6 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 - `intent_stake_items` - Per-stake item details (linked to intent_stakes)
 - `files` / `user_integrations` - Source tracking for intents
 - `user_connection_events` - Connection requests/approvals
-- `chat_sessions` / `chat_messages` - Chat session and message storage (chat graph, chat-session.service)
 - `user_notification_settings` - User notification preferences
 - `agents` - Context broker agent registry (context_brokers/connector)
 - `opportunities` - Opportunity records (detection, actors, interpretation, context, status); see migration 0018
@@ -202,7 +222,7 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 - `IntentController` - Intent CRUD, generation, suggestions
 - `IndexController` - Community management and index opportunities
 - `FileController` - File uploads and processing
-- `ChatController` - Chat interface
+- `ChatController` - XMTP chat endpoints (agent-address, register-inbox, SSE stream sideband)
 - `ProfileController` - User profiles
 - `OpportunityController` - Opportunity management
 - `UploadController` - Upload handling
@@ -227,7 +247,7 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
   - `/api/blog`, `/api/subscribe` - API routes for blog and subscription
   - Intents may be viewed in discover/chat or other contexts (no dedicated `/i/[id]` route)
 - `src/components/` - Reusable React components
-- `src/contexts/` - React Context providers (Auth, API, Notifications, StreamChat)
+- `src/contexts/` - React Context providers (Auth, API, Notifications, XMTP)
 - `src/services/` - Frontend API clients (typed fetch wrappers)
 - `src/lib/` - Utilities and shared logic
 
@@ -366,10 +386,13 @@ NODE_ENV=development
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` - LLM observability
 - `SENTRY_DSN` - Error tracking
 - `PARALLELS_API_KEY` - Web crawling and profile extraction
+- `XMTP_ENV` - XMTP network (`dev` or `production`)
+- `XMTP_WALLET_KEY` - Agent wallet private key for XMTP identity
+- `XMTP_DB_ENCRYPTION_KEY` - Agent local DB encryption key
 
 ### Frontend Environment Variables
 
-See `frontend/.env.example` for frontend-specific configuration (Privy app ID, API URL, etc.)
+See `frontend/.env.example` for frontend-specific configuration (Privy app ID, API URL, `NEXT_PUBLIC_XMTP_ENV`, etc.)
 
 **Privy "Origin not allowed" (`invalid_origin`)**: If login fails with this error, the app’s current origin is not in Privy’s allowed list. In the [Privy Dashboard](https://dashboard.privy.io) go to **Configuration → App settings → Domains**, then under **Allowed origins** (Web & mobile web) add the exact origin(s) you use, e.g. `http://localhost:3000` (port required for localhost). Remove localhost from allowed domains when not developing.
 
@@ -494,6 +517,7 @@ If Sentry is configured (`SENTRY_DSN`):
 - `openai` - OpenAI-compatible client (used with OpenRouter)
 - `@composio/core` - Integration platform
 - `langfuse-langchain` - LLM observability
+- `@xmtp/agent-sdk` - XMTP messaging agent (server-side)
 - `resend` - Email delivery
 - `vitest` - Testing framework
 
@@ -503,7 +527,7 @@ If Sentry is configured (`SENTRY_DSN`):
 - `@privy-io/react-auth` - Authentication
 - `tailwindcss` - CSS framework
 - `@radix-ui/*` - Accessible UI primitives
-- `stream-chat` - Real-time chat
+- `@xmtp/browser-sdk` - XMTP messaging (E2E encrypted)
 - `react-markdown` - Markdown rendering
 
 ## Convex Guidelines (from .cursor/rules)
