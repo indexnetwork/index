@@ -7,7 +7,7 @@ import { users } from '../schemas/database.schema';
 import { chatSessionService } from '../services/chat.service';
 import { log } from '../lib/log';
 import { CONVERSATION_TYPES, type ConversationAppData } from './xmtp.types';
-import { serializeContent, type OpportunityCardContent } from './content-types';
+import { serializeContent, type StructuredContent } from './content-types';
 
 const logger = log.agent.from('XMTPAgent');
 
@@ -253,11 +253,11 @@ async function indexHomeFeedConversations(): Promise<void> {
  * by rescanning conversations) and sends the structured JSON message.
  *
  * @param userXmtpInboxId  The target user's XMTP inbox ID.
- * @param opportunity      The opportunity card content to send.
+ * @param opportunity      The structured content to send (card or update).
  */
 export async function sendOpportunityToHomeFeed(
   userXmtpInboxId: string,
-  opportunity: OpportunityCardContent,
+  opportunity: StructuredContent,
 ): Promise<void> {
   const agent = agentInstance;
   if (!agent) throw new Error('XMTP agent not running');

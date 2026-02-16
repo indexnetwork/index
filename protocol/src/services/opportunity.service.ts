@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { eq } from 'drizzle-orm';
 import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
 import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus } from '../lib/protocol/interfaces/database.interface';
@@ -26,6 +27,10 @@ import {
   getChannelIntroOpportunityIds,
   addChannelIntroOpportunityId,
 } from '../lib/protocol/support/chat-provider.utils';
+import { sendOpportunityToHomeFeed } from '../agent/xmtp.agent';
+import type { OpportunityCardContent } from '../agent/content-types';
+import db from '../lib/drizzle/drizzle';
+import { users } from '../schemas/database.schema';
 
 const logger = log.service.from("OpportunityService");
 
@@ -418,6 +423,14 @@ export class OpportunityService {
       throw error;
     }
 
+    // Fire-and-forget: also send accepted opportunity notification to XMTP home feeds
+    this.sendOpportunityToXMTPHomeFeeds(opp).catch((err) =>
+      logger.error('[OpportunityService] XMTP home feed notification failed on accept', {
+        opportunityId,
+        error: err,
+      })
+    );
+
     return {
       opportunity: updated,
       chat: {
@@ -430,7 +443,7 @@ export class OpportunityService {
 
   /**
    * Discover opportunities via HyDE graph.
-   * 
+   *
    * @param userId - The user ID
    * @param query - Search query
    * @param limit - Number of results
@@ -567,12 +580,73 @@ export class OpportunityService {
     for (const opp of expired) {
       this.events.emit('expired', { opportunity: opp });
     }
+
+    // Fire-and-forget: send opportunity card to actors' XMTP home feeds
+    this.sendOpportunityToXMTPHomeFeeds(created).catch((err) =>
+      logger.error('[OpportunityService] XMTP home feed notification failed', {
+        opportunityId: created.id,
+        error: err,
+      })
+    );
+
     return created;
   }
 
   /**
+   * Send an opportunity card to all non-introducer actors' XMTP home feeds.
+   * Fire-and-forget: XMTP failures are logged but never break the opportunity flow.
+   */
+  private async sendOpportunityToXMTPHomeFeeds(opportunity: Opportunity): Promise<void> {
+    const nonIntroducerActors = opportunity.actors.filter((a) => a.role !== 'introducer');
+    if (nonIntroducerActors.length === 0) return;
+
+    // Resolve user info for all actors (for card display)
+    const actorUsers = await Promise.all(
+      nonIntroducerActors.map((a) => this.db.getUser(a.userId))
+    );
+
+    const cardContent: OpportunityCardContent = {
+      type: 'opportunity_card',
+      opportunityId: opportunity.id,
+      headline: opportunity.interpretation?.reasoning?.slice(0, 80) || 'New opportunity',
+      summary: opportunity.interpretation?.reasoning || '',
+      actors: nonIntroducerActors.map((actor, i) => ({
+        userId: actor.userId,
+        name: actorUsers[i]?.name || 'Unknown',
+        avatar: actorUsers[i]?.avatar ?? undefined,
+      })),
+    };
+
+    // Look up XMTP inbox IDs and send to each actor's home feed
+    for (const actor of nonIntroducerActors) {
+      const userRows = await db
+        .select({ xmtpInboxId: users.xmtpInboxId })
+        .from(users)
+        .where(eq(users.id, actor.userId))
+        .limit(1);
+
+      const inboxId = userRows[0]?.xmtpInboxId;
+      if (!inboxId) {
+        logger.debug('[Opportunity] No XMTP inbox ID for user; skipping home feed send', {
+          userId: actor.userId,
+          opportunityId: opportunity.id,
+        });
+        continue;
+      }
+
+      sendOpportunityToHomeFeed(inboxId, cardContent).catch((err) =>
+        logger.error('[Opportunity] Failed to send opportunity to XMTP home feed', {
+          userId: actor.userId,
+          opportunityId: opportunity.id,
+          error: err,
+        })
+      );
+    }
+  }
+
+  /**
    * Check if user has permission to create opportunities in an index.
-   * 
+   *
    * @param creatorId - User creating the opportunity
    * @param parties - Parties involved
    * @param indexId - The index ID

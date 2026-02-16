@@ -1,26 +1,24 @@
 /**
- * Injects new opportunity messages into existing chat channels
- * when an opportunity is created or sent between users who already have a chat.
- * Standalone utility to avoid circular dependency between opportunity graph and service.
- * Uses the ChatProvider interface; pass a provider or omit to use getChatProvider().
+ * Injects new opportunity messages into users' XMTP home feeds
+ * when an opportunity is created or sent between users.
+ *
+ * Replaces the previous Stream Chat injection.  Each actor in the opportunity
+ * receives an `opportunity_update` structured message in their personal
+ * home-feed group chat via the XMTP agent.
  */
 
+import { eq } from 'drizzle-orm';
 import type { Opportunity } from '../interfaces/database.interface';
-import type { OpportunityChatProvider } from '../interfaces/chat.interface';
-import { getChatProvider } from '../../../adapters/chat.adapter';
-import {
-  getDirectChannelId,
-  ensureIndexBotUser,
-  sendBotMessage,
-  getChannelIntroOpportunityIds,
-  addChannelIntroOpportunityId,
-} from './chat-provider.utils';
+import { sendOpportunityToHomeFeed } from '../../../agent/xmtp.agent';
+import type { OpportunityUpdateContent } from '../../../agent/content-types';
+import db from '../../../lib/drizzle/drizzle';
+import { users } from '../../../schemas/database.schema';
 import { protocolLogger } from './protocol.logger';
 
 const logger = protocolLogger('OpportunityChatInjection');
 
 /**
- * Get the two user IDs that define the direct channel for this opportunity.
+ * Get the two user IDs that define the actor pair for this opportunity.
  * Prefers non-introducer actors; if only one or zero, falls back to any two distinct actors.
  */
 function getActorPairUserIds(opportunity: Opportunity): [string, string] | null {
@@ -34,24 +32,18 @@ function getActorPairUserIds(opportunity: Opportunity): [string, string] | null 
 }
 
 /**
- * If the two users already have an active chat channel (from a previous accepted opportunity),
- * send a system message about this new opportunity. Idempotent: skips if channel metadata
- * (introOpportunityIds) already records this opportunityId, so prior intros/updates are detected
- * without relying on a fixed message window.
+ * Send an opportunity update notification to both actors' XMTP home feeds.
  *
- * @param opportunity - The opportunity to inject.
- * @param chatProvider - Optional. When omitted, uses getChatProvider().
+ * This replaces the previous Stream Chat channel injection.  Each actor receives
+ * a structured `opportunity_update` message in their personal home-feed group
+ * chat.  The function is fire-and-forget: failures are logged but never
+ * propagated to the caller.
+ *
+ * @param opportunity - The opportunity to notify about.
  */
 export async function injectOpportunityIntoExistingChat(
   opportunity: Opportunity,
-  chatProvider?: OpportunityChatProvider | null,
 ): Promise<void> {
-  const provider = chatProvider ?? getChatProvider();
-  if (!provider) {
-    logger.debug('[injectOpportunityIntoExistingChat] Chat provider not configured; skipping');
-    return;
-  }
-
   const pair = getActorPairUserIds(opportunity);
   if (!pair) {
     logger.debug('[injectOpportunityIntoExistingChat] Opportunity has no pair of users; skipping', {
@@ -60,51 +52,45 @@ export async function injectOpportunityIntoExistingChat(
     return;
   }
 
-  const [userId1, userId2] = pair;
-  const channelId = getDirectChannelId(userId1, userId2);
-  const channel = provider.channel('messaging', channelId, { members: [userId1, userId2] });
+  const reasoning = opportunity.interpretation?.reasoning ?? 'I found a new possible connection for you.';
 
-  try {
-    const queryResult = await channel.query({ state: true, watch: false, messages: { limit: 1 } });
-    const messages = queryResult.messages ?? [];
+  const updateContent: OpportunityUpdateContent = {
+    type: 'opportunity_update',
+    opportunityId: opportunity.id,
+    headline: 'New possible connection',
+    summary: reasoning,
+  };
 
-    if (messages.length === 0) {
-      logger.debug('[injectOpportunityIntoExistingChat] Channel has no messages; skipping', {
+  // Send to both actors' home feeds
+  for (const userId of pair) {
+    try {
+      const userRows = await db
+        .select({ xmtpInboxId: users.xmtpInboxId })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      const inboxId = userRows[0]?.xmtpInboxId;
+      if (!inboxId) {
+        logger.debug('[injectOpportunityIntoExistingChat] No XMTP inbox ID for user; skipping', {
+          userId,
+          opportunityId: opportunity.id,
+        });
+        continue;
+      }
+
+      await sendOpportunityToHomeFeed(inboxId, updateContent);
+
+      logger.info('[injectOpportunityIntoExistingChat] Sent opportunity update to XMTP home feed', {
         opportunityId: opportunity.id,
-        channelId,
+        userId,
       });
-      return;
-    }
-
-    const introOpportunityIds = getChannelIntroOpportunityIds(channel);
-    if (introOpportunityIds.includes(opportunity.id)) {
-      logger.debug('[injectOpportunityIntoExistingChat] Intro/update for this opportunity already recorded; skipping', {
+    } catch (error) {
+      logger.warn('[injectOpportunityIntoExistingChat] Failed to send to XMTP home feed', {
+        error,
         opportunityId: opportunity.id,
-        channelId,
+        userId,
       });
-      return;
     }
-
-    await ensureIndexBotUser(provider);
-
-    const reasoning = opportunity.interpretation?.reasoning ?? "I found a new possible connection for you.";
-    await sendBotMessage(channel, {
-      type: 'system',
-      text: `**I found a new possible connection**\n\n${reasoning}`,
-      introType: 'opportunity_update',
-      opportunityId: opportunity.id,
-    });
-    await addChannelIntroOpportunityId(channel, opportunity.id);
-
-    logger.info('[injectOpportunityIntoExistingChat] Injected opportunity into existing chat', {
-      opportunityId: opportunity.id,
-      channelId,
-    });
-  } catch (error) {
-    logger.warn('[injectOpportunityIntoExistingChat] Failed to inject', {
-      error,
-      opportunityId: opportunity.id,
-      channelId,
-    });
   }
 }
