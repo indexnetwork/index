@@ -184,7 +184,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       appId={appId}
       clientId={clientId}
       config={{
-        loginMethods: ['email', 'google']
+        loginMethods: ['email', 'google'],
+        embeddedWallets: {
+          createOnLogin: 'all-users',
+        },
       }}
     >
       <AuthProviderInner>{children}</AuthProviderInner>
