@@ -1,5 +1,6 @@
 import type { ChatControllerChatProvider } from '../lib/protocol/interfaces/chat.interface';
 import { getChatProvider } from '../adapters/chat.adapter';
+import { getAgentAddress } from '../agent/xmtp.agent';
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
@@ -15,6 +16,19 @@ export class ChatController {
 
   constructor(chatProvider?: ChatControllerChatProvider | null) {
     this.chatProvider = chatProvider ?? getChatProvider();
+  }
+
+  /**
+   * Get the XMTP agent's public address.
+   * No auth required -- callers need this to start conversations with the agent.
+   */
+  @Get('/agent-address')
+  async getAgentAddress(_req: Request) {
+    const address = getAgentAddress();
+    if (!address) {
+      return Response.json({ error: 'Agent not ready' }, { status: 503 });
+    }
+    return Response.json({ address });
   }
 
   /**

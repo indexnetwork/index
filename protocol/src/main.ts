@@ -14,6 +14,7 @@ import { ProfileController } from './controllers/profile.controller';
 import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
 import { RouteRegistry } from './lib/router/router.decorators';
+import { startXMTPAgent } from './agent/xmtp.agent';
 import { log } from './lib/log';
 import { adminQueuesApp } from './controllers/queues.controller';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
@@ -217,3 +218,10 @@ Bun.serve({
 });
 
 logger.info('Server running', { port: PORT });
+
+// Start XMTP agent alongside the server (only when wallet key is configured)
+if (process.env.XMTP_WALLET_KEY) {
+  startXMTPAgent().catch((error) => {
+    console.error('[XMTP Agent] Failed to start:', error);
+  });
+}
