@@ -6,6 +6,7 @@ import ClientLayout from "@/components/ClientLayout";
 import { useAuthContext } from "@/contexts/AuthContext";
 import ChatContent from "@/components/ChatContent";
 import Footer from "@/components/Footer";
+import { useXMTP } from "@/contexts/XMTPContext";
 
 function LandingPage() {
   const discoveryVisualRef = useRef<HTMLDivElement>(null);
@@ -1126,6 +1127,27 @@ function LandingPage() {
   );
 }
 
+/**
+ * Ensures the XMTP home-feed group is created/discovered once the XMTP client
+ * and agent address are ready.  This is a fire-and-forget side-effect -- it
+ * does not block rendering of the children.
+ */
+function HomeFeedInitializer({ children }: { children: React.ReactNode }) {
+  const { isReady, agentAddress, getOrCreateHomeFeed } = useXMTP();
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isReady || !agentAddress || initializedRef.current) return;
+    initializedRef.current = true;
+
+    getOrCreateHomeFeed(agentAddress).catch((err) => {
+      console.error('[HomeFeedInitializer] Failed to initialize home feed:', err);
+    });
+  }, [isReady, agentAddress, getOrCreateHomeFeed]);
+
+  return <>{children}</>;
+}
+
 export default function RootPage() {
   const { isAuthenticated, isLoading } = useAuthContext();
 
@@ -1138,7 +1160,9 @@ export default function RootPage() {
   if (isAuthenticated) {
     return (
       <ClientLayout>
-        <ChatContent />
+        <HomeFeedInitializer>
+          <ChatContent />
+        </HomeFeedInitializer>
       </ClientLayout>
     );
   }

@@ -7,6 +7,7 @@ import { users } from '../schemas/database.schema';
 import { chatSessionService } from '../services/chat.service';
 import { log } from '../lib/log';
 import { CONVERSATION_TYPES, type ConversationAppData } from './xmtp.types';
+import { serializeContent, type OpportunityCardContent } from './content-types';
 
 const logger = log.agent.from('XMTPAgent');
 
@@ -17,6 +18,13 @@ const MAX_CONTEXT_MESSAGES = 20;
 const DEFAULT_CONVERSATION_NAME = 'New conversation';
 
 let agentInstance: Agent | null = null;
+
+/**
+ * In-memory mapping of user XMTP inbox IDs to their home-feed conversation IDs.
+ * Populated when the agent is added to home-feed groups and when conversations
+ * are scanned at startup.
+ */
+const homeFeedByInboxId = new Map<string, string>();
 
 // ══════════════════════════════════════════════════════════════════════════════
 // USER RESOLUTION
@@ -185,6 +193,122 @@ async function maybeUpdateConversationTitle(
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// HOME FEED
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Scan all conversations the agent participates in and index any home-feed
+ * groups into the in-memory `homeFeedByInboxId` map.
+ *
+ * Called once at agent startup and when the agent is added to new groups.
+ */
+async function indexHomeFeedConversations(): Promise<void> {
+  const agent = agentInstance;
+  if (!agent) return;
+
+  try {
+    await agent.client.conversations.sync();
+    const conversations = await agent.client.conversations.list();
+
+    for (const conversation of conversations) {
+      const data = getAppData(conversation);
+      if (data?.type !== CONVERSATION_TYPES.HOME_FEED) continue;
+
+      // Get the conversation members to find the non-agent user
+      try {
+        const members = await (conversation as any).members?.() ?? [];
+        const agentInboxId = agent.client.inboxId;
+
+        for (const member of members) {
+          const memberInboxId = member.inboxId ?? member.addresses?.[0];
+          if (memberInboxId && memberInboxId !== agentInboxId) {
+            homeFeedByInboxId.set(memberInboxId, conversation.id);
+            logger.debug('Indexed home feed', {
+              inboxId: memberInboxId,
+              conversationId: conversation.id,
+            });
+          }
+        }
+      } catch {
+        // Some SDK versions may not support .members() -- fall back to
+        // leaving the mapping incomplete; it will be populated when
+        // messages arrive.
+      }
+    }
+
+    logger.info('Home feed index complete', {
+      mappedFeeds: homeFeedByInboxId.size,
+    });
+  } catch (err) {
+    logger.warn('Failed to index home feed conversations', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * Send an opportunity card to a user's home feed conversation.
+ *
+ * The function locates the user's home-feed group (via the cached mapping or
+ * by rescanning conversations) and sends the structured JSON message.
+ *
+ * @param userXmtpInboxId  The target user's XMTP inbox ID.
+ * @param opportunity      The opportunity card content to send.
+ */
+export async function sendOpportunityToHomeFeed(
+  userXmtpInboxId: string,
+  opportunity: OpportunityCardContent,
+): Promise<void> {
+  const agent = agentInstance;
+  if (!agent) throw new Error('XMTP agent not running');
+
+  // Try cached mapping first
+  let conversationId = homeFeedByInboxId.get(userXmtpInboxId);
+
+  // If not found, rescan conversations (the user may have just created the feed)
+  if (!conversationId) {
+    await indexHomeFeedConversations();
+    conversationId = homeFeedByInboxId.get(userXmtpInboxId);
+  }
+
+  if (!conversationId) {
+    logger.warn('[XMTP Agent] No home feed found for inbox', {
+      inboxId: userXmtpInboxId,
+    });
+    return;
+  }
+
+  // Find the conversation object and send the message
+  try {
+    await agent.client.conversations.sync();
+    const conversations = await agent.client.conversations.list();
+    const homeFeed = conversations.find((c) => c.id === conversationId);
+
+    if (!homeFeed) {
+      logger.warn('[XMTP Agent] Home feed conversation not found after sync', {
+        conversationId,
+        inboxId: userXmtpInboxId,
+      });
+      return;
+    }
+
+    await homeFeed.sendText(serializeContent(opportunity));
+
+    logger.info('Sent opportunity to home feed', {
+      conversationId,
+      opportunityId: opportunity.opportunityId,
+      inboxId: userXmtpInboxId,
+    });
+  } catch (err) {
+    logger.error('Failed to send opportunity to home feed', {
+      conversationId,
+      opportunityId: opportunity.opportunityId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // AGENT LIFECYCLE
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -228,6 +352,8 @@ export async function startXMTPAgent(): Promise<Agent> {
 
   agent.on('group', async (ctx) => {
     logger.info('Added to group', { conversationId: ctx.conversation.id });
+    // Re-index home feeds so newly-created feeds are available immediately
+    await indexHomeFeedConversations();
   });
 
   agent.on('unhandledError', (error) => {
@@ -236,6 +362,14 @@ export async function startXMTPAgent(): Promise<Agent> {
 
   await agent.start();
   agentInstance = agent;
+
+  // Build initial home-feed index in the background (best-effort).
+  indexHomeFeedConversations().catch((err) => {
+    logger.warn('Initial home feed indexing failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+
   return agent;
 }
 

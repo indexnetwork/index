@@ -27,6 +27,7 @@ import { useTypewriter } from '@/hooks/useTypewriter';
 import { GroupMessageKind } from '@xmtp/browser-sdk';
 import type { Group } from '@xmtp/browser-sdk';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
+import { parseContent, type OpportunityCardContent } from '@/lib/content-types';
 
 /**
  * When true, use GET /opportunities/home for dynamic sections; when false, use static/mock data.
@@ -115,6 +116,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     client,
     isReady: xmtpReady,
     agentAddress,
+    homeFeed,
     createAIChat,
     streamAIResponse,
   } = useXMTP();
@@ -156,6 +158,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [homeViewLoading, setHomeViewLoading] = useState(false);
   const [homeActionLoadingByOpportunity, setHomeActionLoadingByOpportunity] = useState<Record<string, boolean>>({});
 
+  // XMTP home feed messages (structured content from the agent)
+  const [homeFeedMessages, setHomeFeedMessages] = useState<OpportunityCardContent[]>([]);
+  const [homeFeedLoading, setHomeFeedLoading] = useState(false);
+
   // Index filter
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   const { indexes } = useIndexesState();
@@ -193,6 +199,47 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         setHomeViewLoading(false);
       });
   }, [USE_HOME_API, messages.length, selectedIndexId, opportunitiesService]);
+
+  // Load structured messages from XMTP home feed group
+  useEffect(() => {
+    if (!homeFeed || messages.length > 0) {
+      setHomeFeedMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadHomeFeedMessages = async () => {
+      setHomeFeedLoading(true);
+      try {
+        await homeFeed.sync();
+        const xmtpMessages = await homeFeed.messages();
+        const cards: OpportunityCardContent[] = [];
+
+        for (const msg of xmtpMessages) {
+          if (msg.kind !== GroupMessageKind.Application) continue;
+          if (typeof msg.content !== 'string' || !msg.content.trim()) continue;
+
+          const parsed = parseContent(msg.content);
+          if (parsed && parsed.type === 'opportunity_card') {
+            cards.push(parsed);
+          }
+        }
+
+        if (!cancelled) {
+          setHomeFeedMessages(cards);
+        }
+      } catch (err) {
+        console.error('[ChatContent] Failed to load home feed messages:', err);
+      } finally {
+        if (!cancelled) {
+          setHomeFeedLoading(false);
+        }
+      }
+    };
+
+    loadHomeFeedMessages();
+    return () => { cancelled = true; };
+  }, [homeFeed, messages.length]);
 
   const handleSuggestionClick = useCallback((suggestion: { label: string; type: string; followupText?: string; prefill?: string }) => {
     if (suggestion.type === 'prompt' && suggestion.prefill) {
@@ -820,6 +867,81 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   </div>
                 </div>
               ))}
+              {/* XMTP home feed cards (structured messages from the agent) */}
+              {homeFeedMessages.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-xs font-semibold text-[#3D3D3D] uppercase tracking-wider mb-3 font-ibm-plex-mono text-left flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 shrink-0 [&_svg]:w-3.5 [&_svg]:h-3.5">
+                      <Zap className="w-3.5 h-3.5" />
+                    </span>
+                    From your feed
+                  </h3>
+                  <div className="space-y-3">
+                    {homeFeedMessages.map((card) => (
+                      <div key={card.opportunityId} className="bg-[#F8F8F8] rounded-md p-4">
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {card.actors[0] && (
+                              <div className="flex items-center gap-2 min-w-0 cursor-pointer" onClick={() => router.push(`/u/${card.actors[0].userId}`)}>
+                                <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
+                                  <Image
+                                    src={getAvatarUrl({ id: card.actors[0].userId, name: card.actors[0].name, avatar: card.actors[0].avatar ?? null })}
+                                    alt=""
+                                    width={32}
+                                    height={32}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                                <div className="min-w-0">
+                                  <h4 className="font-bold text-gray-900 text-sm hover:underline">{card.actors[0].name}</h4>
+                                  <p className="text-[11px] text-[#3D3D3D]">{card.actors[0].mutualIntentsLabel ?? '1 mutual intent'}</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              disabled={!!homeActionLoadingByOpportunity[card.opportunityId]}
+                              className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                              onClick={() => handleHomeOpportunityAction(card.opportunityId, 'accepted', card.actors[0]?.userId)}
+                            >
+                              {homeActionLoadingByOpportunity[card.opportunityId] ? 'Working...' : 'Start Chat'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!!homeActionLoadingByOpportunity[card.opportunityId]}
+                              className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                              onClick={() => handleHomeOpportunityAction(card.opportunityId, 'rejected', card.actors[0]?.userId)}
+                            >
+                              Skip
+                            </button>
+                          </div>
+                        </div>
+                        {card.headline && (
+                          <p className="text-sm font-semibold text-gray-900 mb-1">{card.headline}</p>
+                        )}
+                        <div className="text-[14px] text-[#3D3D3D] leading-relaxed">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> }}>{card.summary}</ReactMarkdown>
+                        </div>
+                        {card.narratorChip && (
+                          <div className="mt-3">
+                            <div className="inline-flex items-center gap-2.5 px-3 py-1 bg-[#F0F0F0] rounded-md">
+                              <Bot className="w-7 h-7 text-[#3D3D3D] shrink-0" />
+                              <span className="text-[13px] text-[#3D3D3D]">{card.narratorChip}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {homeFeedLoading && !homeViewLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                </div>
+              )}
             </ContentContainer>
           </div>
         );
