@@ -101,7 +101,7 @@ interface IndexMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities, chatSessions, chatMessages, userNotificationSettings, userProfiles, files, links } = schema;
+const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links } = schema;
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query';
@@ -492,44 +492,6 @@ export class IntentDatabaseAdapter {
 // Chat Graph Database Adapter
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Chat Session and Message interfaces
-export interface ChatSession {
-  id: string;
-  userId: string;
-  title: string | null;
-  indexId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface ChatMessage {
-  id: string;
-  sessionId: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  routingDecision: Record<string, unknown> | null;
-  subgraphResults: Record<string, unknown> | null;
-  tokenCount: number | null;
-  createdAt: Date;
-}
-
-export interface CreateSessionInput {
-  id: string;
-  userId: string;
-  title?: string;
-  indexId?: string;
-}
-
-export interface CreateMessageInput {
-  id: string;
-  sessionId: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  routingDecision?: Record<string, unknown>;
-  subgraphResults?: Record<string, unknown>;
-  tokenCount?: number;
-}
-
 /**
  * Database adapter for Chat Graph and its subgraphs.
  */
@@ -539,121 +501,6 @@ export class ChatDatabaseAdapter {
   private get opportunityAdapter(): OpportunityDatabaseAdapter {
     if (!this._opportunityAdapter) this._opportunityAdapter = new OpportunityDatabaseAdapter();
     return this._opportunityAdapter;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Chat Session Methods
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Create a new chat session
-   */
-  async createSession(data: CreateSessionInput): Promise<void> {
-    await db.insert(schema.chatSessions).values({
-      id: data.id,
-      userId: data.userId,
-      title: data.title || null,
-      indexId: data.indexId?.trim() || null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-  }
-
-  /**
-   * Get session by ID
-   */
-  async getSession(sessionId: string): Promise<ChatSession | null> {
-    const [session] = await db.select()
-      .from(schema.chatSessions)
-      .where(eq(schema.chatSessions.id, sessionId))
-      .limit(1);
-    
-    return session || null;
-  }
-
-  /**
-   * Get all sessions for a user
-   */
-  async getUserSessions(userId: string, limit: number): Promise<ChatSession[]> {
-    return db.select()
-      .from(schema.chatSessions)
-      .where(eq(schema.chatSessions.userId, userId))
-      .orderBy(desc(schema.chatSessions.updatedAt))
-      .limit(limit);
-  }
-
-  /**
-   * Update session index
-   */
-  async updateSessionIndex(sessionId: string, indexId: string | null): Promise<void> {
-    await db
-      .update(schema.chatSessions)
-      .set({ indexId, updatedAt: new Date() })
-      .where(eq(schema.chatSessions.id, sessionId));
-  }
-
-  /**
-   * Update session title
-   */
-  async updateSessionTitle(sessionId: string, title: string): Promise<void> {
-    await db.update(schema.chatSessions)
-      .set({ title, updatedAt: new Date() })
-      .where(eq(schema.chatSessions.id, sessionId));
-  }
-
-  /**
-   * Update session timestamp
-   */
-  async updateSessionTimestamp(sessionId: string): Promise<void> {
-    await db.update(schema.chatSessions)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.chatSessions.id, sessionId));
-  }
-
-  /**
-   * Delete a session
-   */
-  async deleteSession(sessionId: string): Promise<void> {
-    await db.delete(schema.chatSessions)
-      .where(eq(schema.chatSessions.id, sessionId));
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Chat Message Methods
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Create a message
-   */
-  async createMessage(data: CreateMessageInput): Promise<void> {
-    await db.insert(schema.chatMessages).values({
-      id: data.id,
-      sessionId: data.sessionId,
-      role: data.role,
-      content: data.content,
-      routingDecision: data.routingDecision || null,
-      subgraphResults: data.subgraphResults || null,
-      tokenCount: data.tokenCount || null,
-      createdAt: new Date(),
-    });
-  }
-
-  /**
-   * Get messages for a session
-   */
-  async getSessionMessages(sessionId: string, limit: number): Promise<ChatMessage[]> {
-    const messages = await db.select()
-      .from(schema.chatMessages)
-      .where(eq(schema.chatMessages.sessionId, sessionId))
-      .orderBy(schema.chatMessages.createdAt)
-      .limit(limit);
-    
-    // Cast unknown fields to proper types
-    return messages.map(msg => ({
-      ...msg,
-      routingDecision: msg.routingDecision as Record<string, unknown> | null,
-      subgraphResults: msg.subgraphResults as Record<string, unknown> | null,
-    }));
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

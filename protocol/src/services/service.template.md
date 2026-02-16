@@ -196,7 +196,6 @@ Services access the database through adapters in `src/adapters/`. Each domain ha
 ```typescript
 import { userDatabaseAdapter } from '../adapters/user.adapter';
 import { fileDatabaseAdapter } from '../adapters/file.adapter';
-import { chatDatabaseAdapter } from '../adapters/chat.adapter';
 
 export class UserService {
   constructor(private db = userDatabaseAdapter) {}
@@ -222,7 +221,6 @@ export class UserService {
 **Available Database Adapters:**
 - `fileDatabaseAdapter` (`src/adapters/file.adapter.ts`) - File operations
 - `userDatabaseAdapter` (`src/adapters/user.adapter.ts`) - User operations
-- `chatDatabaseAdapter` (`src/adapters/chat.adapter.ts`) - Chat session operations
 
 **Available Protocol Adapters (for graphs):**
 - `ChatDatabaseAdapter` (`src/adapters/database.adapter.ts`) - Protocol interface implementation

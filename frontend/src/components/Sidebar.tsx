@@ -7,8 +7,6 @@ import Link from 'next/link';
 import { Compass, MessagesSquare, Settings, ChevronDown, User as UserIcon, LogIn, Library, History } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useXMTP } from '@/contexts/XMTPContext';
-import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
-import { useAIChat } from '@/contexts/AIChatContext';
 import { usePrivy } from '@privy-io/react-auth';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { useIndexesState } from '@/contexts/IndexesContext';
@@ -20,28 +18,17 @@ import PreferencesModal from '@/components/modals/PreferencesModal';
 import CreateIndexModal from '@/components/modals/CreateIndexModal';
 
 
-interface ChatSession {
-  id: string;
-  title: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { user, refetchUser } = useAuthContext();
-  const { isReady, humanChats } = useXMTP();
-  const { sessionsVersion } = useAIChatSessions();
-  const { clearChat } = useAIChat();
-  const { getAccessToken, logout } = usePrivy();
+  const { isReady, humanChats, aiChats } = useXMTP();
+  const { logout } = usePrivy();
   const indexesService = useIndexes();
   const opportunitiesService = useOpportunities();
   const { addIndex } = useIndexesState();
   const { success, error } = useNotifications();
   
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(false);
   const [navigatingToChat, setNavigatingToChat] = useState(false);
   const [totalUnreadCount, setTotalUnreadCount] = useState(0);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -78,7 +65,6 @@ export default function Sidebar() {
   }, [indexesService, addIndex, success, error]);
 
   const handleDiscoverClick = () => {
-    clearChat();
     router.push('/');
   };
 
@@ -117,31 +103,6 @@ export default function Sidebar() {
     }
   };
 
-  // Fetch AI chat sessions
-  useEffect(() => {
-    const isInitialLoad = sessionsVersion === 0;
-    const fetchSessions = async () => {
-      try {
-        // Only show loading on initial load, not on refetches
-        if (isInitialLoad) setLoadingSessions(true);
-        const token = await getAccessToken();
-        if (!token) return;
-        
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/sessions`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Failed to fetch sessions');
-        const data = await res.json() as { sessions: ChatSession[] };
-        setChatSessions(data.sessions.slice(0, 5));
-      } catch (error) {
-        console.error('Failed to fetch chat sessions:', error);
-      } finally {
-        if (isInitialLoad) setLoadingSessions(false);
-      }
-    };
-
-    fetchSessions();
-  }, [sessionsVersion, getAccessToken]);
 
 
   // Track unread indicator from XMTP human chats
@@ -232,24 +193,24 @@ export default function Sidebar() {
           {/* History submenu */}
           {historyExpanded && (
             <div className="mt-1 ml-8 space-y-0.5">
-              {loadingSessions ? (
+              {!isReady ? (
                 <div className="text-sm text-gray-400 py-2">Loading...</div>
-              ) : chatSessions.length === 0 ? (
+              ) : aiChats.length === 0 ? (
                 <div className="text-sm text-gray-400 py-2">No conversations yet</div>
               ) : (
-                chatSessions.slice(0, 4).map((session) => {
-                  const isSelected = currentSessionId === session.id;
+                aiChats.slice(0, 4).map((chat) => {
+                  const isSelected = currentSessionId === chat.id;
                   return (
                     <button
-                      key={session.id}
-                      onClick={() => router.push(`/d/${session.id}`)}
+                      key={chat.id}
+                      onClick={() => router.push(`/d/${chat.id}`)}
                       className={`w-full text-left py-1.5 px-2 rounded-md text-sm transition-colors truncate ${
                         isSelected
                           ? 'bg-gray-100 text-black font-normal'
                           : 'text-black font-normal hover:bg-gray-50'
                       }`}
                     >
-                      {session.title || 'Untitled chat'}
+                      {chat.name || 'Untitled chat'}
                     </button>
                   );
                 })

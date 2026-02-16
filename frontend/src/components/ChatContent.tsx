@@ -26,7 +26,6 @@ import { DynamicIcon, type IconName } from 'lucide-react/dynamic';
 import { useTypewriter } from '@/hooks/useTypewriter';
 import { GroupMessageKind } from '@xmtp/browser-sdk';
 import type { Group } from '@xmtp/browser-sdk';
-import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { parseContent, type OpportunityCardContent } from '@/lib/content-types';
 
 /**
@@ -119,9 +118,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     homeFeed,
     createAIChat,
     streamAIResponse,
+    refreshConversations,
   } = useXMTP();
 
-  const { refetchSessions } = useAIChatSessions();
 
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError } = useNotifications();
@@ -443,7 +442,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     }
                   }
                   // Refetch sessions after streaming completes
-                  refetchSessions();
+                  refreshConversations();
                   break;
                 case 'error':
                   setMessages(prev => prev.map(msg =>
@@ -471,7 +470,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         ));
       }
     }
-  }, [refetchSessions]);
+  }, [refreshConversations]);
 
   // ---------------------------------------------------------------------------
   // Send message
@@ -522,7 +521,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         conversationRef.current = group;
         setConversationId(activeConvId);
         // Show new session in sidebar immediately
-        refetchSessions();
+        refreshConversations();
       }
 
       // Send user message to XMTP group
@@ -552,7 +551,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [client, agentAddress, createAIChat, streamAIResponse, selectedIndexId, processSSEStream, refetchSessions]);
+  }, [client, agentAddress, createAIChat, streamAIResponse, selectedIndexId, processSSEStream, refreshConversations]);
 
   // ---------------------------------------------------------------------------
   // Clear chat (go home)
@@ -663,7 +662,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         console.error('[ChatContent] Failed to update group name:', err);
       }
     }
-    refetchSessions();
+    refreshConversations();
   };
 
   if (!sessionLoaded) {
