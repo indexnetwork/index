@@ -1,14 +1,12 @@
 import { StateGraph, START, END, MemorySaver, type LangGraphRunnableConfig } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
-import { BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { BaseMessage } from "@langchain/core/messages";
 import { ChatGraphState } from "../states/chat.state";
 import { ChatAgent } from "../agents/chat.agent";
 import type { ChatGraphCompositeDatabase } from "../interfaces/database.interface";
 import type { Embedder } from "../interfaces/embedder.interface";
 import type { Scraper } from "../interfaces/scraper.interface";
 import { protocolLogger } from "../support/protocol.logger";
-import { chatSessionService } from "../../../services/chat.service";
-import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "../support/chat.utils";
 import { ChatStreamer } from "../streamers";
 
 const logger = protocolLogger("ChatGraphFactory");
@@ -68,58 +66,23 @@ export class ChatGraphFactory {
   }
 
   /**
-   * Load previous messages from a session and convert to LangChain messages.
-   * Handles token truncation to fit within context window limits.
+   * Load previous messages for a conversation.
    *
-   * @param sessionId - The session ID to load context from
-   * @param maxMessages - Maximum number of messages to load (default: 20)
-   * @returns Array of LangChain BaseMessage objects
+   * In the XMTP architecture, conversation context is managed by the XMTP
+   * agent, not stored in PostgreSQL. This method returns an empty array;
+   * the XMTP agent (Task 6) will inject context directly when invoking
+   * the graph.
+   *
+   * @param _sessionId - The conversation/session ID (unused)
+   * @param _maxMessages - Maximum number of messages (unused)
+   * @returns Empty array -- context is supplied by the XMTP agent
    */
   public async loadSessionContext(
-    sessionId: string,
-    maxMessages: number = 20
+    _sessionId: string,
+    _maxMessages: number = 20
   ): Promise<BaseMessage[]> {
-    logger.info("Loading session context", {
-      sessionId,
-      maxMessages,
-    });
-
-    try {
-      const messages = await chatSessionService.getSessionMessages(sessionId, maxMessages);
-
-      if (messages.length === 0) {
-        logger.info("No previous messages found", { sessionId });
-        return [];
-      }
-
-      // Convert database messages to LangChain format
-      const langchainMessages = messages.map((msg) => {
-        if (msg.role === "user") {
-          return new HumanMessage(msg.content);
-        } else if (msg.role === "assistant") {
-          return new HumanMessage(msg.content); // Using HumanMessage to avoid circular dependency
-        } else {
-          return new HumanMessage(msg.content);
-        }
-      });
-
-      // Truncate to fit within token limits
-      const truncatedMessages = truncateToTokenLimit(langchainMessages, MAX_CONTEXT_TOKENS);
-
-      logger.info("Context loaded", {
-        sessionId,
-        originalCount: messages.length,
-        truncatedCount: truncatedMessages.length,
-      });
-      return truncatedMessages;
-    } catch (error) {
-      logger.error("Failed to load context", {
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      // Return empty array on error - don't fail the entire request
-      return [];
-    }
+    // No-op: XMTP agent supplies conversation context directly.
+    return [];
   }
 
   /**

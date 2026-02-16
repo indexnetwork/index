@@ -1,7 +1,6 @@
 import './startup.env';
 
 import { ChatController } from './controllers/chat.controller';
-import { getChatProvider } from './adapters/chat.adapter';
 import { IndexController } from './controllers/index.controller';
 import { IntentController } from './controllers/intent.controller';
 import { FileController } from './controllers/file.controller';
@@ -59,7 +58,7 @@ logger.info('Initializing Server...');
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(ProfileController, new ProfileController());
-controllerInstances.set(ChatController, new ChatController(getChatProvider()));
+controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(IndexController, new IndexController());
 controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(FileController, new FileController());

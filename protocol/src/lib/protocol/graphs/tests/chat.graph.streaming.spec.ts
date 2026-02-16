@@ -2,19 +2,18 @@
  * Chat Graph: streaming scenarios.
  * Tests streamChatEvents and streamChatEventsWithContext:
  * - Event sequence (status first, then token or error)
- * - Context loading (streamChatEventsWithContext uses loadSessionContext)
+ * - Context loading (streamChatEventsWithContext -- context is now empty after XMTP migration)
  */
 /** Config */
 import { config } from "dotenv";
 config({ path: '.env.test' });
 
-import { describe, expect, it, beforeAll, spyOn, afterEach } from "bun:test";
+import { describe, expect, it, beforeAll } from "bun:test";
 import { HumanMessage } from "@langchain/core/messages";
 import { ChatGraphFactory } from "../chat.graph";
 import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
-import { chatSessionService } from "../../../../services/chat.service";
 import type { ChatStreamEvent } from "../../../../types/chat-streaming.types";
 
 const testUserId = "test-chat-stream-user";
@@ -145,13 +144,7 @@ describe("Chat Graph streaming", () => {
   });
 
   describe("streamChatEventsWithContext", () => {
-    afterEach(() => {
-      spyOn(chatSessionService, "getSessionMessages").mockRestore?.();
-    });
-
-    it("should load session context then stream events", async () => {
-      spyOn(chatSessionService, "getSessionMessages").mockResolvedValue([]);
-
+    it("should stream events (context is empty in XMTP architecture)", async () => {
       const events = await collectStreamEvents(
         factory.streamChatEventsWithContext(
           {
@@ -169,41 +162,5 @@ describe("Chat Graph streaming", () => {
       const hasError = events.some((e) => e.type === "error");
       expect(hasToken || hasError).toBe(true);
     }, 120000);
-
-    it("should call getSessionMessages with sessionId and maxContextMessages", async () => {
-      const getSessionMessagesSpy = spyOn(chatSessionService, "getSessionMessages").mockResolvedValue([]);
-
-      const events: ChatStreamEvent[] = [];
-      for await (const e of factory.streamChatEventsWithContext({
-        userId: testUserId,
-        message: "Test",
-        sessionId: "ctx-session-1",
-        maxContextMessages: 5,
-      })) {
-        events.push(e);
-        if (events.length >= 2) break;
-      }
-
-      expect(getSessionMessagesSpy).toHaveBeenCalledWith("ctx-session-1", 5);
-    }, 120000);
-
-    it("when getSessionMessages throws, loadSessionContext returns [] and stream still runs with current message only", async () => {
-      // Factory's loadSessionContext catches and returns [] on error, so streamChatEventsWithContext
-      // does not yield an error event; it proceeds with empty context + current message.
-      spyOn(chatSessionService, "getSessionMessages").mockRejectedValue(new Error("DB error"));
-
-      const events: ChatStreamEvent[] = [];
-      for await (const e of factory.streamChatEventsWithContext({
-        userId: testUserId,
-        message: "Hello",
-        sessionId: "fail-session",
-      })) {
-        events.push(e);
-        if (events.length >= 1) break;
-      }
-
-      expect(events.length).toBeGreaterThan(0);
-      expect(events[0].type).toBe("status");
-    }, 5000);
   });
 });

@@ -1,20 +1,20 @@
 /**
  * Chat Graph: factory, graph creation, and loadSessionContext.
- * Covers createGraph, createStreamingGraph (with/without checkpointer), and loadSessionContext
- * (empty session, with messages, truncation, and error path).
+ * Covers createGraph, createStreamingGraph (with/without checkpointer), and loadSessionContext.
+ *
+ * Note: After the XMTP migration (Task 5), loadSessionContext always returns []
+ * because conversation context is now managed by the XMTP agent, not PostgreSQL.
  */
 /** Config */
 import { config } from "dotenv";
 config({ path: '.env.test' });
 
-import { describe, expect, it, beforeAll, spyOn, afterEach } from "bun:test";
-import { HumanMessage } from "@langchain/core/messages";
+import { describe, expect, it, beforeAll } from "bun:test";
 import { MemorySaver } from "@langchain/langgraph";
 import { ChatGraphFactory } from "../chat.graph";
 import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
-import { chatSessionService } from "../../../../services/chat.service";
 
 const testUserId = "test-chat-factory-user";
 
@@ -119,63 +119,13 @@ describe("ChatGraphFactory", () => {
   });
 
   describe("loadSessionContext", () => {
-    afterEach(() => {
-      spyOn(chatSessionService, "getSessionMessages").mockRestore?.();
-    });
-
-    it("should return empty array when session has no messages", async () => {
-      const getSessionMessagesSpy = spyOn(chatSessionService, "getSessionMessages").mockResolvedValue([]);
-
+    it("should always return empty array (context managed by XMTP agent)", async () => {
       const result = await factory.loadSessionContext("session-empty", 20);
-
-      expect(getSessionMessagesSpy).toHaveBeenCalledWith("session-empty", 20);
       expect(result).toEqual([]);
     });
 
-    it("should load and convert DB messages to LangChain format", async () => {
-      const dbMessages = [
-        { id: "1", sessionId: "s1", role: "user" as const, content: "Hello", createdAt: new Date(), routingDecision: null, subgraphResults: null, tokenCount: null },
-        { id: "2", sessionId: "s1", role: "assistant" as const, content: "Hi there!", createdAt: new Date(), routingDecision: null, subgraphResults: null, tokenCount: null },
-      ];
-      spyOn(chatSessionService, "getSessionMessages").mockResolvedValue(dbMessages as any);
-
-      const result = await factory.loadSessionContext("session-with-messages", 20);
-
-      expect(result.length).toBe(2);
-      expect(result[0]).toBeInstanceOf(HumanMessage);
-      expect((result[0] as HumanMessage).content).toBe("Hello");
-      expect(result[1]).toBeInstanceOf(HumanMessage);
-      expect((result[1] as HumanMessage).content).toBe("Hi there!");
-    });
-
-    it("should respect maxMessages parameter", async () => {
-      const getSessionMessagesSpy = spyOn(chatSessionService, "getSessionMessages").mockResolvedValue([]);
-
-      await factory.loadSessionContext("session-any", 5);
-
-      expect(getSessionMessagesSpy).toHaveBeenCalledWith("session-any", 5);
-    });
-
-    it("should truncate messages when over token limit", async () => {
-      // One very long message so that adding more would exceed limit; loadSessionContext uses truncateToTokenLimit
-      const longContent = "x".repeat(50000);
-      const dbMessages = [
-        { id: "1", sessionId: "s1", role: "user" as const, content: longContent, createdAt: new Date(), routingDecision: null, subgraphResults: null, tokenCount: null },
-        { id: "2", sessionId: "s1", role: "assistant" as const, content: "Reply", createdAt: new Date(), routingDecision: null, subgraphResults: null, tokenCount: null },
-      ];
-      spyOn(chatSessionService, "getSessionMessages").mockResolvedValue(dbMessages as any);
-
-      const result = await factory.loadSessionContext("session-long", 20);
-
-      expect(result.length).toBeLessThanOrEqual(2);
-      expect(result.every((m) => m !== undefined)).toBe(true);
-    });
-
-    it("should return empty array on getSessionMessages error and not throw", async () => {
-      spyOn(chatSessionService, "getSessionMessages").mockRejectedValue(new Error("DB unavailable"));
-
-      const result = await factory.loadSessionContext("session-fail", 20);
-
+    it("should return empty array regardless of session id or max messages", async () => {
+      const result = await factory.loadSessionContext("session-any", 5);
       expect(result).toEqual([]);
     });
   });
