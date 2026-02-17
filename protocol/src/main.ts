@@ -13,6 +13,11 @@ import { AuthController } from './controllers/auth.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
+import { FederationController } from './federation/server/federation.controller';
+import { IndexBridge } from './federation/bridge/index.bridge';
+import { UserBridge } from './federation/bridge/user.bridge';
+import { IntentBridge } from './federation/bridge/intent.bridge';
+import { ChatBridge } from './federation/bridge/chat.bridge';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
 import { adminQueuesApp } from './controllers/queues.controller';
@@ -69,6 +74,20 @@ controllerInstances.set(IndexOpportunityController, new IndexOpportunityControll
 controllerInstances.set(UploadController, new UploadController());
 controllerInstances.set(UserController, new UserController());
 
+// Federation controller
+const NODE_URL = process.env.NODE_URL || `http://localhost:${PORT}`;
+const federationAdapter = new ChatDatabaseAdapter();
+controllerInstances.set(FederationController, new FederationController({
+  nodeUrl: NODE_URL,
+  version: '0.1.0',
+  name: process.env.NODE_NAME || 'Index Node',
+  publicKeyPem: process.env.FEDERATION_PUBLIC_KEY || '',
+  indexBridge: new IndexBridge(federationAdapter, NODE_URL),
+  userBridge: new UserBridge(federationAdapter, NODE_URL),
+  intentBridge: new IntentBridge(federationAdapter, NODE_URL),
+  chatBridge: new ChatBridge(federationAdapter),
+}));
+
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
 // Cron jobs (newsletter, opportunity finder, HyDE) are registered in index.ts (runs with queue workers).
@@ -124,6 +143,17 @@ Bun.serve({
       const newHeaders = new Headers(res.headers);
       Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
+    }
+
+    // Federation: well-known endpoint (outside /api prefix)
+    if (url.pathname === '/.well-known/index-protocol') {
+      const fedInstance = controllerInstances.get(FederationController);
+      if (fedInstance) {
+        const result = await fedInstance.wellKnown(req);
+        const newHeaders = new Headers(result.headers);
+        Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
+        return new Response(result.body, { status: result.status, statusText: result.statusText, headers: newHeaders });
+      }
     }
 
     // Iterate over controllers and routes to find a match.
