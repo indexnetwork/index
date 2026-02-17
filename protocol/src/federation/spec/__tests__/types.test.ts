@@ -5,6 +5,7 @@ import {
   FederatedIndexSchema,
   FederatedIntentSchema,
   PushIntentRequestSchema,
+  UpdateIntentRequestSchema,
   QueryIndexRequestSchema,
   QueryIndexResponseSchema,
   JoinIndexRequestSchema,
@@ -50,6 +51,34 @@ describe('Federation spec types', () => {
   it('validates a join index request', () => {
     const req = { actor: 'https://node-a.com/users/abc' };
     expect(JoinIndexRequestSchema.parse(req)).toEqual(req);
+  });
+
+  it('validates a federated intent', () => {
+    const intent = {
+      intentUrl: 'https://node-a.com/indexes/idx1/intents/abc',
+      payload: 'Looking for a designer',
+      embedding: [0.1, 0.2, -0.3],
+      similarity: 0.95,
+      userId: 'https://node-a.com/users/alice',
+    };
+    expect(FederatedIntentSchema.parse(intent)).toEqual(intent);
+  });
+
+  it('validates a query index response', () => {
+    const response = {
+      results: [{
+        intentUrl: 'https://node-a.com/indexes/idx1/intents/abc',
+        payload: 'test',
+        embedding: [0.1],
+        userId: 'https://node-a.com/users/u1',
+      }],
+    };
+    expect(QueryIndexResponseSchema.parse(response)).toEqual(response);
+  });
+
+  it('validates an update intent request', () => {
+    const req = { actor: 'https://node-a.com/users/abc', payload: 'Updated payload' };
+    expect(UpdateIntentRequestSchema.parse(req)).toEqual(req);
   });
 
   it('validates a chat message', () => {
