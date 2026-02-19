@@ -23,6 +23,7 @@
     "integration-worker": "bun ./src/cli/integration-worker.ts",
     "social-worker": "bun ./src/cli/social-worker.ts",
     "audit-freshness": "bun ./src/cli/audit-intent-freshness.ts",
+    "passport:bootstrap": "bun ./src/cli/passport-bootstrap.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
     "test": "NODE_ENV=test bun test"
   },
@@ -57,6 +58,7 @@
     "stream-chat": "^9.31.0",
     "unstructured-client": "^0.27.0",
     "uuid": "^11.1.0",
+    "viem": "^2.46.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {
