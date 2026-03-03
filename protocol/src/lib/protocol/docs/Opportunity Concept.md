@@ -1,7 +1,7 @@
 # Opportunity Concept
 
 > **Related**: [Latent Opportunity Lifecycle](./Latent%20Opportunity%20Lifecycle.md), [The Semantic Intersection of Profile, Intent and Opportunity](./The%20Semantic%20Intersection%20of%20Profile%2C%20Intent%20and%20Opportunity.md), Opportunity Graph (`../graphs/opportunity.graph.ts`)
-> **Last updated**: reflects `dev` branch state as of early March 2026
+> **Last updated**: reflects `feat/negotiations` branch state as of early March 2026
 
 ## What is an Opportunity?
 
@@ -27,9 +27,10 @@ An Opportunity exists at the intersection of these three: one user's intent, ano
 opportunities
 ├── id              UUID, primary key
 ├── detection       JSONB — how/when/by whom the opportunity was found
-│   ├── source      'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added'
+│   ├── source      'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'negotiation'
 │   ├── createdBy   userId or system identifier
 │   ├── triggeredBy intentId that triggered discovery (if any)
+│   ├── negotiationId  ID of the negotiation that produced this opportunity (when source = 'negotiation')
 │   └── timestamp   ISO 8601
 ├── actors          JSONB[] — the participants and their roles
 │   ├── userId      ID of the participant
@@ -140,7 +141,16 @@ Evaluation OpportunityEvaluator (LLM) scores each candidate separately:
   │
 Ranking    Sort by score, filter at the configured minScore (default 70), dedupe
   │
-Persist    Create opportunity records with status: 'latent'
+[Chat only] Negotiation — agent-to-agent exchange for each scored candidate:
+  │        - Both agents evaluate fit, asymmetric upside, and timing
+  │        - 3 turns default; agents can request up to 5 turns via 'extend'
+  │        - Outcomes: 'opportunity' (accepted) / 'disengaged' (declined) / 'deferred'
+  │        - Only 'opportunity' outcomes proceed to Persist
+  │        - Progress streamed to UI in real-time via negotiation_progress events
+  │
+Persist    Create opportunity records
+           - Non-negotiated: status 'latent' (user manually decides to send)
+           - Negotiated (accepted): status 'pending' (agents already agreed — skip Send step)
            Enricher deduplicates against existing opportunities:
            - Finds overlapping opportunities (same actors)
            - Merges reasoning if semantically similar (cosine > 0.7)
@@ -218,6 +228,7 @@ The `OpportunityCard` component in the frontend (`frontend/src/components/`) ren
 
 - **Index-scoped**: Opportunities only form between users who share at least one Index. Non-indexed intents cannot participate in discovery.
 - **Agent creates, user sends**: All discovered opportunities start as `latent`. The user explicitly promotes them to `pending` (which triggers the notification to the other party).
+- **Negotiated opportunities skip the Send step**: When a Negotiation produces an `'opportunity'` outcome, the resulting opportunity is created with status `'pending'` immediately — the agents already agreed, so there's nothing for the user to "send".
 - **Role drives everything**: Visibility, notification targets, and presentation copy are all derived from `actors[].role` — never hardcoded to "sender" or "receiver".
 - **Dual perspective**: Each opportunity stores reasoning from a neutral third-party perspective. The presenter generates role-specific copy at render time from this stored reasoning.
 - **No direct user creation**: Users cannot create opportunities themselves. They can only act on ones the system discovers, or have an `introducer` create one manually via the chat.
@@ -228,6 +239,7 @@ The `OpportunityCard` component in the frontend (`frontend/src/components/`) ren
 
 ## Further Reading
 
+- [Negotiation Concept](./Negotiation%20Concept.md) — Agent-to-agent negotiation protocol: how agents pre-qualify connections before surfacing them to humans
 - [Latent Opportunity Lifecycle](./Latent%20Opportunity%20Lifecycle.md) — Status transitions, role–visibility matrix, and the Send node in detail
 - [The Semantic Intersection of Profile, Intent and Opportunity](./The%20Semantic%20Intersection%20of%20Profile%2C%20Intent%20and%20Opportunity.md) — Theoretical foundation (speech act theory, felicity conditions)
 - [HyDE Strategies for Explicit Intent Matching and Retrieval](./HyDE%20Strategies%20for%20Explicit%20Intent%20Matching%20and%20Retrieval.md) — How HyDE embeddings are generated
