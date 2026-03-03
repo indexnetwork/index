@@ -1,6 +1,7 @@
 # Opportunity Concept
 
 > **Related**: [Latent Opportunity Lifecycle](./Latent%20Opportunity%20Lifecycle.md), [The Semantic Intersection of Profile, Intent and Opportunity](./The%20Semantic%20Intersection%20of%20Profile%2C%20Intent%20and%20Opportunity.md), Opportunity Graph (`../graphs/opportunity.graph.ts`)
+> **Last updated**: reflects `dev` branch state as of early March 2026
 
 ## What is an Opportunity?
 
@@ -104,18 +105,17 @@ Opportunities are discovered through a **LangGraph pipeline** (`opportunity.grap
 
 1. User creates an intent via chat (`create_intent` tool)
 2. Intent is persisted; a background job is enqueued
-3. **HyDE Generator** creates *Hypothetical Document Embeddings* — synthetic descriptions of an ideal match, from multiple angles (mirror, reciprocal, mentor, collaborator, etc.)
+3. **HyDE Graph** generates embeddings: `LensInferrer` infers lenses from the intent payload, then `HydeGenerator` produces a synthetic document per lens and embeds it
 4. HyDE embeddings are stored in `hyde_documents` table
 5. An opportunity discovery job is enqueued
-6. The Opportunity Graph runs: `Prep → Scope → Discovery → Evaluation → Ranking → Persist`
+6. The Opportunity Graph runs: `Prep → Scope → Resolve → Discovery → Evaluation → Ranking → Persist`
 
 ### On-Demand Discovery (chat query)
 
 1. User asks the agent to "find me opportunities" or similar
 2. The `create_opportunities` tool triggers `runDiscoverFromQuery()`
-3. HyDE is generated on-the-fly from the query text
-4. The same Opportunity Graph pipeline runs synchronously
-5. Results are returned to the chat for the user to act on
+3. The Opportunity Graph runs synchronously with the query as `sourceText`; the LensInferrer automatically infers lenses from the query text
+4. Results are returned to the chat for the user to act on; remaining candidates are cached for pagination via `continueDiscovery()`
 
 ### The Opportunity Graph Pipeline
 
@@ -124,16 +124,21 @@ Prep       Load user's active, indexed intents and HyDE documents
   │
 Scope      Determine which indexes to search (one or all user indexes)
   │
-Discovery  Vector similarity search using HyDE embeddings within the index
-  │        (both source and candidate must have HyDE documents)
+Resolve    Pin the discovery source (intent or profile) and select target index
   │
-Evaluation OpportunityEvaluator (LLM) scores each candidate pair:
+Discovery  Generate HyDE embeddings via LensInferrer → vector search within index
+  │        - limitPerStrategy: 30, perIndexLimit: 80, similarity minScore: 0.3
+  │        - Tags each CandidateMatch with lens label and discoverySource
+  │        - When profile source + searchQuery: merges profile-based + query-HyDE results
+  │        - Caches remaining candidates in Redis for pagination
+  │
+Evaluation OpportunityEvaluator (LLM) scores each candidate separately:
   │        - Assigns actor roles (agent / patient / peer)
   │        - Writes reasoning from a third-party perspective
-  │        - Gives a confidence score 0–100
-  │        - Filters out scores below the minimum threshold
+  │        - Permissive threshold: includes all matches with score ≥ 30
+  │        - Discoverer shown as "(source user)" in LLM prompt (privacy mask)
   │
-Ranking    Sort by score, deduplicate by (source, candidate, index)
+Ranking    Sort by score, filter at the configured minScore (default 70), dedupe
   │
 Persist    Create opportunity records with status: 'latent'
            Enricher deduplicates against existing opportunities:
@@ -142,20 +147,32 @@ Persist    Create opportunity records with status: 'latent'
            - Expires old records; creates one enriched record
 ```
 
-### HyDE Strategies
+**Pagination**: When more candidates exist than the configured limit, remaining candidates are cached in Redis (TTL 30 min) and a `discoveryId` is returned. The `continueDiscovery()` function picks up where the previous call left off.
 
-HyDE (Hypothetical Document Embeddings) generates multiple synthetic "ideal match" descriptions per user, then embeds them. Each strategy targets a different type of connection:
+### Search Lenses (HyDE)
 
-| Strategy | What it generates |
-|----------|------------------|
-| `mirror` | "Who could help me?" — matches profiles to my intent |
-| `reciprocal` | "Who needs what I offer?" — matches intents to my profile |
-| `mentor` | Mentorship-specific framing |
-| `investor` | Funding / investment framing |
-| `collaborator` | Peer / partnership framing |
-| `hiree` | Hiring / employment framing |
+Instead of running a fixed set of named strategies, discovery uses a **LensInferrer** agent — an LLM that analyzes the source text (intent payload or search query) together with the user's profile context and infers up to 3 search *lenses* by default (up to 5 when requested).
 
-Using multiple strategies gives the vector search richer coverage than a single embedding of the raw intent text.
+Each lens has:
+- **`label`** — Free-text description, e.g. `"early-stage crypto infrastructure investor"` or `"co-founder with Rust experience"`. More domain-specific than a hardcoded strategy name.
+- **`corpus`** — Which vector index to search: `"profiles"` (user bios, skills, backgrounds) or `"intents"` (stated goals, aspirations, needs).
+- **`reasoning`** — Why this perspective is relevant (for logging and trace output).
+
+```
+User query: "I need a crypto VC for my DePIN startup"
+User profile: "DePIN founder, hardware background"
+
+LensInferrer infers:
+  → { label: "early-stage crypto infra investor", corpus: "profiles" }
+  → { label: "DePIN-focused VC partner",          corpus: "profiles" }
+  → { label: "Web3 infrastructure fundraise",      corpus: "intents"  }
+```
+
+**Role derivation from corpus**: Actor roles are assigned based on which corpus produced the match — not the lens label:
+- `profiles` corpus → candidate is **`agent`** (they have what the source needs)
+- `intents` corpus → candidate is **`patient`** (they need what the source offers) or **`peer`** when the evaluator judges the match symmetric
+
+For each inferred lens, the HyDE Generator writes a synthetic document in the target corpus voice (`HydeGenerator.generate({ sourceText, lens, corpus })`) and embeds it for vector search.
 
 ---
 
@@ -193,6 +210,8 @@ The `OpportunityCard` component in the frontend (`frontend/src/components/`) ren
 - Accept / Skip buttons (visible while status is `latent`, `draft`, `pending`, or `viewed`)
 - Status badge once terminal (`accepted`, `rejected`, `expired`)
 
+**Existing-connection cards** are surfaced when discovery finds a user the viewer is already connected with (status `draft`, `latent`, or `pending`). Higher-terminal statuses (`viewed`, `accepted`, `rejected`, `expired`) are mentioned in text only, not as cards.
+
 ---
 
 ## Key Invariants
@@ -202,6 +221,8 @@ The `OpportunityCard` component in the frontend (`frontend/src/components/`) ren
 - **Role drives everything**: Visibility, notification targets, and presentation copy are all derived from `actors[].role` — never hardcoded to "sender" or "receiver".
 - **Dual perspective**: Each opportunity stores reasoning from a neutral third-party perspective. The presenter generates role-specific copy at render time from this stored reasoning.
 - **No direct user creation**: Users cannot create opportunities themselves. They can only act on ones the system discovers, or have an `introducer` create one manually via the chat.
+- **One opportunity per candidate pair**: The evaluator creates a separate opportunity record for each (discoverer, candidate) pair — not a single merged record for a batch. Deduplication happens at the persist stage via the enricher.
+- **Permissive discovery, strict output**: The vector search and evaluator use a low threshold (similarity ≥ 0.3, LLM score ≥ 30) to cast a wide net; the final ranking node applies the configured `minScore` (default 70) before persisting.
 
 ---
 
