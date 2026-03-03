@@ -58,6 +58,20 @@ export type AgentStreamEvent =
       success: boolean;
       summary?: string;
       steps?: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
+    }
+  | {
+      type: "negotiation_progress";
+      negotiationId: string;
+      candidateUserId: string;
+      candidateName?: string;
+      eventType: "start" | "turn" | "end";
+      turn?: number;
+      maxTurns?: number;
+      speaker?: "user_agent" | "candidate_agent";
+      message?: string;
+      decision?: string;
+      outcome?: string;
+      reasoning?: string;
     };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -196,6 +210,7 @@ export class ChatAgent {
       userId: context.userId,
       indexId: context.indexId,
       sessionId: context.sessionId,
+      streamWriter: context.streamWriter,
     });
     const tools = await createChatTools(context, resolved);
     return new ChatAgent(resolved, tools);

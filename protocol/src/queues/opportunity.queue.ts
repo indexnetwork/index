@@ -12,6 +12,7 @@ import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.grap
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
 import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
+import { triggerNegotiationsForDiscovery } from '../lib/protocol/support/negotiation.integration';
 
 /** BullMQ queue name for opportunity discovery jobs. */
 export const QUEUE_NAME = 'opportunity-discovery-queue';
@@ -127,43 +128,85 @@ export class OpportunityQueue {
   }
 
   private async handleDiscoverOpportunities(data: OpportunityJobData): Promise<void> {
-    const { intentId, userId, indexIds } = data;
+    const { intentId } = data;
     const db = this.deps?.database ?? this.database;
     const intent = await db.getIntentForIndexing(intentId);
     if (!intent) {
       this.logger.warn('[OpportunityDiscovery] Intent not found, skipping', { intentId });
       return;
     }
-    const invokeOpts: OpportunityGraphInvokeOptions = {
+
+    // Always use negotiation-based discovery
+    await this.handleDiscoverWithNegotiation(data, intent);
+  }
+
+  /**
+   * Handle discovery with negotiation mode.
+   * Runs discovery to find candidates, then triggers negotiations instead of inline evaluation.
+   */
+  private async handleDiscoverWithNegotiation(
+    data: OpportunityJobData,
+    intent: { payload: string }
+  ): Promise<void> {
+    const { intentId, userId, indexIds } = data;
+
+    this.logger.info('[OpportunityDiscovery] Using negotiation mode', { intentId, userId });
+
+    // Run opportunity graph in discovery-only mode to get candidates
+    // We invoke the graph but intercept at the discovery stage
+    const embedder: Embedder = new EmbedderAdapter();
+    const cache: HydeCache = new RedisCacheAdapter();
+    const inferrer = new LensInferrer();
+    const generator = new HydeGenerator();
+    const hydeGraph = new HydeGraphFactory(
+      this.graphDb as HydeGraphDatabase,
+      embedder,
+      cache,
+      inferrer,
+      generator
+    ).createGraph();
+    const opportunityGraph = new OpportunityGraphFactory(
+      this.graphDb as OpportunityGraphDatabase,
+      embedder,
+      hydeGraph
+    ).createGraph();
+
+    // Invoke graph to run discovery (it will still do evaluation, but we'll also trigger negotiations)
+    const result = await opportunityGraph.invoke({
       userId: userId as Id<'users'>,
       searchQuery: intent.payload,
       operationMode: 'create',
       indexId: indexIds?.[0] as Id<'indexes'> | undefined,
       triggerIntentId: intentId,
       options: { initialStatus: 'latent' },
-    };
-    if (this.deps?.invokeOpportunityGraph) {
-      await this.deps.invokeOpportunityGraph(invokeOpts);
-    } else {
-      const embedder: Embedder = new EmbedderAdapter();
-      const cache: HydeCache = new RedisCacheAdapter();
-      const inferrer = new LensInferrer();
-      const generator = new HydeGenerator();
-      const hydeGraph = new HydeGraphFactory(
-        this.graphDb as HydeGraphDatabase,
-        embedder,
-        cache,
-        inferrer,
-        generator
-      ).createGraph();
-      const opportunityGraph = new OpportunityGraphFactory(
-        this.graphDb as OpportunityGraphDatabase,
-        embedder,
-        hydeGraph
-      ).createGraph();
-      await opportunityGraph.invoke(invokeOpts);
+    });
+
+    // Extract candidates from the graph result and trigger negotiations
+    // The graph stores candidates in state.candidates after discovery
+    const candidates = (result as { candidates?: Array<{ candidateUserId: string; candidateIntentId?: string; indexId: string; similarity?: number }> }).candidates ?? [];
+
+    if (candidates.length > 0) {
+      const negotiationResult = await triggerNegotiationsForDiscovery({
+        initiatorUserId: userId,
+        candidates: candidates.map(c => ({
+          candidateUserId: c.candidateUserId,
+          candidateIntentId: c.candidateIntentId,
+          indexId: c.indexId,
+          similarity: c.similarity,
+        })),
+        triggerIntentId: intentId,
+        searchQuery: intent.payload,
+        limit: 5, // Limit negotiations per discovery
+      });
+
+      this.logger.info('[OpportunityDiscovery] Negotiations triggered', {
+        intentId,
+        userId,
+        negotiationsInitiated: negotiationResult.initiated,
+      });
     }
-    this.logger.verbose('[OpportunityDiscovery] Discovery complete for intent', { intentId, userId });
+
+    this.logger.verbose('[OpportunityDiscovery] Discovery with negotiation complete', { intentId, userId });
   }
 }
 

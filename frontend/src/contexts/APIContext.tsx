@@ -15,6 +15,7 @@ import { createIntegrationsService } from '@/services/integrations';
 import { createAdminService } from '@/services/admin';
 import { createUsersService } from '@/services/users';
 import { createOpportunitiesService } from '@/services/opportunities';
+import { createNegotiationsService } from '@/services/negotiations';
 
 export interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
@@ -30,6 +31,7 @@ export interface APIContextType {
   adminService: ReturnType<typeof createAdminService>;
   usersService: ReturnType<typeof createUsersService>;
   opportunitiesService: ReturnType<typeof createOpportunitiesService>;
+  negotiationsService: ReturnType<typeof createNegotiationsService>;
 }
 
 const APIContext = createContext<APIContextType | undefined>(undefined);
@@ -56,7 +58,8 @@ export function APIProvider({ children }: { children: ReactNode }) {
       integrationsService: createIntegrationsService(api),
       adminService: createAdminService(api),
       usersService: createUsersService(api),
-      opportunitiesService: createOpportunitiesService(api)
+      opportunitiesService: createOpportunitiesService(api),
+      negotiationsService: createNegotiationsService(api),
     };
     apiRef.current = api;
   }
@@ -140,4 +143,9 @@ export function useUsers() {
 export function useOpportunities() {
   const { opportunitiesService } = useAPI();
   return opportunitiesService;
+}
+
+export function useNegotiations() {
+  const { negotiationsService } = useAPI();
+  return negotiationsService;
 }

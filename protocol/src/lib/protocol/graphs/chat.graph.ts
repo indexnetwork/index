@@ -202,14 +202,6 @@ export class ChatGraphFactory {
 
         const runLoop = async () => {
           const indexId = state.indexId;
-          const agent = await ChatAgent.create({
-            userId: state.userId,
-            database,
-            embedder,
-            scraper,
-            indexId,
-            sessionId: state.sessionId,
-          });
           // Direct streaming writer - emit events immediately instead of buffering
           const directWriter = (data: unknown) => {
             try {
@@ -218,6 +210,15 @@ export class ChatGraphFactory {
               /* swallow if writer is gone */
             }
           };
+          const agent = await ChatAgent.create({
+            userId: state.userId,
+            database,
+            embedder,
+            scraper,
+            indexId,
+            sessionId: state.sessionId,
+            streamWriter: directWriter,
+          });
           const result = await agent.streamRun(state.messages, directWriter);
           return result;
         };

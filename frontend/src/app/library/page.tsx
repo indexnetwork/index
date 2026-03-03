@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Loader2, Trash2, ExternalLink } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useAPI, useIntegrations } from "@/contexts/APIContext";
+import { useAPI, useIntegrations, useNegotiations } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { formatDate } from "@/lib/utils";
@@ -57,6 +57,7 @@ export default function LibraryPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const { filesService, linksService, intentsService } = useAPI();
   const integrationsService = useIntegrations();
+  const negotiationsService = useNegotiations();
   const api = useAuthenticatedAPI();
   const { success, error } = useNotifications();
 
@@ -105,6 +106,7 @@ export default function LibraryPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [links, setLinks] = useState<LinkItem[]>([]);
+  const [negotiationCount, setNegotiationCount] = useState(0);
 
   // Loading states per tab
   const [loadingIntents, setLoadingIntents] = useState(false);
@@ -216,6 +218,16 @@ export default function LibraryPage() {
     }
   }, [linksService]);
 
+  // Load negotiation count
+  const loadNegotiationCount = useCallback(async () => {
+    try {
+      const stats = await negotiationsService.getStats();
+      setNegotiationCount(stats.total);
+    } catch {
+      setNegotiationCount(0);
+    }
+  }, [negotiationsService]);
+
   // Connect integration
   const handleConnectIntegration = useCallback(async (type: IntegrationName) => {
     const item = integrations.find(i => i.type === type);
@@ -297,12 +309,12 @@ export default function LibraryPage() {
 
     const loadAll = async () => {
       setIsLoading(true);
-      await Promise.all([loadIntents(), loadIntegrations(), loadFiles(), loadLinks()]);
+      await Promise.all([loadIntents(), loadIntegrations(), loadFiles(), loadLinks(), loadNegotiationCount()]);
       setIsLoading(false);
     };
 
     loadAll();
-  }, [isAuthenticated, authLoading, loadIntents, loadIntegrations, loadFiles, loadLinks]);
+  }, [isAuthenticated, authLoading, loadIntents, loadIntegrations, loadFiles, loadLinks, loadNegotiationCount]);
 
   // Archive intent handler
   const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
@@ -400,6 +412,9 @@ export default function LibraryPage() {
               className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
             >
               Negotiations
+              {negotiationCount > 0 && (
+                <span className="ml-2 text-xs text-gray-500">({negotiationCount})</span>
+              )}
             </Tabs.Trigger>
           </Tabs.List>
           <div className="mb-6 space-y-1">

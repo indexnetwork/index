@@ -12,6 +12,7 @@ import { ProfileController } from './controllers/profile.controller';
 import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
 import { MessagingController } from './controllers/messaging.controller';
+import { NegotiationController } from './controllers/negotiation.controller';
 import { MessagingDatabaseAdapter } from './adapters/database.adapter';
 import { MessagingService } from './services/messaging.service';
 import path from 'path';
@@ -114,6 +115,7 @@ controllerInstances.set(IndexOpportunityController, new IndexOpportunityControll
 controllerInstances.set(UploadController, new UploadController(storageAdapter));
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(MessagingController, new MessagingController(messagingService));
+controllerInstances.set(NegotiationController, new NegotiationController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
@@ -269,3 +271,6 @@ Bun.serve({
 });
 
 logger.info('Server running', { port: PORT });
+
+
+console.log(process.env);

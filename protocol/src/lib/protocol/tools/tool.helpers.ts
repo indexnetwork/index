@@ -26,6 +26,9 @@ export type CompiledGraph = { invoke: (input: any) => Promise<any> };
 // TOOL CONTEXT TYPES
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/** Callback for streaming custom events from tools (e.g., negotiation progress). */
+export type ToolStreamWriter = (event: unknown) => void;
+
 /**
  * Resolved context available to every tool handler.
  * Contains the current user and optional index identity, resolved from DB at init.
@@ -55,6 +58,8 @@ export interface ResolvedToolContext {
   isOnboarding: boolean;
   /** Chat session ID when tools are used in a chat; used for draft opportunities (context.conversationId). */
   sessionId?: string;
+  /** Optional callback for streaming events from tools (e.g., negotiation progress). */
+  streamWriter?: ToolStreamWriter;
 }
 
 /**
@@ -78,6 +83,8 @@ export interface ToolContext {
   indexId?: string;
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
   sessionId?: string;
+  /** Optional callback for streaming events from tools (e.g., negotiation progress). */
+  streamWriter?: ToolStreamWriter;
 }
 
 /**
@@ -108,8 +115,10 @@ export async function resolveChatContext(params: {
   indexId?: string;
   /** Chat session ID for draft opportunities (stored as context.conversationId). */
   sessionId?: string;
+  /** Optional callback for streaming events from tools (e.g., negotiation progress). */
+  streamWriter?: ToolStreamWriter;
 }): Promise<ResolvedToolContext> {
-  const { database, userId, indexId, sessionId } = params;
+  const { database, userId, indexId, sessionId, streamWriter } = params;
 
   const [user, rawProfile, userIndexes] = await Promise.all([
     database.getUser(userId),
@@ -188,6 +197,7 @@ export async function resolveChatContext(params: {
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
     ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(streamWriter !== undefined ? { streamWriter } : {}),
   };
 }
 

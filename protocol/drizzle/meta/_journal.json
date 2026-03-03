@@ -57,6 +57,13 @@
       "when": 1771966468049,
       "tag": "0007_add_opportunity_status_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1772000000000,
+      "tag": "0008_create_negotiations",
+      "breakpoints": true
     }
   ]
 }

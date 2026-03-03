@@ -12,6 +12,7 @@ import {
   createIterationStartEvent,
   createLlmStartEvent,
   createLlmEndEvent,
+  createNegotiationProgressEvent,
   createResponseCompleteEvent,
   createStatusEvent,
   createTokenEvent,
@@ -208,6 +209,27 @@ export class ChatStreamer {
                 event.steps,
               );
             }
+          }
+
+          if (event.type === "negotiation_progress") {
+            logger.debug("Negotiation progress", {
+              negotiationId: event.negotiationId,
+              eventType: event.eventType,
+              candidateName: event.candidateName,
+            });
+            yield createNegotiationProgressEvent(sessionId, {
+              negotiationId: event.negotiationId,
+              candidateUserId: event.candidateUserId,
+              candidateName: event.candidateName,
+              eventType: event.eventType,
+              turn: event.turn,
+              maxTurns: event.maxTurns,
+              speaker: event.speaker,
+              message: event.message,
+              decision: event.decision,
+              outcome: event.outcome,
+              reasoning: event.reasoning,
+            });
           }
         }
 

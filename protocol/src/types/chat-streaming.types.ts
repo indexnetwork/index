@@ -28,7 +28,9 @@ export type ChatStreamEventType =
   // Internal response tracking events
   | "response_complete"
   // Debug meta (per-turn graph/tool usage for copy debug)
-  | "debug_meta";
+  | "debug_meta"
+  // Negotiation events
+  | "negotiation_progress";
 
 /**
  * Base interface for all chat stream events.
@@ -312,6 +314,40 @@ export interface DebugMetaEvent extends ChatStreamEventBase {
   tools: DebugMetaToolCall[];
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// NEGOTIATION EVENTS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Negotiation progress event - streams agent-to-agent negotiation updates.
+ * Sent during discovery to show real-time negotiation between agents.
+ */
+export interface NegotiationProgressEvent extends ChatStreamEventBase {
+  type: "negotiation_progress";
+  /** Unique ID for this negotiation */
+  negotiationId: string;
+  /** User ID of the candidate being negotiated with */
+  candidateUserId: string;
+  /** Display name of the candidate */
+  candidateName?: string;
+  /** Type of negotiation event */
+  eventType: "start" | "turn" | "end";
+  /** Current turn number (1-indexed) */
+  turn?: number;
+  /** Maximum turns allowed */
+  maxTurns?: number;
+  /** Which agent is speaking */
+  speaker?: "user_agent" | "candidate_agent";
+  /** The message content from the agent */
+  message?: string;
+  /** Decision made this turn (continue, accept, decline, defer, extend) */
+  decision?: string;
+  /** Final outcome (opportunity, disengaged, deferred) - present when eventType is 'end' */
+  outcome?: string;
+  /** Agent's reasoning (for debug/transparency) */
+  reasoning?: string;
+}
+
 /**
  * Union type of all chat stream events.
  */
@@ -337,7 +373,9 @@ export type ChatStreamEvent =
   // Internal response tracking events
   | ResponseCompleteEvent
   // Debug meta
-  | DebugMetaEvent;
+  | DebugMetaEvent
+  // Negotiation events
+  | NegotiationProgressEvent;
 
 /**
  * Formats a chat stream event as an SSE message. If JSON.stringify throws (e.g. circular ref,
@@ -662,4 +700,18 @@ export function createDebugMetaEvent(
     iterations,
     tools,
   });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// NEGOTIATION EVENT CREATORS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Creates a formatted negotiation progress event.
+ */
+export function createNegotiationProgressEvent(
+  sessionId: string,
+  data: Omit<NegotiationProgressEvent, "type" | "sessionId" | "timestamp">,
+): NegotiationProgressEvent {
+  return createStreamEvent<NegotiationProgressEvent>("negotiation_progress", sessionId, data);
 }

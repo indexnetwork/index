@@ -11,6 +11,12 @@ import {
   Circle,
   Cpu,
   Zap,
+  MessageSquare,
+  User,
+  Bot,
+  CheckCircle2,
+  XCircle,
+  Clock,
 } from "lucide-react";
 import type { TraceEvent } from "@/contexts/AIChatContext";
 import { cn } from "@/lib/utils";
@@ -300,6 +306,118 @@ function FelicityScores({ data }: { data: FelicityData }) {
   );
 }
 
+const DECISION_STYLES: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
+  accept: { label: "Match found", color: "text-green-400", icon: CheckCircle2 },
+  decline: { label: "Not a match", color: "text-red-400", icon: XCircle },
+  defer: { label: "Timing mismatch", color: "text-yellow-400", icon: Clock },
+  continue: { label: "Negotiating", color: "text-blue-400", icon: MessageSquare },
+  extend: { label: "Need more info", color: "text-purple-400", icon: MessageSquare },
+};
+
+const OUTCOME_STYLES: Record<string, { label: string; color: string; bgColor: string }> = {
+  opportunity: { label: "Connection established", color: "text-green-400", bgColor: "bg-green-900/20" },
+  disengaged: { label: "No match", color: "text-red-400", bgColor: "bg-red-900/20" },
+  deferred: { label: "Deferred for later", color: "text-yellow-400", bgColor: "bg-yellow-900/20" },
+};
+
+interface NegotiationEventProps {
+  event: TraceEvent;
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+function NegotiationEventDisplay({ event, isExpanded, onToggle }: NegotiationEventProps) {
+  const { eventType, candidateName, candidateUserId, turn, maxTurns, speaker, message, decision, outcome, reasoning } = event;
+
+  if (eventType === "start") {
+    return (
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-900/20">
+        <MessageSquare className="w-3 h-3 text-indigo-400 flex-shrink-0" />
+        <span className="text-indigo-300 font-medium">
+          Negotiating with {candidateName || candidateUserId?.slice(0, 8) || "agent"}
+        </span>
+        {maxTurns && (
+          <span className="text-gray-500 text-[10px] ml-auto">
+            max {maxTurns} turns
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (eventType === "turn") {
+    const isUserAgent = speaker === "user_agent";
+    const decisionStyle = decision ? DECISION_STYLES[decision] : null;
+    const DecisionIcon = decisionStyle?.icon || MessageSquare;
+
+    return (
+      <div className="px-3 py-1.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="w-full flex items-center gap-2 hover:bg-gray-800/50 rounded px-1 -mx-1"
+        >
+          {isExpanded ? (
+            <ChevronDown className="w-3 h-3 text-gray-500" />
+          ) : (
+            <ChevronRight className="w-3 h-3 text-gray-500" />
+          )}
+          {isUserAgent ? (
+            <Bot className="w-3 h-3 text-blue-400 flex-shrink-0" />
+          ) : (
+            <User className="w-3 h-3 text-purple-400 flex-shrink-0" />
+          )}
+          <span className={isUserAgent ? "text-blue-300" : "text-purple-300"}>
+            {isUserAgent ? "Your agent" : candidateName || "Their agent"}
+          </span>
+          <span className="text-gray-500 text-[10px]">
+            Turn {turn}/{maxTurns}
+          </span>
+          {decisionStyle && (
+            <span className={cn("text-[10px] flex items-center gap-1 ml-auto", decisionStyle.color)}>
+              <DecisionIcon className="w-3 h-3" />
+              {decisionStyle.label}
+            </span>
+          )}
+        </button>
+        {isExpanded && message && (
+          <div className="ml-5 mt-1 mb-1 p-2 bg-gray-800/50 rounded border border-gray-700/50">
+            <div className="text-[10px] text-gray-300 leading-relaxed whitespace-pre-wrap">
+              {message}
+            </div>
+            {reasoning && (
+              <div className="mt-1 pt-1 border-t border-gray-700/50 text-[10px] text-gray-500 italic">
+                {reasoning}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (eventType === "end") {
+    const outcomeStyle = outcome ? OUTCOME_STYLES[outcome] : null;
+
+    return (
+      <div className={cn("flex items-center gap-2 px-3 py-1.5", outcomeStyle?.bgColor)}>
+        {outcome === "opportunity" ? (
+          <CheckCircle2 className="w-3 h-3 text-green-400 flex-shrink-0" />
+        ) : outcome === "disengaged" ? (
+          <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
+        ) : (
+          <Clock className="w-3 h-3 text-yellow-400 flex-shrink-0" />
+        )}
+        <span className={outcomeStyle?.color || "text-gray-300"}>
+          {candidateName || candidateUserId?.slice(0, 8) || "Negotiation"}: {outcomeStyle?.label || outcome}
+        </span>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 interface TraceDisplayProps {
   traceEvents: TraceEvent[];
   isStreaming?: boolean;
@@ -324,6 +442,19 @@ export function ToolCallsDisplay({
 }: TraceDisplayProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set());
+  const [expandedNegotiations, setExpandedNegotiations] = useState<Set<number>>(new Set());
+
+  const toggleNegotiationExpanded = (idx: number) => {
+    setExpandedNegotiations((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+      }
+      return next;
+    });
+  };
 
   if (!traceEvents || traceEvents.length === 0) return null;
 
@@ -592,6 +723,17 @@ export function ToolCallsDisplay({
                     </div>
                   )}
                 </div>
+              );
+            }
+
+            if (event.type === "negotiation_progress") {
+              return (
+                <NegotiationEventDisplay
+                  key={idx}
+                  event={event}
+                  isExpanded={expandedNegotiations.has(idx)}
+                  onToggle={() => toggleNegotiationExpanded(idx)}
+                />
               );
             }
 

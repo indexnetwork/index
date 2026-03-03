@@ -51,7 +51,8 @@ export type TraceEventType =
   | "llm_start"
   | "llm_end"
   | "tool_start"
-  | "tool_end";
+  | "tool_end"
+  | "negotiation_progress";
 
 export interface TraceEvent {
   type: TraceEventType;
@@ -63,6 +64,18 @@ export interface TraceEvent {
   steps?: ToolCallStep[];
   hasToolCalls?: boolean;
   toolNames?: string[];
+  // Negotiation-specific fields
+  negotiationId?: string;
+  candidateUserId?: string;
+  candidateName?: string;
+  eventType?: "start" | "turn" | "end";
+  turn?: number;
+  maxTurns?: number;
+  speaker?: "user_agent" | "candidate_agent";
+  message?: string;
+  decision?: string;
+  outcome?: string;
+  reasoning?: string;
 }
 
 interface ChatMessage {
@@ -301,6 +314,32 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                             steps: event.steps,
                           });
                         }
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "negotiation_progress": {
+                    const now = Date.now();
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || [])];
+                        traceEvents.push({
+                          type: "negotiation_progress",
+                          timestamp: now,
+                          negotiationId: event.negotiationId,
+                          candidateUserId: event.candidateUserId,
+                          candidateName: event.candidateName,
+                          eventType: event.eventType,
+                          turn: event.turn,
+                          maxTurns: event.maxTurns,
+                          speaker: event.speaker,
+                          message: event.message,
+                          decision: event.decision,
+                          outcome: event.outcome,
+                          reasoning: event.reasoning,
+                        });
                         return { ...msg, traceEvents };
                       }),
                     );

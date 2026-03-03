@@ -4,6 +4,10 @@ import { success, error, UUID_REGEX } from "./tool.helpers";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "../support/opportunity.constants";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "../support/opportunity.card-text";
 import { runDiscoverFromQuery, continueDiscovery } from "../support/opportunity.discover";
+import {
+  runNegotiations,
+  type NegotiationProgressEvent,
+} from "../support/negotiation.runner";
 import type { EvaluatorEntity } from "../agents/opportunity.evaluator";
 import { protocolLogger } from "../support/protocol.logger";
 import type { Opportunity } from "../interfaces/database.interface";
@@ -514,9 +518,105 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
 
+      // ── Run agent-to-agent negotiations for discovered candidates ──
+      let finalOpportunities = result.opportunities ?? [];
+      if (finalOpportunities.length > 0) {
+        allDebugSteps.push({ step: "negotiation_start", detail: `${finalOpportunities.length} candidate(s)` });
+
+        // Build candidates from opportunities for negotiation
+        const candidates = finalOpportunities.map((opp) => ({
+          candidateUserId: opp.userId,
+          candidateIntentId: undefined,
+          indexId: effectiveIndexId ?? indexScope[0] ?? "",
+          similarity: opp.score,
+          lens: "discovery",
+          candidatePayload: opp.matchReason,
+        }));
+
+        // Stream progress via context.streamWriter if available
+        const streamProgress = context.streamWriter
+          ? (event: NegotiationProgressEvent) => {
+              context.streamWriter!({
+                type: "negotiation_progress",
+                negotiationId: event.negotiationId,
+                candidateUserId: event.candidateUserId,
+                candidateName: event.candidateName,
+                eventType: event.type === "negotiation_start" ? "start"
+                  : event.type === "negotiation_turn" ? "turn"
+                  : "end",
+                turn: event.turn,
+                maxTurns: event.maxTurns,
+                speaker: event.speaker,
+                message: event.message,
+                decision: event.decision,
+                outcome: event.outcome,
+                reasoning: event.reasoning,
+              });
+            }
+          : undefined;
+
+        const negotiationResults = await runNegotiations({
+          userId: context.userId,
+          candidates,
+          database,
+          trigger: {
+            source: "search",
+            query: searchQuery,
+            indexId: effectiveIndexId,
+          },
+          streamProgress,
+          maxTurns: 3,
+          concurrency: 3,
+        });
+
+        // Filter to only accepted negotiations
+        const acceptedUserIds = new Set(
+          negotiationResults
+            .filter((r) => r.outcome === "opportunity")
+            .map((r) => r.candidateUserId)
+        );
+
+        // Add negotiation debug steps
+        for (const negResult of negotiationResults) {
+          allDebugSteps.push({
+            step: "negotiation",
+            detail: `${negResult.candidateName ?? negResult.candidateUserId}: ${negResult.outcome}`,
+            data: {
+              candidateUserId: negResult.candidateUserId,
+              candidateName: negResult.candidateName,
+              outcome: negResult.outcome,
+              turns: negResult.turns.length,
+              reasoning: negResult.reasoning,
+            },
+          });
+        }
+
+        // Filter opportunities to only accepted ones
+        finalOpportunities = finalOpportunities.filter((opp) => acceptedUserIds.has(opp.userId));
+
+        allDebugSteps.push({
+          step: "negotiation_complete",
+          detail: `${acceptedUserIds.size} accepted, ${negotiationResults.length - acceptedUserIds.size} declined/deferred`,
+        });
+
+        // If no opportunities passed negotiation, return appropriate message
+        if (finalOpportunities.length === 0) {
+          const deferredCount = negotiationResults.filter((r) => r.outcome === "deferred").length;
+          const message = deferredCount > 0
+            ? `Negotiations complete. ${deferredCount} potential connection(s) were deferred for later - the timing wasn't right. Try again later or try a different query.`
+            : "Negotiations complete. No suitable connections found after agent evaluation. Try a different query.";
+          return success({
+            found: false,
+            count: 0,
+            message,
+            debugSteps: allDebugSteps,
+          });
+        }
+      }
+
       // Format opportunities as code blocks for the LLM to include in its response
       // The frontend will parse opportunity code blocks and render them as cards
-      const opportunityBlocks = (result.opportunities ?? []).map((opp) => {
+      const opportunityBlocks = finalOpportunities.map((opp) => {
         const cardData = {
           opportunityId: opp.opportunityId,
           userId: opp.userId,
@@ -547,7 +647,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const blocksText = opportunityBlocks.join("\n\n");
       let message =
         "Found " +
-        result.count +
+        finalOpportunities.length +
         " potential connection(s). IMPORTANT: Include the following " + CODE_FENCE + "opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n" +
         blocksText;
       const existingForMention = result.existingConnectionsForMention ?? result.existingConnections ?? [];
@@ -564,7 +664,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
       return success({
         found: true,
-        count: result.count,
+        count: finalOpportunities.length,
         message,
         ...(result.existingConnections?.length ? { existingConnections: result.existingConnections } : {}),
         ...(result.pagination ? { pagination: result.pagination } : {}),

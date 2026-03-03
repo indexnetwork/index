@@ -9,6 +9,8 @@ export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'pending', 'viewed', 'accepted', 'rejected', 'expired']);
+export const negotiationStatusEnum = pgEnum('negotiation_status', ['initiated', 'in_progress', 'resolved', 'expired']);
+export const negotiationOutcomeEnum = pgEnum('negotiation_outcome', ['opportunity', 'disengaged', 'deferred']);
 
 export interface OnboardingState {
   completedAt?: string;
@@ -199,12 +201,13 @@ export const hydeDocuments = pgTable('hyde_documents', {
 }));
 
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment';
+  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'negotiation';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
   timestamp: string;
   enrichedFrom?: string[];
+  negotiationId?: Id<'negotiations'>;
 }
 
 export interface OpportunityActor {
@@ -245,6 +248,36 @@ export const opportunities = pgTable('opportunities', {
   expiresAt: timestamp('expires_at', { withTimezone: true }),
 }, (table) => ({
   statusIdx: index('opportunities_status_idx').on(table.status),
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Negotiations (agent-to-agent negotiation protocol)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import type {
+  NegotiationParticipant,
+  NegotiationTrigger,
+  NegotiationTurn,
+  NegotiationResolution,
+} from '../types/negotiation.types';
+
+export const negotiations = pgTable('negotiations', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  status: negotiationStatusEnum('status').notNull().default('initiated'),
+  outcome: negotiationOutcomeEnum('outcome'),
+  participants: jsonb('participants').$type<NegotiationParticipant[]>().notNull(),
+  trigger: jsonb('trigger').$type<NegotiationTrigger>().notNull(),
+  turns: jsonb('turns').$type<NegotiationTurn[]>().notNull().default([]),
+  resolution: jsonb('resolution').$type<NegotiationResolution>(),
+  opportunityId: text('opportunity_id').references(() => opportunities.id),
+  currentTurn: integer('current_turn').notNull().default(0),
+  maxTurns: integer('max_turns').notNull().default(3),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+}, (table) => ({
+  statusIdx: index('negotiations_status_idx').on(table.status),
+  participantsIdx: index('negotiations_participants_idx').using('gin', table.participants),
 }));
 
 export const intents = pgTable('intents', {
@@ -491,6 +524,13 @@ export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
   }),
 }));
 
+export const negotiationsRelations = relations(negotiations, ({ one }) => ({
+  opportunity: one(opportunities, {
+    fields: [negotiations.opportunityId],
+    references: [opportunities.id],
+  }),
+}));
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Hidden conversations (persistent chat deletion)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -531,3 +571,5 @@ export type HydeDocument = typeof hydeDocuments.$inferSelect;
 export type NewHydeDocument = typeof hydeDocuments.$inferInsert;
 export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
+export type Negotiation = typeof negotiations.$inferSelect;
+export type NewNegotiation = typeof negotiations.$inferInsert;
