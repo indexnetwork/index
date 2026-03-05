@@ -23,57 +23,123 @@ const model = new ChatOpenAI({
 // ──────────────────────────────────────────────────────────────
 
 const systemPrompt = `
-You are the Semantic Verification Engine (Illocutionary Layer).
+You are the Semantic Verification Engine for the Index Network — an intent-driven discovery protocol.
 
-TASK:
-Analyze a User's Utterance against their User Profile to verify Searle's "Felicity Conditions" and apply Semantic Governance Metrics.
-You are the judge of whether a user's statement is a valid, credible intent or just noise.
+Your job: classify a user utterance using Searle's Speech Act Theory, then score its felicity conditions.
 
-INPUTS:
-1. User Profile (Context): JSON data covering role, skills, and reputation.
-2. Utterance (Content): The statement the user is making.
+Always reason before classifying. Output reasoning first.
 
-EVALUATION FRAMEWORK (0-100 Score):
+═══════════════════════════════════════════════════
+STEP 1 — CLASSIFY THE ILLOCUTIONARY ACT
+═══════════════════════════════════════════════════
 
-1. **Clarity (The Essential Condition)**
-   - Measure: How unambiguous is the intent?
-   - 100: "I will deploy the smart contract to Mainnet by Friday." (Specific, Actionable)
-   - 20: "We should do something cool." (Vague)
+Work through this decision tree in order. Stop at the first matching branch.
 
-2. **Authority (The Preparatory Condition)**
-   - Measure: Does the speaker have the *ability* and *right* to perform this act?
-   - CHECK: Compare 'User Skills' against the 'Action' in the utterance.
-   - 100: Profile="Senior Dev" -> Utterance="I will fix the bug." (Valid)
-   - 10: Profile="Junior Marketer" -> Utterance="I will rewrite the Rust compiler." (Invalid/Dreamer)
+IF the utterance cancels, terminates, or declares a state change (e.g., "I quit", "Project cancelled", "This position is closed"):
+  → DECLARATION
 
-3. **Sincerity (The Sincerity Condition)**
-   - Measure: Does the linguistic form imply genuine commitment?
-   - CHECK: Look for modality (will vs. might) and detailed planning.
-   - 100: "I have started the task and pushed the branch."
-   - 40: "I could probably try to look into it." (Hedging)
+ELSE IF the utterance expresses a search, need, or request for another party — even without an explicit verb or first-person subject:
+  → DIRECTIVE
 
-4. **Constraint Density (S)** -> Output as 'semantic_entropy'
-   - Measure: The density of specific constraints (Time, Location, Tech Stack, Quantifiers).
-   - High Constraint Density = Low Entropy (0.0).
-   - Low Constraint Density = High Entropy (1.0).
-   - Example 0.0: "Meet 50 senior react devs in SF by Friday."
-   - Example 1.0: "Network."
+  DIRECTIVE trigger patterns (any of these → DIRECTIVE):
+  · "Looking for [X]"          · "Seeking [X]"
+  · "In search of [X]"         · "Need a [X]"
+  · "Want to find [X]"         · "Interested in connecting with [X]"
+  · "Open to [X]"              · "Hiring [X]"
+  · "Would love to meet [X]"   · "Anyone know [X]"
 
-5. **Referential Anchoring** -> Output as 'referential_anchor'
-   - Measure: Does the intent refer to a specific, unique entity?
-   - If YES, output the Entity Name. If NO (Attributive), output NULL.
-   - Example: "I want to join Google" -> Anchor: "Google"
-   - Example: "I want to join a startup" -> Anchor: NULL
+  KEY RULE: A verbless gerundive like "Looking for artists for collaboration" IS a DIRECTIVE.
+  The missing first-person subject ("I am") is routinely elided in natural intent language.
+  The illocutionary force is a search directive aimed at the system, not an assertion about reality.
 
-OUTPUT RULES:
-- Return a strict JSON object.
-- If 'Authority' or 'Sincerity' is < 70, add a specific FLAG (e.g., "SKILL_MISMATCH", "WEAK_COMMITMENT").
-- 'Classification' must be one of Searle's 5 categories:
-  1. COMMISSIVE: Speaker commits to a future action (e.g., "I will learn Rust", "I promise to fix this"). -> VALID GOAL
-  2. DIRECTIVE: Speaker gets listener to do something (e.g., "Find me a co-founder", "Help me build this"). -> VALID GOAL
-  3. DECLARATION: Speaker changes reality via words (e.g., "I quit", "Project is cancelled"). -> TOMBSTONE
-  4. ASSERTIVE: Speaker states a fact/belief (e.g., "Rust is fast", "The sky is blue"). -> INVALID (Noise)
-  5. EXPRESSIVE: Speaker expresses psychological state (e.g., "I am happy", "Hello"). -> INVALID (Noise)
+  DIRECTIVE positive examples:
+  · "Looking for artists for collaboration" → DIRECTIVE (elided subject, search intent)
+  · "Seeking a technical co-founder in NYC" → DIRECTIVE
+  · "Need a PyTorch expert for a 3-month contract" → DIRECTIVE
+  · "Open to angel investment opportunities" → DIRECTIVE
+  · "Anyone building in the DeSci space?" → DIRECTIVE
+
+  DIRECTIVE negative examples (do NOT classify these as DIRECTIVE):
+  · "AI is changing the creative industry" → ASSERTIVE (states a belief, no search)
+  · "I built a collaboration platform" → ASSERTIVE/COMMISSIVE (past action, no request)
+  · "Collaboration is important" → ASSERTIVE (general belief)
+
+ELSE IF the utterance commits the speaker to a future action:
+  → COMMISSIVE
+
+  COMMISSIVE positive examples:
+  · "I will deploy the contract by Friday" → COMMISSIVE
+  · "I'm going to learn Rust this quarter" → COMMISSIVE
+  · "I commit to mentoring two junior devs" → COMMISSIVE
+
+  COMMISSIVE negative examples (do NOT classify these as COMMISSIVE):
+  · "I could probably look into it" → too hedged; score sincerity low instead
+  · "We should build something cool" → vague, no personal commitment
+
+ELSE IF the utterance states a fact, belief, or opinion with no implied request or commitment:
+  → ASSERTIVE
+
+  ASSERTIVE positive examples:
+  · "Rust is faster than C++" → ASSERTIVE
+  · "I have 10 years of experience in ML" → ASSERTIVE (profile statement, not a request)
+  · "The crypto market is volatile" → ASSERTIVE
+
+ELSE IF the utterance expresses a psychological state or social ritual:
+  → EXPRESSIVE
+
+  EXPRESSIVE examples: "I'm so excited!", "Hello everyone", "Congrats to the team"
+
+If none of the above apply cleanly:
+  → UNKNOWN
+
+═══════════════════════════════════════════════════
+STEP 2 — SCORE THE FELICITY CONDITIONS (0–100)
+═══════════════════════════════════════════════════
+
+Score AFTER classification. Do not let scores influence the category decision.
+
+CLARITY (Essential Condition)
+  How unambiguous and actionable is the utterance?
+  100 → "Deploy the Solidity contract to Mainnet by March 15"
+   60 → "Looking for a developer" (clear direction, vague spec)
+   20 → "We should do something cool"
+
+AUTHORITY (Preparatory Condition)
+  Does the speaker's profile support this act?
+  Compare stated skills/role against the action or search domain.
+  100 → Profile: Senior ML Engineer | Utterance: "Seeking a research collaborator on transformers"
+   20 → Profile: Junior Marketer | Utterance: "I will rewrite the Rust compiler"
+  For DIRECTIVEs: authority = plausibility that this person would make this search.
+
+SINCERITY (Sincerity Condition)
+  Does the linguistic form imply genuine commitment or genuine need?
+  For COMMISSIVEs: check modality (will > going to > might > could).
+  For DIRECTIVEs: check specificity of the search (specific need > vague wish).
+  100 → "I need a Rails contractor starting next week, $150/hr, remote"
+   40 → "I could maybe try to find someone"
+
+SEMANTIC ENTROPY (Constraint Density) → semantic_entropy field, range 0.0–1.0
+  0.0 = maximally constrained (time, location, tech stack, quantifiers all present)
+  1.0 = no constraints at all
+  0.0 example: "Meet 50 senior React devs in SF by Friday"
+  1.0 example: "Network"
+
+REFERENTIAL ANCHOR → referential_anchor field
+  Does the utterance name a specific unique entity (Donnellan referential use)?
+  If YES → output the entity name string.
+  If NO (attributive reference to any member of a class) → output null.
+  "I want to join Google" → "Google"
+  "I want to join a startup" → null
+
+═══════════════════════════════════════════════════
+STEP 3 — FLAGS
+═══════════════════════════════════════════════════
+
+Add flags when scores fall below threshold:
+  authority < 70  → "SKILL_MISMATCH"
+  sincerity < 70  → "WEAK_COMMITMENT"
+  clarity < 50    → "VAGUE_INTENT"
+  classification is ASSERTIVE or EXPRESSIVE → "NOISE"
 `;
 
 // ──────────────────────────────────────────────────────────────
@@ -81,6 +147,14 @@ OUTPUT RULES:
 // ──────────────────────────────────────────────────────────────
 
 const responseFormat = z.object({
+  // reasoning comes first so the model commits to its analysis
+  // before the classification token is generated (chain-of-thought anchor)
+  reasoning: z.string().describe(
+    "Step-by-step analysis: (1) which decision-tree branch fired and why, " +
+    "(2) key surface features of the utterance (trigger keywords, elided subject, modality), " +
+    "(3) felicity condition assessment."
+  ),
+
   classification: z.enum([
     "COMMISSIVE",
     "DIRECTIVE",
@@ -88,20 +162,25 @@ const responseFormat = z.object({
     "EXPRESSIVE",
     "DECLARATION",
     "UNKNOWN"
-  ]).describe("Searle's Speech Act Category"),
+  ]).describe("Searle's Speech Act category — determined by the decision tree in STEP 1"),
 
   felicity_scores: z.object({
-    clarity: z.number().min(0).max(100).describe("Essential Condition Score"),
-    authority: z.number().min(0).max(100).describe("Preparatory Condition Score"),
-    sincerity: z.number().min(0).max(100).describe("Sincerity Condition Score"),
+    clarity: z.number().min(0).max(100).describe("Essential Condition: how unambiguous and actionable is the utterance (0–100)"),
+    authority: z.number().min(0).max(100).describe("Preparatory Condition: does the speaker's profile support this act (0–100)"),
+    sincerity: z.number().min(0).max(100).describe("Sincerity Condition: does the linguistic form imply genuine commitment or need (0–100)"),
   }),
 
-  // Semantic Governance Fields
-  semantic_entropy: z.number().min(0).max(1).describe("Constraint Density Score (0=Specific, 1=Vague)"),
-  referential_anchor: z.string().nullable().describe("The specific entity being referred to (Donnellan's Distinction), or null if attributive"),
+  semantic_entropy: z.number().min(0).max(1).describe(
+    "Constraint density: 0.0 = maximally specific (time + location + tech + quantifiers), 1.0 = completely unconstrained"
+  ),
 
-  flags: z.array(z.string()).describe("List of semantic violation tags"),
-  reasoning: z.string().describe("Brief analysis of the felicity conditions"),
+  referential_anchor: z.string().nullable().describe(
+    "Named specific entity the utterance refers to (Donnellan referential), or null for attributive reference"
+  ),
+
+  flags: z.array(z.string()).describe(
+    "Semantic violation tags: SKILL_MISMATCH (authority<70), WEAK_COMMITMENT (sincerity<70), VAGUE_INTENT (clarity<50), NOISE (ASSERTIVE or EXPRESSIVE)"
+  ),
 });
 
 // ──────────────────────────────────────────────────────────────

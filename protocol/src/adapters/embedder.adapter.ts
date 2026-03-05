@@ -26,6 +26,7 @@ export interface HydeSearchOptions {
   limitPerStrategy?: number;
   limit?: number;
   minScore?: number;
+  profileMinScore?: number;
 }
 
 export interface HydeCandidate {
@@ -142,6 +143,7 @@ export class EmbedderAdapter {
       limitPerStrategy = 40,
       limit = 80,
       minScore = 0.40,
+      profileMinScore = 0.25,
     } = options;
 
     const filter = { indexScope, excludeUserId };
@@ -154,7 +156,7 @@ export class EmbedderAdapter {
           le.embedding,
           filter,
           limitPerStrategy,
-          minScore,
+          profileMinScore,
           le.lens
         );
       }
@@ -182,10 +184,11 @@ export class EmbedderAdapter {
       limitPerStrategy = 40,
       limit = 80,
       minScore = 0.40,
+      profileMinScore = 0.25,
     } = options;
     const filter = { indexScope, excludeUserId };
     const [profileResults, intentResults] = await Promise.all([
-      this.searchProfilesByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, minScore),
+      this.searchProfilesByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, profileMinScore),
       this.searchIntentsByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, minScore),
     ]);
     const flatResults = [...profileResults, ...intentResults];

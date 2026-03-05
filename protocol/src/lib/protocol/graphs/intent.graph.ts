@@ -11,7 +11,7 @@ import { timed } from "../../performance";
 
 const logger = protocolLogger("IntentGraphFactory");
 const MAX_PERMISSIBLE_ENTROPY = 0.75;
-const MIN_CLEAR_INTENT_SCORE = 55;
+const MIN_CLEAR_INTENT_SCORE = 40;
 const GENERIC_JOB_PHRASE = /\b(?:a|any|some)\s+job\b/i;
 
 type ParsedProfile = {

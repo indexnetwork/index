@@ -5,7 +5,7 @@
  */
 
 import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "./opportunity.constants";
-import { stripUuids } from "./opportunity.sanitize";
+import { stripUuids, stripIntroducerMentions } from "./opportunity.sanitize";
 
 /**
  * Splits text into sentences using (?<=[.!?])\s+ (period/exclamation/question followed by whitespace).
@@ -30,6 +30,7 @@ function splitSentences(text: string): string[] {
  * @param counterpartName - Display name of the suggested connection (e.g. "Alex Chen").
  * @param maxChars - Max length of returned string (default MINIMAL_MAIN_TEXT_MAX_CHARS).
  * @param viewerName - Optional display name of the viewer (signed-in user). When provided, sentences or prefixes describing the viewer are skipped so the card introduces the counterpart, not the viewer.
+ * @param introducerName - Optional display name of the introducer. When provided, introducer phrases (e.g., "X introduced you to...") are stripped from the summary to keep the body text focused on match quality.
  * @returns Viewer-centric snippet mentioning the counterpart when possible; if counterpartName is empty, returns reasoning truncated to maxChars. Never null; may be "A suggested connection." when reasoning is empty.
  */
 export function viewerCentricCardSummary(
@@ -37,14 +38,20 @@ export function viewerCentricCardSummary(
   counterpartName: string,
   maxChars: number = MINIMAL_MAIN_TEXT_MAX_CHARS,
   viewerName?: string,
+  introducerName?: string,
 ): string {
   const raw = stripUuids(reasoning);
   if (!raw) return "A suggested connection.";
 
   const name = counterpartName.trim();
   if (!name) {
-    const out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
-    return replaceViewerNameWithYou(out, viewerName);
+    let out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
+    // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
+    if (introducerName) {
+      out = stripIntroducerMentions(out, introducerName);
+    }
+    out = replaceViewerNameWithYou(out, viewerName);
+    return out;
   }
 
   const sentences = splitSentences(raw);
@@ -72,8 +79,13 @@ export function viewerCentricCardSummary(
     );
     if (cleanIdx !== -1) {
       const result = sentences.slice(cleanIdx).join(" ").trim();
-      const out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
-      return replaceViewerNameWithYou(out, viewerName, [name]);
+      let out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
+      // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
+      if (introducerName) {
+        out = stripIntroducerMentions(out, introducerName);
+      }
+      out = replaceViewerNameWithYou(out, viewerName, [name]);
+      return out;
     }
 
     // Second pass: sentence mentions counterpart but starts with viewer (compound sentence).
@@ -92,8 +104,13 @@ export function viewerCentricCardSummary(
         const extracted = sentence.slice(cpIdx).trim();
         const rest = sentences.slice(compoundIdx + 1).join(" ").trim();
         const result = rest ? `${extracted} ${rest}` : extracted;
-        const out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
-        return replaceViewerNameWithYou(out, viewerName, [name]);
+        let out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
+        // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
+        if (introducerName) {
+          out = stripIntroducerMentions(out, introducerName);
+        }
+        out = replaceViewerNameWithYou(out, viewerName, [name]);
+        return out;
       }
     }
   }
@@ -101,16 +118,26 @@ export function viewerCentricCardSummary(
   // Fallback: original logic without viewer awareness
   const idx = sentences.findIndex(hasCounterpartName);
   if (idx === -1) {
-    const out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
-    return replaceViewerNameWithYou(out, viewerName, [name]);
+    let out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
+    // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
+    if (introducerName) {
+      out = stripIntroducerMentions(out, introducerName);
+    }
+    out = replaceViewerNameWithYou(out, viewerName, [name]);
+    return out;
   }
 
   const fromCounterpart = sentences.slice(idx).join(" ").trim();
-  const out =
+  let out =
     fromCounterpart.length <= maxChars
       ? fromCounterpart
       : fromCounterpart.slice(0, maxChars) + "...";
-  return replaceViewerNameWithYou(out, viewerName, [name]);
+  // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
+  if (introducerName) {
+    out = stripIntroducerMentions(out, introducerName);
+  }
+  out = replaceViewerNameWithYou(out, viewerName, [name]);
+  return out;
 }
 
 /** Max length for narrator chip text (matches LLM presenter schema). */
@@ -125,6 +152,11 @@ const FALLBACK_REMARK = "A potential connection worth exploring.";
  *
  * Extracts domain keywords (e.g. "AI", "design", "machine learning") from the
  * reasoning and frames them in a short template like "Shared interest in AI and design."
+ *
+ * This is a regex-based heuristic — an alternative is OpportunityPresenter.presentHomeCard()
+ * which generates narratorRemark via LLM with much higher quality (already used by
+ * home.graph.ts and opportunity.discover.ts). See buildMinimalOpportunityCard() in
+ * opportunity.tools.ts for the trade-off discussion.
  *
  * @param reasoning - Raw interpretation.reasoning text.
  * @param counterpartName - Display name of the counterpart (stripped from output).
@@ -198,8 +230,8 @@ function extractDomainTerms(text: string): string[] {
 
   // Known domain phrases (order matters — longer first)
   const knownPhrases = [
-    /\b(machine learning|artificial intelligence|software development|game development|web development|data science|deep learning|natural language processing|computer vision|cloud computing|mobile development|product design|user experience|graphic design|character design|frontend development|backend development|full[- ]stack)\b/gi,
-    /\b(AI|ML|UX|UI|API|NLP|SaaS|DevOps|React|Node|Python|TypeScript|JavaScript)\b/g,
+    /\b(machine learning|artificial intelligence|software development|game development|web development|data science|deep learning|natural language processing|computer vision|cloud computing|mobile development|product design|user experience|graphic design|character design|frontend development|backend development|full[- ]stack|smart contracts|visual art|creative writing|content creation|digital marketing|venture capital|angel invest(?:ing|ment)|open source|blockchain|cryptocurrency|decentralized finance|social impact|community building|music production|film(?:making| production)|photography|illustration|animation|3D modeling|startup|co-?founding|entrepreneurship|research|consulting|mentoring|freelanc(?:e|ing))\b/gi,
+    /\b(AI|ML|UX|UI|API|NLP|SaaS|DeFi|DevOps|DeSci|NFT|DAO|React|Node|Python|TypeScript|JavaScript|Rust|Solidity|Go|Swift|Kotlin|Figma|Blender|Unity|Unreal)\b/g,
   ];
 
   for (const pattern of knownPhrases) {
@@ -218,24 +250,55 @@ function extractDomainTerms(text: string): string[] {
     }
   }
 
-  // If no known phrases found, look for capitalized noun-like words
-  // (skip common English words and articles)
+  // If no known phrases found, look for capitalized multi-word phrases
+  // that look like explicit topic references (e.g. "Visual Art", "Smart Contracts").
+  // Only accept capitalized words to avoid grabbing meta-language from evaluator reasoning
+  // (e.g. "discoverer", "explicitly", "states" which are about the matching process, not topics).
   if (terms.length === 0) {
-    const skipWords = new Set([
-      "the", "a", "an", "is", "are", "was", "were", "has", "have", "had",
-      "both", "they", "their", "this", "that", "with", "from", "for",
-      "and", "but", "not", "can", "could", "would", "should", "may",
-      "into", "also", "very", "strong", "match", "between", "users",
-      "based", "making", "looking", "seeking", "one", "other",
-      "complementary", "potential", "interested", "collaborate",
-      "someone", "skills", "expertise", "experience",
-    ]);
-    const words = text.match(/\b[a-zA-Z]{3,}\b/g) ?? [];
-    for (const w of words) {
-      const key = w.toLowerCase();
-      if (!skipWords.has(key) && !seen.has(key)) {
-        // Pick content words that are likely domain-relevant
-        if (/ing$|tion$|ment$|ist$|er$|or$|ics$|tic$/.test(key) || key.length >= 6) {
+    // Multi-word capitalized phrases first (e.g. "Visual Art", "Creative Writing")
+    const multiWordPattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
+    for (const match of text.matchAll(multiWordPattern)) {
+      const term = match[1];
+      const key = term.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        terms.push(key);
+        if (terms.length >= 3) break;
+      }
+    }
+
+    // Single capitalized words as last resort (skip common sentence-starters and meta-words)
+    if (terms.length === 0) {
+      const skipCapitalized = new Set([
+        // Articles / conjunctions / prepositions (capitalized at sentence start)
+        "the", "and", "but", "for", "from", "with", "without", "between",
+        "into", "about", "after", "before", "over", "under", "through",
+        // Common sentence starters / pronouns / determiners
+        "both", "their", "they", "this", "that", "these", "those",
+        "here", "there", "would", "could", "should", "also", "very",
+        "one", "another", "other", "each", "some", "many", "most",
+        "such", "clear", "high", "good", "well", "just", "even",
+        // Generic matching/relationship language
+        "strong", "match", "based", "making", "looking", "seeking",
+        "connection", "relationship", "opportunity", "overlap",
+        "complementary", "potential", "interested", "collaborate",
+        // Evaluator meta-language (about the matching process, not topics)
+        "intent", "intents", "profile", "user", "users", "person",
+        "discoverer", "explicitly", "states", "expressed", "mentioned",
+        "indicates", "suggests", "demonstrates", "describes", "involves",
+        "inference", "preparatory", "sincerity", "evaluator", "classifier",
+        "semantic", "pragmatic", "verification", "reconciliation",
+        "assertive", "commissive", "directive", "illocutionary",
+        "felicity", "utterance", "detected", "analysis", "confirmed",
+        "genuine", "conditions", "determined",
+        // Discourse markers
+        "particularly", "specifically", "especially", "primarily",
+        "overall", "furthermore", "however", "therefore", "moreover",
+      ]);
+      const capWords = text.match(/\b[A-Z][a-z]{2,}\b/g) ?? [];
+      for (const w of capWords) {
+        const key = w.toLowerCase();
+        if (!skipCapitalized.has(key) && !seen.has(key)) {
           seen.add(key);
           terms.push(key);
           if (terms.length >= 3) break;

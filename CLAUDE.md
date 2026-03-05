@@ -285,6 +285,8 @@ Each layer has a `*.template.md` with coding guidelines. Consult before adding o
 
 Protocol interfaces live in `src/lib/protocol/interfaces/` (e.g. `database.interface.ts`). Implementations live in `src/adapters/` (database, embedder, cache, queue, scraper). Controllers (e.g. opportunity, chat) receive database/queue abstractions via constructor injection so they can be tested with mocks.
 
+**Adapter file naming**: Use **conceptual** names (role/capability), not implementation technology. Pattern: `{concept}.adapter.ts`. Examples: `database.adapter.ts` (not `drizzle.adapter.ts`), `cache.adapter.ts` and `queue.adapter.ts` (not `redis.adapter.ts`), `storage.adapter.ts` (not `s3.adapter.ts`). Tests: `{concept}.adapter.spec.ts`.
+
 ### Controller and Decorator Routing
 
 The API uses class-based controllers with `@Controller(prefix)`, `@Get(path)`, `@Post(path)`, and optional guards. Routes are registered in `RouteRegistry` and dispatched in `main.ts`. See `protocol/src/controllers/controller.template.md` and `protocol/src/lib/router/router.decorators.ts`.
@@ -613,6 +615,8 @@ All files in the protocol directory should follow the pattern: `{domain}.{purpos
 | `.queue` | Job queue definitions | `intent.queue.ts` |
 | `.spec` | Test files | `router.agent.spec.ts` |
 
+**Adapters** (`protocol/src/adapters/`): Name by **concept**, not by tech. Use `{concept}.adapter.ts` (e.g. `database.adapter.ts`, `cache.adapter.ts`, `queue.adapter.ts`). Do not name after the implementation (e.g. no `drizzle.adapter.ts`, `redis.adapter.ts`, `bullmq.adapter.ts`). See Adapter Pattern above.
+
 **Exceptions** (exempt from convention):
 - `index.ts` - Barrel export files
 - `schema.ts` - Database schema files
@@ -715,14 +719,14 @@ Follow these conventions for version control operations.
 
 **Use a worktree** for any new feature or bugfix work. Do not do feature or fix work on the main working tree (e.g. on `dev` at repo root). Create a worktree, do the work there, then open PRs from that branch. This keeps `dev` stable and isolates changes.
 
-- **New feature** → create worktree (e.g. `feat/my-feature`), implement and test there.
-- **Bug fix** → create worktree (e.g. `fix/issue-name`), fix and test there.
+- **New feature** → create worktree folder `feat-my-feature` (branch: `feat/my-feature`), implement and test there.
+- **Bug fix** → create worktree folder `fix-issue-name` (branch: `fix/issue-name`), fix and test there.
 
 Only use the main working tree for small docs/config edits, dependency bumps, or when explicitly told otherwise.
 
 ### Worktrees
 
-Worktrees live in `.worktrees/` (gitignored). They share the same git history but have an isolated working tree. Since `.gitignore`d files (`node_modules/`, `.env*`) are not copied into worktrees, you must run `bun run worktree:setup <name>` after creating one. This symlinks `.env*` files from the main repo into the worktree for all workspaces (`protocol`, `frontend`, `evaluator`). It also runs `bun install` in each workspace (`node_modules` can't be symlinked because Turbopack rejects symlinks pointing outside the worktree root).
+Worktrees live in `.worktrees/` (gitignored). They share the same git history but have an isolated working tree. **Worktree folder names must use dashes, not slashes** (e.g. `feat-my-feature`, not `feat/my-feature`) — slashes create subdirectories which Zed does not support. The branch inside the worktree can still follow the conventional `feat/my-feature` format. Since `.gitignore`d files (`node_modules/`, `.env*`) are not copied into worktrees, you must run `bun run worktree:setup <name>` after creating one. This symlinks `.env*` files from the main repo into the worktree for all workspaces (`protocol`, `frontend`, `evaluator`). It also runs `bun install` in each workspace (`node_modules` can't be symlinked because Turbopack rejects symlinks pointing outside the worktree root).
 
 ```bash
 # After creating a worktree (e.g., via `git worktree add .worktrees/feat-foo dev`)

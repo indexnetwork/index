@@ -18,11 +18,10 @@ export const HYDE_DEFAULT_CACHE_TTL = 3600;
  */
 export const HYDE_CORPUS_PROMPTS: Record<'profiles' | 'intents', (sourceText: string, lens: string) => string> = {
   profiles: (sourceText, lens) => `
-    Write a professional biography for someone who is: ${lens}.
-    This person would be a relevant match for: "${sourceText}".
+    Write a professional biography for someone who could fulfill this need: "${sourceText}".
+    Focus on the specific expertise, background, and role described by: ${lens}.
 
-    Write in first person as if they are describing themselves.
-    Include their expertise, experience, and current focus.
+    Write in first person. Include concrete skills, domain experience, and current professional focus that would make them a strong match.
   `,
   intents: (sourceText, lens) => `
     Write a goal or aspiration statement for someone who is: ${lens}.

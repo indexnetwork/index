@@ -282,7 +282,9 @@ export default function OpportunityCard({
           />
           <div className="min-w-0">
             <h4 className="font-bold text-gray-900 text-sm hover:underline">
-              {card.name || "Someone"}
+              {card.viewerRole === "introducer" && card.headline
+                ? card.headline
+                : card.name || "Someone"}
             </h4>
             <p className="text-[11px] text-[#3D3D3D]">
               {card.mutualIntentsLabel || "Potential connection"}

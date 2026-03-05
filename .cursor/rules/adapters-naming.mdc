@@ -1,0 +1,30 @@
+---
+description: Adapter file naming — use conceptual names, not implementation tech
+globs: protocol/src/adapters/**/*.ts
+alwaysApply: false
+---
+
+# Adapters: Conceptual Naming
+
+Name adapter files by **concept/role**, not by the underlying technology.
+
+## Do
+
+- **database.adapter.ts** — persistence/ORM (even if implemented with Drizzle)
+- **cache.adapter.ts** — caching (even if implemented with Redis)
+- **queue.adapter.ts** — job queues (even if implemented with Redis/BullMQ)
+- **embedder.adapter.ts** — embeddings
+- **storage.adapter.ts** — blob/file storage
+- **scraper.adapter.ts** — scraping/crawling
+- **messaging.adapter.ts** — messaging/notifications
+
+## Don’t
+
+- **drizzle.adapter.ts** → use `database.adapter.ts`
+- **redis.adapter.ts** → use `cache.adapter.ts` and/or `queue.adapter.ts` (separate concepts)
+- **bullmq.adapter.ts** → use `queue.adapter.ts`
+- **s3.adapter.ts** → use `storage.adapter.ts`
+
+## Pattern
+
+`{concept}.adapter.ts` where **concept** is the protocol role (database, cache, queue, etc.), not the library or service name. Tests: `{concept}.adapter.spec.ts`.

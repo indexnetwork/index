@@ -81,7 +81,15 @@ const systemPrompt = `
   - For CREATE operations: Extract what the user wants to ADD.
   - For UPDATE operations: Extract what the user wants to CHANGE.
   - For queries/questions: You should not see these - return empty intents.
-  
+
+  CONTENT GROUNDING (CRITICAL):
+  - When New Content is present, EVERY inferred intent MUST be directly related to the New Content.
+  - The User Profile is ENRICHMENT CONTEXT ONLY — use it to add specificity or domain detail to content-derived intents.
+  - Do NOT generate intents from the profile that are unrelated to the New Content.
+  - If the New Content is a short phrase (e.g., "artist", "photographer"), treat it as the user's stated goal — infer what they want regarding that topic.
+  - Example: New Content = "artist", Profile = "Building a decentralized protocol" → Intent: "Find or connect with artists" (NOT "Secure partnerships for decentralized protocol")
+  - Example: New Content = "looking for a photographer", Profile = "AI startup founder" → Intent: "Find a photographer" (NOT "Recruit AI engineers")
+
   CONCEPT EXTRACTION (CRITICAL FOR MATCHING):
   - Intents must be SELF-CONTAINED and understandable to strangers with no prior context.
   - When a document describes a project, the project's NAME is irrelevant - only WHAT IT DOES and WHAT TECH IT USES matters.
@@ -108,6 +116,7 @@ const systemPrompt = `
   - Only when explicitly instructed: "(No content provided. Please infer intents from Profile Narrative and Aspirations)"
   - This should ONLY happen for CREATE operations with no explicit user input
   - Never infer from profile for query operations
+  - When content IS present: profile may inform HOW to describe the intent (e.g., adding domain context), but must NOT change WHAT the intent is about
 `;
 
 // ──────────────────────────────────────────────────────────────

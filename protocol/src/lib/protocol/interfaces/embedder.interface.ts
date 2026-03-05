@@ -24,8 +24,10 @@ export interface HydeSearchOptions {
   limitPerStrategy?: number;
   /** Max results after merge/rank (default 20). */
   limit?: number;
-  /** Minimum cosine similarity (0–1) to include (default 0.5). */
+  /** Minimum cosine similarity for intent searches (default 0.40). */
   minScore?: number;
+  /** Minimum cosine similarity for profile searches (default 0.25). Lower because profile embeddings are broader. */
+  profileMinScore?: number;
 }
 
 /** Options for searchWithProfileEmbedding (no lenses; direct profile similarity). */

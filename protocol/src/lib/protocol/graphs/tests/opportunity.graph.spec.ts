@@ -1018,6 +1018,105 @@ describe('Opportunity Graph', () => {
     });
   });
 
+  describe('targetUserId filtering', () => {
+    test('when targetUserId is set, only candidates matching that user are returned', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluatorResult: [
+          {
+            reasoning: 'Shared interest in design and technology.',
+            score: 82,
+            actors: [
+              { userId: 'user-source', role: 'patient' as const, intentId: null },
+              { userId: 'user-alice', role: 'agent' as const, intentId: null },
+            ],
+          },
+        ],
+      });
+      // Return two candidates: user-bob and user-alice
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob' as Id<'intents'>,
+          userId: 'user-bob',
+          score: 0.9,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+        {
+          type: 'intent' as const,
+          id: 'intent-alice' as Id<'intents'>,
+          userId: 'user-alice',
+          score: 0.85,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+      ]);
+
+      const result = await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'design and technology overlap',
+        targetUserId: 'user-alice' as Id<'users'>,
+        options: {},
+      });
+
+      // Only user-alice should be evaluated and persisted
+      expect(result.opportunities.length).toBe(1);
+      const actors = result.opportunities[0].actors;
+      const candidateActor = actors.find((a: { userId: string }) => a.userId !== 'user-source');
+      expect(candidateActor?.userId).toBe('user-alice');
+    });
+
+    test('when targetUserId is not set, all candidates proceed to evaluation', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluatorResult: [
+          {
+            reasoning: 'Both building DeFi.',
+            score: 88,
+            actors: [
+              { userId: 'user-source', role: 'patient' as const, intentId: null },
+              { userId: 'user-bob', role: 'agent' as const, intentId: null },
+            ],
+          },
+          {
+            reasoning: 'Shared design interest.',
+            score: 82,
+            actors: [
+              { userId: 'user-source', role: 'patient' as const, intentId: null },
+              { userId: 'user-alice', role: 'agent' as const, intentId: null },
+            ],
+          },
+        ],
+      });
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob' as Id<'intents'>,
+          userId: 'user-bob',
+          score: 0.9,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+        {
+          type: 'intent' as const,
+          id: 'intent-alice' as Id<'intents'>,
+          userId: 'user-alice',
+          score: 0.85,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+      ]);
+
+      const result = await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'design and technology overlap',
+        options: {},
+      });
+
+      // Both candidates should proceed (no filtering) — at least 1 opportunity
+      expect(result.opportunities.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   describe('send path', () => {
     test('when opportunity is draft and user is party actor, promotes to pending and returns success', async () => {
       const opportunityId = 'opp-draft-send-test';

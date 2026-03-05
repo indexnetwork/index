@@ -1,73 +1,72 @@
-import { describe, test, expect } from 'bun:test';
-import { stripUuids } from '../opportunity.sanitize';
+import { config } from "dotenv";
+config({ path: ".env.development", override: true });
 
-describe('stripUuids', () => {
-  test('removes a single UUID', () => {
-    expect(stripUuids('hello e037ca5a-d5ce-426e-80d1-37660a6a1221 world'))
-      .toBe('hello world');
+import { describe, expect, it } from "bun:test";
+import { stripIntroducerMentions } from "../opportunity.sanitize";
+
+describe("stripIntroducerMentions", () => {
+  it("removes introducer mention at start of sentence", () => {
+    const text = "Seref Yarar introduced you to Lucy, who is actively seeking a product co-founder.";
+    const result = stripIntroducerMentions(text, "Seref Yarar");
+    expect(result).not.toContain("Seref Yarar");
+    expect(result).toContain("Lucy");
+    expect(result).toBe("Lucy, who is actively seeking a product co-founder.");
   });
 
-  test('removes multiple UUIDs', () => {
-    expect(stripUuids('user e037ca5a-d5ce-426e-80d1-37660a6a1221 and e037ca5a-d5ce-426e-80d1-37660a6a1222'))
-      .toBe('user and');
+  it("removes introducer mention with 'thinks you should meet' pattern", () => {
+    const text = "Bob thinks you should meet Alice because your skills align.";
+    const result = stripIntroducerMentions(text, "Bob");
+    expect(result).not.toContain("Bob");
+    expect(result).toBe("Alice because your skills align.");
   });
 
-  test('cleans up "(from <uuid>)" pattern', () => {
-    expect(stripUuids('Seref Yarar (from e037ca5a-d5ce-426e-80d1-37660a6a1221) at Index'))
-      .toBe('Seref Yarar at Index');
+  it("removes introducer mention with 'connected you' pattern", () => {
+    const text = "Alice connected you to Bob, who needs your help.";
+    const result = stripIntroducerMentions(text, "Alice");
+    expect(result).not.toContain("Alice");
+    expect(result).toBe("Bob, who needs your help.");
   });
 
-  test('cleans up empty parens after UUID removal', () => {
-    expect(stripUuids('Name (e037ca5a-d5ce-426e-80d1-37660a6a1221) end'))
-      .toBe('Name end');
+  it("handles text without introducer mention (no change)", () => {
+    const text = "Lucy is seeking a co-founder for her marketplace.";
+    const result = stripIntroducerMentions(text, "Seref Yarar");
+    expect(result).toBe(text);
   });
 
-  test('handles uppercase UUIDs', () => {
-    expect(stripUuids('ID: E037CA5A-D5CE-426E-80D1-37660A6A1221'))
-      .toBe('ID:');
+  it("handles case-insensitive matching", () => {
+    const text = "SEREF YARAR introduced you to Lucy.";
+    const result = stripIntroducerMentions(text, "Seref Yarar");
+    expect(result).not.toContain("SEREF YARAR");
   });
 
-  test('preserves text without UUIDs', () => {
-    expect(stripUuids('No UUIDs here at all'))
-      .toBe('No UUIDs here at all');
+  it("handles first name only matching", () => {
+    const text = "Seref introduced you to Lucy, who needs help.";
+    const result = stripIntroducerMentions(text, "Seref Yarar");
+    expect(result).not.toContain("Seref");
+    expect(result).toBe("Lucy, who needs help.");
   });
 
-  test('handles empty string', () => {
-    expect(stripUuids('')).toBe('');
+  it("removes common introducer patterns with 'to'", () => {
+    const text = "Jane introduced you to Mark. Mark is looking for a designer.";
+    const result = stripIntroducerMentions(text, "Jane");
+    expect(result).toBe("Mark. Mark is looking for a designer.");
   });
 
-  test('collapses multiple spaces after removal', () => {
-    expect(stripUuids('a  e037ca5a-d5ce-426e-80d1-37660a6a1221  b'))
-      .toBe('a b');
+  it("trims whitespace after removal", () => {
+    const text = "Seref introduced you to Lucy.";
+    const result = stripIntroducerMentions(text, "Seref Yarar");
+    expect(result).toBe("Lucy.");
   });
 
-  test('cleans up parens with only "and" filler after UUID removal', () => {
-    expect(stripUuids('Name (e037ca5a-d5ce-426e-80d1-37660a6a1221 and e037ca5a-d5ce-426e-80d1-37660a6a1222) end'))
-      .toBe('Name end');
+  it("returns original text if introducerName is empty", () => {
+    const text = "Some text here.";
+    const result = stripIntroducerMentions(text, "");
+    expect(result).toBe(text);
   });
 
-  test('cleans up parens with comma filler after UUID removal', () => {
-    expect(stripUuids('Name (e037ca5a-d5ce-426e-80d1-37660a6a1221, e037ca5a-d5ce-426e-80d1-37660a6a1222) end'))
-      .toBe('Name end');
-  });
-
-  test('cleans up parens with "from" and comma filler after UUID removal', () => {
-    expect(stripUuids('Name (from e037ca5a-d5ce-426e-80d1-37660a6a1221, e037ca5a-d5ce-426e-80d1-37660a6a1222) end'))
-      .toBe('Name end');
-  });
-
-  test('preserves parens with meaningful content after UUID removal', () => {
-    expect(stripUuids('Name (CEO, e037ca5a-d5ce-426e-80d1-37660a6a1221) end'))
-      .toBe('Name (CEO) end');
-  });
-
-  test('does not strip "and"/"from" in parens without UUIDs', () => {
-    expect(stripUuids('Name (CEO and CTO) end'))
-      .toBe('Name (CEO and CTO) end');
-  });
-
-  test('does not strip "from" in parens without UUIDs', () => {
-    expect(stripUuids('Name (from NY) end'))
-      .toBe('Name (from NY) end');
+  it("returns original text if introducerName is undefined", () => {
+    const text = "Some text here.";
+    const result = stripIntroducerMentions(text, undefined);
+    expect(result).toBe(text);
   });
 });

@@ -141,6 +141,12 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
+  /** Optional: restrict discovery to this specific user ID only (direct connection). */
+  targetUserId: Annotation<Id<'users'> | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   options: Annotation<OpportunityGraphOptions>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({}),

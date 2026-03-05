@@ -46,7 +46,8 @@ Guidelines:
 - Consider both sides: who can help the person AND whose goals complement theirs.
 - When user context is provided, tailor perspectives to their domain (e.g. a DePIN founder searching for "investors" needs crypto-native infra investors specifically).
 - Generate only perspectives that add distinct search value — don't repeat similar angles.
-- Use "profiles" when looking for a type of person (expert, advisor, leader). Use "intents" when looking for a complementary goal or need (someone raising, someone hiring, someone seeking collaboration).`;
+- Use "profiles" when looking for a type of person (expert, advisor, leader). Use "intents" when looking for a complementary goal or need (someone raising, someone hiring, someone seeking collaboration).
+- Always include at least one "profiles" perspective when the source describes a need that a specific type of professional could fulfill. Most intents benefit from profile-based discovery.`;
 
 const responseFormat = z.object({
   lenses: z.array(z.object({

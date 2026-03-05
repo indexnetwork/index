@@ -10,10 +10,11 @@ import { describe, expect, it } from 'bun:test';
 import { HYDE_CORPUS_PROMPTS, HYDE_DEFAULT_CACHE_TTL } from '../hyde.strategies';
 
 describe('HyDE Corpus Prompts', () => {
-  it('profiles prompt embeds source text and lens', () => {
+  it('profiles prompt embeds source text and lens with intent-aware framing', () => {
     const result = HYDE_CORPUS_PROMPTS.profiles('Looking for a React co-founder', 'senior frontend engineer');
     expect(result).toContain('Looking for a React co-founder');
     expect(result).toContain('senior frontend engineer');
+    expect(result).toContain('fulfill');
     expect(result.length).toBeGreaterThan(0);
   });
 

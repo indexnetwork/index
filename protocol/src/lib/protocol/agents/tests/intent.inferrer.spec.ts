@@ -127,12 +127,79 @@ I've been exploring AI/ML and want to transition into that space.
     const result = await inferrer.invoke(
       'Hello, how are you?',
       mockProfile,
-      { 
+      {
         allowProfileFallback: true,
         operationMode: 'create'
       }
     );
-    
+
     expect(result.intents.length).toBe(0);
+  }, 30000);
+});
+
+describe('ExplicitIntentInferrer - Query Grounding (IND-118)', () => {
+  const inferrer = new ExplicitIntentInferrer();
+
+  const richProfile = `
+# User Profile
+
+## Identity
+Name: Alex Chen
+Role: Founder & CTO
+
+## Narrative
+Building a decentralized discovery protocol using LangGraph and PostgreSQL.
+Previously worked on blockchain infrastructure and DeFi protocols.
+Interested in expanding the team and securing Series A funding.
+
+## Attributes
+Skills: TypeScript, LangGraph, PostgreSQL, Solidity, DeFi
+Interests: AI agents, decentralized systems, venture capital
+`;
+
+  const profileTerms = ['decentralized', 'series a', 'defi', 'blockchain', 'venture capital', 'funding'];
+
+  it('should infer intents related to the query, not unrelated profile goals', async () => {
+    const result = await inferrer.invoke(
+      'artist',
+      richProfile,
+      {
+        allowProfileFallback: false,
+        operationMode: 'create'
+      }
+    );
+
+    // Must produce at least one intent grounded in the query
+    expect(result.intents.length).toBeGreaterThan(0);
+    const hasArtistGrounding = result.intents.some(i =>
+      i.description.toLowerCase().includes('artist')
+    );
+    expect(hasArtistGrounding).toBe(true);
+
+    // Every inferred intent should be grounded in the query ("artist"),
+    // not drifting to the user's profile topics (crypto, funding, etc.)
+    for (const intent of result.intents) {
+      const desc = intent.description.toLowerCase();
+      for (const term of profileTerms) {
+        expect(desc).not.toContain(term);
+      }
+    }
+  }, 30000);
+
+  it('should produce intents semantically related to a short query', async () => {
+    const result = await inferrer.invoke(
+      'looking for a photographer',
+      richProfile,
+      {
+        allowProfileFallback: false,
+        operationMode: 'create'
+      }
+    );
+
+    // At least one intent should mention "photograph" (photographer, photography, etc.)
+    const hasPhotograph = result.intents.some(i =>
+      i.description.toLowerCase().includes('photograph')
+    );
+    expect(hasPhotograph).toBe(true);
   }, 30000);
 });
