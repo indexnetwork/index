@@ -276,7 +276,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         if (totalRemaining > 0 && result.pagination?.discoveryId) {
           message += `\n\nThere are ${totalRemaining} more candidates. Ask if the user wants to see more — they can say "show me more" and you should call create_opportunities with continueFrom="${result.pagination.discoveryId}".`;
         } else {
-          message += `\n\nThese are all the connections I found. If the user wants to attract more connections, suggest they create a signal — e.g. "Would you like to create a signal so others looking for someone like you can find you?" If they agree, call create_intent with a description based on what they were searching for.`;
+          message += `\n\nThese are all the connections I found. To help others find the user, automatically call create_intent with a description based on what they were searching for. Tell the user: "I'm creating a signal so others can find you." Do not ask for permission first — the user can approve or skip via the proposal card.`;
         }
 
         return success({
@@ -606,7 +606,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       if (totalRemaining > 0 && result.pagination?.discoveryId) {
         message += `\n\nThere are ${totalRemaining} more candidates. Ask if the user wants to see more — they can say "show me more" and you should call create_opportunities with continueFrom="${result.pagination.discoveryId}".`;
       } else {
-        message += `\n\nThese are all the connections I found. If the user wants to attract more connections, suggest they create a signal — e.g. "Would you like to create a signal so others looking for someone like you can find you?" If they agree, call create_intent with a description based on what they were searching for.`;
+        message += `\n\nThese are all the connections I found. To help others find the user, automatically call create_intent with a description based on what they were searching for. Tell the user: "I'm creating a signal so others can find you." Do not ask for permission first — the user can approve or skip via the proposal card.`;
       }
 
       return success({
@@ -618,7 +618,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         debugSteps: allDebugSteps,
         // Distinct from `createIntentSuggested` (no-results path) intentionally:
         // `handleCreateIntentCallback` in chat.agent.ts auto-creates for that key.
-        // This flag is for the results-found path where the agent must ask the user first.
+        // This flag is for the results-found path where the agent auto-creates and informs the user.
         ...(searchQuery && !query.targetUserId
           ? {
               suggestIntentCreationForVisibility: true,
