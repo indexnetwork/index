@@ -10,6 +10,65 @@ the system can freely mutate behind that boundary.
 
 ---
 
+## The System as a Whole
+
+The Index Protocol is a discovery network: users declare intents, autonomous LLM agents interpret
+and verify those intents, and broker agents match them against other users' profiles to surface
+opportunities. The system's core challenge is that *every layer is subject to rapid change*. LLM
+models are upgraded monthly. Prompts are rewritten as agent behavior is tuned. New integrations
+(Slack, Gmail, Notion) appear and demand new data pipelines. Database schemas grow to accommodate
+new features. Queue backends may be swapped for scale. The chat interface evolves with new UI
+patterns. Despite all this, the protocol — the engine that infers, verifies, reconciles, and
+matches intents — must remain stable and correct.
+
+The architecture solves this by organizing the entire system around a single structural principle:
+**every component that other components depend on is immutable, and every component that needs to
+evolve is shielded behind an immutable boundary**.
+
+Consider the full request lifecycle. A user sends a message. The controller (HTTP layer) validates
+input via an immutable Zod schema and delegates to a service. The service invokes a LangGraph
+workflow whose topology is fixed — inference, verification, reconciliation, execution — but whose
+dependencies (database, embedder, queue) are injected as immutable interfaces. Each node in the
+graph calls an LLM agent whose output is constrained by an immutable Zod output schema, even
+though the agent's prompt and model can change freely. The verified intents are persisted through
+an immutable database interface, and follow-up jobs (HyDE generation, opportunity matching) are
+dispatched through an immutable queue interface. Events with immutable signatures notify the
+application layer, which can wire in any side effect without touching the protocol.
+
+At no point in this lifecycle does a mutable component depend directly on another mutable component.
+Every dependency crosses an immutable boundary: a TypeScript interface, a Zod schema, a state
+annotation, an event signature, or a layering rule. This means:
+
+- **Agents can evolve independently.** The intent inferrer's prompt can be rewritten, its model
+  swapped from Gemini to Claude, its temperature adjusted — and no other agent, node, or service
+  notices, because the Zod output schema is unchanged.
+
+- **Infrastructure can be replaced.** PostgreSQL can be swapped for another database, Redis for
+  another cache, BullMQ for another queue system — and the protocol layer is untouched, because it
+  depends only on interfaces, not implementations.
+
+- **Workflows can be extended.** New nodes can be added to graphs, new conditional edges introduced,
+  new operation modes supported — and existing nodes continue to work, because the state annotation
+  defines how all updates merge, regardless of which node produced them.
+
+- **The application layer can reconfigure behavior.** Event handlers, queue workers, and controller
+  endpoints can all change — and the protocol remains a pure, portable library, because it emits
+  events through immutable signatures and receives dependencies through immutable constructors.
+
+The system is not merely a collection of components that happen to be immutable. It is an
+architecture where **immutability is the connective tissue**. The interfaces, schemas, annotations,
+and signatures are not ornamental — they are the structural members that bear the load of change.
+Remove any one of them, and the adjacent components lose their freedom to evolve independently.
+
+This is the thesis at the system level: the Index Protocol's ability to accommodate weekly model
+upgrades, monthly schema migrations, continuous prompt iteration, and infrastructure swaps is not
+achieved *despite* the rigidity of its interfaces and schemas, but *because of* that rigidity.
+The immutability of the boundaries is what makes the mutability of the system possible.
+
+The sections that follow examine each immutable component in detail.
+
+---
+
 ## 1. The Adapter Pattern: Immutable Contracts, Mutable Implementations
 
 The protocol layer defines its dependencies as **TypeScript interfaces** in
@@ -314,17 +373,47 @@ rules prevent mutations in one layer from cascading into others.
 | Soft Delete Fields | `deletedAt` column existence | Logical deletion state of records |
 | Layering Rules | Controller→Service→Adapter flow | Internal logic within each layer |
 
-The thesis holds throughout the architecture: **every point of system flexibility is enabled by an
-adjacent point of rigidity**. The protocol layer's graphs can accommodate new workflows because
-their state schemas are immutable. Agents can iterate on prompts and models because their output
-contracts are fixed. Infrastructure can be swapped because the interfaces never change. The database
-can evolve because each migration is permanent.
+---
 
-The deeper insight is that immutability is not a constraint on the system — it is the *mechanism*
-by which the system achieves mutability. Without immutable interfaces, adapter swaps would require
-protocol changes. Without immutable state annotations, node additions could corrupt workflows.
-Without immutable Zod schemas, model upgrades could break downstream consumers. Each immutable
-component is a load-bearing wall that allows the rooms around it to be freely reconfigured.
+## Conclusion: How the System Fits the Thesis
+
+The thesis — *"The mutability of a system is enhanced by the immutability of its components"* —
+is not an abstract principle that the Index Protocol merely illustrates. It is the **organizing
+logic** of the architecture. Every design decision documented above serves a single structural
+purpose: to create an immutable boundary that unlocks mutability on both sides of it.
+
+The system demonstrates three levels at which this principle operates:
+
+**At the component level**, each immutable artifact (an interface, a Zod schema, a state annotation)
+protects its immediate consumers from changes in its producers. The `IntentGraphDatabase` interface
+shields the intent graph from database adapter rewrites. The `InferredIntentSchema` shields
+downstream nodes from prompt engineering changes. The `IntentGraphState` annotation shields nodes
+from each other's output variations. Each immutable component is a **local stability guarantee**.
+
+**At the layer level**, the Controller→Service→Adapter rule and the event/queue orchestration
+pattern ensure that mutations in one architectural layer cannot cascade into another. A new HTTP
+endpoint in the controller layer does not force changes in the service layer. A rewritten service
+method does not require adapter modifications. A replaced infrastructure backend does not touch the
+protocol. Each immutable boundary acts as a **blast-radius containment wall**.
+
+**At the system level**, the cumulative effect of these immutable boundaries is what gives the Index
+Protocol its defining characteristic: the ability to evolve every part of the system — models,
+prompts, infrastructure, schemas, features — simultaneously and independently. This is not a happy
+accident of good engineering. It is the direct consequence of the thesis: because the *components*
+are immutable (interfaces, schemas, annotations, signatures, journals, layering rules), the
+*system* is mutable (new agents, new models, new adapters, new workflows, new features, new data).
+
+Consider the counterfactual. Without immutable interfaces, swapping a database adapter would require
+rewriting every graph that uses it. Without immutable Zod schemas, upgrading an LLM model would risk
+breaking every node downstream of the agent. Without immutable state annotations, adding a new node
+to a graph could corrupt the state of existing nodes. Without immutable migration journals,
+deploying to a new environment would be non-deterministic. Without immutable layering rules, a
+change in any layer could cascade unpredictably through the stack. The system's mutability would
+collapse under its own complexity.
+
+The Index Protocol avoids this collapse because its architecture is — at every level — a network
+of immutable boundaries with mutable implementations behind them. The boundaries do not restrict
+the system; they are what make the system free to change.
 
 *The mutability of the system is not merely enhanced by the immutability of its components — it is
 made possible by it.*
