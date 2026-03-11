@@ -8,6 +8,7 @@ import {
   canUserSeeOpportunity,
   isActionableForViewer,
   validateOpportunityActors,
+  computeLensStats,
 } from '../opportunity.utils';
 
 describe('opportunity.utils', () => {
@@ -341,6 +342,65 @@ describe('opportunity.utils', () => {
         { role: 'agent' },
       ];
       expect(() => validateOpportunityActors(actors)).not.toThrow();
+    });
+  });
+
+  // ─── computeLensStats ──────────────────────────────────────────────────
+  // Pure function: takes candidates, returns per-lens { count, avgSimilarity }.
+  // Must never mutate the input array.
+
+  describe('computeLensStats', () => {
+    test('returns empty object for empty array', () => {
+      expect(computeLensStats([])).toEqual({});
+    });
+
+    test('groups by lens and computes average similarity', () => {
+      const candidates = [
+        { lens: 'mirror', similarity: 0.8 },
+        { lens: 'mirror', similarity: 0.6 },
+        { lens: 'intent', similarity: 0.9 },
+      ];
+      const stats = computeLensStats(candidates);
+      expect(stats).toEqual({
+        mirror: { count: 2, avgSimilarity: 0.7 },
+        intent: { count: 1, avgSimilarity: 0.9 },
+      });
+    });
+
+    test('uses "unknown" for candidates without lens', () => {
+      const candidates = [
+        { similarity: 0.5 },
+        { lens: undefined, similarity: 0.7 },
+      ];
+      const stats = computeLensStats(candidates);
+      expect(stats).toEqual({
+        unknown: { count: 2, avgSimilarity: 0.6 },
+      });
+    });
+
+    test('rounds average to three decimal places', () => {
+      const candidates = [
+        { lens: 'a', similarity: 0.1 },
+        { lens: 'a', similarity: 0.2 },
+        { lens: 'a', similarity: 0.3 },
+      ];
+      const stats = computeLensStats(candidates);
+      expect(stats.a.avgSimilarity).toBe(0.2);
+    });
+
+    test('does not mutate the input array', () => {
+      const candidates = Object.freeze([
+        Object.freeze({ lens: 'x', similarity: 0.5 }),
+        Object.freeze({ lens: 'x', similarity: 0.7 }),
+      ]);
+      // Should not throw even though the array and its elements are frozen
+      const stats = computeLensStats(candidates);
+      expect(stats.x.count).toBe(2);
+    });
+
+    test('single candidate returns its similarity as average', () => {
+      const stats = computeLensStats([{ lens: 'solo', similarity: 0.42 }]);
+      expect(stats).toEqual({ solo: { count: 1, avgSimilarity: 0.42 } });
     });
   });
 });

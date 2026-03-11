@@ -30,7 +30,7 @@ import {
   type EvaluatorInput,
 } from '../agents/opportunity.evaluator';
 import type { OpportunityGraphDatabase } from '../interfaces/database.interface';
-import { validateOpportunityActors } from '../support/opportunity.utils';
+import { validateOpportunityActors, computeLensStats } from '../support/opportunity.utils';
 
 /** Optional evaluator for testing (avoids LLM calls). */
 export type OpportunityEvaluatorLike = {
@@ -370,16 +370,7 @@ export class OpportunityGraphFactory {
               const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
               
               // Compute per-lens stats from deduped candidates
-              const lensStats: Record<string, { count: number; avgSimilarity: number }> = {};
-              for (const c of queryCandidates) {
-                const s = c.lens || 'unknown';
-                if (!lensStats[s]) lensStats[s] = { count: 0, avgSimilarity: 0 };
-                lensStats[s].count++;
-                lensStats[s].avgSimilarity += c.similarity;
-              }
-              for (const s of Object.values(lensStats)) {
-                s.avgSimilarity = s.count > 0 ? Math.round((s.avgSimilarity / s.count) * 1000) / 1000 : 0;
-              }
+              const lensStats = computeLensStats(queryCandidates);
 
               traceEntries.push({
                 node: "discovery",
@@ -394,17 +385,16 @@ export class OpportunityGraphFactory {
               
               // If we also have a profile vector, merge with profile-based results
               if (vector && vector.length > 0) {
-                const profileCandidates: CandidateMatch[] = [];
-                for (const targetIndex of state.targetIndexes) {
-                  const results = await this.embedder.searchWithProfileEmbedding(vector, {
-                    indexScope: [targetIndex.indexId],
-                    excludeUserId: discoveryUserId,
-                    limitPerStrategy: Math.floor(limitPerStrategy / 2),
-                    limit: Math.floor(perIndexLimit / 2),
-                    minScore,
-                  });
-                  for (const result of results) {
-                    profileCandidates.push({
+                const profileResults = await Promise.all(
+                  state.targetIndexes.map(async (targetIndex) => {
+                    const results = await this.embedder.searchWithProfileEmbedding(vector, {
+                      indexScope: [targetIndex.indexId],
+                      excludeUserId: discoveryUserId,
+                      limitPerStrategy: Math.floor(limitPerStrategy / 2),
+                      limit: Math.floor(perIndexLimit / 2),
+                      minScore,
+                    });
+                    return results.map((result): CandidateMatch => ({
                       candidateUserId: result.userId as Id<'users'>,
                       candidateIntentId: result.type === 'intent' ? result.id as Id<'intents'> : undefined,
                       indexId: targetIndex.indexId,
@@ -413,9 +403,10 @@ export class OpportunityGraphFactory {
                       candidatePayload: '',
                       candidateSummary: undefined,
                       discoverySource: 'profile-similarity' as const,
-                    });
-                  }
-                }
+                    }));
+                  })
+                );
+                const profileCandidates = profileResults.flat();
                 // Merge and dedupe - keep both intent and profile candidates per user
                 const byKey = new Map<string, CandidateMatch>();
                 for (const c of [...queryCandidates, ...profileCandidates]) {
@@ -450,40 +441,28 @@ export class OpportunityGraphFactory {
             if (!vector || vector.length === 0) {
               return { candidates: [] };
             }
-            const allCandidates: CandidateMatch[] = [];
-            for (const targetIndex of state.targetIndexes) {
-              const results = await this.embedder.searchWithProfileEmbedding(vector, {
-                indexScope: [targetIndex.indexId],
-                excludeUserId: discoveryUserId,
-                limitPerStrategy,
-                limit: perIndexLimit,
-                minScore,
-              });
-              for (const result of results) {
-                if (result.type === 'intent') {
-                  allCandidates.push({
-                    candidateUserId: result.userId as Id<'users'>,
-                    candidateIntentId: result.id as Id<'intents'>,
-                    indexId: targetIndex.indexId,
-                    similarity: result.score,
-                    lens: result.matchedVia,
-                    candidatePayload: '',
-                    candidateSummary: undefined,
-                    discoverySource: 'profile-similarity' as const,
-                  });
-                } else {
-                  allCandidates.push({
-                    candidateUserId: result.userId as Id<'users'>,
-                    indexId: targetIndex.indexId,
-                    similarity: result.score,
-                    lens: result.matchedVia,
-                    candidatePayload: '',
-                    candidateSummary: undefined,
-                    discoverySource: 'profile-similarity' as const,
-                  });
-                }
-              }
-            }
+            const indexResults = await Promise.all(
+              state.targetIndexes.map(async (targetIndex) => {
+                const results = await this.embedder.searchWithProfileEmbedding(vector, {
+                  indexScope: [targetIndex.indexId],
+                  excludeUserId: discoveryUserId,
+                  limitPerStrategy,
+                  limit: perIndexLimit,
+                  minScore,
+                });
+                return results.map((result): CandidateMatch => ({
+                  candidateUserId: result.userId as Id<'users'>,
+                  candidateIntentId: result.type === 'intent' ? result.id as Id<'intents'> : undefined,
+                  indexId: targetIndex.indexId,
+                  similarity: result.score,
+                  lens: result.matchedVia,
+                  candidatePayload: '',
+                  candidateSummary: undefined,
+                  discoverySource: 'profile-similarity' as const,
+                }));
+              })
+            );
+            const allCandidates = indexResults.flat();
             const byUserAndIndex = new Map<string, CandidateMatch>();
             for (const c of allCandidates) {
               const key = `${c.candidateUserId}:${c.indexId}:${c.candidateIntentId ?? 'profile'}`;
@@ -503,16 +482,7 @@ export class OpportunityGraphFactory {
             const profileSummary = profileBio || profileContext || '(profile embedding)';
 
             // Compute per-lens stats from deduped candidates
-            const lensStats: Record<string, { count: number; avgSimilarity: number }> = {};
-            for (const c of candidates) {
-              const s = c.lens || 'unknown';
-              if (!lensStats[s]) lensStats[s] = { count: 0, avgSimilarity: 0 };
-              lensStats[s].count++;
-              lensStats[s].avgSimilarity += c.similarity;
-            }
-            for (const s of Object.values(lensStats)) {
-              s.avgSimilarity = s.count > 0 ? Math.round((s.avgSimilarity / s.count) * 1000) / 1000 : 0;
-            }
+            const lensStats = computeLensStats(candidates);
 
             traceEntries.push({
               node: "discovery",
@@ -574,15 +544,14 @@ export class OpportunityGraphFactory {
             });
             if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) return [];
             const lensMap = new Map(lenses.map(l => [l.label, l]));
-            const lensEmbeddings: LensEmbedding[] = [];
-            for (const [label, emb] of Object.entries(hydeEmbeddings)) {
-              if (emb?.length) {
-                const lens = lensMap.get(label);
-                lensEmbeddings.push({ lens: label, corpus: lens?.corpus ?? 'profiles', embedding: emb });
-              }
-            }
-            const all: CandidateMatch[] = [];
-            await Promise.all(
+            const lensEmbeddings: LensEmbedding[] = Object.entries(hydeEmbeddings)
+              .filter(([, emb]) => emb?.length)
+              .map(([label, emb]) => ({
+                lens: label,
+                corpus: lensMap.get(label)?.corpus ?? 'profiles',
+                embedding: emb,
+              }));
+            const perIndex = await Promise.all(
               state.targetIndexes.map(async (targetIndex) => {
                 const results = await self.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
                   indexScope: [targetIndex.indexId],
@@ -591,31 +560,19 @@ export class OpportunityGraphFactory {
                   limit: perIndexLimit,
                   minScore,
                 });
-                for (const r of results.filter((x) => x.type === 'intent')) {
-                  all.push({
-                    candidateUserId: r.userId as Id<'users'>,
-                    candidateIntentId: r.id as Id<'intents'>,
-                    indexId: targetIndex.indexId,
-                    similarity: r.score,
-                    lens: r.matchedVia,
-                    candidatePayload: '',
-                    candidateSummary: undefined,
-                    discoverySource: 'query' as const,
-                  });
-                }
-                for (const r of results.filter((x) => x.type === 'profile')) {
-                  all.push({
-                    candidateUserId: r.userId as Id<'users'>,
-                    indexId: targetIndex.indexId,
-                    similarity: r.score,
-                    lens: r.matchedVia,
-                    candidatePayload: '',
-                    candidateSummary: undefined,
-                    discoverySource: 'query' as const,
-                  });
-                }
+                return results.map((r): CandidateMatch => ({
+                  candidateUserId: r.userId as Id<'users'>,
+                  candidateIntentId: r.type === 'intent' ? r.id as Id<'intents'> : undefined,
+                  indexId: targetIndex.indexId,
+                  similarity: r.score,
+                  lens: r.matchedVia,
+                  candidatePayload: '',
+                  candidateSummary: undefined,
+                  discoverySource: 'query' as const,
+                }));
               })
             );
+            const all = perIndex.flat();
             const profileCount = all.filter((c) => !c.candidateIntentId).length;
             const intentCount = all.filter((c) => c.candidateIntentId).length;
             logger.verbose('[Graph:Discovery] searchWithHydeEmbeddings raw results', {
@@ -653,15 +610,14 @@ export class OpportunityGraphFactory {
             return { hydeEmbeddings: {} as Record<string, number[]>, candidates: [] };
           }
           const lensMap = new Map(lenses.map(l => [l.label, l]));
-          const lensEmbeddings: LensEmbedding[] = [];
-          for (const [label, emb] of Object.entries(hydeEmbeddings)) {
-            if (emb?.length) {
-              const lens = lensMap.get(label);
-              lensEmbeddings.push({ lens: label, corpus: lens?.corpus ?? 'profiles', embedding: emb });
-            }
-          }
-          const allCandidates: CandidateMatch[] = [];
-          await Promise.all(
+          const lensEmbeddings: LensEmbedding[] = Object.entries(hydeEmbeddings)
+            .filter(([, emb]) => emb?.length)
+            .map(([label, emb]) => ({
+              lens: label,
+              corpus: lensMap.get(label)?.corpus ?? 'profiles',
+              embedding: emb,
+            }));
+          const perIndex = await Promise.all(
             state.targetIndexes.map(async (targetIndex) => {
               const results = await this.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
                 indexScope: [targetIndex.indexId],
@@ -670,31 +626,19 @@ export class OpportunityGraphFactory {
                 limit: perIndexLimit,
                 minScore,
               });
-              for (const result of results.filter((r) => r.type === 'intent')) {
-                allCandidates.push({
-                  candidateUserId: result.userId as Id<'users'>,
-                  candidateIntentId: result.id as Id<'intents'>,
-                  indexId: targetIndex.indexId,
-                  similarity: result.score,
-                  lens: result.matchedVia,
-                  candidatePayload: '',
-                  candidateSummary: undefined,
-                  discoverySource: 'query' as const,
-                });
-              }
-              for (const result of results.filter((r) => r.type === 'profile')) {
-                allCandidates.push({
-                  candidateUserId: result.userId as Id<'users'>,
-                  indexId: targetIndex.indexId,
-                  similarity: result.score,
-                  lens: result.matchedVia,
-                  candidatePayload: '',
-                  candidateSummary: undefined,
-                  discoverySource: 'query' as const,
-                });
-              }
+              return results.map((result): CandidateMatch => ({
+                candidateUserId: result.userId as Id<'users'>,
+                candidateIntentId: result.type === 'intent' ? result.id as Id<'intents'> : undefined,
+                indexId: targetIndex.indexId,
+                similarity: result.score,
+                lens: result.matchedVia,
+                candidatePayload: '',
+                candidateSummary: undefined,
+                discoverySource: 'query' as const,
+              }));
             })
           );
+          const allCandidates = perIndex.flat();
           const byUserAndIndex = new Map<string, CandidateMatch>();
           for (const c of allCandidates) {
             const key = `${c.candidateUserId}:${c.indexId}:${c.candidateIntentId ?? 'profile'}`;
@@ -710,16 +654,7 @@ export class OpportunityGraphFactory {
           const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
 
           // Compute per-lens stats from deduped candidates
-          const lensStats: Record<string, { count: number; avgSimilarity: number }> = {};
-          for (const c of candidates) {
-            const s = c.lens || 'unknown';
-            if (!lensStats[s]) lensStats[s] = { count: 0, avgSimilarity: 0 };
-            lensStats[s].count++;
-            lensStats[s].avgSimilarity += c.similarity;
-          }
-          for (const s of Object.values(lensStats)) {
-            s.avgSimilarity = s.count > 0 ? Math.round((s.avgSimilarity / s.count) * 1000) / 1000 : 0;
-          }
+          const lensStats = computeLensStats(candidates);
 
           traceEntries.push({
             node: "discovery",

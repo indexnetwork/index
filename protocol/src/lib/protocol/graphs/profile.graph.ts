@@ -210,15 +210,11 @@ export class ProfileGraphFactory {
               needsUserInfo = true;
 
               // Build precise list of what's missing and would help
-              if (!hasSocials) {
-                missingUserInfo.push('social_urls');
-              }
-              if (!hasMeaningfulName) {
-                missingUserInfo.push('full_name');
-              }
-              if (!hasLocation) {
-                missingUserInfo.push('location'); // Nice to have
-              }
+              missingUserInfo = [
+                !hasSocials && 'social_urls',
+                !hasMeaningfulName && 'full_name',
+                !hasLocation && 'location', // Nice to have
+              ].filter((v): v is string => v !== false);
 
               logger.verbose("⚠️ Insufficient user information for scraping", {
                 hasSocials,

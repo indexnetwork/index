@@ -1,9 +1,10 @@
 /**
- * Opportunity graph utilities: role derivation from corpus type.
- * Used by the opportunity graph to map lens corpus to opportunity actor roles.
+ * Opportunity graph utilities: role derivation, visibility rules, and pure
+ * helper functions for the opportunity discovery pipeline.
  *
  * With lens-based HyDE, strategy selection is handled automatically by the
- * LensInferrer agent. This file provides corpus-to-role mapping for opportunity actors.
+ * LensInferrer agent. This file provides corpus-to-role mapping for opportunity actors
+ * and stateless computation helpers used across graph nodes.
  */
 
 import type { HydeTargetCorpus } from '../agents/lens.inferrer';
@@ -124,4 +125,49 @@ export function isActionableForViewer(
         return false;
     }
   });
+}
+
+/** Per-lens statistics: candidate count and average similarity. */
+export interface LensStats {
+  count: number;
+  avgSimilarity: number;
+}
+
+/**
+ * Compute per-lens statistics from a list of candidates without mutation.
+ *
+ * Groups candidates by their `lens` field, counts each group, and computes
+ * the average similarity rounded to three decimal places. Returns a new
+ * object on every call — the input array is never modified.
+ *
+ * @param candidates - Array of objects with at least `lens` and `similarity`
+ * @returns Record mapping each lens label to its aggregated stats
+ */
+export function computeLensStats(
+  candidates: ReadonlyArray<{ lens?: string; similarity: number }>,
+): Record<string, LensStats> {
+  const totals = candidates.reduce<Record<string, { count: number; totalSimilarity: number }>>(
+    (acc, c) => {
+      const key = c.lens || 'unknown';
+      const prev = acc[key] ?? { count: 0, totalSimilarity: 0 };
+      return {
+        ...acc,
+        [key]: {
+          count: prev.count + 1,
+          totalSimilarity: prev.totalSimilarity + c.similarity,
+        },
+      };
+    },
+    {},
+  );
+
+  return Object.fromEntries(
+    Object.entries(totals).map(([key, { count, totalSimilarity }]) => [
+      key,
+      {
+        count,
+        avgSimilarity: count > 0 ? Math.round((totalSimilarity / count) * 1000) / 1000 : 0,
+      },
+    ]),
+  );
 }

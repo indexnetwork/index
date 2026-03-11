@@ -194,12 +194,10 @@ export class ChatAgent {
     const fullMessages: BaseMessage[] = [
       new SystemMessage(systemContent),
       ...messages,
+      ...(iterationCount >= SOFT_ITERATION_LIMIT
+        ? [new SystemMessage(ITERATION_NUDGE)]
+        : []),
     ];
-
-    // Add nudge if past soft limit
-    if (iterationCount >= SOFT_ITERATION_LIMIT) {
-      fullMessages.push(new SystemMessage(ITERATION_NUDGE));
-    }
 
     logger.verbose("Agent iteration", {
       iteration: iterationCount,
@@ -504,10 +502,10 @@ export class ChatAgent {
       const fullMessages: BaseMessage[] = [
         new SystemMessage(systemContent),
         ...messages,
+        ...(iterationCount >= SOFT_ITERATION_LIMIT
+          ? [new SystemMessage(ITERATION_NUDGE)]
+          : []),
       ];
-      if (iterationCount >= SOFT_ITERATION_LIMIT) {
-        fullMessages.push(new SystemMessage(ITERATION_NUDGE));
-      }
 
       logger.verbose("Streaming iteration", {
         iteration: iterationCount,
