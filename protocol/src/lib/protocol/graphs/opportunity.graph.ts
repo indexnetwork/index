@@ -336,17 +336,36 @@ export class OpportunityGraphFactory {
         });
 
         try {
-          if (state.targetIndexes.length === 0) {
-            logger.warn('[Graph:Discovery] No target indexes for search');
-            return { candidates: [] };
-          }
-
           // Search limits - fixed values for candidate retrieval
           // (The options.limit controls final output, not search pool)
           const limitPerStrategy = 30;
           const perIndexLimit = 80;
           // Similarity threshold for recall (0.30 = 30% similarity)
           const minScore = 0.3;
+
+          // Handle contactsOnly with no target indexes: search contacts directly
+          if (state.targetIndexes.length === 0) {
+            if (state.contactsOnly) {
+              logger.verbose('[Graph:Discovery] contactsOnly=true with no indexes → running contact-only discovery');
+              const embedding = state.sourceProfile?.embedding ?? null;
+              const vector = Array.isArray(embedding) && embedding.length > 0 && typeof embedding[0] === 'number'
+                ? (embedding as number[])
+                : null;
+              if (!vector) {
+                logger.warn('[Graph:Discovery] No profile embedding for contact discovery');
+                return { candidates: [] };
+              }
+              const contactCandidates = await runContactDiscovery(vector);
+              const traceEntries = [{
+                node: "discovery",
+                detail: `Contact-only search → ${contactCandidates.length} candidate(s)`,
+                data: { candidateCount: contactCandidates.length, contactsOnly: true },
+              }];
+              return { candidates: filterByTarget(contactCandidates), trace: traceEntries };
+            }
+            logger.warn('[Graph:Discovery] No target indexes for search');
+            return { candidates: [] };
+          }
 
           if (state.discoverySource === 'profile') {
             const embedding = state.sourceProfile?.embedding ?? null;
@@ -363,8 +382,10 @@ export class OpportunityGraphFactory {
                 searchQuery: state.searchQuery.trim().substring(0, 80),
                 hasProfileVector: !!vector,
               });
-              const queryCandidates = await runQueryHydeDiscovery();
-              logger.verbose('[Graph:Discovery] Query HyDE path complete', { candidatesFound: queryCandidates.length });
+              const hydeResult = await runQueryHydeDiscovery();
+              const queryCandidates = hydeResult.candidates;
+              const queryEmbedding = hydeResult.queryEmbedding;
+              logger.verbose('[Graph:Discovery] Query HyDE path complete', { candidatesFound: queryCandidates.length, hasQueryEmbedding: !!queryEmbedding });
               
               // Build trace entries for this path
               const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
@@ -439,11 +460,59 @@ export class OpportunityGraphFactory {
                     merged: merged.length,
                   },
                 });
+
+                // When contactsOnly=true, also search contacts directly and merge
+                // Use query embedding (HyDE) for semantic contact search, fall back to profile embedding
+                let finalMerged = merged;
+                const contactSearchVector = queryEmbedding ?? vector;
+                if (state.contactsOnly && contactSearchVector) {
+                  const contactCandidates = await runContactDiscovery(contactSearchVector);
+                  if (contactCandidates.length > 0) {
+                    const allMerged = [...merged, ...contactCandidates];
+                    const byUser = new Map<string, CandidateMatch>();
+                    for (const c of allMerged) {
+                      const existing = byUser.get(c.candidateUserId);
+                      if (!existing || c.similarity > existing.similarity) {
+                        byUser.set(c.candidateUserId, c);
+                      }
+                    }
+                    finalMerged = Array.from(byUser.values());
+                    traceEntries.push({
+                      node: "discovery",
+                      detail: `+ Contact search → ${contactCandidates.length} contacts, merged to ${finalMerged.length}`,
+                      data: { contactCandidates: contactCandidates.length, merged: finalMerged.length, usedQueryEmbedding: !!queryEmbedding },
+                    });
+                  }
+                }
                 
-                return { candidates: filterByTarget(merged), trace: traceEntries };
+                return { candidates: filterByTarget(finalMerged), trace: traceEntries };
               }
 
-              return { candidates: filterByTarget(queryCandidates), trace: traceEntries };
+              // When contactsOnly=true, also search contacts directly
+              // Use query embedding (HyDE) for semantic contact search, fall back to profile embedding
+              let finalQueryCandidates = queryCandidates;
+              const contactSearchVector = queryEmbedding ?? vector;
+              if (state.contactsOnly && contactSearchVector) {
+                const contactCandidates = await runContactDiscovery(contactSearchVector);
+                if (contactCandidates.length > 0) {
+                  const merged = [...queryCandidates, ...contactCandidates];
+                  const byUser = new Map<string, CandidateMatch>();
+                  for (const c of merged) {
+                    const existing = byUser.get(c.candidateUserId);
+                    if (!existing || c.similarity > existing.similarity) {
+                      byUser.set(c.candidateUserId, c);
+                    }
+                  }
+                  finalQueryCandidates = Array.from(byUser.values());
+                  traceEntries.push({
+                    node: "discovery",
+                    detail: `+ Contact search → ${contactCandidates.length} contacts, merged to ${finalQueryCandidates.length}`,
+                    data: { contactCandidates: contactCandidates.length, merged: finalQueryCandidates.length, usedQueryEmbedding: !!queryEmbedding },
+                  });
+                }
+              }
+
+              return { candidates: filterByTarget(finalQueryCandidates), trace: traceEntries };
             }
 
             // No search query - use profile embedding directly (mirror-only)
@@ -550,15 +619,38 @@ export class OpportunityGraphFactory {
               });
             }
 
+            // When contactsOnly=true, also search contacts directly and merge
+            let finalCandidates = candidates;
+            if (state.contactsOnly && vector) {
+              const contactCandidates = await runContactDiscovery(vector);
+              if (contactCandidates.length > 0) {
+                const merged = [...candidates, ...contactCandidates];
+                // Dedupe by userId (keep highest similarity)
+                const byUser = new Map<string, CandidateMatch>();
+                for (const c of merged) {
+                  const existing = byUser.get(c.candidateUserId);
+                  if (!existing || c.similarity > existing.similarity) {
+                    byUser.set(c.candidateUserId, c);
+                  }
+                }
+                finalCandidates = Array.from(byUser.values());
+                traceEntries.push({
+                  node: "discovery",
+                  detail: `+ Contact search → ${contactCandidates.length} contacts, merged to ${finalCandidates.length}`,
+                  data: { contactCandidates: contactCandidates.length, merged: finalCandidates.length },
+                });
+              }
+            }
+
             return {
-              candidates: filterByTarget(candidates),
+              candidates: filterByTarget(finalCandidates),
               trace: traceEntries,
             };
           }
 
-          async function runQueryHydeDiscovery(): Promise<CandidateMatch[]> {
+          async function runQueryHydeDiscovery(): Promise<{ candidates: CandidateMatch[]; queryEmbedding: number[] | null }> {
             const searchText = state.searchQuery?.trim() ?? '';
-            if (!searchText) return [];
+            if (!searchText) return { candidates: [], queryEmbedding: null };
             logger.verbose('[Graph:Discovery] runQueryHydeDiscovery start', { searchText: searchText.slice(0, 80) });
             const hydeResult = await self.hydeGenerator.invoke({
               sourceType: 'query',
@@ -572,7 +664,7 @@ export class OpportunityGraphFactory {
               lensCount: embeddingKeys.length,
               lenses: embeddingKeys,
             });
-            if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) return [];
+            if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) return { candidates: [], queryEmbedding: null };
             const lensMap = new Map(lenses.map(l => [l.label, l]));
             const lensEmbeddings: LensEmbedding[] = [];
             for (const [label, emb] of Object.entries(hydeEmbeddings)) {
@@ -581,6 +673,8 @@ export class OpportunityGraphFactory {
                 lensEmbeddings.push({ lens: label, corpus: lens?.corpus ?? 'profiles', embedding: emb });
               }
             }
+            // Use the first HyDE embedding as the query embedding for contact search
+            const queryEmbedding = lensEmbeddings[0]?.embedding ?? null;
             const all: CandidateMatch[] = [];
             await Promise.all(
               state.targetIndexes.map(async (targetIndex) => {
@@ -630,7 +724,39 @@ export class OpportunityGraphFactory {
                 byKey.set(key, c);
               }
             }
-            return Array.from(byKey.values());
+            return { candidates: Array.from(byKey.values()), queryEmbedding };
+          }
+
+          /**
+           * Contact discovery: search user's contacts by profile embedding.
+           * Used when contactsOnly=true to find contacts who may not have index membership (ghost users).
+           */
+          async function runContactDiscovery(embedding: number[]): Promise<CandidateMatch[]> {
+            if (!state.contactsOnly || !embedding || embedding.length === 0) {
+              return [];
+            }
+            logger.verbose('[Graph:Discovery] runContactDiscovery start', { contactsOnly: state.contactsOnly });
+            const results = await self.embedder.searchContactProfiles(
+              state.userId,
+              embedding,
+              {
+                limit: perIndexLimit,
+                minScore,
+                excludeUserId: state.userId,
+              }
+            );
+            const candidates: CandidateMatch[] = results.map((r) => ({
+              candidateUserId: r.userId as Id<'users'>,
+              candidateIntentId: undefined,
+              indexId: '', // Contacts don't necessarily belong to an index
+              similarity: r.score,
+              lens: r.matchedVia,
+              candidatePayload: '',
+              candidateSummary: undefined,
+              discoverySource: 'contact' as const,
+            }));
+            logger.verbose('[Graph:Discovery] runContactDiscovery complete', { candidatesFound: candidates.length });
+            return candidates;
           }
 
           const resolvedIntent = state.resolvedTriggerIntentId
@@ -765,9 +891,42 @@ export class OpportunityGraphFactory {
             });
           }
 
+          // When contactsOnly=true, also search contacts directly and merge
+          let finalCandidates = candidates;
+          if (state.contactsOnly) {
+            // Use HyDE lens embedding for contact search (query-semantic), falling back to profile embedding
+            // HyDE embeddings are better for query-driven searches like "people from USV"
+            const hydeVector = lensEmbeddings[0]?.embedding ?? null;
+            const profileEmbedding = state.sourceProfile?.embedding;
+            const profileVector = Array.isArray(profileEmbedding) && profileEmbedding.length > 0 && typeof profileEmbedding[0] === 'number'
+              ? (profileEmbedding as number[])
+              : null;
+            const vector = hydeVector ?? profileVector;
+            if (vector) {
+              const contactCandidates = await runContactDiscovery(vector);
+              if (contactCandidates.length > 0) {
+                const merged = [...candidates, ...contactCandidates];
+                // Dedupe by userId (keep highest similarity)
+                const byUser = new Map<string, CandidateMatch>();
+                for (const c of merged) {
+                  const existing = byUser.get(c.candidateUserId);
+                  if (!existing || c.similarity > existing.similarity) {
+                    byUser.set(c.candidateUserId, c);
+                  }
+                }
+                finalCandidates = Array.from(byUser.values());
+                traceEntries.push({
+                  node: "discovery",
+                  detail: `+ Contact search → ${contactCandidates.length} contacts, merged to ${finalCandidates.length}`,
+                  data: { contactCandidates: contactCandidates.length, merged: finalCandidates.length, usedHydeEmbedding: !!hydeVector },
+                });
+              }
+            }
+          }
+
           return {
             hydeEmbeddings: hydeEmbeddings as Record<string, number[]>,
-            candidates: filterByTarget(candidates),
+            candidates: filterByTarget(finalCandidates),
             trace: traceEntries,
           };
         } catch (error) {

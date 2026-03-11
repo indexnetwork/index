@@ -195,6 +195,54 @@ export class EmbedderAdapter {
     return this.mergeAndRankCandidates(flatResults, limit);
   }
 
+  /**
+   * Search for contact profiles by embedding similarity.
+   * Unlike searchWithProfileEmbedding, this filters by user_contacts table instead of index_members.
+   * Used for contactsOnly discovery where contacts may not have index membership (ghost users).
+   *
+   * @param ownerId - The user whose contacts to search within
+   * @param embedding - The embedding vector to search with
+   * @param options - Search options (limit, minScore, excludeUserId)
+   * @returns Array of matching contact profiles with similarity scores
+   */
+  async searchContactProfiles(
+    ownerId: string,
+    embedding: number[],
+    options: { limit?: number; minScore?: number; excludeUserId?: string } = {}
+  ): Promise<HydeCandidate[]> {
+    const { limit = 40, minScore = 0.25, excludeUserId } = options;
+    const vectorStr = `[${embedding.join(',')}]`;
+    const { userProfiles, userContacts } = schema;
+
+    const conditions = [
+      eq(userContacts.ownerId, ownerId),
+      isNull(userContacts.deletedAt),
+      isNotNull(userProfiles.embedding),
+      sql`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+      ...(excludeUserId ? [ne(userProfiles.userId, excludeUserId)] : []),
+    ];
+
+    const results = await db
+      .select({
+        userId: userProfiles.userId,
+        similarity: sql<number>`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector)`.as('similarity'),
+      })
+      .from(userProfiles)
+      .innerJoin(userContacts, eq(userProfiles.userId, userContacts.userId))
+      .where(and(...conditions))
+      .orderBy(sql`${userProfiles.embedding} <=> ${vectorStr}::vector`)
+      .limit(limit);
+
+    return results.map((r) => ({
+      type: 'profile' as const,
+      id: r.userId,
+      userId: r.userId,
+      score: r.similarity,
+      matchedVia: 'contact-profile',
+      indexId: '', // Contacts don't have an index association
+    }));
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Private: profile/intent search for HyDE
   // ─────────────────────────────────────────────────────────────────────────

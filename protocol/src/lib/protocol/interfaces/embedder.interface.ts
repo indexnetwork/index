@@ -110,4 +110,20 @@ export interface Embedder extends EmbeddingGenerator, VectorStore {
     profileEmbedding: number[],
     options: ProfileEmbeddingSearchOptions
   ): Promise<HydeCandidate[]>;
+
+  /**
+   * Contact profile search: run vector search with the given embedding
+   * against profiles of the user's contacts (via user_contacts table).
+   * Used for contactsOnly discovery where contacts may not have index membership.
+   *
+   * @param ownerId - The user whose contacts to search within
+   * @param embedding - The embedding vector to search with
+   * @param options - limit, minScore, excludeUserId
+   * @returns Matching contact profiles with similarity scores
+   */
+  searchContactProfiles(
+    ownerId: string,
+    embedding: number[],
+    options?: { limit?: number; minScore?: number; excludeUserId?: string }
+  ): Promise<HydeCandidate[]>;
 }

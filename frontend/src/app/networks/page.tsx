@@ -26,12 +26,7 @@ export default function NetworksPage() {
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
 
-  const allNetworks = [...(rawIndexes || [])].sort((a, b) => {
-    // Global indexes first, then by creation date
-    if (a.isGlobal && !b.isGlobal) return -1;
-    if (!a.isGlobal && b.isGlobal) return 1;
-    return 0;
-  });
+  const allNetworks = [...(rawIndexes || [])];
 
   useEffect(() => {
     if (activeTab === 'discover') loadPublicNetworks();

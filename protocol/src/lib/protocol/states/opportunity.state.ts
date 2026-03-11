@@ -48,14 +48,14 @@ export interface TargetIndex {
 export interface CandidateMatch {
   candidateUserId: Id<'users'>;
   candidateIntentId?: Id<'intents'>;
-  indexId: Id<'indexes'>;
+  indexId: Id<'indexes'> | '';
   similarity: number;
   /** Free-text lens label that produced this match. */
   lens: string;
   candidatePayload: string;
   candidateSummary?: string;
-  /** How this candidate was found: 'query' (HyDE from search text) or 'profile-similarity'. */
-  discoverySource?: 'query' | 'profile-similarity';
+  /** How this candidate was found: 'query' (HyDE), 'profile-similarity', or 'contact' (direct contact search). */
+  discoverySource?: 'query' | 'profile-similarity' | 'contact';
 }
 
 /**
