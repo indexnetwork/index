@@ -14,6 +14,7 @@
 
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import type { Id } from '../../../types/common.types';
+import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
 import {
   OpportunityGraphState,
   type IndexedIntent,
@@ -987,7 +988,7 @@ export class OpportunityGraphFactory {
 
         if (state.candidates.length === 0) {
           logger.verbose('[Graph:Evaluation] No candidates to evaluate');
-          return { evaluatedOpportunities: [] };
+          return { evaluatedOpportunities: [], agentTimings: [] };
         }
 
         // Batch candidates to avoid timeout - evaluate top 25 per batch, store remaining
@@ -1052,6 +1053,8 @@ export class OpportunityGraphFactory {
             total: sortedCandidates.length,
           });
         }
+
+        const agentTimingsAccum: DebugMetaAgent[] = [];
 
         try {
           const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
@@ -1136,8 +1139,14 @@ export class OpportunityGraphFactory {
                   existingOpportunities: state.options.existingOpportunities,
                   ...(state.searchQuery?.trim() ? { discoveryQuery: state.searchQuery.trim() } : {}),
                 };
+                const _evalStart = Date.now();
                 return evaluator.invokeEntityBundle(input, { minScore, returnAll: true })
+                  .then((res) => {
+                    agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: Date.now() - _evalStart });
+                    return res;
+                  })
                   .catch((err) => {
+                    agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: Date.now() - _evalStart });
                     logger.warn('[Graph:Evaluation] Parallel eval failed for candidate', {
                       candidateUserId: candidateEntity.userId,
                       error: err,
@@ -1158,7 +1167,9 @@ export class OpportunityGraphFactory {
               ...(state.searchQuery?.trim() ? { discoveryQuery: state.searchQuery.trim() } : {}),
             };
             // Get ALL scored results for tracing (returnAll: true), filter for persistence later
+            const _evalStart = Date.now();
             const opportunitiesWithActors = await evaluator.invokeEntityBundle(input, { minScore, returnAll: true });
+            agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: Date.now() - _evalStart });
 
             // Split multi-actor evaluator results into pairwise (viewer + candidate).
             // Each persisted discovery opportunity should have exactly 2 actors.
@@ -1333,12 +1344,14 @@ export class OpportunityGraphFactory {
             evaluatedOpportunities: passedOpportunities,
             remainingCandidates: effectiveRemaining,
             trace: traceEntries,
+            agentTimings: agentTimingsAccum,
           };
         } catch (error) {
           logger.error('[Graph:Evaluation] Failed', { error });
           return {
             evaluatedOpportunities: [],
             error: 'Failed to evaluate candidates.',
+            agentTimings: agentTimingsAccum,
           };
         }
       });
@@ -1481,15 +1494,16 @@ export class OpportunityGraphFactory {
         logger.verbose('[Graph:IntroEvaluation] Starting', { userId: state.userId });
 
         if (state.error) {
-          return { evaluatedOpportunities: [] };
+          return { evaluatedOpportunities: [], agentTimings: [] };
         }
 
         const entities = state.introductionEntities ?? [];
         const primaryIndexId = (state.indexId ?? entities[0]?.indexId) as Id<'indexes'> | undefined;
         if (!primaryIndexId || entities.length < 2) {
-          return { evaluatedOpportunities: [], error: 'Missing entities or index for introduction.' };
+          return { evaluatedOpportunities: [], error: 'Missing entities or index for introduction.', agentTimings: [] };
         }
 
+        const agentTimingsAccum: DebugMetaAgent[] = [];
         let introducerName: string | undefined;
         let reasoning: string;
         let score: number;
@@ -1506,7 +1520,9 @@ export class OpportunityGraphFactory {
             introductionHint: state.introductionHint ?? undefined,
           };
 
+          const _evalStart = Date.now();
           const evaluated = await (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore: 0 });
+          agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: Date.now() - _evalStart });
           if (evaluated.length > 0) {
             const best = evaluated[0];
             reasoning = best.reasoning;
@@ -1541,6 +1557,7 @@ export class OpportunityGraphFactory {
           evaluatedOpportunities: [evaluatedOpportunity],
           introductionContext: { createdByName: introducerName },
           options: { ...state.options, initialStatus: state.options.initialStatus ?? 'latent' },
+          agentTimings: agentTimingsAccum,
         };
       });
     };
