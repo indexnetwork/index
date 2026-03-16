@@ -1,5 +1,6 @@
 import { Annotation } from '@langchain/langgraph';
 import type { Opportunity } from '../interfaces/database.interface';
+import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
 
 /**
  * Home view card item: one opportunity with full presenter-driven display contract.
@@ -127,5 +128,11 @@ export const HomeGraphState = Annotation.Root({
   meta: Annotation<{ totalOpportunities: number; totalSections: number }>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({ totalOpportunities: 0, totalSections: 0 }),
+  }),
+
+  /** Timing records for each agent invocation within this graph run. */
+  agentTimings: Annotation<DebugMetaAgent[]>({
+    reducer: (acc, val) => [...acc, ...val],
+    default: () => [],
   }),
 });

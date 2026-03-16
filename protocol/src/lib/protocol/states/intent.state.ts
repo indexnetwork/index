@@ -3,6 +3,7 @@ import { BaseMessage } from "@langchain/core/messages";
 import { InferredIntent } from "../agents/intent.inferrer";
 import { SemanticVerifierOutput } from "../agents/intent.verifier";
 import { IntentReconcilerOutput } from "../agents/intent.reconciler";
+import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
 
 /**
  * Extended InferredIntent that includes verification results.
@@ -168,6 +169,12 @@ export const IntentGraphState = Annotation.Root({
    */
   trace: Annotation<Array<{ node: string; detail?: string; data?: Record<string, unknown> }>>({
     reducer: (curr, next) => [...curr, ...(next || [])],
+    default: () => [],
+  }),
+
+  /** Timing records for each agent invocation within this graph run. */
+  agentTimings: Annotation<DebugMetaAgent[]>({
+    reducer: (acc, val) => [...acc, ...val],
     default: () => [],
   }),
 

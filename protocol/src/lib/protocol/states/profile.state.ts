@@ -1,5 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import { ProfileDocument } from "../agents/profile.generator";
+import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
 
 /**
  * The Graph State for Profile Generation.
@@ -156,6 +157,12 @@ export const ProfileGraphState = Annotation.Root({
   }>({
     reducer: (curr, next) => ({ ...curr, ...next }),
     default: () => ({}),
+  }),
+
+  /** Timing records for each agent invocation within this graph run. */
+  agentTimings: Annotation<DebugMetaAgent[]>({
+    reducer: (acc, val) => [...acc, ...val],
+    default: () => [],
   }),
 
   /**

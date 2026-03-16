@@ -6,6 +6,7 @@
 import { Annotation } from '@langchain/langgraph';
 import type { Id } from '../../../types/common.types';
 import type { Lens, HydeTargetCorpus } from '../agents/lens.inferrer';
+import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
 
 /** Single HyDE document (text + embedding) for one lens. */
 export interface HydeDocumentState {
@@ -79,5 +80,11 @@ export const HydeGraphState = Annotation.Root({
   error: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
+  }),
+
+  /** Timing records for each agent invocation within this graph run. */
+  agentTimings: Annotation<DebugMetaAgent[]>({
+    reducer: (acc, val) => [...acc, ...val],
+    default: () => [],
   }),
 });

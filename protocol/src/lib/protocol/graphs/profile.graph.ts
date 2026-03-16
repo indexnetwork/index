@@ -536,6 +536,8 @@ export class ProfileGraphFactory {
           inputLength: state.input.length
         });
 
+        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+
         try {
           // If updating existing profile, include it in the input for context
           let inputWithContext = state.input;
@@ -544,7 +546,9 @@ export class ProfileGraphFactory {
             logger.verbose("Merging with existing profile");
           }
 
+          const profileGeneratorStart = Date.now();
           const result = await profileGenerator.invoke(inputWithContext);
+          agentTimingsAccum.push({ name: 'profile.generator', durationMs: Date.now() - profileGeneratorStart });
 
           logger.verbose("✅ Profile generated successfully", {
             name: result.output.identity.name,
@@ -560,6 +564,7 @@ export class ProfileGraphFactory {
             },
             // Mark that hyde needs regeneration since profile was updated
             needsHydeGeneration: true,
+            agentTimings: agentTimingsAccum,
             operationsPerformed: { generatedProfile: true }
           };
         } catch (error) {
@@ -654,9 +659,13 @@ export class ProfileGraphFactory {
           profileName: state.profile.identity.name
         });
 
+        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+
         try {
           const profileString = JSON.stringify(state.profile, null, 2);
+          const hydeGeneratorStart = Date.now();
           const result = await hydeGenerator.invoke(profileString);
+          agentTimingsAccum.push({ name: 'hyde.generator', durationMs: Date.now() - hydeGeneratorStart });
 
           logger.verbose("✅ HyDE generated successfully", {
             descriptionLength: result.textToEmbed.length
@@ -664,6 +673,7 @@ export class ProfileGraphFactory {
 
           return {
             hydeDescription: result.textToEmbed,
+            agentTimings: agentTimingsAccum,
             operationsPerformed: { generatedHyde: true }
           };
         } catch (error) {

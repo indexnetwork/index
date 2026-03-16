@@ -296,7 +296,7 @@ export class HomeGraphFactory {
       logger.verbose('[HomeGraph:generateCardText] entry', { opportunitiesLength: opportunities.length, userId: state.userId });
       if (opportunities.length === 0) {
         logger.verbose('[HomeGraph:generateCardText] exit', { totalOpportunities: 0, totalSections: 0 });
-        return { cards: [], meta: { totalOpportunities: 0, totalSections: 0 } };
+        return { cards: [], agentTimings: [], meta: { totalOpportunities: 0, totalSections: 0 } };
       }
       const db = this.database as PresenterDatabase;
       const cards: HomeCardItem[] = [];
@@ -322,6 +322,8 @@ export class HomeGraphFactory {
       const oppIndexMap = new Map(
         state.opportunities.map((opp, idx) => [opp.id, idx])
       );
+
+      const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
 
       for (let i = 0; i < opportunities.length; i += PRESENTATION_CONCURRENCY) {
         const chunk = opportunities.slice(i, i + PRESENTATION_CONCURRENCY);
@@ -403,7 +405,9 @@ export class HomeGraphFactory {
                 mutualIntentCount,
                 opportunityStatus: opportunity.status,
               };
+              const presenterStart = Date.now();
               const presentation = await presenter.presentHomeCard(homeInput);
+              agentTimingsAccum.push({ name: 'opportunity.presenter', durationMs: Date.now() - presenterStart });
               let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } | undefined;
               // Only show a person as narrator when they are the introducer and not the display counterpart
               // (bad data can have same user as introducer and party, e.g. "Amina introduced you to Amina")
@@ -447,6 +451,7 @@ export class HomeGraphFactory {
       logger.verbose('[HomeGraph:generateCardText] exit', { totalOpportunities: state.opportunities.length, totalSections: 0 });
       return {
         cards,
+        agentTimings: agentTimingsAccum,
         meta: { totalOpportunities: state.opportunities.length, totalSections: 0 },
       };
       });
@@ -536,8 +541,9 @@ export class HomeGraphFactory {
         logger.verbose('[HomeGraph:categorizeDynamically] entry', { cardsLength: state.cards.length });
         if (state.cards.length === 0) {
           logger.verbose('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: 0 });
-          return { sectionProposals: [] };
+          return { sectionProposals: [], agentTimings: [] };
         }
+        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
         const categorizerInput = state.cards.map((c) => ({
           index: c._cardIndex,
           headline: c.headline,
@@ -552,13 +558,15 @@ export class HomeGraphFactory {
               ? 'pending'
               : undefined,
         }));
+        const categorizerStart = Date.now();
         const { sections } = await categorizer.categorize(categorizerInput);
+        agentTimingsAccum.push({ name: 'home.categorizer', durationMs: Date.now() - categorizerStart });
         const proposals: HomeSectionProposal[] = sections.map((s) => ({
           ...s,
           itemIndices: s.itemIndices.filter((i) => i >= 0 && i < state.cards.length),
         }));
         logger.verbose('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: proposals.length });
-        return { sectionProposals: proposals };
+        return { sectionProposals: proposals, agentTimings: agentTimingsAccum };
       });
     };
 
