@@ -634,9 +634,11 @@ export class ChatAgent {
             continue;
           }
 
+          const toolStart = Date.now();
           try {
             logger.verbose("Streaming: executing tool", { name: tc.name });
             let result = await tool.invoke(tc.args);
+            const toolDurationMs = Date.now() - toolStart;
             let resultStr =
               typeof result === "string" ? result : JSON.stringify(result);
 
@@ -658,16 +660,20 @@ export class ChatAgent {
             let summary = "Done";
             type StepData = Record<string, unknown>;
             type DebugStep = { step: string; detail?: string; data?: StepData };
+            type GraphTiming = { name: string; durationMs: number; agents: Array<{ name: string; durationMs: number }> };
             let debugSteps: DebugStep[] | undefined;
+            let graphTimings: GraphTiming[] | undefined;
             try {
               const parsed = JSON.parse(resultStr) as {
                 success?: boolean;
                 data?: {
                   summary?: string;
                   debugSteps?: DebugStep[];
+                  _graphTimings?: GraphTiming[];
                 };
                 summary?: string;
                 debugSteps?: DebugStep[];
+                _graphTimings?: GraphTiming[];
               };
               const payload = parsed.success && parsed.data != null ? parsed.data : parsed;
               summary = payload.summary ?? parsed.summary ?? "Done";
@@ -683,6 +689,20 @@ export class ChatAgent {
                   ...(s.data && typeof s.data === "object" ? { data: s.data } : {}),
                 }));
               }
+              const rawGraphTimings = payload._graphTimings ?? parsed._graphTimings;
+              if (Array.isArray(rawGraphTimings) && rawGraphTimings.length > 0) {
+                graphTimings = rawGraphTimings as GraphTiming[];
+                // Strip _graphTimings from the result string sent back to the LLM
+                try {
+                  const cleanedResult = JSON.parse(resultStr) as Record<string, unknown>;
+                  delete cleanedResult._graphTimings;
+                  if (cleanedResult.data && typeof cleanedResult.data === 'object') {
+                    delete (cleanedResult.data as Record<string, unknown>)._graphTimings;
+                  }
+                  resultStr = JSON.stringify(cleanedResult);
+                  result = resultStr;
+                } catch { /* keep original if can't clean */ }
+              }
             } catch {
               /* not JSON, keep default */
             }
@@ -692,8 +712,9 @@ export class ChatAgent {
               args: sanitizeForDebugMeta(tc.args) as Record<string, unknown>,
               resultSummary: summary,
               success: true,
-              durationMs: 0,
+              durationMs: toolDurationMs,
               ...(debugSteps?.length ? { steps: debugSteps } : {}),
+              ...(graphTimings?.length ? { graphs: graphTimings } : {}),
             });
             emit({
               type: "tool_activity",
@@ -721,7 +742,7 @@ export class ChatAgent {
               args: sanitizeForDebugMeta(tc.args) as Record<string, unknown>,
               resultSummary: errMsg,
               success: false,
-              durationMs: 0,
+              durationMs: Date.now() - toolStart,
             });
             emit({
               type: "tool_activity",
