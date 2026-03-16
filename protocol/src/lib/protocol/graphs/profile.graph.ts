@@ -572,7 +572,8 @@ export class ProfileGraphFactory {
             error: error instanceof Error ? error.message : String(error)
           });
           return {
-            error: "Profile generation failed"
+            error: "Profile generation failed",
+            agentTimings: agentTimingsAccum
           };
         }
       });
