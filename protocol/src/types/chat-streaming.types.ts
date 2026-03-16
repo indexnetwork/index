@@ -293,6 +293,23 @@ export interface DebugMetaStep {
 }
 
 /**
+ * One agent invocation recorded inside a graph run.
+ */
+export interface DebugMetaAgent {
+  name: string;
+  durationMs: number;
+}
+
+/**
+ * One graph invocation recorded by a tool that calls a LangGraph graph.
+ */
+export interface DebugMetaGraph {
+  name: string;
+  durationMs: number;
+  agents: DebugMetaAgent[];
+}
+
+/**
  * One tool call entry in debug meta (sanitized args, result summary, optional steps).
  */
 export interface DebugMetaToolCall {
@@ -300,8 +317,12 @@ export interface DebugMetaToolCall {
   args: Record<string, unknown>;
   resultSummary: string;
   success: boolean;
+  /** Wall-clock milliseconds for the full tool execution. */
+  durationMs: number;
   /** Internal steps (subgraphs, subtasks) when the tool reports debugSteps in its result. */
   steps?: DebugMetaStep[];
+  /** LangGraph graphs invoked by this tool, with their agent timings. */
+  graphs?: DebugMetaGraph[];
 }
 
 /**

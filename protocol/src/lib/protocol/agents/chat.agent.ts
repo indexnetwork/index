@@ -617,6 +617,7 @@ export class ChatAgent {
               args: sanitizeForDebugMeta(tc.args) as Record<string, unknown>,
               resultSummary: "Unknown tool",
               success: false,
+              durationMs: 0,
             });
             emit({
               type: "tool_activity",
@@ -691,6 +692,7 @@ export class ChatAgent {
               args: sanitizeForDebugMeta(tc.args) as Record<string, unknown>,
               resultSummary: summary,
               success: true,
+              durationMs: 0,
               ...(debugSteps?.length ? { steps: debugSteps } : {}),
             });
             emit({
@@ -719,6 +721,7 @@ export class ChatAgent {
               args: sanitizeForDebugMeta(tc.args) as Record<string, unknown>,
               resultSummary: errMsg,
               success: false,
+              durationMs: 0,
             });
             emit({
               type: "tool_activity",
