@@ -1,5 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import type { IntentIndexerOutput } from "../agents/intent.indexer";
+import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
 
 /**
  * Intent payload and metadata loaded for index evaluation.
@@ -160,5 +161,11 @@ export const IntentIndexGraphState = Annotation.Root({
   error: Annotation<string | null>({
     reducer: (_, next) => next,
     default: () => null,
+  }),
+
+  /** Timing records for each agent invocation within this graph run. */
+  agentTimings: Annotation<DebugMetaAgent[]>({
+    reducer: (acc, val) => [...acc, ...val],
+    default: () => [],
   }),
 });

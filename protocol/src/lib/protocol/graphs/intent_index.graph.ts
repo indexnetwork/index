@@ -45,34 +45,37 @@ export class IntentIndexGraphFactory {
         const indexId = state.indexId;
         logger.verbose("Assign intent to index", { userId: state.userId, intentId, indexId, skipEvaluation: state.skipEvaluation });
 
+        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+
         if (!intentId || !indexId) {
-          return { mutationResult: { success: false, error: "Both intentId and indexId are required." } };
+          return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "Both intentId and indexId are required." } };
         }
 
         try {
           // Validate ownership and membership
           const intent = await this.database.getIntent(intentId);
           if (!intent) {
-            return { mutationResult: { success: false, error: "Intent not found." } };
+            return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "Intent not found." } };
           }
           if (intent.userId !== state.userId) {
-            return { mutationResult: { success: false, error: "You can only add your own intents to an index." } };
+            return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "You can only add your own intents to an index." } };
           }
           const isMember = await this.database.isIndexMember(indexId, state.userId);
           if (!isMember) {
-            return { mutationResult: { success: false, error: "You are not a member of that index." } };
+            return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "You are not a member of that index." } };
           }
 
           // Check if already assigned
           const alreadyAssigned = await this.database.isIntentAssignedToIndex(intentId, indexId);
           if (alreadyAssigned) {
-            return { mutationResult: { success: true, message: "That intent is already in this index." } };
+            return { agentTimings: agentTimingsAccum, mutationResult: { success: true, message: "That intent is already in this index." } };
           }
 
           // Direct assignment (skip evaluation)
           if (state.skipEvaluation) {
             await this.database.assignIntentToIndex(intentId, indexId, 1.0);
             return {
+              agentTimings: agentTimingsAccum,
               assignmentResult: { indexId, assigned: true, success: true } as AssignmentResult,
               mutationResult: { success: true, message: "Intent saved to the index." },
             };
@@ -81,7 +84,7 @@ export class IntentIndexGraphFactory {
           // Evaluated assignment (migrated from old Index Graph)
           const intentForIndexing = await this.database.getIntentForIndexing(intentId);
           if (!intentForIndexing) {
-            return { mutationResult: { success: false, error: "Intent not found for indexing." } };
+            return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "Intent not found for indexing." } };
           }
 
           const indexContext = await this.database.getIndexMemberContext(indexId, intentForIndexing.userId);
@@ -89,6 +92,7 @@ export class IntentIndexGraphFactory {
             // No prompts or not eligible - auto-assign
             await this.database.assignIntentToIndex(intentId, indexId, 1.0);
             return {
+              agentTimings: agentTimingsAccum,
               assignmentResult: { indexId, assigned: true, success: true } as AssignmentResult,
               mutationResult: { success: true, message: "Intent assigned to index (auto-assign, no prompts)." },
             };
@@ -98,6 +102,7 @@ export class IntentIndexGraphFactory {
           if (hasNoPrompts) {
             await this.database.assignIntentToIndex(intentId, indexId, 1.0);
             return {
+              agentTimings: agentTimingsAccum,
               assignmentResult: { indexId, assigned: true, success: true } as AssignmentResult,
               mutationResult: { success: true, message: "Intent assigned to index (no prompts, auto-assign)." },
             };
@@ -108,15 +113,19 @@ export class IntentIndexGraphFactory {
             ? `${intentForIndexing.sourceType}:${intentForIndexing.sourceId ?? ""}`
             : undefined;
 
+          const _indexerStart = Date.now();
           const result = await indexer.evaluate(
             intentForIndexing.payload,
             indexContext.indexPrompt,
             indexContext.memberPrompt,
             sourceName
           );
+          const _indexerMs = Date.now() - _indexerStart;
+          agentTimingsAccum.push({ name: 'intent.indexer', durationMs: _indexerMs });
 
           if (!result) {
             return {
+              agentTimings: agentTimingsAccum,
               evaluation: null,
               shouldAssign: false,
               finalScore: 0,
@@ -154,6 +163,7 @@ export class IntentIndexGraphFactory {
           if (shouldAssign) {
             await this.database.assignIntentToIndex(intentId, indexId, finalScore);
             return {
+              agentTimings: agentTimingsAccum,
               evaluation: result,
               shouldAssign: true,
               finalScore,
@@ -163,6 +173,7 @@ export class IntentIndexGraphFactory {
           }
 
           return {
+            agentTimings: agentTimingsAccum,
             evaluation: result,
             shouldAssign: false,
             finalScore,
@@ -171,7 +182,7 @@ export class IntentIndexGraphFactory {
           };
         } catch (err) {
           logger.error("Assign failed", { error: err });
-          return { mutationResult: { success: false, error: "Failed to assign intent to index." } };
+          return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "Failed to assign intent to index." } };
         }
       });
     };
