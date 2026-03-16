@@ -296,7 +296,9 @@ export interface DebugMetaStep {
  * One agent invocation recorded inside a graph run.
  */
 export interface DebugMetaAgent {
+  /** Name of the agent (e.g. "opportunity.evaluator"). */
   name: string;
+  /** Wall-clock milliseconds for this agent invocation. */
   durationMs: number;
 }
 
@@ -304,8 +306,11 @@ export interface DebugMetaAgent {
  * One graph invocation recorded by a tool that calls a LangGraph graph.
  */
 export interface DebugMetaGraph {
+  /** Name of the graph (e.g. "opportunity"). */
   name: string;
+  /** Wall-clock milliseconds for the full graph run. */
   durationMs: number;
+  /** Agent invocations recorded inside this graph run. */
   agents: DebugMetaAgent[];
 }
 
