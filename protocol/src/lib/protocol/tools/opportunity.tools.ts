@@ -486,7 +486,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       let indexScope: string[];
-      const _scopeGraphTimings: Array<{ name: string; durationMs: number; agents: never[] }> = [];
+      const _scopeGraphTimings: Array<{ name: string; durationMs: number; agents: Array<{ name: string; durationMs: number }> }> = [];
       if (effectiveIndexId) {
         if (!UUID_REGEX.test(effectiveIndexId)) {
           return error("Invalid index ID format.");
@@ -550,7 +550,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const _discoverGraphMs = Date.now() - _discoverGraphStart;
       const _discoverGraphTimings = [
         ..._scopeGraphTimings,
-        { name: 'opportunity', durationMs: _discoverGraphMs, agents: [] as never[] },
+        { name: 'opportunity', durationMs: _discoverGraphMs, agents: [] },
       ];
 
       const allDebugSteps = [

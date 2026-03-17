@@ -377,7 +377,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // Execute update directly
       const _updateWriteProfileGraphStart = Date.now();
-      await graphs.profile.invoke({
+      const _writeResult = await graphs.profile.invoke({
         userId: context.userId,
         operationMode: "write",
         input: inputForProfile,
@@ -388,7 +388,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         message: "Profile updated.",
         _graphTimings: [
           { name: 'profile', durationMs: _updateQueryProfileGraphMs, agents: queryResult.agentTimings ?? [] },
-          { name: 'profile', durationMs: _updateWriteProfileGraphMs, agents: [] },
+          { name: 'profile', durationMs: _updateWriteProfileGraphMs, agents: _writeResult.agentTimings ?? [] },
         ],
       });
     },
