@@ -16,12 +16,14 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("You can only list your own indexes. Omit userId to see the current user's indexes.");
       }
 
+      const _readIndexGraphStart = Date.now();
       const result = await graphs.index.invoke({
         userId: context.userId,
         indexId: context.indexId || undefined,
         operationMode: 'read' as const,
         showAll: false, // Never allow bypass - strict scope enforcement
       });
+      const _readIndexGraphMs = Date.now() - _readIndexGraphStart;
 
       if (result.error) {
         return error(result.error);
@@ -36,9 +38,10 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
               scopedToIndex: context.indexName ?? context.indexId,
               message: `Results are limited to "${context.indexName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
             },
+            _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
-        return success(result.readResult);
+        return success({ ...result.readResult, _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }] });
       }
       return error("Failed to fetch index information.");
     },
@@ -69,17 +72,19 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
           );
         }
 
+        const _readMembersGraphStart = Date.now();
         const result = await graphs.indexMembership.invoke({
           userId: context.userId,
           indexId,
           operationMode: 'read' as const,
         });
+        const _readMembersGraphMs = Date.now() - _readMembersGraphStart;
 
         if (result.error) {
           return error(result.error);
         }
         if (result.readResult) {
-          return success(result.readResult);
+          return success({ ...result.readResult, _graphTimings: [{ name: 'index_membership', durationMs: _readMembersGraphMs, agents: result.agentTimings ?? [] }] });
         }
         return error("Failed to fetch index members.");
       }
@@ -266,17 +271,19 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
+      const _updateIndexGraphStart = Date.now();
       const result = await graphs.index.invoke({
         userId: context.userId,
         indexId: effectiveIndexId,
         operationMode: 'update' as const,
         updateInput: query.settings,
       });
+      const _updateIndexGraphMs = Date.now() - _updateIndexGraphStart;
 
       if (result.mutationResult && !result.mutationResult.success) {
         return error(result.mutationResult.error || "Failed to update index.");
       }
-      return success({ message: "Index updated.", settings: Object.keys(query.settings) });
+      return success({ message: "Index updated.", settings: Object.keys(query.settings), _graphTimings: [{ name: 'index', durationMs: _updateIndexGraphMs, agents: result.agentTimings ?? [] }] });
     },
   });
 
@@ -294,6 +301,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Title is required.");
       }
 
+      const _createIndexGraphStart = Date.now();
       const result = await graphs.index.invoke({
         userId: context.userId,
         operationMode: 'create' as const,
@@ -304,6 +312,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
           joinPolicy: query.joinPolicy,
         },
       });
+      const _createIndexGraphMs = Date.now() - _createIndexGraphStart;
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
@@ -312,6 +321,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
             indexId: result.mutationResult.indexId,
             title: result.mutationResult.title,
             message: result.mutationResult.message,
+            _graphTimings: [{ name: 'index', durationMs: _createIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to create index.");
@@ -339,16 +349,18 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
+      const _deleteIndexGraphStart = Date.now();
       const result = await graphs.index.invoke({
         userId: context.userId,
         indexId,
         operationMode: 'delete' as const,
       });
+      const _deleteIndexGraphMs = Date.now() - _deleteIndexGraphStart;
 
       if (result.mutationResult && !result.mutationResult.success) {
         return error(result.mutationResult.error || "Failed to delete index.");
       }
-      return success({ message: "Index deleted." });
+      return success({ message: "Index deleted.", _graphTimings: [{ name: 'index', durationMs: _deleteIndexGraphMs, agents: result.agentTimings ?? [] }] });
     },
   });
 
@@ -373,12 +385,14 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
+      const _createMembershipGraphStart = Date.now();
       const result = await graphs.indexMembership.invoke({
         userId: context.userId,
         indexId,
         targetUserId,
         operationMode: 'create' as const,
       });
+      const _createMembershipGraphMs = Date.now() - _createMembershipGraphStart;
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
@@ -386,6 +400,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
           return success({
             created: !alreadyMember,
             message: result.mutationResult.message,
+            _graphTimings: [{ name: 'index_membership', durationMs: _createMembershipGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to add member.");
@@ -419,18 +434,21 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
+      const _deleteMembershipGraphStart = Date.now();
       const result = await graphs.indexMembership.invoke({
         userId: context.userId,
         indexId,
         targetUserId,
         operationMode: 'delete' as const,
       });
+      const _deleteMembershipGraphMs = Date.now() - _deleteMembershipGraphStart;
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
           return success({
             removed: true,
             message: result.mutationResult.message,
+            _graphTimings: [{ name: 'index_membership', durationMs: _deleteMembershipGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to remove member.");

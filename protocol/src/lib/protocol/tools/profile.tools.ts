@@ -175,13 +175,15 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // --- Mode 1: No args / self → use profileGraph query (returns id for updates) ---
+      const _readProfileGraphStart = Date.now();
       const result = await graphs.profile.invoke({
         userId: context.userId,
         operationMode: 'query' as const,
       });
+      const _readProfileGraphMs = Date.now() - _readProfileGraphStart;
 
       if (result.readResult) {
-        return success(result.readResult);
+        return success({ ...result.readResult, _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }] });
       }
       if (result.profile) {
         return success({
@@ -193,11 +195,13 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
             skills: result.profile.attributes.skills,
             interests: result.profile.attributes.interests,
           },
+          _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }],
         });
       }
       return success({
         hasProfile: false,
         message: "You don't have a profile yet. Would you like to create one? You can share your LinkedIn, GitHub, or X/Twitter profile, or just tell me about yourself.",
+        _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }],
       });
     },
   });
@@ -222,7 +226,9 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         (onboarding.flow != null || onboarding.currentStep != null) &&
         !onboarding.completedAt;
       if (isOnboarding) {
+        const _onboardingProfileGraphStart = Date.now();
         const existing = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
+        const _onboardingProfileGraphMs = Date.now() - _onboardingProfileGraphStart;
         if (existing.readResult?.hasProfile && existing.readResult.profile) {
           const p = existing.readResult.profile;
           return success({
@@ -235,6 +241,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
               skills: p.skills,
               interests: p.interests,
             },
+            _graphTimings: [{ name: 'profile', durationMs: _onboardingProfileGraphMs, agents: existing.agentTimings ?? [] }],
           });
         }
       }
@@ -250,12 +257,14 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         inputParts.push(query.bioOrDescription!.trim());
         const profileInput = inputParts.join('\n');
         
+        const _bioProfileGraphStart = Date.now();
         const result = await graphs.profile.invoke({
           userId: context.userId,
           operationMode: 'write' as const,
           input: profileInput,
           forceUpdate: true,
         });
+        const _bioProfileGraphMs = Date.now() - _bioProfileGraphStart;
         if (result.error) {
           return error(result.error);
         }
@@ -270,11 +279,13 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
               skills: result.profile.attributes.skills,
               interests: result.profile.attributes.interests,
             },
+            _graphTimings: [{ name: 'profile', durationMs: _bioProfileGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return success({
           created: true,
           message: "Profile created/updated with the information you provided.",
+          _graphTimings: [{ name: 'profile', durationMs: _bioProfileGraphMs, agents: result.agentTimings ?? [] }],
         });
       }
 
@@ -297,11 +308,13 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // Invoke profile graph in generate mode (uses user table data + Parallels searchUser)
+      const _generateProfileGraphStart = Date.now();
       const result = await graphs.profile.invoke({
         userId: context.userId,
         operationMode: 'generate' as const,
         forceUpdate: true,
       });
+      const _generateProfileGraphMs = Date.now() - _generateProfileGraphStart;
 
       // If user info is insufficient, ask conversationally
       if (result.needsUserInfo) {
@@ -326,6 +339,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
             skills: result.profile.attributes.skills,
             interests: result.profile.attributes.interests,
           },
+          _graphTimings: [{ name: 'profile', durationMs: _generateProfileGraphMs, agents: result.agentTimings ?? [] }],
         });
       }
 
@@ -344,7 +358,9 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     }),
     handler: async ({ context, query }) => {
       // Use profileGraph query mode to validate profile existence and get id
+      const _updateQueryProfileGraphStart = Date.now();
       const queryResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
+      const _updateQueryProfileGraphMs = Date.now() - _updateQueryProfileGraphStart;
       if (!queryResult.readResult?.hasProfile && !queryResult.profile) {
         return error("You don't have a profile yet. Use create_user_profile first.");
       }
@@ -360,13 +376,21 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // Execute update directly
+      const _updateWriteProfileGraphStart = Date.now();
       await graphs.profile.invoke({
         userId: context.userId,
         operationMode: "write",
         input: inputForProfile,
         forceUpdate: true,
       });
-      return success({ message: "Profile updated." });
+      const _updateWriteProfileGraphMs = Date.now() - _updateWriteProfileGraphStart;
+      return success({
+        message: "Profile updated.",
+        _graphTimings: [
+          { name: 'profile', durationMs: _updateQueryProfileGraphMs, agents: queryResult.agentTimings ?? [] },
+          { name: 'profile', durationMs: _updateWriteProfileGraphMs, agents: [] },
+        ],
+      });
     },
   });
 

@@ -228,6 +228,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // ── Continuation mode ── (must take strict precedence — it's a pagination token)
       if (query.continueFrom) {
+        const _graphStart = Date.now();
         const result = await continueDiscovery({
           opportunityGraph: graphs.opportunity,
           database,
@@ -239,6 +240,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           minimalForChat: true,
           ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
         });
+        const _graphMs = Date.now() - _graphStart;
 
         const allDebugSteps = [...(result.debugSteps ?? [])];
 
@@ -250,6 +252,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             summary: "No more matches found",
             ...(result.pagination ? { pagination: result.pagination } : {}),
             debugSteps: allDebugSteps,
+            _graphTimings: [{ name: 'opportunity', durationMs: _graphMs, agents: [] }],
           });
         }
 
@@ -302,6 +305,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           summary: `Found ${displayedBlocks.length} more match(es)`,
           ...(result.pagination ? { pagination: result.pagination } : {}),
           debugSteps: allDebugSteps,
+          _graphTimings: [{ name: 'opportunity', durationMs: _graphMs, agents: [] }],
         });
       }
 
@@ -357,6 +361,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           }),
         );
 
+        const _introGraphStart = Date.now();
         const result = await graphs.opportunity.invoke({
           operationMode: "create_introduction",
           userId: context.userId,
@@ -369,6 +374,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             ...(context.sessionId ? { conversationId: context.sessionId } : {}),
           },
         });
+        const _introGraphMs = Date.now() - _introGraphStart;
 
         if (result.error || !result.opportunities?.length) {
           return error(
@@ -468,6 +474,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               status: created.status ?? "draft",
             },
           ],
+          _graphTimings: [{ name: 'opportunity', durationMs: _introGraphMs, agents: result.agentTimings ?? [] }],
         });
       }
 
@@ -479,15 +486,18 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       let indexScope: string[];
+      const _scopeGraphTimings: Array<{ name: string; durationMs: number; agents: never[] }> = [];
       if (effectiveIndexId) {
         if (!UUID_REGEX.test(effectiveIndexId)) {
           return error("Invalid index ID format.");
         }
+        const _scopeGraphStart = Date.now();
         const memberResult = await graphs.indexMembership.invoke({
           userId: context.userId,
           indexId: effectiveIndexId,
           operationMode: "read" as const,
         });
+        _scopeGraphTimings.push({ name: 'index_membership', durationMs: Date.now() - _scopeGraphStart, agents: [] });
         if (memberResult.error) {
           return error("Index not found or you are not a member.");
         }
@@ -497,11 +507,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         indexScope = [context.indexId];
       } else {
         // No scope - use all indexes (only in unscoped chat)
+        const _scopeGraphStart = Date.now();
         const indexResult = await graphs.index.invoke({
           userId: context.userId,
           operationMode: "read" as const,
           showAll: true,
         });
+        _scopeGraphTimings.push({ name: 'index', durationMs: Date.now() - _scopeGraphStart, agents: [] });
         indexScope = (indexResult.readResult?.memberOf || []).map(
           (m: { indexId: string }) => m.indexId,
         );
@@ -520,6 +532,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("You cannot discover introductions for yourself. Try regular discovery instead.");
       }
 
+      const _discoverGraphStart = Date.now();
       const result = await runDiscoverFromQuery({
         opportunityGraph: graphs.opportunity,
         database,
@@ -534,6 +547,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         cache,
         ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
       });
+      const _discoverGraphMs = Date.now() - _discoverGraphStart;
+      const _discoverGraphTimings = [
+        ..._scopeGraphTimings,
+        { name: 'opportunity', durationMs: _discoverGraphMs, agents: [] as never[] },
+      ];
 
       const allDebugSteps = [
         ...toolDebugSteps,
@@ -551,6 +569,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           summary: "No matches found",
           ...(result.pagination ? { pagination: result.pagination } : {}),
           debugSteps: allDebugSteps,
+          _graphTimings: _discoverGraphTimings,
         });
       }
 
@@ -562,6 +581,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           summary: "No matches found",
           ...(result.pagination ? { pagination: result.pagination } : {}),
           debugSteps: allDebugSteps,
+          _graphTimings: _discoverGraphTimings,
         });
       }
 
@@ -579,6 +599,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           existingConnections: result.existingConnections,
           summary: "No new matches (existing connections only)",
           debugSteps: allDebugSteps,
+          _graphTimings: _discoverGraphTimings,
         });
       }
 
@@ -655,6 +676,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               suggestedIntentDescription: searchQuery,
             }
           : {}),
+        _graphTimings: _discoverGraphTimings,
       });
     },
   });
@@ -879,12 +901,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const isSend = query.status === "pending";
+      const _updateGraphStart = Date.now();
       const result = await graphs.opportunity.invoke({
         userId: context.userId,
         operationMode: isSend ? ("send" as const) : ("update" as const),
         opportunityId: query.opportunityId,
         ...(isSend ? {} : { newStatus: query.status }),
       });
+      const _updateGraphMs = Date.now() - _updateGraphStart;
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
@@ -895,6 +919,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             ...(result.mutationResult.notified && {
               notified: result.mutationResult.notified,
             }),
+            _graphTimings: [{ name: 'opportunity', durationMs: _updateGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(

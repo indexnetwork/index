@@ -93,6 +93,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       // When scoped, we should NOT return all user intents across indexes - only those in the scoped index
       const allUserIntents = !context.indexId && !effectiveIndexId && (!queryUserId || queryUserId === context.userId);
 
+      const _readIntentGraphStart = Date.now();
       const result = await graphs.intent.invoke({
         userId: context.userId,
         userProfile: "",
@@ -101,6 +102,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         queryUserId,
         allUserIntents,
       });
+      const _readIntentGraphMs = Date.now() - _readIntentGraphStart;
 
       if (result.readResult) {
         if (result.readResult.count === 0 && result.readResult.message && /not a member|Index not found/i.test(result.readResult.message)) {
@@ -121,10 +123,11 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
             page,
             totalPages: Math.ceil(result.readResult.intents.length / limit),
             intents: pagedIntents,
+            _graphTimings: [{ name: 'intent', durationMs: _readIntentGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
 
-        return success(result.readResult);
+        return success({ ...result.readResult, _graphTimings: [{ name: 'intent', durationMs: _readIntentGraphMs, agents: result.agentTimings ?? [] }] });
       }
       return error("Failed to fetch intents.");
     },
@@ -155,10 +158,13 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const effectiveIndexId = context.indexId || query.indexId?.trim() || undefined;
 
       // Fetch profile (the intent graph needs it for inference)
+      const _profileGraphStart1 = Date.now();
       const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
+      const _profileGraphMs1 = Date.now() - _profileGraphStart1;
       const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : "";
 
       // Run inference + verification only (propose mode — no DB persistence)
+      const _intentGraphStart1 = Date.now();
       const result = await graphs.intent.invoke({
         userId: context.userId,
         userProfile,
@@ -166,6 +172,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         operationMode: 'propose' as const,
         ...(effectiveIndexId ? { indexId: effectiveIndexId } : {}),
       });
+      const _intentGraphMs1 = Date.now() - _intentGraphStart1;
       logger.debug("Intent graph propose response", { result });
 
       const verified = result.verifiedIntents || [];
@@ -232,6 +239,10 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         count: verified.length,
         message: `IMPORTANT: Include the following \`\`\`intent_proposal code blocks EXACTLY as-is in your response (they render as interactive cards for the user to approve or skip):\n\n${blocksText}`,
         debugSteps,
+        _graphTimings: [
+          { name: 'profile', durationMs: _profileGraphMs1, agents: profileResult.agentTimings ?? [] },
+          { name: 'intent', durationMs: _intentGraphMs1, agents: result.agentTimings ?? [] },
+        ],
       });
     },
   });
@@ -262,9 +273,12 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
+      const _profileGraphStart2 = Date.now();
       const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
+      const _profileGraphMs2 = Date.now() - _profileGraphStart2;
       const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : "";
 
+      const _intentGraphStart2 = Date.now();
       const result = await graphs.intent.invoke({
         userId: context.userId,
         userProfile,
@@ -273,11 +287,18 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         targetIntentIds: [intentId],
         ...(context.indexId && { indexId: context.indexId }),
       });
+      const _intentGraphMs2 = Date.now() - _intentGraphStart2;
 
       if (result.executionResults?.some((r: ExecutionResult) => !r.success)) {
         return error("Failed to update intent.");
       }
-      return success({ message: "Intent updated." });
+      return success({
+        message: "Intent updated.",
+        _graphTimings: [
+          { name: 'profile', durationMs: _profileGraphMs2, agents: profileResult.agentTimings ?? [] },
+          { name: 'intent', durationMs: _intentGraphMs2, agents: result.agentTimings ?? [] },
+        ],
+      });
     },
   });
 
@@ -306,6 +327,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
+      const _deleteIntentGraphStart = Date.now();
       const result = await graphs.intent.invoke({
         userId: context.userId,
         userProfile: "",
@@ -313,11 +335,15 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         targetIntentIds: [intentId],
         ...(context.indexId && { indexId: context.indexId }),
       });
+      const _deleteIntentGraphMs = Date.now() - _deleteIntentGraphStart;
 
       if (result.executionResults?.some((r: ExecutionResult) => !r.success)) {
         return error("Failed to delete intent.");
       }
-      return success({ message: "Intent archived." });
+      return success({
+        message: "Intent archived.",
+        _graphTimings: [{ name: 'intent', durationMs: _deleteIntentGraphMs, agents: result.agentTimings ?? [] }],
+      });
     },
   });
 
@@ -348,6 +374,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
+      const _createIntentIndexGraphStart = Date.now();
       const result = await graphs.intentIndex.invoke({
         userId: context.userId,
         indexId,
@@ -355,10 +382,15 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         operationMode: 'create' as const,
         skipEvaluation: true,
       });
+      const _createIntentIndexGraphMs = Date.now() - _createIntentIndexGraphStart;
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
-          return success({ created: true, message: result.mutationResult.message });
+          return success({
+            created: true,
+            message: result.mutationResult.message,
+            _graphTimings: [{ name: 'intent_index', durationMs: _createIntentIndexGraphMs, agents: result.agentTimings ?? [] }],
+          });
         }
         return error(result.mutationResult.error || "Failed to link intent to index.");
       }
@@ -412,6 +444,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
+      const _readIntentIndexGraphStart = Date.now();
       const result = await graphs.intentIndex.invoke({
         userId: context.userId,
         indexId,
@@ -419,12 +452,13 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         operationMode: 'read' as const,
         queryUserId,
       });
+      const _readIntentIndexGraphMs = Date.now() - _readIntentIndexGraphStart;
 
       if (result.error) {
         return error(result.error);
       }
       if (result.readResult) {
-        return success(result.readResult);
+        return success({ ...result.readResult, _graphTimings: [{ name: 'intent_index', durationMs: _readIntentIndexGraphMs, agents: result.agentTimings ?? [] }] });
       }
       return error("Failed to fetch intent-index links.");
     },
@@ -453,16 +487,22 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
+      const _deleteIntentIndexGraphStart = Date.now();
       const result = await graphs.intentIndex.invoke({
         userId: context.userId,
         indexId,
         intentId,
         operationMode: 'delete' as const,
       });
+      const _deleteIntentIndexGraphMs = Date.now() - _deleteIntentIndexGraphStart;
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
-          return success({ deleted: true, message: result.mutationResult.message });
+          return success({
+            deleted: true,
+            message: result.mutationResult.message,
+            _graphTimings: [{ name: 'intent_index', durationMs: _deleteIntentIndexGraphMs, agents: result.agentTimings ?? [] }],
+          });
         }
         return error(result.mutationResult.error || "Failed to unlink.");
       }
