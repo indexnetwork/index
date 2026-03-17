@@ -287,6 +287,7 @@ export class OpportunityGraphFactory {
             // Chat path: score query against target indexes in parallel
             try {
               const indexer = new IntentIndexer();
+              const scopeAgentTimings: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
               const scorableIndexes = targetIndexes.filter(ti => ti.title !== 'Unknown');
               const scoringPromises = scorableIndexes.map(async (ti) => {
                 try {
@@ -294,11 +295,13 @@ export class OpportunityGraphFactory {
                   if (!ctx?.indexPrompt?.trim() && !ctx?.memberPrompt?.trim()) {
                     return { indexId: ti.indexId, score: 1.0 };
                   }
+                  const _indexerStart = Date.now();
                   const result = await indexer.invoke(
                     state.searchQuery!,
                     ctx?.indexPrompt ?? null,
                     ctx?.memberPrompt ?? null,
                   );
+                  scopeAgentTimings.push({ name: 'intent.indexer', durationMs: Date.now() - _indexerStart });
                   if (!result) return { indexId: ti.indexId, score: 1.0 };
                   const score = ctx?.indexPrompt && ctx?.memberPrompt
                     ? result.indexScore * 0.6 + result.memberScore * 0.4
@@ -311,6 +314,19 @@ export class OpportunityGraphFactory {
               const results = await Promise.all(scoringPromises);
               for (const { indexId, score } of results) {
                 indexRelevancyScores[indexId] = score;
+              }
+              // Accumulate indexer timings into graph state
+              if (scopeAgentTimings.length > 0) {
+                return {
+                  targetIndexes,
+                  indexRelevancyScores,
+                  agentTimings: scopeAgentTimings,
+                  trace: [{
+                    node: "scope",
+                    detail: `Searching ${targetIndexes.length} index(es): ${targetIndexes.map(i => `${i.title} (${i.memberCount})`).join(', ')}`,
+                    data: { totalMembers: targetIndexes.reduce((sum, i) => sum + i.memberCount, 0) },
+                  }],
+                };
               }
             } catch (err) {
               logger.warn('[Graph:Scope] Failed to score query against indexes', { error: err });

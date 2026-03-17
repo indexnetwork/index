@@ -384,6 +384,9 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         forceUpdate: true,
       });
       const _updateWriteProfileGraphMs = Date.now() - _updateWriteProfileGraphStart;
+      if (_writeResult.error) {
+        return error(_writeResult.error);
+      }
       return success({
         message: "Profile updated.",
         _graphTimings: [
