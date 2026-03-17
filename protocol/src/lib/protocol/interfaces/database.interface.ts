@@ -1153,6 +1153,9 @@ export interface Database {
   /** Create a ghost user (unregistered contact) with empty profile. */
   createGhostUser(data: { name: string; email: string }): Promise<{ id: string }>;
 
+  /** Bulk lookup ghost users by name (case-insensitive, non-deleted only). */
+  getGhostUsersByNames(names: string[]): Promise<Array<{ id: string; name: string; email: string }>>;
+
   /** Upsert a contact (idempotent; unique constraint on ownerId+userId). */
   upsertContact(data: { ownerId: string; userId: string; source: 'gmail' | 'google_calendar' | 'manual' }): Promise<void>;
 

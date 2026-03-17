@@ -2638,20 +2638,48 @@ export class ChatDatabaseAdapter {
    * @returns The created ghost user's ID
    */
   async createGhostUser(data: { name: string; email: string }): Promise<{ id: string }> {
+    const email = data.email.toLowerCase().trim();
+
+    // Check existing user by email
+    const byEmail = await db.select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, email))
+      .limit(1)
+      .then(r => r[0]);
+    if (byEmail) return byEmail;
+
+    // Check existing ghost by name
+    const byName = await db.select({ id: schema.users.id })
+      .from(schema.users)
+      .where(and(
+        eq(sql`lower(${schema.users.name})`, data.name.toLowerCase()),
+        eq(schema.users.isGhost, true),
+        isNull(schema.users.deletedAt)
+      ))
+      .limit(1)
+      .then(r => r[0]);
+    if (byName) return byName;
+
     const id = crypto.randomUUID();
     await db.insert(schema.users).values({
       id,
       name: data.name,
-      email: data.email,
+      email,
       isGhost: true,
-    });
+    }).onConflictDoNothing({ target: schema.users.email });
 
-    // Create empty profile
+    // Re-query to handle race conditions
+    const [row] = await db.select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, email));
+
+    const actualId = row?.id ?? id;
+
     await db.insert(schema.userProfiles).values({
-      userId: id,
-    });
+      userId: actualId,
+    }).onConflictDoNothing({ target: schema.userProfiles.userId });
 
-    return { id };
+    return { id: actualId };
   }
 
   /**
@@ -2951,6 +2979,23 @@ export class ChatDatabaseAdapter {
   }
 
   /**
+   * Bulk lookup ghost users by name (case-insensitive, non-deleted only).
+   * @param names - Array of names to search for
+   * @returns Array of matching ghost user records
+   */
+  async getGhostUsersByNames(names: string[]): Promise<Array<{ id: string; name: string; email: string }>> {
+    if (names.length === 0) return [];
+    return db
+      .select({ id: schema.users.id, name: schema.users.name, email: schema.users.email })
+      .from(schema.users)
+      .where(and(
+        inArray(sql`lower(${schema.users.name})`, names.map(n => n.toLowerCase())),
+        eq(schema.users.isGhost, true),
+        isNull(schema.users.deletedAt)
+      ));
+  }
+
+  /**
    * Bulk create ghost users with empty profiles.
    * @param data - Array of {name, email} for ghost users
    * @returns Array of created ghost users with their IDs
@@ -2960,15 +3005,14 @@ export class ChatDatabaseAdapter {
 
     const results: Array<{ id: string; name: string; email: string }> = [];
 
-    // Create users
     const usersToInsert = data.map(d => ({
       id: crypto.randomUUID(),
       name: d.name,
-      email: d.email,
+      email: d.email.toLowerCase().trim(),
       isGhost: true,
     }));
 
-    await db.insert(schema.users).values(usersToInsert).onConflictDoNothing();
+    await db.insert(schema.users).values(usersToInsert).onConflictDoNothing({ target: schema.users.email });
 
     // Re-query to find which users actually exist (created now vs already existed)
     const insertedEmails = new Set(usersToInsert.map(u => u.email));
@@ -3057,11 +3101,11 @@ export class ChatDatabaseAdapter {
         const usersToInsert = ghosts.map(d => ({
           id: crypto.randomUUID(),
           name: d.name,
-          email: d.email,
+          email: d.email.toLowerCase().trim(),
           isGhost: true,
         }));
 
-        await tx.insert(schema.users).values(usersToInsert).onConflictDoNothing();
+        await tx.insert(schema.users).values(usersToInsert).onConflictDoNothing({ target: schema.users.email });
 
         const insertedEmails = new Set(usersToInsert.map(u => u.email));
         const existingAfterInsert = await tx

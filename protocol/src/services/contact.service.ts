@@ -182,10 +182,25 @@ export class ContactService {
     const softDeletedEmails = await this.db.getSoftDeletedGhostEmails(emails);
     const softDeletedSet = new Set(softDeletedEmails.map(e => e.toLowerCase()));
 
-    // Identify contacts that need ghost users (excluding soft-deleted ghosts)
+    // Contacts not matched by email and not soft-deleted
+    const unmatchedContacts = validContacts.filter(
+      c => !existingByEmail.has(c.email) && !softDeletedSet.has(c.email)
+    );
+
+    // Name-based ghost dedup: reuse existing ghost if same name exists
+    const unmatchedNames = [...new Set(unmatchedContacts.map(c => c.name))];
+    const ghostsByName = await this.db.getGhostUsersByNames(unmatchedNames);
+    const ghostByName = new Map(ghostsByName.map(g => [g.name.toLowerCase(), g]));
+
     const needGhosts: Array<{ name: string; email: string }> = [];
-    for (const contact of validContacts) {
-      if (!existingByEmail.has(contact.email) && !softDeletedSet.has(contact.email)) {
+    for (const contact of unmatchedContacts) {
+      const existingGhost = ghostByName.get(contact.name.toLowerCase());
+      if (existingGhost) {
+        existingByEmail.set(contact.email, {
+          id: existingGhost.id, email: existingGhost.email,
+          name: existingGhost.name, isGhost: true,
+        });
+      } else {
         needGhosts.push(contact);
       }
     }
