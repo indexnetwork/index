@@ -9,6 +9,8 @@ import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import type { User, NotificationPreferences, OnboardingState, ChatMessageMetadata, ChatSessionMetadata } from '../schemas/database.schema';
 import type { Id } from '../types/common.types';
+import { privateKeyToAccount } from 'viem/accounts';
+
 import type { MessagingStore } from '../lib/xmtp';
 import { generateWallet, decryptKey } from '../lib/xmtp';
 import { log } from '../lib/log';
@@ -4421,17 +4423,31 @@ const messagingLogger = log.lib.from('messaging.db');
 export class MessagingDatabaseAdapter implements MessagingStore {
   constructor(private readonly masterKey: Buffer) {}
 
-  async getWalletKey(userId: string) {
+  async getWalletAddress(userId: string) {
     const [user] = await db.select({
-      walletEncryptedKey: schema.users.walletEncryptedKey,
       walletAddress: schema.users.walletAddress,
     }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
 
-    if (!user?.walletEncryptedKey || !user.walletAddress) return null;
-    return {
-      privateKey: decryptKey(user.walletEncryptedKey, this.masterKey),
-      walletAddress: user.walletAddress,
-    };
+    return user?.walletAddress ?? null;
+  }
+
+  async signMessage(userId: string, message: string) {
+    const [user] = await db.select({
+      walletEncryptedKey: schema.users.walletEncryptedKey,
+    }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+
+    if (!user?.walletEncryptedKey) throw new Error('No wallet found for user');
+
+    const privateKey = decryptKey(user.walletEncryptedKey, this.masterKey) as `0x${string}`;
+    const account = privateKeyToAccount(privateKey);
+    const signature = await account.signMessage({ message });
+    // Convert hex signature to Uint8Array
+    const hex = signature.slice(2);
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+    }
+    return bytes;
   }
 
   async ensureWallet(userId: string) {

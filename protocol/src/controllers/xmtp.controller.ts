@@ -6,37 +6,63 @@ import { log } from '../lib/log';
 const logger = log.controller.from('xmtp');
 
 /**
- * Manages XMTP key retrieval, peer resolution, and conversation management.
+ * Manages XMTP identity, server-side signing, peer resolution, and conversation management.
+ * Private keys never leave the server — clients delegate signing via POST /xmtp/sign.
  */
-@Controller('/xmtp/keys')
+@Controller('/xmtp')
 export class XmtpController {
   constructor(private readonly xmtpService: XmtpService) {}
 
   /**
-   * GET /xmtp/keys/wallet — return the decrypted wallet key for the authenticated user.
-   * @param user - Authenticated user from AuthGuard.
-   * @returns Wallet private key and address, or 404 if no wallet exists.
+   * GET /xmtp/identity — return the public wallet address for the authenticated user.
+   * No private key material is exposed.
    */
-  @Get('/wallet')
+  @Get('/identity')
   @UseGuards(AuthGuard)
-  async getWalletKey(_req: Request, user: AuthenticatedUser) {
+  async getIdentity(_req: Request, user: AuthenticatedUser) {
     try {
-      const result = await this.xmtpService.getWalletKey(user.id);
+      const result = await this.xmtpService.getIdentity(user.id);
       if (!result) {
         return Response.json({ error: 'No wallet found' }, { status: 404 });
       }
       return Response.json(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('[getWalletKey] Error', { userId: user.id, error: message });
+      logger.error('[getIdentity] Error', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
 
   /**
-   * POST /xmtp/keys/peer-info — get public XMTP identity for a user.
-   * @param req - Must include `userId` in JSON body.
-   * @param user - Authenticated user from AuthGuard.
+   * POST /xmtp/sign — sign an XMTP identity challenge using the server-held private key.
+   * The private key never leaves the server.
+   */
+  @Post('/sign')
+  @UseGuards(AuthGuard)
+  async sign(req: Request, user: AuthenticatedUser) {
+    let body: { message?: string };
+    try {
+      body = (await req.json()) as { message?: string };
+    } catch {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+
+    if (!body.message || typeof body.message !== 'string') {
+      return Response.json({ error: 'message string is required' }, { status: 400 });
+    }
+
+    try {
+      const signature = await this.xmtpService.signMessage(user.id, body.message);
+      return Response.json({ signature });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('[sign] Error', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
+   * POST /xmtp/peer-info — get public XMTP identity for a user.
    */
   @Post('/peer-info')
   @UseGuards(AuthGuard)
@@ -66,9 +92,7 @@ export class XmtpController {
   }
 
   /**
-   * POST /xmtp/keys/resolve-peers — batch resolve XMTP inbox IDs to user info.
-   * @param req - Must include `inboxIds` string array in JSON body.
-   * @param user - Authenticated user from AuthGuard.
+   * POST /xmtp/resolve-peers — batch resolve XMTP inbox IDs to user info.
    */
   @Post('/resolve-peers')
   @UseGuards(AuthGuard)
@@ -95,9 +119,7 @@ export class XmtpController {
   }
 
   /**
-   * POST /xmtp/keys/hide-conversation — soft-delete a conversation.
-   * @param req - Must include `conversationId` in JSON body.
-   * @param user - Authenticated user from AuthGuard.
+   * POST /xmtp/hide-conversation — soft-delete a conversation.
    */
   @Post('/hide-conversation')
   @UseGuards(AuthGuard)
@@ -124,8 +146,7 @@ export class XmtpController {
   }
 
   /**
-   * GET /xmtp/keys/hidden-conversations — list hidden conversations for the user.
-   * @param user - Authenticated user from AuthGuard.
+   * GET /xmtp/hidden-conversations — list hidden conversations for the user.
    */
   @Get('/hidden-conversations')
   @UseGuards(AuthGuard)

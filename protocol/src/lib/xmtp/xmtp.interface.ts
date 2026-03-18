@@ -3,8 +3,11 @@
  * Implementations provide database access without the lib knowing about the ORM.
  */
 export interface MessagingStore {
-  /** Retrieve decrypted wallet key for a user. Returns null if no wallet exists. */
-  getWalletKey(userId: string): Promise<{ privateKey: string; walletAddress: string } | null>;
+  /** Retrieve the wallet address for a user (public info only). Returns null if no wallet exists. */
+  getWalletAddress(userId: string): Promise<string | null>;
+
+  /** Sign a message using the user's server-held private key. Returns the raw ECDSA signature bytes. */
+  signMessage(userId: string, message: string): Promise<Uint8Array>;
 
   /** Ensure a user has a wallet. Generates one if missing. */
   ensureWallet(userId: string): Promise<void>;

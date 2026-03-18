@@ -4,20 +4,32 @@ import { log } from '../lib/log';
 const logger = log.service.from('xmtp');
 
 /**
- * Manages XMTP wallet key retrieval, peer resolution, and conversation management.
+ * Manages XMTP identity, server-side signing, peer resolution, and conversation management.
  */
 export class XmtpService {
   constructor(private readonly messagingStore: MessagingStore) {}
 
   /**
-   * Retrieve the decrypted wallet key for a user.
+   * Retrieve the public wallet address for a user (no private key exposed).
    * @param userId - Authenticated user ID.
-   * @returns Wallet private key and address, or null if no wallet exists.
+   * @returns Wallet address, or null if no wallet exists.
    */
-  async getWalletKey(userId: string): Promise<{ walletPrivateKey: string; walletAddress: string } | null> {
-    const result = await this.messagingStore.getWalletKey(userId);
-    if (!result) return null;
-    return { walletPrivateKey: result.privateKey, walletAddress: result.walletAddress };
+  async getIdentity(userId: string): Promise<{ walletAddress: string } | null> {
+    const walletAddress = await this.messagingStore.getWalletAddress(userId);
+    if (!walletAddress) return null;
+    return { walletAddress };
+  }
+
+  /**
+   * Sign a message using the user's server-held private key.
+   * The private key never leaves the server.
+   * @param userId - Authenticated user ID.
+   * @param message - The message to sign (XMTP identity challenge).
+   * @returns Raw signature bytes as number array (for JSON transport).
+   */
+  async signMessage(userId: string, message: string): Promise<number[]> {
+    const signature = await this.messagingStore.signMessage(userId, message);
+    return Array.from(signature);
   }
 
   /**

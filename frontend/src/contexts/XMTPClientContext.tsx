@@ -4,7 +4,6 @@ import type { Client, Dm } from '@xmtp/browser-sdk';
 import { useAuthContext } from './AuthContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useXmtpKeyManager } from '@/hooks/useXmtpKeyManager';
-import type { BackupPayload } from '@/lib/xmtp';
 import { createXmtpService, type ChatContextResponse, type ResolvedPeer } from '@/services/xmtp';
 import { createBrowserClient } from '@/lib/xmtp/xmtp.client';
 
@@ -92,21 +91,21 @@ export function XMTPProvider({ children }: { children: ReactNode }) {
 
   // ── Create browser XMTP client when key becomes ready ─────────────────────
 
-  // Extract payload when ready (type narrowing)
-  const readyPayload: BackupPayload | null =
-    keyManager.state.status === 'ready' ? keyManager.state.payload : null;
+  // Extract wallet address when ready (type narrowing)
+  const readyWalletAddress: string | null =
+    keyManager.state.status === 'ready' ? keyManager.state.walletAddress : null;
 
   useEffect(() => {
-    if (!isKeyReady || !readyPayload) return;
+    if (!isKeyReady || !readyWalletAddress) return;
     if (clientRef.current || clientCreatingRef.current) return; // already created or in progress
     clientCreatingRef.current = true;
 
     let cancelled = false;
-    const payload = readyPayload;
+    const walletAddress = readyWalletAddress;
 
     (async () => {
       try {
-        const client = await createBrowserClient(payload, XMTP_ENV);
+        const client = await createBrowserClient(walletAddress, api, XMTP_ENV);
         if (cancelled) {
           clientCreatingRef.current = false;
           return;
@@ -134,7 +133,7 @@ export function XMTPProvider({ children }: { children: ReactNode }) {
     })();
 
     return () => { cancelled = true; };
-  }, [isKeyReady, readyPayload]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isKeyReady, readyWalletAddress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cleanup on unmount
   useEffect(() => {

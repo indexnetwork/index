@@ -1,59 +1,39 @@
 import { Client, IdentifierKind, LogLevel, type Signer, type XmtpEnv } from '@xmtp/browser-sdk';
-import { secp256k1 } from '@noble/curves/secp256k1';
-import { keccak_256 } from '@noble/hashes/sha3';
+
+type ApiClient = {
+  get: <T>(endpoint: string) => Promise<T>;
+  post: <T>(endpoint: string, data?: unknown) => Promise<T>;
+};
 
 /**
- * Backup blob structure containing wallet credentials for XMTP client creation.
+ * Create an XMTP Signer that delegates signing to the server.
+ * The private key never leaves the server — the client sends the challenge
+ * message and receives the signature bytes back.
  */
-export interface BackupPayload {
-  version: 1;
-  walletPrivateKey: string;
-  dbEncryptionKey: string;
-  walletAddress: string;
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const arr = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    arr[i / 2] = parseInt(hex.substring(i, i + 2), 16);
-  }
-  return arr;
-}
-
-/**
- * Create an XMTP Signer from a raw private key hex string.
- * Derives the Ethereum address via secp256k1 public key + keccak256.
- */
-export function createSignerFromPrivateKey(privateKeyHex: string): Signer {
-  const keyBytes = hexToBytes(privateKeyHex.replace(/^0x/, ''));
-  const publicKey = secp256k1.getPublicKey(keyBytes, false);
-  const addressBytes = keccak_256(publicKey.slice(1)).slice(-20);
-  const address = '0x' + Array.from(addressBytes, b => b.toString(16).padStart(2, '0')).join('');
-
+export function createRemoteSigner(walletAddress: string, api: ApiClient): Signer {
   return {
     type: 'EOA' as const,
     getIdentifier: () => ({
-      identifier: address.toLowerCase(),
+      identifier: walletAddress.toLowerCase(),
       identifierKind: IdentifierKind.Ethereum,
     }),
     signMessage: async (message: string) => {
-      const prefix = `\x19Ethereum Signed Message:\n${message.length}`;
-      const hash = keccak_256(new TextEncoder().encode(prefix + message));
-      const sig = secp256k1.sign(hash, keyBytes);
-      return new Uint8Array([...sig.toCompactRawBytes(), sig.recovery + 27]);
+      const { signature } = await api.post<{ signature: number[] }>('/xmtp/sign', { message });
+      return new Uint8Array(signature);
     },
   };
 }
 
 /**
- * Create an XMTP browser client from a decrypted backup payload.
- * Browser SDK uses unencrypted OPFS/IndexedDB — dbEncryptionKey is not passed.
+ * Create an XMTP browser client using server-side signing.
+ * The server holds the private key and signs identity challenges on behalf of the client.
  */
 export async function createBrowserClient(
-  payload: BackupPayload,
+  walletAddress: string,
+  api: ApiClient,
   env: XmtpEnv,
 ): Promise<Client> {
-  const signer = createSignerFromPrivateKey(payload.walletPrivateKey);
+  const signer = createRemoteSigner(walletAddress, api);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return Client.create(signer, {
     env,

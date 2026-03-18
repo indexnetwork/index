@@ -1,7 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
 
-import type { BackupPayload } from '@/lib/xmtp';
-
 type ApiClient = {
   get: <T>(endpoint: string) => Promise<T>;
   post: <T>(endpoint: string, data?: unknown) => Promise<T>;
@@ -9,19 +7,19 @@ type ApiClient = {
 
 export type XmtpKeyState =
   | { status: 'loading' }
-  | { status: 'ready'; payload: BackupPayload }
+  | { status: 'ready'; walletAddress: string }
   | { status: 'error'; message: string };
 
 /**
- * Manages XMTP key retrieval from the server.
- * Fetches the server-managed wallet key — no passphrase required.
+ * Manages XMTP identity retrieval from the server.
+ * Only fetches the public wallet address — private key never leaves the server.
  */
 export function useXmtpKeyManager(api: ApiClient) {
   const [state, setState] = useState<XmtpKeyState>({ status: 'loading' });
   const initializingRef = useRef(false);
 
   /**
-   * Initialize: fetch wallet key from server.
+   * Initialize: fetch wallet address from server.
    * Call this after authentication is confirmed.
    */
   const initialize = useCallback(async () => {
@@ -29,32 +27,20 @@ export function useXmtpKeyManager(api: ApiClient) {
     initializingRef.current = true;
     setState({ status: 'loading' });
     try {
-      const result = await api.get<{ walletPrivateKey: string; walletAddress: string }>(
-        '/xmtp/keys/wallet',
-      );
-      // Generate a client-side dbEncryptionKey (32 random bytes, base64)
-      const dbKeyBytes = crypto.getRandomValues(new Uint8Array(32));
-      const dbEncryptionKey = btoa(String.fromCharCode(...dbKeyBytes));
-
-      const payload: BackupPayload = {
-        version: 1,
-        walletPrivateKey: result.walletPrivateKey,
-        dbEncryptionKey,
-        walletAddress: result.walletAddress,
-      };
-
-      setState({ status: 'ready', payload });
+      const result = await api.get<{ walletAddress: string }>('/xmtp/identity');
+      setState({ status: 'ready', walletAddress: result.walletAddress });
       initializingRef.current = false;
     } catch (err: unknown) {
       // 404 means wallet doesn't exist yet — stay loading (ensureWallet will create it)
       if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 404) {
-        // Wallet will be created on next auth cycle; retry after a short delay
+        initializingRef.current = false;
         setTimeout(() => {
+          initializingRef.current = false;
           setState(prev => prev.status === 'loading' ? prev : { status: 'loading' });
         }, 2000);
         return;
       }
-      setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to fetch wallet key' });
+      setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to fetch wallet identity' });
       initializingRef.current = false;
     }
   }, [api]);

@@ -1,5 +1,4 @@
 export {
-  createSignerFromPrivateKey,
+  createRemoteSigner,
   createBrowserClient,
-  type BackupPayload,
 } from './xmtp.client';

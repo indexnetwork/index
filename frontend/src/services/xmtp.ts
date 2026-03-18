@@ -31,18 +31,18 @@ export const createXmtpService = (api: {
   post: <T>(endpoint: string, data?: unknown) => Promise<T>;
 }) => ({
   getPeerInfo: (userId: string) =>
-    api.post<XmtpPeerInfo>('/xmtp/keys/peer-info', { userId }),
+    api.post<XmtpPeerInfo>('/xmtp/peer-info', { userId }),
 
   resolvePeers: (inboxIds: string[]) =>
     api.post<{ peers: Record<string, ResolvedPeer> }>(
-      '/xmtp/keys/resolve-peers', { inboxIds }),
+      '/xmtp/resolve-peers', { inboxIds }),
 
   deleteConversation: (conversationId: string) =>
-    api.post<{ success: boolean }>('/xmtp/keys/hide-conversation', { conversationId }),
+    api.post<{ success: boolean }>('/xmtp/hide-conversation', { conversationId }),
 
   getHiddenConversations: () =>
     api.get<{ conversations: { conversationId: string; hiddenAt: string }[] }>(
-      '/xmtp/keys/hidden-conversations'),
+      '/xmtp/hidden-conversations'),
 
   getChatContext: (peerUserId: string) =>
     api.get<ChatContextResponse>(`/opportunities/chat-context?peerUserId=${encodeURIComponent(peerUserId)}`),
