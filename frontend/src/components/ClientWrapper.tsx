@@ -6,7 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import ChatSidebar from "@/components/ChatSidebar";
 import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
 import { IndexesProvider } from "@/contexts/IndexesContext";
-import { XMTPProvider } from "@/contexts/XMTPContext";
+import { XMTPProvider } from "@/contexts/XMTPClientContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 export default function ClientWrapper({ children }: PropsWithChildren) {

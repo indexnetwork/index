@@ -10,6 +10,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    exclude: ["@xmtp/wasm-bindings", "@xmtp/browser-sdk"],
+  },
   preview: {
     port: parseInt(process.env.PORT || "4173", 10),
     host: "0.0.0.0",

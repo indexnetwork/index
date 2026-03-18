@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { Compass, MessagesSquare, Loader2, ChevronDown, User as UserIcon, LogOut, Library, History, Network } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
-import { useXMTP } from '@/contexts/XMTPContext';
+import { useXMTP } from '@/contexts/XMTPClientContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { apiClient } from '@/lib/api';

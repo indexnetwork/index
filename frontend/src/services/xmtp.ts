@@ -1,19 +1,3 @@
-export interface XmtpConversation {
-  groupId: string;
-  name: string | null;
-  peerUserId: string | null;
-  peerAvatar: string | null;
-  lastMessage: { content: unknown; sentAt: string } | null;
-  updatedAt: string | null;
-}
-
-export interface XmtpMessage {
-  id: string;
-  senderInboxId: string;
-  content: unknown;
-  sentAt: string;
-}
-
 export interface XmtpPeerInfo {
   walletAddress: string | null;
   xmtpInboxId: string | null;
@@ -36,28 +20,30 @@ export interface XmtpChatContext extends ChatContextResponse {
   groupId: string | null;
 }
 
+export interface ResolvedPeer {
+  id: string;
+  name: string;
+  avatar: string | null;
+}
+
 export const createXmtpService = (api: {
   get: <T>(endpoint: string) => Promise<T>;
   post: <T>(endpoint: string, data?: unknown) => Promise<T>;
 }) => ({
-  getConversations: () =>
-    api.get<{ conversations: XmtpConversation[] }>('/xmtp/conversations'),
+  getPeerInfo: (userId: string) =>
+    api.post<XmtpPeerInfo>('/xmtp/keys/peer-info', { userId }),
+
+  resolvePeers: (inboxIds: string[]) =>
+    api.post<{ peers: Record<string, ResolvedPeer> }>(
+      '/xmtp/keys/resolve-peers', { inboxIds }),
+
+  deleteConversation: (conversationId: string) =>
+    api.post<{ success: boolean }>('/xmtp/keys/hide-conversation', { conversationId }),
+
+  getHiddenConversations: () =>
+    api.get<{ conversations: { conversationId: string; hiddenAt: string }[] }>(
+      '/xmtp/keys/hidden-conversations'),
 
   getChatContext: (peerUserId: string) =>
     api.get<ChatContextResponse>(`/opportunities/chat-context?peerUserId=${encodeURIComponent(peerUserId)}`),
-
-  getMessages: (groupId: string, limit?: number) =>
-    api.post<{ messages: XmtpMessage[] }>('/xmtp/messages', { groupId, limit }),
-
-  sendMessage: (params: { groupId?: string; peerUserId?: string; text: string }) =>
-    api.post<{ success: boolean; groupId: string }>('/xmtp/send', params),
-
-  getPeerInfo: (userId: string) =>
-    api.post<XmtpPeerInfo>('/xmtp/peer-info', { userId }),
-
-  findDm: (peerUserId: string) =>
-    api.post<{ groupId: string | null }>('/xmtp/find-dm', { peerUserId }),
-
-  deleteConversation: (conversationId: string) =>
-    api.post<{ success: boolean }>('/xmtp/conversations/delete', { conversationId }),
 });

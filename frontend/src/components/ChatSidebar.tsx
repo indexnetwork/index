@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { MoreHorizontal, Trash2, Loader2 } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
-import { useXMTP } from '@/contexts/XMTPContext';
+import { useXMTP } from '@/contexts/XMTPClientContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 interface RecentChat {

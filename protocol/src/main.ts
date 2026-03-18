@@ -14,10 +14,9 @@ import { StorageController } from './controllers/storage.controller';
 import { SubscribeController } from './controllers/subscribe.controller';
 import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
-import { MessagingController } from './controllers/messaging.controller';
+import { XmtpController } from './controllers/xmtp.controller';
 import { MessagingDatabaseAdapter } from './adapters/database.adapter';
-import { MessagingService } from './services/messaging.service';
-import path from 'path';
+import { XmtpService } from './services/xmtp.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
 import { createAuth } from './lib/betterauth/betterauth';
@@ -112,11 +111,6 @@ const auth = createAuth({
   sendMagicLinkEmail,
   ensureWallet: (userId) => messagingStore.ensureWallet(userId),
 });
-const messagingService = new MessagingService(messagingStore, {
-  xmtpEnv: (process.env.XMTP_ENV as 'dev' | 'production' | 'local') || 'dev',
-  xmtpDbDir: path.resolve(import.meta.dir, '../.xmtp'),
-  walletMasterKey,
-});
 // Set storage adapter on fileService for S3 file operations
 fileService.setStorageAdapter(storageAdapter);
 
@@ -130,7 +124,8 @@ controllerInstances.set(LinkController, new LinkController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
 controllerInstances.set(UserController, new UserController());
-controllerInstances.set(MessagingController, new MessagingController(messagingService));
+const xmtpService = new XmtpService(messagingStore);
+controllerInstances.set(XmtpController, new XmtpController(xmtpService));
 controllerInstances.set(StorageController, new StorageController(storageAdapter));
 controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
