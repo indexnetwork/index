@@ -48,7 +48,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   [pathname, isAuthenticated]);
 
   const isMessagesView = useMemo(() => 
-    pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
+    pathname === '/chat' || pathname === '/chat/copilot' || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
   [pathname]);
 
   if (isBareRoute) {

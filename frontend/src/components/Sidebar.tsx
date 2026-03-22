@@ -46,7 +46,7 @@ export default function Sidebar() {
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
-  const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
+  const isMessagesView = pathname === '/chat' || pathname === '/chat/copilot' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
   const isLibraryView = pathname?.startsWith('/library');
   const isNetworksView = pathname?.startsWith('/networks');
   const isHistoryView = pathname?.startsWith('/d/');

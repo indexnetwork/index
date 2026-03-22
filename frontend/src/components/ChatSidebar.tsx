@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { MoreHorizontal, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Trash2, Bot } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
@@ -92,10 +92,25 @@ export default function ChatSidebar() {
         </h3>
         {loading ? (
           <div className="text-sm text-gray-400">Loading...</div>
-        ) : recentChats.length === 0 ? (
-          <div className="text-sm text-gray-400">No messages yet</div>
         ) : (
           <div className="space-y-1">
+            {/* Copilot entry — always visible */}
+            <div
+              className={`relative flex items-center py-2 px-2 -mx-2 rounded-md transition-colors hover:bg-gray-50 ${pathname === '/chat/copilot' ? 'bg-gray-100' : ''}`}
+            >
+              <button
+                onClick={() => navigate('/chat/copilot')}
+                className="flex-1 flex items-center gap-3 text-sm text-left min-w-0 text-gray-700 hover:text-black"
+              >
+                <div className="flex-shrink-0 w-7 h-7 rounded-full bg-black flex items-center justify-center">
+                  <Bot className="w-4 h-4 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-black">Copilot</p>
+                  <p className="truncate text-sm font-normal text-gray-500">Your private AI assistant</p>
+                </div>
+              </button>
+            </div>
             {recentChats.map((chat) => (
               <div
                 key={chat.groupId}
