@@ -422,7 +422,14 @@ export default function OnboardingPage() {
     }
 
     setIsTransitioning(true);
-    const target = sessionId ? `/d/${sessionId}` : "/";
+    const pendingChatUserId = localStorage.getItem('pendingChatUserId');
+    let target: string;
+    if (pendingChatUserId) {
+      localStorage.removeItem('pendingChatUserId');
+      target = `/u/${pendingChatUserId}/chat`;
+    } else {
+      target = sessionId ? `/d/${sessionId}` : "/";
+    }
     const timer = setTimeout(() => navigate(target, { replace: true }), 700);
     return () => clearTimeout(timer);
   }, [user?.onboarding?.completedAt, sessionId, navigate, indexesService, refreshIndexes, showError]);

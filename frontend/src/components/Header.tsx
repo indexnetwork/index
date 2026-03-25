@@ -5,10 +5,11 @@ import { useEffect, useState, useRef } from 'react';
 
 interface HeaderProps {
   showHeaderButtons?: boolean;
+  loginOnly?: boolean;
   forcePublicView?: boolean;
 }
 
-export default function Header({ showHeaderButtons = true, forcePublicView = false }: HeaderProps) {
+export default function Header({ showHeaderButtons = true, loginOnly = false, forcePublicView = false }: HeaderProps) {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -110,6 +111,15 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
             className="object-contain w-[140px] sm:w-[180px] md:w-[200px]"
           />
         </Link>
+
+        {loginOnly && !isAuthenticated && (
+          <button
+            onClick={handleLogin}
+            className="bg-[#041729] text-white rounded-[2px] px-4 py-2 font-semibold text-sm transition-all hover:bg-[#0a2d4a] uppercase tracking-wider cursor-pointer"
+          >
+            Login
+          </button>
+        )}
 
         {showHeaderButtons && (
           <div className="flex items-center gap-3 sm:gap-8 md:gap-12">

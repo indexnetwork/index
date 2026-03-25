@@ -14,7 +14,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { isAuthenticated } = useAuthContext();
 
-  const appRoutes = ['/', '/d', '/i', '/u', '/library', '/networks', '/mynetwork', '/chat', '/profile'];
+  const appRoutes = ['/', '/d', '/u', '/library', '/networks', '/mynetwork', '/chat', '/profile'];
   const publicRoutes = ['/l', '/index', '/blog', '/about'];
   const bareRoutes = ['/onboarding', '/oauth/callback'];
 
@@ -150,8 +150,9 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                           </header>
                         }
                       >
-                        <Header 
-                          showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/')}
+                        <Header
+                          showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/') && !pathname?.startsWith('/i/')}
+                          loginOnly={pathname?.startsWith('/i/')}
                           forcePublicView={isLandingOrBlog}
                         />
                       </Suspense>
