@@ -3,6 +3,31 @@ import {
   PaginatedResponse,
   APIResponse,
 } from '../types';
+import { apiUrl } from '../lib/api';
+
+export interface SharedIntentData {
+  intent: {
+    id: string;
+    payload: string;
+    summary: string | null;
+    createdAt: string;
+  };
+  owner: {
+    id: string;
+    name: string;
+    avatar: string | null;
+    intro: string | null;
+  };
+}
+
+/**
+ * Fetches a shared intent by token (public, no auth required).
+ */
+export async function getSharedIntent(token: string): Promise<SharedIntentData> {
+  const res = await fetch(apiUrl(`/api/intents/shared/${token}`));
+  if (!res.ok) throw new Error('Shared intent not found');
+  return res.json();
+}
 
 // Service functions factory that takes an authenticated API instance
 export const createIntentsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
@@ -69,5 +94,11 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
       maxSuggestions
     });
     return response;
-  }
+  },
+
+  // Generate a share token for an intent
+  shareIntent: async (intentId: string): Promise<string> => {
+    const response = await api.post<{ shareToken: string }>(`/intents/${intentId}/share`, {});
+    return response.shareToken;
+  },
 }); 

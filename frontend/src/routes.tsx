@@ -62,6 +62,10 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/d/[id]/page"),
       },
       {
+        path: "/i/:token",
+        lazy: () => import("@/app/i/[token]/page"),
+      },
+      {
         path: "/index/:indexId",
         lazy: () => import("@/app/index/[indexId]/page"),
       },

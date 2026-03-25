@@ -294,6 +294,37 @@ export class IntentService {
 
     return result;
   }
+
+  /**
+   * Generates a share token for an intent (idempotent).
+   * Returns the existing token if one already exists.
+   *
+   * @param intentId - The intent ID
+   * @param userId - The user ID (for ownership verification)
+   * @returns The share token, or null if intent not found / unauthorized
+   */
+  async shareIntent(intentId: string, userId: string): Promise<string | null> {
+    const owned = await this.adapter.isOwnedByUser(intentId, userId);
+    if (!owned) return null;
+
+    const existing = await this.adapter.getIntentShareToken(intentId);
+    if (existing) return existing;
+
+    const token = crypto.randomUUID();
+    await this.adapter.setIntentShareToken(intentId, token);
+    logger.verbose('[IntentService] Intent shared', { intentId });
+    return token;
+  }
+
+  /**
+   * Retrieves a shared intent by its share token (public, no auth).
+   *
+   * @param shareToken - The share token from the URL
+   * @returns Intent data with owner profile, or null if not found
+   */
+  async getSharedIntent(shareToken: string) {
+    return this.adapter.getIntentByShareToken(shareToken);
+  }
 }
 
 export const intentService = new IntentService();

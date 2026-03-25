@@ -141,6 +141,49 @@ export class IntentController {
   }
 
   /**
+   * Get a shared intent by share token (public, no auth).
+   * @param params - URL params with share token
+   * @returns Intent data with owner profile
+   */
+  @Get('/shared/:token')
+  async getSharedIntent(_req: Request, _user: unknown, params: { token: string }) {
+    const data = await intentService.getSharedIntent(params.token);
+    if (!data) {
+      return Response.json({ error: 'Shared intent not found' }, { status: 404 });
+    }
+    return Response.json({
+      intent: {
+        id: data.id,
+        payload: data.payload,
+        summary: data.summary,
+        createdAt: data.createdAt.toISOString(),
+      },
+      owner: {
+        id: data.userId,
+        name: data.ownerName,
+        avatar: data.ownerAvatar,
+        intro: data.ownerIntro,
+      },
+    });
+  }
+
+  /**
+   * Generate a share token for an intent.
+   * @param params - URL params with intent ID
+   * @param user - Authenticated user from AuthGuard
+   * @returns The share token
+   */
+  @Post('/:id/share')
+  @UseGuards(AuthGuard)
+  async shareIntent(_req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const shareToken = await intentService.shareIntent(params.id, user.id);
+    if (!shareToken) {
+      return Response.json({ error: 'Intent not found' }, { status: 404 });
+    }
+    return Response.json({ shareToken });
+  }
+
+  /**
    * Get a single intent by ID.
    */
   @Get('/:id')

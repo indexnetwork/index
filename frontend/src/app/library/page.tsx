@@ -162,6 +162,18 @@ export default function LibraryPage() {
     loadAll();
   }, [isAuthenticated, authLoading, loadIntents, loadFiles, loadLinks]);
 
+  // Share intent handler
+  const handleShareIntent = useCallback(async (intent: LibrarySourceIntent) => {
+    try {
+      const shareToken = await intentsService.shareIntent(intent.id);
+      const shareUrl = `${window.location.origin}/i/${shareToken}`;
+      await navigator.clipboard.writeText(shareUrl);
+      success('Link copied to clipboard');
+    } catch {
+      error('Failed to share intent');
+    }
+  }, [intentsService, success, error]);
+
   // Archive intent handler
   const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
     setIntents(prev => prev.filter(i => i.id !== intent.id));
@@ -272,6 +284,7 @@ export default function LibraryPage() {
                 isLoading={loadingIntents}
                 emptyMessage="No intents yet"
                 onArchiveIntent={handleArchiveIntent}
+                onShareIntent={handleShareIntent}
                 className="w-full"
               />
             )}

@@ -212,6 +212,7 @@ function AssistantMessageContent({
   onIntentProposalApprove,
   onIntentProposalReject,
   onIntentProposalUndo,
+  onIntentProposalShare,
   intentProposalStatusMap,
   OAuthLink,
   onNetworkJoin,
@@ -239,6 +240,7 @@ function AssistantMessageContent({
   onIntentProposalApprove?: (proposalId: string, description: string, indexId?: string) => void;
   onIntentProposalReject?: (proposalId: string) => void;
   onIntentProposalUndo?: (proposalId: string) => void;
+  onIntentProposalShare?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
   OAuthLink?: React.ComponentType<React.ComponentPropsWithoutRef<"a">>;
   onNetworkJoin?: (networkId: string, networkTitle: string) => void;
@@ -310,6 +312,7 @@ function AssistantMessageContent({
                 onApprove={onIntentProposalApprove}
                 onReject={onIntentProposalReject}
                 onUndo={onIntentProposalUndo}
+                onShare={onIntentProposalShare}
                 currentStatus={intentProposalStatusMap?.[segment.data.proposalId]}
               />
             </div>
@@ -823,6 +826,21 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       await archiveProposalIntent(proposalId, intentId);
     },
     [proposalIntentMap, archiveProposalIntent],
+  );
+
+  const handleIntentProposalShare = useCallback(
+    async (proposalId: string) => {
+      const intentId = proposalIntentMap[proposalId];
+      if (!intentId) return;
+      try {
+        const { shareToken } = await apiClient.post<{ shareToken: string }>(`/intents/${intentId}/share`, {});
+        const shareUrl = `${window.location.origin}/i/${shareToken}`;
+        await navigator.clipboard.writeText(shareUrl);
+      } catch {
+        // silently fail
+      }
+    },
+    [proposalIntentMap],
   );
 
   const canSend = input.trim() || selectedFiles.length > 0;
@@ -1664,6 +1682,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             onIntentProposalApprove={handleIntentProposalApprove}
                             onIntentProposalReject={handleIntentProposalReject}
                             onIntentProposalUndo={handleIntentProposalUndo}
+                            onIntentProposalShare={handleIntentProposalShare}
                             intentProposalStatusMap={intentProposalStatusMap}
                             OAuthLink={OAuthLink}
                             onNetworkJoin={handleNetworkJoin}

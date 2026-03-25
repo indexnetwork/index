@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Calendar, Trash2, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Calendar, Trash2, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Share2, Check } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { DebugCopyButton } from './DebugCopyButton';
@@ -23,6 +23,7 @@ interface IntentListProps<T extends BaseIntent> {
   onArchiveIntent?: (intent: T) => void;
   onRemoveIntent?: (intent: T) => void;
   onOpenIntentSource?: (intent: T) => void;
+  onShareIntent?: (intent: T) => Promise<void>;
   newIntentIds?: Set<string>;
   selectedIntentIds?: Set<string>;
   removingIntentIds?: Set<string>;
@@ -36,6 +37,7 @@ export default function IntentList<T extends BaseIntent>({
   onArchiveIntent,
   onRemoveIntent,
   onOpenIntentSource,
+  onShareIntent,
   newIntentIds = new Set(),
   selectedIntentIds = new Set(),
   removingIntentIds = new Set(),
@@ -73,6 +75,17 @@ export default function IntentList<T extends BaseIntent>({
     );
   }
 
+  const [sharedIntentId, setSharedIntentId] = useState<string | null>(null);
+
+  const handleShare = async (e: React.MouseEvent, intent: T) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!onShareIntent) return;
+    await onShareIntent(intent);
+    setSharedIntentId(intent.id);
+    setTimeout(() => setSharedIntentId(null), 2000);
+  };
+
   return (
     <div className={cn("space-y-3", className)}>
       {sortedIntents.map((intent) => {
@@ -86,6 +99,7 @@ export default function IntentList<T extends BaseIntent>({
         const isSelectedSource = selectedIntentIds.has(intent.id);
         const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
         const isRemoving = removingIntentIds.has(intent.id);
+        const justShared = sharedIntentId === intent.id;
         
         return (
           <div 
@@ -134,6 +148,15 @@ export default function IntentList<T extends BaseIntent>({
               {/* Actions */}
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <DebugCopyButton fetchPath={`/debug/intents/${intent.id}`} />
+                {onShareIntent && (
+                  <button
+                    onClick={(e) => handleShare(e, intent)}
+                    className="p-1.5 rounded-md text-gray-400 hover:text-black hover:bg-gray-100 transition-colors"
+                    title={justShared ? "Copied!" : "Share"}
+                  >
+                    {justShared ? <Check className="w-4 h-4 text-green-600" /> : <Share2 className="w-4 h-4" />}
+                  </button>
+                )}
                 {onOpenIntentSource && canOpenSource && (
                   <button
                     onClick={(e) => {

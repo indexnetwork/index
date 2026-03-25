@@ -643,6 +643,81 @@ export class IntentDatabaseAdapter {
       createdAt: r.createdAt,
     }));
   }
+
+  /**
+   * Sets or updates the share token for an intent.
+   * @param intentId - The intent ID
+   * @param token - The share token to set
+   */
+  async setIntentShareToken(intentId: string, token: string): Promise<void> {
+    await db.update(schema.intents)
+      .set({ shareToken: token, updatedAt: new Date() })
+      .where(eq(schema.intents.id, intentId));
+  }
+
+  /**
+   * Retrieves an intent by its share token, joined with owner profile data.
+   * @param token - The share token
+   * @returns Intent + owner info, or null if not found/archived
+   */
+  async getIntentByShareToken(token: string): Promise<{
+    id: string;
+    payload: string;
+    summary: string | null;
+    createdAt: Date;
+    userId: string;
+    ownerName: string;
+    ownerAvatar: string | null;
+    ownerIntro: string | null;
+  } | null> {
+    const rows = await db
+      .select({
+        id: schema.intents.id,
+        payload: schema.intents.payload,
+        summary: schema.intents.summary,
+        createdAt: schema.intents.createdAt,
+        userId: schema.intents.userId,
+        ownerName: schema.users.name,
+        ownerAvatar: schema.users.avatar,
+        ownerIntro: schema.users.intro,
+      })
+      .from(schema.intents)
+      .innerJoin(schema.users, eq(schema.intents.userId, schema.users.id))
+      .where(
+        and(
+          eq(schema.intents.shareToken, token),
+          isNull(schema.intents.archivedAt),
+        )
+      )
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      payload: row.payload,
+      summary: row.summary,
+      createdAt: row.createdAt,
+      userId: row.userId,
+      ownerName: row.ownerName ?? 'Unknown',
+      ownerAvatar: row.ownerAvatar ?? null,
+      ownerIntro: row.ownerIntro ?? null,
+    };
+  }
+
+  /**
+   * Gets the existing share token for an intent, if any.
+   * @param intentId - The intent ID
+   * @returns The share token or null
+   */
+  async getIntentShareToken(intentId: string): Promise<string | null> {
+    const rows = await db
+      .select({ shareToken: schema.intents.shareToken })
+      .from(schema.intents)
+      .where(eq(schema.intents.id, intentId))
+      .limit(1);
+    return rows[0]?.shareToken ?? null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

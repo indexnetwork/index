@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, RotateCcw, X } from "lucide-react";
+import { Check, RotateCcw, Share2, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,7 @@ interface IntentProposalCardProps {
   onApprove?: (proposalId: string, description: string, indexId?: string) => void | Promise<void>;
   onReject?: (proposalId: string) => void | Promise<void>;
   onUndo?: (proposalId: string) => void | Promise<void>;
+  onShare?: (proposalId: string) => void | Promise<void>;
   currentStatus?: "pending" | "created" | "rejected";
 }
 
@@ -46,6 +47,7 @@ export default function IntentProposalCard({
   onApprove,
   onReject,
   onUndo,
+  onShare,
   currentStatus,
 }: IntentProposalCardProps) {
   const [actionTaken, setActionTaken] = useState<"created" | "rejected" | null>(null);
@@ -55,6 +57,7 @@ export default function IntentProposalCard({
   const [isUndoing, setIsUndoing] = useState(false);
   const [actionError, setActionError] = useState(false);
   const [failedAction, setFailedAction] = useState<"approve" | "reject" | "undo" | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const countdownStarted = useRef(false);
   const autoSaveTriggered = useRef(false);
 
@@ -155,6 +158,13 @@ export default function IntentProposalCard({
     }
   }, [onUndo, card.proposalId, isUndoing]);
 
+  const handleShare = useCallback(async () => {
+    if (!onShare) return;
+    await onShare(card.proposalId);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  }, [onShare, card.proposalId]);
+
   if (actionError) {
     const errorLabel =
       failedAction === "reject" ? "Failed: Skip intent" :
@@ -215,6 +225,16 @@ export default function IntentProposalCard({
               <span className="text-xs text-gray-400">Saving…</span>
             ) : (
               <>
+                {onShare && (
+                  <button
+                    type="button"
+                    onClick={handleShare}
+                    className="text-xs text-gray-400 hover:text-gray-500 flex items-center gap-1"
+                  >
+                    <Share2 className="w-3 h-3" />
+                    {shareCopied ? "Copied!" : "Share"}
+                  </button>
+                )}
                 {onUndo && (
                   <button
                     type="button"

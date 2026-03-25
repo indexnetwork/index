@@ -225,8 +225,10 @@ export const intents = pgTable('intents', {
   felicityAuthority: integer('felicity_authority'),
   felicitySincerity: integer('felicity_sincerity'),
   status: intentStatusEnum('status').default('ACTIVE'),
+  shareToken: text('share_token'),
 }, (table) => [
   index('embeddingIndex').using('hnsw', table.embedding.op('vector_cosine_ops')),
+  uniqueIndex('intents_share_token_idx').on(table.shareToken),
 ]);
 
 export const indexes = pgTable('indexes', {
