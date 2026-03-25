@@ -142,7 +142,10 @@ describe('HomeGraph', () => {
     expect(result.error).toBeUndefined();
     expect(result.sections.length).toBeGreaterThanOrEqual(1);
     const firstItem = result.sections[0]?.items[0];
-    expect(firstItem?.narratorChip).toBeUndefined();
+    // Fallback card always includes an "Index" narrator chip for non-introducer opportunities;
+    // the frontend filters these out (name !== "Index") so they are effectively invisible.
+    expect(firstItem?.narratorChip?.name).toBe('Index');
+    expect(opp.actors.some((a) => a.role === 'introducer')).toBe(false);
   }, 70000);
 
   test('actor-dedupes multiple opportunities between same actors to one card', async () => {
