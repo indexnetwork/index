@@ -298,6 +298,18 @@ export interface ResponseResetEvent extends ChatStreamEventBase {
 }
 
 /**
+ * Hallucination detected event — tells the frontend that the agent caught a
+ * hallucinated code block and is auto-invoking the correct tool.
+ */
+export interface HallucinationDetectedEvent extends ChatStreamEventBase {
+  type: "hallucination_detected";
+  /** The type of block that was hallucinated (e.g. "intent_proposal", "opportunity") */
+  blockType: string;
+  /** The tool being auto-invoked to recover */
+  tool: string;
+}
+
+/**
  * One internal step reported by a tool for debug visibility (e.g. subgraph, subtask).
  */
 export interface DebugMetaStep {
@@ -408,6 +420,7 @@ export type ChatStreamEvent =
   // Internal response tracking events
   | ResponseCompleteEvent
   | ResponseResetEvent
+  | HallucinationDetectedEvent
   // Debug meta
   | DebugMetaEvent
   // Trace hierarchy events
@@ -731,6 +744,17 @@ export function createResponseResetEvent(
   reason: string,
 ): ResponseResetEvent {
   return createStreamEvent<ResponseResetEvent>("response_reset", sessionId, { reason });
+}
+
+/**
+ * Creates a hallucination detected event for the trace panel.
+ */
+export function createHallucinationDetectedEvent(
+  sessionId: string,
+  blockType: string,
+  tool: string,
+): HallucinationDetectedEvent {
+  return createStreamEvent<HallucinationDetectedEvent>("hallucination_detected", sessionId, { blockType, tool });
 }
 
 // ════════════════════════════════════════════════════════════════════════════

@@ -18,6 +18,7 @@ import {
   createLlmEndEvent,
   createResponseCompleteEvent,
   createResponseResetEvent,
+  createHallucinationDetectedEvent,
   createStatusEvent,
   createTokenEvent,
   createToolActivityEvent,
@@ -199,6 +200,10 @@ export class ChatStreamer {
 
           if (event.type === "response_reset") {
             yield createResponseResetEvent(sessionId, event.reason);
+          }
+
+          if (event.type === "hallucination_detected") {
+            yield createHallucinationDetectedEvent(sessionId, event.blockType, event.tool);
           }
 
           if (event.type === "llm_end") {

@@ -34,6 +34,7 @@ export type TraceEventType =
   | "iteration_start"
   | "llm_start"
   | "llm_end"
+  | "hallucination_detected"
   | "tool_start"
   | "tool_end"
   | "graph_start"
@@ -352,6 +353,23 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       ),
                     );
                     break;
+                  case "hallucination_detected": {
+                    const hallucinationEvent: TraceEvent = {
+                      type: "hallucination_detected",
+                      timestamp: Date.now(),
+                      name: event.tool,
+                      summary: event.blockType,
+                    };
+                    streamTraceEvents.push(hallucinationEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), hallucinationEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
                   case "llm_end": {
                     const llmEndEvent: TraceEvent = {
                       type: "llm_end",

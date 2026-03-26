@@ -67,6 +67,7 @@ export type AgentStreamEvent =
       steps?: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
     }
   | { type: "response_reset"; reason: string }
+  | { type: "hallucination_detected"; blockType: string; tool: string }
   | { type: "graph_start"; name: string }
   | { type: "graph_end"; name: string; durationMs: number }
   | { type: "agent_start"; name: string }
@@ -955,6 +956,7 @@ export class ChatAgent {
         });
         // Tell the frontend to discard all streamed tokens from this iteration
         emit({ type: "response_reset", reason: `Hallucinated ${hallucinatedBlock.type} block detected` });
+        emit({ type: "hallucination_detected", blockType: hallucinatedBlock.type, tool: hallucinatedBlock.tool });
 
         const tool = this.toolsByName.get(hallucinatedBlock.tool);
         if (tool) {

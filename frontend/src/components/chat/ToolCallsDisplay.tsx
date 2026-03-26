@@ -9,6 +9,7 @@ import {
   Circle,
   Cpu,
   Zap,
+  AlertTriangle,
 } from "lucide-react";
 import type { TraceEvent } from "@/contexts/AIChatContext";
 import { cn } from "@/lib/utils";
@@ -383,7 +384,7 @@ interface ToolNode {
 
 /** Ordered list of items to render in the non-tool sections (llm / iteration events). */
 interface NonToolItem {
-  kind: "iteration_start" | "llm_start" | "llm_end";
+  kind: "iteration_start" | "llm_start" | "llm_end" | "hallucination_detected";
   event: TraceEvent;
   /** For llm_start: duration if matched; null if still running. */
   duration?: number | null;
@@ -433,6 +434,10 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
 
       case "llm_end":
         timeline.push({ kind: "non_tool", item: { kind: "llm_end", event } });
+        break;
+
+      case "hallucination_detected":
+        timeline.push({ kind: "non_tool", item: { kind: "hallucination_detected", event } });
         break;
 
       case "tool_start": {
@@ -1271,6 +1276,23 @@ export function ToolCallsDisplay({
                   <Zap className="w-3 h-3 text-blue-400 flex-shrink-0" />
                   <span className="text-blue-300 font-medium">
                     Starting iteration {event.iteration}
+                  </span>
+                  <span className="text-gray-600 text-[10px] ml-auto">
+                    {formatTime(event.timestamp)}
+                  </span>
+                </div>
+              );
+            }
+
+            if (item.kind === "hallucination_detected") {
+              return (
+                <div
+                  key={`hallucination-${idx}`}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20"
+                >
+                  <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                  <span className="text-amber-300 font-medium">
+                    Hallucinated {event.summary} block — auto-invoking {event.name}
                   </span>
                   <span className="text-gray-600 text-[10px] ml-auto">
                     {formatTime(event.timestamp)}
