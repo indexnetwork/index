@@ -107,7 +107,7 @@ NODE_ENV=development
 
 ```bash
 # Allow the frontend dev server origin for auth
-TRUSTED_ORIGINS=http://localhost:5173
+TRUSTED_ORIGINS=http://localhost:3000
 ```
 
 **Optional (features degrade gracefully when absent):**
@@ -215,17 +215,17 @@ This opens an interactive selector that lets you pick which workspace to run. Al
 cd protocol
 bun run dev
 
-# Terminal 2: Frontend dev server (port 5173, proxies /api to 3001)
+# Terminal 2: Frontend dev server (port 3000, proxies /api to 3001)
 cd frontend
 bun run dev
 ```
 
-Once both servers are running, open http://localhost:5173 in your browser.
+Once both servers are running, open http://localhost:3000 in your browser.
 
 ### What to expect
 
 - The protocol server starts on **port 3001** with hot reload via Bun.serve.
-- The frontend Vite dev server starts on **port 5173** and proxies API requests to the protocol.
+- The frontend Vite dev server starts on **port 3000** and proxies API requests to the protocol.
 - On first visit you will see the authentication flow. If you have not configured Google OAuth, use email-based auth.
 - After login the onboarding flow guides you through profile creation, community selection, and intent definition.
 
@@ -365,7 +365,7 @@ Write the PR description as a changelog with categories: New Features, Bug Fixes
 The app's origin is not in the allowed list. Set `TRUSTED_ORIGINS` in `protocol/.env`:
 
 ```bash
-TRUSTED_ORIGINS=http://localhost:5173
+TRUSTED_ORIGINS=http://localhost:3000
 ```
 
 Restart the protocol server after changing this value.
@@ -406,7 +406,7 @@ For more details on migration workflows, see the Database Workflow section in `C
 
 ### Port already in use
 
-If port 3001 or 5173 is already in use:
+If port 3001 or 3000 is already in use:
 
 ```bash
 # Find the process using the port

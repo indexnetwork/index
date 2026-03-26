@@ -106,7 +106,7 @@ describe("IntegrationController", () => {
     test("should return a redirect URL for allowed toolkit", async () => {
       const req = new Request("http://test/api/integrations/connect/gmail", {
         method: "POST",
-        headers: { origin: "http://localhost:5173" },
+        headers: { origin: "http://localhost:3000" },
       });
       const result = await controller.connect(req, USER_A, { toolkit: "gmail" });
 
