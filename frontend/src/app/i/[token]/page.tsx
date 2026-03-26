@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, Link } from "react-router";
 import { Loader2, UserCheck, Users, Check, Copy, ArrowRight } from "lucide-react";
 
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -112,8 +112,27 @@ export default function SharedIntentPage() {
   });
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
-      <div className="px-6 py-12">
+    <div className="min-h-screen bg-[#FDFDFD]">
+      <header className="px-4 py-6 flex items-center justify-between">
+        <Link to="/" className="cursor-pointer">
+          <img
+            src="/logos/logo-black-full.svg"
+            alt="Index Network"
+            width={160}
+            height={28}
+            className="object-contain"
+          />
+        </Link>
+        {!isAuthenticated && (
+          <button
+            onClick={openLoginModal}
+            className="bg-[#041729] text-white rounded-sm px-4 py-2 text-sm font-medium hover:bg-[#0a2d4a] transition-colors"
+          >
+            Login
+          </button>
+        )}
+      </header>
+      <div className="px-6 py-8">
         <ContentContainer className="max-w-md mx-auto space-y-3">
           {/* Unified card: owner + intent */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

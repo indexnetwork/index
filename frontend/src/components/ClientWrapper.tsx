@@ -38,7 +38,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   }, [pathname]);
 
   const showSidebar = isAppRoute && !isPublicRoute && !isBareRoute;
-  const showHeader = !showSidebar && !isBareRoute;
+  const showHeader = !showSidebar && !isBareRoute && !pathname?.startsWith('/i/');
 
   const isLandingOrBlog = useMemo(() =>
     (pathname === '/' && !isAuthenticated) ||
