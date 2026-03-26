@@ -159,11 +159,44 @@ export class OpportunityGraphFactory {
     // ═══════════════════════════════════════════════════════════════
 
     /**
+     * Wraps a graph node function to emit agent_start/agent_end trace events
+     * at its boundaries so the frontend TRACE panel shows real-time progress.
+     * @param traceName - Kebab-case agent name (e.g. "opportunity-prep")
+     * @param nodeFn - The original node function
+     * @param summaryFn - Optional function to derive a summary string from the node result
+     */
+    function withNodeTrace<S, R>(
+      traceName: string,
+      nodeFn: (state: S) => Promise<R>,
+      summaryFn?: (result: R) => string | undefined,
+    ): (state: S) => Promise<R> {
+      return async (state: S) => {
+        const traceEmitter = requestContext.getStore()?.traceEmitter;
+        const nodeStart = Date.now();
+        traceEmitter?.({ type: "agent_start", name: traceName });
+        try {
+          const result = await nodeFn(state);
+          const durationMs = Date.now() - nodeStart;
+          const summary = summaryFn?.(result) ?? undefined;
+          traceEmitter?.({ type: "agent_end", name: traceName, durationMs, summary });
+          return result;
+        } catch (err) {
+          const durationMs = Date.now() - nodeStart;
+          const errMsg = err instanceof Error ? err.message : String(err);
+          traceEmitter?.({ type: "agent_end", name: traceName, durationMs, summary: `error: ${errMsg}` });
+          throw err;
+        }
+      };
+    }
+
+    /**
      * Node 0: Prep
      * Fetches user's index memberships and validates requirements.
      * Returns empty if user has no index memberships (requirement).
      */
-    const prepNode = async (state: typeof OpportunityGraphState.State) =>
+    const prepNode = withNodeTrace(
+      "opportunity-prep",
+      async (state: typeof OpportunityGraphState.State) =>
       timed("OpportunityGraph.prep", async () =>
         withCallLogging(
           logger,
@@ -228,7 +261,15 @@ export class OpportunityGraphFactory {
             }],
           };
         })
-      );
+      ),
+      (result) => {
+        const r = result as Record<string, unknown>;
+        if (r?.error) return `error: ${r.error}`;
+        const indexes = r?.userIndexes as unknown[];
+        const intents = r?.indexedIntents as unknown[];
+        return indexes && intents ? `${indexes.length} index(es), ${intents.length} intent(s)` : undefined;
+      },
+    );
 
     /**
      * Node 1: Scope
@@ -236,7 +277,9 @@ export class OpportunityGraphFactory {
      * If indexId provided: searches only that index.
      * Otherwise: searches all user's indexes.
      */
-    const scopeNode = async (state: typeof OpportunityGraphState.State) => {
+    const scopeNode = withNodeTrace(
+      "opportunity-scope",
+      async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.scope", async () => {
         logger.verbose('[Graph:Scope] Determining search scope', {
           requestedIndexId: state.indexId,
@@ -370,14 +413,23 @@ export class OpportunityGraphFactory {
           };
         }
       });
-    };
+    },
+      (result) => {
+        const r = result as Record<string, unknown>;
+        if (r?.error) return `error: ${r.error}`;
+        const indexes = r?.targetIndexes as unknown[];
+        return indexes ? `${indexes.length} index(es) in scope` : undefined;
+      },
+    );
 
     /**
      * Node 2: Resolve
      * Resolves trigger intent from triggerIntentId or searchQuery vs indexedIntents;
      * sets discoverySource, resolvedTriggerIntentId, resolvedIntentInIndex for routing (path A/B/C).
      */
-    const resolveNode = async (state: typeof OpportunityGraphState.State) => {
+    const resolveNode = withNodeTrace(
+      "opportunity-resolve",
+      async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.resolve", async () => {
         logger.verbose('[Graph:Resolve] Resolving intent and index membership', {
           triggerIntentId: state.triggerIntentId,
@@ -447,13 +499,20 @@ export class OpportunityGraphFactory {
           };
         }
       });
-    };
+    },
+      (result) => {
+        const r = result as Record<string, unknown>;
+        return r?.discoverySource ? `source: ${r.discoverySource}` : undefined;
+      },
+    );
 
     /**
      * Node 3: Discovery
      * Generates HyDE embeddings and performs semantic search (path A), or profile-as-source search (path B/C).
      */
-    const discoveryNode = async (state: typeof OpportunityGraphState.State) => {
+    const discoveryNode = withNodeTrace(
+      "opportunity-discovery",
+      async (state: typeof OpportunityGraphState.State) => {
       const self = this;
       return timed("OpportunityGraph.discovery", async () => {
         const startTime = Date.now();
@@ -1096,7 +1155,14 @@ export class OpportunityGraphFactory {
           };
         }
       });
-    };
+    },
+      (result) => {
+        const r = result as Record<string, unknown>;
+        if (r?.error) return `error: ${r.error}`;
+        const candidates = r?.candidates as unknown[];
+        return candidates ? `Found ${candidates.length} candidate(s)` : undefined;
+      },
+    );
 
     /**
      * Node 3: Evaluation (Entity bundle)
@@ -1685,7 +1751,9 @@ export class OpportunityGraphFactory {
      * Node 4: Ranking
      * Sorts evaluated opportunities by score, applies limit, dedupes by actor-set hash.
      */
-    const rankingNode = async (state: typeof OpportunityGraphState.State) => {
+    const rankingNode = withNodeTrace(
+      "opportunity-ranking",
+      async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.ranking", async () => {
         logger.verbose('[Graph:Ranking] Starting ranking', {
           evaluatedCount: state.evaluatedOpportunities.length,
@@ -1729,7 +1797,14 @@ export class OpportunityGraphFactory {
           };
         }
       });
-    };
+    },
+      (result) => {
+        const r = result as Record<string, unknown>;
+        if (r?.error) return `error: ${r.error}`;
+        const opps = r?.evaluatedOpportunities as unknown[];
+        return opps ? `Ranked ${opps.length} opportunity(ies)` : undefined;
+      },
+    );
 
     /**
      * Node: intro_validation (create_introduction path)
@@ -1930,7 +2005,9 @@ export class OpportunityGraphFactory {
      * Node 5: Persist
      * Creates opportunities from evaluator-proposed actors (indexId, userId, role, optional intent).
      */
-    const persistNode = async (state: typeof OpportunityGraphState.State) => {
+    const persistNode = withNodeTrace(
+      "opportunity-persist",
+      async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.persist", async () => {
         const startTime = Date.now();
         logger.verbose('[Graph:Persist] Starting persistence (dedup-v2)', {
@@ -2289,7 +2366,14 @@ export class OpportunityGraphFactory {
           };
         }
       });
-    };
+    },
+      (result) => {
+        const r = result as Record<string, unknown>;
+        if (r?.error) return `error: ${r.error}`;
+        const opps = r?.opportunities as unknown[];
+        return opps ? `Persisted ${opps.length} opportunity(ies)` : undefined;
+      },
+    );
 
     // ═══════════════════════════════════════════════════════════════
     // CRUD NODES (read, update, delete, send)

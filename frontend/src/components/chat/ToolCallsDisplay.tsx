@@ -160,7 +160,13 @@ const GRAPH_DISPLAY_NAMES: Record<string, string> = {
 };
 
 const AGENT_DISPLAY_NAMES: Record<string, string> = {
+  "opportunity-prep": "Preparing search",
+  "opportunity-scope": "Determining search scope",
+  "opportunity-resolve": "Resolving trigger intent",
+  "opportunity-discovery": "Searching candidates",
   "opportunity-evaluator": "Evaluating opportunities",
+  "opportunity-ranking": "Ranking results",
+  "opportunity-persist": "Saving opportunities",
   "opportunity-presenter": "Presenting opportunities",
   "intro-evaluator": "Evaluating introduction",
   "intent-inferrer": "Inferring intents",
