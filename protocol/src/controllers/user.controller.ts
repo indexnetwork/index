@@ -89,6 +89,11 @@ export class UserController {
     }
 
     try {
+      const targetUser = await userService.findById(params.userId);
+      if (!targetUser) {
+        return Response.json({ error: 'User not found' }, { status: 404 });
+      }
+
       const existing = await this.taskService.getNegotiationsByUser(viewer.id, {
         limit: 1,
         mutualWithUserId: params.userId,
@@ -312,7 +317,6 @@ export class UserController {
       let noOpportunityCount = 0;
       let inProgressCount = 0;
       const roleCounts: Record<string, number> = {};
-      const counterpartyNames: string[] = [];
       const reasoningExcerpts: string[] = [];
       const scoreSum: number[] = [];
       const counterpartyCounts = new Map<string, { id: string; name: string; avatar: string | null; count: number }>();
@@ -322,7 +326,6 @@ export class UserController {
         const counterpartyId = meta?.sourceUserId === params.userId ? meta?.candidateUserId : meta?.sourceUserId;
         if (counterpartyId) {
           const cp = userMap.get(counterpartyId);
-          if (cp?.name && !counterpartyNames.includes(cp.name)) counterpartyNames.push(cp.name);
           if (cp) {
             const existing = counterpartyCounts.get(counterpartyId);
             if (existing) {
@@ -372,7 +375,7 @@ export class UserController {
         noOpportunityCount,
         inProgressCount,
         roleDistribution: roleCounts,
-        counterparties: counterpartyNames.slice(0, 10),
+        counterparties: [...counterpartyCounts.values()].map((c) => c.name).slice(0, 10),
         reasoningExcerpts,
       };
 
