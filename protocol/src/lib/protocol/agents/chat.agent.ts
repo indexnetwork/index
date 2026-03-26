@@ -954,6 +954,25 @@ export class ChatAgent {
         if (sanitizedText.trim()) {
           emit({ type: "text_chunk", content: sanitizedText });
         }
+
+        // If stripping removed ALL content, force a recovery iteration so the
+        // user sees an actual response instead of a blank message.
+        if (!sanitizedText.trim() && iterationCount < HARD_ITERATION_LIMIT - 1) {
+          logger.warn("Streaming: sanitized text is empty, forcing recovery iteration", {
+            iteration: iterationCount,
+          });
+          messages = [
+            ...messages,
+            accumulated,
+            new SystemMessage(
+              "Your previous response only contained invalid code blocks that were removed. " +
+              "Write a plain text response now — summarize the results of the tools you used. " +
+              "Do NOT include ```opportunity or ```intent_proposal blocks.",
+            ),
+          ];
+          iterationCount++;
+          continue;
+        }
       }
 
       logger.verbose("Streaming: agent produced response", {
