@@ -523,6 +523,94 @@ export class ChatAgent {
     return result;
   }
 
+  // ─── Shared tool-result post-processing types ─────────────────────────────
+  private static readonly STEP_DETAIL_MAX = 300;
+
+  private static readonly STEP_NAME_MAX = 100;
+
+  /**
+   * Post-process a tool result: strip _graphTimings, extract summary/debugSteps,
+   * and optionally run create_opportunities → create_intent callback.
+   *
+   * Returns the normalized result string and extracted debug metadata so both
+   * the normal streaming tool loop and the hallucination-recovery branch
+   * produce identical LLM-facing payloads.
+   */
+  private async normalizeToolResult(
+    toolName: string,
+    resultStr: string,
+    toolArgs: Record<string, unknown>,
+  ): Promise<{
+    resultStr: string;
+    summary: string;
+    debugSteps?: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
+    graphTimings?: Array<{ name: string; durationMs: number; agents: Array<{ name: string; durationMs: number }> }>;
+  }> {
+    let normalized = resultStr;
+
+    // Run create_intent callback for create_opportunities results
+    if (toolName === "create_opportunities") {
+      const callbackResult = await this.handleCreateIntentCallback(normalized, toolArgs);
+      if (callbackResult !== null) {
+        normalized = callbackResult;
+      }
+    }
+
+    type StepData = Record<string, unknown>;
+    type DebugStep = { step: string; detail?: string; data?: StepData };
+    type GraphTiming = { name: string; durationMs: number; agents: Array<{ name: string; durationMs: number }> };
+
+    let summary = "Done";
+    let debugSteps: DebugStep[] | undefined;
+    let graphTimings: GraphTiming[] | undefined;
+
+    try {
+      const parsed = JSON.parse(normalized) as {
+        success?: boolean;
+        data?: {
+          summary?: string;
+          debugSteps?: DebugStep[];
+          _graphTimings?: GraphTiming[];
+        };
+        summary?: string;
+        debugSteps?: DebugStep[];
+        _graphTimings?: GraphTiming[];
+      };
+      const payload = parsed.success && parsed.data != null ? parsed.data : parsed;
+      summary = payload.summary ?? parsed.summary ?? "Done";
+
+      const rawSteps = payload.debugSteps ?? parsed.debugSteps;
+      if (Array.isArray(rawSteps) && rawSteps.length > 0) {
+        debugSteps = rawSteps.map((s) => ({
+          step: String(s.step ?? "").slice(0, ChatAgent.STEP_NAME_MAX),
+          detail:
+            s.detail != null
+              ? String(s.detail).slice(0, ChatAgent.STEP_DETAIL_MAX)
+              : undefined,
+          ...(s.data && typeof s.data === "object" ? { data: s.data } : {}),
+        }));
+      }
+
+      const rawGraphTimings = payload._graphTimings ?? parsed._graphTimings;
+      if (Array.isArray(rawGraphTimings) && rawGraphTimings.length > 0) {
+        graphTimings = rawGraphTimings as GraphTiming[];
+        // Strip _graphTimings from the result string sent back to the LLM
+        try {
+          const cleanedResult = JSON.parse(normalized) as Record<string, unknown>;
+          delete cleanedResult._graphTimings;
+          if (cleanedResult.data && typeof cleanedResult.data === "object") {
+            delete (cleanedResult.data as Record<string, unknown>)._graphTimings;
+          }
+          normalized = JSON.stringify(cleanedResult);
+        } catch { /* keep original if can't clean */ }
+      }
+    } catch {
+      /* not JSON, keep default */
+    }
+
+    return { resultStr: normalized, summary, debugSteps, graphTimings };
+  }
+
   /**
    * Run the full agent loop until completion or hard limit.
    *
@@ -765,87 +853,31 @@ export class ChatAgent {
             let resultStr =
               typeof result === "string" ? result : JSON.stringify(result);
 
-            if (tc.name === "create_opportunities") {
-              const newResult = await this.handleCreateIntentCallback(resultStr, tc.args);
-              if (newResult !== null) {
-                resultStr = newResult;
-                result = newResult;
-              }
-            }
+            const normalized = await this.normalizeToolResult(tc.name, resultStr, tc.args);
+            resultStr = normalized.resultStr;
+            result = resultStr;
 
             logger.verbose("Streaming: tool completed", {
               name: tc.name,
               resultLength: resultStr.length,
             });
 
-            // Build brief summary for the activity event. Prefer tool-provided
-            // summary. Tools use success(data) → { success: true, data: { ... } }, so read from data when present.
-            let summary = "Done";
-            type StepData = Record<string, unknown>;
-            type DebugStep = { step: string; detail?: string; data?: StepData };
-            type GraphTiming = { name: string; durationMs: number; agents: Array<{ name: string; durationMs: number }> };
-            let debugSteps: DebugStep[] | undefined;
-            let graphTimings: GraphTiming[] | undefined;
-            try {
-              const parsed = JSON.parse(resultStr) as {
-                success?: boolean;
-                data?: {
-                  summary?: string;
-                  debugSteps?: DebugStep[];
-                  _graphTimings?: GraphTiming[];
-                };
-                summary?: string;
-                debugSteps?: DebugStep[];
-                _graphTimings?: GraphTiming[];
-              };
-              const payload = parsed.success && parsed.data != null ? parsed.data : parsed;
-              summary = payload.summary ?? parsed.summary ?? "Done";
-              const rawSteps = payload.debugSteps ?? parsed.debugSteps;
-              if (Array.isArray(rawSteps) && rawSteps.length > 0) {
-                const maxDetail = 300;
-                debugSteps = rawSteps.map((s) => ({
-                  step: String(s.step ?? "").slice(0, 100),
-                  detail:
-                    s.detail != null
-                      ? String(s.detail).slice(0, maxDetail)
-                      : undefined,
-                  ...(s.data && typeof s.data === "object" ? { data: s.data } : {}),
-                }));
-              }
-              const rawGraphTimings = payload._graphTimings ?? parsed._graphTimings;
-              if (Array.isArray(rawGraphTimings) && rawGraphTimings.length > 0) {
-                graphTimings = rawGraphTimings as GraphTiming[];
-                // Strip _graphTimings from the result string sent back to the LLM
-                try {
-                  const cleanedResult = JSON.parse(resultStr) as Record<string, unknown>;
-                  delete cleanedResult._graphTimings;
-                  if (cleanedResult.data && typeof cleanedResult.data === 'object') {
-                    delete (cleanedResult.data as Record<string, unknown>)._graphTimings;
-                  }
-                  resultStr = JSON.stringify(cleanedResult);
-                  result = resultStr;
-                } catch { /* keep original if can't clean */ }
-              }
-            } catch {
-              /* not JSON, keep default */
-            }
-
             toolsDebug.push({
               name: tc.name,
               args: sanitizeForDebugMeta(tc.args) as Record<string, unknown>,
-              resultSummary: summary,
+              resultSummary: normalized.summary,
               success: true,
               durationMs: toolDurationMs,
-              ...(debugSteps?.length ? { steps: debugSteps } : {}),
-              ...(graphTimings?.length ? { graphs: graphTimings } : {}),
+              ...(normalized.debugSteps?.length ? { steps: normalized.debugSteps } : {}),
+              ...(normalized.graphTimings?.length ? { graphs: normalized.graphTimings } : {}),
             });
             emit({
               type: "tool_activity",
               phase: "end",
               name: tc.name,
               success: true,
-              summary,
-              steps: debugSteps,
+              summary: normalized.summary,
+              steps: normalized.debugSteps,
             });
 
             toolResults.push({
@@ -939,24 +971,29 @@ export class ChatAgent {
               { ...currentCtx, traceEmitter: (e) => emit({ type: e.type, name: e.name, durationMs: e.durationMs, summary: e.summary } as AgentStreamEvent) },
               () => tool.invoke(toolArgs),
             );
-            const resultStr = typeof result === "string" ? result : JSON.stringify(result);
+            const rawResultStr = typeof result === "string" ? result : JSON.stringify(result);
             const toolDurationMs = Date.now() - toolStart;
 
-            let summary = "Done";
-            try {
-              const parsed = JSON.parse(resultStr) as { success?: boolean; data?: { summary?: string }; summary?: string };
-              const payload = parsed.success && parsed.data != null ? parsed.data : parsed;
-              summary = (payload as { summary?: string }).summary ?? parsed.summary ?? "Done";
-            } catch { /* not JSON */ }
+            // Same normalization as the main tool loop: callback + _graphTimings strip
+            const normalized = await this.normalizeToolResult(hallucinatedBlock.tool, rawResultStr, toolArgs);
 
             toolsDebug.push({
               name: hallucinatedBlock.tool,
               args: sanitizeForDebugMeta(toolArgs) as Record<string, unknown>,
-              resultSummary: summary,
+              resultSummary: normalized.summary,
               success: true,
               durationMs: toolDurationMs,
+              ...(normalized.debugSteps?.length ? { steps: normalized.debugSteps } : {}),
+              ...(normalized.graphTimings?.length ? { graphs: normalized.graphTimings } : {}),
             });
-            emit({ type: "tool_activity", phase: "end", name: hallucinatedBlock.tool, success: true, summary });
+            emit({
+              type: "tool_activity",
+              phase: "end",
+              name: hallucinatedBlock.tool,
+              success: true,
+              summary: normalized.summary,
+              steps: normalized.debugSteps,
+            });
 
             // Build synthetic tool call message + tool result so the next LLM
             // iteration can narrate around real data instead of hallucinated blocks.
@@ -967,7 +1004,7 @@ export class ChatAgent {
             messages = [
               ...messages,
               syntheticAIMessage,
-              new ToolMessage({ tool_call_id: toolCallId, content: resultStr, name: hallucinatedBlock.tool }),
+              new ToolMessage({ tool_call_id: toolCallId, content: normalized.resultStr, name: hallucinatedBlock.tool }),
             ];
           } catch (error) {
             const errMsg = error instanceof Error ? error.message : "Unknown error";
