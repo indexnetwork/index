@@ -78,7 +78,7 @@ function existingOpportunity(
   id: string,
   actors: Array<{ indexId: string; userId: string; role: string; intent?: string }>,
   reasoning: string,
-  status: 'latent' | 'draft' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' = 'pending'
+  status: 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired' = 'pending'
 ): Opportunity {
   return {
     id,

@@ -8,7 +8,7 @@ export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
-export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'pending', 'viewed', 'accepted', 'rejected', 'expired']);
+export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'pending', 'accepted', 'rejected', 'expired']);
 
 export interface OnboardingState {
   completedAt?: string;

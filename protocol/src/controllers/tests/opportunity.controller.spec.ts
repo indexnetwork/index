@@ -286,7 +286,7 @@ describe("OpportunityController Integration", () => {
     const req = new Request("http://localhost/opportunities/status", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "viewed" }),
+      body: JSON.stringify({ status: "accepted" }),
     });
     const res = await controller.updateStatus(req, mockUser(), {});
     const data = (await res.json()) as { error?: string };
@@ -313,7 +313,7 @@ describe("OpportunityController Integration", () => {
     const req = new Request("http://localhost/opportunities/" + fakeId + "/status", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "viewed" }),
+      body: JSON.stringify({ status: "pending" }),
     });
     const res = await controller.updateStatus(req, mockUser(), { id: fakeId });
     expect(res.status).toBe(404);
@@ -323,14 +323,14 @@ describe("OpportunityController Integration", () => {
     const req = new Request("http://localhost/opportunities/" + testOpportunityId + "/status", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "viewed" }),
+      body: JSON.stringify({ status: "pending" }),
     });
     const res = await controller.updateStatus(req, mockUser(), { id: testOpportunityId });
     const data = (await res.json()) as { opportunity?: { status?: string }; status?: string };
 
     expect(res.status).toBe(200);
     expect(data.opportunity).toBeDefined();
-    expect(data.opportunity!.status).toBe("viewed");
+    expect(data.opportunity!.status).toBe("pending");
   });
 
   test("listForIndex should return 400 when indexId is missing", async () => {

@@ -35,7 +35,7 @@ export class OpportunityController {
     const limit = url.searchParams.get('limit');
     const offset = url.searchParams.get('offset');
     const options = {
-      status: status as 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' | undefined,
+      status: status as 'pending' | 'accepted' | 'rejected' | 'expired' | undefined,
       indexId,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
@@ -151,7 +151,7 @@ export class OpportunityController {
   }
 
   /**
-   * PATCH /opportunities/:id/status — update status (e.g. viewed, accepted, rejected).
+   * PATCH /opportunities/:id/status — update status (e.g. accepted, rejected).
    */
   @Patch('/:id/status')
   @UseGuards(AuthGuard)
@@ -174,8 +174,8 @@ export class OpportunityController {
       });
     }
     
-    const status = body.status as 'latent' | 'draft' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' | undefined;
-    const allowed = ['latent', 'draft', 'pending', 'viewed', 'accepted', 'rejected', 'expired'];
+    const status = body.status as 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired' | undefined;
+    const allowed = ['latent', 'draft', 'pending', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
       return new Response(JSON.stringify({ error: 'Invalid status; use one of: ' + allowed.join(', ') }), {
         status: 400,
@@ -259,7 +259,7 @@ export class IndexOpportunityController {
     const offset = url.searchParams.get('offset');
     
     const result = await opportunityService.getOpportunitiesForIndex(indexId, user.id, {
-      status: status as 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' | undefined,
+      status: status as 'pending' | 'accepted' | 'rejected' | 'expired' | undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     });

@@ -64,7 +64,7 @@ protocol/src/lib/protocol/
 | **Intent** | What someone is seeking or offering. Has payload, embedding, status, semantic governance fields. Lives in indexes via intent_indexes. |
 | **Index** | A community/context. Has members with roles, optional prompt for LLM evaluation, join policy. Discovery is index-scoped. |
 | **Profile** | User's identity, narrative, skills, interests. Has vector embedding and optional HyDE embedding. Used for verification and search. |
-| **Opportunity** | A suggested connection between two parties in an index. Status: latent -> pending -> viewed -> accepted/rejected/expired. |
+| **Opportunity** | A suggested connection between two parties in an index. Status: latent -> pending -> accepted/rejected/expired. |
 | **HyDE** | Hypothetical Document Embeddings. Generated "ideal match" text per strategy, then embedded for richer semantic search. |
 
 ## How a User Message Flows Through the System

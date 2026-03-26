@@ -536,11 +536,11 @@ describe('OpportunityDatabaseAdapter', () => {
     const list = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId, limit: 1 });
     expect(list.length).toBeGreaterThanOrEqual(1);
     const opp = list[0];
-    const updated = await adapter.updateOpportunityStatus(opp.id, 'viewed');
+    const updated = await adapter.updateOpportunityStatus(opp.id, 'accepted');
     expect(updated).not.toBeNull();
-    expect(updated!.status).toBe('viewed');
+    expect(updated!.status).toBe('accepted');
     const refetched = await adapter.getOpportunity(opp.id);
-    expect(refetched!.status).toBe('viewed');
+    expect(refetched!.status).toBe('accepted');
   });
 
   describe('role-based visibility (getOpportunitiesForUser)', () => {

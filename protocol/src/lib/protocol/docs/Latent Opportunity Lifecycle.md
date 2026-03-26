@@ -25,7 +25,7 @@ Who can see an opportunity is determined by **actor role** and **status**. There
 ### Status Tiers
 
 - **Tier 0** (`latent`): First to see — can send to next tier
-- **Tier 1** (`pending`, `viewed`): Sees after someone sent; can accept/reject
+- **Tier 1** (`pending`): Sees after someone sent; can accept/reject
 - **Tier 2** (`accepted`, `rejected`, `expired`): Terminal; all actors can see
 
 ### Role–Visibility Matrix
@@ -118,9 +118,8 @@ sequenceDiagram
 | Transition     | Who can trigger                          |
 |----------------|------------------------------------------|
 | latent → pending | Introducer, patient (no introducer), peer, party (no introducer) |
-| pending → viewed | Recipient opens (system or UI)           |
-| pending/viewed → accepted | Recipient accepts (e.g. Start Chat)  |
-| pending/viewed → rejected | Recipient declines (e.g. Skip)     |
+| pending → accepted | Recipient accepts (e.g. Start Chat)  |
+| pending → rejected | Recipient declines (e.g. Skip)     |
 | latent/pending → expired | TTL or user dismisses              |
 
 ## Notification Targeting (Send Node)
@@ -148,13 +147,9 @@ stateDiagram-v2
     [*] --> latent: Agent creates
     latent --> pending: User with Tier0 role sends
     latent --> expired: User dismisses / TTL
-    pending --> viewed: Recipient opens
     pending --> accepted: Recipient accepts
     pending --> rejected: Recipient declines
     pending --> expired: TTL
-    viewed --> accepted: Recipient accepts
-    viewed --> rejected: Recipient declines
-    viewed --> expired: TTL
 ```
 
 ## Opportunity Graph Architecture

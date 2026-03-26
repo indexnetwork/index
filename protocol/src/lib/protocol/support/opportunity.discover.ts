@@ -123,7 +123,7 @@ export interface ExistingConnection {
   opportunityId?: string;
 }
 
-/** Statuses for which an existing connection may be shown as a card; others (viewed, accepted, rejected, expired) are only mentioned in text. */
+/** Statuses for which an existing connection may be shown as a card; others (accepted, rejected, expired) are only mentioned in text. */
 const EXISTING_CONNECTION_CARD_STATUSES = ['draft', 'latent', 'pending'] as const;
 
 export interface DiscoverResult {

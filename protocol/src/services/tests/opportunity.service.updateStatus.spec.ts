@@ -100,15 +100,6 @@ describe("OpportunityService.updateOpportunityStatus", () => {
     expect(db.upsertContactMembership).not.toHaveBeenCalled();
   });
 
-  it("does NOT call upsertContactMembership when viewing", async () => {
-    const db = createMockDb(twoActorOpportunity);
-    const service = new OpportunityService(db);
-
-    await service.updateOpportunityStatus(OPP_ID, "viewed", USER_A);
-
-    expect(db.upsertContactMembership).not.toHaveBeenCalled();
-  });
-
   it("returns 404 when opportunity not found", async () => {
     const db = createMockDb(null);
     const service = new OpportunityService(db);

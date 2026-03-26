@@ -21,7 +21,7 @@ export interface OpportunityInterpretation {
 
 export interface OpportunityListItem {
   id: string;
-  status: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+  status: 'latent' | 'pending' | 'accepted' | 'rejected' | 'expired';
   context: OpportunityContext;
   interpretation: OpportunityInterpretation;
   actors: OpportunityActor[];
@@ -31,7 +31,7 @@ export interface OpportunityListItem {
 }
 
 export interface GetOpportunitiesOptions {
-  status?: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+  status?: 'pending' | 'accepted' | 'rejected' | 'expired';
   indexId?: string;
   limit?: number;
   offset?: number;
@@ -77,7 +77,7 @@ export interface GetHomeViewOptions {
   limit?: number;
 }
 
-export type OpportunityStatus = 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+export type OpportunityStatus = 'latent' | 'pending' | 'accepted' | 'rejected' | 'expired';
 
 export interface OpportunityStatusUpdateResponse {
   opportunity: OpportunityListItem | null;

@@ -1172,7 +1172,7 @@ describe("create_opportunities tool", () => {
     expect(typeof opp.matchReason).toBe("string");
     expect(opp.matchReason.length).toBeGreaterThan(0);
     expect(typeof opp.score).toBe("number");
-    expect(["latent", "draft", "pending", "viewed", "accepted", "rejected", "expired"]).toContain(opp.status);
+    expect(["latent", "draft", "pending", "accepted", "rejected", "expired"]).toContain(opp.status);
   });
 
   test("discovery mode: when searchQuery is non-empty and results are found, includes suggestIntentCreationForVisibility and suggestedIntentDescription", async () => {

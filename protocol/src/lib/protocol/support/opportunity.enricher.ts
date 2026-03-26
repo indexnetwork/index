@@ -24,7 +24,7 @@ const MIN_REASONING_LENGTH_FOR_EMBEDDING = 10;
 export type EnricherDatabase = {
   findOverlappingOpportunities(
     actorUserIds: Id<'users'>[],
-    options?: { excludeStatuses?: ('latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired')[] }
+    options?: { excludeStatuses?: ('latent' | 'pending' | 'accepted' | 'rejected' | 'expired')[] }
   ): Promise<Opportunity[]>;
 };
 

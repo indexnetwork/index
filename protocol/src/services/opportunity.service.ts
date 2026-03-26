@@ -168,7 +168,7 @@ export class OpportunityService {
   async getOpportunitiesForUser(
     userId: string,
     options?: {
-      status?: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+      status?: 'pending' | 'accepted' | 'rejected' | 'expired';
       indexId?: string;
       limit?: number;
       offset?: number;
@@ -357,7 +357,7 @@ export class OpportunityService {
     indexId: string,
     userId: string,
     options?: {
-      status?: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+      status?: 'pending' | 'accepted' | 'rejected' | 'expired';
       limit?: number;
       offset?: number;
     }

@@ -197,6 +197,13 @@
       "when": 1774873300000,
       "tag": "0027_create_index_integrations",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1774568315257,
+      "tag": "0028_remove_opportunity_status_viewed",
+      "breakpoints": true
     }
   ]
 }
