@@ -1,7 +1,6 @@
 import { log } from '../lib/log';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { HydeDatabaseAdapter } from '../adapters/database.adapter';
 import { createDefaultNegotiationGraph } from '../lib/protocol/graphs/negotiation.graph';
 import type { UserNegotiationContext } from '../lib/protocol/states/negotiation.state';
 
@@ -15,7 +14,6 @@ export class NegotiationService {
   constructor(
     private intentDb: IntentDatabaseAdapter = intentDatabaseAdapter,
     private chatDb: ChatDatabaseAdapter = new ChatDatabaseAdapter(),
-    private hydeDb: HydeDatabaseAdapter = new HydeDatabaseAdapter(),
   ) {}
 
   /**
@@ -53,10 +51,9 @@ export class NegotiationService {
   }
 
   private async buildUserContext(userId: string): Promise<UserNegotiationContext> {
-    const [profile, activeIntents, hydeDocs] = await Promise.all([
+    const [profile, activeIntents] = await Promise.all([
       this.chatDb.getProfile(userId),
       this.intentDb.getActiveIntents(userId),
-      this.hydeDb.getHydeDocumentsForSource('profile', userId),
     ]);
 
     return {
@@ -74,7 +71,6 @@ export class NegotiationService {
         skills: profile?.attributes?.skills,
         interests: profile?.attributes?.interests,
       },
-      hydeDocuments: hydeDocs.map((d) => d.hydeText),
     };
   }
 }

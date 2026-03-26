@@ -12,18 +12,18 @@ import path from 'path';
 dotenv.config({ path: path.resolve(import.meta.dir, '../../.env.development') });
 
 import { sql } from 'drizzle-orm';
-import { db } from '../lib/drizzle/drizzle';
+import db from '../lib/drizzle/drizzle';
 
 const isDryRun = process.argv.includes('--dry-run');
 
 async function main() {
-  const countResult = await db.execute<{ count: string }>(sql`
+  const countResult = await db.execute(sql`
     SELECT COUNT(*) as count FROM artifacts
     WHERE parts->0->>'kind' = 'data'
       AND parts->0->'data' ? 'consensus'
       AND NOT (parts->0->'data' ? 'hasOpportunity')
   `);
-  const count = parseInt(countResult.rows?.[0]?.count ?? '0', 10);
+  const count = parseInt((countResult[0] as { count: string })?.count ?? '0', 10);
   console.log(`Found ${count} artifact(s) with legacy "consensus" field`);
 
   if (isDryRun) {
@@ -48,7 +48,7 @@ async function main() {
       AND NOT (parts->0->'data' ? 'hasOpportunity')
   `);
 
-  console.log(`Updated ${updateResult.rowCount ?? 0} artifact(s)`);
+  console.log(`Updated ${(updateResult as unknown[]).length ?? 0} artifact(s)`);
 }
 
 main()
