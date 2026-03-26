@@ -127,6 +127,7 @@ function createTraceMockGraph() {
 const EXPECTED_NODE_TRACE_NAMES = [
   'opportunity-prep',
   'opportunity-scope',
+  'opportunity-resolve',
   'opportunity-discovery',
   'opportunity-ranking',
   'opportunity-persist',

@@ -352,12 +352,16 @@ export class OpportunityGraphFactory {
                     return { indexId: ti.indexId, score: 1.0 };
                   }
                   const _indexerStart = Date.now();
+                  const traceEmitter = requestContext.getStore()?.traceEmitter;
+                  traceEmitter?.({ type: "agent_start", name: "intent-indexer" });
                   const result = await indexer.invoke(
                     state.searchQuery!,
                     ctx?.indexPrompt ?? null,
                     ctx?.memberPrompt ?? null,
                   );
-                  scopeAgentTimings.push({ name: 'intent.indexer', durationMs: Date.now() - _indexerStart });
+                  const _indexerDuration = Date.now() - _indexerStart;
+                  traceEmitter?.({ type: "agent_end", name: "intent-indexer", durationMs: _indexerDuration, summary: `Scored index ${ti.indexId}` });
+                  scopeAgentTimings.push({ name: 'intent.indexer', durationMs: _indexerDuration });
                   if (!result) return { indexId: ti.indexId, score: 1.0 };
                   const score = ctx?.indexPrompt && ctx?.memberPrompt
                     ? result.indexScore * 0.6 + result.memberScore * 0.4
@@ -502,6 +506,7 @@ export class OpportunityGraphFactory {
     },
       (result) => {
         const r = result as Record<string, unknown>;
+        if (r?.error) return `error: ${r.error}`;
         return r?.discoverySource ? `source: ${r.discoverySource}` : undefined;
       },
     );
