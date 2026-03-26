@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGmailConnect } from "@/hooks/useGmailConnect";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import {
   ArrowUp,
   Pencil,
@@ -364,7 +364,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, success: showSuccess, addNotification } = useNotifications();
-  const [input, setInput] = useState("");
+  const location = useLocation();
+  const [input, setInput] = useState(() => {
+    const state = location.state as { prefill?: string } | null;
+    return state?.prefill ?? "";
+  });
   const [selectedFiles, setSelectedFiles] = useState<PendingFile[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);

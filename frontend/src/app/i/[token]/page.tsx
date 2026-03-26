@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Loader2, MessageCircle, Share2, Check, ArrowRight } from "lucide-react";
+import { Loader2, UserCheck, Users, Check, Copy, ArrowRight } from "lucide-react";
 
 import { useAuthContext } from "@/contexts/AuthContext";
 import UserAvatar from "@/components/UserAvatar";
@@ -19,6 +19,7 @@ export default function SharedIntentPage() {
   const [data, setData] = useState<SharedIntentData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showShareLink, setShowShareLink] = useState(false);
   const [copied, setCopied] = useState(false);
   const [connectStep, setConnectStep] = useState<ConnectStep>("idle");
   const connectInitiated = useRef(false);
@@ -60,7 +61,19 @@ export default function SharedIntentPage() {
     navigate("/onboarding");
   };
 
-  const handleCopyLink = async () => {
+  const handleIKnowSomeone = async () => {
+    if (!data) return;
+
+    if (isAuthenticated) {
+      const prefill = `Who in my network can help ${data.owner.name} with "${data.intent.summary?.trim() || data.intent.payload}"?`;
+      navigate("/", { state: { prefill } });
+      return;
+    }
+
+    setShowShareLink(true);
+  };
+
+  const handleCopyShareLink = async () => {
     await navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -149,27 +162,53 @@ export default function SharedIntentPage() {
 
           {/* Actions */}
           {connectStep !== "needs-onboarding" && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleConnect}
-                disabled={connectStep === "awaiting-auth"}
-                className="flex-1 flex items-center justify-center gap-2 bg-[#041729] text-white px-6 py-3 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-60"
-              >
-                {connectStep === "awaiting-auth" ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <MessageCircle className="w-4 h-4" />
-                )}
-                {connectStep === "awaiting-auth" ? "Waiting..." : "Connect"}
-              </button>
-              <button
-                onClick={handleCopyLink}
-                className="flex items-center gap-2 px-4 py-3 border border-gray-200 rounded-sm text-sm text-gray-600 hover:border-gray-400 hover:text-gray-900 transition-colors"
-              >
-                {copied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-                {copied ? "Copied" : "Share"}
-              </button>
-            </div>
+            showShareLink ? (
+              <div className="bg-white rounded-lg border border-gray-200 px-5 py-4 space-y-3">
+                <p className="text-sm font-medium text-black">Share this link</p>
+                <p className="text-xs text-gray-500">
+                  Send it to someone who might match {data.owner.name}'s intent — they can connect directly from this page.
+                </p>
+                <div className="flex items-center gap-2 bg-gray-50 rounded-sm border border-gray-200 px-3 py-2">
+                  <span className="flex-1 text-xs text-gray-500 truncate">
+                    {window.location.href}
+                  </span>
+                  <button
+                    onClick={handleCopyShareLink}
+                    className="shrink-0 text-gray-400 hover:text-black transition-colors"
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+                <button
+                  onClick={() => setShowShareLink(false)}
+                  className="w-full flex items-center justify-center py-2.5 border border-gray-200 rounded-sm text-sm font-medium text-gray-600 hover:border-gray-400 hover:text-black transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleConnect}
+                  disabled={connectStep === "awaiting-auth"}
+                  className="flex-1 flex items-center justify-center gap-2 bg-[#041729] text-white px-6 py-3 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-60"
+                >
+                  {connectStep === "awaiting-auth" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <UserCheck className="w-4 h-4" />
+                  )}
+                  {connectStep === "awaiting-auth" ? "Waiting..." : "That's me"}
+                </button>
+                <button
+                  onClick={handleIKnowSomeone}
+                  className="flex-1 flex items-center justify-center gap-2 bg-white text-black px-6 py-3 border border-gray-200 rounded-sm text-sm font-medium hover:border-gray-400 transition-colors"
+                >
+                  <Users className="w-4 h-4" />
+                  I know someone
+                </button>
+              </div>
+            )
           )}
         </ContentContainer>
       </div>
