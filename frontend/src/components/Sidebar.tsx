@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
-import { Compass, MessagesSquare, ChevronDown, User as UserIcon, LogOut, Library, History, Network, Users } from 'lucide-react';
+import { Compass, MessagesSquare, ChevronDown, User as UserIcon, LogOut, Library, History, Network, Bot } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -49,10 +49,10 @@ export default function Sidebar() {
   const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
   const isLibraryView = pathname?.startsWith('/library');
   const isNetworksView = pathname?.startsWith('/networks');
-  const isMyNetworkView = pathname?.startsWith('/mynetwork');
   const isHistoryView = pathname?.startsWith('/d/');
   const isProfileView = pathname?.startsWith('/profile');
-  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isMyNetworkView && !isHistoryView && !isProfileView;
+  const isAgentView = pathname?.startsWith('/agent');
+  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView && !isProfileView && !isAgentView;
 
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
@@ -255,17 +255,6 @@ export default function Sidebar() {
           )}
         </div>
 
-        <button
-          onClick={() => navigate('/mynetwork')}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
-            isMyNetworkView
-              ? 'bg-gray-100 text-black font-bold'
-              : 'text-black font-medium hover:bg-gray-50'
-          }`}
-        >
-          <Users className="w-5 h-5" />
-          My Network
-        </button>
       </nav>
 
       {/* Spacer */}
@@ -308,6 +297,15 @@ export default function Sidebar() {
                 >
                   <Network className="h-4 w-4 text-gray-400 flex-shrink-0" />
                   Networks
+                </button>
+                <button
+                  className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
+                    isAgentView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                  onClick={() => { setUserDropdownOpen(false); navigate('/agent'); }}
+                >
+                  <Bot className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  Agent
                 </button>
                 <button
                   className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${

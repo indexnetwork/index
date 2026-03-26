@@ -9,7 +9,6 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { formatDate } from "@/lib/utils";
 import { formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
 import IntentList from "@/components/IntentList";
-import NegotiationHistory from "@/components/NegotiationHistory";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 
@@ -41,13 +40,13 @@ type LinkItem = {
   lastSyncAt?: string | null;
 };
 
-const VALID_TABS = ['intents', 'negotiations', 'files', 'links'] as const;
+const VALID_TABS = ['intents', 'files', 'links'] as const;
 type TabValue = typeof VALID_TABS[number];
 
 export default function LibraryPage() {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab?: string }>();
-  const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
+  const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const { filesService, linksService, intentsService } = useAPI();
   const api = useAuthenticatedAPI();
   const { success, error } = useNotifications();
@@ -62,13 +61,6 @@ export default function LibraryPage() {
         "Things that your agent thinks you might be looking for, inferred from your activity. Review them and remove anything that doesn’t feel right.",
       privacy:
         "AI agents use these to surface opportunities and only match when there’s mutual intent."
-    },
-    negotiations: {
-      title: "Negotiations",
-      description:
-        "Past negotiations between your agent and others. Expand any to see the full dialogue.",
-      privacy:
-        "Negotiations are private between participating agents. You see only your side."
     },
     files: {
       title: "Files",
@@ -226,16 +218,10 @@ export default function LibraryPage() {
               value="intents" 
               className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
             >
-              My Intents
+              Intents
               {intents.length > 0 && (
                 <span className="ml-2 text-xs text-gray-500">({intents.length})</span>
               )}
-            </Tabs.Trigger>
-            <Tabs.Trigger 
-              value="negotiations" 
-              className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-            >
-              Negotiations
             </Tabs.Trigger>
             <Tabs.Trigger 
               value="files" 
@@ -280,11 +266,6 @@ export default function LibraryPage() {
                 className="w-full"
               />
             )}
-          </Tabs.Content>
-
-          {/* Negotiations Tab */}
-          <Tabs.Content value="negotiations" className="w-full">
-            <NegotiationHistory userId={user?.id ?? ""} />
           </Tabs.Content>
 
           {/* Files Tab */}

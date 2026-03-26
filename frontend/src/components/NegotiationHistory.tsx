@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router";
-import { Loader2, ChevronDown, Bot } from "lucide-react";
+import { Loader2, ChevronDown, Bot, Handshake } from "lucide-react";
 import UserAvatar from "@/components/UserAvatar";
 import { useUsers } from "@/contexts/APIContext";
 import type { NegotiationSummary, NegotiationTurnSummary } from "@/services/users";
@@ -73,9 +73,11 @@ function TurnMessage({ turn, isLast }: { turn: NegotiationTurnSummary; isLast: b
 
 interface NegotiationHistoryProps {
   userId: string;
+  onTriggerNegotiation?: () => Promise<NegotiationSummary | void>;
+  isTriggering?: boolean;
 }
 
-export default function NegotiationHistory({ userId }: NegotiationHistoryProps) {
+export default function NegotiationHistory({ userId, onTriggerNegotiation, isTriggering }: NegotiationHistoryProps) {
   const usersService = useUsers();
   const [negotiations, setNegotiations] = useState<NegotiationSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -154,7 +156,36 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
 
       {!isLoading && negotiations.length === 0 && !resultFilter && (
         <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-          <p>No negotiations yet</p>
+          {onTriggerNegotiation ? (
+            <div className="space-y-3">
+              <p>No negotiations yet</p>
+              <button
+                onClick={async () => {
+                  const result = await onTriggerNegotiation();
+                  if (result) {
+                    setNegotiations((prev) => [result, ...prev]);
+                  }
+                }}
+                disabled={isTriggering}
+                className="inline-flex items-center gap-2 bg-[#041729] text-white px-4 py-2 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-50"
+              >
+                {isTriggering ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Negotiating...
+                  </>
+                ) : (
+                  <>
+                    <Handshake className="w-4 h-4" />
+                    Peer Agents
+                  </>
+                )}
+              </button>
+              <p className="text-xs text-gray-400">Start a discovery negotiation</p>
+            </div>
+          ) : (
+            <p>No negotiations yet</p>
+          )}
         </div>
       )}
 
@@ -170,12 +201,9 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         return (
           <div key={neg.id} className="bg-[#F8F8F8] rounded-md overflow-hidden">
             {/* Summary row — clickable to expand */}
-            <div
-              role="button"
-              tabIndex={0}
+            <button
               onClick={() => setExpandedId(isExpanded ? null : neg.id)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(isExpanded ? null : neg.id); } }}
-              className="w-full p-4 flex items-center gap-4 text-left hover:bg-gray-100/50 transition-colors cursor-pointer"
+              className="w-full p-4 flex items-center gap-4 text-left hover:bg-gray-100/50 transition-colors"
             >
               <Link
                 to={`/u/${neg.counterparty.id}`}
@@ -232,7 +260,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
               <ChevronDown
                 className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
               />
-            </div>
+            </button>
 
             {/* Expanded dialogue */}
             {isExpanded && neg.turns.length > 0 && (

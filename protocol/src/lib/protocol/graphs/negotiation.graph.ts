@@ -303,3 +303,20 @@ export async function negotiateCandidates(
 
   return results.filter((r): r is NegotiationResult => r !== null);
 }
+
+/**
+ * Creates a default negotiation graph with real services and agents.
+ */
+export function createDefaultNegotiationGraph() {
+  // Lazy imports to avoid circular dependencies
+  const { conversationDatabaseAdapter } = require("../../../adapters/database.adapter");
+  const { NegotiationProposer } = require("../agents/negotiation.proposer");
+  const { NegotiationResponder } = require("../agents/negotiation.responder");
+
+  const factory = new NegotiationGraphFactory(
+    conversationDatabaseAdapter,
+    new NegotiationProposer(),
+    new NegotiationResponder(),
+  );
+  return factory.createGraph();
+}

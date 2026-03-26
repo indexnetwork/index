@@ -595,8 +595,8 @@ export class OpportunityService {
       this.db.getUser(counterpart.userId),
     ]);
 
-    if (!recipient?.isGhost || recipient.deletedAt != null) {
-      return { error: 'Counterpart is not a ghost user', status: 400 };
+    if (!recipient || recipient.deletedAt != null) {
+      return { error: 'Counterpart not available', status: 400 };
     }
 
     const introducer = opp.actors.find((a) => a.role === 'introducer');

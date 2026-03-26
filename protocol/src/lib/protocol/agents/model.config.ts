@@ -29,6 +29,7 @@ export const MODEL_CONFIG = {
   homeCategorizer:      { model: "google/gemini-2.5-flash" },
   suggestionGenerator:  { model: "google/gemini-2.5-flash", temperature: 0.4, maxTokens: 512 },
   chatTitleGenerator:   { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 32 },
+  negotiationInsights:  { model: "google/gemini-2.5-flash", temperature: 0.4, maxTokens: 512 },
   inviteGenerator:      { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 512 },
   chat:                 { model: process.env.CHAT_MODEL ?? "google/gemini-3-pro-preview", maxTokens: 8192, reasoning: { effort: (process.env.CHAT_REASONING_EFFORT ?? "low") as NonNullable<ModelSettings["reasoning"]>["effort"], exclude: true } },
 } as const satisfies Record<string, ModelSettings>;

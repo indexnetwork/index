@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Loader2, MessageCircle } from "lucide-react";
 import GhostBadge from "@/components/GhostBadge";
@@ -25,6 +25,22 @@ export default function UserProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteMessage, setInviteMessage] = useState('');
+  const [isTriggering, setIsTriggering] = useState(false);
+
+  const isOtherUser = !!user?.id && user.id !== id;
+
+  const handleTriggerNegotiation = useCallback(async () => {
+    if (!id || !isOtherUser) return;
+    const targetId = id;
+    setIsTriggering(true);
+    try {
+      return await usersService.triggerDiscoveryNegotiation(targetId);
+    } catch (err) {
+      console.error('Failed to trigger negotiation:', err);
+    } finally {
+      setIsTriggering(false);
+    }
+  }, [id, isOtherUser, usersService]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) navigate('/');
@@ -189,7 +205,11 @@ export default function UserProfilePage() {
           {id && (
             <div>
               <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Negotiations</h3>
-              <NegotiationHistory userId={id} />
+              <NegotiationHistory
+                userId={id}
+                onTriggerNegotiation={isOtherUser ? handleTriggerNegotiation : undefined}
+                isTriggering={isTriggering}
+              />
             </div>
           )}
 

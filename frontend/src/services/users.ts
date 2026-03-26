@@ -28,6 +28,19 @@ export interface NegotiationSummary {
   createdAt: string;
 }
 
+export interface NegotiationInsights {
+  summary: string | null;
+  stats: {
+    totalCount: number;
+    consensusCount: number;
+    noConsensusCount: number;
+    inProgressCount: number;
+    avgScore: number | null;
+    roleDistribution: Record<string, number>;
+    topCounterparties: Array<{ id: string; name: string; avatar: string | null; count: number }>;
+  };
+}
+
 export const createUsersService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get user profile by ID
   getUserProfile: async (userId: string): Promise<User> => {
@@ -82,6 +95,18 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
   },
 
   /**
+   * Get negotiation dashboard data: LLM-generated summary + structured stats. Self-only.
+   */
+  getNegotiationInsights: async (userId: string): Promise<NegotiationInsights | null> => {
+    try {
+      const response = await api.get<{ insights: NegotiationInsights | null }>(`/users/${userId}/negotiations/insights`);
+      return response.insights ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
    * Get past negotiations for a user. Returns mutual negotiations when viewing another user's profile.
    */
   getUserNegotiations: async (userId: string, opts?: { limit?: number; offset?: number; result?: string }): Promise<NegotiationSummary[]> => {
@@ -92,5 +117,13 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
     const qs = params.toString();
     const response = await api.get<{ negotiations: NegotiationSummary[] }>(`/users/${userId}/negotiations${qs ? `?${qs}` : ''}`);
     return response.negotiations ?? [];
+  },
+
+  /**
+   * Trigger a discovery negotiation with the target user.
+   */
+  triggerDiscoveryNegotiation: async (userId: string): Promise<NegotiationSummary> => {
+    const response = await api.post<{ negotiation: NegotiationSummary }>(`/users/${userId}/negotiations`);
+    return response.negotiation;
   },
 });

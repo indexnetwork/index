@@ -6,6 +6,9 @@ import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
 import { contactService } from '../services/contact.service';
 import { TaskService } from '../services/task.service';
+import { NegotiationService } from '../services/negotiation.service';
+import { NegotiationInsightsGenerator } from '../lib/protocol/agents/negotiation.insights.generator';
+import type { NegotiationDigest } from '../lib/protocol/agents/negotiation.insights.generator';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('user');
@@ -19,7 +22,10 @@ const BATCH_MAX_IDS = 100;
 
 @Controller('/users')
 export class UserController {
-  constructor(private readonly taskService: TaskService = new TaskService()) {}
+  constructor(
+    private readonly taskService: TaskService = new TaskService(),
+    private readonly negotiationService: NegotiationService = new NegotiationService(),
+  ) {}
 
   @Get('/batch')
   @UseGuards(AuthGuard)
@@ -66,6 +72,106 @@ export class UserController {
     logger.verbose('Add contact requested', { userId: user.id });
     const result = await contactService.addContact(user.id, parsed.data.email, { name: parsed.data.name });
     return Response.json({ result });
+  }
+
+  /**
+   * POST /users/:userId/negotiations — trigger a discovery negotiation with the target user.
+   * @param _req - Request (unused)
+   * @param viewer - Authenticated user from AuthGuard
+   * @param params - Route params containing userId (the target)
+   * @returns 201 with negotiation summary, or 409 if negotiations already exist
+   */
+  @Post('/:userId/negotiations')
+  @UseGuards(AuthGuard)
+  async triggerNegotiation(_req: Request, viewer: AuthenticatedUser, params: { userId: string }) {
+    if (viewer.id === params.userId) {
+      return Response.json({ error: 'Cannot negotiate with yourself' }, { status: 400 });
+    }
+
+    try {
+      const existing = await this.taskService.getNegotiationsByUser(viewer.id, {
+        limit: 1,
+        mutualWithUserId: params.userId,
+      });
+      if (existing.length > 0) {
+        return Response.json({ error: 'Negotiation already exists with this user' }, { status: 409 });
+      }
+
+      await this.negotiationService.triggerDiscoveryNegotiation(viewer.id, params.userId);
+
+      const rows = await this.taskService.getNegotiationsByUser(viewer.id, {
+        limit: 1,
+        mutualWithUserId: params.userId,
+      });
+      if (rows.length === 0) {
+        return Response.json({ error: 'Negotiation completed but task not found' }, { status: 500 });
+      }
+
+      const row = rows[0];
+      const taskIds = [row.id];
+      const messagesMap = await this.taskService.getMessagesByTaskIds(taskIds);
+
+      const participantIds = new Set<string>();
+      const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
+      if (meta?.sourceUserId) participantIds.add(meta.sourceUserId);
+      if (meta?.candidateUserId) participantIds.add(meta.candidateUserId);
+
+      const participantUsers = participantIds.size > 0
+        ? await userService.findByIds([...participantIds])
+        : [];
+      const userMap = new Map(participantUsers.map((u) => [u.id, u]));
+
+      type TurnData = { action?: string; assessment?: { fitScore?: number; reasoning?: string; suggestedRoles?: { ownUser?: string; otherUser?: string } } };
+      type OutcomePart = { kind?: string; data?: { consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
+
+      const counterpartyId = meta?.sourceUserId === viewer.id ? meta?.candidateUserId : meta?.sourceUserId;
+      const counterparty = counterpartyId ? userMap.get(counterpartyId) : null;
+
+      const outcomePart = (row.artifact?.parts as OutcomePart[] | null)?.find((p) => p.kind === 'data');
+      const outcomeData = outcomePart?.data;
+      const viewerRole = outcomeData?.agreedRoles?.find((r) => r.userId === viewer.id)?.role ?? null;
+
+      const rawMessages = messagesMap.get(row.id) ?? [];
+      const turns = rawMessages.map((msg) => {
+        const agentUserId = msg.senderId.replace(/^agent:/, '');
+        const speakerUser = userMap.get(agentUserId);
+        const dataPart = (msg.parts as Array<{ kind?: string; data?: TurnData }>).find((p) => p.kind === 'data');
+        const turn = dataPart?.data;
+        return {
+          speaker: speakerUser
+            ? { id: speakerUser.id, name: speakerUser.name, avatar: speakerUser.avatar }
+            : { id: agentUserId, name: 'Unknown', avatar: null },
+          action: turn?.action ?? 'unknown',
+          fitScore: turn?.assessment?.fitScore ?? 0,
+          reasoning: turn?.assessment?.reasoning ?? '',
+          suggestedRoles: turn?.assessment?.suggestedRoles ?? null,
+          createdAt: msg.createdAt.toISOString(),
+        };
+      });
+
+      const negotiation = {
+        id: row.id,
+        counterparty: counterparty
+          ? { id: counterparty.id, name: counterparty.name, avatar: counterparty.avatar }
+          : { id: counterpartyId ?? 'unknown', name: 'Unknown user', avatar: null },
+        outcome: outcomeData
+          ? {
+              consensus: outcomeData.consensus ?? false,
+              finalScore: outcomeData.finalScore ?? 0,
+              role: viewerRole,
+              turnCount: outcomeData.turnCount ?? 0,
+              reason: outcomeData.reason,
+            }
+          : null,
+        turns,
+        createdAt: row.createdAt.toISOString(),
+      };
+
+      return Response.json({ negotiation }, { status: 201 });
+    } catch (err) {
+      logger.error('Failed to trigger negotiation', { userId: params.userId, error: err instanceof Error ? err.message : String(err) });
+      return Response.json({ error: 'Failed to trigger negotiation' }, { status: 500 });
+    }
   }
 
   /**
@@ -162,6 +268,133 @@ export class UserController {
     } catch (err) {
       logger.error('Failed to fetch negotiations', { userId: params.userId, error: err instanceof Error ? err.message : String(err) });
       return Response.json({ error: 'Failed to fetch negotiations' }, { status: 500 });
+    }
+  }
+
+  /**
+   * GET /users/:userId/negotiations/insights — generate an aggregated insight summary of the user's negotiations.
+   * Self-only: returns 403 if the viewer is not the profile owner.
+   * @param _req - Request (unused)
+   * @param viewer - Authenticated user from AuthGuard
+   * @param params - Route params containing userId
+   * @returns JSON with insights object containing a summary string
+   */
+  @Get('/:userId/negotiations/insights')
+  @UseGuards(AuthGuard)
+  async getNegotiationInsights(_req: Request, viewer: AuthenticatedUser, params: { userId: string }) {
+    if (viewer.id !== params.userId) {
+      return Response.json({ error: 'Insights are only available for your own negotiations' }, { status: 403 });
+    }
+
+    try {
+      const rows = await this.taskService.getNegotiationsByUser(params.userId, { limit: 50, offset: 0 });
+      if (rows.length === 0) {
+        return Response.json({ insights: null });
+      }
+
+      const participantIds = new Set<string>();
+      for (const row of rows) {
+        const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
+        if (meta?.sourceUserId) participantIds.add(meta.sourceUserId);
+        if (meta?.candidateUserId) participantIds.add(meta.candidateUserId);
+      }
+      const participantUsers = participantIds.size > 0 ? await userService.findByIds([...participantIds]) : [];
+      const userMap = new Map(participantUsers.map((u) => [u.id, u]));
+
+      const taskIds = rows.map((r) => r.id);
+      const messagesMap = await this.taskService.getMessagesByTaskIds(taskIds);
+
+      type OutcomePart = { kind?: string; data?: { consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }> } };
+      type TurnData = { assessment?: { reasoning?: string } };
+
+      let consensusCount = 0;
+      let noConsensusCount = 0;
+      let inProgressCount = 0;
+      const roleCounts: Record<string, number> = {};
+      const counterpartyNames: string[] = [];
+      const reasoningExcerpts: string[] = [];
+      const scoreSum: number[] = [];
+      const counterpartyCounts = new Map<string, { id: string; name: string; avatar: string | null; count: number }>();
+
+      for (const row of rows) {
+        const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
+        const counterpartyId = meta?.sourceUserId === params.userId ? meta?.candidateUserId : meta?.sourceUserId;
+        if (counterpartyId) {
+          const cp = userMap.get(counterpartyId);
+          if (cp?.name && !counterpartyNames.includes(cp.name)) counterpartyNames.push(cp.name);
+          if (cp) {
+            const existing = counterpartyCounts.get(counterpartyId);
+            if (existing) {
+              existing.count++;
+            } else {
+              counterpartyCounts.set(counterpartyId, { id: cp.id, name: cp.name, avatar: cp.avatar, count: 1 });
+            }
+          }
+        }
+
+        const outcomePart = (row.artifact?.parts as OutcomePart[] | null)?.find((p) => p.kind === 'data');
+        const outcomeData = outcomePart?.data;
+
+        if (!outcomeData) {
+          inProgressCount++;
+        } else if (outcomeData.consensus) {
+          consensusCount++;
+          if (outcomeData.finalScore != null) scoreSum.push(outcomeData.finalScore);
+          const viewerRole = outcomeData.agreedRoles?.find((r) => r.userId === params.userId)?.role;
+          if (viewerRole) {
+            const label = viewerRole === 'agent' ? 'Helper' : viewerRole === 'patient' ? 'Seeker' : 'Peer';
+            roleCounts[label] = (roleCounts[label] ?? 0) + 1;
+          }
+        } else {
+          noConsensusCount++;
+        }
+
+        if (reasoningExcerpts.length < 8) {
+          const msgs = messagesMap.get(row.id) ?? [];
+          for (const msg of msgs) {
+            if (reasoningExcerpts.length >= 8) break;
+            const dataPart = (msg.parts as Array<{ kind?: string; data?: TurnData }>).find((p) => p.kind === 'data');
+            const reasoning = dataPart?.data?.assessment?.reasoning;
+            if (reasoning) reasoningExcerpts.push(reasoning.slice(0, 150));
+          }
+        }
+      }
+
+      const avgScore = scoreSum.length > 0 ? Math.round(scoreSum.reduce((a, b) => a + b, 0) / scoreSum.length) : null;
+      const topCounterparties = [...counterpartyCounts.values()]
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      const digest: NegotiationDigest = {
+        totalCount: rows.length,
+        consensusCount,
+        noConsensusCount,
+        inProgressCount,
+        roleDistribution: roleCounts,
+        counterparties: counterpartyNames.slice(0, 10),
+        reasoningExcerpts,
+      };
+
+      const generator = new NegotiationInsightsGenerator();
+      const summary = await generator.invoke(digest);
+
+      return Response.json({
+        insights: {
+          summary: summary ?? null,
+          stats: {
+            totalCount: rows.length,
+            consensusCount,
+            noConsensusCount,
+            inProgressCount,
+            avgScore,
+            roleDistribution: roleCounts,
+            topCounterparties,
+          },
+        },
+      });
+    } catch (err) {
+      logger.error('Failed to generate negotiation insights', { userId: params.userId, error: err instanceof Error ? err.message : String(err) });
+      return Response.json({ error: 'Failed to generate insights' }, { status: 500 });
     }
   }
 
