@@ -18,7 +18,7 @@ export interface NegotiationSummary {
   id: string;
   counterparty: { id: string; name: string; avatar: string | null };
   outcome: {
-    consensus: boolean;
+    hasOpportunity: boolean;
     finalScore: number;
     role: string | null;
     turnCount: number;
@@ -32,8 +32,8 @@ export interface NegotiationInsights {
   summary: string | null;
   stats: {
     totalCount: number;
-    consensusCount: number;
-    noConsensusCount: number;
+    opportunityCount: number;
+    noOpportunityCount: number;
     inProgressCount: number;
     avgScore: number | null;
     roleDistribution: Record<string, number>;

@@ -1933,7 +1933,7 @@ List past negotiations for a user. When the viewer differs from the profile owne
 **Query params**:
 - `limit` — Max results (default: 20, max: 50)
 - `offset` — Pagination offset (default: 0)
-- `result` — Filter by result: `consensus`, `no_consensus`, `in_progress` (optional)
+- `result` — Filter by result: `has_opportunity`, `no_opportunity`, `in_progress` (optional)
 
 **Response**:
 ```json
@@ -1943,7 +1943,7 @@ List past negotiations for a user. When the viewer differs from the profile owne
       "id": "...",
       "counterparty": { "id": "...", "name": "...", "avatar": "..." },
       "outcome": {
-        "consensus": true,
+        "hasOpportunity": true,
         "finalScore": 0.85,
         "role": "...",
         "turnCount": 3,

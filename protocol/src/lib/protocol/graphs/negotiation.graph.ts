@@ -140,14 +140,14 @@ export class NegotiationGraphFactory {
       }).filter(Boolean);
 
       const lastTurn = state.lastTurn;
-      const consensus = lastTurn?.action === "accept";
+      const hasOpportunity = lastTurn?.action === "accept";
       const atCap = state.turnCount >= state.maxTurns && lastTurn?.action === "counter";
 
       const scores = history.map((t) => t.assessment.fitScore);
       const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
       let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
-      if (consensus && history.length >= 2) {
+      if (hasOpportunity && history.length >= 2) {
         // The accept turn is always last; the preceding turn is from the other side.
         // Use currentSpeaker (who would speak NEXT) to determine who spoke last.
         const acceptTurn = history[history.length - 1];
@@ -165,8 +165,8 @@ export class NegotiationGraphFactory {
       }
 
       const outcome: NegotiationOutcome = {
-        consensus,
-        finalScore: consensus ? avgScore : 0,
+        hasOpportunity,
+        finalScore: hasOpportunity ? avgScore : 0,
         agreedRoles,
         reasoning: lastTurn?.assessment.reasoning ?? "",
         turnCount: state.turnCount,
@@ -179,7 +179,7 @@ export class NegotiationGraphFactory {
           taskId: state.taskId,
           name: "negotiation-outcome",
           parts: [{ kind: "data", data: outcome }],
-          metadata: { consensus, turnCount: state.turnCount },
+          metadata: { hasOpportunity, turnCount: state.turnCount },
         });
       } catch (err) {
         logger.error("[Graph:Finalize] Failed to persist outcome", { error: err });
@@ -230,7 +230,7 @@ export interface NegotiationResult {
  * @param candidates - Evaluated candidates to negotiate with
  * @param indexContext - Index context for the negotiation
  * @param opts - Optional maxTurns and traceEmitter
- * @returns Only candidates that achieved consensus
+ * @returns Only candidates that produced an opportunity
  */
 export async function negotiateCandidates(
   negotiationGraph: NegotiationGraphLike,
@@ -266,7 +266,7 @@ export async function negotiateCandidates(
 
         const durationMs = Date.now() - start;
         const outcome = result.outcome;
-        const consensus = outcome?.consensus === true;
+        const hasOpportunity = outcome?.hasOpportunity === true;
 
         // Build inline turn flow: "propose:85 → counter:70 → accept:78"
         const turnFlow = (result.messages ?? [])
@@ -279,10 +279,10 @@ export async function negotiateCandidates(
           .filter(Boolean)
           .join(" → ");
 
-        const statusTag = consensus ? "✓ consensus" : "✗ rejected";
+        const statusTag = hasOpportunity ? "✓ opportunity" : "✗ rejected";
         traceEmitter?.({ type: "agent_end", name: "Negotiating candidate", durationMs, summary: `${candidate.userId}: ${turnFlow} ${statusTag}` });
 
-        if (consensus && outcome) {
+        if (hasOpportunity && outcome) {
           return {
             userId: candidate.userId,
             negotiationScore: outcome.finalScore,

@@ -7,12 +7,11 @@ import type { NegotiationSummary, NegotiationTurnSummary } from "@/services/user
 
 const PAGE_SIZE = 20;
 
-type ResultFilter = '' | 'consensus' | 'no_consensus' | 'in_progress';
+type ResultFilter = '' | 'has_opportunity' | 'in_progress';
 
 const FILTERS: { value: ResultFilter; label: string }[] = [
   { value: '', label: 'All' },
-  { value: 'consensus', label: 'Consensus' },
-  { value: 'no_consensus', label: 'No consensus' },
+  { value: 'has_opportunity', label: 'Has opportunities' },
   { value: 'in_progress', label: 'In progress' },
 ];
 
@@ -230,12 +229,12 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
                   {neg.outcome ? (
                     <span
                       className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                        neg.outcome.consensus
+                        neg.outcome.hasOpportunity
                           ? "bg-emerald-50 text-emerald-700"
                           : "bg-gray-100 text-gray-500"
                       }`}
                     >
-                      {neg.outcome.consensus ? "Consensus" : "No consensus"}
+                      {neg.outcome.hasOpportunity ? "Opportunity" : "No opportunity"}
                     </span>
                   ) : (
                     <span className="text-xs px-1.5 py-0.5 rounded-full font-medium bg-yellow-50 text-yellow-700">
@@ -244,7 +243,7 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-500">
-                  {neg.outcome?.consensus && neg.outcome.finalScore > 0 && (
+                  {neg.outcome?.hasOpportunity && neg.outcome.finalScore > 0 && (
                     <span>Score: {neg.outcome.finalScore}</span>
                   )}
                   {neg.outcome?.role && (

@@ -89,7 +89,7 @@ export class TaskService {
    */
   async getNegotiationsByUser(
     userId: string,
-    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'consensus' | 'no_consensus' | 'in_progress' },
+    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'has_opportunity' | 'no_opportunity' | 'in_progress' },
   ) {
     return this.db.getNegotiationsByUser(userId, opts);
   }

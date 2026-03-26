@@ -5830,7 +5830,7 @@ export class ConversationDatabaseAdapter {
    */
   async getNegotiationsByUser(
     userId: string,
-    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'consensus' | 'no_consensus' | 'in_progress' },
+    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'has_opportunity' | 'no_opportunity' | 'in_progress' },
   ): Promise<Array<Task & { artifact: Artifact | null }>> {
     const limit = opts?.limit ?? 10;
     const offset = opts?.offset ?? 0;
@@ -5857,10 +5857,10 @@ export class ConversationDatabaseAdapter {
           ),
         );
 
-    const resultFilter = opts?.result === 'consensus'
-      ? sql`(${schema.artifacts.parts}->0->>'kind' = 'data' AND (${schema.artifacts.parts}->0->'data'->>'consensus')::boolean = true)`
-      : opts?.result === 'no_consensus'
-        ? sql`(${schema.artifacts.parts}->0->>'kind' = 'data' AND (${schema.artifacts.parts}->0->'data'->>'consensus')::boolean = false)`
+    const resultFilter = opts?.result === 'has_opportunity'
+      ? sql`(${schema.artifacts.parts}->0->>'kind' = 'data' AND ((${schema.artifacts.parts}->0->'data'->>'hasOpportunity')::boolean = true OR (${schema.artifacts.parts}->0->'data'->>'consensus')::boolean = true))`
+      : opts?.result === 'no_opportunity'
+        ? sql`(${schema.artifacts.parts}->0->>'kind' = 'data' AND ((${schema.artifacts.parts}->0->'data'->>'hasOpportunity')::boolean = false OR (${schema.artifacts.parts}->0->'data'->>'consensus')::boolean = false))`
         : opts?.result === 'in_progress'
           ? and(isNull(schema.artifacts.id), inArray(schema.tasks.state, ['submitted', 'working', 'input_required']))
           : undefined;

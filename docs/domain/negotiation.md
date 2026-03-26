@@ -1,14 +1,14 @@
 ---
 title: "Negotiation"
 type: domain
-tags: [negotiation, bilateral, agents, consensus, opportunity, a2a, roles]
+tags: [negotiation, bilateral, agents, opportunity, a2a, roles]
 created: 2026-03-26
 updated: 2026-03-26
 ---
 
 # Negotiation
 
-Negotiation is a bilateral agent-to-agent protocol that acts as a quality gate before opportunities are persisted. Two AI agents -- one representing each user -- debate whether a proposed match genuinely serves both parties. Only matches that achieve consensus become opportunities visible to users.
+Negotiation is a bilateral agent-to-agent protocol that acts as a quality gate before opportunities are persisted. Two AI agents -- one representing each user -- debate whether a proposed match genuinely serves both parties. Only matches where both agents agree become opportunities visible to users.
 
 This mechanism prevents the system from surfacing low-quality connections that passed the initial scoring threshold but would not withstand scrutiny from an advocate for each side.
 
@@ -76,25 +76,25 @@ Each turn produces a structured assessment:
 
 ### Turn cap
 
-Negotiations have a maximum turn limit (default: 6). If the cap is reached without accept or reject, the negotiation ends with no consensus (the match is not persisted). The outcome records `reason: "turn_cap"` to distinguish this from explicit rejection.
+Negotiations have a maximum turn limit (default: 6). If the cap is reached without accept or reject, the negotiation ends with no opportunity (the match is not persisted). The outcome records `reason: "turn_cap"` to distinguish this from explicit rejection.
 
 ---
 
-## Consensus Determination
+## Outcome Determination
 
 The finalization logic examines the negotiation history to determine the outcome:
 
-- **Consensus reached**: The last action was "accept". The opportunity proceeds to persistence.
+- **Has opportunity**: The last action was "accept". The opportunity proceeds to persistence.
 - **Rejected**: The last action was "reject". The match is discarded.
-- **Turn cap**: The maximum turns were exhausted with the last action being "counter". No consensus; the match is discarded.
+- **Turn cap**: The maximum turns were exhausted with the last action being "counter". No opportunity; the match is discarded.
 
 ### Final score
 
-When consensus is reached, the final score is the average of all fit scores across the negotiation history. This smooths out the potentially varying assessments across turns.
+When an opportunity is produced, the final score is the average of all fit scores across the negotiation history. This smooths out the potentially varying assessments across turns.
 
 ### Agreed roles
 
-When consensus is reached, the final roles are derived from the last two turns (the accept turn and the preceding turn). Each side's `suggestedRoles.ownUser` from their respective last turns becomes the agreed role for that user.
+When an opportunity is produced, the final roles are derived from the last two turns (the accept turn and the preceding turn). Each side's `suggestedRoles.ownUser` from their respective last turns becomes the agreed role for that user.
 
 ---
 
@@ -129,7 +129,7 @@ Negotiation is the final gate before an opportunity is written to the database:
 
 1. The opportunity evaluator identifies candidates with scores above threshold
 2. Each qualifying candidate enters bilateral negotiation
-3. Only candidates that achieve consensus are persisted as opportunities
+3. Only candidates that produce an opportunity are persisted
 4. The negotiation's agreed roles become the opportunity's actor roles
 5. The negotiation's final score and reasoning inform the opportunity's interpretation
 

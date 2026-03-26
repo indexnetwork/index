@@ -1543,7 +1543,7 @@ export class OpportunityGraphFactory {
     /**
      * Node 3b: Negotiate
      * Runs bilateral negotiation between source user and each evaluated candidate.
-     * Filters out candidates that fail to reach consensus; updates scores for those that pass.
+     * Filters out candidates that fail to produce an opportunity; updates scores for those that pass.
      */
     const negotiateNode = async (state: typeof OpportunityGraphState.State) => {
       if (!this.negotiationGraph) return {};
@@ -1652,23 +1652,23 @@ export class OpportunityGraphFactory {
         );
 
         // Run negotiations per candidate with their actual index context
-        const consensusResults = await negotiateCandidates(
+        const acceptedResults = await negotiateCandidates(
           this.negotiationGraph, sourceUser, candidates,
           { indexId: '', prompt: '' }, // base context, overridden per-candidate below
           { maxTurns, traceEmitter: traceEmitter ?? undefined,
             indexContextOverrides: indexContextMap },
         );
 
-        // Filter opportunities to only those with consensus, update scores
-        const consensusMap = new Map(consensusResults.map(r => [r.userId, r]));
+        // Filter opportunities to only those with an opportunity outcome, update scores
+        const acceptedMap = new Map(acceptedResults.map(r => [r.userId, r]));
         const updatedOpportunities = state.evaluatedOpportunities
           .filter(opp => {
             const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);
-            return candidateActor && consensusMap.has(candidateActor.userId as string);
+            return candidateActor && acceptedMap.has(candidateActor.userId as string);
           })
           .map(opp => {
             const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);
-            const negResult = candidateActor && consensusMap.get(candidateActor.userId as string);
+            const negResult = candidateActor && acceptedMap.get(candidateActor.userId as string);
             return negResult ? { ...opp, score: negResult.negotiationScore } : opp;
           });
 

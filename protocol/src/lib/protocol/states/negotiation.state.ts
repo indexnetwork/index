@@ -18,7 +18,7 @@ export type NegotiationTurn = z.infer<typeof NegotiationTurnSchema>;
 
 /** Zod schema for the negotiation outcome (Artifact payload on COMPLETED task). */
 export const NegotiationOutcomeSchema = z.object({
-  consensus: z.boolean(),
+  hasOpportunity: z.boolean(),
   finalScore: z.number().min(0).max(100),
   agreedRoles: z.array(z.object({
     userId: z.string(),

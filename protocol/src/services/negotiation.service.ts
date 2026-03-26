@@ -45,7 +45,7 @@ export class NegotiationService {
     logger.info('Discovery negotiation completed', {
       sourceUserId,
       candidateUserId,
-      consensus: result.outcome?.consensus,
+      hasOpportunity: result.outcome?.hasOpportunity,
       turnCount: result.outcome?.turnCount,
     });
 

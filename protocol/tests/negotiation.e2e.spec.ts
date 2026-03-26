@@ -44,7 +44,7 @@ describe("Negotiation E2E", () => {
 
     // Verify outcome exists
     expect(result.outcome).not.toBeNull();
-    expect(typeof result.outcome!.consensus).toBe("boolean");
+    expect(typeof result.outcome!.hasOpportunity).toBe("boolean");
     expect(result.outcome!.turnCount).toBeGreaterThanOrEqual(2);
     expect(result.outcome!.turnCount).toBeLessThanOrEqual(4);
     expect(result.outcome!.reasoning).toBeTruthy();

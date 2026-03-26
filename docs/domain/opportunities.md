@@ -199,6 +199,6 @@ Additional metadata:
 
 ## Negotiation Gate
 
-Before an opportunity is persisted, it may pass through bilateral agent-to-agent negotiation (see [Negotiation](negotiation.md)). Negotiation acts as a quality gate: only opportunities that achieve consensus between the proposer and responder agents are persisted. If negotiation rejects the match, the opportunity is not created.
+Before an opportunity is persisted, it may pass through bilateral agent-to-agent negotiation (see [Negotiation](negotiation.md)). Negotiation acts as a quality gate: only matches where both agents agree are persisted as opportunities. If negotiation rejects the match, the opportunity is not created.
 
 This prevents low-quality matches from reaching users even when the initial evaluator score is above threshold.

@@ -4,7 +4,7 @@ import * as Tabs from "@radix-ui/react-tabs";
 import {
   Loader2,
   Sparkles,
-  Send,
+  ArrowUp,
   Handshake,
   Clock,
   TrendingUp,
@@ -70,7 +70,6 @@ function OverviewTab({ userId }: { userId: string }) {
   const [data, setData] = useState<NegotiationInsights | null>(null);
   const [loading, setLoading] = useState(false);
   const fetched = useRef(false);
-  const [feedback, setFeedback] = useState("");
 
   useEffect(() => {
     if (!userId || fetched.current) return;
@@ -82,11 +81,6 @@ function OverviewTab({ userId }: { userId: string }) {
       .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, [userId, usersService]);
-
-  const handleFeedbackSubmit = () => {
-    if (!feedback.trim()) return;
-    setFeedback("");
-  };
 
   if (loading) {
     return (
@@ -115,11 +109,11 @@ function OverviewTab({ userId }: { userId: string }) {
   }
 
   const { stats, summary } = data;
-  const consensusRate =
+  const opportunityRate =
     stats.totalCount > 0
       ? Math.round(
-          (stats.consensusCount /
-            (stats.consensusCount + stats.noConsensusCount || 1)) *
+          (stats.opportunityCount /
+            (stats.opportunityCount + stats.noOpportunityCount || 1)) *
             100,
         )
       : 0;
@@ -131,25 +125,24 @@ function OverviewTab({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Stat cards row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           label="Total"
           value={stats.totalCount}
           icon={<Handshake className="w-4 h-4 text-gray-400" />}
-          sublabel={`${stats.consensusCount} consensus`}
+          sublabel={`${stats.opportunityCount} opportunities`}
         />
         <StatCard
-          label="Consensus rate"
-          value={`${consensusRate}%`}
+          label="Opportunity rate"
+          value={`${opportunityRate}%`}
           icon={<TrendingUp className="w-4 h-4 text-gray-400" />}
-          sublabel={`${stats.noConsensusCount} didn't agree`}
+          sublabel={`${stats.noOpportunityCount} no opportunity`}
         />
         <StatCard
           label="Avg score"
           value={stats.avgScore ?? "—"}
           icon={<Sparkles className="w-4 h-4 text-gray-400" />}
-          sublabel="Consensus negotiations"
+          sublabel="Successful negotiations"
         />
         <StatCard
           label="In progress"
@@ -159,9 +152,7 @@ function OverviewTab({ userId }: { userId: string }) {
         />
       </div>
 
-      {/* Middle row: Role distribution + Top counterparties */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {/* Role distribution */}
         <div className="p-4 rounded-md border border-gray-100 bg-white">
           <h3 className="text-xs text-gray-500 uppercase tracking-wide mb-3">
             Your roles
@@ -174,7 +165,7 @@ function OverviewTab({ userId }: { userId: string }) {
                 .sort((a, b) => b[1] - a[1])
                 .map(([role, count]) => {
                   const pct = Math.round(
-                    (count / (stats.consensusCount || 1)) * 100,
+                    (count / (stats.opportunityCount || 1)) * 100,
                   );
                   return (
                     <div key={role}>
@@ -207,7 +198,6 @@ function OverviewTab({ userId }: { userId: string }) {
           )}
         </div>
 
-        {/* Top counterparties */}
         <div className="p-4 rounded-md border border-gray-100 bg-white">
           <h3 className="text-xs text-gray-500 uppercase tracking-wide mb-3">
             Top counterparties
@@ -237,45 +227,9 @@ function OverviewTab({ userId }: { userId: string }) {
         </div>
       </div>
 
-      {/* LLM narrative */}
       {summary && (
-        <div className="p-5 rounded-md bg-gray-50 border border-gray-100">
-          <div className="flex items-start gap-2.5">
-            <Sparkles className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-            <p className="text-sm text-gray-700 leading-relaxed">{summary}</p>
-          </div>
-        </div>
+        <p className="text-sm text-gray-600 leading-relaxed">{summary}</p>
       )}
-
-      {/* Feedback input */}
-      <div className="p-4 rounded-md border border-gray-100 bg-white">
-        <h3 className="text-sm font-medium text-gray-900 mb-1">
-          Feedback for your agent
-        </h3>
-        <p className="text-xs text-gray-500 mb-3">
-          Tell your agent what to prioritize, avoid, or adjust in future
-          negotiations.
-        </p>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleFeedbackSubmit();
-            }}
-            placeholder="e.g. Focus more on AI/ML collaborations, avoid marketing roles..."
-            className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-300 placeholder:text-gray-400"
-          />
-          <button
-            onClick={handleFeedbackSubmit}
-            disabled={!feedback.trim()}
-            className="px-3 py-2 bg-gray-900 text-white rounded-md text-sm hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -284,12 +238,18 @@ export default function AgentPage() {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab?: string }>();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
+  const [feedback, setFeedback] = useState("");
 
   const activeTab: TabValue = VALID_TABS.includes(tab as TabValue)
     ? (tab as TabValue)
     : "overview";
   const setActiveTab = (v: string) =>
     navigate(`/agent/${v}`, { replace: true });
+
+  const handleFeedbackSubmit = () => {
+    if (!feedback.trim()) return;
+    setFeedback("");
+  };
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -309,7 +269,7 @@ export default function AgentPage() {
 
   return (
     <ClientLayout>
-      <div className="px-6 lg:px-8 py-6">
+      <div className="px-6 lg:px-8 py-6 pb-32 flex-1">
         <ContentContainer>
           <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-6">
             Agent
@@ -341,6 +301,38 @@ export default function AgentPage() {
           </Tabs.Root>
         </ContentContainer>
       </div>
+
+      {activeTab === "overview" && (
+        <div className="sticky bottom-0 z-20">
+          <div className="px-6 lg:px-8">
+            <ContentContainer>
+              <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
+                <form
+                  onSubmit={(e) => { e.preventDefault(); handleFeedbackSubmit(); }}
+                  className="flex items-center gap-3 bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3"
+                >
+                  <input
+                    type="text"
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleFeedbackSubmit(); }}
+                    placeholder="Tell your agent what to prioritize, avoid, or adjust..."
+                    className="flex-1 bg-transparent border-none outline-none text-sm text-gray-900 placeholder-gray-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!feedback.trim()}
+                    className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white flex items-center justify-center hover:bg-[#0a2d4a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </button>
+                </form>
+              </div>
+              <div className="bg-white py-2" />
+            </ContentContainer>
+          </div>
+        </div>
+      )}
     </ClientLayout>
   );
 }

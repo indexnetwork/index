@@ -122,7 +122,7 @@ export class UserController {
       const userMap = new Map(participantUsers.map((u) => [u.id, u]));
 
       type TurnData = { action?: string; assessment?: { fitScore?: number; reasoning?: string; suggestedRoles?: { ownUser?: string; otherUser?: string } } };
-      type OutcomePart = { kind?: string; data?: { consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
+      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
 
       const counterpartyId = meta?.sourceUserId === viewer.id ? meta?.candidateUserId : meta?.sourceUserId;
       const counterparty = counterpartyId ? userMap.get(counterpartyId) : null;
@@ -156,7 +156,7 @@ export class UserController {
           : { id: counterpartyId ?? 'unknown', name: 'Unknown user', avatar: null },
         outcome: outcomeData
           ? {
-              consensus: outcomeData.consensus ?? false,
+              hasOpportunity: outcomeData.hasOpportunity ?? outcomeData.consensus ?? false,
               finalScore: outcomeData.finalScore ?? 0,
               role: viewerRole,
               turnCount: outcomeData.turnCount ?? 0,
@@ -189,8 +189,8 @@ export class UserController {
     const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 1), 50);
     const offset = Math.max(parseInt(url.searchParams.get('offset') ?? '0', 10) || 0, 0);
     const resultParam = url.searchParams.get('result');
-    const result = (['consensus', 'no_consensus', 'in_progress'] as const).includes(resultParam as never)
-      ? (resultParam as 'consensus' | 'no_consensus' | 'in_progress')
+    const result = (['has_opportunity', 'no_opportunity', 'in_progress'] as const).includes(resultParam as never)
+      ? (resultParam as 'has_opportunity' | 'no_opportunity' | 'in_progress')
       : undefined;
 
     const isSelf = viewer.id === params.userId;
@@ -215,7 +215,7 @@ export class UserController {
       const userMap = new Map(participantUsers.map((u) => [u.id, u]));
 
       type TurnData = { action?: string; assessment?: { fitScore?: number; reasoning?: string; suggestedRoles?: { ownUser?: string; otherUser?: string } } };
-      type OutcomePart = { kind?: string; data?: { consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
+      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
 
       const negotiations = rows.map((row) => {
         const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
@@ -252,7 +252,7 @@ export class UserController {
             : { id: counterpartyId ?? 'unknown', name: 'Unknown user', avatar: null },
           outcome: outcomeData
             ? {
-                consensus: outcomeData.consensus ?? false,
+                hasOpportunity: outcomeData.hasOpportunity ?? outcomeData.consensus ?? false,
                 finalScore: outcomeData.finalScore ?? 0,
                 role: viewerRole,
                 turnCount: outcomeData.turnCount ?? 0,
@@ -304,11 +304,11 @@ export class UserController {
       const taskIds = rows.map((r) => r.id);
       const messagesMap = await this.taskService.getMessagesByTaskIds(taskIds);
 
-      type OutcomePart = { kind?: string; data?: { consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }> } };
+      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }> } };
       type TurnData = { assessment?: { reasoning?: string } };
 
-      let consensusCount = 0;
-      let noConsensusCount = 0;
+      let opportunityCount = 0;
+      let noOpportunityCount = 0;
       let inProgressCount = 0;
       const roleCounts: Record<string, number> = {};
       const counterpartyNames: string[] = [];
@@ -337,8 +337,8 @@ export class UserController {
 
         if (!outcomeData) {
           inProgressCount++;
-        } else if (outcomeData.consensus) {
-          consensusCount++;
+        } else if (outcomeData.hasOpportunity ?? outcomeData.consensus) {
+          opportunityCount++;
           if (outcomeData.finalScore != null) scoreSum.push(outcomeData.finalScore);
           const viewerRole = outcomeData.agreedRoles?.find((r) => r.userId === params.userId)?.role;
           if (viewerRole) {
@@ -346,7 +346,7 @@ export class UserController {
             roleCounts[label] = (roleCounts[label] ?? 0) + 1;
           }
         } else {
-          noConsensusCount++;
+          noOpportunityCount++;
         }
 
         if (reasoningExcerpts.length < 8) {
@@ -367,8 +367,8 @@ export class UserController {
 
       const digest: NegotiationDigest = {
         totalCount: rows.length,
-        consensusCount,
-        noConsensusCount,
+        opportunityCount,
+        noOpportunityCount,
         inProgressCount,
         roleDistribution: roleCounts,
         counterparties: counterpartyNames.slice(0, 10),
@@ -383,8 +383,8 @@ export class UserController {
           summary: summary ?? null,
           stats: {
             totalCount: rows.length,
-            consensusCount,
-            noConsensusCount,
+            opportunityCount,
+            noOpportunityCount,
             inProgressCount,
             avgScore,
             roleDistribution: roleCounts,

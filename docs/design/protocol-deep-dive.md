@@ -261,7 +261,7 @@ The health scorer considers connection count, connector flow count, expired coun
 - After `init`: routes to `turn` or `finalize` (error)
 - After `turn`: routes to `turn` (counter -- continue negotiating), or `finalize` (accept, reject, or turn cap reached)
 
-The graph creates an A2A conversation, alternates between proposer and responder agents, and records each turn as a message with structured data parts. The finalize node computes consensus, agreed roles, and average fit score, then persists the outcome as an artifact.
+The graph creates an A2A conversation, alternates between proposer and responder agents, and records each turn as a message with structured data parts. The finalize node determines whether an opportunity was produced, computes agreed roles and average fit score, then persists the outcome as an artifact.
 
 **Dependencies:** `NegotiationDatabase`, proposer agent, responder agent
 
@@ -543,7 +543,7 @@ Candidates are deduplicated by `(sourceUserId, candidateUserId, indexId)` with t
 
 ### Negotiation (optional)
 
-When enabled, high-scoring candidates enter bilateral negotiation via the Negotiation Graph. Two agents (proposer for the source, responder for the candidate) negotiate over multiple turns, assessing fit and agreeing on roles. Only candidates that achieve consensus proceed to persistence.
+When enabled, high-scoring candidates enter bilateral negotiation via the Negotiation Graph. Two agents (proposer for the source, responder for the candidate) negotiate over multiple turns, assessing fit and agreeing on roles. Only candidates that produce an opportunity proceed to persistence.
 
 ### Persistence
 

@@ -3,7 +3,7 @@
  *
  * Produces an aggregated, second-person narrative summarizing a user's
  * negotiation history — topics they're sought for, role patterns,
- * consensus trends, and interesting signals from recent activity.
+ * opportunity trends, and interesting signals from recent activity.
  */
 
 import type { ChatOpenAI } from "@langchain/openai";
@@ -25,7 +25,7 @@ Guidelines:
 - Be conversational and insightful, not just statistical.
 - Highlight what others seek the user for, and what the user tends to seek.
 - Mention role patterns: Helper (they assist others), Seeker (they need something), Peer (mutual collaboration).
-- Note consensus rate trends or interesting shifts if apparent.
+- Note opportunity rate trends or interesting shifts if apparent.
 - Reference specific topics or counterparty names when they form patterns.
 - If there are very few negotiations (1-2), keep it brief and forward-looking.
 - Do NOT use bullet points or lists. Write flowing prose.
@@ -34,8 +34,8 @@ Guidelines:
 /** Compressed digest of a user's negotiation history for the LLM. */
 export interface NegotiationDigest {
   totalCount: number;
-  consensusCount: number;
-  noConsensusCount: number;
+  opportunityCount: number;
+  noOpportunityCount: number;
   inProgressCount: number;
   roleDistribution: Record<string, number>;
   counterparties: string[];
@@ -64,7 +64,7 @@ export class NegotiationInsightsGenerator {
 
     const lines: string[] = [
       `Total negotiations: ${digest.totalCount}`,
-      `Consensus: ${digest.consensusCount}, No consensus: ${digest.noConsensusCount}, In progress: ${digest.inProgressCount}`,
+      `Opportunities: ${digest.opportunityCount}, No opportunity: ${digest.noOpportunityCount}, In progress: ${digest.inProgressCount}`,
     ];
 
     const roles = Object.entries(digest.roleDistribution);

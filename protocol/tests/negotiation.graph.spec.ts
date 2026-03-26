@@ -44,7 +44,7 @@ function createMockDeps(proposerAction = "propose" as const, responderAction = "
 }
 
 describe("NegotiationGraph", () => {
-  it("reaches consensus when responder accepts", async () => {
+  it("produces opportunity when responder accepts", async () => {
     const deps = createMockDeps("propose", "accept");
     const factory = new NegotiationGraphFactory(
       deps.database,
@@ -60,7 +60,7 @@ describe("NegotiationGraph", () => {
     });
 
     expect(result.outcome).not.toBeNull();
-    expect(result.outcome!.consensus).toBe(true);
+    expect(result.outcome!.hasOpportunity).toBe(true);
     expect(result.outcome!.turnCount).toBe(2);
     expect(deps.database.createArtifact).toHaveBeenCalled();
   }, 30_000);
@@ -81,7 +81,7 @@ describe("NegotiationGraph", () => {
     });
 
     expect(result.outcome).not.toBeNull();
-    expect(result.outcome!.consensus).toBe(false);
+    expect(result.outcome!.hasOpportunity).toBe(false);
   }, 30_000);
 
   it("rejects when turn cap is exceeded", async () => {
@@ -101,7 +101,7 @@ describe("NegotiationGraph", () => {
     });
 
     expect(result.outcome).not.toBeNull();
-    expect(result.outcome!.consensus).toBe(false);
+    expect(result.outcome!.hasOpportunity).toBe(false);
     expect(result.outcome!.reason).toBe("turn_cap");
     expect(result.turnCount).toBeLessThanOrEqual(4);
   }, 30_000);
