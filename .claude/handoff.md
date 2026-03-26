@@ -1,21 +1,58 @@
 ---
-trigger: "Bug: Chat agent stops sending messages during opportunity discovery. The opportunity graph has 6+ internal nodes (prep → scope → resolve → discovery → evaluation → ranking → persist) that take 10-30+ seconds total, but none emit trace events to the user. Only the evaluator agent inside the evaluation node emits agent_start/agent_end. The tool emits graph_start before invoking and graph_end after, but everything in between is silent."
-type: fix
-branch: fix/opportunity-trace-events
-created: 2026-03-26
+trigger: "Retire the 'viewed' status from opportunity lifecycle"
+type: refactor
+branch: refactor/retire-viewed-status
+created: 2026-03-27
+version-bump: patch
 ---
 
 ## Related Files
-- protocol/src/lib/protocol/graphs/opportunity.graph.ts (main target — add traceEmitter calls to nodes)
-- protocol/src/lib/protocol/tools/opportunity.tools.ts (tool that calls the graph; already emits graph_start/end)
-- protocol/src/lib/protocol/agents/chat.agent.ts (agent loop; propagates traceEmitter via requestContext)
-- protocol/src/lib/protocol/streamers/chat.streamer.ts (streams events to frontend; already handles agent_start/end)
-- frontend/src/components/chat/ToolCallsDisplay.tsx (display names for trace events; needs new entries)
-- protocol/src/lib/request-context.ts (AsyncLocalStorage carrying traceEmitter callback)
+
+### Protocol (schema + enum)
+- protocol/src/schemas/database.schema.ts (opportunityStatusEnum definition)
+
+### Protocol (adapter layer)
+- protocol/src/adapters/database.adapter.ts (status union types in multiple methods)
+- protocol/src/adapters/tests/database.adapter.spec.ts
+
+### Protocol (interfaces)
+- protocol/src/lib/protocol/interfaces/database.interface.ts
+
+### Protocol (services)
+- protocol/src/services/opportunity.service.ts (status filter options)
+- protocol/src/services/tests/opportunity.service.updateStatus.spec.ts
+
+### Protocol (controllers)
+- protocol/src/controllers/opportunity.controller.ts (status validation, allowed list)
+- protocol/src/controllers/tests/opportunity.controller.spec.ts
+
+### Protocol (support/lib)
+- protocol/src/lib/protocol/support/opportunity.discover.ts
+- protocol/src/lib/protocol/support/opportunity.enricher.ts
+- protocol/src/lib/protocol/support/opportunity.utils.ts
+- protocol/src/lib/protocol/support/tests/opportunity.enricher.spec.ts
+- protocol/src/lib/protocol/support/tests/opportunity.utils.spec.ts
+- protocol/src/lib/protocol/tools/profile.tools.ts
+- protocol/src/lib/protocol/tools/tests/chat.tools.spec.ts
+
+### Frontend
+- frontend/src/services/opportunities.ts (OpportunityStatus type, query options)
+- frontend/src/components/chat/OpportunityCardInChat.tsx (ACTIONABLE_STATUSES set)
+
+### Docs
+- docs/domain/opportunities.md (lifecycle table)
 
 ## Relevant Docs
-- docs/domain/opportunities.md — opportunity discovery lifecycle and graph flow
-- docs/design/protocol-deep-dive.md — protocol agent/graph patterns and trace instrumentation
+- docs/domain/opportunities.md
+- docs/domain/negotiation.md
 
 ## Scope
-Add traceEmitter agent_start/agent_end calls at the boundary of each significant opportunity graph node (prep, scope, resolve, discovery, ranking, persist) so the frontend shows real-time progress during the 10-30s opportunity discovery pipeline. The evaluation node already emits these events for the evaluator agent — extend the same pattern to the other nodes. Also add AGENT_DISPLAY_NAMES entries in the frontend ToolCallsDisplay.tsx for the new trace event names (e.g. "opportunity-prep" → "Preparing search...", "opportunity-discovery" → "Searching candidates...", etc.). Follow the existing kebab-case naming convention for trace event agent names.
+Remove `viewed` from the opportunity status enum and all references across the codebase. The `viewed` status is a read-receipt concept that doesn't belong in the lifecycle state machine — it can be tracked separately (e.g., as a timestamp or flag) if needed in the future.
+
+Changes required:
+1. **Migration**: Remove `viewed` from `opportunityStatusEnum` in schema, generate and apply a Drizzle migration
+2. **Protocol types**: Remove `viewed` from all status union types across adapters, interfaces, services, controllers, and support files (~17 files)
+3. **Frontend types**: Remove `viewed` from `OpportunityStatus`, `ACTIONABLE_STATUSES`, and query option types (2 files)
+4. **Tests**: Update all test files that reference `viewed` status
+5. **Docs**: Update the lifecycle table in `docs/domain/opportunities.md` to reflect 6 states instead of 7
+6. **Data migration**: Any existing rows with status `viewed` should be migrated to `pending` in the SQL migration
