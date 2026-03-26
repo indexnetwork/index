@@ -1,5 +1,6 @@
 import type { ChatOpenAI } from "@langchain/openai";
 import {
+  AIMessage,
   BaseMessage,
   SystemMessage,
   ToolMessage,
@@ -911,31 +912,99 @@ export class ChatAgent {
       // LLMs sometimes write ```intent_proposal or ```opportunity blocks
       // directly instead of calling the corresponding tool. These blocks
       // lack valid proposalIds / data and won't work in the frontend.
-      // Detect this and force a correction iteration.
+      // Auto-invoke the correct tool directly instead of re-asking the LLM.
       const hallucinatedBlock = this.detectHallucinatedBlock(iterationText, toolsDebug);
       if (hallucinatedBlock && iterationCount < HARD_ITERATION_LIMIT - 1) {
-        logger.warn("Streaming: detected hallucinated block without tool call", {
+        logger.warn("Streaming: detected hallucinated block, auto-invoking tool", {
           iteration: iterationCount,
           blockType: hallucinatedBlock.type,
+          tool: hallucinatedBlock.tool,
           extractedDescription: hallucinatedBlock.description,
         });
         // Tell the frontend to discard all streamed tokens from this iteration
         emit({ type: "response_reset", reason: `Hallucinated ${hallucinatedBlock.type} block detected` });
 
-        const correctionHint = hallucinatedBlock.type === "opportunity"
-          ? `You MUST call ${hallucinatedBlock.tool}(searchQuery="${hallucinatedBlock.description}") now.`
-          : `You MUST call ${hallucinatedBlock.tool}(description="${hallucinatedBlock.description}") now.`;
+        const tool = this.toolsByName.get(hallucinatedBlock.tool);
+        if (tool) {
+          const toolCallId = `auto-${hallucinatedBlock.tool}-${Date.now()}`;
+          const toolArgs = hallucinatedBlock.type === "opportunity"
+            ? { searchQuery: hallucinatedBlock.description }
+            : { description: hallucinatedBlock.description };
 
-        messages = [
-          ...messages,
-          accumulated,
-          new SystemMessage(
-            `CORRECTION: You wrote a \`\`\`${hallucinatedBlock.type} block in your response without calling the required tool. ` +
-            `That block is INVALID — it contains fabricated data and will not work. ` +
-            `${correctionHint} ` +
-            `Only the tool generates valid blocks. Do NOT write the block yourself again.`
-          ),
-        ];
+          emit({ type: "tool_activity", phase: "start", name: hallucinatedBlock.tool });
+          const toolStart = Date.now();
+          try {
+            const currentCtx = requestContext.getStore() ?? {};
+            const result = await requestContext.run(
+              { ...currentCtx, traceEmitter: (e) => emit({ type: e.type, name: e.name, durationMs: e.durationMs, summary: e.summary } as AgentStreamEvent) },
+              () => tool.invoke(toolArgs),
+            );
+            const resultStr = typeof result === "string" ? result : JSON.stringify(result);
+            const toolDurationMs = Date.now() - toolStart;
+
+            let summary = "Done";
+            try {
+              const parsed = JSON.parse(resultStr) as { success?: boolean; data?: { summary?: string }; summary?: string };
+              const payload = parsed.success && parsed.data != null ? parsed.data : parsed;
+              summary = (payload as { summary?: string }).summary ?? parsed.summary ?? "Done";
+            } catch { /* not JSON */ }
+
+            toolsDebug.push({
+              name: hallucinatedBlock.tool,
+              args: sanitizeForDebugMeta(toolArgs) as Record<string, unknown>,
+              resultSummary: summary,
+              success: true,
+              durationMs: toolDurationMs,
+            });
+            emit({ type: "tool_activity", phase: "end", name: hallucinatedBlock.tool, success: true, summary });
+
+            // Build synthetic tool call message + tool result so the next LLM
+            // iteration can narrate around real data instead of hallucinated blocks.
+            const syntheticAIMessage = new AIMessage({
+              content: "",
+              tool_calls: [{ id: toolCallId, name: hallucinatedBlock.tool, args: toolArgs }],
+            });
+            messages = [
+              ...messages,
+              syntheticAIMessage,
+              new ToolMessage({ tool_call_id: toolCallId, content: resultStr, name: hallucinatedBlock.tool }),
+            ];
+          } catch (error) {
+            const errMsg = error instanceof Error ? error.message : "Unknown error";
+            logger.error("Streaming: auto-invoked tool failed after hallucination", {
+              tool: hallucinatedBlock.tool,
+              error: errMsg,
+            });
+            toolsDebug.push({
+              name: hallucinatedBlock.tool,
+              args: sanitizeForDebugMeta(toolArgs) as Record<string, unknown>,
+              resultSummary: errMsg,
+              success: false,
+              durationMs: Date.now() - toolStart,
+            });
+            emit({ type: "tool_activity", phase: "end", name: hallucinatedBlock.tool, success: false, summary: errMsg });
+
+            // Fall back to correction message if tool invocation fails
+            messages = [
+              ...messages,
+              accumulated,
+              new SystemMessage(
+                `CORRECTION: You wrote a \`\`\`${hallucinatedBlock.type} block without calling ${hallucinatedBlock.tool}. ` +
+                `The auto-retry failed (${errMsg}). Please try calling the tool directly.`
+              ),
+            ];
+          }
+        } else {
+          // Tool not found — fall back to correction message
+          messages = [
+            ...messages,
+            accumulated,
+            new SystemMessage(
+              `CORRECTION: You wrote a \`\`\`${hallucinatedBlock.type} block without calling ${hallucinatedBlock.tool}. ` +
+              `That block is INVALID. Call the tool directly instead.`
+            ),
+          ];
+        }
         iterationCount++;
         continue;
       }
