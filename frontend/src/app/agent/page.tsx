@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import {
@@ -69,17 +69,27 @@ function OverviewTab({ userId }: { userId: string }) {
   const usersService = useUsers();
   const [data, setData] = useState<NegotiationInsights | null>(null);
   const [loading, setLoading] = useState(false);
-  const fetched = useRef(false);
 
   useEffect(() => {
-    if (!userId || fetched.current) return;
-    fetched.current = true;
+    if (!userId) return;
+    let cancelled = false;
+
     setLoading(true);
     usersService
       .getNegotiationInsights(userId)
-      .then((result) => setData(result))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then((result) => {
+        if (!cancelled) setData(result);
+      })
+      .catch(() => {
+        if (!cancelled) setData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [userId, usersService]);
 
   if (loading) {
@@ -246,10 +256,8 @@ export default function AgentPage() {
   const setActiveTab = (v: string) =>
     navigate(`/agent/${v}`, { replace: true });
 
-  const handleFeedbackSubmit = () => {
-    if (!feedback.trim()) return;
-    setFeedback("");
-  };
+  // TODO: wire to preference/feedback endpoint when available
+  const handleFeedbackSubmit = () => {};
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -315,13 +323,13 @@ export default function AgentPage() {
                     type="text"
                     value={feedback}
                     onChange={(e) => setFeedback(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleFeedbackSubmit(); }}
-                    placeholder="Tell your agent what to prioritize, avoid, or adjust..."
-                    className="flex-1 bg-transparent border-none outline-none text-sm text-gray-900 placeholder-gray-500"
+                    disabled
+                    placeholder="Agent preferences coming soon..."
+                    className="flex-1 bg-transparent border-none outline-none text-sm text-gray-900 placeholder-gray-400 disabled:cursor-not-allowed"
                   />
                   <button
                     type="submit"
-                    disabled={!feedback.trim()}
+                    disabled
                     className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white flex items-center justify-center hover:bg-[#0a2d4a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ArrowUp className="h-4 w-4" />

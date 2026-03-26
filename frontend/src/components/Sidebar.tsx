@@ -52,7 +52,8 @@ export default function Sidebar() {
   const isHistoryView = pathname?.startsWith('/d/');
   const isProfileView = pathname?.startsWith('/profile');
   const isAgentView = pathname?.startsWith('/agent');
-  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView && !isProfileView && !isAgentView;
+  const isMyNetworkView = pathname?.startsWith('/mynetwork');
+  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView && !isProfileView && !isAgentView && !isMyNetworkView;
 
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;

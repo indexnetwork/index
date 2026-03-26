@@ -92,9 +92,10 @@ export class UserController {
       const existing = await this.taskService.getNegotiationsByUser(viewer.id, {
         limit: 1,
         mutualWithUserId: params.userId,
+        result: 'in_progress',
       });
       if (existing.length > 0) {
-        return Response.json({ error: 'Negotiation already exists with this user' }, { status: 409 });
+        return Response.json({ error: 'Negotiation already in progress with this user' }, { status: 409 });
       }
 
       await this.negotiationService.triggerDiscoveryNegotiation(viewer.id, params.userId);

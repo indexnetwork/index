@@ -7,11 +7,12 @@ import type { NegotiationSummary, NegotiationTurnSummary } from "@/services/user
 
 const PAGE_SIZE = 20;
 
-type ResultFilter = '' | 'has_opportunity' | 'in_progress';
+type ResultFilter = '' | 'has_opportunity' | 'no_opportunity' | 'in_progress';
 
 const FILTERS: { value: ResultFilter; label: string }[] = [
   { value: '', label: 'All' },
   { value: 'has_opportunity', label: 'Has opportunities' },
+  { value: 'no_opportunity', label: 'No opportunities' },
   { value: 'in_progress', label: 'In progress' },
 ];
 
@@ -200,9 +201,12 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
         return (
           <div key={neg.id} className="bg-[#F8F8F8] rounded-md overflow-hidden">
             {/* Summary row — clickable to expand */}
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => setExpandedId(isExpanded ? null : neg.id)}
-              className="w-full p-4 flex items-center gap-4 text-left hover:bg-gray-100/50 transition-colors"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(isExpanded ? null : neg.id); } }}
+              className="w-full p-4 flex items-center gap-4 text-left hover:bg-gray-100/50 transition-colors cursor-pointer"
             >
               <Link
                 to={`/u/${neg.counterparty.id}`}
@@ -259,7 +263,7 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
               <ChevronDown
                 className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
               />
-            </button>
+            </div>
 
             {/* Expanded dialogue */}
             {isExpanded && neg.turns.length > 0 && (

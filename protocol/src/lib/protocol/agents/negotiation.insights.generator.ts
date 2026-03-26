@@ -88,9 +88,18 @@ export class NegotiationInsightsGenerator {
         new HumanMessage(userMessage),
       ]);
 
-      const text = typeof response.content === "string"
-        ? response.content.trim()
-        : String(response.content ?? "").trim();
+      let text: string;
+      if (typeof response.content === "string") {
+        text = response.content.trim();
+      } else if (Array.isArray(response.content)) {
+        text = (response.content as Array<Record<string, unknown>>)
+          .filter((b): b is { type: "text"; text?: string } => (b as { type?: string }).type === "text")
+          .map((b) => b.text ?? "")
+          .join("")
+          .trim();
+      } else {
+        text = "";
+      }
 
       if (!text) return null;
 
