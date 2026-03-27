@@ -140,7 +140,7 @@ export default function IntroductionRequestFeed({
                       onClick={() => handleSearchNetwork(request)}
                       className="px-3 py-1.5 bg-[#041729] text-white text-xs font-medium rounded-sm hover:bg-[#0a2d4a] transition-colors"
                     >
-                      Who fits
+                      Find matches
                     </button>
                     <button
                       type="button"
