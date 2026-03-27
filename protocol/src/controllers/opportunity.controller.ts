@@ -14,6 +14,8 @@ const discoverBodySchema = z.object({
   limit: z.number().int().positive().optional(),
 });
 
+const listStatusSchema = z.enum(['pending', 'accepted', 'rejected', 'expired']);
+
 /** Route params when path has :id or :indexId */
 type RouteParams = Record<string, string>;
 
@@ -30,12 +32,23 @@ export class OpportunityController {
   @UseGuards(AuthGuard)
   async listOpportunities(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
-    const status = url.searchParams.get('status') ?? undefined;
+    const rawStatus = url.searchParams.get('status');
     const indexId = url.searchParams.get('indexId') ?? undefined;
     const limit = url.searchParams.get('limit');
     const offset = url.searchParams.get('offset');
+
+    if (rawStatus) {
+      const parsed = listStatusSchema.safeParse(rawStatus);
+      if (!parsed.success) {
+        return Response.json(
+          { error: `Invalid status; use one of: ${listStatusSchema.options.join(', ')}` },
+          { status: 400 },
+        );
+      }
+    }
+
     const options = {
-      status: status as 'pending' | 'accepted' | 'rejected' | 'expired' | undefined,
+      status: rawStatus ? (rawStatus as z.infer<typeof listStatusSchema>) : undefined,
       indexId,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
@@ -254,12 +267,22 @@ export class IndexOpportunityController {
     }
 
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
-    const status = url.searchParams.get('status') ?? undefined;
+    const rawStatus = url.searchParams.get('status');
     const limit = url.searchParams.get('limit');
     const offset = url.searchParams.get('offset');
-    
+
+    if (rawStatus) {
+      const parsed = listStatusSchema.safeParse(rawStatus);
+      if (!parsed.success) {
+        return Response.json(
+          { error: `Invalid status; use one of: ${listStatusSchema.options.join(', ')}` },
+          { status: 400 },
+        );
+      }
+    }
+
     const result = await opportunityService.getOpportunitiesForIndex(indexId, user.id, {
-      status: status as 'pending' | 'accepted' | 'rejected' | 'expired' | undefined,
+      status: rawStatus ? (rawStatus as z.infer<typeof listStatusSchema>) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     });

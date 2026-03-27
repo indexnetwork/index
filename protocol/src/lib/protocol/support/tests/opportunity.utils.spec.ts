@@ -38,7 +38,7 @@ describe('opportunity.utils', () => {
   // - Agent: see if (status ∈ {accepted, rejected, expired}, or (status ≠ latent and no introducer)).
 
   describe('canUserSeeOpportunity', () => {
-    const STATUSES = ['latent', 'pending', 'accepted', 'rejected', 'expired'] as const;
+    const STATUSES = ['latent', 'draft', 'pending', 'accepted', 'rejected', 'expired'] as const;
     const VIEWER = 'user-viewer';
 
     // Helper to build actors array
@@ -194,7 +194,7 @@ describe('opportunity.utils', () => {
         ];
         expect(isActionableForViewer(a, 'latent', VIEWER)).toBe(true);
       });
-      for (const status of ['pending', 'accepted', 'rejected', 'expired'] as const) {
+      for (const status of ['draft', 'pending', 'accepted', 'rejected', 'expired'] as const) {
         test(`not actionable at ${status}`, () => {
           const a = [
             { userId: VIEWER, role: 'introducer' },
@@ -218,7 +218,7 @@ describe('opportunity.utils', () => {
       test('actionable at pending', () => {
         expect(isActionableForViewer(makeActors(), 'pending', VIEWER)).toBe(true);
       });
-      for (const status of ['accepted', 'rejected', 'expired'] as const) {
+      for (const status of ['draft', 'accepted', 'rejected', 'expired'] as const) {
         test(`not actionable at ${status}`, () => {
           expect(isActionableForViewer(makeActors(), status, VIEWER)).toBe(false);
         });
@@ -234,7 +234,7 @@ describe('opportunity.utils', () => {
       test('actionable at latent', () => {
         expect(isActionableForViewer(makeActors(), 'latent', VIEWER)).toBe(true);
       });
-      for (const status of ['pending', 'accepted', 'rejected', 'expired'] as const) {
+      for (const status of ['draft', 'pending', 'accepted', 'rejected', 'expired'] as const) {
         test(`not actionable at ${status}`, () => {
           expect(isActionableForViewer(makeActors(), status, VIEWER)).toBe(false);
         });
@@ -251,7 +251,7 @@ describe('opportunity.utils', () => {
       test('actionable at accepted', () => {
         expect(isActionableForViewer(makeActors(), 'accepted', VIEWER)).toBe(true);
       });
-      for (const status of ['latent', 'pending', 'rejected', 'expired'] as const) {
+      for (const status of ['latent', 'draft', 'pending', 'rejected', 'expired'] as const) {
         test(`not actionable at ${status}`, () => {
           expect(isActionableForViewer(makeActors(), status, VIEWER)).toBe(false);
         });
@@ -269,7 +269,7 @@ describe('opportunity.utils', () => {
           expect(isActionableForViewer(makeActors(), status, VIEWER)).toBe(true);
         });
       }
-      for (const status of ['latent', 'accepted', 'rejected', 'expired'] as const) {
+      for (const status of ['latent', 'draft', 'accepted', 'rejected', 'expired'] as const) {
         test(`not actionable at ${status}`, () => {
           expect(isActionableForViewer(makeActors(), status, VIEWER)).toBe(false);
         });
@@ -287,7 +287,7 @@ describe('opportunity.utils', () => {
           expect(isActionableForViewer(makeActors(), status, VIEWER)).toBe(true);
         });
       }
-      for (const status of ['accepted', 'rejected', 'expired'] as const) {
+      for (const status of ['draft', 'accepted', 'rejected', 'expired'] as const) {
         test(`not actionable at ${status}`, () => {
           expect(isActionableForViewer(makeActors(), status, VIEWER)).toBe(false);
         });

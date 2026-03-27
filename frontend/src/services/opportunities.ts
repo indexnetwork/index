@@ -21,7 +21,7 @@ export interface OpportunityInterpretation {
 
 export interface OpportunityListItem {
   id: string;
-  status: 'latent' | 'pending' | 'accepted' | 'rejected' | 'expired';
+  status: 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired';
   context: OpportunityContext;
   interpretation: OpportunityInterpretation;
   actors: OpportunityActor[];

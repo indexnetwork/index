@@ -131,7 +131,7 @@ export interface DiscoverResult {
   count: number;
   message?: string;
   opportunities?: FormattedDiscoveryCandidate[];
-  /** Existing connections eligible for card display (draft or latent only). Others are mention-only. */
+  /** Existing connections eligible for card display (draft, latent, or pending). Others are mention-only. */
   existingConnections?: ExistingConnection[];
   /** All existing connections for mention text (e.g. "You already have a connection with: X (pending), Y (draft)."). */
   existingConnectionsForMention?: ExistingConnection[];
