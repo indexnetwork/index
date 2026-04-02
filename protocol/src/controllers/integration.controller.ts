@@ -1,3 +1,5 @@
+// TODO: fix layering violation — controller should not import protocol directly
+// eslint-disable-next-line boundaries/dependencies
 import type { IntegrationAdapter } from '../lib/protocol/interfaces/integration.interface';
 import type { IntegrationService } from '../services/integration.service';
 

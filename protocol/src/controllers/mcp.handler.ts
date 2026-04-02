@@ -9,25 +9,45 @@ import {
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 
+// TODO: fix layering violation — controller should not import from init layer
+// eslint-disable-next-line boundaries/dependencies
 import { createDefaultProtocolDeps } from '../protocol-init';
 
+// TODO: fix layering violation — controller should not import protocol directly
+// eslint-disable-next-line boundaries/dependencies
 import { IntentGraphFactory } from '../lib/protocol/graphs/intent.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { ProfileGraphFactory } from '../lib/protocol/graphs/profile.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { IndexGraphFactory } from '../lib/protocol/graphs/index.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { IndexMembershipGraphFactory } from '../lib/protocol/graphs/index_membership.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { IntentIndexGraphFactory } from '../lib/protocol/graphs/intent_index.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { NegotiationGraphFactory } from '../lib/protocol/graphs/negotiation.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
+// eslint-disable-next-line boundaries/dependencies
 import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
+// eslint-disable-next-line boundaries/dependencies
 import { NegotiationProposer } from '../lib/protocol/agents/negotiation.proposer';
+// eslint-disable-next-line boundaries/dependencies
 import { NegotiationResponder } from '../lib/protocol/agents/negotiation.responder';
+// eslint-disable-next-line boundaries/dependencies
 import type { HydeGraphDatabase } from '../lib/protocol/interfaces/database.interface';
 
+// eslint-disable-next-line boundaries/dependencies
 import type { ToolDeps } from '../lib/protocol/tools/tool.helpers';
+// eslint-disable-next-line boundaries/dependencies
 import type { McpAuthResolver } from '../lib/protocol/interfaces/auth.interface';
+// eslint-disable-next-line boundaries/dependencies
 import { createMcpServer } from '../lib/protocol/mcp/mcp.server';
+// eslint-disable-next-line boundaries/dependencies
 import type { ScopedDepsFactory } from '../lib/protocol/mcp/mcp.server';
 import { BASE_URL } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';

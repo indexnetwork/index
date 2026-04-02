@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
+// TODO: fix layering violation — controller should not import adapters directly
+// eslint-disable-next-line boundaries/dependencies
 import { S3StorageAdapter } from '../adapters/storage.adapter';
 import { fileService } from '../services/file.service';
 import { validateFileByMetadata, FILE_SIZE_LIMITS } from '../lib/uploads.config';

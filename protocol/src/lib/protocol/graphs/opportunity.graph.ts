@@ -2656,8 +2656,10 @@ export class OpportunityGraphFactory {
             recipients = opp.actors.filter((a: OpportunityActor) => a.role === 'agent');
           }
 
+          // TODO: fix layering violation — protocol layer should not import queues; pass notifier via constructor injection
           const notifier: QueueOpportunityNotificationFn | undefined =
             this.queueNotification ??
+            // eslint-disable-next-line boundaries/dependencies
             (await import('../../../queues/notification.queue').then((m) => m.queueOpportunityNotification));
           if (!notifier) throw new Error('Opportunity notification not configured');
           for (const recipient of recipients) {

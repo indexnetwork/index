@@ -4,6 +4,8 @@ import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 
 import { deduplicateContacts, getPreset } from '../lib/dedup/dedup';
 
+// TODO: fix layering violation — services should not import other services directly; use events or queues
+// eslint-disable-next-line boundaries/dependencies
 import { contactService, type ImportResult } from './contact.service';
 
 const logger = log.service.from('IntegrationService');

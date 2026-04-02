@@ -30,7 +30,10 @@ import { NegotiationProposer } from '../lib/protocol/agents/negotiation.proposer
 import { NegotiationResponder } from '../lib/protocol/agents/negotiation.responder';
 import type { HydeGraphDatabase } from '../lib/protocol/interfaces/database.interface';
 import { intentQueue } from '../queues/intent.queue';
+// TODO: fix layering violation — services should not import other services directly; use events or queues
+// eslint-disable-next-line boundaries/dependencies
 import { contactService } from './contact.service';
+// eslint-disable-next-line boundaries/dependencies
 import { IntegrationService } from './integration.service';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 

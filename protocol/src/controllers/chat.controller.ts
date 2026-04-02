@@ -11,6 +11,8 @@ import {
 } from "../lib/router/router.decorators";
 import { chatSessionService } from "../services/chat.service";
 import { fileService } from "../services/file.service";
+// TODO: fix layering violation — controller should not import protocol directly
+// eslint-disable-next-line boundaries/dependencies
 import { SuggestionGenerator } from "../lib/protocol/agents/suggestion.generator";
 import {
   createDoneEvent,

@@ -9,6 +9,8 @@ import { z } from 'zod';
 import { Controller, Post, Get, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { toolService } from '../services/tool.service';
+// TODO: fix layering violation — controller should not import protocol directly
+// eslint-disable-next-line boundaries/dependencies
 import { ChatContextAccessError } from '../lib/protocol/tools/tool.helpers';
 import { log } from '../lib/log';
 
