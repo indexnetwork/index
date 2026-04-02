@@ -1,17 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run ctx generation when llms files change, then stage outputs
-
+# ── llms.txt context generation ──────────────────────────────────────
 changed_llms=$(git diff --cached --name-only | grep -E '^(llms\.txt|llms-full\.txt)$' || true)
 if [[ -n "${changed_llms}" ]]; then
   echo "[pre-commit] Detected llms.txt changes; generating ctx files..."
   scripts/generate-ctx.sh || {
     echo "[pre-commit] Warning: ctx generation failed; proceeding without blocking commit" >&2
-    exit 0
   }
   git add llms-ctx.txt llms-ctx-full.txt frontend/public/llms-ctx.txt frontend/public/llms-ctx-full.txt || true
 fi
 
-exit 0
+# ── Lint staged files ────────────────────────────────────────────────
+echo "[pre-commit] Running lint-staged..."
+bunx lint-staged || {
+  echo "[pre-commit] Lint-staged failed. Fix lint errors before committing."
+  exit 1
+}
 
+# ── Adapter naming check (only if adapter files are staged) ─────────
+changed_adapters=$(git diff --cached --name-only | grep -E '^protocol/src/adapters/.*\.ts$' || true)
+if [[ -n "${changed_adapters}" ]]; then
+  echo "[pre-commit] Checking adapter naming conventions..."
+  scripts/check-adapter-names.sh || exit 1
+fi
+
+exit 0

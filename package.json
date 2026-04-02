@@ -19,5 +19,12 @@
     "worktree:list": "bash scripts/worktree-list.sh",
     "worktree:dev": "bash scripts/worktree-dev.sh",
     "worktree:build": "bash scripts/worktree-build.sh"
+  },
+  "devDependencies": {
+    "lint-staged": "^16.4.0"
+  },
+  "lint-staged": {
+    "protocol/src/**/*.ts": "eslint --no-warn-ignored",
+    "frontend/src/**/*.{ts,tsx}": "eslint --no-warn-ignored"
   }
 }
