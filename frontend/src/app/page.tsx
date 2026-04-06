@@ -1,10 +1,102 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import ClientLayout from "@/components/ClientLayout";
 import { useAuthContext } from "@/contexts/AuthContext";
 import ChatContent from "@/components/ChatContent";
 import Footer from "@/components/Footer";
 import { apiUrl } from "@/lib/api";
+
+// --- Negotiation feed pool (cycles infinitely) ---
+const NEG_FEED_POOL = [
+  {
+    initial: 'M', name: "Marco V.'s agent",
+    turns: [
+      { action: 'propose', score: 85, text: "Founder has real consumer instincts, building with AI as the mechanic. Pre-seed check territory." },
+      { action: 'counter', score: 76, text: "Retention signals look real. One thing to resolve — is the AI the core loop, or a feature bolted on for the pitch?" },
+      { action: 'accept', score: 91, text: "Deck confirms it. AI is the core loop, not the marketing layer. Strong alignment — ready to move forward." },
+    ],
+    finalStatus: 'accepted',
+  },
+  {
+    initial: 'A', name: "Alex R.'s agent",
+    turns: [
+      { action: 'propose', score: 79, text: "Strong founder signal. Consumer AI with real retention data is rare at this stage — the thesis maps." },
+      { action: 'reject', score: 41, text: "Retention numbers lack context. I don't see evidence the AI is the core loop vs. a feature layer bolted on for the pitch." },
+    ],
+    finalStatus: 'rejected',
+  },
+  {
+    initial: 'P', name: "Priya R.'s agent",
+    turns: [
+      { action: 'propose', score: 83, text: "Strong intent overlap on distribution. Priya's network maps directly to the consumer acquisition channels this founder needs." },
+      { action: 'accept', score: 88, text: "Thesis checks out. Consumer distribution expertise plus pre-seed check size — right stage, right profile." },
+    ],
+    finalStatus: 'accepted',
+  },
+  {
+    initial: 'S', name: "Sarah K.'s agent",
+    turns: [
+      { action: 'propose', score: 82, text: "Consumer AI with real retention on one side, an investor who's backed consumer through the messy middle on the other." },
+      { action: 'counter', score: 71, text: "Compelling signals. One open question: is AI the core mechanic, or a feature bolted on for the pitch?" },
+      { action: 'accept', score: 89, text: "Deck confirms it — AI is the core loop, not the marketing layer. Objection fully addressed. Strong fit." },
+    ],
+    finalStatus: 'accepted',
+  },
+  {
+    initial: 'J', name: "James W.'s agent",
+    turns: [
+      { action: 'propose', score: 77, text: "Pattern match on the consumer habit space, but the fund stage feels like a stretch — James writes Series A checks." },
+      { action: 'counter', score: 64, text: "Stage mismatch is a real concern. Is there a path to a bridge check, or is this premature for the fund thesis?" },
+      { action: 'reject', score: 38, text: "Stage gap is too wide. Pre-seed round, Series A fund minimum. Not the right fit right now." },
+    ],
+    finalStatus: 'rejected',
+  },
+  {
+    initial: 'L', name: "Lena M.'s agent",
+    turns: [
+      { action: 'propose', score: 86, text: "Consumer habit formation with AI at the core — exactly where Lena has conviction. The product loop maps to her prior bets." },
+      { action: 'accept', score: 90, text: "Strong fit across stage, thesis, and founder profile. This is exactly the kind of pre-seed bet she's been looking for." },
+    ],
+    finalStatus: 'accepted',
+  },
+  {
+    initial: 'D', name: "Dev P.'s agent",
+    turns: [
+      { action: 'propose', score: 74, text: "Some overlap on consumer thesis, but Dev's fund is currently focused on infrastructure plays, not consumer apps." },
+      { action: 'reject', score: 39, text: "Portfolio concentration risk. Too many consumer bets already — this doesn't fit the current allocation strategy." },
+    ],
+    finalStatus: 'rejected',
+  },
+  {
+    initial: 'T', name: "Tariq N.'s agent",
+    turns: [
+      { action: 'propose', score: 81, text: "Consumer AI with a behavioral loop at the core. Tariq's written publicly about habit formation as a durable moat — this is his thesis." },
+      { action: 'counter', score: 73, text: "Agreed on thesis fit. I want to understand the monetization model before I move — subscription, ads, or marketplace?" },
+      { action: 'accept', score: 87, text: "Subscription model with strong retention makes sense at this stage. Monetization thesis is sound. Ready to proceed." },
+    ],
+    finalStatus: 'accepted',
+  },
+];
+
+const NEG_ACTION_STYLE: Record<string, { bg: string; text: string }> = {
+  propose: { bg: 'bg-blue-50', text: 'text-blue-600' },
+  counter: { bg: 'bg-amber-50', text: 'text-amber-600' },
+  accept: { bg: 'bg-emerald-50', text: 'text-emerald-700' },
+  reject: { bg: 'bg-red-50', text: 'text-red-500' },
+};
+
+interface NegFeedItem {
+  id: number;
+  initial: string;
+  name: string;
+  finalStatus: 'accepted' | 'rejected';
+  phase: 'typing' | 'resolved' | 'exiting';
+  completedTurns: Array<{ action: string; score: number; text: string }>;
+  activeAction: string | null;
+  activeScore: number;
+  shownWords: number;
+  fullText: string;
+}
 
 function LandingPage() {
   // Waitlist modal state
@@ -19,6 +111,17 @@ function LandingPage() {
   
   // Retro modal state (easter egg)
   const [isRetroModalOpen, setIsRetroModalOpen] = useState(false);
+
+  // Negotiation feed state
+  const negSectionRef = useRef<HTMLDivElement>(null);
+  const feedAnimStarted = useRef(false);
+  const feedControlRef = useRef<{ stop: () => void; resume: () => void }>({ stop: () => {}, resume: () => {} });
+  const resolvedItemsRef = useRef<NegFeedItem[]>([]);
+  const [feedItems, setFeedItems] = useState<NegFeedItem[]>([]);
+  const [negSpawned, setNegSpawned] = useState(0);
+  const [negAccepted, setNegAccepted] = useState(0);
+  const [feedStopped, setFeedStopped] = useState(false);
+  const [expandedFeedId, setExpandedFeedId] = useState<number | null>(null);
 
   // Close modals on Escape key
   useEffect(() => {
@@ -44,6 +147,176 @@ function LandingPage() {
     window.addEventListener('openWaitlistModal', handleOpenWaitlistModal);
     return () => window.removeEventListener('openWaitlistModal', handleOpenWaitlistModal);
   }, []);
+
+  // Negotiation feed animation
+  useEffect(() => {
+    // 50 negotiations over 10s = one every 200ms
+    // Each item lifetime: ~600ms (fits 3 visible at once)
+    const TOTAL = 20;
+    const SPAWN_INTERVAL_MS = 320;
+    const TURN_DISPLAY_MS = 220;
+    const TURN_PAUSE_MS = 90;
+    const RESOLVE_LINGER_MS = 200;
+    const EXIT_MS = 350;
+
+    const itemTimers = new Map<number, ReturnType<typeof setTimeout>[]>();
+    const globalTimers: ReturnType<typeof setTimeout>[] = [];
+    let nextId = 0;
+    let poolIdx = 0;
+
+    const clearAll = () => {
+      itemTimers.forEach(list => list.forEach(clearTimeout));
+      itemTimers.clear();
+      globalTimers.forEach(clearTimeout);
+      globalTimers.length = 0;
+    };
+
+    const animateItem = (id: number, template: typeof NEG_FEED_POOL[number]) => {
+      const timers: ReturnType<typeof setTimeout>[] = [];
+      itemTimers.set(id, timers);
+      const localTurns: Array<{ action: string; score: number; text: string }> = [];
+
+      const startTurn = (ti: number, delay: number) => {
+        const t = setTimeout(() => {
+          const turn = template.turns[ti];
+          const isLast = ti === template.turns.length - 1;
+          const completedTurn = { action: turn.action, score: turn.score, text: turn.text };
+
+          setFeedItems(prev => prev.map(item => item.id !== id ? item : {
+            ...item, activeAction: turn.action, activeScore: turn.score,
+            shownWords: 1, fullText: turn.text,
+          }));
+
+          const doneT = setTimeout(() => {
+            localTurns.push(completedTurn);
+            if (isLast) {
+              setFeedItems(prev => prev.map(item => item.id !== id ? item : {
+                ...item, phase: 'resolved',
+                completedTurns: [...localTurns],
+                activeAction: null, shownWords: 0, fullText: '',
+              }));
+              if (template.finalStatus === 'accepted') setNegAccepted(c => c + 1);
+
+              // Snapshot for the stopped history view
+              resolvedItemsRef.current.push({
+                id, initial: template.initial, name: template.name,
+                finalStatus: template.finalStatus as 'accepted' | 'rejected',
+                phase: 'resolved', completedTurns: [...localTurns],
+                activeAction: null, activeScore: 0, shownWords: 0, fullText: '',
+              });
+
+              const exitT = setTimeout(() => {
+                setFeedItems(prev => prev.map(item => item.id !== id ? item : { ...item, phase: 'exiting' }));
+                const removeT = setTimeout(() => {
+                  setFeedItems(prev => prev.filter(item => item.id !== id));
+                  itemTimers.delete(id);
+                }, EXIT_MS);
+                timers.push(removeT);
+              }, RESOLVE_LINGER_MS);
+              timers.push(exitT);
+            } else {
+              setFeedItems(prev => prev.map(item => item.id !== id ? item : {
+                ...item, completedTurns: [...localTurns],
+                activeAction: null, shownWords: 0, fullText: '',
+              }));
+              startTurn(ti + 1, TURN_PAUSE_MS);
+            }
+          }, TURN_DISPLAY_MS);
+          timers.push(doneT);
+        }, delay);
+        timers.push(t);
+      };
+
+      startTurn(0, 0);
+    };
+
+    const spawnItem = () => {
+      const template = NEG_FEED_POOL[poolIdx % NEG_FEED_POOL.length];
+      poolIdx++;
+      const id = nextId++;
+      setNegSpawned(c => c + 1);
+      setFeedItems(prev => [...prev, {
+        id, initial: template.initial, name: template.name,
+        finalStatus: template.finalStatus as 'accepted' | 'rejected',
+        phase: 'typing', completedTurns: [],
+        activeAction: null, activeScore: 0, shownWords: 0, fullText: '',
+      }]);
+      animateItem(id, template);
+    };
+
+    const seedFeed = () => {
+      for (let i = 0; i < TOTAL; i++) {
+        const t = setTimeout(spawnItem, i * SPAWN_INTERVAL_MS);
+        globalTimers.push(t);
+      }
+      const restartT = setTimeout(seedFeed, TOTAL * SPAWN_INTERVAL_MS + 2000);
+      globalTimers.push(restartT);
+    };
+
+    // Expose stop/resume to component
+    feedControlRef.current = {
+      stop: clearAll,
+      resume: () => {
+        clearAll();
+        nextId = 0;
+        poolIdx = 0;
+        seedFeed();
+      },
+    };
+
+    const el = negSectionRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !feedAnimStarted.current) {
+          feedAnimStarted.current = true;
+          seedFeed();
+        }
+      },
+      { threshold: 0.15 }
+    );
+    observer.observe(el);
+
+    return () => {
+      observer.disconnect();
+      clearAll();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleFeedStop = () => {
+    feedControlRef.current.stop();
+    setFeedStopped(true);
+    setExpandedFeedId(null);
+    // Show full history of completed negotiations + any still in-progress
+    setFeedItems(prev => {
+      const resolvedIds = new Set(resolvedItemsRef.current.map(i => i.id));
+      const inProgress = prev
+        .filter(item => item.phase !== 'exiting' && !resolvedIds.has(item.id))
+        .map(item => {
+          if (item.phase === 'typing' && item.activeAction) {
+            return {
+              ...item, phase: 'resolved' as const,
+              completedTurns: [...item.completedTurns, { action: item.activeAction, score: item.activeScore, text: item.fullText }],
+              activeAction: null, shownWords: 0, fullText: '',
+            };
+          }
+          return { ...item, phase: 'resolved' as const };
+        });
+      return [...resolvedItemsRef.current, ...inProgress];
+    });
+  };
+
+  const handleFeedResume = () => {
+    setFeedStopped(false);
+    setFeedItems([]);
+    setNegSpawned(0);
+    setNegAccepted(0);
+    setExpandedFeedId(null);
+    feedAnimStarted.current = false;
+    resolvedItemsRef.current = [];
+    feedControlRef.current.resume();
+  };
 
   const handleWaitlistSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -421,136 +694,283 @@ function LandingPage() {
           </div>
         </section>
 
-        {/* Ambient Discovery Demo Section */}
-        <section className="demo-section py-12 lg:py-24 px-6 lg:px-12 bg-[#F4F7F6] relative overflow-hidden">
+        {/* How It Works Section */}
+        <section className="demo-section py-16 lg:py-28 px-6 lg:px-12 bg-[#F4F7F6]">
           <div className="max-w-[960px] mx-auto">
-            <h2
-              className="text-[32px] md:text-[36px] font-garamond font-normal text-black mb-4 leading-tight text-center"
-            >
-              Ambient discovery that works for you
-            </h2>
-            <p
-              className="text-center text-black/80 mb-6 text-[17px] leading-relaxed font-normal max-w-[560px] mx-auto"
-              style={{ fontFamily: "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}
-            >
-              Share your intent privately, sit back, fiddle with it, and let people surface when their wavelength aligns with yours. No searching or filtering needed.
-            </p>
+            <div className="mb-12 lg:mb-16">
+              <h2
+                className="text-[32px] md:text-[40px] font-garamond font-normal text-black leading-tight mb-3"
+              >
+                Ambient discovery that works for you
+              </h2>
+              <p
+                className="text-[16px] text-black/50 leading-relaxed max-w-[460px]"
+                style={{ fontFamily: "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}
+              >
+                Share your intent once. Your agent runs bilateral negotiations across the network while you sleep.
+              </p>
+            </div>
 
-            {/* Timeline visualization */}
-            <div className="ambient-timeline relative">
-              {/* Timeline line */}
-              <div className="timeline-line absolute left-6 md:left-8 top-0 bottom-0 w-px bg-gradient-to-b from-[#E5E5E5] via-[#4091BB] to-[#E5E5E5]"></div>
+            {/* Flow — timeline */}
+            <div>
 
-              {/* Step 1: You share intent */}
-              <div className="timeline-item flex gap-4 md:gap-6 mb-4 relative">
-                <div className="timeline-dot flex-shrink-0 w-12 md:w-16 flex items-center justify-center">
-                  <div className="w-3 h-3 rounded-full bg-[#4091BB]"></div>
+              {/* 1. Intent */}
+              <div className="flex gap-5">
+                <div className="flex flex-col items-center shrink-0">
+                  <div className="w-3.5 h-3.5 rounded-full bg-[#4091BB] border-2 border-[#F4F7F6] mt-0.5 shrink-0" />
+                  <div className="w-px flex-1 bg-[#E0E0E0] mt-1" />
                 </div>
-                <div className="flex-1 pb-2">
-                  <div className="text-[11px] uppercase tracking-widest text-[#999] font-mono mb-2">3 days ago</div>
-                  <div className="bg-white border border-[#E5E5E5] rounded-md p-4">
-                    <div className="flex items-center gap-3 mb-3">
-
-                      <img
-                        src="/you.png"
-                        alt="You"
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
-                      <div className="text-[14px] text-[#666] font-sans">
-                        <span className="font-medium text-black">You</span> shared an intent
-                      </div>
+                <div className="flex-1 pb-10">
+                  <p className="text-[10px] font-mono text-[#AAA] uppercase tracking-[0.12em] mb-3">You shared an intent</p>
+                  <div className="bg-white border border-[#E8E8E8] rounded-lg px-4 py-4">
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <img src="/you.png" alt="You" className="w-6 h-6 rounded-full object-cover shrink-0" />
+                      <span className="text-[13px] font-semibold text-black">You</span>
                     </div>
-                    <p className="text-[15px] leading-relaxed text-[#333] font-sans">
-                      Ready to build again but not start from scratch. Honestly just tired of the red tape, things shifted after we tripled in size. Looking for founders who need an ops leader who&apos;s been in the trenches.
+                    <p
+                      className="text-[14px] text-[#444] leading-relaxed"
+                      style={{ fontFamily: "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}
+                    >
+                      raising pre-seed for a consumer app, habit-formation space. want investors who&apos;ve backed consumer before — not just ai people who got excited recently. someone who cares about retention.
                     </p>
-                    <div className="flex items-center gap-2 bg-[#F4F7F6] border border-[#E5E5E5] rounded mt-1 p-1 w-fit">
-                      <svg className="w-4 h-4 text-[#666]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="inline-flex items-center gap-1.5 mt-3 bg-[#F5F5F5] border border-[#EBEBEB] rounded px-2 py-1">
+                      <svg className="w-3 h-3 text-[#BBB]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                       </svg>
-                      <span className="text-[13px] text-[#666] font-mono">resume.pdf</span>
+                      <span className="text-[11px] text-[#AAA] font-mono">deck.pdf</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Step 2: Agent working in background */}
-              <div className="timeline-item flex gap-2 md:gap-6 mb-4 relative">
-                <div className="timeline-dot flex-shrink-0 w-12 md:w-16 flex items-center justify-center">
-                  <div className="w-3 h-3 rounded-full bg-[#E5E5E5]"></div>
+              {/* 2. In the background */}
+              <div className="flex gap-5">
+                <div className="flex flex-col items-center shrink-0">
+                  <div className="w-2 h-2 rounded-full bg-[#CCC] border-2 border-[#F4F7F6] mt-1 shrink-0" />
+                  <div className="w-px flex-1 bg-[#E0E0E0] mt-1" />
                 </div>
-                <div className="flex-1 pb-2">
-                  <div className="text-[11px] uppercase tracking-widest text-[#999] font-mono mb-2">In the background</div>
-                  <div className="text-[15px] text-[#888] italic font-sans">
-                    Agents continuously compare intents across the network, looking for semantic resonance...
-                  </div>
-                </div>
-              </div>
-
-              {/* Step 3: Someone else shares */}
-              <div className="timeline-item flex gap-4 md:gap-6 mb-4 relative">
-                <div className="timeline-dot flex-shrink-0 w-12 md:w-16 flex items-center justify-center">
-                  <div className="w-3 h-3 rounded-full bg-[#E5E5E5]"></div>
-                </div>
-                <div className="flex-1 pb-2">
-                  <div className="text-[11px] uppercase tracking-widest text-[#999] font-mono mb-2">Yesterday</div>
-                  <div className="text-[14px] text-[#666] font-sans mb-2">
-                    <span className="font-medium text-black">Someone in the network</span> shared an intent
-                  </div>
-                  <div className="text-[15px] text-[#888] italic font-sans">
-                    &quot;Need someone who&apos;s scaled ops for ~Series A-C. Tried and true expertise is more important than pedigree. Also not a consultant or advisor, but someone who wants to get in the weeds again FT. So many things breaking as we grow.&quot;
-                  </div>
+                <div className="flex-1 pb-10">
+                  <p className="text-[10px] font-mono text-[#AAA] uppercase tracking-[0.12em] mb-2">In the background</p>
+                  <p
+                    className="text-[14px] text-[#999] italic leading-relaxed"
+                    style={{ fontFamily: "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}
+                  >
+                    Your agent evaluates 1,847 intents across the network and opens bilateral negotiations with the most relevant ones.
+                  </p>
                 </div>
               </div>
 
-              {/* Step 4: Match surfaces */}
-              <div className="timeline-item flex gap-4 md:gap-6 relative">
-                <div className="timeline-dot flex-shrink-0 w-12 md:w-16 flex items-center justify-center">
-                  <div className="w-5 h-5 rounded-full bg-[#4091BB] flex items-center justify-center">
-                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+              {/* 3. Negotiations */}
+              <div className="flex gap-5" ref={negSectionRef}>
+                <div className="flex flex-col items-center shrink-0">
+                  <div className="w-2 h-2 rounded-full bg-[#CCC] border-2 border-[#F4F7F6] mt-1 shrink-0" />
+                  <div className="w-px flex-1 bg-[#E0E0E0] mt-1" />
+                </div>
+                <div className="flex-1 pb-10">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[10px] font-mono text-[#AAA] uppercase tracking-[0.12em]">
+                      {negSpawned > 0 ? (
+                        <>
+                          <span className="text-[#555]">{negSpawned}</span>
+                          {' '}bilateral negotiations
+                          {negAccepted > 0 && <> · <span className="text-emerald-600">{negAccepted} accepted</span></>}
+                        </>
+                      ) : (
+                        <>Bilateral negotiations</>
+                      )}
+                    </p>
+                    {!feedStopped && feedItems.some(item => item.phase === 'typing') && (
+                      <span className="flex items-center gap-1.5">
+                        <span className="flex items-center gap-1 text-[9px] font-mono text-[#4091BB]">
+                          <span className="w-1 h-1 rounded-full bg-[#4091BB] animate-pulse" />
+                          live
+                        </span>
+                        <button onClick={handleFeedStop} title="Stop" className="w-4 h-4 flex items-center justify-center text-[#CCC] hover:text-[#888] transition-colors">
+                          <svg viewBox="0 0 10 10" fill="currentColor" className="w-2.5 h-2.5">
+                            <rect x="1" y="1" width="8" height="8" rx="1" />
+                          </svg>
+                        </button>
+                      </span>
+                    )}
+                    {feedStopped && (
+                      <button onClick={handleFeedResume} className="flex items-center gap-1 text-[9px] font-mono text-[#AAA] hover:text-[#555] transition-colors">
+                        <svg viewBox="0 0 10 10" fill="currentColor" className="w-2.5 h-2.5">
+                          <path d="M2 1.5l7 3.5-7 3.5V1.5z" />
+                        </svg>
+                        resume
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Feed — live mode */}
+                  {!feedStopped && (
+                    <div className="border border-[#EBEBEB] rounded-lg overflow-hidden" style={{ height: '320px' }}>
+                      {feedItems.map((item) => {
+                        const wordsList = item.fullText ? item.fullText.split(' ') : [];
+                        const atLastWord = item.shownWords >= wordsList.length && wordsList.length > 0;
+                        return (
+                          <div
+                            key={item.id}
+                            className={`px-4 py-3 border-b border-[#EBEBEB] last:border-b-0 transition-all duration-[280ms] ${
+                              item.phase === 'exiting' && item.finalStatus === 'accepted' ? 'opacity-0 scale-95 blur-sm'
+                              : item.phase === 'exiting' ? 'opacity-0'
+                              : 'opacity-100 scale-100 blur-none'
+                            } ${item.phase === 'resolved' && item.finalStatus === 'accepted' ? 'bg-emerald-50/20' : ''
+                            } ${item.phase === 'resolved' && item.finalStatus === 'rejected' ? 'opacity-30' : ''}`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-mono font-bold shrink-0 mt-0.5 transition-colors duration-500 ${
+                                item.phase === 'resolved' && item.finalStatus === 'accepted' ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                                : item.phase === 'resolved' && item.finalStatus === 'rejected' ? 'bg-gray-100 border border-gray-200 text-gray-400'
+                                : 'bg-[#EDF4F8] border border-[#C5DCE9] text-[#4091BB]'
+                              }`}>{item.initial}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  <span className="text-[12px] font-mono font-medium text-[#222]">{item.name}</span>
+                                  {item.phase === 'resolved' && item.finalStatus === 'accepted' && <span className="text-[9px] font-mono text-emerald-600 ml-auto shrink-0">✓ accepted</span>}
+                                  {item.phase === 'resolved' && item.finalStatus === 'rejected' && <span className="text-[9px] font-mono text-red-400 ml-auto shrink-0">✗ rejected</span>}
+                                  {item.phase === 'typing' && item.activeAction && !atLastWord && <span className="w-1 h-1 rounded-full bg-[#4091BB] ml-auto shrink-0 animate-pulse" />}
+                                </div>
+                                <div className="flex items-center gap-1 flex-wrap mb-1.5">
+                                  {item.completedTurns.map((t, i) => (
+                                    <span key={i} className="flex items-center gap-1">
+                                      {i > 0 && <span className="text-[#D8D8D8] text-[9px]">→</span>}
+                                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-sm ${NEG_ACTION_STYLE[t.action]?.bg ?? 'bg-gray-50'} ${NEG_ACTION_STYLE[t.action]?.text ?? 'text-gray-500'}`}>{t.action}:{t.score}</span>
+                                    </span>
+                                  ))}
+                                  {item.activeAction && (
+                                    <span className="flex items-center gap-1">
+                                      {item.completedTurns.length > 0 && <span className="text-[#D8D8D8] text-[9px]">→</span>}
+                                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-sm ${NEG_ACTION_STYLE[item.activeAction]?.bg ?? 'bg-gray-50'} ${NEG_ACTION_STYLE[item.activeAction]?.text ?? 'text-gray-500'}`}>{item.activeAction}:{item.activeScore}</span>
+                                    </span>
+                                  )}
+                                </div>
+                                {(() => {
+                                  const visibleText = item.fullText || item.completedTurns[item.completedTurns.length - 1]?.text;
+                                  return visibleText ? (
+                                    <p className="text-[11px] text-[#888] leading-relaxed" style={{ fontFamily: "'Public Sans', sans-serif" }}>{visibleText}</p>
+                                  ) : null;
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Feed — stopped/expanded mode */}
+                  {feedStopped && (
+                    <div className="border border-[#EBEBEB] rounded-lg overflow-hidden">
+                      {feedItems.map((item) => {
+                        const isExpanded = expandedFeedId === item.id;
+                        return (
+                          <div key={item.id} className={`border-b border-[#EBEBEB] last:border-b-0 ${item.finalStatus === 'rejected' ? 'opacity-40' : ''}`}>
+                            <button
+                              className="w-full px-4 py-3 flex items-center gap-2.5 text-left hover:bg-gray-50/60 transition-colors"
+                              onClick={() => setExpandedFeedId(isExpanded ? null : item.id)}
+                            >
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-mono font-bold shrink-0 ${
+                                item.finalStatus === 'accepted' ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-gray-100 border border-gray-200 text-gray-400'
+                              }`}>{item.initial}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-[12px] font-mono font-medium text-[#222]">{item.name}</span>
+                                  {item.finalStatus === 'accepted'
+                                    ? <span className="text-[9px] font-mono text-emerald-600 ml-auto shrink-0">✓ accepted</span>
+                                    : <span className="text-[9px] font-mono text-red-400 ml-auto shrink-0">✗ rejected</span>}
+                                </div>
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {item.completedTurns.map((t, i) => (
+                                    <span key={i} className="flex items-center gap-1">
+                                      {i > 0 && <span className="text-[#D8D8D8] text-[9px]">→</span>}
+                                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-sm ${NEG_ACTION_STYLE[t.action]?.bg ?? 'bg-gray-50'} ${NEG_ACTION_STYLE[t.action]?.text ?? 'text-gray-500'}`}>{t.action}:{t.score}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <svg className={`w-3.5 h-3.5 text-[#CCC] shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 12 12">
+                                <path d="M2 4l4 4 4-4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </button>
+                            {isExpanded && (
+                              <div className="px-4 pb-4 ml-[22px] pl-5 border-l-2 border-[#EBEBEB]">
+                                {item.completedTurns.map((turn, i) => (
+                                  <div key={i} className={`pt-3 ${i > 0 ? 'border-t border-[#F5F5F5]' : ''}`}>
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-sm ${NEG_ACTION_STYLE[turn.action]?.bg ?? 'bg-gray-50'} ${NEG_ACTION_STYLE[turn.action]?.text ?? 'text-gray-500'}`}>{turn.action}</span>
+                                      <span className="text-[9px] font-mono text-[#CCC]">{turn.score}/100</span>
+                                    </div>
+                                    <p className="text-[11px] text-[#777] leading-relaxed" style={{ fontFamily: "'Public Sans', sans-serif" }}>{turn.text}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 4. Opportunity */}
+              <div className="flex gap-5">
+                <div className="flex flex-col items-center shrink-0">
+                  <div className="w-5 h-5 rounded-full bg-[#4091BB] flex items-center justify-center shrink-0">
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
                 </div>
                 <div className="flex-1">
-                  <div className="text-[11px] uppercase tracking-widest text-[#999] font-mono mb-2">WAITING FOR ACTION</div>
-                  <div className="bg-white border border-[#E5E5E5] rounded-md px-4 py-4 shadow-sm">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
-                      <div className="flex items-center gap-3">
-
-                        <img
-                          src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop&crop=face"
-                          alt="Nicole"
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                        <div>
-                          <div className="text-[14px] font-bold text-black font-mono">Nicole</div>
-                          <div className="text-[12px] text-[#666] font-mono">1 mutual intent</div>
+                  <p className="text-[10px] font-mono text-[#AAA] uppercase tracking-[0.12em] mb-3 mt-0.5">Waiting for action</p>
+                  <div className="relative">
+                    <div className="absolute inset-x-6 -bottom-4 h-full bg-[#F0F0F0] rounded-lg border border-[#E0E0E0]" />
+                    <div className="absolute inset-x-3 -bottom-2 h-full bg-[#F7F7F7] rounded-lg border border-[#E5E5E5]" />
+                    <div className="relative bg-white rounded-lg border border-[#E0E0E0] px-5 py-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 gap-3">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face"
+                            alt="Marco"
+                            className="w-9 h-9 rounded-full object-cover shrink-0"
+                          />
+                          <div>
+                            <div className="text-[14px] font-bold text-black font-mono">Marco</div>
+                            <div className="text-[11px] text-[#BBB] font-mono">1 mutual intent · fit 91</div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => setIsRetroModalOpen(true)}
-                          className="pulse-btn bg-[#041729] text-white px-3 py-1.5 rounded-sm text-[12px] font-medium hover:bg-[#0a2d4a] transition-colors font-sans"
-                        >
-                          Start a conversation
-                        </button>
-                        <div className="relative group">
-                          <button className="bg-[#F4F7F6] border border-[#E5E5E5] text-black px-3 py-1.5 rounded-sm text-[12px] font-medium hover:bg-[#F5F5F5] transition-colors font-sans">
-                            Skip
+                        <div className="flex gap-2 shrink-0">
+                          <button
+                            onClick={() => setIsRetroModalOpen(true)}
+                            className="pulse-btn bg-[#041729] text-white px-3 py-1.5 rounded-sm text-[12px] font-medium hover:bg-[#0a2d4a] transition-colors"
+                          >
+                            Start a conversation
                           </button>
-                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#041729] text-white text-[11px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none font-sans">
-                            It&apos;s the other button 👀
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-black"></div>
+                          <div className="relative group/skip">
+                            <button className="bg-[#F4F7F6] border border-[#E5E5E5] text-black px-3 py-1.5 rounded-sm text-[12px] font-medium hover:bg-[#EDEDED] transition-colors">
+                              Skip
+                            </button>
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#041729] text-white text-[11px] rounded whitespace-nowrap opacity-0 group-hover/skip:opacity-100 transition-opacity duration-150 pointer-events-none">
+                              It&apos;s the other button 👀
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[#041729]" />
+                            </div>
                           </div>
                         </div>
                       </div>
+                      <p
+                        className="text-[14px] leading-relaxed text-[#555]"
+                        style={{ fontFamily: "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}
+                      >
+                        Marco&apos;s last two bets were consumer apps where the AI was the mechanic, not the marketing. He writes pre-seed checks specifically for founders who&apos;ve felt the habit loop break under pressure — and built through it. Your retention data is the argument. The deck just closes it.
+                      </p>
                     </div>
-                    <p className="text-[15px] leading-relaxed text-[#333] font-sans">
-                      You want out of big company politics and back to building. Nicole just closed their series A for a warehouse robotics company and is hitting the growing pains you know too well. She wants someone who&apos;s already scaled a hardware ops team from 5 to 50. Your last four years were just that.
-                    </p>
                   </div>
+                  <p className="text-[11px] font-mono text-[#BBB] mt-5">+4 more opportunities waiting</p>
                 </div>
               </div>
+
             </div>
           </div>
         </section>
