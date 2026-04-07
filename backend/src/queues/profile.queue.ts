@@ -5,6 +5,7 @@ import { ProfileDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ProfileGraphFactory } from '@indexnetwork/protocol';
+import { enrichUserProfile } from '../lib/parallel/parallel';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
 export const QUEUE_NAME = 'profile-hyde-queue';
@@ -207,7 +208,7 @@ export class ProfileQueue {
     const database = new ProfileDatabaseAdapter();
     const embedder = new EmbedderAdapter();
     const scraper = new ScraperAdapter();
-    const factory = new ProfileGraphFactory(database, embedder, scraper);
+    const factory = new ProfileGraphFactory(database, embedder, scraper, { enrichUserProfile });
     const graph = factory.createGraph();
     return graph.invoke({ userId, operationMode });
   }

@@ -140,11 +140,11 @@ export class ProfileGraphFactory {
                     hasProfile: true,
                     profile: {
                       id: profileWithId?.id,
-                      name: profile.identity.name,
-                      bio: profile.identity.bio,
-                      location: profile.identity.location,
-                      skills: profile.attributes.skills,
-                      interests: profile.attributes.interests,
+                      name: profile.identity?.name,
+                      bio: profile.identity?.bio,
+                      location: profile.identity?.location,
+                      skills: profile.attributes?.skills,
+                      interests: profile.attributes?.interests,
                     },
                   }
                 : {
@@ -401,10 +401,18 @@ export class ProfileGraphFactory {
             return parts || "No information available";
           };
 
+          if (!this.enricher) {
+            logger.warn("No enricher configured — falling back to basic info", { userId: state.userId });
+            return {
+              input: buildBasicInfo(),
+              needsUserInfo: false,
+              needsProfileGeneration: true,
+              operationsPerformed: { scraped: true },
+            };
+          }
+
           try {
-            const enrichment = this.enricher
-              ? await this.enricher.enrichUserProfile(request)
-              : null;
+            const enrichment = await this.enricher.enrichUserProfile(request);
 
             if (enrichment && !enrichment.isHuman) {
               logger.info("Enrichment detected non-human entity, soft-deleting ghost", { userId: state.userId });
@@ -620,14 +628,14 @@ export class ProfileGraphFactory {
           const profile = { ...state.profile };
           const textToEmbed = [
             '# Identity',
-            '## Name', profile.identity.name,
-            '## Bio', profile.identity.bio,
-            '## Location', profile.identity.location,
+            '## Name', profile.identity?.name ?? '',
+            '## Bio', profile.identity?.bio ?? '',
+            '## Location', profile.identity?.location ?? '',
             '# Narrative',
-            '## Context', profile.narrative.context,
+            '## Context', profile.narrative?.context ?? '',
             '# Attributes',
-            '## Interests', profile.attributes.interests.join(', '),
-            '## Skills', profile.attributes.skills.join(', ')
+            '## Interests', (profile.attributes?.interests ?? []).join(', '),
+            '## Skills', (profile.attributes?.skills ?? []).join(', ')
           ].join('\n');
 
           logger.verbose("Generating embedding...", {
@@ -677,7 +685,7 @@ export class ProfileGraphFactory {
 
         logger.verbose("Starting HyDE generation...", {
           userId: state.userId,
-          profileName: state.profile.identity.name
+          profileName: state.profile.identity?.name
         });
 
         const agentTimingsAccum: DebugMetaAgent[] = [];
