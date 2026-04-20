@@ -77,7 +77,7 @@ export class IntegrationService {
    * @throws If the user is not an owner
    */
   private async assertNetworkOwner(networkId: string, userId: string): Promise<void> {
-    const isOwner = await this.db.isIndexOwner(networkId, userId);
+    const isOwner = await this.db.isNetworkOwner(networkId, userId);
     if (!isOwner) {
       throw new Error('Access denied: you must be an owner of this index');
     }
@@ -134,7 +134,7 @@ export class IntegrationService {
       });
     }
 
-    await this.db.addMembersBulkToIndex(networkId, dedupedUserIds);
+    await this.db.addMembersBulkToNetwork(networkId, dedupedUserIds);
 
     // Enqueue enrichment only for kept new ghosts (after dedup)
     const newGhostIdsToEnrich = dedupResult.kept
@@ -171,7 +171,7 @@ export class IntegrationService {
     if (!conn) {
       throw new Error(`No ${toolkit} connection found for user`);
     }
-    await this.db.insertIndexIntegration(networkId, toolkit, conn.id);
+    await this.db.insertNetworkIntegration(networkId, toolkit, conn.id);
     logger.info('Linked integration to index', { userId, toolkit, networkId, connectedAccountId: conn.id });
   }
 
@@ -184,7 +184,7 @@ export class IntegrationService {
    */
   async unlinkFromIndex(userId: string, toolkit: string, networkId: string): Promise<void> {
     await this.assertNetworkOwner(networkId, userId);
-    await this.db.deleteIndexIntegration(networkId, toolkit);
+    await this.db.deleteNetworkIntegration(networkId, toolkit);
     logger.info('Unlinked integration from index', { toolkit, networkId });
   }
 
@@ -240,7 +240,7 @@ export class IntegrationService {
    * @param connectedAccountId - Composio connected account ID
    */
   async cleanupConnectionLinks(connectedAccountId: string): Promise<void> {
-    await this.db.deleteIndexIntegrationsByConnectedAccount(connectedAccountId);
+    await this.db.deleteNetworkIntegrationsByConnectedAccount(connectedAccountId);
     logger.info('Cleaned up index links for disconnected account', { connectedAccountId });
   }
 

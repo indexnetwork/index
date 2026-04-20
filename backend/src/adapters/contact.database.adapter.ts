@@ -45,7 +45,7 @@ async function ensurePersonalNetwork(userId: string): Promise<string> {
   return persisted[0]?.networkId ?? networkId;
 }
 
-async function getPersonalIndexId(userId: string): Promise<string | null> {
+async function getPersonalNetworkId(userId: string): Promise<string | null> {
   const result = await db
     .select({ networkId: schema.personalNetworks.networkId })
     .from(schema.personalNetworks)
@@ -141,11 +141,11 @@ export class ContactDatabaseAdapter {
   }
 
   async upsertContactMembership(ownerId: string, contactUserId: string, options: { restore?: boolean } = {}): Promise<void> {
-    const personalIndexId = await ensurePersonalNetwork(ownerId);
+    const personalNetworkId = await ensurePersonalNetwork(ownerId);
 
     if (options.restore) {
       await db.insert(schema.networkMembers)
-        .values({ networkId: personalIndexId, userId: contactUserId, permissions: ['contact'], autoAssign: false })
+        .values({ networkId: personalNetworkId, userId: contactUserId, permissions: ['contact'], autoAssign: false })
         .onConflictDoUpdate({
           target: [schema.networkMembers.networkId, schema.networkMembers.userId],
           set: { deletedAt: null, updatedAt: new Date() },
@@ -155,7 +155,7 @@ export class ContactDatabaseAdapter {
         .select({ deletedAt: schema.networkMembers.deletedAt })
         .from(schema.networkMembers)
         .where(and(
-          eq(schema.networkMembers.networkId, personalIndexId),
+          eq(schema.networkMembers.networkId, personalNetworkId),
           eq(schema.networkMembers.userId, contactUserId),
           sql`'contact' = ANY(${schema.networkMembers.permissions})`,
         ))
@@ -164,21 +164,21 @@ export class ContactDatabaseAdapter {
       if (existing?.deletedAt) return;
 
       await db.insert(schema.networkMembers)
-        .values({ networkId: personalIndexId, userId: contactUserId, permissions: ['contact'], autoAssign: false })
+        .values({ networkId: personalNetworkId, userId: contactUserId, permissions: ['contact'], autoAssign: false })
         .onConflictDoNothing();
     }
   }
 
   async upsertContactMembershipBulk(ownerId: string, contactUserIds: string[]): Promise<void> {
     if (contactUserIds.length === 0) return;
-    const personalIndexId = await ensurePersonalNetwork(ownerId);
+    const personalNetworkId = await ensurePersonalNetwork(ownerId);
 
     const softDeleted = new Set(
       (await db
         .select({ userId: schema.networkMembers.userId })
         .from(schema.networkMembers)
         .where(and(
-          eq(schema.networkMembers.networkId, personalIndexId),
+          eq(schema.networkMembers.networkId, personalNetworkId),
           inArray(schema.networkMembers.userId, contactUserIds),
           sql`'contact' = ANY(${schema.networkMembers.permissions})`,
           isNotNull(schema.networkMembers.deletedAt),
@@ -190,17 +190,17 @@ export class ContactDatabaseAdapter {
     if (idsToInsert.length === 0) return;
 
     await db.insert(schema.networkMembers)
-      .values(idsToInsert.map(userId => ({ networkId: personalIndexId, userId, permissions: ['contact'] as string[], autoAssign: false })))
+      .values(idsToInsert.map(userId => ({ networkId: personalNetworkId, userId, permissions: ['contact'] as string[], autoAssign: false })))
       .onConflictDoNothing();
   }
 
   async clearReverseOptOut(ownerId: string, otherUserId: string): Promise<void> {
-    const otherPersonalIndexId = await getPersonalIndexId(otherUserId);
-    if (!otherPersonalIndexId) return;
+    const otherPersonalNetworkId = await getPersonalNetworkId(otherUserId);
+    if (!otherPersonalNetworkId) return;
 
     await db.delete(schema.networkMembers)
       .where(and(
-        eq(schema.networkMembers.networkId, otherPersonalIndexId),
+        eq(schema.networkMembers.networkId, otherPersonalNetworkId),
         eq(schema.networkMembers.userId, ownerId),
         sql`'contact' = ANY(${schema.networkMembers.permissions})`,
         isNotNull(schema.networkMembers.deletedAt),
@@ -215,12 +215,12 @@ export class ContactDatabaseAdapter {
       .from(schema.personalNetworks)
       .where(inArray(schema.personalNetworks.userId, otherUserIds));
 
-    const personalIndexIds = personalIndexRows.map(r => r.networkId);
-    if (personalIndexIds.length === 0) return;
+    const personalNetworkIds = personalIndexRows.map(r => r.networkId);
+    if (personalNetworkIds.length === 0) return;
 
     await db.delete(schema.networkMembers)
       .where(and(
-        inArray(schema.networkMembers.networkId, personalIndexIds),
+        inArray(schema.networkMembers.networkId, personalNetworkIds),
         eq(schema.networkMembers.userId, ownerId),
         sql`'contact' = ANY(${schema.networkMembers.permissions})`,
         isNotNull(schema.networkMembers.deletedAt),
@@ -231,8 +231,8 @@ export class ContactDatabaseAdapter {
     userId: string;
     user: { id: string; name: string; email: string; avatar: string | null; isGhost: boolean };
   }>> {
-    const personalIndexId = await getPersonalIndexId(ownerId);
-    if (!personalIndexId) return [];
+    const personalNetworkId = await getPersonalNetworkId(ownerId);
+    if (!personalNetworkId) return [];
 
     const rows = await db
       .select({
@@ -245,7 +245,7 @@ export class ContactDatabaseAdapter {
       .from(schema.networkMembers)
       .innerJoin(schema.users, eq(schema.networkMembers.userId, schema.users.id))
       .where(and(
-        eq(schema.networkMembers.networkId, personalIndexId),
+        eq(schema.networkMembers.networkId, personalNetworkId),
         sql`'contact' = ANY(${schema.networkMembers.permissions})`,
         isNull(schema.networkMembers.deletedAt),
         isNull(schema.users.deletedAt),
@@ -268,8 +268,8 @@ export class ContactDatabaseAdapter {
     avatar: string | null;
     isGhost: boolean;
   }>> {
-    const personalIndexId = await getPersonalIndexId(ownerId);
-    if (!personalIndexId) return [];
+    const personalNetworkId = await getPersonalNetworkId(ownerId);
+    if (!personalNetworkId) return [];
 
     const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
@@ -284,7 +284,7 @@ export class ContactDatabaseAdapter {
       .from(schema.networkMembers)
       .innerJoin(schema.users, eq(schema.networkMembers.userId, schema.users.id))
       .where(and(
-        eq(schema.networkMembers.networkId, personalIndexId),
+        eq(schema.networkMembers.networkId, personalNetworkId),
         sql`'contact' = ANY(${schema.networkMembers.permissions})`,
         isNull(schema.networkMembers.deletedAt),
         isNull(schema.users.deletedAt),
@@ -303,12 +303,12 @@ export class ContactDatabaseAdapter {
   }
 
   async hardDeleteContactMembership(ownerId: string, contactUserId: string): Promise<void> {
-    const personalIndexId = await getPersonalIndexId(ownerId);
-    if (!personalIndexId) return;
+    const personalNetworkId = await getPersonalNetworkId(ownerId);
+    if (!personalNetworkId) return;
 
     await db.delete(schema.networkMembers)
       .where(and(
-        eq(schema.networkMembers.networkId, personalIndexId),
+        eq(schema.networkMembers.networkId, personalNetworkId),
         eq(schema.networkMembers.userId, contactUserId),
         sql`'contact' = ANY(${schema.networkMembers.permissions})`,
       ));

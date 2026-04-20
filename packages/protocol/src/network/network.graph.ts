@@ -34,8 +34,8 @@ export class NetworkGraphFactory {
         try {
           const [allMemberships, ownedIndexes, publicIndexesResult] = await Promise.all([
             this.database.getNetworkMemberships(state.userId),
-            this.database.getOwnedIndexes(state.userId),
-            this.database.getPublicIndexesNotJoined(state.userId),
+            this.database.getOwnedNetworks(state.userId),
+            this.database.getPublicNetworksNotJoined(state.userId),
           ]);
 
           // If index-scoped and not showAll, return just that index (no public indexes in scoped view)
@@ -60,7 +60,7 @@ export class NetworkGraphFactory {
                   ? [{
                       networkId: membership.networkId,
                       title: membership.networkTitle,
-                      description: membership.indexPrompt,
+                      description: membership.networkPrompt,
                       autoAssign: membership.autoAssign,
                       isPersonal: membership.isPersonal,
                       joinedAt: membership.joinedAt,
@@ -88,7 +88,7 @@ export class NetworkGraphFactory {
               memberOf: allMemberships.map((m) => ({
                 networkId: m.networkId,
                 title: m.networkTitle,
-                description: m.indexPrompt,
+                description: m.networkPrompt,
                 autoAssign: m.autoAssign,
                 isPersonal: m.isPersonal,
                 joinedAt: m.joinedAt,
@@ -116,7 +116,7 @@ export class NetworkGraphFactory {
           return { mutationResult: { success: false, error: "Title is required." } };
         }
 
-        let createdIndexId: string | undefined;
+        let createdNetworkId: string | undefined;
         try {
           const index = await this.database.createNetwork({
             title: state.createInput.title.trim(),
@@ -124,7 +124,7 @@ export class NetworkGraphFactory {
             imageUrl: state.createInput.imageUrl ?? undefined,
             joinPolicy: state.createInput.joinPolicy,
           });
-          createdIndexId = index.id;
+          createdNetworkId = index.id;
 
           const added = await this.database.addMemberToNetwork(index.id, state.userId, 'owner');
           if (!added.success) {
@@ -143,8 +143,8 @@ export class NetworkGraphFactory {
           };
         } catch (err) {
           logger.error("Create index failed", { error: err });
-          if (createdIndexId) {
-            try { await this.database.softDeleteNetwork(createdIndexId); } catch {}
+          if (createdNetworkId) {
+            try { await this.database.softDeleteNetwork(createdNetworkId); } catch {}
           }
           return { mutationResult: { success: false, error: "Failed to create network." } };
         }
@@ -164,12 +164,12 @@ export class NetworkGraphFactory {
         }
 
         try {
-          const isOwner = await this.database.isIndexOwner(networkId, state.userId);
+          const isOwner = await this.database.isNetworkOwner(networkId, state.userId);
           if (!isOwner) {
             return { mutationResult: { success: false, error: "You can only modify networks you own." } };
           }
 
-          await this.database.updateIndexSettings(networkId, state.userId, state.updateInput ?? {});
+          await this.database.updateNetworkSettings(networkId, state.userId, state.updateInput ?? {});
 
           return {
             mutationResult: {
@@ -198,7 +198,7 @@ export class NetworkGraphFactory {
         }
 
         try {
-          const isOwner = await this.database.isIndexOwner(networkId, state.userId);
+          const isOwner = await this.database.isNetworkOwner(networkId, state.userId);
           if (!isOwner) {
             return { mutationResult: { success: false, error: "You can only delete networks you own." } };
           }

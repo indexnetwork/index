@@ -167,9 +167,9 @@ describe("ApiClient", () => {
 
   describe("listNetworks", () => {
     it("returns networks from the API", async () => {
-      mock.on("GET", "/api/indexes", () =>
+      mock.on("GET", "/api/networks", () =>
         Response.json({
-          indexes: [
+          networks: [
             { id: "n1", title: "Test Network", memberCount: 5, isPersonal: false },
             { id: "n2", title: "Personal", memberCount: 1, isPersonal: true },
           ],
@@ -186,10 +186,10 @@ describe("ApiClient", () => {
   describe("createNetwork", () => {
     it("sends title and prompt in request body", async () => {
       let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/indexes", async (req) => {
+      mock.on("POST", "/api/networks", async (req) => {
         receivedBody = (await req.json()) as Record<string, unknown>;
         return Response.json({
-          index: { id: "n1", title: "New Net", joinPolicy: "invite_only" },
+          network: { id: "n1", title: "New Net", joinPolicy: "invite_only" },
         });
       });
 
@@ -201,10 +201,10 @@ describe("ApiClient", () => {
 
     it("omits prompt when not provided", async () => {
       let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/indexes", async (req) => {
+      mock.on("POST", "/api/networks", async (req) => {
         receivedBody = (await req.json()) as Record<string, unknown>;
         return Response.json({
-          index: { id: "n1", title: "Minimal", joinPolicy: "invite_only" },
+          network: { id: "n1", title: "Minimal", joinPolicy: "invite_only" },
         });
       });
 
@@ -215,9 +215,9 @@ describe("ApiClient", () => {
 
   describe("getNetwork", () => {
     it("returns network details", async () => {
-      mock.on("GET", "/api/indexes/n1", () =>
+      mock.on("GET", "/api/networks/n1", () =>
         Response.json({
-          index: { id: "n1", title: "Test", prompt: "A network", memberCount: 3 },
+          network: { id: "n1", title: "Test", prompt: "A network", memberCount: 3 },
         }),
       );
 
@@ -229,7 +229,7 @@ describe("ApiClient", () => {
 
   describe("getNetworkMembers", () => {
     it("returns members list", async () => {
-      mock.on("GET", "/api/indexes/n1/members", () =>
+      mock.on("GET", "/api/networks/n1/members", () =>
         Response.json({
           members: [
             { userId: "u1", user: { name: "Alice", email: "alice@test.com" }, permissions: ["owner"] },
@@ -245,8 +245,8 @@ describe("ApiClient", () => {
 
   describe("joinNetwork", () => {
     it("sends POST to join endpoint", async () => {
-      mock.on("POST", "/api/indexes/n1/join", () =>
-        Response.json({ index: { id: "n1", title: "Public Net" } }),
+      mock.on("POST", "/api/networks/n1/join", () =>
+        Response.json({ network: { id: "n1", title: "Public Net" } }),
       );
 
       const result = await client.joinNetwork("n1");
@@ -256,7 +256,7 @@ describe("ApiClient", () => {
 
   describe("leaveNetwork", () => {
     it("sends POST to leave endpoint", async () => {
-      mock.on("POST", "/api/indexes/n1/leave", () =>
+      mock.on("POST", "/api/networks/n1/leave", () =>
         Response.json({ success: true }),
       );
 
@@ -266,10 +266,10 @@ describe("ApiClient", () => {
   });
 
   describe("searchUsers", () => {
-    it("sends query and indexId as search params", async () => {
+    it("sends query and networkId as search params", async () => {
       let receivedUrl = "";
       // The mock server matches on pathname, so we need to handle query params
-      mock.on("GET", "/api/indexes/search-users", (req) => {
+      mock.on("GET", "/api/networks/search-users", (req) => {
         receivedUrl = req.url;
         return Response.json({
           users: [{ id: "u1", name: "Alice", email: "alice@test.com" }],
@@ -280,14 +280,14 @@ describe("ApiClient", () => {
       expect(users).toHaveLength(1);
       expect(users[0].email).toBe("alice@test.com");
       expect(receivedUrl).toContain("q=alice%40test.com");
-      expect(receivedUrl).toContain("indexId=n1");
+      expect(receivedUrl).toContain("networkId=n1");
     });
   });
 
   describe("addNetworkMember", () => {
     it("sends userId in request body", async () => {
       let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/indexes/n1/members", async (req) => {
+      mock.on("POST", "/api/networks/n1/members", async (req) => {
         receivedBody = (await req.json()) as Record<string, unknown>;
         return Response.json({
           member: { userId: "u1" },

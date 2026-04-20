@@ -48,7 +48,7 @@ const MY_MEMBERS_RECENT_CACHE_TTL_MS = 1500;
 const myMembersInFlight = new Map<string, Promise<{ members: Member[] }>>();
 const myMembersRecent = new Map<string, { data: { members: Member[] }; timestamp: number }>();
 
-export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
+export const createNetworksService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Get all networks with pagination
   getNetworks: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network>> => {
     const response = await api.get<APIResponse<Network>>(`/networks?page=${page}&limit=${limit}`);
@@ -59,13 +59,13 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Get non-personal networks shared between the current user and a target user
-  getSharedIndexes: async (userId: string): Promise<Array<{ id: string; title: string; _count: { members: number } }>> => {
+  getSharedNetworks: async (userId: string): Promise<Array<{ id: string; title: string; _count: { members: number } }>> => {
     const response = await api.get<{ networks: Array<{ id: string; title: string; _count: { members: number } }> }>(`/networks/shared/${userId}`);
     return response.networks || [];
   },
 
   // Discover public networks (networks that anyone can join)
-  discoverPublicIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network & { isMember?: boolean }>> => {
+  discoverPublicNetworks: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network & { isMember?: boolean }>> => {
     const response = await api.get<APIResponse<Network & { isMember?: boolean }>>(`/networks/discovery/public?page=${page}&limit=${limit}`);
     return {
       data: response.networks || [],
@@ -83,7 +83,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Get network by share code (public access)
-  getIndexByShareCode: async (code: string): Promise<Network> => {
+  getNetworkByShareCode: async (code: string): Promise<Network> => {
     const response = await api.get<APIResponse<Network>>(`/networks/share/${code}`);
     if (!response.network) {
       throw new Error('Network not found');
@@ -92,7 +92,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Get public network by ID (public access - only works for public networks)
-  getPublicIndexById: async (id: string): Promise<Network> => {
+  getPublicNetworkById: async (id: string): Promise<Network> => {
     const response = await api.get<APIResponse<Network>>(`/networks/public/${id}`);
     if (!response.network) {
       throw new Error('Network not found');
@@ -101,7 +101,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Upload network image (returns URL to use in create/update)
-  uploadIndexImage: async (file: File): Promise<string> => {
+  uploadNetworkImage: async (file: File): Promise<string> => {
     const result = await api.uploadFile<{ imageUrl?: string }>('/storage/network-images', file, undefined, 'image');
     if (!result?.imageUrl) {
       throw new Error('Failed to upload network image');
@@ -271,7 +271,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Join a public network
-  joinIndex: async (networkId: string): Promise<{ network: Network; membership?: Member; alreadyMember?: boolean }> => {
+  joinNetwork: async (networkId: string): Promise<{ network: Network; membership?: Member; alreadyMember?: boolean }> => {
     const response = await api.post<{
       message: string;
       network: Network;
@@ -311,7 +311,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // Member Intents Management
   // Get current user's intents in a network
-  getMyIndexIntents: async (networkId: string): Promise<Array<{
+  getMyNetworkIntents: async (networkId: string): Promise<Array<{
     id: string;
     payload: string;
     summary?: string | null;
@@ -337,9 +337,9 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 });
 
 // Non-authenticated service for public endpoints
-export const indexesService = {
+export const networksService = {
   // Get network by share code (public access, no auth required)
-  getIndexByShareCode: async (code: string): Promise<Network> => {
+  getNetworkByShareCode: async (code: string): Promise<Network> => {
     const response = await apiClient.getPublic<APIResponse<Network>>(`/networks/share/${code}`);
     if (!response.network) {
       throw new Error('Network not found');
@@ -348,7 +348,7 @@ export const indexesService = {
   },
 
   // Get public network by ID (public access, no auth required - only works for public networks)
-  getPublicIndexById: async (id: string): Promise<Network> => {
+  getPublicNetworkById: async (id: string): Promise<Network> => {
     const response = await apiClient.getPublic<APIResponse<Network>>(`/networks/public/${id}`);
     if (!response.network) {
       throw new Error('Network not found');
@@ -357,18 +357,18 @@ export const indexesService = {
   },
 
   // Legacy methods that require authentication
-  getNetworks: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  getNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  createNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  updateNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  deleteNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  addMember: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  removeMember: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
+  getNetworks: () => { throw new Error('Use useNetworkService() hook instead of networksService directly'); },
+  getNetwork: () => { throw new Error('Use useNetworkService() hook instead of networksService directly'); },
+  createNetwork: () => { throw new Error('Use useNetworkService() hook instead of networksService directly'); },
+  updateNetwork: () => { throw new Error('Use useNetworkService() hook instead of networksService directly'); },
+  deleteNetwork: () => { throw new Error('Use useNetworkService() hook instead of networksService directly'); },
+  addMember: () => { throw new Error('Use useNetworkService() hook instead of networksService directly'); },
+  removeMember: () => { throw new Error('Use useNetworkService() hook instead of networksService directly'); },
 };
 
 // Hook for using networks service with proper error handling
 export function useNetworkService() {
   const api = useAuthenticatedAPI();
-  return useMemo(() => createIndexesService(api), [api]);
+  return useMemo(() => createNetworksService(api), [api]);
 } 
 

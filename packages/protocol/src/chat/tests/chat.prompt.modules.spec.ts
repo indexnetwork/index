@@ -114,10 +114,10 @@ function mockCtx(overrides: Partial<{ networkId: string; isOwner: boolean; isOnb
     user: {},
     userProfile: {},
     userNetworks: [],
-    scopedIndex: null,
+    scopedNetwork: null,
     scopedMembershipRole: null,
     networkId: overrides.networkId ?? null,
-    indexName: null,
+    networkName: null,
     isOwner: overrides.isOwner ?? false,
     isOnboarding: overrides.isOnboarding ?? false,
     hasName: true,
@@ -340,7 +340,7 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
       {
         networkId: "idx-personal",
         networkTitle: "My Network",
-        indexPrompt: null,
+        networkPrompt: null,
         permissions: ["owner"],
         memberPrompt: null,
         autoAssign: false,
@@ -350,7 +350,7 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
       {
         networkId: "idx-community",
         networkTitle: "AI Builders",
-        indexPrompt: "AI enthusiasts",
+        networkPrompt: "AI enthusiasts",
         permissions: ["member"],
         memberPrompt: null,
         autoAssign: true,
@@ -409,9 +409,9 @@ describe("buildSystemContent snapshot identity", () => {
   test("scoped chat (index scope, owner) produces stable output", () => {
     const ctx = makeCtx({
       networkId: "idx-community",
-      indexName: "AI Builders",
+      networkName: "AI Builders",
       isOwner: true,
-      scopedIndex: { id: "idx-community", title: "AI Builders", prompt: "AI enthusiasts" },
+      scopedNetwork: { id: "idx-community", title: "AI Builders", prompt: "AI enthusiasts" },
       scopedMembershipRole: "owner",
     });
     const output = buildSystemContent(ctx);

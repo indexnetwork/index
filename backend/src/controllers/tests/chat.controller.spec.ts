@@ -28,7 +28,7 @@ describe("ChatController Integration", () => {
   const intentAdapter = new IntentDatabaseAdapter();
   const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;
-  /** Index IDs created for getIntentsInIndexForMember tests; cleaned in afterAll */
+  /** Index IDs created for getIntentsInNetworkForMember tests; cleaned in afterAll */
   let testIndexId: string | null = null;
   let testIndexIdOther: string | null = null;
   let unauthorizedStreamIndexId: string | null = null;
@@ -188,13 +188,13 @@ describe("ChatController Integration", () => {
       expect(result.error).toBeDefined();
     });
 
-    test("getIntentsInIndexForMember should return empty for unknown index name", async () => {
-      const intents = await adapter.getIntentsInIndexForMember(testUserId, "NonExistent Index Name");
+    test("getIntentsInNetworkForMember should return empty for unknown index name", async () => {
+      const intents = await adapter.getIntentsInNetworkForMember(testUserId, "NonExistent Index Name");
       expect(intents).toBeArray();
       expect(intents.length).toBe(0);
     });
 
-    test("getIntentsInIndexForMember should return intents when queried by index name", async () => {
+    test("getIntentsInNetworkForMember should return intents when queried by index name", async () => {
       const index = await adapter.createNetwork({
         title: "Commons",
         prompt: "Test index for chat adapter",
@@ -215,15 +215,15 @@ describe("ChatController Integration", () => {
       expect(activeIntents.length).toBeGreaterThan(0);
       await adapter.assignIntentToNetwork(activeIntents[0].id, testIndexId);
 
-      const intents = await adapter.getIntentsInIndexForMember(testUserId, "Commons");
+      const intents = await adapter.getIntentsInNetworkForMember(testUserId, "Commons");
       expect(intents).toBeArray();
       expect(intents.length).toBe(1);
       expect(intents[0].payload).toBe("Looking for collaborators on a machine learning project");
     });
 
-    test("getIntentsInIndexForMember should return intents when queried by index ID", async () => {
+    test("getIntentsInNetworkForMember should return intents when queried by index ID", async () => {
       expect(testIndexId).not.toBeNull();
-      const intents = await adapter.getIntentsInIndexForMember(testUserId!, testIndexId!);
+      const intents = await adapter.getIntentsInNetworkForMember(testUserId!, testIndexId!);
       expect(intents).toBeArray();
       expect(intents.length).toBe(1);
       expect(intents[0].id).toBeDefined();
@@ -232,14 +232,14 @@ describe("ChatController Integration", () => {
       expect(intents[0].createdAt).toBeInstanceOf(Date);
     });
 
-    test("getIntentsInIndexForMember should return empty when user is not a member of the index", async () => {
+    test("getIntentsInNetworkForMember should return empty when user is not a member of the index", async () => {
       const index = await adapter.createNetwork({
         title: "Other Index User Not In",
         prompt: "Index without test user",
       });
       testIndexIdOther = index.id;
 
-      const intents = await adapter.getIntentsInIndexForMember(testUserId, "Other Index User Not In");
+      const intents = await adapter.getIntentsInNetworkForMember(testUserId, "Other Index User Not In");
       expect(intents).toBeArray();
       expect(intents.length).toBe(0);
     });

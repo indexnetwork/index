@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const isHomePage = pathname === '/';
     const isOnboardingPage = pathname === '/onboarding';
-    const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/') || pathname.startsWith('/blog') || pathname.startsWith('/pages') || pathname.startsWith('/about') || pathname.startsWith('/login') || pathname.startsWith('/s/') || pathname.startsWith('/oauth/') || pathname.startsWith('/found-in-translation');
+    const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/network/') || pathname.startsWith('/index/') || pathname.startsWith('/blog') || pathname.startsWith('/pages') || pathname.startsWith('/about') || pathname.startsWith('/login') || pathname.startsWith('/s/') || pathname.startsWith('/oauth/') || pathname.startsWith('/found-in-translation');
     const isProtectedPage = pathname.startsWith('/i/');
 
     const shouldRedirectToHome = !authenticated && (isProtectedPage || (!isHomePage && !isPublicPage));

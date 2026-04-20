@@ -49,7 +49,7 @@ describe('IntentQueue', () => {
       const getIntentForIndexing = mock(async () => null as unknown as Awaited<ReturnType<IntentQueueDatabase['getIntentForIndexing']>>);
       const db = {
         getIntentForIndexing,
-        getUserIndexIds: async () => [] as string[],
+        getUserNetworkIds: async () => [] as string[],
         assignIntentToNetwork: async () => {},
         deleteHydeDocumentsForSource: async () => 0,
       };
@@ -96,7 +96,7 @@ describe('IntentQueue', () => {
     it('generate_hyde: intent not found skips and logs', async () => {
       const db = {
         getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<IntentQueueDatabase['getIntentForIndexing']>>,
-        getUserIndexIds: async () => [] as string[],
+        getUserNetworkIds: async () => [] as string[],
         assignIntentToNetwork: async () => {},
         deleteHydeDocumentsForSource: async () => 0,
       };
@@ -110,7 +110,7 @@ describe('IntentQueue', () => {
       const addOpportunityJob = mock(async () => ({}));
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
-        getUserIndexIds: async () => ['idx1'],
+        getUserNetworkIds: async () => ['idx1'],
         assignIntentToNetwork: async () => {},
         deleteHydeDocumentsForSource: async () => 0,
       };
@@ -131,12 +131,12 @@ describe('IntentQueue', () => {
       expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1' });
     });
 
-    it('generate_hyde: getUserIndexIds throws is caught and logged', async () => {
+    it('generate_hyde: getUserNetworkIds throws is caught and logged', async () => {
       const invokeHyde = mock(async () => {});
       const addOpportunityJob = mock(async () => ({}));
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
-        getUserIndexIds: async () => {
+        getUserNetworkIds: async () => {
           throw new Error('DB error');
         },
         assignIntentToNetwork: async () => {},
@@ -154,7 +154,7 @@ describe('IntentQueue', () => {
       const addOpportunityJob = mock(async () => ({}));
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
-        getUserIndexIds: async () => ['idx1', 'idx2'],
+        getUserNetworkIds: async () => ['idx1', 'idx2'],
         assignIntentToNetwork: async () => {
           callCount++;
           if (callCount === 1) throw new Error('assign failed');
@@ -174,7 +174,7 @@ describe('IntentQueue', () => {
       });
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
-        getUserIndexIds: async () => [] as string[],
+        getUserNetworkIds: async () => [] as string[],
         assignIntentToNetwork: async () => {},
         deleteHydeDocumentsForSource: async () => 0,
       };
@@ -187,7 +187,7 @@ describe('IntentQueue', () => {
       const deleteHydeDocumentsForSource = mock(async () => 0);
       const db = {
         getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<IntentQueueDatabase['getIntentForIndexing']>>,
-        getUserIndexIds: async () => [] as string[],
+        getUserNetworkIds: async () => [] as string[],
         assignIntentToNetwork: async () => {},
         deleteHydeDocumentsForSource,
       };
@@ -216,7 +216,7 @@ describe('IntentQueue', () => {
       const deleteHydeDocumentsForSource = mock(async () => 0);
       const db = {
         getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<IntentQueueDatabase['getIntentForIndexing']>>,
-        getUserIndexIds: async () => [] as string[],
+        getUserNetworkIds: async () => [] as string[],
         assignIntentToNetwork: async () => {},
         deleteHydeDocumentsForSource,
       };

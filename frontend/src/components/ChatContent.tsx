@@ -41,8 +41,8 @@ import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useNetworkFilter } from "@/contexts/IndexFilterContext";
-import { useNetworksState } from "@/contexts/IndexesContext";
+import { useNetworkFilter } from "@/contexts/NetworkFilterContext";
+import { useNetworksState } from "@/contexts/NetworksContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { apiClient } from "@/lib/api";
 import { useSuggestions } from "@/hooks/useSuggestions";
@@ -375,7 +375,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const titleInputRef = useRef<HTMLInputElement>(null);
   const navigatingToHomeRef = useRef(false);
   const sessionIdRef = useRef(sessionId);
-  const [isIndexDropdownOpen, setIsIndexDropdownOpen] = useState(false);
+  const [isNetworkDropdownOpen, setIsNetworkDropdownOpen] = useState(false);
   const [isInputMultiline, setIsInputMultiline] = useState(false);
   const [isTextareaMultiline, setIsTextareaMultiline] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
@@ -541,21 +541,21 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     return () => clearTimeout(timeoutId);
   }, [proposalIdsKey]);
 
-  // Index filter
+  // Network filter
   const { selectedNetworkIds, setSelectedNetworkIds } = useNetworkFilter();
-  const { indexes } = useNetworksState();
-  const selectedIndexId =
+  const { networks } = useNetworksState();
+  const selectedNetworkId =
     selectedNetworkIds.length === 1 ? selectedNetworkIds[0] : null;
 
   // Suggestions: from context (done event) when we have messages, else static starters
   const { suggestions } = useSuggestions({
     contextSuggestions: contextSuggestions ?? null,
     hasMessages: messages.length > 0,
-    networkId: selectedIndexId,
+    networkId: selectedNetworkId,
     enabled: messages.length > 0,
   });
 
-  const handleIndexSelect = useCallback(
+  const handleNetworkSelect = useCallback(
     (networkId: string | null) => {
       if (networkId === null) {
         setSelectedNetworkIds([]);
@@ -568,8 +568,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   // Sync network filter selection to chat scope so backend receives networkId when user has selected a network
   useEffect(() => {
-    setScopeNetworkId(selectedIndexId);
-  }, [selectedIndexId, setScopeNetworkId]);
+    setScopeNetworkId(selectedNetworkId);
+  }, [selectedNetworkId, setScopeNetworkId]);
 
   // Fetch home view when on home (no messages) and USE_HOME_API
   useEffect(() => {
@@ -582,7 +582,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     const urlParams = new URLSearchParams(window.location.search);
     const noCache = urlParams.get('noCache') === '1' || urlParams.get('noCache') === 'true';
     opportunitiesService
-      .getHomeView({ networkId: selectedIndexId ?? undefined, limit: 5, noCache })
+      .getHomeView({ networkId: selectedNetworkId ?? undefined, limit: 5, noCache })
       .then((res) => {
         setHomeViewData(res);
         setHomeViewLoading(false);
@@ -592,7 +592,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         setHomeViewData(null);
         setHomeViewLoading(false);
       });
-  }, [messages.length, selectedIndexId, opportunitiesService]);
+  }, [messages.length, selectedNetworkId, opportunitiesService]);
 
   const handleSuggestionClick = useCallback(
     (suggestion: {
@@ -1104,24 +1104,24 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   // HOME STATE - No messages yet
   if (messages.length === 0) {
-    const personalIndex = indexes.find((i) => i.isPersonal);
-    const selectedIndex = indexes.find((i) => selectedNetworkIds.includes(i.id));
+    const personalNetwork = networks.find((i) => i.isPersonal);
+    const selectedNetwork = networks.find((i) => selectedNetworkIds.includes(i.id));
 
     const renderScopeDropdown = () => {
-      if (indexes.length === 0) return null;
+      if (networks.length === 0) return null;
       return (
         <div className="relative shrink-0">
           <button
             type="button"
-            onClick={() => setIsIndexDropdownOpen(!isIndexDropdownOpen)}
+            onClick={() => setIsNetworkDropdownOpen(!isNetworkDropdownOpen)}
             className={cn(
               "inline-flex items-center gap-1.5 py-1.5 rounded-full text-sm font-medium text-black transition-all hover:bg-gray-100",
               isInputMultiline ? "px-1.5" : "px-3",
             )}
           >
-            {selectedIndex?.isPersonal ? (
+            {selectedNetwork?.isPersonal ? (
               <Users className="w-4 h-4" />
-            ) : selectedIndex?.permissions?.joinPolicy ===
+            ) : selectedNetwork?.permissions?.joinPolicy ===
               "invite_only" ? (
               <Lock className="w-4 h-4" />
             ) : (
@@ -1129,28 +1129,28 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             )}
             {!isInputMultiline && (
               <span>
-                {selectedIndex?.title || "Everywhere"}
+                {selectedNetwork?.title || "Everywhere"}
               </span>
             )}
             <ChevronDown
               className={cn(
                 "w-4 h-4 transition-transform",
-                isIndexDropdownOpen && "rotate-180",
+                isNetworkDropdownOpen && "rotate-180",
               )}
             />
           </button>
-          {isIndexDropdownOpen && (
+          {isNetworkDropdownOpen && (
             <>
               <div
                 className="fixed inset-0 z-10"
-                onClick={() => setIsIndexDropdownOpen(false)}
+                onClick={() => setIsNetworkDropdownOpen(false)}
               />
               <div className="absolute right-0 top-full mt-2 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-40">
                 <button
                   type="button"
                   onClick={() => {
-                    handleIndexSelect(null);
-                    setIsIndexDropdownOpen(false);
+                    handleNetworkSelect(null);
+                    setIsNetworkDropdownOpen(false);
                   }}
                   className={cn(
                     "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
@@ -1160,24 +1160,24 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 >
                   <Globe className="w-4 h-4" /> Everywhere
                 </button>
-                {personalIndex && (
+                {personalNetwork && (
                   <button
                     type="button"
                     onClick={() => {
-                      handleIndexSelect(personalIndex.id);
-                      setIsIndexDropdownOpen(false);
+                      handleNetworkSelect(personalNetwork.id);
+                      setIsNetworkDropdownOpen(false);
                     }}
                     className={cn(
                       "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                      selectedNetworkIds.includes(personalIndex.id) &&
+                      selectedNetworkIds.includes(personalNetwork.id) &&
                         "text-gray-900 font-medium",
                     )}
                   >
-                    <Users className="w-4 h-4" /> {personalIndex.title}
+                    <Users className="w-4 h-4" /> {personalNetwork.title}
                   </button>
                 )}
                 <div className="my-1 border-t border-gray-200" />
-                {[...indexes]
+                {[...networks]
                   .filter((i) => !i.isPersonal)
                   .sort(
                     (a, b) =>
@@ -1189,28 +1189,28 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           : 0) ||
                       (a.title || "").localeCompare(b.title || ""),
                   )
-                  .map((index) => (
+                  .map((network) => (
                     <button
-                      key={index.id}
+                      key={network.id}
                       type="button"
                       onClick={() => {
-                        handleIndexSelect(index.id);
-                        setIsIndexDropdownOpen(false);
+                        handleNetworkSelect(network.id);
+                        setIsNetworkDropdownOpen(false);
                       }}
                       className={cn(
                         "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                        selectedNetworkIds.includes(index.id) &&
+                        selectedNetworkIds.includes(network.id) &&
                           "text-gray-900 font-medium",
                       )}
                     >
-                      {index.permissions?.joinPolicy ===
+                      {network.permissions?.joinPolicy ===
                       "invite_only" ? (
                         <Lock className="w-4 h-4 shrink-0" />
                       ) : (
                         <Globe className="w-4 h-4 shrink-0" />
                       )}
                       <span className="truncate">
-                        {index.title}
+                        {network.title}
                       </span>
                     </button>
                   ))}
@@ -1518,8 +1518,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   }
 
   // CONVERSATION MODE - Has messages
-  const boundIndexId = sessionNetworkId ?? selectedIndexId;
-  const boundIndex = indexes.find((i) => i.id === boundIndexId) ?? null;
+  const boundNetworkId = sessionNetworkId ?? selectedNetworkId;
+  const boundNetwork = networks.find((i) => i.id === boundNetworkId) ?? null;
 
   return (
     <>
@@ -1596,15 +1596,15 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 )}
               </>
             )}
-            {boundIndex && (
+            {boundNetwork && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 ml-2">
-                {boundIndex.permissions?.joinPolicy === "invite_only" ? (
+                {boundNetwork.permissions?.joinPolicy === "invite_only" ? (
                   <Lock className="w-3 h-3" />
                 ) : (
                   <Globe className="w-3 h-3" />
                 )}
                 <span className="truncate max-w-30">
-                  {boundIndex.title}
+                  {boundNetwork.title}
                 </span>
               </span>
             )}

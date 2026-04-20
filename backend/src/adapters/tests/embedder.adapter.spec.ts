@@ -165,7 +165,7 @@ describe('EmbedderAdapter', () => {
       const results = await adapter.search<{ id: string; userId: string }>(
         queryVector,
         'intents',
-        { limit: 10, minScore: 0.99, filter: { indexScope: [fixture.networkId] } }
+        { limit: 10, minScore: 0.99, filter: { networkScope: [fixture.networkId] } }
       );
 
       expect(results.length).toBeGreaterThanOrEqual(1);
@@ -179,7 +179,7 @@ describe('EmbedderAdapter', () => {
       const results = await adapter.search<{ id: string; userId: string }>(
         queryVector,
         'intents',
-        { limit: 5, minScore: 0, filter: { indexScope: [fixture.networkId] } }
+        { limit: 5, minScore: 0, filter: { networkScope: [fixture.networkId] } }
       );
 
       for (const r of results) {
@@ -199,7 +199,7 @@ describe('EmbedderAdapter', () => {
       ];
 
       const results = await adapter.searchWithHydeEmbeddings(lensEmbeddings, {
-        indexScope: [fixture.networkId],
+        networkScope: [fixture.networkId],
         limitPerStrategy: 5,
         limit: 10,
         minScore: 0,
@@ -216,12 +216,12 @@ describe('EmbedderAdapter', () => {
       }
     });
 
-    it('should respect indexScope and excludeUserId', async () => {
+    it('should respect networkScope and excludeUserId', async () => {
       const vec = makeTestVector(300);
       const results = await adapter.searchWithHydeEmbeddings(
         [{ lens: 'early-stage startup hiring', corpus: 'intents' as const, embedding: vec }],
         {
-          indexScope: [fixture.networkId],
+          networkScope: [fixture.networkId],
           excludeUserId: fixture.userAId,
           limit: 5,
           minScore: 0,
@@ -253,7 +253,7 @@ describe('EmbedderAdapter', () => {
     it('should return candidates (profiles and/or intents) in index scope with correct shape', async () => {
       const profileEmbedding = makeTestVector(42);
       const results = await adapter.searchWithProfileEmbedding(profileEmbedding, {
-        indexScope: [fixture.networkId],
+        networkScope: [fixture.networkId],
         limit: 10,
         limitPerStrategy: 5,
         minScore: 0,
@@ -275,10 +275,10 @@ describe('EmbedderAdapter', () => {
       expect(intentMatch!.score).toBeGreaterThanOrEqual(0.99);
     });
 
-    it('should respect indexScope and excludeUserId', async () => {
+    it('should respect networkScope and excludeUserId', async () => {
       const profileEmbedding = makeTestVector(100);
       const results = await adapter.searchWithProfileEmbedding(profileEmbedding, {
-        indexScope: [fixture.networkId],
+        networkScope: [fixture.networkId],
         excludeUserId: fixture.userAId,
         limit: 5,
         minScore: 0,
@@ -296,7 +296,7 @@ describe('EmbedderAdapter', () => {
       const vec = makeTestVector(42); // same as deleted user's profile embedding
       const results = await adapter.searchWithHydeEmbeddings(
         [{ lens: 'test lens', corpus: 'profiles' as const, embedding: vec }],
-        { indexScope: [fixture.networkId], limit: 20, minScore: 0, profileMinScore: 0 },
+        { networkScope: [fixture.networkId], limit: 20, minScore: 0, profileMinScore: 0 },
       );
 
       const deletedMatch = results.find((c) => c.userId === fixture.deletedUserId);
@@ -307,7 +307,7 @@ describe('EmbedderAdapter', () => {
       const vec = makeTestVector(42); // same as deleted user's intent embedding
       const results = await adapter.searchWithHydeEmbeddings(
         [{ lens: 'test lens', corpus: 'intents' as const, embedding: vec }],
-        { indexScope: [fixture.networkId], limit: 20, minScore: 0 },
+        { networkScope: [fixture.networkId], limit: 20, minScore: 0 },
       );
 
       const deletedMatch = results.find((c) => c.userId === fixture.deletedUserId);
@@ -317,7 +317,7 @@ describe('EmbedderAdapter', () => {
     it('should not return soft-deleted users from searchWithProfileEmbedding', async () => {
       const vec = makeTestVector(42);
       const results = await adapter.searchWithProfileEmbedding(vec, {
-        indexScope: [fixture.networkId],
+        networkScope: [fixture.networkId],
         limit: 20,
         minScore: 0,
         profileMinScore: 0,
@@ -332,7 +332,7 @@ describe('EmbedderAdapter', () => {
       const results = await adapter.search<{ id: string; userId: string }>(
         vec,
         'intents',
-        { limit: 20, minScore: 0, filter: { indexScope: [fixture.networkId] } },
+        { limit: 20, minScore: 0, filter: { networkScope: [fixture.networkId] } },
       );
 
       const deletedMatch = results.find((r) => (r.item as { userId: string }).userId === fixture.deletedUserId);

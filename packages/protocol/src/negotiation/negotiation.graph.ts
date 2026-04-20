@@ -33,7 +33,7 @@ export class NegotiationGraphFactory {
         ]);
 
         // Determine scenario-based maxTurns before creating the task
-        const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
+        const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.networkContext.networkId };
         const [sourceHasAgent, candidateHasAgent] = await Promise.all([
           dispatcher.hasPersonalAgent(state.sourceUser.id, scope),
           dispatcher.hasPersonalAgent(state.candidateUser.id, scope),
@@ -106,7 +106,7 @@ export class NegotiationGraphFactory {
           negotiationId: state.taskId,
           ownUser,
           otherUser,
-          indexContext: state.indexContext,
+          networkContext: state.networkContext,
           seedAssessment: state.seedAssessment,
           history,
           isFinalTurn,
@@ -114,7 +114,7 @@ export class NegotiationGraphFactory {
           ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
         };
 
-        const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
+        const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.networkContext.networkId };
 
         const dispatchResult = await dispatcher.dispatch(ownUser.id, scope, payload, { timeoutMs: state.timeoutMs });
 
@@ -133,7 +133,7 @@ export class NegotiationGraphFactory {
           await database.setTaskTurnContext(state.taskId, {
             sourceUser: state.sourceUser,
             candidateUser: state.candidateUser,
-            indexContext: state.indexContext,
+            networkContext: state.networkContext,
             seedAssessment: state.seedAssessment,
             // Keep discoveryQuery speaker-scoped: include it only when the
             // parked turn belongs to the discoverer (source). Persisting it on
@@ -148,7 +148,7 @@ export class NegotiationGraphFactory {
           turn = await systemAgent.invoke({
             ownUser,
             otherUser,
-            indexContext: state.indexContext,
+            networkContext: state.networkContext,
             seedAssessment: state.seedAssessment,
             history,
             isFinalTurn,
@@ -391,17 +391,17 @@ export async function negotiateCandidates(
   negotiationGraph: NegotiationGraphLike,
   sourceUser: UserNegotiationContext,
   candidates: NegotiationCandidate[],
-  indexContext: { networkId: string; prompt: string },
+  networkContext: { networkId: string; prompt: string },
   opts?: {
     maxTurns?: number;
     traceEmitter?: TraceEmitter;
-    indexContextOverrides?: Map<string, string>;
+    networkContextOverrides?: Map<string, string>;
     timeoutMs?: number;
     onCandidateResolved?: OnNegotiationResolved;
     trigger?: "orchestrator" | "ambient";
   },
 ): Promise<NegotiationResult[]> {
-  const { maxTurns, traceEmitter, indexContextOverrides, timeoutMs, onCandidateResolved, trigger } = opts ?? {};
+  const { maxTurns, traceEmitter, networkContextOverrides, timeoutMs, onCandidateResolved, trigger } = opts ?? {};
 
   // Local helper to emit events whose shape is wider than the declared
   // `TraceEmitter` union (mirrors the cast used in chat.agent at the relay sink
@@ -428,14 +428,14 @@ export async function negotiateCandidates(
       traceEmitter?.({ type: "agent_start", name: "Negotiating candidate" });
 
       try {
-        const candidateIndexContext = candidate.networkId
-          ? { networkId: candidate.networkId, prompt: indexContextOverrides?.get(candidate.networkId) ?? '' }
-          : indexContext;
+        const candidateNetworkContext = candidate.networkId
+          ? { networkId: candidate.networkId, prompt: networkContextOverrides?.get(candidate.networkId) ?? '' }
+          : networkContext;
 
         const result = await negotiationGraph.invoke({
           sourceUser,
           candidateUser: candidate.candidateUser,
-          indexContext: candidateIndexContext,
+          networkContext: candidateNetworkContext,
           seedAssessment: {
             reasoning: candidate.reasoning,
             valencyRole: candidate.valencyRole,

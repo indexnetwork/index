@@ -34,7 +34,7 @@ const seedAssessment: SeedAssessment = {
   valencyRole: 'peer',
 };
 
-const indexContext = { networkId: 'net-1', prompt: 'Creative professionals network' };
+const networkContext = { networkId: 'net-1', prompt: 'Creative professionals network' };
 
 describe('IndexNegotiator: discoveryQuery priority', () => {
   const negotiator = new IndexNegotiator();
@@ -43,7 +43,7 @@ describe('IndexNegotiator: discoveryQuery priority', () => {
     const result = await negotiator.invoke({
       ownUser: discovererUser,
       otherUser: characterArtist,
-      indexContext,
+      networkContext,
       seedAssessment,
       history: [],
       isDiscoverer: true,
@@ -78,7 +78,7 @@ describe('IndexNegotiator: discoveryQuery priority', () => {
     const result = await negotiator.invoke({
       ownUser: discovererUser,
       otherUser: kendoInstructor,
-      indexContext,
+      networkContext,
       seedAssessment: { reasoning: 'Samurai martial arts practitioner found.', valencyRole: 'agent' },
       history: [],
       isDiscoverer: true,
@@ -119,7 +119,7 @@ describe('IndexNegotiator: discoveryQuery priority', () => {
     const result = await negotiator.invoke({
       ownUser: investor,
       otherUser: founder,
-      indexContext,
+      networkContext,
       seedAssessment: { reasoning: 'Founder seeking AI investment, investor found via consumer AI lens.', valencyRole: 'agent' },
       history: [{
         action: 'propose' as const,
@@ -146,7 +146,7 @@ describe('IndexNegotiator: discoveryQuery priority', () => {
     const result = await negotiator.invoke({
       ownUser: discovererUser,
       otherUser: characterArtist,
-      indexContext,
+      networkContext,
       seedAssessment,
       history: [],
       isDiscoverer: true,

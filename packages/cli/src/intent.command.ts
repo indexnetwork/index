@@ -7,6 +7,7 @@
  */
 
 import type { ApiClient } from "./api.client";
+import type { Network } from "./types";
 import * as output from "./output";
 
 const INTENT_HELP = `
@@ -134,7 +135,7 @@ export async function handleIntent(
         output.error("Usage: index intent link <intent-id> <network-id>", 1);
         return;
       }
-      const result = await client.callTool("create_intent_index", {
+      const result = await client.callTool("create_intent_network", {
         intentId: options.intentId,
         networkId: options.targetId,
       });
@@ -149,7 +150,7 @@ export async function handleIntent(
         output.error("Usage: index intent unlink <intent-id> <network-id>", 1);
         return;
       }
-      const result = await client.callTool("delete_intent_index", {
+      const result = await client.callTool("delete_intent_network", {
         intentId: options.intentId,
         networkId: options.targetId,
       });
@@ -164,19 +165,24 @@ export async function handleIntent(
         output.error("Missing signal ID. Usage: index intent links <id>", 1);
         return;
       }
-      const result = await client.callTool("read_intent_indexes", {
+      const result = await client.callTool("read_intent_networks", {
         intentId: options.intentId,
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
       if (!result.success) { output.error(result.error ?? "Failed to read linked networks", 1); return; }
-      const data = result.data as { indexes: Array<{ networkId: string; title: string; relevancyScore?: number }> };
+      const data = result.data as {
+        links?: Array<{ networkId: string }>;
+        count?: number;
+      };
+      const networks = await client.listNetworks().catch(() => [] as Network[]);
+      const titleById = new Map(networks.map((n) => [n.id, n.title]));
       output.heading("Linked Networks");
-      if (!data.indexes?.length) {
+      if (!data.links?.length) {
         output.dim("  No linked networks.");
       } else {
-        for (const idx of data.indexes) {
-          const score = idx.relevancyScore !== undefined ? ` (${idx.relevancyScore.toFixed(2)})` : "";
-          console.log(`  ${idx.title} ${output.DIM}${idx.networkId.slice(0, 8)}${score}${output.RESET}`);
+        for (const link of data.links) {
+          const title = titleById.get(link.networkId) ?? "(unknown)";
+          console.log(`  ${title} ${output.DIM}${link.networkId}${output.RESET}`);
         }
       }
       console.log();

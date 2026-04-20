@@ -128,26 +128,26 @@ function createMockDb(): ChatDatabaseAdapter {
     archiveIntent: mock(() => Promise.resolve({ success: true })),
     getIntentForIndexing: mock(() => Promise.resolve(null)),
     assignIntentToNetwork: mock(() => Promise.resolve()),
-    unassignIntentFromIndex: mock(() => Promise.resolve()),
+    unassignIntentFromNetwork: mock(() => Promise.resolve()),
     getNetworkIdsForIntent: mock(() => Promise.resolve([])),
-    isIntentAssignedToIndex: mock(() => Promise.resolve(false)),
+    isIntentAssignedToNetwork: mock(() => Promise.resolve(false)),
 
     // Network membership
     getNetworkMemberships: mock(() => Promise.resolve([])),
-    getUserIndexIds: mock(() => Promise.resolve([])),
-    getOwnedIndexes: mock(() => Promise.resolve([])),
+    getUserNetworkIds: mock(() => Promise.resolve([])),
+    getOwnedNetworks: mock(() => Promise.resolve([])),
     getNetworkMembership: mock(() => Promise.resolve(null)),
     getNetworkMemberContext: mock(() => Promise.resolve(null)),
 
     // Network CRUD
     createNetwork: mock(() => Promise.resolve({ id: 'idx-1', title: 'Test', prompt: null, imageUrl: null, permissions: {} })),
-    updateIndexSettings: mock(() => Promise.resolve({})),
+    updateNetworkSettings: mock(() => Promise.resolve({})),
     softDeleteNetwork: mock(() => Promise.resolve()),
-    isIndexOwner: mock(() => Promise.resolve(false)),
+    isNetworkOwner: mock(() => Promise.resolve(false)),
     isPersonalNetwork: mock(() => Promise.resolve(false)),
 
     // Public network discovery
-    getPublicIndexesNotJoined: mock(() => Promise.resolve({ networks: [] })),
+    getPublicNetworksNotJoined: mock(() => Promise.resolve({ networks: [] })),
     joinPublicNetwork: mock(() => Promise.resolve({ success: true })),
 
     // Opportunities
@@ -293,15 +293,15 @@ describe('createUserDatabase', () => {
       await expect(userDb.assignIntentToNetwork('intent-2', 'idx-a')).rejects.toThrow('Access denied');
     });
 
-    it('unassignIntentFromIndex succeeds for owned intent', async () => {
+    it('unassignIntentFromNetwork succeeds for owned intent', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(ownedIntent);
-      await userDb.unassignIntentFromIndex('intent-1', 'idx-a');
-      expect(mockDb.unassignIntentFromIndex).toHaveBeenCalledWith('intent-1', 'idx-a');
+      await userDb.unassignIntentFromNetwork('intent-1', 'idx-a');
+      expect(mockDb.unassignIntentFromNetwork).toHaveBeenCalledWith('intent-1', 'idx-a');
     });
 
-    it('unassignIntentFromIndex throws for intent owned by another user', async () => {
+    it('unassignIntentFromNetwork throws for intent owned by another user', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(otherIntent);
-      await expect(userDb.unassignIntentFromIndex('intent-2', 'idx-a')).rejects.toThrow('Access denied');
+      await expect(userDb.unassignIntentFromNetwork('intent-2', 'idx-a')).rejects.toThrow('Access denied');
     });
   });
 
@@ -355,21 +355,21 @@ describe('createUserDatabase', () => {
       await expect(userDb.getNetworkIdsForIntent('missing')).rejects.toThrow('Intent not found');
     });
 
-    it('isIntentAssignedToIndex succeeds for owned intent', async () => {
+    it('isIntentAssignedToNetwork succeeds for owned intent', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(ownedIntent);
-      (mockDb.isIntentAssignedToIndex as ReturnType<typeof mock>).mockResolvedValueOnce(true);
-      const result = await userDb.isIntentAssignedToIndex('intent-1', 'idx-a');
+      (mockDb.isIntentAssignedToNetwork as ReturnType<typeof mock>).mockResolvedValueOnce(true);
+      const result = await userDb.isIntentAssignedToNetwork('intent-1', 'idx-a');
       expect(result).toBe(true);
     });
 
-    it('isIntentAssignedToIndex throws for intent owned by another user', async () => {
+    it('isIntentAssignedToNetwork throws for intent owned by another user', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(otherIntent);
-      await expect(userDb.isIntentAssignedToIndex('intent-2', 'idx-a')).rejects.toThrow('Access denied');
+      await expect(userDb.isIntentAssignedToNetwork('intent-2', 'idx-a')).rejects.toThrow('Access denied');
     });
 
-    it('isIntentAssignedToIndex throws for missing intent', async () => {
+    it('isIntentAssignedToNetwork throws for missing intent', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(null);
-      await expect(userDb.isIntentAssignedToIndex('missing', 'idx-a')).rejects.toThrow('Intent not found');
+      await expect(userDb.isIntentAssignedToNetwork('missing', 'idx-a')).rejects.toThrow('Intent not found');
     });
   });
 
@@ -390,14 +390,14 @@ describe('createUserDatabase', () => {
       expect(mockDb.getNetworkMemberships).toHaveBeenCalledWith(AUTH_USER);
     });
 
-    it('getUserIndexIds delegates with authUserId', async () => {
-      await userDb.getUserIndexIds();
-      expect(mockDb.getUserIndexIds).toHaveBeenCalledWith(AUTH_USER);
+    it('getUserNetworkIds delegates with authUserId', async () => {
+      await userDb.getUserNetworkIds();
+      expect(mockDb.getUserNetworkIds).toHaveBeenCalledWith(AUTH_USER);
     });
 
-    it('getOwnedIndexes delegates with authUserId', async () => {
-      await userDb.getOwnedIndexes();
-      expect(mockDb.getOwnedIndexes).toHaveBeenCalledWith(AUTH_USER);
+    it('getOwnedNetworks delegates with authUserId', async () => {
+      await userDb.getOwnedNetworks();
+      expect(mockDb.getOwnedNetworks).toHaveBeenCalledWith(AUTH_USER);
     });
 
     it('getNetworkMembership delegates with networkId and authUserId', async () => {
@@ -422,27 +422,27 @@ describe('createUserDatabase', () => {
       expect(mockDb.createNetwork).toHaveBeenCalledWith(data);
     });
 
-    it('updateIndexSettings delegates with authUserId', async () => {
+    it('updateNetworkSettings delegates with authUserId', async () => {
       const data = { title: 'Updated' };
-      await userDb.updateIndexSettings('idx-a', data);
-      expect(mockDb.updateIndexSettings).toHaveBeenCalledWith('idx-a', AUTH_USER, data);
+      await userDb.updateNetworkSettings('idx-a', data);
+      expect(mockDb.updateNetworkSettings).toHaveBeenCalledWith('idx-a', AUTH_USER, data);
     });
 
     it('softDeleteNetwork succeeds when user is owner and index is not personal', async () => {
-      (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
+      (mockDb.isNetworkOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
       (mockDb.isPersonalNetwork as ReturnType<typeof mock>).mockResolvedValueOnce(false);
       await userDb.softDeleteNetwork('idx-a');
-      expect(mockDb.isIndexOwner).toHaveBeenCalledWith('idx-a', AUTH_USER);
+      expect(mockDb.isNetworkOwner).toHaveBeenCalledWith('idx-a', AUTH_USER);
       expect(mockDb.softDeleteNetwork).toHaveBeenCalledWith('idx-a');
     });
 
     it('softDeleteNetwork throws when user is not owner', async () => {
-      (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(false);
+      (mockDb.isNetworkOwner as ReturnType<typeof mock>).mockResolvedValueOnce(false);
       await expect(userDb.softDeleteNetwork('idx-a')).rejects.toThrow('Access denied');
     });
 
     it('softDeleteNetwork throws when index is personal even if user is owner', async () => {
-      (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
+      (mockDb.isNetworkOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
       (mockDb.isPersonalNetwork as ReturnType<typeof mock>).mockResolvedValueOnce(true);
       await expect(userDb.softDeleteNetwork('idx-personal')).rejects.toThrow('Cannot delete personal index');
     });
@@ -453,9 +453,9 @@ describe('createUserDatabase', () => {
   // ─────────────────────────────────────────────────────────────────────────────
 
   describe('public network discovery binds authUserId', () => {
-    it('getPublicIndexesNotJoined delegates with authUserId', async () => {
-      const result = await userDb.getPublicIndexesNotJoined();
-      expect(mockDb.getPublicIndexesNotJoined).toHaveBeenCalledWith(AUTH_USER);
+    it('getPublicNetworksNotJoined delegates with authUserId', async () => {
+      const result = await userDb.getPublicNetworksNotJoined();
+      expect(mockDb.getPublicNetworksNotJoined).toHaveBeenCalledWith(AUTH_USER);
       expect(result).toMatchObject({ networks: [] });
     });
 

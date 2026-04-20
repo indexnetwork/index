@@ -67,14 +67,14 @@ export class IntentNetworkGraphFactory {
           }
           const [isMember, isOwner] = await Promise.all([
             this.database.isNetworkMember(networkId, state.userId),
-            this.database.isIndexOwner(networkId, state.userId),
+            this.database.isNetworkOwner(networkId, state.userId),
           ]);
           if (!isMember && !isOwner) {
             return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "You are not a member of that network." } };
           }
 
           // Check if already assigned
-          const alreadyAssigned = await this.database.isIntentAssignedToIndex(intentId, networkId);
+          const alreadyAssigned = await this.database.isIntentAssignedToNetwork(intentId, networkId);
           if (alreadyAssigned) {
             return { agentTimings: agentTimingsAccum, mutationResult: { success: true, message: "That intent is already in this network." } };
           }
@@ -95,8 +95,8 @@ export class IntentNetworkGraphFactory {
             return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "Intent not found for networking." } };
           }
 
-          const indexContext = await this.database.getNetworkMemberContext(networkId, intentForIndexing.userId);
-          if (!indexContext) {
+          const networkContext = await this.database.getNetworkMemberContext(networkId, intentForIndexing.userId);
+          if (!networkContext) {
             // No prompts or not eligible - auto-assign
             await this.database.assignIntentToNetwork(intentId, networkId, 1.0);
             return {
@@ -106,7 +106,7 @@ export class IntentNetworkGraphFactory {
             };
           }
 
-          const hasNoPrompts = !indexContext.indexPrompt?.trim() && !indexContext.memberPrompt?.trim();
+          const hasNoPrompts = !networkContext.networkPrompt?.trim() && !networkContext.memberPrompt?.trim();
           if (hasNoPrompts) {
             await this.database.assignIntentToNetwork(intentId, networkId, 1.0);
             return {
@@ -128,8 +128,8 @@ export class IntentNetworkGraphFactory {
           try {
             result = await indexer.evaluate(
               intentForIndexing.payload,
-              indexContext.indexPrompt,
-              indexContext.memberPrompt,
+              networkContext.networkPrompt,
+              networkContext.memberPrompt,
               sourceName
             );
           } finally {
@@ -149,8 +149,8 @@ export class IntentNetworkGraphFactory {
           }
 
           const { indexScore, memberScore } = result;
-          const ip = indexContext.indexPrompt?.trim();
-          const mp = indexContext.memberPrompt?.trim();
+          const ip = networkContext.networkPrompt?.trim();
+          const mp = networkContext.memberPrompt?.trim();
 
           let shouldAssign = false;
           let finalScore = 0;
@@ -224,7 +224,7 @@ export class IntentNetworkGraphFactory {
             if (intent.userId !== state.userId) {
               return { readResult: { links: [], count: 0, mode: "check_link" }, error: "You can only check links for your own intents." };
             }
-            const isLinked = await this.database.isIntentAssignedToIndex(intentId, networkId);
+            const isLinked = await this.database.isIntentAssignedToNetwork(intentId, networkId);
             return {
               readResult: {
                 links: isLinked ? [{ intentId, networkId }] : [],
@@ -265,7 +265,7 @@ export class IntentNetworkGraphFactory {
 
           const [isMember, isOwner] = await Promise.all([
             this.database.isNetworkMember(networkId, state.userId),
-            this.database.isIndexOwner(networkId, state.userId),
+            this.database.isNetworkOwner(networkId, state.userId),
           ]);
           if (!isMember && !isOwner) {
             return {
@@ -295,7 +295,7 @@ export class IntentNetworkGraphFactory {
           }
 
           // Specific user's intents
-          const intents = await this.database.getIntentsInIndexForMember(state.queryUserId, networkId);
+          const intents = await this.database.getIntentsInNetworkForMember(state.queryUserId, networkId);
           return {
             readResult: {
               links: intents.map((i) => ({
@@ -339,18 +339,18 @@ export class IntentNetworkGraphFactory {
           }
           const [isMember, isOwner] = await Promise.all([
             this.database.isNetworkMember(networkId, state.userId),
-            this.database.isIndexOwner(networkId, state.userId),
+            this.database.isNetworkOwner(networkId, state.userId),
           ]);
           if (!isMember && !isOwner) {
             return { mutationResult: { success: false, error: "You are not a member of that network." } };
           }
 
-          const assigned = await this.database.isIntentAssignedToIndex(intentId, networkId);
+          const assigned = await this.database.isIntentAssignedToNetwork(intentId, networkId);
           if (!assigned) {
             return { mutationResult: { success: true, message: "That intent is not in this network." } };
           }
 
-          await this.database.unassignIntentFromIndex(intentId, networkId);
+          await this.database.unassignIntentFromNetwork(intentId, networkId);
           return { mutationResult: { success: true, message: "Intent removed from the index." } };
         } catch (err) {
           logger.error("Unassign failed", { error: err });

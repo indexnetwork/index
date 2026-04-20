@@ -17,7 +17,7 @@ export default function UserProfilePage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
   const usersService = useUsers();
-  const indexesService = useNetworks();
+  const networksService = useNetworks();
 
   const [profileData, setProfileData] = useState<User | null>(null);
   const [sharedNetworks, setSharedNetworks] = useState<Array<{ id: string; title: string; _count: { members: number } }>>([]);
@@ -58,7 +58,7 @@ export default function UserProfilePage() {
         // Fetch shared networks separately so a failure doesn't break the profile
         if (user?.id && user.id !== id) {
           try {
-            const networks = await indexesService.getSharedIndexes(id!);
+            const networks = await networksService.getSharedNetworks(id!);
             setSharedNetworks(networks);
           } catch (err) {
             console.error('Failed to fetch shared networks:', err);
@@ -75,7 +75,7 @@ export default function UserProfilePage() {
       }
     };
     fetchData();
-  }, [id, user?.id, isAuthenticated, authLoading, usersService, indexesService]);
+  }, [id, user?.id, isAuthenticated, authLoading, usersService, networksService]);
 
   if (authLoading || isLoading) {
     return (
@@ -192,7 +192,7 @@ export default function UserProfilePage() {
               <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Shared Networks</h3>
               <div className="flex flex-wrap gap-2">
                 {sharedNetworks.map((network) => (
-                  <Link key={network.id} to={`/index/${network.id}`} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-full text-sm text-gray-700 hover:border-gray-400 transition-colors">
+                  <Link key={network.id} to={`/network/${network.id}`} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-full text-sm text-gray-700 hover:border-gray-400 transition-colors">
                     {network.title}
                     <span className="text-xs text-gray-400">{network._count.members}</span>
                   </Link>

@@ -3,17 +3,17 @@ import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
 import { Compass, MessagesSquare, ChevronDown, User as UserIcon, LogOut, Library, History, Network, Bot } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useNetworkFilter } from '@/contexts/IndexFilterContext';
+import { useNetworkFilter } from '@/contexts/NetworkFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { apiClient } from '@/lib/api';
 import UserAvatar from '@/components/UserAvatar';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNetworks } from '@/contexts/APIContext';
 import { useOpportunities } from '@/contexts/APIContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import CreateNetworkModal from '@/components/modals/CreateIndexModal';
+import CreateNetworkModal from '@/components/modals/CreateNetworkModal';
 
 
 interface ChatSession {
@@ -33,15 +33,15 @@ export default function Sidebar() {
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
   const { setSelectedNetworkIds } = useNetworkFilter();
-  const indexesService = useNetworks();
+  const networksService = useNetworks();
   const opportunitiesService = useOpportunities();
-  const { indexes, addIndex } = useNetworksState();
+  const { networks, addNetwork } = useNetworksState();
   const { success, error } = useNotifications();
   
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [navigatingToChat, setNavigatingToChat] = useState(false);
-  const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
+  const [createNetworkModalOpen, setCreateNetworkModalOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
@@ -58,23 +58,23 @@ export default function Sidebar() {
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
+  const handleCreateNetwork = useCallback(async (networkData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
     try {
       const createRequest = {
-        title: indexData.name,
-        prompt: indexData.prompt,
-        imageUrl: indexData.imageUrl,
-        joinPolicy: indexData.joinPolicy
+        title: networkData.name,
+        prompt: networkData.prompt,
+        imageUrl: networkData.imageUrl,
+        joinPolicy: networkData.joinPolicy
       };
-      const newIndex = await indexesService.createNetwork(createRequest);
-      addIndex(newIndex);
-      setCreateIndexModalOpen(false);
-      success('Index created successfully');
+      const newNetwork = await networksService.createNetwork(createRequest);
+      addNetwork(newNetwork);
+      setCreateNetworkModalOpen(false);
+      success('Network created successfully');
     } catch (err) {
-      console.error('Error creating index:', err);
-      error('Failed to create index');
+      console.error('Error creating network:', err);
+      error('Failed to create network');
     }
-  }, [indexesService, addIndex, success, error]);
+  }, [networksService, addNetwork, success, error]);
 
   const handleDiscoverClick = () => {
     clearChat({ abortStream: false });
@@ -231,7 +231,7 @@ export default function Sidebar() {
               ) : (
                 chatSessions.slice(0, 10).map((session) => {
                   const isSelected = currentSessionId === session.id;
-                  const sessionIndex = session.networkId ? indexes.find(i => i.id === session.networkId) : null;
+                  const sessionIndex = session.networkId ? networks.find(i => i.id === session.networkId) : null;
                   return (
                     <button
                       key={session.id}
@@ -350,10 +350,10 @@ export default function Sidebar() {
 
       {/* Create Network Modal */}
       <CreateNetworkModal
-        open={createIndexModalOpen}
-        onOpenChange={setCreateIndexModalOpen}
-        onSubmit={handleCreateIndex}
-        uploadIndexImage={indexesService.uploadIndexImage}
+        open={createNetworkModalOpen}
+        onOpenChange={setCreateNetworkModalOpen}
+        onSubmit={handleCreateNetwork}
+        uploadNetworkImage={networksService.uploadNetworkImage}
       />
     </div>
   );

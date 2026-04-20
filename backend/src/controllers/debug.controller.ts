@@ -96,11 +96,11 @@ export class DebugController {
       );
 
     // ── 3. Fetch index assignments with title and prompt ──────────────
-    const indexRows = await db
+    const networkAssignmentRows = await db
       .select({
         networkId: intentNetworks.networkId,
         networkTitle: networks.title,
-        indexPrompt: networks.prompt,
+        networkPrompt: networks.prompt,
       })
       .from(intentNetworks)
       .innerJoin(networks, eq(intentNetworks.networkId, networks.id))
@@ -143,10 +143,10 @@ export class DebugController {
       newestGeneratedAt: hydeStats?.newestGeneratedAt?.toISOString() ?? null,
     };
 
-    const indexAssignments = indexRows.map((r) => ({
+    const networkAssignments = networkAssignmentRows.map((r) => ({
       networkId: r.networkId,
       networkTitle: r.networkTitle,
-      indexPrompt: r.indexPrompt,
+      networkPrompt: r.networkPrompt,
     }));
 
     // Aggregate opportunities by status
@@ -174,7 +174,7 @@ export class DebugController {
 
     // ── 6. Build diagnosis ────────────────────────────────────────────
     const hasHydeDocuments = (hydeStats?.count ?? 0) > 0;
-    const isInAtLeastOneIndex = indexRows.length > 0;
+    const isInAtLeastOneNetwork = networkAssignmentRows.length > 0;
     const hasOpportunities = opportunityRows.length > 0;
 
     // Check if all opportunities are filtered from home (using role-aware helpers)
@@ -198,7 +198,7 @@ export class DebugController {
     const diagnosis = {
       hasEmbedding: intent.hasEmbedding,
       hasHydeDocuments,
-      isInAtLeastOneIndex,
+      isInAtLeastOneNetwork,
       hasOpportunities,
       allOpportunitiesFilteredFromHome,
       filterReasons,
@@ -208,7 +208,7 @@ export class DebugController {
       exportedAt: new Date().toISOString(),
       intent: intentResponse,
       hydeDocuments: hydeDocumentsResponse,
-      indexAssignments,
+      networkAssignments,
       opportunities: opportunitiesResponse,
       diagnosis,
     });
@@ -272,13 +272,13 @@ export class DebugController {
           )
       : [];
     const indexedIntentIds = new Set(indexedIntentRows.map((r) => r.intentId));
-    const inAtLeastOneIndex = indexedIntentIds.size;
+    const inAtLeastOneNetwork = indexedIntentIds.size;
 
     // Orphaned = active but not in any index
     const orphaned = activeIntents.filter((i) => !indexedIntentIds.has(i.id)).length;
 
     // ── 2. Fetch user's indexes (via networkMembers) ───────────────────────
-    const memberIndexRows = await db
+    const memberNetworkRows = await db
       .select({
         networkId: networkMembers.networkId,
         title: networks.title,
@@ -288,8 +288,8 @@ export class DebugController {
       .where(eq(networkMembers.userId, user.id));
 
     // Count user's intents assigned to each index
-    const indexIntentCounts: Record<string, number> = {};
-    if (memberIndexRows.length > 0 && totalIntents > 0) {
+    const networkIntentCounts: Record<string, number> = {};
+    if (memberNetworkRows.length > 0 && totalIntents > 0) {
       const countRows = await db
         .select({
           networkId: intentNetworks.networkId,
@@ -303,7 +303,7 @@ export class DebugController {
               sql`, `,
             )})`,
             sql`${intentNetworks.networkId} IN (${sql.join(
-              memberIndexRows.map((r) => sql`${r.networkId}`),
+              memberNetworkRows.map((r) => sql`${r.networkId}`),
               sql`, `,
             )})`,
           ),
@@ -311,14 +311,14 @@ export class DebugController {
         .groupBy(intentNetworks.networkId);
 
       for (const row of countRows) {
-        indexIntentCounts[row.networkId] = row.count;
+        networkIntentCounts[row.networkId] = row.count;
       }
     }
 
-    const indexesResponse = memberIndexRows.map((r) => ({
+    const networksResponse = memberNetworkRows.map((r) => ({
       networkId: r.networkId,
       title: r.title,
-      userIntentsAssigned: indexIntentCounts[r.networkId] ?? 0,
+      userIntentsAssigned: networkIntentCounts[r.networkId] ?? 0,
     }));
 
     // ── 3. Fetch all opportunities for the user ──────────────────────────
@@ -379,7 +379,7 @@ export class DebugController {
     const hasActiveIntents = activeIntents.length > 0;
     const intentsHaveEmbeddings = hasActiveIntents && withEmbeddings > 0;
     const intentsHaveHydeDocuments = hasActiveIntents && withHydeDocuments > 0;
-    const intentsAreIndexed = hasActiveIntents && inAtLeastOneIndex > 0;
+    const intentsAssignedToNetworks = hasActiveIntents && inAtLeastOneNetwork > 0;
     const hasOpportunities = opportunityRows.length > 0;
     const opportunitiesReachHome = cardsReturned > 0;
 
@@ -394,7 +394,7 @@ export class DebugController {
         (i) => !hydeIntentRows.some((h) => h.sourceId === i.id),
       ).length;
       bottleneck = `${missingHyde} intents missing HyDE documents`;
-    } else if (!intentsAreIndexed) {
+    } else if (!intentsAssignedToNetworks) {
       bottleneck = `${orphaned} active intents not assigned to any index`;
     } else if (!hasOpportunities) {
       bottleneck = 'No opportunities discovered yet';
@@ -413,10 +413,10 @@ export class DebugController {
         },
         withEmbeddings,
         withHydeDocuments,
-        inAtLeastOneIndex,
+        inAtLeastOneNetwork,
         orphaned,
       },
-      indexes: indexesResponse,
+      networks: networksResponse,
       opportunities: {
         total: opportunityRows.length,
         byStatus: oppByStatus,
@@ -434,7 +434,7 @@ export class DebugController {
         hasActiveIntents,
         intentsHaveEmbeddings,
         intentsHaveHydeDocuments,
-        intentsAreIndexed,
+        intentsAssignedToNetworks,
         hasOpportunities,
         opportunitiesReachHome,
         bottleneck,
@@ -468,10 +468,10 @@ export class DebugController {
       return Response.json({ error: 'Intent not found' }, { status: 404 });
     }
 
-    const { preflight, intentPayload, userIndexIds } = preflightResult;
+    const { preflight, intentPayload, userNetworkIds } = preflightResult;
 
     // ── 2. Bail early if no candidate pool ──────────────────────────────
-    if (userIndexIds.length === 0) {
+    if (userNetworkIds.length === 0) {
       return Response.json({
         exportedAt: new Date().toISOString(),
         preflight,
@@ -479,7 +479,7 @@ export class DebugController {
         diagnosis: 'User has no index memberships — cannot discover opportunities.',
       });
     }
-    if (preflight.candidatePool.otherMembersInIndexes === 0) {
+    if (preflight.candidatePool.otherMembersInNetworks === 0) {
       return Response.json({
         exportedAt: new Date().toISOString(),
         preflight,

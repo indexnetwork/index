@@ -24,8 +24,8 @@ function buildCoreHead(ctx: ResolvedToolContext): string {
   const roleLabel = !ctx.networkId
     ? "general"
     : (ctx.scopedMembershipRole ?? (ctx.isOwner ? "owner" : "member"));
-  const indexScope = ctx.networkId
-    ? `index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.networkId}), role: ${roleLabel}`
+  const networkScope = ctx.networkId
+    ? `index "${ctx.networkName ?? "Unknown"}" (id: ${ctx.networkId}), role: ${roleLabel}`
     : "no index scope (general chat)";
 
   return `You are Index. You help the right people find the user and help the user find them.
@@ -63,7 +63,7 @@ Other banned words: leverage, unlock, optimize, scale, disrupt, revolutionary, A
 
 ## Session
 - User: ${ctx.userName} (${ctx.userEmail}), id: ${ctx.userId}
-- Scope: ${indexScope}
+- Scope: ${networkScope}
 `;
 }
 
@@ -176,7 +176,7 @@ function buildCoreBody(ctx: ResolvedToolContext): string {
     relevantIndexes.map((membership) => ({
       networkId: membership.networkId,
       networkTitle: membership.networkTitle,
-      indexPrompt: membership.indexPrompt,
+      networkPrompt: membership.networkPrompt,
       permissions: membership.permissions,
       memberPrompt: membership.memberPrompt,
       autoAssign: membership.autoAssign,
@@ -186,10 +186,10 @@ function buildCoreBody(ctx: ResolvedToolContext): string {
     null,
     2,
   );
-  const scopedIndexContext = ctx.scopedIndex
+  const scopedNetworkContext = ctx.scopedNetwork
     ? JSON.stringify(
         {
-          ...ctx.scopedIndex,
+          ...ctx.scopedNetwork,
           membershipRole: ctx.scopedMembershipRole,
         },
         null,
@@ -215,7 +215,7 @@ ${indexesContext}
 
 ### Scoped Index (preloaded context)
 \`\`\`json
-${scopedIndexContext}
+${scopedNetworkContext}
 \`\`\`
 
 ### Preloaded Context Policy
@@ -270,9 +270,9 @@ All tools are simple read/write operations. No hidden logic.
 | **create_intent** | description, networkId? | Proposes an intent — returns an interactive card (intent_proposal block) for the user to approve or skip. Does NOT persist until the user clicks "Create Intent". |
 | **update_intent** | intentId, description | Update intent text |
 | **delete_intent** | intentId | Archive intent |
-| **create_intent_index** | intentId, networkId | Link intent to index |
-| **read_intent_indexes** | intentId?, networkId?, userId? | Read intent↔index links |
-| **delete_intent_index** | intentId, networkId | Unlink intent from index |
+| **create_intent_network** | intentId, networkId | Link intent to index |
+| **read_intent_networks** | intentId?, networkId?, userId? | Read intent↔index links |
+| **delete_intent_network** | intentId, networkId | Unlink intent from index |
 | **create_opportunities** | searchQuery?, networkId?, targetUserId?, partyUserIds?, entities?, hint? | Discovery (query text), Direct connection (targetUserId + searchQuery), or Introduction (partyUserIds + entities + hint). |
 | **update_opportunity** | opportunityId, status | Change status: pending (send draft or latent), accepted, rejected, expired |
 | **scrape_url** | url, objective? | Extract text from web page |
@@ -294,7 +294,7 @@ function buildScoping(ctx: ResolvedToolContext): string {
 ### Index Scope
 ${
   ctx.networkId
-    ? `- This chat is scoped to index "${ctx.indexName}" (id: ${ctx.networkId}). Default networkId for read_intents and create_intent is ${ctx.networkId}.
+    ? `- This chat is scoped to index "${ctx.networkName}" (id: ${ctx.networkId}). Default networkId for read_intents and create_intent is ${ctx.networkId}.
 - **Scope enforcement**: read_intents returns only intents in this community. create_intent still checks **all** of the user's intents across communities (to avoid duplicates and update similar ones). Do not infer "no similar signals" or "fresh slate" from an empty read_intents result here.
 - **Communicating scope**: When tool results include \`scopeRestriction\`, inform the user that results are limited to this community and they may have other memberships not shown. Never imply the scoped results represent all their data.
 - To query other communities, the user must start a new unscoped chat or switch to a different community.

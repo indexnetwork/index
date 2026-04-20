@@ -21,13 +21,13 @@ export interface DiscoveryPreflight {
     text: string;
     hasEmbedding: boolean;
     isArchived: boolean;
-    assignedToIndexes: Array<{ networkId: string; title: string | null }>;
+    assignedToNetworks: Array<{ networkId: string; title: string | null }>;
   };
   userNetworks: Array<{ networkId: string; title: string | null }>;
   candidatePool: {
-    otherMembersInIndexes: number;
+    otherMembersInNetworks: number;
     otherMembersWithProfiles: number;
-    otherIntentsInIndexes: number;
+    otherIntentsInNetworks: number;
   };
 }
 
@@ -87,7 +87,7 @@ export class DebugService {
   async getDiscoveryPreflight(intentId: string, userId: string): Promise<{
     preflight: DiscoveryPreflight;
     intentPayload: string;
-    userIndexIds: string[];
+    userNetworkIds: string[];
   } | null> {
     const [intent] = await db
       .select({
@@ -115,22 +115,22 @@ export class DebugService {
       .innerJoin(networks, eq(networkMembers.networkId, networks.id))
       .where(and(eq(networkMembers.userId, userId), isNull(networks.deletedAt)));
 
-    const userIndexIds = userIndexRows.map((r) => r.networkId);
-    let otherMembersInIndexes = 0;
+    const userNetworkIds = userIndexRows.map((r) => r.networkId);
+    let otherMembersInNetworks = 0;
     let otherMembersWithProfiles = 0;
-    let otherIntentsInIndexes = 0;
+    let otherIntentsInNetworks = 0;
 
-    if (userIndexIds.length > 0) {
+    if (userNetworkIds.length > 0) {
       const [memberCount] = await db
         .select({ count: count().as('count') })
         .from(networkMembers)
         .where(
           and(
-            sql`${networkMembers.networkId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            sql`${networkMembers.networkId} IN (${sql.join(userNetworkIds.map((id) => sql`${id}`), sql`, `)})`,
             ne(networkMembers.userId, userId),
           ),
         );
-      otherMembersInIndexes = memberCount?.count ?? 0;
+      otherMembersInNetworks = memberCount?.count ?? 0;
 
       const [profileCount] = await db
         .select({ count: count().as('count') })
@@ -138,7 +138,7 @@ export class DebugService {
         .innerJoin(networkMembers, eq(userProfiles.userId, networkMembers.userId))
         .where(
           and(
-            sql`${networkMembers.networkId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            sql`${networkMembers.networkId} IN (${sql.join(userNetworkIds.map((id) => sql`${id}`), sql`, `)})`,
             ne(userProfiles.userId, userId),
             isNotNull(userProfiles.embedding),
           ),
@@ -151,13 +151,13 @@ export class DebugService {
         .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
         .where(
           and(
-            sql`${intentNetworks.networkId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            sql`${intentNetworks.networkId} IN (${sql.join(userNetworkIds.map((id) => sql`${id}`), sql`, `)})`,
             ne(intents.userId, userId),
             isNull(intents.archivedAt),
             isNotNull(intents.embedding),
           ),
         );
-      otherIntentsInIndexes = intentCount?.count ?? 0;
+      otherIntentsInNetworks = intentCount?.count ?? 0;
     }
 
     return {
@@ -167,17 +167,17 @@ export class DebugService {
           text: intent.payload?.slice(0, 120),
           hasEmbedding: intent.hasEmbedding,
           isArchived: !!intent.archivedAt,
-          assignedToIndexes: intentIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
+          assignedToNetworks: intentIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
         },
         userNetworks: userIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
         candidatePool: {
-          otherMembersInIndexes,
+          otherMembersInNetworks,
           otherMembersWithProfiles,
-          otherIntentsInIndexes,
+          otherIntentsInNetworks,
         },
       },
       intentPayload: intent.payload,
-      userIndexIds,
+      userNetworkIds,
     };
   }
 

@@ -178,12 +178,12 @@ describe("ToolController Integration", () => {
     expect(res.status).toBe(200);
   }, 60_000);
 
-  test("POST /tools/read_intent_indexes without params should return validation error", async () => {
-    const { status, data } = await invokeTool("read_intent_indexes", {});
+  test("POST /tools/read_intent_networks without params should return validation error", async () => {
+    const { status, data } = await invokeTool("read_intent_networks", {});
     expect(status).toBe(200);
     expect(data.success).toBe(false);
     expect(String(data.error)).toMatch(/indexId|intentId|networkId/i);
-    console.log("read_intent_indexes result:", JSON.stringify(data).slice(0, 200));
+    console.log("read_intent_networks result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
   // ── CLI Tool Call Contracts ────────────────────────────────────
@@ -220,8 +220,8 @@ describe("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    test("create_intent_index with intentId + indexId (CLI: intent link)", async () => {
-      const { status, data } = await invokeTool("create_intent_index", {
+    test("create_intent_network with intentId + indexId (CLI: intent link)", async () => {
+      const { status, data } = await invokeTool("create_intent_network", {
         intentId: "00000000-0000-0000-0000-000000000000",
         indexId: "00000000-0000-0000-0000-000000000000",
       });
@@ -229,8 +229,8 @@ describe("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    test("delete_intent_index with intentId + indexId (CLI: intent unlink)", async () => {
-      const { status, data } = await invokeTool("delete_intent_index", {
+    test("delete_intent_network with intentId + indexId (CLI: intent unlink)", async () => {
+      const { status, data } = await invokeTool("delete_intent_network", {
         intentId: "00000000-0000-0000-0000-000000000000",
         indexId: "00000000-0000-0000-0000-000000000000",
       });
@@ -238,8 +238,8 @@ describe("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    test("read_intent_indexes with intentId (CLI: intent links)", async () => {
-      const { status, data } = await invokeTool("read_intent_indexes", {
+    test("read_intent_networks with intentId (CLI: intent links)", async () => {
+      const { status, data } = await invokeTool("read_intent_networks", {
         intentId: "00000000-0000-0000-0000-000000000000",
       });
       expect(status).toBe(200);

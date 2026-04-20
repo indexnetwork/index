@@ -140,7 +140,7 @@ export async function createChatTools(
   // Get the user's network scope (all networks they have access to)
   const networkScope = [...new Set([
     ...resolvedContext.userNetworks.map((m) => m.networkId),
-    ...(resolvedContext.scopedIndex?.id ? [resolvedContext.scopedIndex.id] : []),
+    ...(resolvedContext.scopedNetwork?.id ? [resolvedContext.scopedNetwork.id] : []),
   ])];
 
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
@@ -171,7 +171,7 @@ export async function createChatTools(
     graphs: {
       profile: profileGraph,
       intent: intentGraph,
-      index: networkGraph,
+      network: networkGraph,
       networkMembership: networkMembershipGraph,
       intentIndex: intentNetworkGraph,
       opportunity: opportunityGraph,

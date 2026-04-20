@@ -3,7 +3,7 @@
  *
  * Implements: list, create, show, join, leave, invite subcommands.
  * All user-facing copy uses "network" terminology even though the
- * backend API currently uses /api/indexes/*.
+ * backend API uses /api/networks/*.
  */
 
 import type { ApiClient } from "./api.client";

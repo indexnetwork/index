@@ -39,7 +39,7 @@ function makeCtx(
       {
         networkId: "idx-personal",
         networkTitle: "My Network",
-        indexPrompt: null,
+        networkPrompt: null,
         permissions: ["owner"],
         memberPrompt: null,
         autoAssign: false,
@@ -49,7 +49,7 @@ function makeCtx(
       {
         networkId: "idx-community",
         networkTitle: "AI Builders",
-        indexPrompt: "AI enthusiasts",
+        networkPrompt: "AI enthusiasts",
         permissions: ["member"],
         memberPrompt: null,
         autoAssign: true,
@@ -493,7 +493,7 @@ function sharedMembership(extra?: Partial<NetworkMembership>): NetworkMembership
   return {
     networkId: SHARED_INDEX_ID,
     networkTitle: "AI Builders",
-    indexPrompt: "AI enthusiasts and builders",
+    networkPrompt: "AI enthusiasts and builders",
     permissions: ["member"],
     memberPrompt: null,
     autoAssign: false,
@@ -801,7 +801,7 @@ describe("Chat Prompt Dynamic Modules", () => {
               {
                 networkId: "idx-personal",
                 networkTitle: "My Network",
-                indexPrompt: null,
+                networkPrompt: null,
                 permissions: ["owner"],
                 memberPrompt: null,
                 autoAssign: false,
@@ -839,7 +839,7 @@ describe("Chat Prompt Dynamic Modules", () => {
       });
 
       expect(turn1.responseText).toBeDefined();
-      // Agent should reference community info (may use preloaded data or read_indexes)
+      // Agent should reference community info (may use preloaded data or read_networks)
 
       // ── Turn 2: switch to discovery ──
       const turn2 = await graph.invoke({
@@ -853,7 +853,7 @@ describe("Chat Prompt Dynamic Modules", () => {
       expect(turn2.responseText).toBeDefined();
       expect(turn2.responseText!.length).toBeGreaterThan(0);
 
-      // Agent should have called create_opportunities (discovery), not read_indexes
+      // Agent should have called create_opportunities (discovery), not read_networks
       const turn2NewMessages = turn2.messages.slice(turn1.messages.length + 1);
       expect(hasToolCall(turn2NewMessages, "create_opportunities")).toBe(true);
     }, 300000);

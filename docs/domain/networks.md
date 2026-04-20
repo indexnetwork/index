@@ -1,16 +1,16 @@
 ---
-title: "Indexes"
+title: "Networks"
 type: domain
-tags: [indexes, communities, permissions, personal-indexes, ghost-users, contacts, auto-assign]
+tags: [networks, communities, permissions, personal-networks, ghost-users, contacts, auto-assign]
 created: 2026-03-26
-updated: 2026-03-26
+updated: 2026-04-20
 ---
 
-# Indexes
+# Networks
 
-An index is a context for discovery -- a community, group, or scope within which intents are shared and opportunities are found. Indexes are the privacy boundary of the system: users choose which indexes to share their intents in, and discovery happens within and across those boundaries according to access rules.
+A **network** is a context for discovery — a community, group, or scope within which intents are shared and opportunities are found. Networks are the privacy boundary of the system: users choose which networks to share their intents in, and discovery happens within and across those boundaries according to access rules.
 
-The many-to-many relationship between intents and indexes is fundamental. A single intent can be shared in multiple contexts: a global collaboration index, a private company workspace, a community hub, or a direct one-on-one share -- each governed by its own privacy and access controls.
+The many-to-many relationship between intents and networks is fundamental. A single intent can be shared in multiple contexts: a global collaboration network, a private company workspace, a community hub, or a direct one-on-one share — each governed by its own privacy and access controls.
 
 ---
 

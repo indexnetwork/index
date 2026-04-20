@@ -25,7 +25,7 @@ const payload: NegotiationTurnPayload = {
   negotiationId: 'n-1',
   ownUser: { id: 'user-1', intents: [], profile: {} },
   otherUser: { id: 'user-2', intents: [], profile: {} },
-  indexContext: { networkId: 'net-1' },
+  networkContext: { networkId: 'net-1' },
   seedAssessment: { reasoning: '', valencyRole: '' },
   history: [],
   isFinalTurn: false,

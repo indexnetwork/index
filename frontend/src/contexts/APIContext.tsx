@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, ReactNode } from 'react';
 import { useAuthenticatedAPI } from '@/lib/api';
-import { createIndexesService } from '@/services/networks';
+import { createNetworksService } from '@/services/networks';
 import { createIntentsService } from '@/services/intents';
 import { createConnectionsService } from '@/services/connections';
 import { createSynthesisService } from '@/services/synthesis';
@@ -17,7 +17,7 @@ import { createApiKeysService } from '@/services/api-keys';
 import { createAgentsService } from '@/services/agents';
 
 export interface APIContextType {
-  indexesService: ReturnType<typeof createIndexesService>;
+  networksService: ReturnType<typeof createNetworksService>;
   intentsService: ReturnType<typeof createIntentsService>;
   connectionsService: ReturnType<typeof createConnectionsService>;
   synthesisService: ReturnType<typeof createSynthesisService>;
@@ -40,7 +40,7 @@ export function APIProvider({ children }: { children: ReactNode }) {
   const api = useAuthenticatedAPI();
 
   const services = useMemo(() => ({
-    indexesService: createIndexesService(api),
+    networksService: createNetworksService(api),
     intentsService: createIntentsService(api),
     connectionsService: createConnectionsService(api),
     synthesisService: createSynthesisService(api),
@@ -73,8 +73,8 @@ export function useAPI() {
 }
 
 export function useNetworks() {
-  const { indexesService } = useAPI();
-  return indexesService;
+  const { networksService } = useAPI();
+  return networksService;
 }
 
 export function useIntents() {

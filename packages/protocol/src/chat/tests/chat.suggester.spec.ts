@@ -46,14 +46,14 @@ describe("SuggestionGenerator", () => {
     }
   }, 30000);
 
-  test.skipIf(!HAS_OPENROUTER_KEY)("generate with indexContext includes context in prompt and returns suggestions", async () => {
+  test.skipIf(!HAS_OPENROUTER_KEY)("generate with networkContext includes context in prompt and returns suggestions", async () => {
     const generator = new SuggestionGenerator();
     const result = await generator.generate({
       messages: [
         { role: "user", content: "Who here is looking for a co-founder?" },
         { role: "assistant", content: "In this index, 3 members have intents about co-founders. I can list them or narrow by skills." },
       ],
-      indexContext: "AI founders and technical co-founders",
+      networkContext: "AI founders and technical co-founders",
     });
 
     expect(Array.isArray(result)).toBe(true);

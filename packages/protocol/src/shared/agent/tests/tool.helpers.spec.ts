@@ -33,7 +33,7 @@ function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) 
       {
         networkId,
         networkTitle: "AI Builders",
-        indexPrompt: "People building practical AI tools",
+        networkPrompt: "People building practical AI tools",
         permissions: ["member"],
         memberPrompt: null,
         autoAssign: true,
@@ -47,7 +47,7 @@ function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) 
         ? {
             networkId,
             networkTitle: "AI Builders",
-            indexPrompt: "People building practical AI tools",
+            networkPrompt: "People building practical AI tools",
             permissions: ["member"],
             memberPrompt: null,
             autoAssign: true,
@@ -56,12 +56,12 @@ function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) 
           }
         : null,
     isNetworkMember: async () => true,
-    isIndexOwner: async () => false,
+    isNetworkOwner: async () => false,
   };
 
   return { ...base, ...overrides } as Pick<
     ChatGraphCompositeDatabase,
-    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isNetworkMember" | "isIndexOwner"
+    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isNetworkMember" | "isNetworkOwner"
   >;
 }
 
@@ -80,19 +80,19 @@ describe("resolveChatContext", () => {
 
   test("maps scoped membership role to member", async () => {
     const db = createContextDatabase({
-      isIndexOwner: async () => false,
+      isNetworkOwner: async () => false,
       isNetworkMember: async () => true,
     });
 
     const ctx = await resolveChatContext({ database: db, userId, networkId });
     expect(ctx.scopedMembershipRole).toBe("member");
     expect(ctx.isOwner).toBe(false);
-    expect(ctx.scopedIndex?.title).toBe("AI Builders");
+    expect(ctx.scopedNetwork?.title).toBe("AI Builders");
   });
 
   test("maps scoped membership role to owner", async () => {
     const db = createContextDatabase({
-      isIndexOwner: async () => true,
+      isNetworkOwner: async () => true,
       isNetworkMember: async () => true,
     });
 
@@ -109,7 +109,7 @@ describe("resolveChatContext", () => {
     const err = await resolveChatContext({ database: db, userId, networkId }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ChatContextAccessError);
     expect((err as ChatContextAccessError).statusCode).toBe(403);
-    expect((err as ChatContextAccessError).code).toBe("INDEX_MEMBERSHIP_REQUIRED");
+    expect((err as ChatContextAccessError).code).toBe("NETWORK_MEMBERSHIP_REQUIRED");
   });
 
   test("throws ChatContextAccessError with 404 USER_NOT_FOUND when getUser returns null", async () => {
@@ -123,7 +123,7 @@ describe("resolveChatContext", () => {
     expect((err as ChatContextAccessError).code).toBe("USER_NOT_FOUND");
   });
 
-  test("throws ChatContextAccessError with 404 INDEX_NOT_FOUND when networkId provided and getNetwork returns null", async () => {
+  test("throws ChatContextAccessError with 404 NETWORK_NOT_FOUND when networkId provided and getNetwork returns null", async () => {
     const db = createContextDatabase({
       getNetwork: async () => null,
     });
@@ -131,7 +131,7 @@ describe("resolveChatContext", () => {
     const err = await resolveChatContext({ database: db, userId, networkId }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ChatContextAccessError);
     expect((err as ChatContextAccessError).statusCode).toBe(404);
-    expect((err as ChatContextAccessError).code).toBe("INDEX_NOT_FOUND");
+    expect((err as ChatContextAccessError).code).toBe("NETWORK_NOT_FOUND");
   });
 
   test("uses getNetworkMembership when membership missing from userNetworks (prompt not lost)", async () => {
@@ -143,7 +143,7 @@ describe("resolveChatContext", () => {
           ? {
               networkId,
               networkTitle: "AI Builders",
-              indexPrompt: customPrompt,
+              networkPrompt: customPrompt,
               permissions: ["member"],
               memberPrompt: null,
               autoAssign: true,
@@ -154,8 +154,8 @@ describe("resolveChatContext", () => {
     });
 
     const ctx = await resolveChatContext({ database: db, userId, networkId });
-    expect(ctx.scopedIndex).not.toBeUndefined();
-    expect(ctx.scopedIndex?.prompt).toBe(customPrompt);
+    expect(ctx.scopedNetwork).not.toBeUndefined();
+    expect(ctx.scopedNetwork?.prompt).toBe(customPrompt);
   });
 });
 

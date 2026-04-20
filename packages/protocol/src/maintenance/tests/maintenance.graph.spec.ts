@@ -30,13 +30,13 @@ function makeOpportunity(overrides: Partial<{
 function makeDatabase(overrides?: {
   getOpportunitiesForUser?: () => unknown;
   getActiveIntents?: () => unknown;
-  getPersonalIndexId?: () => unknown;
+  getPersonalNetworkId?: () => unknown;
   getContactsWithIntentFreshness?: () => unknown;
 }) {
   return {
     getOpportunitiesForUser: overrides?.getOpportunitiesForUser ?? (async () => []),
     getActiveIntents: overrides?.getActiveIntents ?? (async () => []),
-    getPersonalIndexId: overrides?.getPersonalIndexId ?? (async () => null),
+    getPersonalNetworkId: overrides?.getPersonalNetworkId ?? (async () => null),
     getContactsWithIntentFreshness: overrides?.getContactsWithIntentFreshness ?? (async () => []),
   } as never;
 }

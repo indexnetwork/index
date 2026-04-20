@@ -13,7 +13,7 @@ export interface NegotiationTurnPayload {
   negotiationId: string;
   ownUser: UserNegotiationContext;
   otherUser: UserNegotiationContext;
-  indexContext: { networkId: string; prompt?: string };
+  networkContext: { networkId: string; prompt?: string };
   seedAssessment: SeedAssessment;
   history: NegotiationTurn[];
   isFinalTurn: boolean;

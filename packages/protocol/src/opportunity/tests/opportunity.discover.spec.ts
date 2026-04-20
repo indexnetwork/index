@@ -25,14 +25,14 @@ describe("opportunity.discover", () => {
         database: mockDatabase,
         userId: "u1",
         query: "   ",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
       });
       expect(result.found).toBe(false);
       expect(result.count).toBe(0);
       expect(result.message).toBeDefined();
     });
 
-    test("returns message when indexScope is empty", async () => {
+    test("returns message when networkScope is empty", async () => {
       const mockGraph = {
         invoke: async () => ({ opportunities: [] }),
       };
@@ -41,7 +41,7 @@ describe("opportunity.discover", () => {
         database: mockDatabase,
         userId: "u1",
         query: "find me a mentor",
-        indexScope: [],
+        networkScope: [],
       });
       expect(result.found).toBe(false);
       expect(result.count).toBe(0);
@@ -57,7 +57,7 @@ describe("opportunity.discover", () => {
         database: mockDatabase,
         userId: "u1",
         query: "find me a mentor",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
       });
       expect(result.found).toBe(false);
       expect(result.count).toBe(0);
@@ -100,7 +100,7 @@ describe("opportunity.discover", () => {
         database: dbWithProfile,
         userId: "u1",
         query: "find me a mentor",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         limit: 5,
       });
 
@@ -128,7 +128,7 @@ describe("opportunity.discover", () => {
         database: mockDatabase,
         userId: "u1",
         query: "find me a mentor",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
       });
       expect(result.found).toBe(false);
       expect(result.count).toBe(0);
@@ -148,7 +148,7 @@ describe("opportunity.discover", () => {
         database: mockDatabase,
         userId: "u1",
         query: "find me a mentor",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
       });
       expect(capturedInvokeArg.options).toBeDefined();
       expect((capturedInvokeArg.options as { initialStatus?: string }).initialStatus).toBe("latent");
@@ -167,7 +167,7 @@ describe("opportunity.discover", () => {
         database: mockDatabase,
         userId: "u1",
         query: "find a co-founder",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         chatSessionId: "session-abc",
       });
       expect(capturedInvokeArg.options).toBeDefined();
@@ -189,7 +189,7 @@ describe("opportunity.discover", () => {
         database: mockDatabase,
         userId: "u1",
         query: "find a co-founder",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         triggerIntentId: "intent-123",
       });
       expect(capturedInvokeArg.triggerIntentId).toBe("intent-123");
@@ -234,7 +234,7 @@ describe("opportunity.discover", () => {
         database: dbWithUserFallback,
         userId: "u1",
         query: "find designers",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         minimalForChat: true,
       });
 
@@ -257,7 +257,7 @@ describe("opportunity.discover", () => {
         database: mockDatabase,
         userId: "introducer-user",
         query: "find a designer for my friend",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         onBehalfOfUserId: "target-user",
       });
       expect(capturedInvokeArg.onBehalfOfUserId).toBe("target-user");
@@ -310,7 +310,7 @@ describe("opportunity.discover", () => {
         database: dbWithProfiles,
         userId: introducerId,
         query: "find someone for Alice",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         onBehalfOfUserId: targetId,
         minimalForChat: true,
       });
@@ -378,7 +378,7 @@ describe("opportunity.discover", () => {
         database: dbForThirdParty,
         userId: viewerId,
         query: "show connections",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         minimalForChat: true,
       });
 
@@ -434,7 +434,7 @@ describe("opportunity.discover", () => {
         database: dbWithProfile,
         userId: "u1",
         query: "find a mentor",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         minimalForChat: true,
       });
 
@@ -500,7 +500,7 @@ describe("opportunity.discover", () => {
         database: dbWithDeletedUser,
         userId: "u1",
         query: "find connections",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         minimalForChat: true,
       });
 
@@ -546,7 +546,7 @@ describe("opportunity.discover", () => {
         database: dbWithGhostUser,
         userId: "u1",
         query: "find connections",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         minimalForChat: true,
       });
 
@@ -590,7 +590,7 @@ describe("opportunity.discover", () => {
         database: dbWithOnboardedUser,
         userId: "u1",
         query: "find connections",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
         minimalForChat: true,
       });
 
@@ -613,7 +613,7 @@ describe("opportunity.discover", () => {
         database: mockDatabase,
         userId: "u1",
         query: "find a co-founder",
-        indexScope: ["idx1"],
+        networkScope: ["idx1"],
       });
       expect(result.found).toBe(false);
       expect(result.createIntentSuggested).toBe(true);
@@ -688,7 +688,7 @@ describe("introducer discovery cards - secondParty (Bug 1)", () => {
       database: dbWithProfiles,
       userId: introducerId,
       query: "who should I connect Alice with?",
-      indexScope: ["idx1"],
+      networkScope: ["idx1"],
       onBehalfOfUserId: targetId,
       minimalForChat: true,
     });
@@ -742,7 +742,7 @@ describe("introducer discovery cards - secondParty (Bug 1)", () => {
       } as unknown as ChatGraphCompositeDatabase,
       userId: "u1",
       query: "find connections",
-      indexScope: ["idx1"],
+      networkScope: ["idx1"],
       minimalForChat: true,
     });
 

@@ -91,7 +91,7 @@ export interface PickupResult {
   context: {
     ownUser: UserNegotiationContext;
     otherUser: UserNegotiationContext;
-    indexContext: { networkId: string; prompt?: string };
+    networkContext: { networkId: string; prompt?: string };
     seedAssessment: SeedAssessment;
     isDiscoverer: boolean;
     discoveryQuery?: string;
@@ -119,7 +119,7 @@ export interface RespondInput {
 interface PersistedTurnContext {
   sourceUser: UserNegotiationContext;
   candidateUser: UserNegotiationContext;
-  indexContext: { networkId: string; prompt?: string };
+  networkContext: { networkId: string; prompt?: string };
   seedAssessment: SeedAssessment;
   discoveryQuery?: string;
 }
@@ -534,7 +534,7 @@ export class NegotiationPollingService {
       context = {
         ownUser,
         otherUser,
-        indexContext: meta.turnContext.indexContext,
+        networkContext: meta.turnContext.networkContext,
         seedAssessment: meta.turnContext.seedAssessment,
         isDiscoverer: isSource,
         ...(meta.turnContext.discoveryQuery && { discoveryQuery: meta.turnContext.discoveryQuery }),

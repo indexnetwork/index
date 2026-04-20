@@ -155,10 +155,10 @@ interface AIChatContextType {
 
 const AIChatContext = createContext<AIChatContextType | null>(null);
 
-/** Extract network ID from pathname when on /index/[networkId] (fallback when no dropdown selection). */
+/** Extract network ID from pathname when on /network/[networkId] (fallback when no dropdown selection). */
 function getScopeNetworkIdFromPathname(pathname: string | null): string | null {
   if (!pathname) return null;
-  const match = pathname.match(/^\/index\/([^/]+)/);
+  const match = pathname.match(/^\/network\/([^/]+)/);
   return match ? match[1] : null;
 }
 

@@ -4,24 +4,24 @@ import { LogOut } from 'lucide-react';
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import IntentList from '@/components/IntentList';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useNetworks } from '@/contexts/APIContext';
 
 interface NetworkOverviewPanelProps {
-  index: Network;
+  network: Network;
   isOwner: boolean;
   onLeft?: () => void;
   onLeaveRequest?: boolean;
   onLeaveRequestHandled?: () => void;
 }
 
-export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
-  const { removeIndex } = useNetworksState();
+export default function NetworkOverviewPanel({ network, isOwner, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
+  const { removeNetwork } = useNetworksState();
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
-  const indexesService = useNetworks();
+  const networksService = useNetworks();
 
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -41,7 +41,7 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
   useEffect(() => {
     const loadIntents = async () => {
       try {
-        const myIntents = await indexesService.getMyIndexIntents(index.id);
+        const myIntents = await networksService.getMyNetworkIntents(network.id);
         setIntents(myIntents);
       } catch (err) {
         console.error('Error loading intents:', err);
@@ -50,14 +50,14 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
       }
     };
     loadIntents();
-  }, [index.id, indexesService]);
+  }, [network.id, networksService]);
 
   const handleLeaveNetwork = async () => {
     try {
       setIsLeaving(true);
-      await api.post(`/networks/${index.id}/leave`, {});
-      removeIndex(index.id);
-      success(`Left ${index.title}`);
+      await api.post(`/networks/${network.id}/leave`, {});
+      removeNetwork(network.id);
+      success(`Left ${network.title}`);
       setShowLeaveConfirmation(false);
       onLeft?.();
     } catch (err) {
@@ -67,8 +67,6 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
       setIsLeaving(false);
     }
   };
-
-  const isPublic = index.permissions?.joinPolicy === 'anyone';
 
   return (
     <>
@@ -97,7 +95,7 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
           <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
-            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Leave &apos;{index.title}&apos;?</AlertDialog.Title>
+            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Leave &apos;{network.title}&apos;?</AlertDialog.Title>
             <AlertDialog.Description className="text-sm text-gray-600 mb-4">
               You will lose access to this network. You can rejoin later if the network is public or if you receive a new invitation.
             </AlertDialog.Description>

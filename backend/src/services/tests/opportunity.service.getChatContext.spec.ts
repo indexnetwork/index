@@ -140,7 +140,7 @@ const mockGatherPresenterContext = mock(() =>
     category: "collaboration",
     confidence: 0.85,
     signalsSummary: "semantic_match: Overlapping skills",
-    indexName: "Test Index",
+    networkName: "Test Index",
     viewerRole: "patient",
     introducerName: undefined,
   })

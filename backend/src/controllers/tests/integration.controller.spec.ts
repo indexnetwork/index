@@ -54,21 +54,21 @@ const mockAdapter: IntegrationAdapter = {
 };
 
 const mockDb = {
-  deleteIndexIntegrationsByConnectedAccount: async () => {},
+  deleteNetworkIntegrationsByConnectedAccount: async () => {},
   getNetworkIntegrations: async (networkId: string) =>
     linkedIntegrations.filter(l => l.networkId === networkId),
-  insertIndexIntegration: async (networkId: string, toolkit: string, connectedAccountId: string) => {
+  insertNetworkIntegration: async (networkId: string, toolkit: string, connectedAccountId: string) => {
     linkedIntegrations.push({ networkId, toolkit, connectedAccountId });
   },
-  deleteIndexIntegration: async (networkId: string, toolkit: string) => {
+  deleteNetworkIntegration: async (networkId: string, toolkit: string) => {
     const idx = linkedIntegrations.findIndex(l => l.networkId === networkId && l.toolkit === toolkit);
     if (idx !== -1) linkedIntegrations.splice(idx, 1);
   },
-  isIndexOwner: async (networkId: string, userId: string) => {
+  isNetworkOwner: async (networkId: string, userId: string) => {
     return networkId === INDEX_OWNED && userId === "user-a";
   },
   isPersonalNetwork: async () => false,
-  addMembersBulkToIndex: async (networkId: string, userIds: string[]) => {
+  addMembersBulkToNetwork: async (networkId: string, userIds: string[]) => {
     bulkAdded.push({ networkId, userIds });
   },
 } as unknown as ChatDatabaseAdapter;

@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet, ScrollRestoration } from "react-router";
+import { createBrowserRouter, Navigate, Outlet, ScrollRestoration, useParams } from "react-router";
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { APIProvider } from "@/contexts/APIContext";
@@ -8,6 +8,12 @@ import { AIChatSessionsProvider } from "@/contexts/AIChatSessionsContext";
 import { AIChatProvider } from "@/contexts/AIChatContext";
 
 import ClientWrapper from "@/components/ClientWrapper";
+
+/** Redirect legacy `/index/:id` URLs to `/network/:id`. */
+function LegacyIndexRedirect() {
+  const { indexId } = useParams();
+  return <Navigate to={`/network/${indexId ?? ""}`} replace />;
+}
 
 /**
  * Root layout that wraps all routes with the provider tree and app shell.
@@ -72,7 +78,11 @@ export const router = createBrowserRouter([
       },
       {
         path: "/index/:indexId",
-        lazy: () => import("@/app/index/[indexId]/page"),
+        element: <LegacyIndexRedirect />,
+      },
+      {
+        path: "/network/:networkId",
+        lazy: () => import("@/app/network/[networkId]/page"),
       },
       {
         path: "/l/:code",

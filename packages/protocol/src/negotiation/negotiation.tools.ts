@@ -142,7 +142,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           turnContext?: {
             sourceUser: UserNegotiationContext;
             candidateUser: UserNegotiationContext;
-            indexContext: { networkId: string; prompt?: string };
+            networkContext: { networkId: string; prompt?: string };
             seedAssessment: SeedAssessment;
             discoveryQuery?: string;
           };
@@ -167,7 +167,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         let negotiationContext: {
           ownUser: UserNegotiationContext;
           otherUser: UserNegotiationContext;
-          indexContext: { networkId: string; prompt?: string };
+          networkContext: { networkId: string; prompt?: string };
           seedAssessment: SeedAssessment;
           isDiscoverer: boolean;
           discoveryQuery?: string;
@@ -177,7 +177,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           negotiationContext = {
             ownUser: isSource ? tc.sourceUser : tc.candidateUser,
             otherUser: isSource ? tc.candidateUser : tc.sourceUser,
-            indexContext: tc.indexContext,
+            networkContext: tc.networkContext,
             seedAssessment: tc.seedAssessment,
             isDiscoverer: isSource,
             ...(tc.discoveryQuery && { discoveryQuery: tc.discoveryQuery }),
@@ -421,7 +421,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           negotiationId: task.id,
           ownUser: ownUserCtx,
           otherUser: otherUserCtx,
-          indexContext: { networkId: '' },
+          networkContext: { networkId: '' },
           seedAssessment,
           history: historyForDispatch,
           isFinalTurn,
@@ -463,7 +463,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           aiTurn = await agent.invoke({
             ownUser: ownUserCtx,
             otherUser: otherUserCtx,
-            indexContext: { networkId: '' },
+            networkContext: { networkId: '' },
             seedAssessment,
             history: historyForDispatch,
             isFinalTurn,
@@ -533,7 +533,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           negotiationId: task.id,
           ownUser: { id: context.userId, intents: [], profile: {} },
           otherUser: { id: counterpartyUserId, intents: [], profile: {} },
-          indexContext: { networkId: '' },
+          networkContext: { networkId: '' },
           seedAssessment,
           history: [...historyForDispatch, aiTurn],
           isFinalTurn: finalTurnCount + 1 >= maxTurns,

@@ -8,9 +8,9 @@ import type {
   ChatGraphCompositeDatabase,
   CreateIntentData,
   ActiveIntent,
-  IndexedIntentDetails,
+  NetworkIntentDetails,
   NetworkMembership,
-  OwnedIndex,
+  OwnedNetwork,
   UserRecord,
   Opportunity,
   OpportunityStatus,
@@ -42,7 +42,7 @@ export interface ChatGraphMockConfig {
   indexIntentsForOwner?: (
     networkId: string,
     requestingUserId: string
-  ) => IndexedIntentDetails[] | Promise<IndexedIntentDetails[]>;
+  ) => NetworkIntentDetails[] | Promise<NetworkIntentDetails[]>;
   /** Opportunities for user. */
   opportunitiesForUser?: (userId: string) => Opportunity[] | Promise<Opportunity[]>;
   /** Network memberships for user. */
@@ -52,11 +52,11 @@ export interface ChatGraphMockConfig {
   /** (networkId, userId) -> is member. */
   isNetworkMember?: (networkId: string, userId: string) => boolean | Promise<boolean>;
   /** (networkId, userId) -> is owner. */
-  isIndexOwner?: (networkId: string, userId: string) => boolean | Promise<boolean>;
+  isNetworkOwner?: (networkId: string, userId: string) => boolean | Promise<boolean>;
   /** User record by id. */
   getUser?: (userId: string) => UserRecord | null | Promise<UserRecord | null>;
   /** Owned indexes for user. */
-  ownedIndexes?: (userId: string) => OwnedIndex[] | Promise<OwnedIndex[]>;
+  ownedIndexes?: (userId: string) => OwnedNetwork[] | Promise<OwnedNetwork[]>;
 }
 
 const noop = async (): Promise<undefined> => undefined;
@@ -64,7 +64,7 @@ const noopArray = async <T>(): Promise<T[]> => [];
 const noopNull = async (): Promise<null> => null;
 const noopBool = async (): Promise<boolean> => false;
 
-const defaultOwnedIndex = (): OwnedIndex => ({
+const defaultOwnedNetwork = (): OwnedNetwork => ({
   id: "",
   title: "",
   prompt: null,
@@ -123,13 +123,13 @@ export function mockOpportunity(overrides: {
   } as Opportunity;
 }
 
-/** Build a minimal IndexedIntentDetails for owner view. */
+/** Build a minimal NetworkIntentDetails for owner view. */
 export function mockIndexedIntent(overrides: {
   id?: string;
   payload?: string;
   userId?: string;
   userName?: string;
-}): IndexedIntentDetails {
+}): NetworkIntentDetails {
   return {
     id: overrides.id ?? `intent-${Date.now()}`,
     payload: overrides.payload ?? "Looking for a co-founder",
@@ -182,7 +182,7 @@ export function createChatGraphMockDb(
   const networkMemberships = config.networkMemberships ?? (() => []);
   const getNetwork = config.getNetwork ?? (() => null);
   const isNetworkMember = config.isNetworkMember ?? (() => false);
-  const isIndexOwner = config.isIndexOwner ?? (() => false);
+  const isNetworkOwner = config.isNetworkOwner ?? (() => false);
   const getUser =
     config.getUser ??
     ((userId: string): UserRecord => ({ id: userId, name: "Test User", email: "test@example.com" }));
@@ -193,7 +193,7 @@ export function createChatGraphMockDb(
     getProfileByUserId: async () => (profile ? { ...profile } : null),
     getActiveIntents: async (userId: string) =>
       Promise.resolve(activeIntents(userId)).then((f) => (Array.isArray(f) ? f : [])),
-    getIntentsInIndexForMember: async (userId: string, networkId: string) =>
+    getIntentsInNetworkForMember: async (userId: string, networkId: string) =>
       Promise.resolve(intentsInIndexForMember(userId, networkId)).then((f) =>
         Array.isArray(f) ? f : []
       ),
@@ -217,7 +217,7 @@ export function createChatGraphMockDb(
     }),
     updateIntent: noopNull,
     archiveIntent: async () => ({ success: true }),
-    getUserIndexIds: async (userId: string) => {
+    getUserNetworkIds: async (userId: string) => {
       const memberships = await Promise.resolve(networkMemberships(userId));
       return Array.isArray(memberships) ? memberships.map((m) => m.networkId) : [];
     },
@@ -228,7 +228,7 @@ export function createChatGraphMockDb(
       const index = await Promise.resolve(getNetwork(networkId));
       if (!index) return null;
       const member = await Promise.resolve(isNetworkMember(networkId, userId));
-      return member ? { networkId, networkTitle: index.title, indexPrompt: null, permissions: [] } : null;
+      return member ? { networkId, networkTitle: index.title, networkPrompt: null, permissions: [] } : null;
     },
     getNetworkWithPermissions: async () => null,
     getIntentForIndexing: noopNull,
@@ -245,29 +245,29 @@ export function createChatGraphMockDb(
     getHydeDocumentsForSource: noopArray,
     saveHydeDocument: noop,
     getIntent: noopNull,
-    isIntentAssignedToIndex: noopBool,
+    isIntentAssignedToNetwork: noopBool,
     assignIntentToNetwork: noop,
-    unassignIntentFromIndex: noop,
+    unassignIntentFromNetwork: noop,
     getNetworkIdsForIntent: noopArray,
-    getOwnedIndexes: async (userId: string) =>
+    getOwnedNetworks: async (userId: string) =>
       Promise.resolve(ownedIndexes(userId)).then((f) => (Array.isArray(f) ? f : [])),
-    isIndexOwner: async (networkId: string, userId: string) =>
-      Promise.resolve(isIndexOwner(networkId, userId)),
+    isNetworkOwner: async (networkId: string, userId: string) =>
+      Promise.resolve(isNetworkOwner(networkId, userId)),
     isNetworkMember: async (networkId: string, userId: string) =>
       Promise.resolve(isNetworkMember(networkId, userId)),
     getNetworkMembersForOwner: noopArray,
     getNetworkMembersForMember: noopArray,
-    getMembersFromUserIndexes: async () => [],
-    removeMemberFromIndex: async () => ({ success: true }),
+    getMembersFromUserNetworks: async () => [],
+    removeMemberFromNetwork: async () => ({ success: true }),
     getNetworkIntentsForOwner: async (networkId: string, requestingUserId: string, opts?: { limit?: number; offset?: number }) =>
       Promise.resolve(indexIntentsForOwner(networkId, requestingUserId)).then((f) =>
         Array.isArray(f) ? f : []
       ),
     getNetworkIntentsForMember: async () => [],
-    updateIndexSettings: async () => defaultOwnedIndex(),
+    updateNetworkSettings: async () => defaultOwnedNetwork(),
     softDeleteNetwork: noop,
     deleteProfile: noop,
-    createNetwork: async () => defaultOwnedIndex(),
+    createNetwork: async () => defaultOwnedNetwork(),
     getNetworkMemberCount: async () => 0,
     addMemberToNetwork: noop,
   } as unknown as ChatGraphCompositeDatabase;

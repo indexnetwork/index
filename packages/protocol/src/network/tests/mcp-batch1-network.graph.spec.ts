@@ -8,15 +8,15 @@ describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
       getNetworkMemberships: async () => [{
         networkId: "11111111-1111-4111-8111-111111111111",
         networkTitle: "Personal Index",
-        indexPrompt: "Private network",
+        networkPrompt: "Private network",
         permissions: ["owner"],
         memberPrompt: null,
         autoAssign: true,
         isPersonal: true,
         joinedAt: new Date("2026-04-20T00:00:00Z"),
       }],
-      getOwnedIndexes: async () => [],
-      getPublicIndexesNotJoined: async () => ({
+      getOwnedNetworks: async () => [],
+      getPublicNetworksNotJoined: async () => ({
         networks: [{
           id: "22222222-2222-4222-8222-222222222222",
           title: "Open Builders",

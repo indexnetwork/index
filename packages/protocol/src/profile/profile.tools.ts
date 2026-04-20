@@ -75,8 +75,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           // Scoped to a specific index
           if (context.networkId && searchIndexId !== context.networkId) {
             return error(
-              context.indexName
-                ? `This chat is scoped to ${context.indexName}. You can only look up people in this community.`
+              context.networkName
+                ? `This chat is scoped to ${context.networkName}. You can only look up people in this community.`
                 : `This chat is scoped to this index. You can only look up people in this community.`
             );
           }
@@ -146,8 +146,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         // Strict scope enforcement: when chat is index-scoped, only allow querying that index
         if (context.networkId && effectiveIndexId !== context.networkId) {
           return error(
-            context.indexName
-              ? `This chat is scoped to ${context.indexName}. You can only read profiles from this community.`
+            context.networkName
+              ? `This chat is scoped to ${context.networkName}. You can only read profiles from this community.`
               : `This chat is scoped to this index. You can only read profiles from this community.`
           );
         }
@@ -191,8 +191,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           const isInScopedIndex = await systemDb.isNetworkMember(context.networkId, targetUserId);
           if (!isInScopedIndex) {
             return error(
-              context.indexName
-                ? `This chat is scoped to ${context.indexName}. You can only read profiles of members in this community.`
+              context.networkName
+                ? `This chat is scoped to ${context.networkName}. You can only read profiles of members in this community.`
                 : `This chat is scoped to this index. You can only read profiles of members in this community.`
             );
           }

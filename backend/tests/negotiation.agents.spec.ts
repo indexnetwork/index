@@ -30,7 +30,7 @@ describe("NegotiationProposer", () => {
     const result = await proposer.invoke({
       ownUser: sourceUser,
       otherUser: candidateUser,
-      indexContext: { indexId: "idx-1", prompt: "AI startup co-founders" },
+      networkContext: { indexId: "idx-1", prompt: "AI startup co-founders" },
       seedAssessment,
       history: [],
     });
@@ -60,7 +60,7 @@ describe("NegotiationResponder", () => {
     const result = await responder.invoke({
       ownUser: candidateUser,
       otherUser: sourceUser,
-      indexContext: { indexId: "idx-1", prompt: "AI startup co-founders" },
+      networkContext: { indexId: "idx-1", prompt: "AI startup co-founders" },
       seedAssessment,
       history: [proposal],
     });

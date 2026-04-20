@@ -27,7 +27,7 @@ Users and indexes gain a `key` column -- a human-readable, URL-safe identifier (
 
 **Key update API:**
 - `PUT /api/users/me/key` with `{ key: string }` -- updates the authenticated user's key
-- `PUT /api/indexes/:id/key` with `{ key: string }` -- updates an index's key (owner only)
+- `PUT /api/networks/:id/key` with `{ key: string }` — updates a network's key (owner only)
 
 ### Identifier resolution (idOrKey)
 
@@ -73,7 +73,7 @@ All existing endpoints that accept a UUID in path params now also accept a key (
 4. Auto-generation: creating a user/index with a name/title auto-generates a key
 5. Auto-generation: duplicate names produce suffixed keys (e.g. `jane-doe-2`)
 6. API: `PUT /api/users/me/key` updates the user's key with validation
-7. API: `PUT /api/indexes/:id/key` updates the index's key (owner only) with validation
+7. API: `PUT /api/networks/:id/key` updates the network's key (owner only) with validation
 8. API: invalid key format returns 400 with descriptive error
 9. API: duplicate key returns 409
 10. Lookup: user endpoints accept key in place of UUID

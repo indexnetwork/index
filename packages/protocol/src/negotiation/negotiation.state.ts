@@ -75,7 +75,7 @@ export interface NegotiationGraphLike {
   invoke(input: {
     sourceUser: UserNegotiationContext;
     candidateUser: UserNegotiationContext;
-    indexContext: { networkId: string; prompt: string };
+    networkContext: { networkId: string; prompt: string };
     seedAssessment: Omit<SeedAssessment, "actors">;
     discoveryQuery?: string;
     opportunityId?: string;
@@ -103,7 +103,7 @@ export const NegotiationGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => ({ id: "", intents: [], profile: {} }),
   }),
-  indexContext: Annotation<{ networkId: string; prompt: string }>({
+  networkContext: Annotation<{ networkId: string; prompt: string }>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({ networkId: "", prompt: "" }),
   }),

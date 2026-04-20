@@ -30,7 +30,7 @@ Rules:
 export interface NegotiationAgentInput {
   ownUser: UserNegotiationContext;
   otherUser: UserNegotiationContext;
-  indexContext: { networkId: string; prompt?: string };
+  networkContext: { networkId: string; prompt?: string };
   seedAssessment: SeedAssessment;
   history: NegotiationTurn[];
   isFinalTurn?: boolean;
@@ -57,7 +57,7 @@ export class IndexNegotiator {
 
     const userName = input.ownUser.profile.name ?? "your user";
     const role = input.seedAssessment.valencyRole || "peer";
-    const networkContext = input.indexContext.prompt || "General discovery";
+    const networkContext = input.networkContext.prompt || "General discovery";
     const finalTurnInstruction = input.isFinalTurn
       ? "\n\nIMPORTANT: This is your FINAL turn. You MUST choose either 'accept' or 'reject'. No counter is allowed."
       : "";

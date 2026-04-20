@@ -76,6 +76,7 @@ vi.mock('@/contexts/APIContext', () => {
     APIProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     useAPI: () =>
       new Proxy({}, { get: () => noopService }),
+    useNetworks: () => noopService,
     useIndexes: () => noopService,
     useIntents: () => noopService,
     useConnections: () => noopService,
@@ -149,26 +150,26 @@ vi.mock('@/contexts/AIChatContext', () => ({
     ),
 }));
 
-// Mock IndexesContext
-vi.mock('@/contexts/IndexesContext', () => ({
-  IndexesProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useIndexesState: () => ({
-    indexes: [],
+// Mock NetworksContext
+vi.mock('@/contexts/NetworksContext', () => ({
+  NetworksProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useNetworksState: () => ({
+    networks: [],
     loading: false,
     error: null,
-    refreshIndexes: vi.fn(),
-    addIndex: vi.fn(),
-    updateIndex: vi.fn(),
-    removeIndex: vi.fn(),
+    refreshNetworks: vi.fn(),
+    addNetwork: vi.fn(),
+    updateNetwork: vi.fn(),
+    removeNetwork: vi.fn(),
   }),
 }));
 
-// Mock IndexFilterContext
-vi.mock('@/contexts/IndexFilterContext', () => ({
-  IndexFilterProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useIndexFilter: () => ({
-    selectedIndexIds: [],
-    setSelectedIndexIds: vi.fn(),
+// Mock NetworkFilterContext
+vi.mock('@/contexts/NetworkFilterContext', () => ({
+  NetworkFilterProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useNetworkFilter: () => ({
+    selectedNetworkIds: [],
+    setSelectedNetworkIds: vi.fn(),
   }),
 }));
 
@@ -189,19 +190,19 @@ vi.mock('@/contexts/SaveBarContext', () => ({
   useSaveBarVisible: () => false,
 }));
 
-// Mock indexes service (standalone, used by /index/[indexId] and /l/[code])
+// Mock networks service (standalone, used by /network/[networkId] and /l/[code])
 const noopServiceProxy = () =>
   new Proxy({}, { get: () => vi.fn().mockResolvedValue({}) });
 
-vi.mock('@/services/indexes', () => ({
-  indexesService: noopServiceProxy(),
-  createIndexesService: () => noopServiceProxy(),
-  useIndexService: () => noopServiceProxy(),
+vi.mock('@/services/networks', () => ({
+  networksService: noopServiceProxy(),
+  createNetworksService: () => noopServiceProxy(),
+  useNetworkService: () => noopServiceProxy(),
 }));
 
-// Mock v2 indexes service (used by IndexesContext)
-vi.mock('@/services/v2/indexes.service', () => ({
-  useIndexesV2: () =>
+// Mock v2 networks service (used by NetworksContext)
+vi.mock('@/services/v2/networks.service', () => ({
+  useNetworksV2: () =>
     new Proxy({}, { get: () => vi.fn().mockResolvedValue({ data: [] }) }),
 }));
 
@@ -294,10 +295,10 @@ describe('Route rendering smoke tests', () => {
     expect(container).toBeTruthy();
   });
 
-  test('/index/:indexId — Index detail page renders without crashing', async () => {
-    const { Component } = await import('@/app/index/[indexId]/page');
+  test('/network/:networkId — Public join page renders without crashing', async () => {
+    const { Component } = await import('@/app/network/[networkId]/page');
     const { container } = renderWithRouter(<Component />, {
-      route: '/index/mock-index-id',
+      route: '/network/mock-network-id',
     });
     expect(container).toBeTruthy();
   });

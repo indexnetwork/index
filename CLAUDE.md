@@ -176,7 +176,7 @@ index/
 ### Documentation Directories
 
 - `docs/design/` — Architecture and deep-dive docs. Describes how the system is built: layering, data flow, agent graphs, key subsystems. Update when architecture changes.
-- `docs/domain/` — Domain concept docs. Explains the business model: what intents, indexes, opportunities, profiles, contacts are and how they relate. Update when domain model changes.
+- `docs/domain/` — Domain concept docs. Explains the business model: what intents, networks, opportunities, profiles, contacts are and how they relate. Update when domain model changes.
 - `docs/specs/` — API and CLI specs. Describes external interfaces: endpoints, CLI commands, input/output contracts. Update when public interfaces change.
 - `docs/guides/` — Setup and usage guides for developers. Update when dev workflow or environment setup changes.
 

@@ -446,7 +446,7 @@ export class NetworkController {
     }
 
     // Resolve idOrKey to actual UUID first
-    const resolvedId = await networkService.resolveIndexId(params.id);
+    const resolvedId = await networkService.resolveNetworkId(params.id);
     if (!resolvedId) {
       return Response.json({ error: 'Network not found' }, { status: 404 });
     }

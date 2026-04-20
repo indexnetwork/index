@@ -199,7 +199,7 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get intents in index for member by index id', async () => {
-    const list = await adapter.getIntentsInIndexForMember(fixture.userAId, fixture.networkId);
+    const list = await adapter.getIntentsInNetworkForMember(fixture.userAId, fixture.networkId);
     expect(list.length).toBeGreaterThanOrEqual(1);
     expect(list.some((i) => i.id === fixture.intent1Id)).toBe(true);
   });
@@ -251,7 +251,7 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get user index ids for auto-assign member', async () => {
-    const indexIds = await adapter.getUserIndexIds(fixture.userBId);
+    const indexIds = await adapter.getUserNetworkIds(fixture.userBId);
     expect(indexIds).toContain(fixture.networkId);
   });
 
@@ -270,7 +270,7 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should report intent assigned to index', async () => {
-    const assigned = await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.networkId);
+    const assigned = await adapter.isIntentAssignedToNetwork(fixture.intent1Id, fixture.networkId);
     expect(assigned).toBe(true);
   });
 
@@ -290,16 +290,16 @@ describe('ChatDatabaseAdapter', () => {
       sourceType: 'discovery_form',
       sourceId: fixture.userBId,
     });
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
+    expect(await adapter.isIntentAssignedToNetwork(newIntentId, fixture.networkId)).toBe(false);
     await adapter.assignIntentToNetwork(newIntentId, fixture.networkId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(true);
-    await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
+    expect(await adapter.isIntentAssignedToNetwork(newIntentId, fixture.networkId)).toBe(true);
+    await adapter.unassignIntentFromNetwork(newIntentId, fixture.networkId);
+    expect(await adapter.isIntentAssignedToNetwork(newIntentId, fixture.networkId)).toBe(false);
     await db.delete(intents).where(eq(intents.id, newIntentId));
   });
 
   it('should get owned indexes for owner', async () => {
-    const owned = await adapter.getOwnedIndexes(fixture.userAId);
+    const owned = await adapter.getOwnedNetworks(fixture.userAId);
     expect(owned.length).toBeGreaterThanOrEqual(1);
     const o = owned.find((x) => x.id === fixture.networkId);
     expect(o).toBeDefined();
@@ -308,8 +308,8 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should report index owner', async () => {
-    expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
-    expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
+    expect(await adapter.isNetworkOwner(fixture.networkId, fixture.userAId)).toBe(true);
+    expect(await adapter.isNetworkOwner(fixture.networkId, fixture.userBId)).toBe(false);
   });
 
   it('should get index members for member', async () => {
@@ -401,18 +401,18 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should update index settings as owner', async () => {
-    const updated = await adapter.updateIndexSettings(fixture.networkId, fixture.userAId, {
+    const updated = await adapter.updateNetworkSettings(fixture.networkId, fixture.userAId, {
       title: TEST_PREFIX + 'Updated Title',
     });
     expect(updated.title).toContain('Updated Title');
-    const again = await adapter.getOwnedIndexes(fixture.userAId);
+    const again = await adapter.getOwnedNetworks(fixture.userAId);
     const idx = again.find((x) => x.id === fixture.networkId);
     expect(idx!.title).toContain('Updated Title');
   });
 
-  it('should throw when updateIndexSettings as non-owner', async () => {
+  it('should throw when updateNetworkSettings as non-owner', async () => {
     await expect(
-      adapter.updateIndexSettings(fixture.networkId, fixture.userBId, { title: 'Hacked' })
+      adapter.updateNetworkSettings(fixture.networkId, fixture.userBId, { title: 'Hacked' })
     ).rejects.toThrow('Access denied');
   });
 });
@@ -840,7 +840,7 @@ describe('NetworkGraphDatabaseAdapter', () => {
   });
 
   it('should report intent assigned to index', async () => {
-    expect(await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.networkId)).toBe(true);
+    expect(await adapter.isIntentAssignedToNetwork(fixture.intent1Id, fixture.networkId)).toBe(true);
   });
 
   it('should get index ids for intent', async () => {
@@ -859,11 +859,11 @@ describe('NetworkGraphDatabaseAdapter', () => {
       sourceType: 'discovery_form',
       sourceId: fixture.userBId,
     });
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
+    expect(await adapter.isIntentAssignedToNetwork(newIntentId, fixture.networkId)).toBe(false);
     await adapter.assignIntentToNetwork(newIntentId, fixture.networkId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(true);
-    await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
+    expect(await adapter.isIntentAssignedToNetwork(newIntentId, fixture.networkId)).toBe(true);
+    await adapter.unassignIntentFromNetwork(newIntentId, fixture.networkId);
+    expect(await adapter.isIntentAssignedToNetwork(newIntentId, fixture.networkId)).toBe(false);
     await db.delete(intentNetworks).where(eq(intentNetworks.intentId, newIntentId));
     await db.delete(intents).where(eq(intents.id, newIntentId));
   });

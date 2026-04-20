@@ -18,7 +18,7 @@ export interface AddJobResult {
 // INTENT QUEUE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export interface IndexIntentJobData {
+export interface NetworkIntentJobData {
   intentId: string;
   networkId: string;
   userId: string;
@@ -37,7 +37,7 @@ export interface GenerateIntentsJobData {
 }
 
 export type IntentJobName = 'index_intent' | 'generate_intents';
-export type IntentJobData = IndexIntentJobData | GenerateIntentsJobData;
+export type IntentJobData = NetworkIntentJobData | GenerateIntentsJobData;
 
 export interface IntentQueue {
   addJob(

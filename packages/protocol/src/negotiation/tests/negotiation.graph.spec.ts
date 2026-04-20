@@ -55,7 +55,7 @@ describe("negotiation graph — negotiation_turn emission", () => {
         await graph.invoke({
           sourceUser: { id: "u-src", intents: [], profile: { name: "Alice" } },
           candidateUser: { id: "u-cand", intents: [], profile: { name: "Bob" } },
-          indexContext: { networkId: "net-1", prompt: "" },
+          networkContext: { networkId: "net-1", prompt: "" },
           seedAssessment: { reasoning: "x", valencyRole: "peer" },
           opportunityId: "opp-1",
           maxTurns: 2,
@@ -101,7 +101,7 @@ describe("negotiation graph — negotiation_outcome emission", () => {
         await graph.invoke({
           sourceUser: { id: "u-src" },
           candidateUser: { id: "u-cand" },
-          indexContext: { networkId: "net-1", prompt: "" },
+          networkContext: { networkId: "net-1", prompt: "" },
           seedAssessment: { reasoning: "x", valencyRole: "peer" },
           opportunityId: "opp-accept",
           maxTurns: 4,
@@ -142,7 +142,7 @@ describe("negotiation graph — negotiation_outcome emission", () => {
       await requestContext.run({ traceEmitter: (e: Record<string, unknown>) => events.push(e) }, async () => {
         await graph.invoke({
           sourceUser: { id: "u-src" }, candidateUser: { id: "u-cand" },
-          indexContext: { networkId: "net-1", prompt: "" },
+          networkContext: { networkId: "net-1", prompt: "" },
           seedAssessment: { reasoning: "x", valencyRole: "peer" },
           opportunityId: "opp-cap", maxTurns: 2,
         } as Partial<typeof NegotiationGraphState.State>);
@@ -169,7 +169,7 @@ describe("negotiation graph — negotiation_outcome emission", () => {
     await requestContext.run({ traceEmitter: (e: Record<string, unknown>) => events.push(e) }, async () => {
       await graph.invoke({
         sourceUser: { id: "u-src" }, candidateUser: { id: "u-cand" },
-        indexContext: { networkId: "net-1", prompt: "" },
+        networkContext: { networkId: "net-1", prompt: "" },
         seedAssessment: { reasoning: "x", valencyRole: "peer" },
         opportunityId: "opp-park", maxTurns: 4,
       } as Partial<typeof NegotiationGraphState.State>);

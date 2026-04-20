@@ -23,7 +23,7 @@ describe("OpportunityPresenter – zero mutual intents label", () => {
     category: "collaboration",
     confidence: 0.8,
     signalsSummary: "Complementary skills",
-    indexName: "Test Index",
+    networkName: "Test Index",
     viewerRole: "party",
     opportunityStatus: "pending",
   };
@@ -93,7 +93,7 @@ describe("OpportunityPresenter – sanitizer rewrites zero-count LLM output", ()
     category: "collaboration",
     confidence: 0.8,
     signalsSummary: "Complementary skills",
-    indexName: "Test Index",
+    networkName: "Test Index",
     viewerRole: "party",
     opportunityStatus: "pending",
   };
@@ -152,7 +152,7 @@ describe("OpportunityPresenter - IND-113: Introducer should not appear in body t
     category: "collaboration",
     confidence: 0.85,
     signalsSummary: "Complementary skills in design and product",
-    indexName: "Test Index",
+    networkName: "Test Index",
     viewerRole: "party",
     opportunityStatus: "pending",
     isIntroduction: true,

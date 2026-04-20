@@ -287,7 +287,7 @@ export class IntentService {
     if (!result.success) return result;
 
     try {
-      await this.adapter.deleteIntentIndexAssociations(intentId);
+      await this.adapter.deleteIntentNetworkAssociations(intentId);
     } catch (err) {
       logger.error('[IntentService] Failed to delete intent-index associations', { intentId, error: err });
     }

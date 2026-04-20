@@ -330,7 +330,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         query.networkId.trim() !== context.networkId
       ) {
         return error(
-          `This chat is scoped to ${context.indexName ?? "this index"}. You can only create opportunities in this community.`,
+          `This chat is scoped to ${context.networkName ?? "this index"}. You can only create opportunities in this community.`,
         );
       }
 
@@ -609,7 +609,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid intent ID format.");
       }
 
-      let indexScope: string[];
+      let networkScope: string[];
       const _scopeGraphTimings: Array<{ name: string; durationMs: number; agents: Array<{ name: string; durationMs: number }> }> = [];
       if (effectiveIndexId) {
         if (!UUID_REGEX.test(effectiveIndexId)) {
@@ -629,16 +629,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         if (memberResult.error) {
           return error("Network not found or you are not a member.");
         }
-        indexScope = [effectiveIndexId];
+        networkScope = [effectiveIndexId];
       } else if (context.networkId) {
         // When scoped but no explicit networkId, use the scoped index
-        indexScope = [context.networkId];
+        networkScope = [context.networkId];
       } else {
         // No scope - use all indexes (only in unscoped chat)
         const _scopeGraphStart = Date.now();
         const _scopeIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
         _scopeIndexTraceEmitter?.({ type: "graph_start", name: "index" });
-        const indexResult = await graphs.index.invoke({
+        const indexResult = await graphs.network.invoke({
           userId: context.userId,
           operationMode: "read" as const,
           showAll: true,
@@ -646,13 +646,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const _scopeIndexMs = Date.now() - _scopeGraphStart;
         _scopeIndexTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _scopeIndexMs });
         _scopeGraphTimings.push({ name: 'index', durationMs: _scopeIndexMs, agents: [] });
-        indexScope = (indexResult.readResult?.memberOf || []).map(
+        networkScope = (indexResult.readResult?.memberOf || []).map(
           (m: { networkId: string }) => m.networkId,
         );
       }
 
       const toolDebugSteps: Array<{ step: string; detail?: string }> = [
-        { step: "resolve_index_scope", detail: `${indexScope.length} index(es)` },
+        { step: "resolve_index_scope", detail: `${networkScope.length} index(es)` },
       ];
 
       const triggerIntentId = query.intentId?.trim() || undefined;
@@ -678,7 +678,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         database,
         userId: context.userId,
         query: searchQuery,
-        indexScope,
+        networkScope,
         limit: 20,
         minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
         triggerIntentId,
@@ -859,7 +859,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       ) {
         return error(
           "This chat is scoped to " +
-            (context.indexName ?? "this index") +
+            (context.networkName ?? "this index") +
             ". You can only list opportunities from this community.",
         );
       }

@@ -132,7 +132,7 @@ export function sanitizeMcpResult(text: string): { text: string; isError: boolea
  */
 export interface ScopedDepsFactory {
   /** Creates scoped userDb and systemDb for the given user and index scope. */
-  create(userId: string, indexScope: string[]): Pick<ToolDeps, 'userDb' | 'systemDb'>;
+  create(userId: string, networkScope: string[]): Pick<ToolDeps, 'userDb' | 'systemDb'>;
 }
 
 /**
@@ -256,8 +256,8 @@ export function createMcpServer(
           }
 
           // Build per-request scoped databases via injected factory
-          const indexScope = context.userNetworks.map((m) => m.networkId);
-          const scopedDbs = scopedDepsFactory.create(userId, indexScope);
+          const networkScope = context.userNetworks.map((m) => m.networkId);
+          const scopedDbs = scopedDepsFactory.create(userId, networkScope);
 
           // Override deps with per-request scoped databases
           const requestDeps: ToolDeps = { ...deps, ...scopedDbs };

@@ -5,52 +5,52 @@ import { Network, User, APIResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { useNetworks } from '@/contexts/APIContext';
-import { indexesService as publicIndexesService } from '@/services/networks';
+import { networksService as publicNetworksService } from '@/services/networks';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { Users, Loader2, Globe } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 type PageStep = 'loading' | 'auth-required' | 'ready-to-join' | 'joining' | 'error' | 'already-member';
 
 type PageState = {
   step: PageStep;
-  index: Network | null;
+  network: Network | null;
   user: User | null;
   error: string | null;
 };
 
 export default function PublicJoinPage() {
-  const { indexId } = useParams();
+  const { networkId } = useParams();
   const [state, setState] = useState<PageState>({
     step: 'loading',
-    index: null,
+    network: null,
     user: null,
     error: null,
   });
 
   const { isAuthenticated, isReady, openLoginModal } = useAuthContext();
   const api = useAuthenticatedAPI();
-  const indexesService = useNetworks();
+  const networksService = useNetworks();
   const navigate = useNavigate();
   const { success, error: notifyError } = useNotifications();
-  const { refreshIndexes } = useNetworksState();
+  const { refreshNetworks } = useNetworksState();
 
   // Load index and check user state
   useEffect(() => {
     const loadIndexAndCheckAuth = async () => {
       try {
         // Load public index by ID
-        const index = await publicIndexesService.getPublicIndexById(indexId!);
-        setState(prev => ({ ...prev, index }));
+        const network = await publicNetworksService.getPublicNetworkById(networkId!);
+        setState(prev => ({ ...prev, network }));
 
         // Double-check that this is a public index
-        if (index.permissions?.joinPolicy !== 'anyone') {
+        if (network.permissions?.joinPolicy !== 'anyone') {
           setState(prev => ({ 
             ...prev, 
             step: 'error', 
-            error: 'This index is private. You need an invitation to join.' 
+            error: 'This network is private. You need an invitation to join.' 
           }));
           return;
         }
@@ -73,7 +73,7 @@ export default function PublicJoinPage() {
 
             // Join the public index immediately
             try {
-              const joinResult = await indexesService.joinIndex(index.id);
+              const joinResult = await networksService.joinNetwork(network.id);
               
               // Check if user is already a member
               if (joinResult?.alreadyMember) {
@@ -81,13 +81,13 @@ export default function PublicJoinPage() {
                 return;
               }
               
-              await refreshIndexes();
+              await refreshNetworks();
             } catch (err) {
-              console.error('Failed to join index:', err);
+              console.error('Failed to join network:', err);
               setState(prev => ({ 
                 ...prev, 
                 step: 'error', 
-                error: 'Failed to join index' 
+                error: 'Failed to join network' 
               }));
               return;
             }
@@ -104,17 +104,17 @@ export default function PublicJoinPage() {
           }));
         }
       } catch (err) {
-        console.error('Failed to load index:', err);
+        console.error('Failed to load network:', err);
         setState(prev => ({ 
           ...prev, 
           step: 'error', 
-          error: (err as Error)?.message || 'Index not found or is private' 
+          error: (err as Error)?.message || 'Network not found or is private' 
         }));
       }
     };
 
     loadIndexAndCheckAuth();
-  }, [indexId, isAuthenticated, isReady, api, navigate, indexesService, refreshIndexes]);
+  }, [networkId, isAuthenticated, isReady, api, navigate, networksService, refreshNetworks]);
 
   // Trigger reload when user authenticates
   useEffect(() => {
@@ -124,39 +124,39 @@ export default function PublicJoinPage() {
     }
   }, [isAuthenticated, isReady, state.step]);
 
-  const handleJoinIndex = async () => {
-    if (!state.index) return;
+  const handleJoinNetwork = async () => {
+    if (!state.network) return;
 
     try {
       setState(prev => ({ ...prev, step: 'joining' }));
       
-      const result = await indexesService.joinIndex(state.index.id);
+      const result = await networksService.joinNetwork(state.network.id);
       
       if (result?.alreadyMember) {
-        success('You are already a member of this index');
+        success('You are already a member of this network');
         setState(prev => ({ ...prev, step: 'already-member' }));
       } else {
-        success(`Successfully joined ${result?.network?.title || state.index.title}!`);
-        // Refresh indexes context
-        await refreshIndexes();
+        success(`Successfully joined ${result?.network?.title || state.network.title}!`);
+        // Refresh networks context
+        await refreshNetworks();
         // Redirect to root
         navigate(`/`);
       }
     } catch (err) {
-      console.error('Failed to join index:', err);
-      notifyError((err as Error)?.message || 'Failed to join index');
+      console.error('Failed to join network:', err);
+      notifyError((err as Error)?.message || 'Failed to join network');
       setState(prev => ({ 
         ...prev, 
         step: 'error', 
-        error: (err as Error)?.message || 'Failed to join index' 
+        error: (err as Error)?.message || 'Failed to join network' 
       }));
     }
   };
 
   const handleLogin = () => {
     // Store index ID to auto-join after authentication
-    if (typeof window !== 'undefined' && state.index?.id) {
-      localStorage.setItem('pending_network_join', state.index.id);
+    if (typeof window !== 'undefined' && state.network?.id) {
+      localStorage.setItem('pending_network_join', state.network.id);
     }
     openLoginModal();
   };
@@ -168,7 +168,7 @@ export default function PublicJoinPage() {
           <ContentContainer>
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-gray-400 mb-4" />
-              <p className="text-gray-600 font-ibm-plex-mono">Loading index...</p>
+              <p className="text-gray-600 font-ibm-plex-mono">Loading network...</p>
             </div>
           </ContentContainer>
         );
@@ -184,7 +184,7 @@ export default function PublicJoinPage() {
               </div>
               <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Not Found</h1>
               <p className="text-gray-600 font-ibm-plex-mono">
-                {state.error || 'This index was not found or is private.'}
+                {state.error || 'This network was not found or is private.'}
               </p>
             </div>
             <Button
@@ -208,24 +208,24 @@ export default function PublicJoinPage() {
               </p>
             </div>
             
-            {state.index && (
+            {state.network && (
               <div className="bg-white border border-gray-200 rounded-lg p-8 mb-6">
                 <div className="flex items-center gap-3 mb-4">
                   <Globe className="h-5 w-5 text-black" />
                   <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">
-                    Public Index
+                    Public Network
                   </h2>
                 </div>
                 
                 <h2 className="text-3xl font-bold text-black mb-6 font-ibm-plex-mono">
-                  {state.index.title}
+                  {state.network.title}
                 </h2>
                 
-                {state.index._count && (
+                {state.network._count && (
                   <div className="flex items-center gap-2 text-gray-600">
                     <Users className="h-4 w-4" />
                     <span className="text-sm font-ibm-plex-mono">
-                      {state.index._count.members} {state.index._count.members === 1 ? 'member' : 'members'}
+                      {state.network._count.members} {state.network._count.members === 1 ? 'member' : 'members'}
                     </span>
                   </div>
                 )}
@@ -255,24 +255,24 @@ export default function PublicJoinPage() {
               </p>
             </div>
             
-            {state.index && (
+            {state.network && (
               <div className="bg-white border border-gray-200 rounded-lg p-8 mb-6">
                 <div className="flex items-center gap-3 mb-4">
                   <Globe className="h-5 w-5 text-black" />
                   <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">
-                    Public Index
+                    Public Network
                   </h2>
                 </div>
                 
                 <h2 className="text-3xl font-bold text-black mb-6 font-ibm-plex-mono">
-                  {state.index.title}
+                  {state.network.title}
                 </h2>
                 
-                {state.index._count && (
+                {state.network._count && (
                   <div className="flex items-center gap-2 text-gray-600">
                     <Users className="h-4 w-4" />
                     <span className="text-sm font-ibm-plex-mono">
-                      {state.index._count.members} {state.index._count.members === 1 ? 'member' : 'members'}
+                      {state.network._count.members} {state.network._count.members === 1 ? 'member' : 'members'}
                     </span>
                   </div>
                 )}
@@ -281,7 +281,7 @@ export default function PublicJoinPage() {
             
             <div className="max-w-md">
               <Button
-                onClick={handleJoinIndex}
+                onClick={handleJoinNetwork}
                 className="w-full bg-[#041729] text-white hover:bg-[#0a2d4a] font-ibm-plex-mono"
               >
                 Join
@@ -295,7 +295,7 @@ export default function PublicJoinPage() {
           <ContentContainer>
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-              <p className="text-gray-600 font-ibm-plex-mono">Joining index...</p>
+              <p className="text-gray-600 font-ibm-plex-mono">Joining network...</p>
             </div>
           </ContentContainer>
         );
@@ -311,7 +311,7 @@ export default function PublicJoinPage() {
               </div>
               <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Already a Member</h1>
               <p className="text-gray-600 font-ibm-plex-mono mb-4">
-                You're already a member of {state.index?.title}.
+                You're already a member of {state.network?.title}.
               </p>
             </div>
             <Button

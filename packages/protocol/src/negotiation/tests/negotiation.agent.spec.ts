@@ -27,7 +27,7 @@ const seedAssessment: SeedAssessment = {
   valencyRole: 'patient',
 };
 
-const indexContext = { networkId: 'net-1', prompt: 'AI founders and engineers looking to connect' };
+const networkContext = { networkId: 'net-1', prompt: 'AI founders and engineers looking to connect' };
 
 describe('IndexNegotiator', () => {
   const negotiator = new IndexNegotiator();
@@ -36,7 +36,7 @@ describe('IndexNegotiator', () => {
     const result = await negotiator.invoke({
       ownUser: mlUser,
       otherUser: engineerUser,
-      indexContext,
+      networkContext,
       seedAssessment,
       history: [],
     });
@@ -54,7 +54,7 @@ describe('IndexNegotiator', () => {
     const result = await negotiator.invoke({
       ownUser: mlUser,
       otherUser: engineerUser,
-      indexContext,
+      networkContext,
       seedAssessment,
       history: [],
     });
@@ -71,7 +71,7 @@ describe('IndexNegotiator', () => {
     const result = await negotiator.invoke({
       ownUser: mlUser,
       otherUser: engineerUser,
-      indexContext,
+      networkContext,
       seedAssessment,
       history,
       isFinalTurn: true,

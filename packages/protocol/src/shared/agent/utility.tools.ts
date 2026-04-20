@@ -178,7 +178,7 @@ Contacts are people in a user's personal network, stored as members of their per
 ### Contact Workflow
 1. import_contacts or import_gmail_contacts → bulk add to network
 2. list_contacts → view all contacts with userId
-3. create_opportunities(networkId=personalIndexId) → find matches among contacts
+3. create_opportunities(networkId=personalNetworkId) → find matches among contacts
 4. add_contact(email) → add individual contact
 5. remove_contact(contactUserId) → remove from network`,
 
@@ -225,7 +225,7 @@ Discovery is the process of finding meaningful connections between users based o
 ### Managing Contacts
 1. import_gmail_contacts() or import_contacts([...]) → add contacts
 2. list_contacts() → view network
-3. create_opportunities(networkId=personalIndexId) → find matches among contacts
+3. create_opportunities(networkId=personalNetworkId) → find matches among contacts
 
 ### Creating a Community
 1. create_network(title, prompt) → create index

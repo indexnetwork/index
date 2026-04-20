@@ -207,8 +207,8 @@ describe("CLI tool call contracts", () => {
       });
     });
 
-    it("link calls create_intent_index with intentId and networkId", async () => {
-      mock.setToolResponse("create_intent_index", { success: true, data: {} });
+    it("link calls create_intent_network with intentId and networkId", async () => {
+      mock.setToolResponse("create_intent_network", { success: true, data: {} });
 
       await handleIntent(client, "link", {
         intentId: "intent-123",
@@ -217,15 +217,15 @@ describe("CLI tool call contracts", () => {
       });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("create_intent_index");
+      expect(mock.toolCalls[0].toolName).toBe("create_intent_network");
       expect(mock.toolCalls[0].query).toEqual({
         intentId: "intent-123",
         networkId: "index-456",
       });
     });
 
-    it("unlink calls delete_intent_index with intentId and networkId", async () => {
-      mock.setToolResponse("delete_intent_index", { success: true, data: {} });
+    it("unlink calls delete_intent_network with intentId and networkId", async () => {
+      mock.setToolResponse("delete_intent_network", { success: true, data: {} });
 
       await handleIntent(client, "unlink", {
         intentId: "intent-123",
@@ -234,17 +234,20 @@ describe("CLI tool call contracts", () => {
       });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("delete_intent_index");
+      expect(mock.toolCalls[0].toolName).toBe("delete_intent_network");
       expect(mock.toolCalls[0].query).toEqual({
         intentId: "intent-123",
         networkId: "index-456",
       });
     });
 
-    it("links calls read_intent_indexes with intentId", async () => {
-      mock.setToolResponse("read_intent_indexes", {
+    it("links calls read_intent_networks with intentId", async () => {
+      mock.onRest("GET", "/api/networks", () =>
+        Response.json({ networks: [] }),
+      );
+      mock.setToolResponse("read_intent_networks", {
         success: true,
-        data: { indexes: [] },
+        data: { links: [] },
       });
 
       await handleIntent(client, "links", {
@@ -253,7 +256,7 @@ describe("CLI tool call contracts", () => {
       });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("read_intent_indexes");
+      expect(mock.toolCalls[0].toolName).toBe("read_intent_networks");
       expect(mock.toolCalls[0].query).toEqual({ intentId: "intent-123" });
     });
 
@@ -311,7 +314,7 @@ describe("CLI tool call contracts", () => {
 
     it("discover --introduce gathers entities then calls create_opportunities with partyUserIds + entities", async () => {
       // Mock the prerequisite tool responses
-      mock.setToolResponse("read_index_memberships", {
+      mock.setToolResponse("read_network_memberships", {
         success: true,
         data: {
           memberships: [{ networkId: "shared-index-1", indexTitle: "AI Network" }],
@@ -337,9 +340,9 @@ describe("CLI tool call contracts", () => {
         json: true,
       });
 
-      // Should have called: read_index_memberships x2, read_user_profiles x2, read_intents x2, create_opportunities x1
+      // Should have called: read_network_memberships x2, read_user_profiles x2, read_intents x2, create_opportunities x1
       const toolNames = mock.toolCalls.map((c) => c.toolName);
-      expect(toolNames.filter((n) => n === "read_index_memberships")).toHaveLength(2);
+      expect(toolNames.filter((n) => n === "read_network_memberships")).toHaveLength(2);
       expect(toolNames.filter((n) => n === "read_user_profiles")).toHaveLength(2);
       expect(toolNames.filter((n) => n === "read_intents")).toHaveLength(2);
       expect(toolNames.filter((n) => n === "create_opportunities")).toHaveLength(1);
@@ -361,7 +364,7 @@ describe("CLI tool call contracts", () => {
     });
 
     it("discover --introduce without hint omits hint field", async () => {
-      mock.setToolResponse("read_index_memberships", {
+      mock.setToolResponse("read_network_memberships", {
         success: true,
         data: { memberships: [{ networkId: "idx-1" }] },
       });
@@ -381,7 +384,7 @@ describe("CLI tool call contracts", () => {
     });
 
     it("discover --introduce fails gracefully when no shared indexes", async () => {
-      mock.setToolResponse("read_index_memberships", {
+      mock.setToolResponse("read_network_memberships", {
         success: true,
         data: { memberships: [] },
       });
@@ -396,7 +399,7 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls.filter((c) => c.toolName === "create_opportunities")).toHaveLength(0);
       // Should only have the 2 membership lookups
       expect(mock.toolCalls).toHaveLength(2);
-      expect(mock.toolCalls.every((c) => c.toolName === "read_index_memberships")).toBe(true);
+      expect(mock.toolCalls.every((c) => c.toolName === "read_network_memberships")).toBe(true);
     });
 
     it("accept calls update_opportunity with status accepted (CLI: opportunity accept)", async () => {
@@ -567,16 +570,16 @@ describe("CLI tool call contracts", () => {
   // ── Sync ─────────────────────────────────────────────────────────
 
   describe("sync", () => {
-    it("calls 4 tools in parallel: read_user_profiles, read_indexes, read_intents, list_contacts", async () => {
+    it("calls 4 tools in parallel: read_user_profiles, read_networks, read_intents, list_contacts", async () => {
       mock.setToolResponse("read_user_profiles", { success: true, data: { profile: {} } });
-      mock.setToolResponse("read_indexes", { success: true, data: { indexes: [] } });
+      mock.setToolResponse("read_networks", { success: true, data: { memberOf: [], owns: [], publicNetworks: [] } });
       mock.setToolResponse("read_intents", { success: true, data: { intents: [] } });
       mock.setToolResponse("list_contacts", { success: true, data: { contacts: [] } });
 
       await handleSync(client, { json: true });
 
       const toolNames = mock.toolCalls.map((c) => c.toolName).sort();
-      expect(toolNames).toEqual(["list_contacts", "read_indexes", "read_intents", "read_user_profiles"]);
+      expect(toolNames).toEqual(["list_contacts", "read_intents", "read_networks", "read_user_profiles"]);
 
       // All should send empty queries
       for (const call of mock.toolCalls) {

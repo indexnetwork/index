@@ -20,7 +20,7 @@ export interface IntentForIndexing {
  */
 export interface IndexMemberContext {
   networkId: string;
-  indexPrompt: string | null;
+  networkPrompt: string | null;
   memberPrompt: string | null;
 }
 
@@ -91,7 +91,7 @@ export const IntentNetworkGraphState = Annotation.Root({
   }),
 
   /** Index + member context. Null if user not eligible. */
-  indexContext: Annotation<IndexMemberContext | null>({
+  networkContext: Annotation<IndexMemberContext | null>({
     reducer: (_, next) => next,
     default: () => null,
   }),

@@ -38,7 +38,7 @@ export interface DiscoverInput {
   database: ChatGraphCompositeDatabase;
   userId: string;
   query: string;
-  indexScope: string[];
+  networkScope: string[];
   limit?: number;
   /** Optional intent to use as discovery source and for triggeredBy (e.g. from opportunity queue). */
   triggerIntentId?: string;
@@ -522,7 +522,7 @@ interface CachedDiscoverySession {
   userId: string;
   onBehalfOfUserId?: string;
   query: string;
-  indexScope: string[];
+  networkScope: string[];
   options: OpportunityGraphOptions;
   /**
    * Carried across pagination so page 2+ stays on the same flow as page 1.
@@ -545,7 +545,7 @@ export async function runDiscoverFromQuery(
     database,
     userId,
     query,
-    indexScope,
+    networkScope,
     limit = 5,
     triggerIntentId,
     targetUserId,
@@ -554,7 +554,7 @@ export async function runDiscoverFromQuery(
     trigger,
   } = input;
 
-  if (indexScope.length === 0) {
+  if (networkScope.length === 0) {
     return {
       found: false,
       count: 0,
@@ -588,14 +588,14 @@ export async function runDiscoverFromQuery(
       queryPreview: queryOrEmpty
         ? queryOrEmpty.substring(0, 50)
         : "(using user intents in scope)",
-      indexScopeCount: indexScope.length,
+      indexScopeCount: networkScope.length,
       limit,
     },
     async () => {
       const result = await opportunityGraph.invoke({
         userId,
         searchQuery: queryOrEmpty || undefined,
-        networkId: indexScope.length === 1 ? indexScope[0] : undefined,
+        networkId: networkScope.length === 1 ? networkScope[0] : undefined,
         triggerIntentId,
         targetUserId,
         onBehalfOfUserId,
@@ -636,7 +636,7 @@ export async function runDiscoverFromQuery(
             userId,
             onBehalfOfUserId,
             query: queryOrEmpty,
-            indexScope,
+            networkScope,
             options,
             ...(trigger && { trigger }),
           } satisfies CachedDiscoverySession, { ttl: 1800 }); // 30 minutes
@@ -822,7 +822,7 @@ export async function continueDiscovery(input: {
   cache: Cache;
   userId: string;
   discoveryId: string;
-  /** If provided, validates the cached session's indexScope contains this index. */
+  /** If provided, validates the cached session's networkScope contains this index. */
   expectedIndexId?: string;
   limit?: number;
   chatSessionId?: string;
@@ -853,7 +853,7 @@ export async function continueDiscovery(input: {
   }
 
   // Validate that the cached session's scope matches the current chat context
-  if (expectedIndexId && !cached.indexScope.includes(expectedIndexId)) {
+  if (expectedIndexId && !cached.networkScope.includes(expectedIndexId)) {
     return {
       found: false,
       count: 0,

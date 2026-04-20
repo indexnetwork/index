@@ -222,7 +222,7 @@ export class OpportunityGraphFactory {
             requestedIndexId: state.networkId ?? undefined,
           },
           async () => {
-            // Use getNetworkMemberships (all memberships) for search scope — NOT getUserIndexIds
+            // Use getNetworkMemberships (all memberships) for search scope — NOT getUserNetworkIds
             // (which filters by autoAssign=true and is intended only for intent assignment).
             const memberships = await this.database.getNetworkMemberships(state.userId);
             const userNetworkIds = memberships.map(m => m.networkId) as Id<'networks'>[];
@@ -307,7 +307,7 @@ export class OpportunityGraphFactory {
           if (state.networkId) {
             // Validate user is member or owner of requested network
             const isInScope = state.userNetworks.includes(state.networkId);
-            const isOwner = !isInScope && await this.database.isIndexOwner(state.networkId, state.userId);
+            const isOwner = !isInScope && await this.database.isNetworkOwner(state.networkId, state.userId);
             if (!isInScope && !isOwner) {
               logger.warn('[Graph:Scope] User not member of requested network', {
                 networkId: state.networkId,
@@ -347,7 +347,7 @@ export class OpportunityGraphFactory {
           if (state.triggerIntentId) {
             // Background path: look up persisted scores from intent_indexes
             try {
-              const scores = await this.database.getIntentIndexScores(state.triggerIntentId);
+              const scores = await this.database.getIntentNetworkScores(state.triggerIntentId);
               for (const { networkId, relevancyScore } of scores) {
                 if (relevancyScore != null) {
                   indexRelevancyScores[networkId] = relevancyScore;
@@ -364,7 +364,7 @@ export class OpportunityGraphFactory {
               const scorableIndexes = targetNetworks.filter(ti => ti.title !== 'Unknown');
               const scoringPromises = scorableIndexes.map(async (ti) => {
                 const ctx = await this.database.getNetworkMemberContext(ti.networkId, state.userId);
-                if (!ctx?.indexPrompt?.trim() && !ctx?.memberPrompt?.trim()) {
+                if (!ctx?.networkPrompt?.trim() && !ctx?.memberPrompt?.trim()) {
                   return { networkId: ti.networkId, score: 1.0 };
                 }
                 const _indexerStart = Date.now();
@@ -374,7 +374,7 @@ export class OpportunityGraphFactory {
                 try {
                   result = await indexer.invoke(
                     state.searchQuery!,
-                    ctx?.indexPrompt ?? null,
+                    ctx?.networkPrompt ?? null,
                     ctx?.memberPrompt ?? null,
                   );
                 } catch {
@@ -385,9 +385,9 @@ export class OpportunityGraphFactory {
                   scopeAgentTimings.push({ name: 'intent.indexer', durationMs: _indexerDuration });
                 }
                 if (!result) return { networkId: ti.networkId, score: 1.0 };
-                const score = ctx?.indexPrompt && ctx?.memberPrompt
+                const score = ctx?.networkPrompt && ctx?.memberPrompt
                   ? result.indexScore * 0.6 + result.memberScore * 0.4
-                  : ctx?.indexPrompt ? result.indexScore : result.memberScore;
+                  : ctx?.networkPrompt ? result.indexScore : result.memberScore;
                 return { networkId: ti.networkId, score };
               });
               const results = await Promise.all(scoringPromises);
@@ -592,9 +592,9 @@ export class OpportunityGraphFactory {
               targetUserId: state.targetUserId,
             });
             const targetMemberships = await this.database.getNetworkMemberships(state.targetUserId);
-            const targetUserIndexIds = targetMemberships.map(m => m.networkId);
+            const targetUserNetworkIds = targetMemberships.map(m => m.networkId);
             const sharedIndexIds = state.targetNetworks
-              .filter(ti => targetUserIndexIds.includes(ti.networkId))
+              .filter(ti => targetUserNetworkIds.includes(ti.networkId))
               .map(ti => ti.networkId);
 
             if (sharedIndexIds.length === 0) {
@@ -757,7 +757,7 @@ export class OpportunityGraphFactory {
                 const profileCandidates: CandidateMatch[] = [];
                 for (const targetIndex of state.targetNetworks) {
                   const results = await this.embedder.searchWithProfileEmbedding(vector, {
-                    indexScope: [targetIndex.networkId],
+                    networkScope: [targetIndex.networkId],
                     excludeUserId: discoveryUserId,
                     limitPerStrategy: Math.floor(limitPerStrategy / 2),
                     limit: Math.floor(perIndexLimit / 2),
@@ -813,7 +813,7 @@ export class OpportunityGraphFactory {
             const allCandidates: CandidateMatch[] = [];
             for (const targetIndex of state.targetNetworks) {
               const results = await this.embedder.searchWithProfileEmbedding(vector, {
-                indexScope: [targetIndex.networkId],
+                networkScope: [targetIndex.networkId],
                 excludeUserId: discoveryUserId,
                 limitPerStrategy,
                 limit: perIndexLimit,
@@ -955,7 +955,7 @@ export class OpportunityGraphFactory {
             await Promise.all(
               state.targetNetworks.map(async (targetIndex) => {
                 const results = await self.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
-                  indexScope: [targetIndex.networkId],
+                  networkScope: [targetIndex.networkId],
                   excludeUserId: discoveryUserId,
                   limitPerStrategy,
                   limit: perIndexLimit,
@@ -1042,7 +1042,7 @@ export class OpportunityGraphFactory {
           await Promise.all(
             state.targetNetworks.map(async (targetIndex) => {
               const results = await this.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
-                indexScope: [targetIndex.networkId],
+                networkScope: [targetIndex.networkId],
                 excludeUserId: discoveryUserId,
                 limitPerStrategy,
                 limit: perIndexLimit,
@@ -1743,14 +1743,14 @@ export class OpportunityGraphFactory {
 
         // Fetch per-candidate index context (group by networkId to avoid duplicate lookups)
         const uniqueIndexIds = [...new Set(candidates.map(c => c.networkId).filter((id): id is string => !!id))];
-        const indexContextMap = new Map<string, string>();
+        const networkContextMap = new Map<string, string>();
         await Promise.all(
           uniqueIndexIds.map(async (networkId) => {
             const ctx = await this.database.getNetworkMemberContext(networkId, discoveryUserId).catch(() => null);
-            const prompt = [ctx?.indexPrompt, ctx?.memberPrompt]
+            const prompt = [ctx?.networkPrompt, ctx?.memberPrompt]
               .filter((v): v is string => !!v?.trim())
               .join('\n\n');
-            if (prompt) indexContextMap.set(networkId, prompt);
+            if (prompt) networkContextMap.set(networkId, prompt);
           }),
         );
 
@@ -1853,7 +1853,7 @@ export class OpportunityGraphFactory {
           this.negotiationGraph, sourceUser, candidates,
           { networkId: '', prompt: '' }, // base context, overridden per-candidate below
           { maxTurns, traceEmitter: traceEmitter ?? undefined,
-            indexContextOverrides: indexContextMap,
+            networkContextOverrides: networkContextMap,
             timeoutMs,
             trigger: state.trigger === 'orchestrator' ? 'orchestrator' : 'ambient',
             ...(onCandidateResolved && { onCandidateResolved }) },
@@ -2004,7 +2004,7 @@ export class OpportunityGraphFactory {
 
           const [introducerIsMember, introducerIsOwner] = await Promise.all([
             this.database.isNetworkMember(primaryNetworkId, state.userId),
-            this.database.isIndexOwner(primaryNetworkId, state.userId),
+            this.database.isNetworkOwner(primaryNetworkId, state.userId),
           ]);
           if (!introducerIsMember && !introducerIsOwner) {
             return {
@@ -2015,7 +2015,7 @@ export class OpportunityGraphFactory {
             partyUserIds.map(async (userId) => {
               const [isMember, isOwner] = await Promise.all([
                 this.database.isNetworkMember(primaryNetworkId, userId),
-                this.database.isIndexOwner(primaryNetworkId, userId),
+                this.database.isNetworkOwner(primaryNetworkId, userId),
               ]);
               return isMember || isOwner;
             }),
@@ -2256,7 +2256,7 @@ export class OpportunityGraphFactory {
           }
 
           for (const evaluated of state.evaluatedOpportunities) {
-            const indexIdForActors = state.networkId ?? evaluated.actors[0]?.networkId;
+            const networkIdForActors = state.networkId ?? evaluated.actors[0]?.networkId;
             let actors: OpportunityActor[];
             let data: CreateOpportunityData;
 
@@ -2268,7 +2268,7 @@ export class OpportunityGraphFactory {
             });
 
             if (state.introductionContext) {
-              if (indexIdForActors === undefined) {
+              if (networkIdForActors === undefined) {
                 logger.warn('[Graph:Persist] Introduction path missing networkId; skipping opportunity', {
                   userId: state.userId,
                   actorsCount: evaluated.actors.length,
@@ -2277,7 +2277,7 @@ export class OpportunityGraphFactory {
               }
               // Introduction path: manual detection, introducer actor, curator_judgment signal.
               const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
-                networkId: a.networkId ?? indexIdForActors,
+                networkId: a.networkId ?? networkIdForActors,
                 userId: a.userId,
                 role: a.role,
                 ...(a.intentId ? { intent: a.intentId } : {}),
@@ -2287,7 +2287,7 @@ export class OpportunityGraphFactory {
                 ? evaluatorActors
                 : [
                     ...evaluatorActors,
-                    { networkId: indexIdForActors, userId: state.userId, role: 'introducer' as const, approved: false },
+                    { networkId: networkIdForActors, userId: state.userId, role: 'introducer' as const, approved: false },
                   ];
               data = {
                 detection: {
@@ -2310,14 +2310,14 @@ export class OpportunityGraphFactory {
                   ],
                 },
                 context: {
-                  networkId: state.networkId ?? indexIdForActors,
+                  networkId: state.networkId ?? networkIdForActors,
                   ...(state.options.conversationId ? { conversationId: state.options.conversationId } : {}),
                 },
                 confidence: String(evaluated.score / 100),
                 status: initialStatus,
               };
             } else if (state.onBehalfOfUserId) {
-              if (indexIdForActors === undefined) {
+              if (networkIdForActors === undefined) {
                 logger.warn('[Graph:Persist] Introducer discovery path missing networkId; skipping opportunity', {
                   userId: state.userId,
                   actorsCount: evaluated.actors.length,
@@ -2326,7 +2326,7 @@ export class OpportunityGraphFactory {
               }
               // Introducer discovery path: manual detection, introducer is state.userId, target is onBehalfOfUserId.
               const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
-                networkId: a.networkId ?? indexIdForActors,
+                networkId: a.networkId ?? networkIdForActors,
                 userId: a.userId,
                 role: a.role,
                 ...(a.intentId ? { intent: a.intentId } : {}),
@@ -2336,7 +2336,7 @@ export class OpportunityGraphFactory {
                 ? evaluatorActors
                 : [
                     ...evaluatorActors,
-                    { networkId: indexIdForActors!, userId: state.userId, role: 'introducer' as const, approved: false },
+                    { networkId: networkIdForActors!, userId: state.userId, role: 'introducer' as const, approved: false },
                   ];
 
               const candidateUserId = evaluated.actors.find((a) => a.userId !== state.onBehalfOfUserId)?.userId;
@@ -2371,7 +2371,7 @@ export class OpportunityGraphFactory {
                 if (existing.status !== 'expired' && candidateUserId) {
                   existingBetweenActors.push({
                     candidateUserId: candidateUserId as Id<'users'>,
-                    networkId: (state.networkId ?? indexIdForActors ?? '') as Id<'networks'>,
+                    networkId: (state.networkId ?? networkIdForActors ?? '') as Id<'networks'>,
                     existingOpportunityId: existing.id as Id<'opportunities'>,
                     existingStatus: existing.status,
                   });
@@ -2398,7 +2398,7 @@ export class OpportunityGraphFactory {
                   }],
                 },
                 context: {
-                  networkId: state.networkId ?? indexIdForActors,
+                  networkId: state.networkId ?? networkIdForActors,
                   ...(state.options.conversationId ? { conversationId: state.options.conversationId } : {}),
                 },
                 confidence: String(evaluated.score / 100),
@@ -2407,7 +2407,7 @@ export class OpportunityGraphFactory {
             } else {
               // Discovery path: opportunity_graph source, no introducer, lifecycle guard for agent/patient.
               const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
-                networkId: a.networkId ?? indexIdForActors,
+                networkId: a.networkId ?? networkIdForActors,
                 userId: a.userId,
                 role: a.role,
                 ...(a.intentId ? { intent: a.intentId } : {}),
@@ -2607,23 +2607,23 @@ export class OpportunityGraphFactory {
         });
 
         try {
-          let indexIdFilter: string | undefined;
+          let networkIdFilter: string | undefined;
           if (state.networkId) {
             const [isMember, isOwner] = await Promise.all([
               this.database.isNetworkMember(state.networkId, state.userId),
-              this.database.isIndexOwner(state.networkId, state.userId),
+              this.database.isNetworkOwner(state.networkId, state.userId),
             ]);
             if (!isMember && !isOwner) {
               return {
                 readResult: { count: 0, opportunities: [], message: 'Network not found or you are not a member.' },
               };
             }
-            indexIdFilter = state.networkId;
+            networkIdFilter = state.networkId;
           }
 
           const rawList = await this.database.getOpportunitiesForUser(state.userId, {
             limit: 30,
-            ...(indexIdFilter ? { networkId: indexIdFilter } : {}),
+            ...(networkIdFilter ? { networkId: networkIdFilter } : {}),
           });
           const list = rawList.filter((opp) => opp.status !== 'expired');
 
@@ -2697,7 +2697,7 @@ export class OpportunityGraphFactory {
               const source = opp.detection?.source ? (sourceLabel[opp.detection.source] ?? opp.detection.source) : null;
               return {
                 id: opp.id,
-                indexName: indexRecord?.title ?? (actorIndexId ?? ''),
+                networkName: indexRecord?.title ?? (actorIndexId ?? ''),
                 connectedWith,
                 suggestedBy,
                 reasoning: opp.interpretation?.reasoning ?? 'Connection opportunity',
@@ -2992,13 +2992,13 @@ export class OpportunityGraphFactory {
         };
 
         // Load index context for the candidate's network
-        const indexContextMap = new Map<string, string>();
+        const networkContextMap = new Map<string, string>();
         if (candidate.networkId) {
           const ctx = await this.database.getNetworkMemberContext(candidate.networkId, sourceActor.userId).catch(() => null);
-          const prompt = [ctx?.indexPrompt, ctx?.memberPrompt]
+          const prompt = [ctx?.networkPrompt, ctx?.memberPrompt]
             .filter((v): v is string => !!v?.trim())
             .join('\n\n');
-          if (prompt) indexContextMap.set(candidate.networkId, prompt);
+          if (prompt) networkContextMap.set(candidate.networkId, prompt);
         }
 
         const acceptedResults = await negotiateCandidates(
@@ -3006,7 +3006,7 @@ export class OpportunityGraphFactory {
           { networkId: '', prompt: '' },
           {
             maxTurns: 6,
-            indexContextOverrides: indexContextMap,
+            networkContextOverrides: networkContextMap,
             timeoutMs: AMBIENT_PARK_WINDOW_MS,
             trigger: 'ambient',
           },

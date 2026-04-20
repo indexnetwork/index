@@ -7,7 +7,7 @@ import { useAIChat } from "@/contexts/AIChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunities, useNetworks } from "@/contexts/APIContext";
-import { useNetworksState } from "@/contexts/IndexesContext";
+import { useNetworksState } from "@/contexts/NetworksContext";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiClient } from "@/lib/api";
@@ -282,8 +282,8 @@ export default function OnboardingPage() {
   } = useAIChat();
 
   const opportunitiesService = useOpportunities();
-  const indexesService = useNetworks();
-  const { refreshIndexes } = useNetworksState();
+  const networksService = useNetworks();
+  const { refreshNetworks } = useNetworksState();
   const { error: showError } = useNotifications();
 
   const [input, setInput] = useState("");
@@ -373,11 +373,11 @@ export default function OnboardingPage() {
     // Accept pending invitation deferred from /l/:code (only after onboarding completes)
     const pendingCode = localStorage.getItem('pendingInviteCode');
     if (pendingCode) {
-      indexesService
+      networksService
         .acceptInvitation(pendingCode)
         .then(async () => {
           localStorage.removeItem('pendingInviteCode');
-          await refreshIndexes();
+          await refreshNetworks();
         })
         .catch((err) => {
           // Keep code in localStorage so user can retry via the invitation link
@@ -390,7 +390,7 @@ export default function OnboardingPage() {
     const target = sessionId ? `/d/${sessionId}` : "/";
     const timer = setTimeout(() => navigate(target, { replace: true }), 700);
     return () => clearTimeout(timer);
-  }, [user?.onboarding?.completedAt, sessionId, navigate, indexesService, refreshIndexes, showError]);
+  }, [user?.onboarding?.completedAt, sessionId, navigate, networksService, refreshNetworks, showError]);
 
   // Opportunity actions
   const handleOpportunityAction = useCallback(

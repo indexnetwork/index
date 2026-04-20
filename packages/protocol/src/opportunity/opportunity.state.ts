@@ -420,7 +420,7 @@ export const OpportunityGraphState = Annotation.Root({
     message?: string;
     opportunities: Array<{
       id: string;
-      indexName: string;
+      networkName: string;
       connectedWith: string[];
       suggestedBy: string | null;
       reasoning: string;

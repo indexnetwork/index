@@ -38,7 +38,7 @@ export interface SuggestionGeneratorInput {
   /** Last few messages (user and assistant) to derive context */
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   /** Optional index/community context to tailor suggestions */
-  indexContext?: string;
+  networkContext?: string;
 }
 
 /**
@@ -59,7 +59,7 @@ export class SuggestionGenerator {
    */
   @Timed()
   async generate(input: SuggestionGeneratorInput): Promise<ChatSuggestion[]> {
-    const { messages, indexContext } = input;
+    const { messages, networkContext } = input;
     if (messages.length === 0) return [];
 
     const excerpt = messages
@@ -67,8 +67,8 @@ export class SuggestionGenerator {
       .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 300)}`)
       .join("\n\n");
 
-    const userContent = indexContext
-      ? `Conversation (community context: ${indexContext}):\n\n${excerpt}\n\nGenerate 3-5 follow-up suggestions.`
+    const userContent = networkContext
+      ? `Conversation (community context: ${networkContext}):\n\n${excerpt}\n\nGenerate 3-5 follow-up suggestions.`
       : `Conversation:\n\n${excerpt}\n\nGenerate 3-5 follow-up suggestions.`;
 
     try {

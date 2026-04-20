@@ -1,78 +1,78 @@
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback, useRef } from 'react';
 import { Network } from '@/lib/types';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useIndexesV2 } from '@/services/v2/networks.service';
-import { useNetworks as useIndexesAPI } from '@/contexts/APIContext';
+import { useNetworksV2 } from '@/services/v2/networks.service';
+import { useNetworks as useNetworksApi } from '@/contexts/APIContext';
 
 interface NetworksContextType {
-  indexes: Network[];
+  networks: Network[];
   loading: boolean;
   error: string | null;
-  refreshIndexes: () => Promise<void>;
-  addIndex: (network: Network) => void;
-  updateIndex: (updatedNetwork: Network) => void;
-  removeIndex: (networkId: string) => void;
+  refreshNetworks: () => Promise<void>;
+  addNetwork: (network: Network) => void;
+  updateNetwork: (updatedNetwork: Network) => void;
+  removeNetwork: (networkId: string) => void;
 }
 
 const NetworksContext = createContext<NetworksContextType | undefined>(undefined);
 
 export function NetworksProvider({ children }: { children: ReactNode }) {
-  const [indexes, setIndexes] = useState<Network[]>([]);
+  const [networks, setNetworks] = useState<Network[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const indexesV2 = useIndexesV2();
-  const indexesAPI = useIndexesAPI();
+  const networksV2 = useNetworksV2();
+  const networksApi = useNetworksApi();
   const { isAuthenticated } = useAuthContext();
   const hasFetchedRef = useRef(false);
   const hasDataRef = useRef(false);
   const pendingJoinProcessedRef = useRef(false);
 
-  const refreshIndexes = useCallback(async () => {
+  const refreshNetworks = useCallback(async () => {
     try {
       if (!hasDataRef.current) {
         setLoading(true);
       }
       setError(null);
-      const response = await indexesV2.getIndexes();
-      setIndexes((response.data ?? []).filter(Boolean));
+      const response = await networksV2.getNetworks();
+      setNetworks((response.data ?? []).filter(Boolean));
       hasFetchedRef.current = true;
       hasDataRef.current = true;
     } catch (err) {
       console.error('Error fetching networks:', err);
       setError('Failed to load networks');
-      setIndexes([]);
+      setNetworks([]);
     } finally {
       setLoading(false);
     }
-  }, [indexesV2]);
+  }, [networksV2]);
 
-  const addIndex = useCallback((network: Network) => {
-    setIndexes(prev => [network, ...prev]);
+  const addNetwork = useCallback((network: Network) => {
+    setNetworks(prev => [network, ...prev]);
   }, []);
 
-  const updateIndex = useCallback((updatedNetwork: Network) => {
-    setIndexes(prev => prev.map(n =>
+  const updateNetwork = useCallback((updatedNetwork: Network) => {
+    setNetworks(prev => prev.map(n =>
       n.id === updatedNetwork.id ? updatedNetwork : n
     ));
   }, []);
 
-  const removeIndex = useCallback((networkId: string) => {
-    setIndexes(prev => prev.filter(n => n.id !== networkId));
+  const removeNetwork = useCallback((networkId: string) => {
+    setNetworks(prev => prev.filter(n => n.id !== networkId));
   }, []);
 
   // Initial load - only fetch once when authenticated
   useEffect(() => {
     if (isAuthenticated && !hasFetchedRef.current) {
-      refreshIndexes();
+      refreshNetworks();
     } else if (!isAuthenticated) {
-      setIndexes([]);
+      setNetworks([]);
       setLoading(false);
       setError(null);
       hasFetchedRef.current = false;
       hasDataRef.current = false;
       pendingJoinProcessedRef.current = false;
     }
-  }, [isAuthenticated, refreshIndexes]);
+  }, [isAuthenticated, refreshNetworks]);
 
   // Handle pending index join after authentication
   useEffect(() => {
@@ -87,20 +87,20 @@ export function NetworksProvider({ children }: { children: ReactNode }) {
     pendingJoinProcessedRef.current = true;
     localStorage.removeItem('pending_network_join');
 
-    indexesAPI.joinIndex(pendingNetworkId)
-      .then(() => refreshIndexes())
+    networksApi.joinNetwork(pendingNetworkId)
+      .then(() => refreshNetworks())
       .catch((err) => console.error('Failed to auto-join pending network:', err));
-  }, [isAuthenticated, indexesAPI, refreshIndexes]);
+  }, [isAuthenticated, networksApi, refreshNetworks]);
 
   return (
     <NetworksContext.Provider value={{
-      indexes,
+      networks,
       loading,
       error,
-      refreshIndexes,
-      addIndex,
-      updateIndex,
-      removeIndex
+      refreshNetworks,
+      addNetwork,
+      updateNetwork,
+      removeNetwork
     }}>
       {children}
     </NetworksContext.Provider>

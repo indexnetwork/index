@@ -1,10 +1,10 @@
 ---
-title: "Protocol Deep Dive"
+
+## title: "Protocol Deep Dive"
 type: design
 tags: [protocol, langgraph, agents, graphs, tools, hyde, opportunity, intent, profile, negotiation, mcp]
 created: 2026-03-26
 updated: 2026-04-11
----
 
 # Protocol Deep Dive
 
@@ -119,18 +119,22 @@ The graph supports streaming via `config.writer()` so text tokens and tool-activ
 **Nodes:** `prep`, `query`, `inference`, `verification`, `reconciler`, `executor`
 **State:** `IntentGraphState` (userId, inputContent, operationMode, targetIntentIds, indexId, inferredIntents, verifiedIntents, actions, executionResults, etc.)
 **Conditional edges:**
+
 - After `prep`: routes to `query` (read mode), `inference` (create/update), `reconciler` (delete), or `END` (error)
 - After `inference`: routes to `verification`, `reconciler` (no intents), or `END` (propose mode with nothing)
 - After `verification`: routes to `reconciler` or `END` (propose mode)
 
 **Flow paths:**
-| Mode | Path |
-|------|------|
-| READ | prep -> query -> END |
-| CREATE | prep -> inference -> verification -> reconciler -> executor -> END |
-| UPDATE | prep -> inference -> verification -> reconciler -> executor -> END |
-| DELETE | prep -> reconciler -> executor -> END |
-| PROPOSE | prep -> inference -> verification -> END |
+
+
+| Mode    | Path                                                               |
+| ------- | ------------------------------------------------------------------ |
+| READ    | prep -> query -> END                                               |
+| CREATE  | prep -> inference -> verification -> reconciler -> executor -> END |
+| UPDATE  | prep -> inference -> verification -> reconciler -> executor -> END |
+| DELETE  | prep -> reconciler -> executor -> END                              |
+| PROPOSE | prep -> inference -> verification -> END                           |
+
 
 The propose mode is a dry-run that extracts and verifies intents without persisting, used when the chat agent wants to preview what intents would be created.
 
@@ -143,12 +147,14 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 **Nodes:** `check_state`, `scrape`, `auto_generate`, `use_prepopulated_profile`, `generate_profile`, `embed_save_profile`, `generate_hyde`, `embed_save_hyde`
 **State:** `ProfileGraphState` (userId, operationMode, input, forceUpdate, profile, hydeDescription, needs* flags, etc.)
 **Conditional edges:**
+
 - After `check_state`: routes based on operation mode and what components are missing (profile, embedding, HyDE)
 - After `auto_generate`: routes to `use_prepopulated_profile` (enrichment succeeded) or `generate_profile` (fallback)
 - After `embed_save_profile`: routes to `generate_hyde` or `END`
 - After `generate_hyde`: routes to `embed_save_hyde`
 
 **Key behaviors:**
+
 - Query mode returns immediately (fast path) without any LLM calls
 - Write mode detects what needs generation and only runs necessary steps
 - If input is a confirmation phrase ("yes", "go ahead"), it is treated as no input so scraping runs
@@ -163,6 +169,7 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 **Nodes:** `prep`, `scope`, `resolve`, `discovery`, `evaluation`, `ranking`, `intro_validation`, `intro_evaluation`, `persist`, `negotiate`, `read`, `update`, `delete_opp`, `send`
 **State:** `OpportunityGraphState` (userId, searchQuery, indexId, triggerIntentId, targetUserId, candidates, evaluatedOpportunities, trigger, dedupAlreadyAccepted, etc.)
 **Conditional edges:**
+
 - After `prep`: routes to `scope` or `END` (no index memberships)
 - After `discovery`: routes to `evaluation` or `END` (no candidates)
 - After `evaluation`: routes to `ranking` or `END` (no evaluated opportunities)
@@ -170,16 +177,19 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 **Flow:** `START -> prep -> scope -> resolve -> discovery -> evaluation -> ranking -> persist -> negotiate -> END`
 
 The graph supports three discovery paths:
+
 - **Intent-based (Path A):** Trigger intent is assigned to an index -- use its HyDE documents for search
 - **Profile-based (Path B/C):** Use profile embedding or query-generated HyDE documents for search
 - **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared indexes
 
 **Unified trigger model:** `OpportunityGraphState.trigger` (`'ambient' | 'orchestrator'`, default `'ambient'`) drives branches in the `persist` and `negotiate` nodes so the same graph serves both the queue-driven ambient flow and the chat-driven orchestrator flow. The tool layer passes `trigger: 'orchestrator'` whenever `context.sessionId` is set (i.e. the call comes from a chat session); all other callers inherit the ambient default.
 
-| Node | Ambient trigger | Orchestrator trigger |
-|---|---|---|
-| `persist` | Initial status = `options.initialStatus ?? 'pending'`. | Initial status = `options.initialStatus ?? 'negotiating'`. Also collects `dedupAlreadyAccepted` — accepted opps between the discoverer and each unique candidate — so the tool can tell the LLM to steer users toward the existing chat instead of creating a duplicate draft. |
+
+| Node        | Ambient trigger                                                                                                            | Orchestrator trigger                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `persist`   | Initial status = `options.initialStatus ?? 'pending'`.                                                                     | Initial status = `options.initialStatus ?? 'negotiating'`. Also collects `dedupAlreadyAccepted` — accepted opps between the discoverer and each unique candidate — so the tool can tell the LLM to steer users toward the existing chat instead of creating a duplicate draft.                                                                                                                                                                    |
 | `negotiate` | 5-min park window (`AMBIENT_PARK_WINDOW_MS`) with heartbeat-aware dispatcher. Results aggregate at the end of the fan-out. | 60-second park window (orchestrator cannot afford the ambient budget). Per-candidate `onCandidateResolved` hook flips each accepted opp to `draft` and emits an `opportunity_draft_ready` event via the requestContext `traceEmitter`, so the chat UI renders cards progressively. Honors `requestContext.abortSignal` — after the chat session closes, in-flight negotiations still finish via their park window but their cards are suppressed. |
+
 
 **Dependencies:** `OpportunityGraphDatabase`, `Embedder`, compiled HyDE graph, optional `OpportunityEvaluator`, optional `NegotiationGraph`, optional `AgentDispatcher`
 
@@ -190,6 +200,7 @@ The graph supports three discovery paths:
 **Nodes:** `infer_lenses`, `check_cache`, `generate_missing`, `embed`, `cache_results`
 **State:** `HydeGraphState` (sourceType, sourceId, sourceText, profileContext, lenses, hydeDocuments, hydeEmbeddings, etc.)
 **Conditional edges:**
+
 - After `check_cache`: routes to `generate_missing` (cache misses) or `embed` (all cached)
 
 **Flow:** `START -> infer_lenses -> check_cache -> [generate_missing if needed] -> embed -> cache_results -> END`
@@ -205,6 +216,7 @@ The graph is designed for efficiency: it checks both Redis cache and PostgreSQL 
 **Nodes:** `read`, `create`, `update`, `delete_idx`
 **State:** `NetworkGraphState` (userId, operationMode, indexId, createInput, updateInput, readResult, mutationResult)
 **Conditional edges:**
+
 - From `START`: routes by `operationMode` to the matching CRUD node
 
 **Flow:** `START -> {read | create | update | delete_idx} -> END`
@@ -220,6 +232,7 @@ All operations are database-only -- no LLM calls. Create sets the caller as owne
 **Nodes:** `add_member`, `list_members`, `remove_member`
 **State:** `NetworkMembershipGraphState` (userId, operationMode, indexId, targetUserId, readResult, mutationResult)
 **Conditional edges:**
+
 - From `START`: routes by `operationMode` to the matching node
 
 **Flow:** `START -> {add_member | list_members | remove_member} -> END`
@@ -235,9 +248,11 @@ Self-join is only allowed for public indexes (`joinPolicy: 'anyone'`). Inviting 
 **Nodes:** `assign`, `read`, `unassign`
 **State:** `IntentNetworkGraphState` (userId, operationMode, intentId, indexId, skipEvaluation, evaluation, assignmentResult, etc.)
 **Conditional edges:**
+
 - From `START`: routes by `operationMode`
 
 The `assign` node has two sub-paths:
+
 - **Direct assignment** (`skipEvaluation=true`): assigns immediately with score 1.0
 - **Evaluated assignment**: loads intent + index context, runs IntentIndexer agent to score relevancy, only assigns if score exceeds 0.7 threshold
 
@@ -250,6 +265,7 @@ The `assign` node has two sub-paths:
 **Nodes:** `loadOpportunities`, `checkPresenterCache`, `generateCardText`, `cachePresenterResults`, `checkCategorizerCache`, `categorizeDynamically`, `cacheCategorizerResults`, `normalizeAndSort`
 **State:** `HomeGraphState` (userId, indexId, limit, opportunities, cards, sections, cachedCards, sectionProposals, etc.)
 **Conditional edges:**
+
 - After `checkPresenterCache`: routes to `generateCardText` (cache misses) or `cachePresenterResults` (all cached)
 - After `checkCategorizerCache`: routes to `categorizeDynamically` (cache miss) or `normalizeAndSort` (cached)
 
@@ -264,6 +280,7 @@ This is a read-only graph (separate from the write-path maintenance graph). It u
 **Nodes:** `loadCurrentFeed`, `scoreFeedHealth`, `rediscover`, `introducerDiscovery`, `logMaintenance`
 **State:** `MaintenanceGraphState` (userId, currentOpportunities, activeIntents, healthResult, etc.)
 **Conditional edges:**
+
 - After `loadCurrentFeed`: routes to `scoreFeedHealth` or `END` (error)
 - After `scoreFeedHealth`: routes to `rediscover` (unhealthy feed) or `END` (healthy)
 
@@ -278,6 +295,7 @@ The health scorer considers connection count, connector flow count, expired coun
 **Nodes:** `init`, `turn`, `finalize`
 **State:** `NegotiationGraphState` (sourceUser, candidateUser, indexContext, seedAssessment, conversationId, taskId, messages, turnCount, currentSpeaker, lastTurn, outcome, maxTurns)
 **Conditional edges:**
+
 - After `init`: routes to `turn` or `finalize` (error)
 - After `turn`: routes to `turn` (counter -- continue negotiating), or `finalize` (accept, reject, or turn cap reached)
 
@@ -348,6 +366,7 @@ The qualification threshold is 0.7. When both prompts are present, the final sco
 **Used by:** Opportunity Graph (evaluation node)
 
 Scoring bands:
+
 - 90-100: "Must Meet" (perfect alignment)
 - 70-89: "Should Meet" (strong overlaps)
 - Below 70: No opportunity (filtered out)
@@ -440,20 +459,23 @@ Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool f
 
 ### Tool files and their graph mappings
 
-| Tool File | Tools | Subgraph(s) Invoked |
-|-----------|-------|---------------------|
-| `profile.tools.ts` | read_user_profiles, create_user_profile, update_user_profile | Profile Graph |
-| `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, search_intents, create_intent_index, read_intent_indexes, delete_intent_index | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
-| `network.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Index Graph, Index Membership Graph |
-| `opportunity.tools.ts` | create_opportunities, list_my_opportunities, send_opportunity | Opportunity Graph |
-| `contact.tools.ts` | add_contact, list_contacts, search_contacts | (direct service calls) |
-| `chat.tools.ts` | list_conversations, get_conversation | (direct `ChatSessionReader` calls) |
-| `utility.tools.ts` | scrape_url, confirm_action, cancel_action | (direct scraper call, pending action state) |
-| `integration.tools.ts` | list_integrations, sync_integration | (service calls) |
+
+| Tool File              | Tools                                                                                                                                         | Subgraph(s) Invoked                                                            |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `profile.tools.ts`     | read_user_profiles, create_user_profile, update_user_profile                                                                                  | Profile Graph                                                                  |
+| `intent.tools.ts`      | read_intents, create_intent, update_intent, delete_intent, search_intents, create_intent_network, read_intent_networks, delete_intent_network | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
+| `network.tools.ts`     | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership                                                   | Index Graph, Index Membership Graph                                            |
+| `opportunity.tools.ts` | create_opportunities, list_my_opportunities, send_opportunity                                                                                 | Opportunity Graph                                                              |
+| `contact.tools.ts`     | add_contact, list_contacts, search_contacts                                                                                                   | (direct service calls)                                                         |
+| `chat.tools.ts`        | list_conversations, get_conversation                                                                                                          | (direct `ChatSessionReader` calls)                                             |
+| `utility.tools.ts`     | scrape_url, confirm_action, cancel_action                                                                                                     | (direct scraper call, pending action state)                                    |
+| `integration.tools.ts` | list_integrations, sync_integration                                                                                                           | (service calls)                                                                |
+
 
 ### How tools are bound to the ChatAgent
 
 During `ChatAgent.create()`:
+
 1. All subgraphs are compiled (Intent, Profile, Opportunity, etc.) using the injected database, embedder, and scraper adapters
 2. `createChatTools()` creates LangChain tool definitions that close over these compiled graphs
 3. The tools are bound to the LLM via `.bind_tools()` so the model can call them by name
@@ -462,6 +484,7 @@ During `ChatAgent.create()`:
 ### Destructive action confirmation
 
 Tools that modify or delete data (update_intent, delete_intent, update_index, delete_index) use a pending confirmation pattern:
+
 1. The tool stores the action in a pending state and returns a confirmation prompt
 2. The ChatAgent relays the confirmation request to the user
 3. The user confirms or cancels
@@ -522,11 +545,13 @@ This is how personal agents participate in bilateral negotiation. The openclaw-p
 
 The key negotiation-facing MCP tools are:
 
-| Tool | Purpose |
-|------|---------|
-| `get_negotiation` | Returns the full turn history and assessment seed for a negotiation |
-| `list_negotiations` | Lists negotiations awaiting a response from this agent's user |
+
+| Tool                     | Purpose                                                                                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_negotiation`        | Returns the full turn history and assessment seed for a negotiation                                                                                                  |
+| `list_negotiations`      | Lists negotiations awaiting a response from this agent's user                                                                                                        |
 | `respond_to_negotiation` | Submits a turn (propose / counter / accept / reject / question) with reasoning and suggested roles. Wraps `POST /api/agents/:id/negotiations/:negotiationId/respond` |
+
 
 Agents claim turns via the HTTP pickup endpoint rather than an MCP tool — the turn payload is too large and the CAS semantics are easier to express over HTTP than via the streaming MCP transport. Once a turn is claimed, the response path goes through `respond_to_negotiation` so the subagent can submit from inside its MCP session.
 
@@ -537,15 +562,11 @@ HyDE (Hypothetical Document Embeddings) is the core semantic search technique. I
 ### How it works
 
 1. **Lens inference:** The `LensInferrer` agent analyzes the source text (intent or query) and user profile context, producing 1-5 search lenses. Each lens is a specific search perspective (e.g., "early-stage crypto infrastructure VC") tagged with a target corpus (`profiles` or `intents`).
-
 2. **Cache check:** For each lens, the system checks Redis cache and PostgreSQL `hyde_documents` table. Only lenses with cache misses proceed to generation.
-
 3. **HyDE generation:** The `HydeGenerator` agent takes each uncached lens and generates a hypothetical document in the target corpus voice:
-   - **Profiles corpus:** Generates a professional biography of the ideal matching person
-   - **Intents corpus:** Generates a goal/aspiration statement from the complementary perspective
-
+  - **Profiles corpus:** Generates a professional biography of the ideal matching person
+  - **Intents corpus:** Generates a goal/aspiration statement from the complementary perspective
 4. **Embedding:** Generated texts are embedded using the same embedding model (text-embedding-3-large, 2000 dimensions) as the stored profiles and intents.
-
 5. **Caching:** Results are cached in Redis (1-hour TTL) and persisted to PostgreSQL for entity sources (intents, profiles).
 
 ### Dynamic lenses vs. hardcoded strategies
@@ -598,6 +619,7 @@ User intent/query
 **Intent-based discovery (Path A):** When a trigger intent is identified and it belongs to a target index, the system uses the intent's existing HyDE documents for vector search. This is the most common path for background discovery jobs.
 
 **Query-based discovery:** When the user provides a search query (e.g., "find me investors"), the system:
+
 1. Runs the full HyDE graph to infer lenses and generate hypothetical documents
 2. Embeds the generated documents
 3. Searches both the profiles and intents vector indexes per lens
@@ -608,6 +630,7 @@ User intent/query
 ### Evaluation
 
 The `OpportunityEvaluator` receives source profile context and candidate profiles (including their intents and profile data). It performs valency analysis to determine semantic roles:
+
 - **Agent:** Candidate can do something for the source
 - **Patient:** Candidate needs something from the source
 - **Peer:** Symmetric collaboration
@@ -662,12 +685,14 @@ User input ("I'm looking for a React co-founder")
 ### Verification details
 
 The SemanticVerifier uses speech act theory to classify intents:
+
 - **COMMISSIVE** (offering): "I can help with React development" -- kept
 - **DIRECTIVE** (seeking): "Looking for a co-founder" -- kept
 - **DECLARATION:** Establishing facts -- kept
 - **ASSERTIVE/EXPRESSIVE:** Statements of belief or emotion -- dropped
 
 Felicity conditions are scored 0-100:
+
 - **Authority:** Does the speaker have standing to make this claim?
 - **Sincerity:** Is the intent genuine?
 - **Clarity:** Is the intent specific enough to be actionable?
@@ -682,7 +707,8 @@ Intents with high semantic entropy (>0.75) or low clarity (<40) are considered v
 
 ### Intent-index assignment
 
-Intent-to-index assignment is handled separately by the Intent Index Graph. When an intent is created and the user is in an index-scoped chat, the `create_intent_index` tool assigns the intent with either:
+Intent-to-network assignment is handled separately by the Intent Index Graph. When an intent is created and the user is in a network-scoped chat, the `create_intent_network` tool assigns the intent with either:
+
 - Direct assignment (score 1.0) when `skipEvaluation` is true
 - Evaluated assignment via `IntentIndexer` agent when the index has prompts defining its purpose
 
@@ -703,6 +729,7 @@ Profile generation combines web scraping, external API enrichment, LLM generatio
 ### Embedding and HyDE
 
 After profile generation:
+
 1. The profile text is concatenated (identity + narrative + attributes) and embedded via the Embedder adapter (text-embedding-3-large, 2000 dimensions)
 2. The profile embedding is stored in `user_profiles.embedding` for direct similarity search
 3. A HyDE document is generated for the profile (`mirror` strategy) describing what kind of person would be a good match
@@ -711,6 +738,7 @@ After profile generation:
 ### State detection
 
 The `check_state` node performs intelligent detection of what components are missing:
+
 - Profile missing -> needs generation
 - Profile exists but embedding invalid -> needs re-embedding
 - HyDE document missing -> needs HyDE generation
@@ -796,6 +824,7 @@ const MODEL_CONFIG = {
 **ModelSettings interface:** Each entry supports `model`, optional `temperature`, optional `maxTokens`, and optional `reasoning` (effort level and whether to exclude reasoning from output).
 
 **Environment overrides:**
+
 - `CHAT_MODEL` overrides the chat agent model (defaults to `google/gemini-3-pro-preview`)
 - `CHAT_REASONING_EFFORT` overrides the chat reasoning budget (`minimal|low|medium|high|xhigh`)
 - `OPENROUTER_API_KEY` is required for all LLM calls
@@ -806,3 +835,4 @@ const MODEL_CONFIG = {
 - **Chat agent** uses the more capable `gemini-3-pro-preview` because it orchestrates complex multi-tool interactions and needs strong reasoning
 - **All other agents** use `gemini-2.5-flash` for speed and cost efficiency -- they perform focused, single-purpose tasks with structured output
 - **Creative agents** (suggestion generator, invite generator, chat title generator) have lower temperatures (0.3-0.4) and capped token limits for concise, deterministic output
+

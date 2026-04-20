@@ -44,7 +44,7 @@ export class NegotiationService {
     const result = await graph.invoke({
       sourceUser: sourceCtx,
       candidateUser: candidateCtx,
-      indexContext: { networkId: '', prompt: '' },
+      networkContext: { networkId: '', prompt: '' },
       seedAssessment: { reasoning: 'Discovery negotiation', valencyRole: 'peer' },
       maxTurns: 4,
     });

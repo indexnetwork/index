@@ -10,10 +10,10 @@ describe("IntentIndexer", () => {
 
   it("should return structured output with indexScore, memberScore, and reasoning", async () => {
     const intent = "I want to find a technical co-founder for my AI startup.";
-    const indexPrompt = "Founders and builders seeking co-founders or collaborators.";
+    const networkPrompt = "Founders and builders seeking co-founders or collaborators.";
     const memberPrompt = "Looking for technical co-founders with ML/AI experience.";
 
-    const result = await indexer.invoke(intent, indexPrompt, memberPrompt);
+    const result = await indexer.invoke(intent, networkPrompt, memberPrompt);
 
     expect(result).not.toBeNull();
     expect(result!.indexScore).toBeGreaterThanOrEqual(0);
@@ -26,9 +26,9 @@ describe("IntentIndexer", () => {
 
   it("should evaluate when member prompt is null", async () => {
     const intent = "Looking for a React developer to join my team.";
-    const indexPrompt = "Software engineering roles and hiring.";
+    const networkPrompt = "Software engineering roles and hiring.";
 
-    const result = await indexer.invoke(intent, indexPrompt, null);
+    const result = await indexer.invoke(intent, networkPrompt, null);
 
     expect(result).not.toBeNull();
     expect(result!.indexScore).toBeGreaterThanOrEqual(0);
@@ -40,9 +40,9 @@ describe("IntentIndexer", () => {
 
   it("should work with evaluate() alias", async () => {
     const intent = "I want to learn Rust.";
-    const indexPrompt = "Learning goals and skill development.";
+    const networkPrompt = "Learning goals and skill development.";
 
-    const result = await indexer.evaluate(intent, indexPrompt, null);
+    const result = await indexer.evaluate(intent, networkPrompt, null);
 
     expect(result).not.toBeNull();
     expect(result!.indexScore).toBeGreaterThanOrEqual(0);

@@ -84,10 +84,10 @@ describe("handleNetwork", () => {
     await mock.stop();
   });
 
-  it("lists networks, filtering out personal indexes", async () => {
-    mock.on("GET", "/api/indexes", () =>
+  it("lists networks, filtering out personal networks", async () => {
+    mock.on("GET", "/api/networks", () =>
       Response.json({
-        indexes: [
+        networks: [
           { id: "n1", title: "Public Net", memberCount: 5, isPersonal: false, joinPolicy: "anyone", createdAt: "2026-01-01" },
           { id: "n2", title: "My Personal", memberCount: 1, isPersonal: true, joinPolicy: "invite_only", createdAt: "2026-01-01" },
         ],
@@ -100,10 +100,10 @@ describe("handleNetwork", () => {
 
   it("creates a network with prompt", async () => {
     let receivedBody: Record<string, unknown> = {};
-    mock.on("POST", "/api/indexes", async (req) => {
+    mock.on("POST", "/api/networks", async (req) => {
       receivedBody = (await req.json()) as Record<string, unknown>;
       return Response.json({
-        index: { id: "n1", title: "New Net", joinPolicy: "invite_only" },
+        network: { id: "n1", title: "New Net", joinPolicy: "invite_only" },
       });
     });
 
@@ -113,12 +113,12 @@ describe("handleNetwork", () => {
   });
 
   it("shows network details and members", async () => {
-    mock.on("GET", "/api/indexes/n1", () =>
+    mock.on("GET", "/api/networks/n1", () =>
       Response.json({
-        index: { id: "n1", title: "Test Net", prompt: "A network", memberCount: 2, joinPolicy: "anyone" },
+        network: { id: "n1", title: "Test Net", prompt: "A network", memberCount: 2, joinPolicy: "anyone" },
       }),
     );
-    mock.on("GET", "/api/indexes/n1/members", () =>
+    mock.on("GET", "/api/networks/n1/members", () =>
       Response.json({
         members: [
           { userId: "u1", user: { name: "Alice", email: "alice@test.com" }, permissions: ["owner"], createdAt: "2026-01-01" },
@@ -132,15 +132,15 @@ describe("handleNetwork", () => {
   });
 
   it("joins a network", async () => {
-    mock.on("POST", "/api/indexes/n1/join", () =>
-      Response.json({ index: { id: "n1", title: "Public Net" } }),
+    mock.on("POST", "/api/networks/n1/join", () =>
+      Response.json({ network: { id: "n1", title: "Public Net" } }),
     );
 
     await handleNetwork(client, "join", ["n1"], {});
   });
 
   it("leaves a network", async () => {
-    mock.on("POST", "/api/indexes/n1/leave", () =>
+    mock.on("POST", "/api/networks/n1/leave", () =>
       Response.json({ success: true }),
     );
 
@@ -148,12 +148,12 @@ describe("handleNetwork", () => {
   });
 
   it("invites a user by email", async () => {
-    mock.on("GET", "/api/indexes/search-users", () =>
+    mock.on("GET", "/api/networks/search-users", () =>
       Response.json({
         users: [{ id: "u1", name: "Alice", email: "alice@test.com" }],
       }),
     );
-    mock.on("POST", "/api/indexes/n1/members", async (req) => {
+    mock.on("POST", "/api/networks/n1/members", async (req) => {
       const body = (await req.json()) as Record<string, unknown>;
       expect(body.userId).toBe("u1");
       return Response.json({ member: { userId: "u1" }, message: "Invited" });
@@ -163,7 +163,7 @@ describe("handleNetwork", () => {
   });
 
   it("handles invite when user not found", async () => {
-    mock.on("GET", "/api/indexes/search-users", () =>
+    mock.on("GET", "/api/networks/search-users", () =>
       Response.json({ users: [] }),
     );
 

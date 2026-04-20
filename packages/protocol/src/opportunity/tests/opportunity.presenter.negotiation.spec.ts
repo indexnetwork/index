@@ -21,7 +21,7 @@ const BASE_INPUT: HomeCardPresenterInput = {
   category: "collaboration",
   confidence: 0.8,
   signalsSummary: "Complementary skills",
-  indexName: "Test Index",
+  networkName: "Test Index",
   viewerRole: "peer",
   opportunityStatus: "pending",
 };

@@ -63,7 +63,7 @@ function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>):
   compiledGraphs = {
     profile: profileGraph,
     intent: intentGraph,
-    index: indexGraph,
+    network: indexGraph,
     networkMembership: networkMembershipGraph,
     intentIndex: intentIndexGraph,
     opportunity: opportunityGraph,
@@ -247,10 +247,10 @@ function getOrCreateMcpServer(): McpServer {
   };
 
   const scopedDepsFactory: ScopedDepsFactory = {
-    create(userId: string, indexScope: string[]) {
+    create(userId: string, networkScope: string[]) {
       return {
         userDb: deps.createUserDatabase(deps.database, userId),
-        systemDb: deps.createSystemDatabase(deps.database, userId, indexScope, deps.embedder),
+        systemDb: deps.createSystemDatabase(deps.database, userId, networkScope, deps.embedder),
       };
     },
   };

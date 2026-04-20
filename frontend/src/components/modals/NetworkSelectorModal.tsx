@@ -1,8 +1,8 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { Crown, Plus, Users, X } from 'lucide-react';
-import NetworkAvatar from '@/components/IndexAvatar';
+import NetworkAvatar from '@/components/NetworkAvatar';
 import { Network } from '@/lib/types';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 interface NetworkSelectorModalProps {
@@ -21,7 +21,7 @@ export default function NetworkSelectorModal({
   onCreateIndex,
 }: NetworkSelectorModalProps) {
   const { user } = useAuthContext();
-  const { indexes: rawIndexes, loading: indexesLoading } = useNetworksState();
+  const { networks: rawNetworks, loading: networksLoading } = useNetworksState();
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -40,13 +40,13 @@ export default function NetworkSelectorModal({
           </div>
 
           <div className="overflow-y-auto flex-1">
-            {indexesLoading ? (
+            {networksLoading ? (
               <div className="px-4 py-8 text-center text-gray-500 text-sm font-ibm-plex-mono">
                 Loading...
               </div>
-            ) : rawIndexes && rawIndexes.length > 0 ? (
+            ) : rawNetworks && rawNetworks.length > 0 ? (
               <div className="py-2">
-                {rawIndexes.filter(Boolean).map((index) => (
+                {rawNetworks.filter(Boolean).map((index) => (
                   <div
                     key={index.id}
                     className="group flex items-center gap-3 justify-between px-4 py-3 hover:bg-gray-50 transition-colors"

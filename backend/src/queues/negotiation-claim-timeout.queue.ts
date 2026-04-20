@@ -250,7 +250,7 @@ export class NegotiationClaimTimeoutQueue {
     const aiTurn = await agent.invoke({
       ownUser: ownUserCtx,
       otherUser: otherUserCtx,
-      indexContext: { networkId: '', prompt: '' },
+      networkContext: { networkId: '', prompt: '' },
       seedAssessment,
       history,
       isDiscoverer: isSource,

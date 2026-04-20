@@ -294,7 +294,7 @@ export class OpportunityService {
       introducedBy: introducerInfo ?? undefined,
       category: opp.interpretation.category,
       confidence: confidenceNum,
-      index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
+      network: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
       status: opp.status,
       isGhost: isCounterpartGhost,
       primaryActionLabel: getPrimaryActionLabel(myActor.role),
@@ -526,9 +526,9 @@ export class OpportunityService {
     }
 
     const memberships = await this.db.getNetworkMemberships(userId);
-    const indexScope = memberships.map((m) => m.networkId);
+    const networkScope = memberships.map((m) => m.networkId);
 
-    if (indexScope.length === 0) {
+    if (networkScope.length === 0) {
       return {
         userId: userId as Id<'users'>,
         searchQuery: query,
@@ -565,7 +565,7 @@ export class OpportunityService {
   ) {
     logger.verbose('[OpportunityService] Getting opportunities for index', { networkId, userId, options });
 
-    const isOwner = await this.db.isIndexOwner(networkId, userId);
+    const isOwner = await this.db.isNetworkOwner(networkId, userId);
     const isMember = await this.db.isNetworkMember(networkId, userId);
     
     if (!isOwner && !isMember) {
@@ -857,7 +857,7 @@ export class OpportunityService {
     parties: Array<{ userId: string }>,
     networkId: string
   ): Promise<{ allowed: boolean }> {
-    const isOwner = await this.db.isIndexOwner(networkId, creatorId);
+    const isOwner = await this.db.isNetworkOwner(networkId, creatorId);
     const isSelfIncluded = parties.some((p) => p.userId === creatorId);
     
     if (isOwner) return { allowed: true };

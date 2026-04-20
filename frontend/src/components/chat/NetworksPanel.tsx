@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { Loader2, Users } from "lucide-react";
 
 import { useNetworks } from "@/contexts/APIContext";
-import { useNetworksState } from "@/contexts/IndexesContext";
+import { useNetworksState } from "@/contexts/NetworksContext";
 
-import NetworkAvatar from "@/components/IndexAvatar";
+import NetworkAvatar from "@/components/NetworkAvatar";
 import { Button } from "@/components/ui/button";
 import type { Network } from "@/lib/types";
 
@@ -19,22 +19,22 @@ interface NetworksPanelProps {
  * Works in any chat context — onboarding or regular chat.
  */
 export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: NetworksPanelProps) {
-  const indexesService = useNetworks();
-  const { indexes: joinedIndexes } = useNetworksState();
+  const networksService = useNetworks();
+  const { networks: joinedNetworks } = useNetworksState();
 
   const [publicNetworks, setPublicNetworks] = useState<(Network & { isMember?: boolean })[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
-    indexesService
-      .discoverPublicIndexes(1, 50)
+    networksService
+      .discoverPublicNetworks(1, 50)
       .then((res) => setPublicNetworks(res.data))
       .catch(() => setFetchError(true))
       .finally(() => setLoading(false));
-  }, [indexesService]);
+  }, [networksService]);
 
-  const joinedNonPersonal = joinedIndexes.filter((i) => !i.isPersonal);
+  const joinedNonPersonal = joinedNetworks.filter((i) => !i.isPersonal);
   const joinedIds = new Set(joinedNonPersonal.map((i) => i.id));
   const joinable = publicNetworks.filter((n) => !joinedIds.has(n.id));
 

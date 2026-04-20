@@ -48,7 +48,7 @@ export interface ResolvedToolContext {
   userName: string;
   userEmail: string;
   networkId?: string;
-  indexName?: string;
+  networkName?: string;
   /** True when chat is index-scoped and the user owns the index. */
   isOwner?: boolean;
 
@@ -56,7 +56,7 @@ export interface ResolvedToolContext {
   user: UserRecord;
   userProfile: ProfileContext;
   userNetworks: NetworkMembership[];
-  scopedIndex?: {
+  scopedNetwork?: {
     id: string;
     title: string;
     prompt: string | null;
@@ -125,7 +125,7 @@ export interface ToolContext {
   /** Factory for user-scoped database access. */
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) => UserDatabase;
   /** Factory for system-scoped database access. */
-  createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, indexScope: string[], embedder?: Embedder) => SystemDatabase;
+  createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, networkScope: string[], embedder?: Embedder) => SystemDatabase;
   /** Optional runtime LLM config. Pass to override env vars for API key, model, etc. */
   modelConfig?: ModelConfig;
   /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
@@ -155,7 +155,7 @@ export class ChatContextAccessError extends Error {
   constructor(
     message: string,
     public readonly statusCode: number,
-    public readonly code: "USER_NOT_FOUND" | "INDEX_NOT_FOUND" | "INDEX_MEMBERSHIP_REQUIRED"
+    public readonly code: "USER_NOT_FOUND" | "NETWORK_NOT_FOUND" | "NETWORK_MEMBERSHIP_REQUIRED"
   ) {
     super(message);
     this.name = "ChatContextAccessError";
@@ -169,7 +169,7 @@ export class ChatContextAccessError extends Error {
 export async function resolveChatContext(params: {
   database: Pick<
     ChatGraphCompositeDatabase,
-    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isIndexOwner" | "isNetworkMember"
+    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isNetworkOwner" | "isNetworkMember"
   >;
   userId: string;
   networkId?: string;
@@ -199,23 +199,23 @@ export async function resolveChatContext(params: {
     );
   }
 
-  let scopedIndex: ResolvedToolContext["scopedIndex"] = undefined;
+  let scopedNetwork: ResolvedToolContext["scopedNetwork"] = undefined;
   let scopedMembershipRole: ResolvedToolContext["scopedMembershipRole"] = undefined;
   let isOwner = false;
-  let indexName: string | undefined;
+  let networkName: string | undefined;
 
   if (networkId) {
     const [index, isMember, owner] = await Promise.all([
       database.getNetwork(networkId),
       database.isNetworkMember(networkId, userId),
-      database.isIndexOwner(networkId, userId),
+      database.isNetworkOwner(networkId, userId),
     ]);
 
     if (!index) {
       throw new ChatContextAccessError(
         "Index not found",
         404,
-        "INDEX_NOT_FOUND"
+        "NETWORK_NOT_FOUND"
       );
     }
 
@@ -223,7 +223,7 @@ export async function resolveChatContext(params: {
       throw new ChatContextAccessError(
         "You are not a member of this index",
         403,
-        "INDEX_MEMBERSHIP_REQUIRED"
+        "NETWORK_MEMBERSHIP_REQUIRED"
       );
     }
 
@@ -231,13 +231,13 @@ export async function resolveChatContext(params: {
     if (membership === undefined) {
       membership = (await database.getNetworkMembership(index.id, userId)) ?? undefined;
     }
-    scopedIndex = {
+    scopedNetwork = {
       id: index.id,
       title: index.title,
-      prompt: membership?.indexPrompt ?? null,
+      prompt: membership?.networkPrompt ?? null,
     };
     isOwner = owner;
-    indexName = index.title;
+    networkName = index.title;
     scopedMembershipRole = owner ? "owner" : "member";
   }
 
@@ -250,12 +250,12 @@ export async function resolveChatContext(params: {
     userName,
     userEmail,
     networkId,
-    indexName,
+    networkName,
     isOwner,
     user,
     userProfile,
     userNetworks,
-    scopedIndex,
+    scopedNetwork,
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
     hasName,
@@ -340,7 +340,7 @@ export interface ToolDeps {
   graphs: {
     profile: CompiledGraph;
     intent: CompiledGraph;
-    index: CompiledGraph;
+    network: CompiledGraph;
     networkMembership: CompiledGraph;
     intentIndex: CompiledGraph;
     opportunity: CompiledOpportunityGraph;
@@ -399,7 +399,7 @@ export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
  * Resolves an array of network IDs to their display titles.
  * Skips any IDs that don't resolve (deleted or invalid networks).
  */
-export async function resolveIndexNames(
+export async function resolveNetworkNames(
   database: { getNetwork(id: string): Promise<{ id: string; title: string } | null> },
   networkIds: string[]
 ): Promise<string[]> {

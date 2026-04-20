@@ -120,7 +120,7 @@ export interface PresenterInput {
   category: string;
   confidence: number;
   signalsSummary: string;
-  indexName: string;
+  networkName: string;
   viewerRole: string;
   opportunityStatus?: string;
   /** True when this opportunity was created via an explicit introduction (not automatic discovery). */
@@ -310,7 +310,7 @@ MATCH CONTEXT:
 - Why we matched: ${input.matchReasoning}
 - Signals: ${input.signalsSummary}
 ${introContext}
-COMMUNITY: ${input.indexName}
+COMMUNITY: ${input.networkName}
 Viewer's role in this opportunity: ${input.viewerRole}
 
 Produce headline, personalizedSummary (2-3 sentences in "you" language), and suggestedAction.
@@ -388,7 +388,7 @@ MATCH CONTEXT:
 - Signals: ${input.signalsSummary}
 - ${mutualHint}
 ${introContext}
-COMMUNITY: ${input.indexName}
+COMMUNITY: ${input.networkName}
 Viewer's role in this opportunity: ${input.viewerRole}
 Opportunity status: ${input.opportunityStatus ?? "pending"}
 
@@ -741,7 +741,7 @@ export async function gatherPresenterContext(
         ? interp.confidence
         : parseFloat(String(interp.confidence ?? 0)) || 0,
     signalsSummary,
-    indexName: indexRecord?.title ?? contextIndexId ?? "",
+    networkName: indexRecord?.title ?? contextIndexId ?? "",
     viewerRole: myActor.role ?? "party",
     isIntroduction,
     introducerName,

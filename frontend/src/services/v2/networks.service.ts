@@ -9,9 +9,9 @@ export interface NetworkListV2Response {
   pagination: { current: number; total: number; count: number; totalCount: number };
 }
 
-export function createIndexesServiceV2() {
+export function createNetworksServiceV2() {
   return {
-    getIndexes: async (): Promise<PaginatedResponse<Network>> => {
+    getNetworks: async (): Promise<PaginatedResponse<Network>> => {
       const data = await apiClient.get<NetworkListV2Response>('/networks');
       return {
         data: data.networks ?? [],
@@ -19,7 +19,7 @@ export function createIndexesServiceV2() {
       };
     },
 
-    getPublicIndexes: async (): Promise<PaginatedResponse<Network>> => {
+    getPublicNetworks: async (): Promise<PaginatedResponse<Network>> => {
       const data = await apiClient.get<NetworkListV2Response>('/networks/discovery/public');
       return {
         data: data.networks ?? [],
@@ -34,6 +34,6 @@ export function createIndexesServiceV2() {
   };
 }
 
-export function useIndexesV2() {
-  return useMemo(() => createIndexesServiceV2(), []);
+export function useNetworksV2() {
+  return useMemo(() => createNetworksServiceV2(), []);
 }

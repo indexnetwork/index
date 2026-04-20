@@ -199,7 +199,7 @@ export class ToolService {
     this.compiledGraphs = {
       profile: profileGraph,
       intent: intentGraph,
-      index: indexGraph,
+      network: indexGraph,
       networkMembership: networkMembershipGraph,
       intentIndex: intentIndexGraph,
       opportunity: opportunityGraph,

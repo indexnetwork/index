@@ -2,23 +2,23 @@ import { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Plus, Users, Loader2 } from 'lucide-react';
-import NetworkAvatar from '@/components/IndexAvatar';
+import NetworkAvatar from '@/components/NetworkAvatar';
 import ClientLayout from '@/components/ClientLayout';
-import CreateNetworkModal from '@/components/modals/CreateIndexModal';
+import CreateNetworkModal from '@/components/modals/CreateNetworkModal';
 import { ContentContainer } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworks } from '@/contexts/APIContext';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { Network as NetworkType } from '@/lib/types';
 
 export default function NetworksPage() {
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { success, error } = useNotifications();
-  const indexesService = useNetworks();
-  const { indexes: rawIndexes, loading: indexesLoading, addIndex } = useNetworksState();
+  const networksService = useNetworks();
+  const { networks: rawNetworks, loading: networksLoading, addNetwork } = useNetworksState();
 
   const [activeTab, setActiveTab] = useState<'my-networks' | 'discover'>('my-networks');
   const [createNetworkModalOpen, setCreateNetworkModalOpen] = useState(false);
@@ -26,7 +26,7 @@ export default function NetworksPage() {
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
 
-  const allNetworks = [...(rawIndexes || [])].filter(Boolean).sort((a, b) => {
+  const allNetworks = [...(rawNetworks || [])].filter(Boolean).sort((a, b) => {
     if (a.isPersonal && !b.isPersonal) return -1;
     if (!a.isPersonal && b.isPersonal) return 1;
     return (a.title || '').localeCompare(b.title || '');
@@ -39,7 +39,7 @@ export default function NetworksPage() {
   const loadPublicNetworks = async () => {
     try {
       setLoadingPublic(true);
-      const response = await indexesService.discoverPublicIndexes(1, 50);
+      const response = await networksService.discoverPublicNetworks(1, 50);
       setPublicNetworks(response.data);
     } catch (err) {
       console.error('Error loading public networks:', err);
@@ -51,11 +51,11 @@ export default function NetworksPage() {
   const handleJoinNetwork = async (networkId: string) => {
     try {
       setJoiningNetwork(networkId);
-      const result = await indexesService.joinIndex(networkId);
+      const result = await networksService.joinNetwork(networkId);
       if (result.alreadyMember) {
         success('You are already a member of this network');
       } else {
-        addIndex(result.network);
+        addNetwork(result.network);
         success('Joined network successfully');
       }
       await loadPublicNetworks();
@@ -67,23 +67,23 @@ export default function NetworksPage() {
     }
   };
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
+  const handleCreateNetwork = useCallback(async (networkData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
     try {
-      const newIndex = await indexesService.createNetwork({
-        title: indexData.name,
-        prompt: indexData.prompt,
-        imageUrl: indexData.imageUrl,
-        joinPolicy: indexData.joinPolicy,
+      const newNetwork = await networksService.createNetwork({
+        title: networkData.name,
+        prompt: networkData.prompt,
+        imageUrl: networkData.imageUrl,
+        joinPolicy: networkData.joinPolicy,
       });
-      addIndex(newIndex);
+      addNetwork(newNetwork);
       setCreateNetworkModalOpen(false);
-      navigate(`/networks/${newIndex.id}`);
+      navigate(`/networks/${newNetwork.id}`);
       success('Network created successfully');
     } catch (err) {
       console.error('Error creating network:', err);
       error('Failed to create network');
     }
-  }, [indexesService, addIndex, navigate, success, error]);
+  }, [networksService, addNetwork, navigate, success, error]);
 
   return (
     <ClientLayout>
@@ -123,7 +123,7 @@ export default function NetworksPage() {
 
               {/* My Networks */}
               <Tabs.Content value="my-networks">
-                {indexesLoading ? (
+                {networksLoading ? (
                   <div className="flex justify-center py-16">
                     <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
                   </div>
@@ -219,8 +219,8 @@ export default function NetworksPage() {
       <CreateNetworkModal
         open={createNetworkModalOpen}
         onOpenChange={setCreateNetworkModalOpen}
-        onSubmit={handleCreateIndex}
-        uploadIndexImage={indexesService.uploadIndexImage}
+        onSubmit={handleCreateNetwork}
+        uploadNetworkImage={networksService.uploadNetworkImage}
       />
     </ClientLayout>
   );

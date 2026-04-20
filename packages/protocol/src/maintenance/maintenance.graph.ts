@@ -28,10 +28,10 @@ export interface MaintenanceGraphDatabase {
   getOpportunitiesForUser(userId: string, options?: { limit?: number }): Promise<Array<{ id: string; actors: Array<{ userId: string; role: string }>; status: string; [key: string]: unknown }>>;
   getActiveIntents(userId: string): Promise<Array<{ id: string; payload: string }>>;
   /** Get the user's personal index ID (for introducer discovery). */
-  getPersonalIndexId(userId: string): Promise<string | null>;
+  getPersonalNetworkId(userId: string): Promise<string | null>;
   /** Get contacts with intent freshness data from a personal index (for introducer discovery). */
   getContactsWithIntentFreshness(
-    personalIndexId: string,
+    personalNetworkId: string,
     ownerId: string,
     limit: number,
   ): Promise<Array<{ userId: string; latestIntentAt: string | null; intentCount: number }>>;

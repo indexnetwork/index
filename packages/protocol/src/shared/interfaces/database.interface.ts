@@ -237,7 +237,7 @@ export interface NetworkMembership {
   /** Display title of the index */
   networkTitle: string;
   /** Index description/prompt (what the community is about) */
-  indexPrompt: string | null;
+  networkPrompt: string | null;
   /** Member's permissions in this index */
   permissions: string[];
   /** Member's custom prompt (overrides index prompt for their intents) */
@@ -251,13 +251,13 @@ export interface NetworkMembership {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// INDEX OWNERSHIP TYPES
+// NETWORK OWNERSHIP TYPES
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Represents an index owned by the user with full details.
  */
-export interface OwnedIndex {
+export interface OwnedNetwork {
   /** Index ID */
   id: string;
   /** Display title */
@@ -291,7 +291,7 @@ export interface OwnedIndex {
 /**
  * Member details visible to index owners (and optionally to members with privacy rules).
  */
-export interface IndexMemberDetails {
+export interface NetworkMemberDetails {
   /** User ID */
   userId: string;
   /** User's display name */
@@ -317,7 +317,7 @@ export interface IndexMemberDetails {
 /**
  * Intent details visible to index owners.
  */
-export interface IndexedIntentDetails {
+export interface NetworkIntentDetails {
   /** Intent ID */
   id: string;
   /** Intent payload/description */
@@ -335,7 +335,7 @@ export interface IndexedIntentDetails {
 /**
  * Options for updating index settings.
  */
-export interface UpdateIndexSettingsData {
+export interface UpdateNetworkSettingsData {
   /** New title (optional) */
   title?: string;
   /** New prompt (optional) */
@@ -502,10 +502,10 @@ export interface Database {
    * Caller must be a member of that index; only the user's own intents are returned.
    *
    * @param userId - The user requesting (must be a member of the index)
-   * @param indexNameOrId - Index UUID or display name (e.g. "Commons")
+   * @param networkNameOrId - Index UUID or display name (e.g. "Commons")
    * @returns Array of active intents in that index for the user, or empty if not a member / no match
    */
-  getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntent[]>;
+  getIntentsInNetworkForMember(userId: string, networkNameOrId: string): Promise<ActiveIntent[]>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Post-Graph Operations (Action Execution)
@@ -627,13 +627,13 @@ export interface Database {
    *
    * @example
    * ```typescript
-   * const networkIds = await db.getUserIndexIds(userId);
+   * const networkIds = await db.getUserNetworkIds(userId);
    * if (networkIds.length > 0) {
    *   await db.associateIntentWithNetworks(intentId, networkIds);
    * }
    * ```
    */
-  getUserIndexIds(userId: string): Promise<string[]>;
+  getUserNetworkIds(userId: string): Promise<string[]>;
 
   /**
    * Retrieves all indexes the user is a member of with full details.
@@ -737,14 +737,14 @@ export interface Database {
     userId: string
   ): Promise<{
     networkId: string;
-    indexPrompt: string | null;
+    networkPrompt: string | null;
     memberPrompt: string | null;
   } | null>;
 
   /**
    * Whether the intent is currently assigned to the index.
    */
-  isIntentAssignedToIndex(intentId: string, networkId: string): Promise<boolean>;
+  isIntentAssignedToNetwork(intentId: string, networkId: string): Promise<boolean>;
 
   /**
    * Assigns an intent to an index (inserts intent_indexes row).
@@ -754,12 +754,12 @@ export interface Database {
   /**
    * Returns per-index relevancy scores for an intent's index assignments.
    */
-  getIntentIndexScores(intentId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>>;
+  getIntentNetworkScores(intentId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>>;
 
   /**
    * Removes an intent from an index (deletes intent_indexes row).
    */
-  unassignIntentFromIndex(intentId: string, networkId: string): Promise<void>;
+  unassignIntentFromNetwork(intentId: string, networkId: string): Promise<void>;
 
   /**
    * Returns all network IDs that an intent is registered to.
@@ -777,7 +777,7 @@ export interface Database {
    * @param userId - The user ID to check ownership for
    * @returns Array of owned indexes with counts
    */
-  getOwnedIndexes(userId: string): Promise<OwnedIndex[]>;
+  getOwnedNetworks(userId: string): Promise<OwnedNetwork[]>;
 
   /**
    * Get public indexes (joinPolicy 'anyone') that the user has not joined.
@@ -786,7 +786,7 @@ export interface Database {
    * @param userId - The user ID to check memberships against
    * @returns Object containing array of public indexes with owner info
    */
-  getPublicIndexesNotJoined(userId: string): Promise<{
+  getPublicNetworksNotJoined(userId: string): Promise<{
     networks: Array<{
       id: string;
       title: string;
@@ -803,7 +803,7 @@ export interface Database {
    * @param userId - The user to verify ownership for
    * @returns True if user is an owner
    */
-  isIndexOwner(networkId: string, userId: string): Promise<boolean>;
+  isNetworkOwner(networkId: string, userId: string): Promise<boolean>;
 
   /**
    * Check if user is a member of a specific index.
@@ -826,7 +826,7 @@ export interface Database {
   getNetworkMembersForOwner(
     networkId: string,
     requestingUserId: string
-  ): Promise<IndexMemberDetails[]>;
+  ): Promise<NetworkMemberDetails[]>;
 
   /**
    * Get all members of an index with their details.
@@ -841,7 +841,7 @@ export interface Database {
   getNetworkMembersForMember(
     networkId: string,
     requestingUserId: string
-  ): Promise<IndexMemberDetails[]>;
+  ): Promise<NetworkMemberDetails[]>;
 
   /**
    * Get all members from every index the user is a member of (deduplicated).
@@ -850,7 +850,7 @@ export interface Database {
    * @param userId - The signed-in user
    * @returns Array of member summaries (id, name, avatar only; no email)
    */
-  getMembersFromUserIndexes(userId: Id<'users'>): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]>;
+  getMembersFromUserNetworks(userId: Id<'users'>): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]>;
 
   /**
    * Get all indexed intents for an index.
@@ -866,7 +866,7 @@ export interface Database {
     networkId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
-  ): Promise<IndexedIntentDetails[]>;
+  ): Promise<NetworkIntentDetails[]>;
 
   /**
    * Get all indexed intents for an index.
@@ -882,7 +882,7 @@ export interface Database {
     networkId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
-  ): Promise<IndexedIntentDetails[]>;
+  ): Promise<NetworkIntentDetails[]>;
 
   /**
    * Update index settings.
@@ -894,11 +894,11 @@ export interface Database {
    * @returns The updated index
    * @throws Error if requestingUserId is not an owner
    */
-  updateIndexSettings(
+  updateNetworkSettings(
     networkId: string,
     requestingUserId: string,
-    data: UpdateIndexSettingsData
-  ): Promise<OwnedIndex>;
+    data: UpdateNetworkSettingsData
+  ): Promise<OwnedNetwork>;
 
   /**
    * Soft-delete a network (set deletedAt).
@@ -973,7 +973,7 @@ export interface Database {
    * @param userId - The user to remove
    * @returns success, or wasOwner/notMember if removal failed
    */
-  removeMemberFromIndex(
+  removeMemberFromNetwork(
     networkId: string,
     userId: string
   ): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }>;
@@ -1268,7 +1268,7 @@ export interface Database {
    * @param userId - The user whose contact memberships to look up
    * @returns Array of personal index IDs
    */
-  getPersonalIndexesForContact(userId: string): Promise<{ networkId: string }[]>;
+  getPersonalNetworksForContact(userId: string): Promise<{ networkId: string }[]>;
 
   /** Find a user by email. */
   getUserByEmail(email: string): Promise<{ id: string; name: string; email: string; isGhost: boolean } | null>;
@@ -1360,13 +1360,13 @@ export interface UserDatabase {
   assignIntentToNetwork(intentId: string, networkId: string, relevancyScore?: number): Promise<void>;
 
   /** Unassign an intent from an index. */
-  unassignIntentFromIndex(intentId: string, networkId: string): Promise<void>;
+  unassignIntentFromNetwork(intentId: string, networkId: string): Promise<void>;
 
   /** Get network IDs for an intent. */
   getNetworkIdsForIntent(intentId: string): Promise<string[]>;
 
   /** Check if intent is assigned to index. */
-  isIntentAssignedToIndex(intentId: string, networkId: string): Promise<boolean>;
+  isIntentAssignedToNetwork(intentId: string, networkId: string): Promise<boolean>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Index Membership Operations (own memberships only)
@@ -1376,10 +1376,10 @@ export interface UserDatabase {
   getNetworkMemberships(): Promise<NetworkMembership[]>;
 
   /** Get index IDs with auto-assign enabled for the authenticated user. */
-  getUserIndexIds(): Promise<string[]>;
+  getUserNetworkIds(): Promise<string[]>;
 
   /** Get indexes owned by the authenticated user. */
-  getOwnedIndexes(): Promise<OwnedIndex[]>;
+  getOwnedNetworks(): Promise<OwnedNetwork[]>;
 
   /** Get a specific index membership for the authenticated user. */
   getNetworkMembership(networkId: string): Promise<NetworkMembership | null>;
@@ -1387,7 +1387,7 @@ export interface UserDatabase {
   /** Get index + member context for the authenticated user (for auto-assign). */
   getNetworkMemberContext(networkId: string): Promise<{
     networkId: string;
-    indexPrompt: string | null;
+    networkPrompt: string | null;
     memberPrompt: string | null;
   } | null>;
 
@@ -1410,7 +1410,7 @@ export interface UserDatabase {
   }>;
 
   /** Update index settings (owner only). */
-  updateIndexSettings(networkId: string, data: UpdateIndexSettingsData): Promise<OwnedIndex>;
+  updateNetworkSettings(networkId: string, data: UpdateNetworkSettingsData): Promise<OwnedNetwork>;
 
   /** Soft-delete a network (owner only). */
   softDeleteNetwork(networkId: string): Promise<void>;
@@ -1420,7 +1420,7 @@ export interface UserDatabase {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /** Get public indexes (joinPolicy 'anyone') that the user has not joined. */
-  getPublicIndexesNotJoined(): Promise<{
+  getPublicNetworksNotJoined(): Promise<{
     networks: Array<{
       id: string;
       title: string;
@@ -1475,19 +1475,19 @@ export interface UserDatabase {
 
 /**
  * Context-bound database for LLM/system operations that access cross-user resources.
- * Created with authUserId + indexScope[]; validates membership before access.
+ * Created with authUserId + networkScope[]; validates membership before access.
  *
  * **Index-scoped**: All cross-user operations are restricted to users/resources
- * within the bound indexScope[]. This prevents the LLM from accessing arbitrary users' data.
+ * within the bound networkScope[]. This prevents the LLM from accessing arbitrary users' data.
  *
- * Use via `createSystemDatabase(db, authUserId, indexScope)` factory function.
+ * Use via `createSystemDatabase(db, authUserId, networkScope)` factory function.
  */
 export interface SystemDatabase {
   /** The bound authenticated user ID */
   readonly authUserId: string;
 
-  /** The indexes the authenticated user has access to (determines cross-user scope) */
-  readonly indexScope: string[];
+  /** The networks the authenticated user has access to (determines cross-user scope) */
+  readonly networkScope: string[];
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Profile Operations (any user in scope)
@@ -1504,10 +1504,10 @@ export interface SystemDatabase {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /** Get all intents in an index (cross-user, requires membership). */
-  getIntentsInIndex(networkId: string, options?: { limit?: number; offset?: number }): Promise<IndexedIntentDetails[]>;
+  getIntentsInNetwork(networkId: string, options?: { limit?: number; offset?: number }): Promise<NetworkIntentDetails[]>;
 
   /** Get a specific user's intents in an index (requires shared membership). */
-  getUserIntentsInIndex(userId: string, networkId: string): Promise<ActiveIntent[]>;
+  getUserIntentsInNetwork(userId: string, networkId: string): Promise<ActiveIntent[]>;
 
   /** Get a single intent by ID (if in scope). */
   getIntent(intentId: string): Promise<IntentRecord | null>;
@@ -1523,10 +1523,10 @@ export interface SystemDatabase {
   isNetworkMember(networkId: string, userId: string): Promise<boolean>;
 
   /** Check if a user is an owner of an index. */
-  isIndexOwner(networkId: string, userId: string): Promise<boolean>;
+  isNetworkOwner(networkId: string, userId: string): Promise<boolean>;
 
   /** Get all members of an index (requires membership). */
-  getNetworkMembers(networkId: string): Promise<IndexMemberDetails[]>;
+  getNetworkMembers(networkId: string): Promise<NetworkMemberDetails[]>;
 
   /** Get all members across all indexes in scope (deduplicated). */
   getMembersFromScope(): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]>;
@@ -1535,7 +1535,7 @@ export interface SystemDatabase {
   addMemberToNetwork(networkId: string, userId: string, role: 'owner' | 'admin' | 'member'): Promise<{ success: boolean; alreadyMember?: boolean }>;
 
   /** Remove a user from an index (requires ownership). Cannot remove the owner. */
-  removeMemberFromIndex(networkId: string, userId: string): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }>;
+  removeMemberFromNetwork(networkId: string, userId: string): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Index Operations (any index in scope)
@@ -1654,7 +1654,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // Direct ChatGraph operations
   | 'getProfile'
   | 'getActiveIntents'
-  | 'getIntentsInIndexForMember'
+  | 'getIntentsInNetworkForMember'
   // ProfileGraph subgraph requirements
   | 'getUser'
   | 'updateUser'
@@ -1681,38 +1681,38 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'saveHydeDocument'
   | 'getIntent'
   // NetworkGraph subgraph requirements (index created intents in user's indexes)
-  | 'getPublicIndexesNotJoined'
-  | 'getUserIndexIds'
+  | 'getPublicNetworksNotJoined'
+  | 'getUserNetworkIds'
   | 'getNetworkMemberships'
   | 'getNetworkMembership'
   | 'getNetwork'
   | 'getNetworkWithPermissions'
   | 'getIntentForIndexing'
   | 'getNetworkMemberContext'
-  | 'isIntentAssignedToIndex'
+  | 'isIntentAssignedToNetwork'
   | 'assignIntentToNetwork'
-  | 'unassignIntentFromIndex'
+  | 'unassignIntentFromNetwork'
   | 'getNetworkIdsForIntent'
-  | 'getIntentIndexScores'
+  | 'getIntentNetworkScores'
   // Personal index auto-assignment (used by intent graph executor)
-  | 'getPersonalIndexesForContact'
+  | 'getPersonalNetworksForContact'
   // Index Ownership Operations (owner-only)
-  | 'getOwnedIndexes'
-  | 'isIndexOwner'
+  | 'getOwnedNetworks'
+  | 'isNetworkOwner'
   | 'isNetworkMember'
   | 'getNetworkMembersForOwner'
   | 'getNetworkMembersForMember'
-  | 'getMembersFromUserIndexes'
+  | 'getMembersFromUserNetworks'
   | 'getNetworkIntentsForOwner'
   | 'getNetworkIntentsForMember'
-  | 'updateIndexSettings'
+  | 'updateNetworkSettings'
   | 'softDeleteNetwork'
   | 'deleteProfile'
   | 'getProfileByUserId'
   | 'createNetwork'
   | 'getNetworkMemberCount'
   | 'addMemberToNetwork'
-  | 'removeMemberFromIndex'
+  | 'removeMemberFromNetwork'
 >;
 
 /**
@@ -1730,13 +1730,13 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOpportunityBetweenActors'
   | 'findOverlappingOpportunities'
   | 'getAcceptedOpportunitiesBetweenActors'
-  | 'getUserIndexIds'
+  | 'getUserNetworkIds'
   | 'getNetworkMemberships'
   | 'getActiveIntents'
   | 'getNetworkIdsForIntent'
   | 'getNetwork'
   | 'getNetworkMemberCount'
-  | 'getIntentIndexScores'
+  | 'getIntentNetworkScores'
   | 'getNetworkMemberContext'
   // Read/update/send modes
   | 'getOpportunity'
@@ -1744,7 +1744,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'updateOpportunityStatus'
   | 'updateOpportunityActorApproval'
   | 'isNetworkMember'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'getUser'
   | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
@@ -1920,7 +1920,7 @@ export type OpportunityControllerDatabase = Pick<
   | 'findOverlappingOpportunities'
   | 'getAcceptedOpportunitiesBetweenActors'
   | 'acceptSiblingOpportunities'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'isNetworkMember'
   | 'getUser'
   | 'getNetwork'
@@ -1938,14 +1938,14 @@ export type OpportunityControllerDatabase = Pick<
 /**
  * Database interface narrowed for Intent Graph operations.
  * Provides state population (getActiveIntents), action execution (create/update/archive),
- * and read operations (query intents; getIntentsInIndexForMember for index-scoped reads).
+ * and read operations (query intents; getIntentsInNetworkForMember for index-scoped reads).
  *
  * Access layer: UserDatabase (mutations on own intents) + SystemDatabase (index-scoped reads)
  */
 export type IntentGraphDatabase = Pick<
   Database,
   | 'getActiveIntents'
-  | 'getIntentsInIndexForMember'
+  | 'getIntentsInNetworkForMember'
   | 'createIntent'
   | 'updateIntent'
   | 'archiveIntent'
@@ -1956,7 +1956,7 @@ export type IntentGraphDatabase = Pick<
   // Profile check (prepNode gate for write operations)
   | 'getProfile'
   // Personal index auto-assignment
-  | 'getPersonalIndexesForContact'
+  | 'getPersonalNetworksForContact'
   | 'assignIntentToNetwork'
 >;
 
@@ -1969,14 +1969,14 @@ export type IntentGraphDatabase = Pick<
 export type NetworkGraphDatabase = Pick<
   Database,
   | 'getNetworkMemberships'
-  | 'getOwnedIndexes'
-  | 'getPublicIndexesNotJoined'
-  | 'isIndexOwner'
+  | 'getOwnedNetworks'
+  | 'getPublicNetworksNotJoined'
+  | 'isNetworkOwner'
   | 'isNetworkMember'
   | 'getNetwork'
   | 'createNetwork'
   | 'addMemberToNetwork'
-  | 'updateIndexSettings'
+  | 'updateNetworkSettings'
   | 'softDeleteNetwork'
   | 'getNetworkMemberCount'
 >;
@@ -1992,15 +1992,15 @@ export type IntentNetworkGraphDatabase = Pick<
   Database,
   | 'getIntentForIndexing'
   | 'getNetworkMemberContext'
-  | 'isIntentAssignedToIndex'
+  | 'isIntentAssignedToNetwork'
   | 'assignIntentToNetwork'
-  | 'unassignIntentFromIndex'
+  | 'unassignIntentFromNetwork'
   | 'getIntent'
   | 'isNetworkMember'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'getNetworkIdsForIntent'
   | 'getNetworkIntentsForMember'
-  | 'getIntentsInIndexForMember'
+  | 'getIntentsInNetworkForMember'
 >;
 
 /**
@@ -2012,10 +2012,10 @@ export type IntentNetworkGraphDatabase = Pick<
 export type NetworkMembershipGraphDatabase = Pick<
   Database,
   | 'isNetworkMember'
-  | 'isIndexOwner'
+  | 'isNetworkOwner'
   | 'getNetworkWithPermissions'
   | 'addMemberToNetwork'
-  | 'removeMemberFromIndex'
+  | 'removeMemberFromNetwork'
   | 'getNetworkMembersForMember'
 >;
 

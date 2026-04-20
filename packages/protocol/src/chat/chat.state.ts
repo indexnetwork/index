@@ -27,20 +27,20 @@ export interface IntentSubgraphResult {
   requiredMessage?: string;
 }
 
-/** Index subgraph result (memberships, ownedIndexes, specificIndexData). */
-export interface IndexSubgraphResult {
+/** Network subgraph result (memberships, ownedNetworks, specificNetworkData). */
+export interface NetworkSubgraphResult {
   mode?: string;
   memberships?: unknown[];
-  ownedIndexes?: unknown[];
-  specificIndexData?: unknown;
+  ownedNetworks?: unknown[];
+  specificNetworkData?: unknown;
   count?: number;
   error?: string;
 }
 
-/** Aggregated results from subgraphs (intent, index, profile, opportunity, scrape). */
+/** Aggregated results from subgraphs (intent, network, profile, opportunity, scrape). */
 export interface SubgraphResults {
   intent?: IntentSubgraphResult;
-  index?: IndexSubgraphResult;
+  network?: NetworkSubgraphResult;
   profile?: unknown;
   opportunity?: unknown;
   scrape?: unknown;

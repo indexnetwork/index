@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useNetworks } from '@/contexts/APIContext';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { createIntegrationsService, type ComposioConnection } from '@/services/integrations';
@@ -19,7 +19,7 @@ const AVAILABLE_TOOLKITS = ['gmail', 'slack'] as const;
 
 const TOOLKIT_LABELS: Record<string, string> = { gmail: 'Gmail', slack: 'Slack' };
 const toolkitLabel = (t: string) => TOOLKIT_LABELS[t] ?? t;
-import NetworkAvatar, { resolveNetworkImageSrc } from '@/components/IndexAvatar';
+import NetworkAvatar, { resolveNetworkImageSrc } from '@/components/NetworkAvatar';
 import UserAvatar from '@/components/UserAvatar';
 import GhostBadge from '@/components/GhostBadge';
 import { useNavigate } from 'react-router';
@@ -31,13 +31,13 @@ interface NetworkSettingsPanelProps {
 }
 
 export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: NetworkSettingsPanelProps) {
-  const indexesService = useNetworks();
+  const networksService = useNetworks();
   const navigate = useNavigate();
-  const { indexes, updateIndex, removeIndex } = useNetworksState();
+  const { networks, updateNetwork, removeNetwork } = useNetworksState();
   const { success, error, info } = useNotifications();
   const api = useAuthenticatedAPI();
 
-  const currentIndex = indexes?.find(idx => idx.id === index.id) || index;
+  const currentIndex = networks?.find(idx => idx.id === index.id) || index;
 
   const [title, setTitle] = useState(currentIndex.title || '');
   const [prompt, setPrompt] = useState(currentIndex.prompt || '');
@@ -121,14 +121,14 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const loadMembers = useCallback(async () => {
     setIsMembersLoading(true);
     try {
-      const response = await indexesService.getMembers(index.id, {});
+      const response = await networksService.getMembers(index.id, {});
       setMembers(response.members);
     } catch (err) {
       console.error('Error loading members:', err);
     } finally {
       setIsMembersLoading(false);
     }
-  }, [indexesService, index.id]);
+  }, [networksService, index.id]);
 
   useEffect(() => {
     if (activeTab === 'access') loadMembers();
@@ -142,7 +142,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     }
     setSearchIsLoading(true);
     try {
-      const users = await indexesService.searchUsers(query, index.id);
+      const users = await networksService.searchUsers(query, index.id);
       setSuggestedUsers(users.map(u => ({ ...u, permissions: [] })));
       setSearchHasQueried(true);
     } catch (err) {
@@ -151,7 +151,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     } finally {
       setSearchIsLoading(false);
     }
-  }, [indexesService, index.id]);
+  }, [networksService, index.id]);
 
   useEffect(() => {
     setContactsPage(1);
@@ -198,11 +198,11 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       setIsSavingSettings(true);
       let finalImageUrl: string | null = imageUrl;
       if (imageFile) {
-        finalImageUrl = await indexesService.uploadIndexImage(imageFile);
+        finalImageUrl = await networksService.uploadNetworkImage(imageFile);
       } else if (removeImageRequested) {
         finalImageUrl = null;
       }
-      const updatedIndex = await indexesService.updateNetwork(index.id, {
+      const updatedIndex = await networksService.updateNetwork(index.id, {
         title: title.trim(),
         prompt: prompt.trim() || null,
         imageUrl: finalImageUrl
@@ -214,7 +214,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       setImagePreview(null);
       setRemoveImageRequested(false);
       setImageUrl(finalImageUrl);
-      updateIndex(updatedIndex);
+      updateNetwork(updatedIndex);
       success('Settings updated');
     } catch (err) {
       console.error('Error updating index:', err);
@@ -227,8 +227,8 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const handleDeleteIndex = async () => {
     try {
       setIsDeletingIndex(true);
-      await indexesService.deleteNetwork(index.id);
-      removeIndex(index.id);
+      await networksService.deleteNetwork(index.id);
+      removeNetwork(index.id);
       success('Network deleted');
       setShowDeleteConfirmation(false);
       onDeleted?.();
@@ -242,11 +242,11 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
 
   const handleUpdatePermissions = async (joinPolicy: boolean) => {
     try {
-      await indexesService.updatePermissions(index.id, {
+      await networksService.updatePermissions(index.id, {
         joinPolicy: joinPolicy ? 'anyone' : 'invite_only',
       });
-      const updatedIndex = await indexesService.getNetwork(index.id);
-      updateIndex(updatedIndex);
+      const updatedIndex = await networksService.getNetwork(index.id);
+      updateNetwork(updatedIndex);
       if (updatedIndex.permissions?.invitationLink?.code) {
         setInvitationLink({ code: updatedIndex.permissions.invitationLink.code });
       }
@@ -258,7 +258,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
 
   const handleCopyLink = async () => {
     const url = anyoneCanJoin
-      ? `${window.location.origin}/index/${index.id}`
+      ? `${window.location.origin}/network/${index.id}`
       : `${window.location.origin}/l/${invitationLink?.code}`;
     try {
       await navigator.clipboard.writeText(url);
@@ -272,7 +272,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
 
   const handleAddMember = async (memberUser: Member) => {
     try {
-      const newMember = await indexesService.addMember(index.id, memberUser.id, ['member']);
+      const newMember = await networksService.addMember(index.id, memberUser.id, ['member']);
       setMembers(prev => [...prev, newMember]);
       setMemberSearchQuery('');
       setSuggestedUsers([]);
@@ -288,7 +288,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       if (index.isPersonal) {
         await usersService.removeContact(memberId);
       } else {
-        await indexesService.removeMember(index.id, memberId);
+        await networksService.removeMember(index.id, memberId);
       }
       setMembers(prev => prev.filter(m => m.id !== memberId));
     } catch (err) {
@@ -577,7 +577,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
               <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-sm bg-gray-50">
                 <code className="flex-1 text-xs text-gray-500 truncate">
                   {anyoneCanJoin
-                    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/index/${index.id}`
+                    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/network/${index.id}`
                     : invitationLink ? `${typeof window !== 'undefined' ? window.location.origin : ''}/l/${invitationLink.code}` : 'Loading...'}
                 </code>
                 <button onClick={handleCopyLink} className={`flex-shrink-0 p-1 rounded-sm transition-colors ${isCopied ? 'text-green-600' : 'text-gray-400 hover:text-black'}`}>

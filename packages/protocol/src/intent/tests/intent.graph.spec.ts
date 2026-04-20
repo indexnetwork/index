@@ -29,7 +29,7 @@ const createMockDatabase = (): IntentGraphDatabase => {
           createdAt: i.createdAt
         }));
     },
-    async getIntentsInIndexForMember(userId: string, _indexNameOrId: string): Promise<ActiveIntent[]> {
+    async getIntentsInNetworkForMember(userId: string, _networkNameOrId: string): Promise<ActiveIntent[]> {
       return intents
         .filter(i => i.userId === userId)
         .map(i => ({
@@ -93,7 +93,7 @@ const createMockDatabase = (): IntentGraphDatabase => {
     async assignIntentToNetwork(_intentId: string, _indexId: string): Promise<void> {
       // no-op for tests
     },
-    async getPersonalIndexesForContact(_userId: string): Promise<{ networkId: string }[]> {
+    async getPersonalNetworksForContact(_userId: string): Promise<{ networkId: string }[]> {
       return [];
     }
   };

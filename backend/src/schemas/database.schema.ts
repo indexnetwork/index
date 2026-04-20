@@ -343,7 +343,7 @@ export const networks = pgTable('networks', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
-  indexesKeyUnique: uniqueIndex('indexes_key_unique').on(table.key),
+  networksKeyUnique: uniqueIndex('indexes_key_unique').on(table.key),
 }));
 
 export const networkMembers = pgTable('network_members', {

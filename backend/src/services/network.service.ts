@@ -47,7 +47,7 @@ export class NetworkService {
    */
   async getPublicNetworkById(networkId: string) {
     logger.verbose('[NetworkService] Getting public index by id', { networkId });
-    return this.adapter.getPublicIndexDetail(networkId);
+    return this.adapter.getPublicNetworkDetail(networkId);
   }
 
   /**
@@ -66,7 +66,7 @@ export class NetworkService {
   async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     logger.verbose('[NetworkService] Updating index', { networkId, userId });
     await this.assertNotPersonal(networkId);
-    return this.adapter.updateIndexSettings(networkId, userId, data);
+    return this.adapter.updateNetworkSettings(networkId, userId, data);
   }
 
   /**
@@ -75,7 +75,7 @@ export class NetworkService {
   async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     await this.assertNotPersonal(networkId);
     logger.verbose('[NetworkService] Updating permissions', { networkId, userId });
-    return this.adapter.updateIndexSettings(networkId, userId, data);
+    return this.adapter.updateNetworkSettings(networkId, userId, data);
   }
 
   /**
@@ -113,7 +113,7 @@ export class NetworkService {
   async deleteNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Deleting index', { networkId, userId });
     await this.assertNotPersonal(networkId);
-    return this.adapter.deleteIndexForOwner(networkId, userId);
+    return this.adapter.deleteNetworkForOwner(networkId, userId);
   }
 
   /**
@@ -140,7 +140,7 @@ export class NetworkService {
    */
   async getMembersFromMyNetworks(userId: string) {
     logger.verbose('[NetworkService] Getting members from user indexes', { userId });
-    const raw = await this.adapter.getMembersFromUserIndexes(userId);
+    const raw = await this.adapter.getMembersFromUserNetworks(userId);
     return raw.map(m => ({
       id: m.userId,
       name: m.name,
@@ -164,7 +164,7 @@ export class NetworkService {
    */
   async getPublicNetworks(userId: string) {
     logger.verbose('[NetworkService] Getting public indexes for user', { userId });
-    return this.adapter.getPublicIndexesNotJoined(userId);
+    return this.adapter.getPublicNetworksNotJoined(userId);
   }
 
   /**
@@ -186,7 +186,7 @@ export class NetworkService {
    */
   async acceptInvitation(code: string, userId: string) {
     logger.verbose('[NetworkService] Accepting invitation', { userId });
-    return this.adapter.acceptIndexInvitation(code, userId);
+    return this.adapter.acceptNetworkInvitation(code, userId);
   }
 
   /**
@@ -233,9 +233,9 @@ export class NetworkService {
    * @param idOrKey - UUID or human-readable key
    * @returns The index UUID, or null if not found
    */
-  async resolveIndexId(idOrKey: string): Promise<string | null> {
+  async resolveNetworkId(idOrKey: string): Promise<string | null> {
     logger.verbose('[NetworkService] Resolving network ID or key', { idOrKey });
-    return this.adapter.resolveIndexId(idOrKey);
+    return this.adapter.resolveNetworkId(idOrKey);
   }
 
   /**
@@ -245,7 +245,7 @@ export class NetworkService {
    * @param key - The new key value
    * @returns Updated network or error object
    */
-  async updateKey(networkId: string, userId: string, key: string): Promise<{ index: unknown } | { error: string; status: number }> {
+  async updateKey(networkId: string, userId: string, key: string): Promise<{ network: unknown } | { error: string; status: number }> {
     const validation = validateKey(key);
     if (!validation.valid) {
       return { error: validation.error!, status: 400 };
@@ -270,12 +270,12 @@ export class NetworkService {
       throw err;
     }
 
-    const updated = await this.adapter.updateIndexKey(networkId, key);
+    const updated = await this.adapter.updateNetworkKey(networkId, key);
     if (!updated) {
       return { error: 'Index not found', status: 404 };
     }
 
-    return { index: updated };
+    return { network: updated };
   }
 
   /**

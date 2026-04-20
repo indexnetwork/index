@@ -269,7 +269,7 @@ Detailed documentation lives in the `docs/` directory:
 - **[Opportunities](docs/domain/opportunities.md)** -- Opportunity detection, evaluation, and persistence
 - **[Negotiation](docs/domain/negotiation.md)** -- Bilateral agent-to-agent negotiation protocol
 - **[Profiles](docs/domain/profiles.md)** -- User profile generation and HyDE document embeddings
-- **[Indexes](docs/domain/indexes.md)** -- Community structure, membership, and access control
+- **[Networks](docs/domain/networks.md)** — Community structure, membership, and access control
 - **[HyDE](docs/domain/hyde.md)** -- Hypothetical Document Embedding strategies for semantic search
 - **[Feed and Maintenance](docs/domain/feed-and-maintenance.md)** -- Home feed curation and periodic maintenance
 

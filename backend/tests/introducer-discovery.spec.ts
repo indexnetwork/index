@@ -16,15 +16,15 @@ import {
 
 describe('IntroducerDiscovery', () => {
   const userId = 'user-introducer';
-  const personalIndexId = 'personal-index-1';
+  const personalNetworkId = 'personal-index-1';
 
   function createMockDatabase(overrides: {
-    personalIndexId?: string | null;
+    personalNetworkId?: string | null;
     contacts?: ContactWithIntents[];
   } = {}): IntroducerDiscoveryDatabase {
     return {
-      getPersonalIndexId: mock(() =>
-        Promise.resolve(overrides.personalIndexId ?? personalIndexId),
+      getPersonalNetworkId: mock(() =>
+        Promise.resolve(overrides.personalNetworkId ?? personalNetworkId),
       ),
       getContactsWithIntentFreshness: mock(() =>
         Promise.resolve(overrides.contacts ?? []),
@@ -65,7 +65,7 @@ describe('IntroducerDiscovery', () => {
 
   describe('selectContactsForDiscovery', () => {
     it('returns empty when user has no personal index', async () => {
-      const db = createMockDatabase({ personalIndexId: null });
+      const db = createMockDatabase({ personalNetworkId: null });
       const result = await selectContactsForDiscovery(db, userId);
       expect(result).toEqual([]);
     });
@@ -88,7 +88,7 @@ describe('IntroducerDiscovery', () => {
       await selectContactsForDiscovery(db, userId, 3);
 
       expect(db.getContactsWithIntentFreshness).toHaveBeenCalledWith(
-        personalIndexId,
+        personalNetworkId,
         userId,
         3,
       );
@@ -99,7 +99,7 @@ describe('IntroducerDiscovery', () => {
       await selectContactsForDiscovery(db, userId);
 
       expect(db.getContactsWithIntentFreshness).toHaveBeenCalledWith(
-        personalIndexId,
+        personalNetworkId,
         userId,
         MAX_CONTACTS_PER_CYCLE,
       );
@@ -119,7 +119,7 @@ describe('IntroducerDiscovery', () => {
     });
 
     it('returns early when user has no personal index', async () => {
-      const db = createMockDatabase({ personalIndexId: null });
+      const db = createMockDatabase({ personalNetworkId: null });
       const queue = createMockQueue();
       const result = await runIntroducerDiscovery(db, queue, userId);
 
@@ -144,7 +144,7 @@ describe('IntroducerDiscovery', () => {
       const firstCall = (queue.addJob as ReturnType<typeof mock>).mock.calls[0];
       expect(firstCall[0].intentId).toStartWith('introducer:');
       expect(firstCall[0].userId).toBe(userId);
-      expect(firstCall[0].indexIds).toEqual([personalIndexId]);
+      expect(firstCall[0].indexIds).toEqual([personalNetworkId]);
       expect(firstCall[1].priority).toBe(15);
     });
 

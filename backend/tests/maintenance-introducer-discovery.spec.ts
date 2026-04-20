@@ -16,14 +16,14 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     opportunities?: unknown[];
     activeIntents?: unknown[];
     lastRediscoveryAt?: number | null;
-    personalIndexId?: string | null;
+    personalNetworkId?: string | null;
     contacts?: Array<{ userId: string; latestIntentAt: string | null; intentCount: number }>;
   } = {}) {
     const {
       opportunities = [],
       activeIntents = [{ id: 'intent-1', payload: 'find investors' }],
       lastRediscoveryAt = Date.now() - 1000,
-      personalIndexId = 'personal-index-1',
+      personalNetworkId = 'personal-index-1',
       contacts = [],
     } = overrides;
 
@@ -31,7 +31,7 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
       database: {
         getOpportunitiesForUser: mock(() => Promise.resolve(opportunities)),
         getActiveIntents: mock(() => Promise.resolve(activeIntents)),
-        getPersonalIndexId: mock(() => Promise.resolve(personalIndexId)),
+        getPersonalNetworkId: mock(() => Promise.resolve(personalNetworkId)),
         getContactsWithIntentFreshness: mock(() => Promise.resolve(contacts)),
       } as MaintenanceGraphDatabase,
       cache: {
@@ -145,7 +145,7 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
         status: 'latent',
       })),
       lastRediscoveryAt: Date.now() - 1000,
-      personalIndexId: null,
+      personalNetworkId: null,
     });
 
     const factory = new MaintenanceGraphFactory(

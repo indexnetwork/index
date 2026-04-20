@@ -716,7 +716,7 @@ export class IntentGraphFactory {
 
             // Specific user's intents in the index
             const effectiveUserId = state.queryUserId;
-            const intents = await this.database.getIntentsInIndexForMember(
+            const intents = await this.database.getIntentsInNetworkForMember(
               effectiveUserId,
               effectiveIndexId
             );

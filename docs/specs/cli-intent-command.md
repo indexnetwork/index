@@ -19,7 +19,7 @@ The `index intent` command exposes subcommands for managing intents (user-facing
 ### `index intent show <id>`
 
 1. Calls `GET /api/intents/:id`.
-2. Renders a detailed card with: full description (payload), summary, confidence, source type, status, intent mode, speech act type, timestamps (created, updated, archived), and index assignments if present in the response.
+2. Renders a detailed card with: full description (payload), summary, confidence, source type, status, intent mode, speech act type, timestamps (created, updated, archived), and network assignments if present in the response.
 
 ### `index intent create <content>`
 
@@ -41,17 +41,17 @@ The `index intent` command exposes subcommands for managing intents (user-facing
 
 ### `index intent link <id> <network-id>`
 
-1. Calls `create_intent_index` tool via Tool HTTP API with `{ intentId, indexId }`.
+1. Calls `create_intent_network` tool via Tool HTTP API with `{ intentId, networkId }`.
 2. Prints "Signal linked to network." on success, error on failure.
 
 ### `index intent unlink <id> <network-id>`
 
-1. Calls `delete_intent_index` tool via Tool HTTP API with `{ intentId, indexId }`.
+1. Calls `delete_intent_network` tool via Tool HTTP API with `{ intentId, networkId }`.
 2. Prints "Signal unlinked from network." on success, error on failure.
 
 ### `index intent links <id>`
 
-1. Calls `read_intent_indexes` tool via Tool HTTP API with `{ intentId }`.
+1. Calls `read_intent_networks` tool via Tool HTTP API with `{ intentId }` and lists titles via `GET /api/networks` for display.
 2. Renders a table of linked networks (title, ID). Prints "No linked networks." if none.
 
 ## Constraints

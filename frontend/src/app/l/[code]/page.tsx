@@ -5,11 +5,11 @@ import { Network, User, APIResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { useNetworks } from '@/contexts/APIContext';
-import { indexesService as publicIndexesService } from '@/services/networks';
+import { networksService as publicIndexesService } from '@/services/networks';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { Lock, Users, Loader2 } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/NetworksContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 type PageStep = 'loading' | 'auth-required' | 'onboarding-required' | 'ready-to-join' | 'joining' | 'error' | 'already-member';
@@ -32,10 +32,10 @@ export default function InvitationPage() {
 
   const { isAuthenticated, isReady, openLoginModal } = useAuthContext();
   const api = useAuthenticatedAPI();
-  const indexesService = useNetworks();
+  const networksService = useNetworks();
   const navigate = useNavigate();
   const { success, error: notifyError } = useNotifications();
-  const { refreshIndexes } = useNetworksState();
+  const { refreshNetworks } = useNetworksState();
   const { refetchUser } = useAuthContext();
 
   // Load index and check user state
@@ -43,10 +43,10 @@ export default function InvitationPage() {
     const loadIndexAndCheckAuth = async () => {
       try {
         // Load index by share code (works for both invitation codes and index IDs)
-        const index = await publicIndexesService.getIndexByShareCode(code!);
+        const index = await publicIndexesService.getNetworkByShareCode(code!);
         setState(prev => ({ ...prev, index }));
 
-        // Reject public networks - they should use /index/[networkId] instead
+        // Reject public networks - they should use /network/[networkId] instead
         if (index.permissions?.joinPolicy === 'anyone') {
           setState(prev => ({ 
             ...prev, 
@@ -118,7 +118,7 @@ export default function InvitationPage() {
       setState(prev => ({ ...prev, step: 'joining' }));
       
       // Accept private invitation
-      const result = await indexesService.acceptInvitation(code!);
+      const result = await networksService.acceptInvitation(code!);
       
       if (result?.alreadyMember) {
         success('You are already a member of this index');
@@ -126,7 +126,7 @@ export default function InvitationPage() {
       } else {
         success(`Successfully joined ${result?.network?.title || state.index.title}!`);
         // Refresh indexes context
-        await refreshIndexes();
+        await refreshNetworks();
         // Redirect to the index page
         navigate(`/`);
       }

@@ -24,7 +24,7 @@ const TEST_PREFIX = 'contact_svc_v2_' + Date.now() + '_';
 // -- Test fixtures --
 let ownerId: string;
 let existingUserId: string;
-let personalIndexId: string;
+let personalNetworkId: string;
 
 const ownerEmail = `${TEST_PREFIX}owner@example.com`;
 const existingContactEmail = `${TEST_PREFIX}existing@example.com`;
@@ -67,7 +67,7 @@ beforeAll(async () => {
   existingUserId = crypto.randomUUID();
 
   // Create owner with personal index
-  personalIndexId = await createTestUser(ownerId, ownerEmail, TEST_PREFIX + 'Owner');
+  personalNetworkId = await createTestUser(ownerId, ownerEmail, TEST_PREFIX + 'Owner');
 
   // Create an existing (non-ghost) user (no personal index needed for them)
   await db.insert(users).values({
@@ -85,10 +85,10 @@ afterAll(async () => {
     await db.delete(networkMembers).where(inArray(networkMembers.userId, allUserIds));
   }
   // Remove all members from personal index before deleting it (avoids FK constraint)
-  await db.delete(networkMembers).where(eq(networkMembers.networkId, personalIndexId));
+  await db.delete(networkMembers).where(eq(networkMembers.networkId, personalNetworkId));
   // Clean personal_indexes for owner
   await db.delete(personalNetworks).where(eq(personalNetworks.userId, ownerId));
-  await db.delete(networks).where(eq(networks.id, personalIndexId));
+  await db.delete(networks).where(eq(networks.id, personalNetworkId));
   if (allUserIds.length > 0) {
     await db.delete(userProfiles).where(inArray(userProfiles.userId, allUserIds));
     await db.delete(users).where(inArray(users.id, allUserIds));
@@ -113,7 +113,7 @@ describe('addContact', () => {
       .from(networkMembers)
       .where(
         and(
-          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.networkId, personalNetworkId),
           eq(networkMembers.userId, existingUserId),
           sql`'contact' = ANY(${networkMembers.permissions})`,
         )
@@ -143,7 +143,7 @@ describe('addContact', () => {
       .from(networkMembers)
       .where(
         and(
-          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.networkId, personalNetworkId),
           eq(networkMembers.userId, result.userId),
           sql`'contact' = ANY(${networkMembers.permissions})`,
         )
@@ -163,7 +163,7 @@ describe('addContact', () => {
       .set({ deletedAt: new Date() })
       .where(
         and(
-          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.networkId, personalNetworkId),
           eq(networkMembers.userId, first.userId),
           sql`'contact' = ANY(${networkMembers.permissions})`,
         )
@@ -180,7 +180,7 @@ describe('addContact', () => {
       .from(networkMembers)
       .where(
         and(
-          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.networkId, personalNetworkId),
           eq(networkMembers.userId, first.userId),
           sql`'contact' = ANY(${networkMembers.permissions})`,
         )
@@ -200,7 +200,7 @@ describe('addContact', () => {
       .set({ deletedAt: new Date() })
       .where(
         and(
-          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.networkId, personalNetworkId),
           eq(networkMembers.userId, first.userId),
           sql`'contact' = ANY(${networkMembers.permissions})`,
         )
@@ -216,7 +216,7 @@ describe('addContact', () => {
       .from(networkMembers)
       .where(
         and(
-          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.networkId, personalNetworkId),
           eq(networkMembers.userId, first.userId),
           sql`'contact' = ANY(${networkMembers.permissions})`,
         )
@@ -278,7 +278,7 @@ describe('removeContact', () => {
       .from(networkMembers)
       .where(
         and(
-          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.networkId, personalNetworkId),
           eq(networkMembers.userId, addResult.userId),
           sql`'contact' = ANY(${networkMembers.permissions})`,
         )
@@ -294,7 +294,7 @@ describe('removeContact', () => {
       .from(networkMembers)
       .where(
         and(
-          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.networkId, personalNetworkId),
           eq(networkMembers.userId, addResult.userId),
           sql`'contact' = ANY(${networkMembers.permissions})`,
         )
@@ -328,7 +328,7 @@ describe('listContacts', () => {
       .set({ deletedAt: new Date() })
       .where(
         and(
-          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.networkId, personalNetworkId),
           eq(networkMembers.userId, added.userId),
           sql`'contact' = ANY(${networkMembers.permissions})`,
         )

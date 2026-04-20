@@ -32,10 +32,10 @@ export interface ContactWithIntents {
 /** Database methods needed for introducer discovery contact selection. */
 export interface IntroducerDiscoveryDatabase {
   /** Get the user's personal index ID. */
-  getPersonalIndexId(userId: string): Promise<string | null>;
+  getPersonalNetworkId(userId: string): Promise<string | null>;
   /** Get contacts from a personal index with their intent freshness data. */
   getContactsWithIntentFreshness(
-    personalIndexId: string,
+    personalNetworkId: string,
     ownerId: string,
     limit: number,
   ): Promise<ContactWithIntents[]>;
@@ -70,14 +70,14 @@ export async function selectContactsForDiscovery(
   userId: string,
   limit: number = MAX_CONTACTS_PER_CYCLE,
 ): Promise<ContactWithIntents[]> {
-  const personalIndexId = await database.getPersonalIndexId(userId);
-  if (!personalIndexId) {
+  const personalNetworkId = await database.getPersonalNetworkId(userId);
+  if (!personalNetworkId) {
     logger.verbose(`[IntroducerDiscovery] No personal index found — userId=${userId}`);
     return [];
   }
 
   const contacts = await database.getContactsWithIntentFreshness(
-    personalIndexId,
+    personalNetworkId,
     userId,
     limit,
   );
@@ -117,8 +117,8 @@ export async function runIntroducerDiscovery(
   queue: IntroducerDiscoveryQueue,
   userId: string,
 ): Promise<IntroducerDiscoveryResult> {
-  const personalIndexId = await database.getPersonalIndexId(userId);
-  if (!personalIndexId) {
+  const personalNetworkId = await database.getPersonalNetworkId(userId);
+  if (!personalNetworkId) {
     return { contactsEvaluated: 0, jobsEnqueued: 0, skippedReason: 'no_personal_index' };
   }
 
@@ -141,7 +141,7 @@ export async function runIntroducerDiscovery(
           {
             intentId: `introducer:${contact.userId}`,
             userId,
-            indexIds: [personalIndexId],
+            indexIds: [personalNetworkId],
             contactUserId: contact.userId,
           },
           { priority: 15, jobId }, // Lower priority than regular rediscovery (10)

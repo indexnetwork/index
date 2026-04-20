@@ -28,7 +28,7 @@ export type IntentJobPayload = IntentJobData | IntentDeleteData;
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getUserIndexIds' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkMemberContext' | 'getProfile' | 'getActiveIntents'
+  'getIntentForIndexing' | 'getUserNetworkIds' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkMemberContext' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -189,27 +189,27 @@ export class IntentQueue implements IntentGraphQueue {
     this.logger.debug('[IntentHyde] Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
     let assignedIndexCount = 0;
     try {
-      const userIndexIds = await db.getUserIndexIds(userId);
+      const userIndexIds = await db.getUserNetworkIds(userId);
       this.logger.info('[IntentHyde] User indexes found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
 
-      // Fetch prompts for each index to determine which need scoring
-      const indexContexts = await Promise.all(
+      // Fetch prompts for each network to determine which need scoring
+      const networkContexts = await Promise.all(
         userIndexIds.map(async (networkId) => {
           const ctx = await db.getNetworkMemberContext(networkId, userId);
           return { networkId, ctx };
         })
       );
 
-      // Split: no-prompt indexes get score 1.0, others need IntentIndexer
-      const noPromptIndexes = indexContexts.filter(
-        ({ ctx }) => !ctx?.indexPrompt?.trim() && !ctx?.memberPrompt?.trim()
+      // Split: no-prompt networks get score 1.0, others need IntentIndexer
+      const noPromptNetworks = networkContexts.filter(
+        ({ ctx }) => !ctx?.networkPrompt?.trim() && !ctx?.memberPrompt?.trim()
       );
-      const scorableIndexes = indexContexts.filter(
-        ({ ctx }) => ctx?.indexPrompt?.trim() || ctx?.memberPrompt?.trim()
+      const scorableNetworks = networkContexts.filter(
+        ({ ctx }) => ctx?.networkPrompt?.trim() || ctx?.memberPrompt?.trim()
       );
 
-      // Assign no-prompt indexes with default score
-      for (const { networkId } of noPromptIndexes) {
+      // Assign no-prompt networks with default score
+      for (const { networkId } of noPromptNetworks) {
         try {
           await db.assignIntentToNetwork(intentId, networkId, 1.0);
           assignedIndexCount++;
@@ -218,21 +218,21 @@ export class IntentQueue implements IntentGraphQueue {
         }
       }
 
-      // Score and assign scorable indexes in parallel
-      if (scorableIndexes.length > 0) {
+      // Score and assign scorable networks in parallel
+      if (scorableNetworks.length > 0) {
         const indexer = new IntentIndexer();
         const scoringResults = await Promise.all(
-          scorableIndexes.map(async ({ networkId, ctx }) => {
+          scorableNetworks.map(async ({ networkId, ctx }) => {
             try {
               const result = await indexer.invoke(
                 intent.payload,
-                ctx?.indexPrompt ?? null,
+                ctx?.networkPrompt ?? null,
                 ctx?.memberPrompt ?? null,
               );
               const score = result
-                ? (ctx?.indexPrompt && ctx?.memberPrompt
+                ? (ctx?.networkPrompt && ctx?.memberPrompt
                     ? result.indexScore * 0.6 + result.memberScore * 0.4
-                    : ctx?.indexPrompt ? result.indexScore : result.memberScore)
+                    : ctx?.networkPrompt ? result.indexScore : result.memberScore)
                 : 1.0;
               return { networkId, score };
             } catch (err) {

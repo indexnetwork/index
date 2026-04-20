@@ -28,15 +28,15 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
 
       const _readIndexGraphStart = Date.now();
       const _readIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _readIndexTraceEmitter?.({ type: "graph_start", name: "index" });
-      const result = await graphs.index.invoke({
+      _readIndexTraceEmitter?.({ type: "graph_start", name: "network" });
+      const result = await graphs.network.invoke({
         userId: context.userId,
         networkId: context.networkId || undefined,
         operationMode: 'read' as const,
         showAll: false, // Never allow bypass - strict scope enforcement
       });
       const _readIndexGraphMs = Date.now() - _readIndexGraphStart;
-      _readIndexTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _readIndexGraphMs });
+      _readIndexTraceEmitter?.({ type: "graph_end", name: "network", durationMs: _readIndexGraphMs });
 
       if (result.error) {
         return error(result.error);
@@ -48,13 +48,13 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             ...result.readResult,
             scopeRestriction: {
               isScoped: true,
-              scopedToIndex: context.indexName ?? context.networkId,
-              message: `Results are limited to "${context.indexName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
+              scopedToIndex: context.networkName ?? context.networkId,
+              message: `Results are limited to "${context.networkName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
             },
             _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
-        return success({ ...result.readResult, _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }] });
+        return success({ ...result.readResult, _graphTimings: [{ name: 'network', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }] });
       }
       return error("Failed to fetch index information.");
     },
@@ -98,7 +98,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         // Enforce strict scope: when chat is index-scoped, only allow querying that index
         if (context.networkId && networkId !== context.networkId) {
           return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query members of this index.`
+            `This chat is scoped to ${context.networkName ?? 'this index'}. You can only query members of this index.`
           );
         }
 
@@ -134,7 +134,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
           // Strict scope enforcement: when chat is index-scoped, only allow querying that index
           if (context.networkId && networkId !== context.networkId) {
             return error(
-              `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query membership in this community.`
+              `This chat is scoped to ${context.networkName ?? 'this index'}. You can only query membership in this community.`
             );
           }
 
@@ -161,8 +161,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
                 networkId: context.networkId,
                 scopeRestriction: {
                   isScoped: true,
-                  scopedToIndex: context.indexName ?? context.networkId,
-                  message: `This chat is scoped to "${context.indexName ?? 'this index'}". Only membership in this community is shown.`,
+                  scopedToIndex: context.networkName ?? context.networkId,
+                  message: `This chat is scoped to "${context.networkName ?? 'this index'}". Only membership in this community is shown.`,
                 },
               });
             }
@@ -173,8 +173,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
               message: "User is not a member of this community.",
               scopeRestriction: {
                 isScoped: true,
-                scopedToIndex: context.indexName ?? context.networkId,
-                message: `This chat is scoped to "${context.indexName ?? 'this index'}". Only membership in this community was checked.`,
+                scopedToIndex: context.networkName ?? context.networkId,
+                message: `This chat is scoped to "${context.networkName ?? 'this index'}". Only membership in this community was checked.`,
               },
             });
           }
@@ -217,7 +217,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         // Strict scope enforcement: when chat is index-scoped, only allow querying that index
         if (context.networkId && networkId !== context.networkId) {
           return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query membership in this community.`
+            `This chat is scoped to ${context.networkName ?? 'this index'}. You can only query membership in this community.`
           );
         }
 
@@ -257,8 +257,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
           })),
           scopeRestriction: {
             isScoped: true,
-            scopedToIndex: context.indexName ?? context.networkId,
-            message: `Results are limited to "${context.indexName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
+            scopedToIndex: context.networkName ?? context.networkId,
+            message: `Results are limited to "${context.networkName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
           },
         });
       }
@@ -308,21 +308,21 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       // Strict scope enforcement: when chat is index-scoped, only allow updating that index
       if (context.networkId && effectiveIndexId !== context.networkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only update this community's settings.`
+          `This chat is scoped to ${context.networkName ?? 'this index'}. You can only update this community's settings.`
         );
       }
 
       const _updateNetworkGraphStart = Date.now();
       const _updateNetworkTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _updateNetworkTraceEmitter?.({ type: "graph_start", name: "index" });
-      const result = await graphs.index.invoke({
+      _updateNetworkTraceEmitter?.({ type: "graph_start", name: "network" });
+      const result = await graphs.network.invoke({
         userId: context.userId,
         networkId: effectiveIndexId,
         operationMode: 'update' as const,
         updateInput: query.settings,
       });
       const _updateNetworkGraphMs = Date.now() - _updateNetworkGraphStart;
-      _updateNetworkTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _updateNetworkGraphMs });
+      _updateNetworkTraceEmitter?.({ type: "graph_end", name: "network", durationMs: _updateNetworkGraphMs });
 
       if (result.mutationResult && !result.mutationResult.success) {
         return error(result.mutationResult.error || "Failed to update index.");
@@ -339,7 +339,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       "(complementary matches) between members. The index's prompt guides what kinds of intents belong.\n\n" +
       "**When to use:** When the user wants to create a new community — e.g. a professional network, interest group, or project team.\n\n" +
       "**Returns:** The new index's networkId (UUID) and title. Use the networkId to add members (create_network_membership), " +
-      "link intents (create_intent_index), or run discovery (create_opportunities with networkId).",
+      "link intents (create_intent_network), or run discovery (create_opportunities with networkId).",
     querySchema: z.object({
       title: z.string().describe("Display name of the index (e.g. 'AI Founders Berlin', 'Design Co-op'). Required."),
       prompt: z.string().optional().describe("Description of what this community is about (e.g. 'Early-stage AI/ML founders in Berlin looking for co-founders, advisors, and investors'). Used by the system to evaluate which intents belong in this index. Highly recommended for better auto-assignment."),
@@ -353,8 +353,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
 
       const _createNetworkGraphStart = Date.now();
       const _createNetworkTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _createNetworkTraceEmitter?.({ type: "graph_start", name: "index" });
-      const result = await graphs.index.invoke({
+      _createNetworkTraceEmitter?.({ type: "graph_start", name: "network" });
+      const result = await graphs.network.invoke({
         userId: context.userId,
         operationMode: 'create' as const,
         createInput: {
@@ -365,7 +365,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         },
       });
       const _createNetworkGraphMs = Date.now() - _createNetworkGraphStart;
-      _createNetworkTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _createNetworkGraphMs });
+      _createNetworkTraceEmitter?.({ type: "graph_end", name: "network", durationMs: _createNetworkGraphMs });
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
@@ -403,25 +403,25 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       // Strict scope enforcement: when chat is index-scoped, only allow deleting that index
       if (context.networkId && networkId !== context.networkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only delete this community.`
+          `This chat is scoped to ${context.networkName ?? 'this index'}. You can only delete this community.`
         );
       }
 
       const _deleteNetworkGraphStart = Date.now();
       const _deleteNetworkTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _deleteNetworkTraceEmitter?.({ type: "graph_start", name: "index" });
-      const result = await graphs.index.invoke({
+      _deleteNetworkTraceEmitter?.({ type: "graph_start", name: "network" });
+      const result = await graphs.network.invoke({
         userId: context.userId,
         networkId,
         operationMode: 'delete' as const,
       });
       const _deleteNetworkGraphMs = Date.now() - _deleteNetworkGraphStart;
-      _deleteNetworkTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _deleteNetworkGraphMs });
+      _deleteNetworkTraceEmitter?.({ type: "graph_end", name: "network", durationMs: _deleteNetworkGraphMs });
 
       if (result.mutationResult && !result.mutationResult.success) {
         return error(result.mutationResult.error || "Failed to delete index.");
       }
-      return success({ message: "Network deleted.", _graphTimings: [{ name: 'index', durationMs: _deleteNetworkGraphMs, agents: result.agentTimings ?? [] }] });
+      return success({ message: "Network deleted.", _graphTimings: [{ name: 'network', durationMs: _deleteNetworkGraphMs, agents: result.agentTimings ?? [] }] });
     },
   });
 
@@ -450,7 +450,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       // Strict scope enforcement: when chat is index-scoped, only allow adding to that index
       if (context.networkId && networkId !== context.networkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only add members to this community.`
+          `This chat is scoped to ${context.networkName ?? 'this index'}. You can only add members to this community.`
         );
       }
 
@@ -508,7 +508,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       // Strict scope enforcement: when chat is index-scoped, only allow that index
       if (context.networkId && networkId !== context.networkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only manage members of this community.`
+          `This chat is scoped to ${context.networkName ?? 'this index'}. You can only manage members of this community.`
         );
       }
 

@@ -11,14 +11,14 @@ config({ path: '.env.test' });
 
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 
-// Mock getPersonalIndexId before importing the module under test.
+// Mock getPersonalNetworkId before importing the module under test.
 // This prevents verifySharedIndex from hitting the real DB.
 const mockGetPersonalIndexId = mock(() => Promise.resolve(null));
 mock.module('../database.adapter', () => {
   const actual = require('../database.adapter');
   return {
     ...actual,
-    getPersonalIndexId: mockGetPersonalIndexId,
+    getPersonalNetworkId: mockGetPersonalIndexId,
   };
 });
 
@@ -44,17 +44,17 @@ function createMockDb(): ChatDatabaseAdapter {
     // Intents
     getIntent: mock(() => Promise.resolve(null)),
     getNetworkIntentsForMember: mock(() => Promise.resolve([])),
-    getIntentsInIndexForMember: mock(() => Promise.resolve([])),
+    getIntentsInNetworkForMember: mock(() => Promise.resolve([])),
 
     // Network membership
     getNetworkMemberships: mock(() => Promise.resolve([])),
     getNetworkMembership: mock(() => Promise.resolve(null)),
     isNetworkMember: mock(() => Promise.resolve(false)),
-    isIndexOwner: mock(() => Promise.resolve(false)),
+    isNetworkOwner: mock(() => Promise.resolve(false)),
     getNetworkMembersForMember: mock(() => Promise.resolve([])),
-    getMembersFromUserIndexes: mock(() => Promise.resolve([])),
+    getMembersFromUserNetworks: mock(() => Promise.resolve([])),
     addMemberToNetwork: mock(() => Promise.resolve({ success: true })),
-    removeMemberFromIndex: mock(() => Promise.resolve({ success: true })),
+    removeMemberFromNetwork: mock(() => Promise.resolve({ success: true })),
 
     // Index operations
     getNetwork: mock(() => Promise.resolve(null)),
@@ -102,9 +102,9 @@ describe('createSystemDatabase', () => {
     sysDb = createSystemDatabase(mockDb, AUTH_USER, [SCOPED_INDEX, SCOPED_INDEX_2]);
   });
 
-  it('exposes authUserId and indexScope', () => {
+  it('exposes authUserId and networkScope', () => {
     expect(sysDb.authUserId).toBe(AUTH_USER);
-    expect(sysDb.indexScope).toEqual([SCOPED_INDEX, SCOPED_INDEX_2]);
+    expect(sysDb.networkScope).toEqual([SCOPED_INDEX, SCOPED_INDEX_2]);
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -112,22 +112,22 @@ describe('createSystemDatabase', () => {
   // ─────────────────────────────────────────────────────────────────────────────
 
   describe('verifyScope — index operations', () => {
-    it('getIntentsInIndex allows scoped index', async () => {
-      await sysDb.getIntentsInIndex(SCOPED_INDEX);
+    it('getIntentsInNetwork allows scoped index', async () => {
+      await sysDb.getIntentsInNetwork(SCOPED_INDEX);
       expect(mockDb.getNetworkIntentsForMember).toHaveBeenCalledWith(SCOPED_INDEX, AUTH_USER, undefined);
     });
 
-    it('getIntentsInIndex throws for out-of-scope index', async () => {
-      await expect(sysDb.getIntentsInIndex(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
+    it('getIntentsInNetwork throws for out-of-scope index', async () => {
+      await expect(sysDb.getIntentsInNetwork(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
     });
 
-    it('getUserIntentsInIndex allows scoped index', async () => {
-      await sysDb.getUserIntentsInIndex(OTHER_USER, SCOPED_INDEX);
-      expect(mockDb.getIntentsInIndexForMember).toHaveBeenCalledWith(OTHER_USER, SCOPED_INDEX);
+    it('getUserIntentsInNetwork allows scoped index', async () => {
+      await sysDb.getUserIntentsInNetwork(OTHER_USER, SCOPED_INDEX);
+      expect(mockDb.getIntentsInNetworkForMember).toHaveBeenCalledWith(OTHER_USER, SCOPED_INDEX);
     });
 
-    it('getUserIntentsInIndex throws for out-of-scope index', async () => {
-      await expect(sysDb.getUserIntentsInIndex(OTHER_USER, OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
+    it('getUserIntentsInNetwork throws for out-of-scope index', async () => {
+      await expect(sysDb.getUserIntentsInNetwork(OTHER_USER, OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
     });
 
     it('getNetworkMembers allows scoped index', async () => {
@@ -274,9 +274,9 @@ describe('createSystemDatabase', () => {
       expect(mockDb.isNetworkMember).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER);
     });
 
-    it('isIndexOwner delegates directly (used by graphs for ownership checks)', async () => {
-      await sysDb.isIndexOwner(SCOPED_INDEX, AUTH_USER);
-      expect(mockDb.isIndexOwner).toHaveBeenCalledWith(SCOPED_INDEX, AUTH_USER);
+    it('isNetworkOwner delegates directly (used by graphs for ownership checks)', async () => {
+      await sysDb.isNetworkOwner(SCOPED_INDEX, AUTH_USER);
+      expect(mockDb.isNetworkOwner).toHaveBeenCalledWith(SCOPED_INDEX, AUTH_USER);
     });
 
     it('addMemberToNetwork delegates directly (used by join flows and invitation acceptance)', async () => {
@@ -284,14 +284,14 @@ describe('createSystemDatabase', () => {
       expect(mockDb.addMemberToNetwork).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER, 'member');
     });
 
-    it('removeMemberFromIndex delegates directly (used by leave/kick flows)', async () => {
-      await sysDb.removeMemberFromIndex(SCOPED_INDEX, OTHER_USER);
-      expect(mockDb.removeMemberFromIndex).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER);
+    it('removeMemberFromNetwork delegates directly (used by leave/kick flows)', async () => {
+      await sysDb.removeMemberFromNetwork(SCOPED_INDEX, OTHER_USER);
+      expect(mockDb.removeMemberFromNetwork).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER);
     });
 
     it('getMembersFromScope delegates with authUserId', async () => {
       await sysDb.getMembersFromScope();
-      expect(mockDb.getMembersFromUserIndexes).toHaveBeenCalledWith(AUTH_USER);
+      expect(mockDb.getMembersFromUserNetworks).toHaveBeenCalledWith(AUTH_USER);
     });
 
     it('getOpportunity delegates directly (used by negotiation graph for cross-actor lookup)', async () => {
@@ -370,7 +370,7 @@ describe('createSystemDatabase', () => {
       expect(result).toEqual([]);
     });
 
-    it('returns empty array when indexScope is empty', async () => {
+    it('returns empty array when networkScope is empty', async () => {
       const emptyScope = createSystemDatabase(mockDb, AUTH_USER, [], createMockEmbedder());
       const result = await emptyScope.findSimilarIntentsInScope([1, 2, 3]);
       expect(result).toEqual([]);
@@ -401,7 +401,7 @@ describe('createSystemDatabase', () => {
       expect(mockEmbedder.search).toHaveBeenCalledWith(
         [1, 2, 3],
         'intents',
-        { limit: 5, minScore: 0.8, filter: { indexScope: [SCOPED_INDEX] } },
+        { limit: 5, minScore: 0.8, filter: { networkScope: [SCOPED_INDEX] } },
       );
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('intent-1');
@@ -441,7 +441,7 @@ describe('createSystemDatabase', () => {
       expect(mockEmbedder.search).toHaveBeenCalledWith(
         [1, 2, 3],
         'intents',
-        { limit: 10, minScore: 0.7, filter: { indexScope: [SCOPED_INDEX] } },
+        { limit: 10, minScore: 0.7, filter: { networkScope: [SCOPED_INDEX] } },
       );
     });
   });
@@ -470,7 +470,7 @@ describe('createSystemDatabase', () => {
     });
 
     it('getProfile throws when other user shares no scoped network and no personal network contact', async () => {
-      // No shared memberships, getPersonalIndexId returns null (mocked)
+      // No shared memberships, getPersonalNetworkId returns null (mocked)
       (mockDb.getNetworkMemberships as ReturnType<typeof mock>).mockResolvedValueOnce([
         { networkId: 'some-unrelated-network' },
       ]);

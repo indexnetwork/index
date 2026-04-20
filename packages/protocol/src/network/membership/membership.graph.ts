@@ -73,7 +73,7 @@ export class NetworkMembershipGraphFactory {
           }
 
           if (joinPolicy === 'invite_only') {
-            const isOwner = await this.database.isIndexOwner(state.networkId, state.userId);
+            const isOwner = await this.database.isNetworkOwner(state.networkId, state.userId);
             if (!isOwner) {
               return { mutationResult: { success: false, error: "Only the index owner can add members when the index is invite-only." } };
             }
@@ -167,12 +167,12 @@ export class NetworkMembershipGraphFactory {
         }
 
         try {
-          const isOwner = await this.database.isIndexOwner(state.networkId, state.userId);
+          const isOwner = await this.database.isNetworkOwner(state.networkId, state.userId);
           if (!isOwner) {
             return { mutationResult: { success: false, error: "Only the index owner can remove members." } };
           }
 
-          const result = await this.database.removeMemberFromIndex(state.networkId, state.targetUserId);
+          const result = await this.database.removeMemberFromNetwork(state.networkId, state.targetUserId);
 
           if (result.wasOwner) {
             return { mutationResult: { success: false, error: "Cannot remove the index owner." } };

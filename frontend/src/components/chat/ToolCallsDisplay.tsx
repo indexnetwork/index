@@ -62,39 +62,39 @@ const TOOL_DESCRIPTIONS: Record<string, { action: string; running: string }> = {
     action: "Delete signal",
     running: "Removing signal...",
   },
-  create_intent_index: {
+  create_intent_network: {
     action: "Save to network",
     running: "Saving signal to network...",
   },
-  read_intent_indexes: {
+  read_intent_networks: {
     action: "Fetch network signals",
     running: "Fetching signals in network...",
   },
-  delete_intent_index: {
+  delete_intent_network: {
     action: "Remove from network",
     running: "Removing signal from network...",
   },
-  read_indexes: {
+  read_networks: {
     action: "Check networks",
     running: "Checking your networks...",
   },
-  create_index: {
+  create_network: {
     action: "Create network",
     running: "Creating a new network...",
   },
-  update_index: {
+  update_network: {
     action: "Update network",
     running: "Updating network...",
   },
-  delete_index: {
+  delete_network: {
     action: "Delete network",
     running: "Deleting network...",
   },
-  create_index_membership: {
+  create_network_membership: {
     action: "Add member",
     running: "Adding member to network...",
   },
-  read_index_memberships: {
+  read_network_memberships: {
     action: "Fetch memberships",
     running: "Fetching network memberships...",
   },
@@ -152,15 +152,16 @@ function getToolDescription(name: string): { action: string; running: string } {
 const GRAPH_DISPLAY_NAMES: Record<string, string> = {
   "opportunity": "Opportunity graph",
   "intent": "Intent graph",
-  "intent_index": "Intent indexing",
-  "intent_network": "Intent indexing",
+  "intent_index": "Assigning to networks",
+  "intent_network": "Assigning to networks",
   "profile": "Profile graph",
   "hyde": "HyDE graph",
   "home": "Home graph",
   "network": "Network graph",
   "network_membership": "Network membership",
-  "index": "Index graph",
-  "index_membership": "Index membership",
+  /** Legacy persisted traces */
+  "index": "Network graph",
+  "index_membership": "Network membership",
 };
 
 const AGENT_DISPLAY_NAMES: Record<string, string> = {
@@ -176,7 +177,7 @@ const AGENT_DISPLAY_NAMES: Record<string, string> = {
   "intent-inferrer": "Inferring intents",
   "intent-verifier": "Verifying intents",
   "intent-reconciler": "Reconciling intents",
-  "intent-indexer": "Indexing intents",
+  "intent-indexer": "Assigning to networks",
   "profile-generator": "Generating profile",
   "hyde-generator": "Generating HyDE",
   "lens-inferrer": "Inferring lenses",

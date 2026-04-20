@@ -57,7 +57,7 @@ describe("NegotiationGraph → opportunity status lifecycle (init)", () => {
     await graph.invoke({
       sourceUser,
       candidateUser,
-      indexContext: { networkId: "idx-1", prompt: "AI co-founders" },
+      networkContext: { networkId: "idx-1", prompt: "AI co-founders" },
       seedAssessment: seed,
       opportunityId: "opp-1",
       maxTurns: 1,
@@ -76,7 +76,7 @@ describe("NegotiationGraph → opportunity status lifecycle (init)", () => {
     await graph.invoke({
       sourceUser,
       candidateUser,
-      indexContext: { networkId: "idx-1", prompt: "AI co-founders" },
+      networkContext: { networkId: "idx-1", prompt: "AI co-founders" },
       seedAssessment: seed,
       maxTurns: 1,
     });

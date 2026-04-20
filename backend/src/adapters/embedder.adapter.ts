@@ -28,7 +28,7 @@ export interface LensEmbedding {
 
 /** Options for searchWithProfileEmbedding (no lenses; direct profile similarity). */
 export interface ProfileEmbeddingSearchOptions {
-  indexScope: string[];
+  networkScope: string[];
   excludeUserId?: string;
   limitPerStrategy?: number;
   limit?: number;
@@ -37,7 +37,7 @@ export interface ProfileEmbeddingSearchOptions {
 }
 
 export interface HydeSearchOptions {
-  indexScope: string[];
+  networkScope: string[];
   excludeUserId?: string;
   limitPerStrategy?: number;
   limit?: number;
@@ -154,7 +154,7 @@ export class EmbedderAdapter {
     options: HydeSearchOptions
   ): Promise<HydeCandidate[]> {
     const {
-      indexScope,
+      networkScope,
       excludeUserId,
       limitPerStrategy = 40,
       limit = 80,
@@ -162,7 +162,7 @@ export class EmbedderAdapter {
       profileMinScore = 0.25,
     } = options;
 
-    const filter = { indexScope, excludeUserId };
+    const filter = { networkScope, excludeUserId };
 
     // Always search BOTH profiles and intents for each lens.
     // The corpus hint from the lens inferrer is used only for limit allocation:
@@ -199,14 +199,14 @@ export class EmbedderAdapter {
     options: ProfileEmbeddingSearchOptions
   ): Promise<HydeCandidate[]> {
     const {
-      indexScope,
+      networkScope,
       excludeUserId,
       limitPerStrategy = 40,
       limit = 80,
       minScore = 0.40,
       profileMinScore = 0.25,
     } = options;
-    const filter = { indexScope, excludeUserId };
+    const filter = { networkScope, excludeUserId };
     const [profileResults, intentResults] = await Promise.all([
       this.searchProfilesByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, profileMinScore),
       this.searchIntentsByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, minScore),
@@ -221,17 +221,17 @@ export class EmbedderAdapter {
 
   private async searchProfilesForHyde(
     embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
+    filter: { networkScope: string[]; excludeUserId?: string },
     limit: number,
     minScore: number,
     lens: string
   ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
+    if (filter.networkScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { userProfiles, networkMembers } = schema;
 
     const conditions = [
-      inArray(networkMembers.networkId, filter.indexScope),
+      inArray(networkMembers.networkId, filter.networkScope),
       isNotNull(userProfiles.embedding),
       isNull(schema.users.deletedAt),
       sql`(${schema.users.isGhost} = true OR ${schema.users.onboarding}->>'completedAt' IS NOT NULL)`,
@@ -270,17 +270,17 @@ export class EmbedderAdapter {
 
   private async searchIntentsForHyde(
     embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
+    filter: { networkScope: string[]; excludeUserId?: string },
     limit: number,
     minScore: number,
     lens: string
   ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
+    if (filter.networkScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentNetworks } = schema;
 
     const conditions = [
-      inArray(intentNetworks.networkId, filter.indexScope),
+      inArray(intentNetworks.networkId, filter.networkScope),
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
       isNull(intents.archivedAt),
       isNull(schema.users.deletedAt),
@@ -315,15 +315,15 @@ export class EmbedderAdapter {
 
   private async searchProfilesByProfileEmbedding(
     embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
+    filter: { networkScope: string[]; excludeUserId?: string },
     limit: number,
     minScore: number
   ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
+    if (filter.networkScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { userProfiles, networkMembers } = schema;
     const conditions = [
-      inArray(networkMembers.networkId, filter.indexScope),
+      inArray(networkMembers.networkId, filter.networkScope),
       isNotNull(userProfiles.embedding),
       isNull(schema.users.deletedAt),
       sql`(${schema.users.isGhost} = true OR ${schema.users.onboarding}->>'completedAt' IS NOT NULL)`,
@@ -362,15 +362,15 @@ export class EmbedderAdapter {
 
   private async searchIntentsByProfileEmbedding(
     embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
+    filter: { networkScope: string[]; excludeUserId?: string },
     limit: number,
     minScore: number
   ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
+    if (filter.networkScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentNetworks } = schema;
     const conditions = [
-      inArray(intentNetworks.networkId, filter.indexScope),
+      inArray(intentNetworks.networkId, filter.networkScope),
       isNull(intents.archivedAt),
       isNull(schema.users.deletedAt),
       sql`(${schema.users.isGhost} = true OR ${schema.users.onboarding}->>'completedAt' IS NOT NULL)`,
@@ -448,7 +448,7 @@ export class EmbedderAdapter {
     ];
 
     const results =
-      filter?.indexScope && Array.isArray(filter.indexScope)
+      filter?.networkScope && Array.isArray(filter.networkScope)
         ? await db
             .select({
               userId: userProfiles.userId,
@@ -461,7 +461,7 @@ export class EmbedderAdapter {
             .innerJoin(networkMembers, eq(hydeDocuments.sourceId, networkMembers.userId))
             .innerJoin(userProfiles, eq(userProfiles.userId, hydeDocuments.sourceId))
             .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
-            .where(and(...baseConditions, inArray(networkMembers.networkId, filter.indexScope as string[])))
+            .where(and(...baseConditions, inArray(networkMembers.networkId, filter.networkScope as string[])))
             .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
             .limit(limit)
         : await db
@@ -505,7 +505,7 @@ export class EmbedderAdapter {
       sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
     ];
 
-    if (filter?.indexScope && Array.isArray(filter.indexScope)) {
+    if (filter?.networkScope && Array.isArray(filter.networkScope)) {
       const results = await db
         .select({
           id: intents.id,
@@ -517,7 +517,7 @@ export class EmbedderAdapter {
         .from(intents)
         .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
         .innerJoin(schema.users, eq(intents.userId, schema.users.id))
-        .where(and(...baseConditions, inArray(intentNetworks.networkId, filter.indexScope as string[])))
+        .where(and(...baseConditions, inArray(intentNetworks.networkId, filter.networkScope as string[])))
         .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
         .limit(limit);
 

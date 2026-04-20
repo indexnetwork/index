@@ -101,7 +101,7 @@ export class IntentIndexer {
    * Main entry point. Evaluates the appropriateness of an intent for a given index and member context.
    *
    * @param intent - The intent payload.
-   * @param indexPrompt - The purpose of the index (community).
+   * @param networkPrompt - The purpose of the index (community).
    * @param memberPrompt - The member's sharing preferences (optional).
    * @param sourceName - Optional source name for context (e.g. file, link).
    * @returns Structured output with indexScore, memberScore, and reasoning, or null on error.
@@ -109,7 +109,7 @@ export class IntentIndexer {
   @Timed()
   public async invoke(
     intent: string,
-    indexPrompt: string | null,
+    networkPrompt: string | null,
     memberPrompt: string | null,
     sourceName?: string | null
   ): Promise<IntentIndexerOutput | null> {
@@ -117,7 +117,7 @@ export class IntentIndexer {
 
     const contextParts: string[] = [];
     if (sourceName) contextParts.push(`Source: ${sourceName}`);
-    contextParts.push(indexPrompt ? `Index Purpose: ${indexPrompt}` : "Index Purpose: (Not provided)");
+    contextParts.push(networkPrompt ? `Index Purpose: ${networkPrompt}` : "Index Purpose: (Not provided)");
     contextParts.push(memberPrompt ? `Member Preferences: ${memberPrompt}` : "Member Preferences: (Not provided)");
 
     const prompt = `
@@ -157,11 +157,11 @@ export class IntentIndexer {
   @Timed()
   public async evaluate(
     intent: string,
-    indexPrompt: string | null,
+    networkPrompt: string | null,
     memberPrompt: string | null,
     sourceName?: string | null
   ): Promise<IntentIndexerOutput | null> {
-    return this.invoke(intent, indexPrompt, memberPrompt, sourceName);
+    return this.invoke(intent, networkPrompt, memberPrompt, sourceName);
   }
 
   /**
@@ -172,14 +172,14 @@ export class IntentIndexer {
     return tool(
       async (args: {
         intent: string;
-        indexPrompt: string | null;
+        networkPrompt: string | null;
         memberPrompt: string | null;
         sourceName?: string | null;
       }) => {
         const agent = new IntentIndexer();
         return await agent.invoke(
           args.intent,
-          args.indexPrompt,
+          args.networkPrompt,
           args.memberPrompt,
           args.sourceName
         );
@@ -190,7 +190,7 @@ export class IntentIndexer {
           "Evaluates whether an intent is appropriate for a specific index (community) and matches member sharing preferences.",
         schema: z.object({
           intent: z.string().describe("The intent payload to evaluate"),
-          indexPrompt: z.string().nullable().describe("The purpose of the index (community)"),
+          networkPrompt: z.string().nullable().describe("The purpose of the index (community)"),
           memberPrompt: z.string().nullable().describe("The member's sharing preferences"),
           sourceName: z.string().nullable().optional().describe("Optional source name for context"),
         }),

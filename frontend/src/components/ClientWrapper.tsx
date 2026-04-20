@@ -4,8 +4,8 @@ import { useLocation } from 'react-router';
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import ChatSidebar from "@/components/ChatSidebar";
-import { NetworkFilterProvider } from "@/contexts/IndexFilterContext";
-import { NetworksProvider } from "@/contexts/IndexesContext";
+import { NetworkFilterProvider } from "@/contexts/NetworkFilterContext";
+import { NetworksProvider } from "@/contexts/NetworksContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
@@ -15,7 +15,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const { isAuthenticated } = useAuthContext();
 
   const appRoutes = ['/', '/d', '/i', '/u', '/library', '/networks', '/mynetwork', '/chat', '/profile', '/agents', '/agent'];
-  const publicRoutes = ['/l', '/index', '/blog', '/about'];
+  const publicRoutes = ['/l', '/network', '/blog', '/about'];
   const bareRoutes = ['/onboarding', '/oauth/callback', '/found-in-translation'];
 
   const isBareRoute = useMemo(() => {
@@ -151,7 +151,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                         }
                       >
                         <Header 
-                          showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/')}
+                          showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/network/')}
                           forcePublicView={isLandingOrBlog}
                         />
                       </Suspense>
