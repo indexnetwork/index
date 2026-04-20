@@ -19,13 +19,13 @@
  */
 
 import type { OpenClawPluginApi } from './plugin-api.js';
-import { dispatchDelivery } from './delivery.dispatcher.js';
-import { opportunityDeliveryBody } from './prompts/opportunity-delivery.prompt.js';
+import { buildDeliverySessionKey, dispatchDelivery } from './delivery.dispatcher.js';
+import { opportunityEvaluatorPrompt } from './prompts/opportunity-evaluator.prompt.js';
 import { turnPrompt } from './prompts/turn.prompt.js';
 import { registerSetupCli } from './setup.cli.js';
 
-/** Base polling interval: 30 seconds. */
-const POLL_INTERVAL_MS = 30_000;
+/** Base polling interval: 5 minutes. */
+const POLL_INTERVAL_MS = 300_000;
 
 /** Max backoff multiplier (caps at ~8 minutes). */
 const MAX_BACKOFF_MULTIPLIER = 16;
@@ -210,7 +210,7 @@ async function poll(
     if (negotiationResult === 'network_error') return; // already bumped backoff
   }
 
-  await handleOpportunityPickup(api, baseUrl, agentId, apiKey);
+  await handleOpportunityBatch(api, baseUrl, agentId, apiKey);
 
   await handleTestMessagePickup(api, baseUrl, agentId, apiKey);
 }
@@ -303,74 +303,98 @@ async function handleNegotiationPickup(
 }
 
 /**
- * Handles one opportunity pickup cycle. Picks up a pending opportunity,
- * dispatches it via `dispatchDelivery`, then confirms delivery.
+ * Fetches all undelivered pending opportunities in one request, then launches
+ * a single evaluator+delivery subagent that scores them, writes the delivery
+ * ledger for chosen ones, and delivers one message to the user.
  *
- * @returns `true` if an opportunity was dispatched, `false` otherwise.
+ * @returns `true` if a subagent was launched, `false` if no candidates or no routing.
  * @internal
  */
-export async function handleOpportunityPickup(
+export async function handleOpportunityBatch(
   api: OpenClawPluginApi,
   baseUrl: string,
   agentId: string,
   apiKey: string,
 ): Promise<boolean> {
-  const pickupUrl = `${baseUrl}/api/agents/${agentId}/opportunities/pickup`;
+  const pendingUrl = `${baseUrl}/api/agents/${agentId}/opportunities/pending`;
 
-  const res = await fetch(pickupUrl, {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey },
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (res.status === 204) {
+  let res: Response;
+  try {
+    res = await fetch(pendingUrl, {
+      method: 'GET',
+      headers: { 'x-api-key': apiKey },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    api.logger.warn(
+      `Opportunity pending fetch errored: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    increaseBackoff(api);
     return false;
   }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    api.logger.warn(`Opportunity pickup failed: ${res.status} ${text}`);
+    api.logger.warn(`Opportunity pending fetch failed: ${res.status} ${text}`);
+    increaseBackoff(api);
     return false;
   }
 
-  const payload = (await res.json()) as {
-    opportunityId: string;
-    reservationToken: string;
-    reservationExpiresAt: string;
-    rendered: {
-      headline: string;
-      personalizedSummary: string;
-      suggestedAction: string;
-      narratorRemark: string;
-    };
+  const body = (await res.json()) as {
+    opportunities: Array<{
+      opportunityId: string;
+      rendered: {
+        headline: string;
+        personalizedSummary: string;
+        suggestedAction: string;
+        narratorRemark: string;
+      };
+    }>;
   };
 
-  const dispatchResult = await dispatchDelivery(api, {
-    rendered: {
-      headline: payload.rendered.headline,
-      body: opportunityDeliveryBody(payload.rendered),
-    },
-    idempotencyKey: `index:delivery:opportunity:${payload.opportunityId}:${payload.reservationToken}`,
-  });
-
-  // If delivery routing wasn't configured, don't confirm — let reservation expire so we can retry once configured.
-  if (dispatchResult === null) {
+  if (!body.opportunities.length) {
     return false;
   }
 
-  // Confirm delivery — failures are warnings only, dispatch already happened
-  const confirmUrl = `${baseUrl}/api/agents/${agentId}/opportunities/${payload.opportunityId}/delivered`;
-  const confirmRes = await fetch(confirmUrl, {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey, 'content-type': 'application/json' },
-    body: JSON.stringify({ reservationToken: payload.reservationToken }),
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (!confirmRes.ok) {
-    const text = await confirmRes.text().catch(() => '');
-    api.logger.warn(`Opportunity confirm failed for ${payload.opportunityId}: ${confirmRes.status} ${text}`);
+  const sessionKey = buildDeliverySessionKey(api);
+  if (!sessionKey) {
+    api.logger.warn(
+      'Index Network delivery routing not configured — skipping opportunity batch. ' +
+        'Set pluginConfig.deliveryChannel and pluginConfig.deliveryTarget.',
+    );
+    return false;
   }
+
+  const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
+
+  try {
+    await api.runtime.subagent.run({
+      sessionKey,
+      idempotencyKey: `index:delivery:opportunity-batch:${agentId}:${batchHash}`,
+      message: opportunityEvaluatorPrompt(
+        body.opportunities.map((o) => ({
+          opportunityId: o.opportunityId,
+          headline: o.rendered.headline,
+          personalizedSummary: o.rendered.personalizedSummary,
+          suggestedAction: o.rendered.suggestedAction,
+          narratorRemark: o.rendered.narratorRemark,
+        })),
+      ),
+      deliver: true,
+    });
+  } catch (err) {
+    // Subagent dispatch failed — swallow so the poll loop doesn't escalate backoff
+    // on a runtime-side issue. The same batch will retry on the next tick.
+    api.logger.warn(
+      `Opportunity batch subagent dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+
+  api.logger.info(
+    `Opportunity batch dispatched: ${body.opportunities.length} candidate(s) for evaluation`,
+    { agentId },
+  );
 
   return true;
 }
@@ -461,6 +485,16 @@ function checkBackendReachability(api: OpenClawPluginApi, baseUrl: string): void
       `Check that the backend is running and protocolUrl is correct in plugin config.`,
     );
   });
+}
+
+/** Deterministic short hash of a sorted list of opportunity IDs for idempotency keys. */
+function hashOpportunityBatch(ids: string[]): string {
+  const str = [...ids].sort().join(',');
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(31, h) + str.charCodeAt(i) | 0;
+  }
+  return (h >>> 0).toString(36);
 }
 
 function readConfig(api: OpenClawPluginApi, key: string): string {

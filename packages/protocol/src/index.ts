@@ -28,6 +28,7 @@ export type * from "./shared/interfaces/integration.interface.js";
 export type * from "./shared/interfaces/queue.interface.js";
 export type * from "./shared/interfaces/scraper.interface.js";
 export type * from "./shared/interfaces/storage.interface.js";
+export type * from "./shared/interfaces/delivery-ledger.interface.js";
 export type * from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
 export type {

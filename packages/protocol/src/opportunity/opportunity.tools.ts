@@ -1140,5 +1140,41 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [createOpportunities, listOpportunities, updateOpportunity] as const;
+  const confirmOpportunityDelivery = defineTool({
+    name: "confirm_opportunity_delivery",
+    description:
+      "Marks an opportunity as delivered to the user via the OpenClaw channel. " +
+      "Call this for each opportunity you decide to surface, BEFORE including it in your delivery message. " +
+      "Idempotent — safe to call even if the opportunity was already confirmed.",
+    querySchema: z.object({
+      opportunityId: z
+        .string()
+        .describe("The UUID of the opportunity to mark as delivered."),
+    }),
+    handler: async ({ context, query }) => {
+      if (!context.isMcp || !context.agentId) {
+        return error(
+          "confirm_opportunity_delivery is only available to authenticated agent MCP contexts.",
+        );
+      }
+      if (!deps.deliveryLedger) {
+        return error("Delivery ledger not available in this context.");
+      }
+      if (!UUID_REGEX.test(query.opportunityId)) {
+        return error("Invalid opportunity ID format.");
+      }
+      try {
+        const result = await deps.deliveryLedger.confirmOpportunityDelivery({
+          opportunityId: query.opportunityId,
+          userId: context.userId,
+          agentId: context.agentId,
+        });
+        return success({ status: result });
+      } catch (err) {
+        return error(err instanceof Error ? err.message : String(err));
+      }
+    },
+  });
+
+  return [createOpportunities, listOpportunities, updateOpportunity, confirmOpportunityDelivery] as const;
 }

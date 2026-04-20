@@ -1,12 +1,14 @@
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 import db from '../../lib/drizzle/drizzle';
-import { agents, opportunities, users } from '../../schemas/database.schema';
+import { agents, opportunities, opportunityDeliveries, users } from '../../schemas/database.schema';
 import { OpportunityDeliveryService } from '../opportunity-delivery.service';
 import type { RenderedCard } from '../opportunity-delivery.service';
+import type { PresenterDatabase } from '@indexnetwork/protocol';
+import { OpportunityPresenter } from '@indexnetwork/protocol';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stubs — never call LLM or real DB adapters
@@ -182,5 +184,98 @@ describe('OpportunityDeliveryService.pickupPending', () => {
 
     const result = await service.pickupPending(agentA);
     expect(result).toBeNull();
+  });
+});
+
+describe('fetchPendingCandidates', () => {
+  let userId: string;
+  let agentId: string;
+  const svc = new OpportunityDeliveryService(
+    new StubPresenter() as unknown as OpportunityPresenter,
+    stubPresenterDb as unknown as PresenterDatabase,
+  );
+
+  beforeEach(async () => {
+    await db.execute(sql`DELETE FROM opportunity_deliveries`);
+    await db.execute(sql`DELETE FROM opportunities`);
+    userId = await seedUser();
+    agentId = await seedAgent(userId);
+  });
+
+  afterAll(async () => {
+    await db.execute(sql`DELETE FROM opportunity_deliveries`);
+    await db.execute(sql`DELETE FROM opportunities`);
+  });
+
+  it('returns empty array when no eligible opportunities exist', async () => {
+    const results = await svc.fetchPendingCandidates(agentId);
+    expect(results).toEqual([]);
+  });
+
+  it('returns candidate with rendered card for eligible pending opportunity', async () => {
+    const opportunityId = await seedOpportunity([userId], 'pending');
+    const results = await svc.fetchPendingCandidates(agentId);
+    expect(results).toHaveLength(1);
+    expect(results[0].opportunityId).toBe(opportunityId);
+    expect(results[0].rendered.headline).toBeTruthy();
+  });
+
+  it('excludes opportunity already committed in delivery ledger', async () => {
+    const opportunityId = await seedOpportunity([userId], 'pending');
+    await svc.commitDelivery(opportunityId, userId, agentId);
+    const results = await svc.fetchPendingCandidates(agentId);
+    expect(results).toEqual([]);
+  });
+
+  it('excludes opportunity when agent has notify_on_opportunity=false', async () => {
+    await seedOpportunity([userId], 'pending');
+    const mutedUserId = await seedUser();
+    const mutedAgentId = await seedAgent(mutedUserId, false);
+    // seed opportunity for muted user
+    await seedOpportunity([mutedUserId], 'pending');
+    const results = await svc.fetchPendingCandidates(mutedAgentId);
+    expect(results).toEqual([]);
+  });
+});
+
+describe('commitDelivery', () => {
+  let userId: string;
+  let agentId: string;
+  let opportunityId: string;
+  const svc = new OpportunityDeliveryService(
+    new StubPresenter() as unknown as OpportunityPresenter,
+    stubPresenterDb as unknown as PresenterDatabase,
+  );
+
+  beforeEach(async () => {
+    await db.execute(sql`DELETE FROM opportunity_deliveries`);
+    await db.execute(sql`DELETE FROM opportunities`);
+    userId = await seedUser();
+    agentId = await seedAgent(userId);
+    opportunityId = await seedOpportunity([userId], 'pending');
+  });
+
+  it('returns confirmed and inserts delivery row on first call', async () => {
+    const result = await svc.commitDelivery(opportunityId, userId, agentId);
+    expect(result).toBe('confirmed');
+
+    const rows = await db
+      .select()
+      .from(opportunityDeliveries)
+      .where(eq(opportunityDeliveries.opportunityId, opportunityId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].deliveredAt).not.toBeNull();
+    expect(rows[0].channel).toBe('openclaw');
+  });
+
+  it('returns already_delivered on second call', async () => {
+    await svc.commitDelivery(opportunityId, userId, agentId);
+    const result = await svc.commitDelivery(opportunityId, userId, agentId);
+    expect(result).toBe('already_delivered');
+  });
+
+  it('throws not_authorized when user is not an actor', async () => {
+    const otherId = await seedUser();
+    await expect(svc.commitDelivery(opportunityId, otherId, agentId)).rejects.toThrow('not_authorized');
   });
 });

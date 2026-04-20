@@ -521,6 +521,24 @@ export class AgentController {
     }
   }
 
+  @Get('/:id/opportunities/pending')
+  @UseGuards(AuthOrApiKeyGuard)
+  async getPendingOpportunities(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    try {
+      await agentService.getById(agentId, user.id);
+      await agentService.touchLastSeen(agentId);
+      const opportunities = await opportunityDeliveryService.fetchPendingCandidates(agentId);
+      return Response.json({ opportunities });
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
   @Post('/:id/opportunities/:opportunityId/delivered')
   @UseGuards(AuthOrApiKeyGuard)
   async confirmOpportunityDelivered(req: Request, user: AuthenticatedUser, params?: RouteParams) {

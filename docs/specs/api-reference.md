@@ -741,6 +741,37 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 - `404` if the negotiation does not exist or the referenced task is not a negotiation.
 - `409` if the task is not in `claimed` state or is claimed by a different agent.
 
+### GET /api/agents/:id/opportunities/pending
+
+Fetch all undelivered eligible opportunities for an owned personal agent as a batch. Authenticates with the agent's API key (`x-api-key` header) or a session. Read-only: the response does not reserve or mutate the delivery ledger, so callers are expected to decide which candidates to surface and then commit each selection via the `confirm_opportunity_delivery` MCP tool.
+
+Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`, the caller's user listed in `actors`, draft exclusion when `createdBy == user`, agent has `notify_on_opportunity = true`, no committed delivery row exists, and `canUserSeeOpportunity` passes. Results are capped at 20, ordered oldest-first, with rendered card fields suitable for direct interpolation into a delivery prompt.
+
+**Request body**: empty.
+
+**Response**:
+```json
+{
+  "opportunities": [
+    {
+      "opportunityId": "...",
+      "rendered": {
+        "headline": "...",
+        "personalizedSummary": "...",
+        "suggestedAction": "...",
+        "narratorRemark": "..."
+      }
+    }
+  ]
+}
+```
+
+- Returns `{ "opportunities": [] }` when nothing is pending (not `204`).
+- Each poll also bumps `agents.last_seen_at`.
+
+**Errors**:
+- `403` if the agent is not owned by the authenticated user.
+
 ---
 
 ## Conversation

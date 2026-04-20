@@ -168,6 +168,7 @@ export async function createChatTools(
     agentDatabase: deps.agentDatabase,
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     agentDispatcher: deps.agentDispatcher,
+    deliveryLedger: deps.deliveryLedger,
     graphs: {
       profile: profileGraph,
       intent: intentGraph,
@@ -193,8 +194,14 @@ export async function createChatTools(
 
   // Chat only proposes opportunities from the conversation (create_opportunities).
   // Other opportunities are shown on the home view; do not give the agent list_opportunities.
+  // confirm_opportunity_delivery is an OpenClaw-delivery ledger write and must not be
+  // callable from regular chat sessions.
+  const chatOpportunityToolExclusions = new Set([
+    "list_opportunities",
+    "confirm_opportunity_delivery",
+  ]);
   const opportunityToolsForChat = opportunityTools.filter(
-    (t) => (t as { name: string }).name !== "list_opportunities"
+    (t) => !chatOpportunityToolExclusions.has((t as { name: string }).name)
   );
 
   return [
