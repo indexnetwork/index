@@ -2,7 +2,7 @@
   "id": "indexnetwork-openclaw-plugin",
   "name": "Index Network",
   "description": "Index Network — find the right people and let them find you. Registers the Index Network MCP server on first use and hands off to its guidance.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "configSchema": {
     "type": "object",
     "properties": {

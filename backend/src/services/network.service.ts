@@ -225,7 +225,8 @@ export class NetworkService {
    */
   async getMyIntentsInNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Getting my intents in index', { networkId, userId });
-    return this.adapter.getNetworkIntentsForMember(networkId, userId);
+    const intents = await this.adapter.getNetworkIntentsForMember(networkId, userId);
+    return intents.filter((i) => i.userId === userId);
   }
 
   /**

@@ -99,6 +99,12 @@ The following packages are git subtrees tracked to external repos. **Syncing is 
 
 The `indexnetwork-openclaw-plugin` package — an OpenClaw plugin that (a) registers the Index Network MCP server via a bootstrap skill, and (b) runs a background poller that pulls pending negotiation turns from `POST /agents/:id/negotiations/pickup` and dispatches silent subagents via `api.runtime.subagent.run` to respond via `POST /agents/:id/negotiations/:negotiationId/respond`. Behavioral guidance for the negotiation subagent lives in the MCP server's `MCP_INSTRUCTIONS`, not in the plugin. The `skills/index-network/SKILL.md` shipped inside the package is generated from `packages/protocol/skills/openclaw/SKILL.md.template` by `scripts/build-skills.ts` — edit the template, re-run the build, then commit both the template and the materialized output.
 
+**Version fields (bump BOTH on every release):**
+- `package.json` → `version` (npm / workspace-facing)
+- `openclaw.plugin.json` → `version` (**this is what `openclaw plugins list` reports**)
+
+The OpenClaw CLI reads the plugin's installed version from `openclaw.plugin.json`, not `package.json`. If only `package.json` is bumped, `openclaw plugins install` succeeds but `openclaw plugins list` keeps showing the old number and the install looks like a no-op — a silent foot-gun. Keep the two numbers identical.
+
 ```bash
 # Manual push if the hook failed (use dev or main)
 git subtree push --prefix=packages/openclaw-plugin https://github.com/indexnetwork/openclaw-plugin.git <branch>

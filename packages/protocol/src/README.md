@@ -76,7 +76,7 @@ packages/protocol/src/
 | File | Tools |
 |------|-------|
 | `profile/profile.tools.ts` | `read_user_profiles`, `create_user_profile`, `update_user_profile`, `complete_onboarding` |
-| `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
+| `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `create_intent_network`, `read_intent_networks`, `delete_intent_network` |
 | `network/network.tools.ts` | `read_indexes`, `read_index_memberships`, `create_index`, `update_index`, `delete_index`, `create_index_membership`, `delete_index_membership` |
 | `opportunity/opportunity.tools.ts` | `create_opportunities`, `list_opportunities`, `update_opportunity` |
 | `contact/contact.tools.ts` | `import_contacts`, `list_contacts`, `add_contact`, `remove_contact` |

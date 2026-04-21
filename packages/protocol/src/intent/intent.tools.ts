@@ -476,7 +476,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // INTENT–INDEX JUNCTION (link / list / unlink)
+  // INTENT–NETWORK JUNCTION (link / list / unlink)
   // ─────────────────────────────────────────────────────────────────────────────
 
   const createIntentNetwork = defineTool({
@@ -589,9 +589,9 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
-      const _readIntentIndexGraphStart = Date.now();
-      const _readIntentIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _readIntentIndexTraceEmitter?.({ type: "graph_start", name: "intent_network" });
+      const _readIntentNetworkGraphStart = Date.now();
+      const _readIntentNetworkTraceEmitter = requestContext.getStore()?.traceEmitter;
+      _readIntentNetworkTraceEmitter?.({ type: "graph_start", name: "intent_network" });
       const result = await graphs.intentIndex.invoke({
         userId: context.userId,
         networkId,
@@ -599,14 +599,14 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         operationMode: 'read' as const,
         queryUserId,
       });
-      const _readIntentIndexGraphMs = Date.now() - _readIntentIndexGraphStart;
-      _readIntentIndexTraceEmitter?.({ type: "graph_end", name: "intent_network", durationMs: _readIntentIndexGraphMs });
+      const _readIntentNetworkGraphMs = Date.now() - _readIntentNetworkGraphStart;
+      _readIntentNetworkTraceEmitter?.({ type: "graph_end", name: "intent_network", durationMs: _readIntentNetworkGraphMs });
 
       if (result.error) {
         return error(result.error);
       }
       if (result.readResult) {
-        return success({ ...result.readResult, _graphTimings: [{ name: 'intent_network', durationMs: _readIntentIndexGraphMs, agents: result.agentTimings ?? [] }] });
+        return success({ ...result.readResult, _graphTimings: [{ name: 'intent_network', durationMs: _readIntentNetworkGraphMs, agents: result.agentTimings ?? [] }] });
       }
       return error("Failed to fetch intent-network links.");
     },
