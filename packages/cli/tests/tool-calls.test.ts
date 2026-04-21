@@ -207,8 +207,8 @@ describe("CLI tool call contracts", () => {
       });
     });
 
-    it("link calls create_intent_index with intentId and networkId", async () => {
-      mock.setToolResponse("create_intent_index", { success: true, data: {} });
+    it("link calls create_intent_network with intentId and networkId", async () => {
+      mock.setToolResponse("create_intent_network", { success: true, data: {} });
 
       await handleIntent(client, "link", {
         intentId: "intent-123",
@@ -217,15 +217,15 @@ describe("CLI tool call contracts", () => {
       });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("create_intent_index");
+      expect(mock.toolCalls[0].toolName).toBe("create_intent_network");
       expect(mock.toolCalls[0].query).toEqual({
         intentId: "intent-123",
         networkId: "index-456",
       });
     });
 
-    it("unlink calls delete_intent_index with intentId and networkId", async () => {
-      mock.setToolResponse("delete_intent_index", { success: true, data: {} });
+    it("unlink calls delete_intent_network with intentId and networkId", async () => {
+      mock.setToolResponse("delete_intent_network", { success: true, data: {} });
 
       await handleIntent(client, "unlink", {
         intentId: "intent-123",
@@ -234,15 +234,15 @@ describe("CLI tool call contracts", () => {
       });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("delete_intent_index");
+      expect(mock.toolCalls[0].toolName).toBe("delete_intent_network");
       expect(mock.toolCalls[0].query).toEqual({
         intentId: "intent-123",
         networkId: "index-456",
       });
     });
 
-    it("links calls read_intent_indexes with intentId", async () => {
-      mock.setToolResponse("read_intent_indexes", {
+    it("links calls read_intent_networks with intentId", async () => {
+      mock.setToolResponse("read_intent_networks", {
         success: true,
         data: { indexes: [] },
       });
@@ -253,7 +253,7 @@ describe("CLI tool call contracts", () => {
       });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("read_intent_indexes");
+      expect(mock.toolCalls[0].toolName).toBe("read_intent_networks");
       expect(mock.toolCalls[0].query).toEqual({ intentId: "intent-123" });
     });
 

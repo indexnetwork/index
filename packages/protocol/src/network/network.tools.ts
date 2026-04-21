@@ -339,7 +339,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       "(complementary matches) between members. The index's prompt guides what kinds of intents belong.\n\n" +
       "**When to use:** When the user wants to create a new community — e.g. a professional network, interest group, or project team.\n\n" +
       "**Returns:** The new index's networkId (UUID) and title. Use the networkId to add members (create_network_membership), " +
-      "link intents (create_intent_index), or run discovery (create_opportunities with networkId).",
+      "link intents (create_intent_network), or run discovery (create_opportunities with networkId).",
     querySchema: z.object({
       title: z.string().describe("Display name of the index (e.g. 'AI Founders Berlin', 'Design Co-op'). Required."),
       prompt: z.string().optional().describe("Description of what this community is about (e.g. 'Early-stage AI/ML founders in Berlin looking for co-founders, advisors, and investors'). Used by the system to evaluate which intents belong in this index. Highly recommended for better auto-assignment."),

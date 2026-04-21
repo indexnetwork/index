@@ -41,17 +41,17 @@ The `index intent` command exposes subcommands for managing intents (user-facing
 
 ### `index intent link <id> <network-id>`
 
-1. Calls `create_intent_index` tool via Tool HTTP API with `{ intentId, indexId }`.
+1. Calls `create_intent_network` tool via Tool HTTP API with `{ intentId, indexId }`.
 2. Prints "Signal linked to network." on success, error on failure.
 
 ### `index intent unlink <id> <network-id>`
 
-1. Calls `delete_intent_index` tool via Tool HTTP API with `{ intentId, indexId }`.
+1. Calls `delete_intent_network` tool via Tool HTTP API with `{ intentId, indexId }`.
 2. Prints "Signal unlinked from network." on success, error on failure.
 
 ### `index intent links <id>`
 
-1. Calls `read_intent_indexes` tool via Tool HTTP API with `{ intentId }`.
+1. Calls `read_intent_networks` tool via Tool HTTP API with `{ intentId }`.
 2. Renders a table of linked networks (title, ID). Prints "No linked networks." if none.
 
 ## Constraints

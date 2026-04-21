@@ -134,7 +134,7 @@ export async function handleIntent(
         output.error("Usage: index intent link <intent-id> <network-id>", 1);
         return;
       }
-      const result = await client.callTool("create_intent_index", {
+      const result = await client.callTool("create_intent_network", {
         intentId: options.intentId,
         networkId: options.targetId,
       });
@@ -149,7 +149,7 @@ export async function handleIntent(
         output.error("Usage: index intent unlink <intent-id> <network-id>", 1);
         return;
       }
-      const result = await client.callTool("delete_intent_index", {
+      const result = await client.callTool("delete_intent_network", {
         intentId: options.intentId,
         networkId: options.targetId,
       });
@@ -164,7 +164,7 @@ export async function handleIntent(
         output.error("Missing signal ID. Usage: index intent links <id>", 1);
         return;
       }
-      const result = await client.callTool("read_intent_indexes", {
+      const result = await client.callTool("read_intent_networks", {
         intentId: options.intentId,
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }

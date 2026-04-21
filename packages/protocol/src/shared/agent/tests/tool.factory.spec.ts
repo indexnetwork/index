@@ -262,7 +262,7 @@ const mockScraper = {
 } as unknown as Scraper;
 
 /** Stub protocol-level deps for ToolContext (not invoked in most unit tests). */
-const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | 'scraper' | 'indexId' | 'sessionId' | 'userDb' | 'systemDb'> = {
+const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | 'scraper' | 'networkId' | 'sessionId' | 'userDb' | 'systemDb'> = {
   cache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false, mget: async () => [], deleteByPattern: async () => 0 },
   hydeCache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false },
   integration: { createSession: async () => ({}) as any, executeToolAction: async () => ({ successful: true }), listConnections: async () => [], getAuthUrl: async () => ({ redirectUrl: "" }), disconnect: async () => ({ success: true }) },
@@ -388,8 +388,8 @@ describe("read_intents tool", () => {
       return [];
     }, {
       isNetworkMember: async () => true,
-      getNetworkIntentsForMember: async (_indexId, _requestingUserId) =>
-        _indexId === testIndexId ? indexIntentsForMember : [],
+      getNetworkIntentsForMember: async (_networkId, _requestingUserId) =>
+        _networkId === testIndexId ? indexIntentsForMember : [],
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);

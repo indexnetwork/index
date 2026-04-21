@@ -139,7 +139,7 @@ Do NOT use Pattern 5 here. Do NOT ask for a second person. Do NOT suggest creati
 3. read_network_memberships(networkId=X) → who's in it
 
 # Create an index
-create_intent_index(title=..., prompt=...)
+create_intent_network(title=..., prompt=...)
 
 # Join an index
 create_network_membership(networkId=X)  ← omit userId to self-join

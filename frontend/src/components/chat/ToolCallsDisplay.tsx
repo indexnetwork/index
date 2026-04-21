@@ -62,15 +62,15 @@ const TOOL_DESCRIPTIONS: Record<string, { action: string; running: string }> = {
     action: "Delete signal",
     running: "Removing signal...",
   },
-  create_intent_index: {
+  create_intent_network: {
     action: "Save to network",
     running: "Saving signal to network...",
   },
-  read_intent_indexes: {
+  read_intent_networks: {
     action: "Fetch network signals",
     running: "Fetching signals in network...",
   },
-  delete_intent_index: {
+  delete_intent_network: {
     action: "Remove from network",
     running: "Removing signal from network...",
   },

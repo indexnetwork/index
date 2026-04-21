@@ -146,9 +146,9 @@ export interface ToolContext {
 /**
  * All external dependencies needed to initialize the protocol tool engine.
  * The host application (composition root) must provide concrete implementations.
- * This is the subset of ToolContext that is NOT per-request (no userId, indexId, sessionId).
+ * This is the subset of ToolContext that is NOT per-request (no userId, networkId, sessionId).
  */
-export type ProtocolDeps = Omit<ToolContext, 'userId' | 'indexId' | 'sessionId' | 'userDb' | 'systemDb'>;
+export type ProtocolDeps = Omit<ToolContext, 'userId' | 'networkId' | 'sessionId' | 'userDb' | 'systemDb'>;
 
 /**
  * Thrown when a requested chat scope is invalid for the authenticated user.

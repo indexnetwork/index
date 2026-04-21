@@ -270,9 +270,9 @@ All tools are simple read/write operations. No hidden logic.
 | **create_intent** | description, networkId? | Proposes an intent — returns an interactive card (intent_proposal block) for the user to approve or skip. Does NOT persist until the user clicks "Create Intent". |
 | **update_intent** | intentId, description | Update intent text |
 | **delete_intent** | intentId | Archive intent |
-| **create_intent_index** | intentId, networkId | Link intent to index |
-| **read_intent_indexes** | intentId?, networkId?, userId? | Read intent↔index links |
-| **delete_intent_index** | intentId, networkId | Unlink intent from index |
+| **create_intent_network** | intentId, networkId | Link intent to index |
+| **read_intent_networks** | intentId?, networkId?, userId? | Read intent↔index links |
+| **delete_intent_network** | intentId, networkId | Unlink intent from index |
 | **create_opportunities** | searchQuery?, networkId?, targetUserId?, partyUserIds?, entities?, hint? | Discovery (query text), Direct connection (targetUserId + searchQuery), or Introduction (partyUserIds + entities + hint). |
 | **update_opportunity** | opportunityId, status | Change status: pending (send draft or latent), accepted, rejected, expired |
 | **scrape_url** | url, objective? | Extract text from web page |

@@ -443,7 +443,7 @@ Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool f
 | Tool File | Tools | Subgraph(s) Invoked |
 |-----------|-------|---------------------|
 | `profile.tools.ts` | read_user_profiles, create_user_profile, update_user_profile | Profile Graph |
-| `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, search_intents, create_intent_index, read_intent_indexes, delete_intent_index | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
+| `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, search_intents, create_intent_network, read_intent_networks, delete_intent_network | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
 | `network.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Index Graph, Index Membership Graph |
 | `opportunity.tools.ts` | create_opportunities, list_my_opportunities, send_opportunity | Opportunity Graph |
 | `contact.tools.ts` | add_contact, list_contacts, search_contacts | (direct service calls) |
@@ -682,7 +682,7 @@ Intents with high semantic entropy (>0.75) or low clarity (<40) are considered v
 
 ### Intent-index assignment
 
-Intent-to-index assignment is handled separately by the Intent Index Graph. When an intent is created and the user is in an index-scoped chat, the `create_intent_index` tool assigns the intent with either:
+Intent-to-index assignment is handled separately by the Intent Index Graph. When an intent is created and the user is in an index-scoped chat, the `create_intent_network` tool assigns the intent with either:
 - Direct assignment (score 1.0) when `skipEvaluation` is true
 - Evaluated assignment via `IntentIndexer` agent when the index has prompts defining its purpose
 

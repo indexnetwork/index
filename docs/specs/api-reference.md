@@ -2539,9 +2539,9 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `create_intent` | Intent | Create a new intent from natural language |
 | `update_intent` | Intent | Update an intent (runs full graph pipeline) |
 | `delete_intent` | Intent | Archive/delete an intent |
-| `create_intent_index` | Intent | Link an intent to an index |
-| `read_intent_indexes` | Intent | List indexes linked to an intent |
-| `delete_intent_index` | Intent | Unlink an intent from an index |
+| `create_intent_network` | Intent | Link an intent to an index |
+| `read_intent_networks` | Intent | List indexes linked to an intent |
+| `delete_intent_network` | Intent | Unlink an intent from an index |
 | `read_indexes` | Index | List user's indexes |
 | `read_index_memberships` | Index | List members of an index |
 | `update_index` | Index | Update index settings (title, prompt) |
