@@ -405,7 +405,7 @@ describe('createUserDatabase', () => {
       expect(mockDb.getNetworkMembership).toHaveBeenCalledWith('idx-a', AUTH_USER);
     });
 
-    it('getNetworkMemberContext delegates with indexId and authUserId', async () => {
+    it('getNetworkMemberContext delegates with networkId and authUserId', async () => {
       await userDb.getNetworkMemberContext('idx-a');
       expect(mockDb.getNetworkMemberContext).toHaveBeenCalledWith('idx-a', AUTH_USER);
     });

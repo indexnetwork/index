@@ -63,7 +63,7 @@ export interface Intent {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
-  indexes?: Array<{ id: string; title: string; relevancyScore?: number }>;
+  networks?: Array<{ id: string; title: string; relevancyScore?: number }>;
 }
 
 /** Options for listing intents. */

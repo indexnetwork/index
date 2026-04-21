@@ -56,7 +56,7 @@ import { createChatTools } from "@indexnetwork/protocol";
 const tools = await createChatTools({
   userId: "user-uuid",
   sessionId: "chat-session-id",
-  indexId: "optional-index-uuid",   // scope tools to a specific index
+  networkId: "optional-network-uuid",   // scope tools to a specific network
   database,
   embedder,
   scraper,

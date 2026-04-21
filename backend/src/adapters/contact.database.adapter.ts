@@ -210,12 +210,12 @@ export class ContactDatabaseAdapter {
   async clearReverseOptOutBulk(ownerId: string, otherUserIds: string[]): Promise<void> {
     if (otherUserIds.length === 0) return;
 
-    const personalIndexRows = await db
+    const personalNetworkRows = await db
       .select({ userId: schema.personalNetworks.userId, networkId: schema.personalNetworks.networkId })
       .from(schema.personalNetworks)
       .where(inArray(schema.personalNetworks.userId, otherUserIds));
 
-    const personalNetworkIds = personalIndexRows.map(r => r.networkId);
+    const personalNetworkIds = personalNetworkRows.map(r => r.networkId);
     if (personalNetworkIds.length === 0) return;
 
     await db.delete(schema.networkMembers)

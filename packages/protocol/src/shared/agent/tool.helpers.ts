@@ -88,11 +88,11 @@ export interface ToolContext {
   database: ChatGraphCompositeDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. Created internally if not provided. */
   userDb?: UserDatabase;
-  /** Context-bound database for LLM/system operations on cross-user resources within shared indexes. Created internally if not provided. */
+  /** Context-bound database for LLM/system operations on cross-user resources within shared networks. Created internally if not provided. */
   systemDb?: SystemDatabase;
   embedder: Embedder;
   scraper: Scraper;
-  /** When set, chat is scoped to this index; tools use it as default for read_intents and create_intent. */
+  /** When set, chat is scoped to this network; tools use it as default for read_intents and create_intent. */
   networkId?: string;
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
   sessionId?: string;
@@ -146,9 +146,9 @@ export interface ToolContext {
 /**
  * All external dependencies needed to initialize the protocol tool engine.
  * The host application (composition root) must provide concrete implementations.
- * This is the subset of ToolContext that is NOT per-request (no userId, indexId, sessionId).
+ * This is the subset of ToolContext that is NOT per-request (no userId, networkId, sessionId).
  */
-export type ProtocolDeps = Omit<ToolContext, 'userId' | 'indexId' | 'sessionId' | 'userDb' | 'systemDb'>;
+export type ProtocolDeps = Omit<ToolContext, 'userId' | 'networkId' | 'sessionId' | 'userDb' | 'systemDb'>;
 
 /**
  * Thrown when a requested chat scope is invalid for the authenticated user.

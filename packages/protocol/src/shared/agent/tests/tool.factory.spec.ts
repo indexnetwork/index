@@ -262,7 +262,7 @@ const mockScraper = {
 } as unknown as Scraper;
 
 /** Stub protocol-level deps for ToolContext (not invoked in most unit tests). */
-const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | 'scraper' | 'indexId' | 'sessionId' | 'userDb' | 'systemDb'> = {
+const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | 'scraper' | 'networkId' | 'sessionId' | 'userDb' | 'systemDb'> = {
   cache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false, mget: async () => [], deleteByPattern: async () => 0 },
   hydeCache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false },
   integration: { createSession: async () => ({}) as any, executeToolAction: async () => ({ successful: true }), listConnections: async () => [], getAuthUrl: async () => ({ redirectUrl: "" }), disconnect: async () => ({ success: true }) },
@@ -367,7 +367,7 @@ describe("createChatTools", () => {
   });
 });
 
-const testIndexId = "a1b2c3d4-0000-4000-8000-000000000001";
+const testNetworkId = "a1b2c3d4-0000-4000-8000-000000000001";
 
 describe("read_intents tool", () => {
   let readIntentsTool: { invoke: (args: { networkId?: string; userId?: string }) => Promise<string> };
@@ -384,12 +384,12 @@ describe("read_intents tool", () => {
     }));
     const mockDb = createMockDatabase(async (userId, networkId) => {
       if (userId !== testUserId) return [];
-      if (networkId === testIndexId) return mockIntents;
+      if (networkId === testNetworkId) return mockIntents;
       return [];
     }, {
       isNetworkMember: async () => true,
-      getNetworkIntentsForMember: async (_indexId, _requestingUserId) =>
-        _indexId === testIndexId ? indexIntentsForMember : [],
+      getNetworkIntentsForMember: async (_networkId, _requestingUserId) =>
+        _networkId === testNetworkId ? indexIntentsForMember : [],
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
@@ -401,7 +401,7 @@ describe("read_intents tool", () => {
   });
 
   test("invoke returns success with intents and count when index has intents", async () => {
-    const result = await readIntentsTool.invoke({ networkId: testIndexId });
+    const result = await readIntentsTool.invoke({ networkId: testNetworkId });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.data).toBeDefined();
@@ -414,8 +414,8 @@ describe("read_intents tool", () => {
   });
 
   test("invoke returns success with empty intents when user has no intents in that index", async () => {
-    const otherIndexId = "a1b2c3d4-0000-4000-8000-000000000002";
-    const result = await readIntentsTool.invoke({ networkId: otherIndexId });
+    const otherNetworkId = "a1b2c3d4-0000-4000-8000-000000000002";
+    const result = await readIntentsTool.invoke({ networkId: otherNetworkId });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.data.intents).toBeArray();
@@ -424,12 +424,12 @@ describe("read_intents tool", () => {
   });
 
   test("invoke with networkId and no userId calls getNetworkIntentsForMember with networkId and requesting userId", async () => {
-    let capturedIndexId = "";
+    let capturedNetworkId = "";
     let capturedRequestingUserId = "";
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
       getNetworkIntentsForMember: async (networkId, requestingUserId) => {
-        capturedIndexId = networkId;
+        capturedNetworkId = networkId;
         capturedRequestingUserId = requestingUserId;
         return [];
       },
@@ -437,25 +437,25 @@ describe("read_intents tool", () => {
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { networkId?: string }) => Promise<string> };
-    await tool.invoke({ networkId: testIndexId });
-    expect(capturedIndexId).toBe(testIndexId);
+    await tool.invoke({ networkId: testNetworkId });
+    expect(capturedNetworkId).toBe(testNetworkId);
     expect(capturedRequestingUserId).toBe(testUserId);
   });
 
   test("when context.networkId is set, omit networkId to use context index", async () => {
-    let capturedIndex = "";
+    let capturedNetwork = "";
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
       getNetworkIntentsForMember: async (networkId) => {
-        capturedIndex = networkId;
+        capturedNetwork = networkId;
         return [{ id: "i1", payload: "In index", summary: "X", createdAt: new Date(), userId: testUserId, userName: "Test" }];
       },
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, networkId: testIndexId, ...mockProtocolDeps };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, networkId: testNetworkId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { networkId?: string }) => Promise<string> };
     const result = await tool.invoke({});
-    expect(capturedIndex).toBe(testIndexId);
+    expect(capturedNetwork).toBe(testNetworkId);
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.data.count).toBe(1);
@@ -474,7 +474,7 @@ describe("read_intents tool", () => {
 });
 
 describe("read_intents tool (index-scoped: owner vs member)", () => {
-  const networkId = testIndexId;
+  const networkId = testNetworkId;
   const allIndexIntents: NetworkIntentDetails[] = [
     { id: "ix-1", payload: "Intent from Alice", summary: "Alice", userId: "user-alice", userName: "Alice", createdAt: new Date("2025-01-01") },
     { id: "ix-2", payload: "Intent from Bob", summary: "Bob", userId: "user-bob", userName: "Bob", createdAt: new Date("2025-01-02") },
@@ -630,7 +630,7 @@ describe("read_intents tool (no networkId)", () => {
   });
 
   test("with context.networkId and no networkId arg calls getNetworkIntentsForMember and returns index-scoped intents", async () => {
-    const networkId = testIndexId;
+    const networkId = testNetworkId;
     const indexScopedWithUser: NetworkIntentDetails[] = indexScopedIntents.map((i) => ({ ...i, userId: testUserId, userName: "Test User" }));
     let getNetworkIntentsForMemberCalled = false;
     const mockDb = createMockDatabase(async () => [], {
@@ -654,7 +654,7 @@ describe("read_intents tool (no networkId)", () => {
   });
 
   test("with context.networkId, omit networkId to get index-scoped intents (context index used)", async () => {
-    const networkId = testIndexId;
+    const networkId = testNetworkId;
     const indexIntents = [
       { id: "ix-1", payload: "In index", summary: "X", createdAt: new Date(), userId: testUserId, userName: "Test User" },
     ];
@@ -707,14 +707,14 @@ describe("read_intents tool (no networkId)", () => {
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { networkId?: string }) => Promise<string> };
-    const result = await tool.invoke({ networkId: testIndexId });
+    const result = await tool.invoke({ networkId: testNetworkId });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
     expect(parsed.error).toMatch(/Index not found|not a member|member/i);
   });
 
   test("with networkId and limit/page returns paginated intents", async () => {
-    const networkId = testIndexId;
+    const networkId = testNetworkId;
     const threeIntents: NetworkIntentDetails[] = [
       { id: "i-1", payload: "Intent 1", summary: "1", createdAt: new Date("2025-01-05"), userId: "u-1", userName: "U1" },
       { id: "i-2", payload: "Intent 2", summary: "2", createdAt: new Date("2025-01-04"), userId: "u-2", userName: "U2" },
@@ -746,7 +746,7 @@ describe("read_intents tool (no networkId)", () => {
 });
 
 describe("read_network_memberships tool (list members)", () => {
-  const memberIndexId = testIndexId;
+  const memberNetworkId = testNetworkId;
   const mockMembers: NetworkMemberDetails[] = [
     { userId: "u1", name: "Alice", avatar: null, email: "alice@example.com", permissions: ["member"], memberPrompt: null, autoAssign: true, joinedAt: new Date("2025-01-01"), intentCount: 2 },
     { userId: "u2", name: "Bob", avatar: null, email: "bob@example.com", permissions: ["member"], memberPrompt: null, autoAssign: false, joinedAt: new Date("2025-01-02"), intentCount: 1 },
@@ -756,17 +756,17 @@ describe("read_network_memberships tool (list members)", () => {
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
       getNetworkMembersForMember: async (networkId, uid) => {
-        if (networkId === memberIndexId && uid === testUserId) return mockMembers;
+        if (networkId === memberNetworkId && uid === testUserId) return mockMembers;
         throw new Error("Access denied: Not a member of this index");
       },
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_network_memberships") as { invoke: (args: { networkId: string }) => Promise<string> };
-    const result = await tool.invoke({ networkId: memberIndexId });
+    const result = await tool.invoke({ networkId: memberNetworkId });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
-    expect(parsed.data.networkId).toBe(memberIndexId);
+    expect(parsed.data.networkId).toBe(memberNetworkId);
     expect(parsed.data.count).toBe(2);
     expect(parsed.data.members).toBeArray();
     expect(parsed.data.members[0]).toMatchObject({ name: "Alice", intentCount: 2 });
@@ -780,7 +780,7 @@ describe("read_network_memberships tool (list members)", () => {
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_network_memberships") as { invoke: (args: { networkId: string }) => Promise<string> };
-    const result = await tool.invoke({ networkId: memberIndexId });
+    const result = await tool.invoke({ networkId: memberNetworkId });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
     expect(parsed.error).toBeDefined();

@@ -44,7 +44,7 @@ export interface IntroducerDiscoveryDatabase {
 /** Queue interface for enqueuing introducer discovery jobs. */
 export interface IntroducerDiscoveryQueue {
   addJob(
-    data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string },
+    data: { intentId: string; userId: string; networkIds?: string[]; contactUserId?: string },
     options?: { priority?: number; jobId?: string },
   ): Promise<unknown>;
 }
@@ -141,7 +141,7 @@ export async function runIntroducerDiscovery(
           {
             intentId: `introducer:${contact.userId}`,
             userId,
-            indexIds: [personalNetworkId],
+            networkIds: [personalNetworkId],
             contactUserId: contact.userId,
           },
           { priority: 15, jobId }, // Lower priority than regular rediscovery (10)

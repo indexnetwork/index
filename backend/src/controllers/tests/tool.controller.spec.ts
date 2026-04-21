@@ -182,7 +182,7 @@ describe("ToolController Integration", () => {
     const { status, data } = await invokeTool("read_intent_networks", {});
     expect(status).toBe(200);
     expect(data.success).toBe(false);
-    expect(String(data.error)).toMatch(/indexId|intentId|networkId/i);
+    expect(String(data.error)).toMatch(/networkId|intentId/i);
     console.log("read_intent_networks result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
@@ -220,19 +220,19 @@ describe("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    test("create_intent_network with intentId + indexId (CLI: intent link)", async () => {
+    test("create_intent_network with intentId + networkId (CLI: intent link)", async () => {
       const { status, data } = await invokeTool("create_intent_network", {
         intentId: "00000000-0000-0000-0000-000000000000",
-        indexId: "00000000-0000-0000-0000-000000000000",
+        networkId: "00000000-0000-0000-0000-000000000000",
       });
       expect(status).toBe(200);
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    test("delete_intent_network with intentId + indexId (CLI: intent unlink)", async () => {
+    test("delete_intent_network with intentId + networkId (CLI: intent unlink)", async () => {
       const { status, data } = await invokeTool("delete_intent_network", {
         intentId: "00000000-0000-0000-0000-000000000000",
-        indexId: "00000000-0000-0000-0000-000000000000",
+        networkId: "00000000-0000-0000-0000-000000000000",
       });
       expect(status).toBe(200);
       expect(String(data.error ?? "")).not.toContain("Invalid query");
@@ -348,10 +348,10 @@ describe("ToolController Integration", () => {
       expect(data.success).toBe(true);
     }, 60_000);
 
-    test("read_intents with userId + indexId (CLI: introduce step 2)", async () => {
+    test("read_intents with userId + networkId (CLI: introduce step 2)", async () => {
       const { status, data } = await invokeTool("read_intents", {
         userId: testUserId,
-        indexId: "00000000-0000-0000-0000-000000000000",
+        networkId: "00000000-0000-0000-0000-000000000000",
       });
       expect(status).toBe(200);
       // May fail on membership check, not schema

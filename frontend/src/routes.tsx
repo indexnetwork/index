@@ -11,8 +11,8 @@ import ClientWrapper from "@/components/ClientWrapper";
 
 /** Redirect legacy `/index/:id` URLs to `/network/:id`. */
 function LegacyIndexRedirect() {
-  const { indexId } = useParams();
-  return <Navigate to={`/network/${indexId ?? ""}`} replace />;
+  const { networkId } = useParams();
+  return <Navigate to={`/network/${networkId ?? ""}`} replace />;
 }
 
 /**
@@ -77,7 +77,7 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/d/[id]/page"),
       },
       {
-        path: "/index/:indexId",
+        path: "/index/:networkId",
         element: <LegacyIndexRedirect />,
       },
       {

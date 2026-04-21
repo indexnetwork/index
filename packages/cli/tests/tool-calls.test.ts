@@ -383,7 +383,7 @@ describe("CLI tool call contracts", () => {
       expect(createCall.query.hint).toBeUndefined();
     });
 
-    it("discover --introduce fails gracefully when no shared indexes", async () => {
+    it("discover --introduce fails gracefully when no shared networks", async () => {
       mock.setToolResponse("read_network_memberships", {
         success: true,
         data: { memberships: [] },

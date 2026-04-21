@@ -929,9 +929,9 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
     if (result.enriched) {
       expect(result.expiredIds).toContain('opp-idx1');
       expect(result.expiredIds).toContain('opp-idx2');
-      const indexIds = new Set(result.data.actors.map((a) => a.networkId));
-      expect(indexIds.has('idx-1')).toBe(true);
-      expect(indexIds.has('idx-2')).toBe(true);
+      const distinctNetworkIds = new Set(result.data.actors.map((a) => a.networkId));
+      expect(distinctNetworkIds.has('idx-1')).toBe(true);
+      expect(distinctNetworkIds.has('idx-2')).toBe(true);
     }
   });
 });

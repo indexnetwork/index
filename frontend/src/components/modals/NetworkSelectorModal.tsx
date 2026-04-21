@@ -10,7 +10,7 @@ interface NetworkSelectorModalProps {
   onOpenChange: (open: boolean) => void;
   onOpenOwnerModal: (network: Network) => void;
   onOpenMemberModal: (network: Network) => void;
-  onCreateIndex?: () => void;
+  onCreateNetwork?: () => void;
 }
 
 export default function NetworkSelectorModal({
@@ -18,7 +18,7 @@ export default function NetworkSelectorModal({
   onOpenChange,
   onOpenOwnerModal,
   onOpenMemberModal,
-  onCreateIndex,
+  onCreateNetwork,
 }: NetworkSelectorModalProps) {
   const { user } = useAuthContext();
   const { networks: rawNetworks, loading: networksLoading } = useNetworksState();
@@ -91,12 +91,12 @@ export default function NetworkSelectorModal({
             )}
           </div>
 
-          {user?.email?.endsWith('@index.network') && onCreateIndex && (
+          {user?.email?.endsWith('@index.network') && onCreateNetwork && (
             <div className="border-t border-gray-200 px-4 py-3 flex-shrink-0">
               <button
                 onClick={() => {
                   onOpenChange(false);
-                  onCreateIndex();
+                  onCreateNetwork();
                 }}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-ibm-plex-mono text-gray-700 hover:bg-gray-50 border border-gray-200 rounded transition-colors"
               >

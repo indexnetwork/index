@@ -37,7 +37,7 @@ describe("Negotiation E2E", () => {
         intents: [{ id: "i2", title: "Seeking PM co-founder", description: "ML engineer looking for product-minded co-founder", confidence: 0.85 }],
         profile: { name: "Bob", bio: "Senior ML engineer with 8 years experience", skills: ["machine learning", "PyTorch"] },
       },
-      networkContext: { indexId: "e2e-index", prompt: "AI startup co-founders" },
+      networkContext: { networkId: "e2e-index", prompt: "AI startup co-founders" },
       seedAssessment: { score: 78, reasoning: "Complementary skills", valencyRole: "Peer" },
       maxTurns: 4,
     });

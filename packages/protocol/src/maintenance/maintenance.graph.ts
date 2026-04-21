@@ -45,7 +45,7 @@ export interface MaintenanceGraphCache {
 
 /** Queue methods needed by the maintenance graph. */
 export interface MaintenanceGraphQueue {
-  addJob(data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string }, options?: { priority?: number; jobId?: string }): Promise<unknown>;
+  addJob(data: { intentId: string; userId: string; networkIds?: string[]; contactUserId?: string }, options?: { priority?: number; jobId?: string }): Promise<unknown>;
 }
 
 /**

@@ -251,8 +251,8 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get user index ids for auto-assign member', async () => {
-    const indexIds = await adapter.getUserNetworkIds(fixture.userBId);
-    expect(indexIds).toContain(fixture.networkId);
+    const networkIds = await adapter.getUserNetworkIds(fixture.userBId);
+    expect(networkIds).toContain(fixture.networkId);
   });
 
   it('should get intent for indexing', async () => {
@@ -275,8 +275,8 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get index ids for intent', async () => {
-    const indexIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
-    expect(indexIds).toEqual([fixture.networkId]);
+    const networkIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
+    expect(networkIds).toEqual([fixture.networkId]);
     const empty = await adapter.getNetworkIdsForIntent(uuidv4());
     expect(empty).toEqual([]);
   });
@@ -844,8 +844,8 @@ describe('NetworkGraphDatabaseAdapter', () => {
   });
 
   it('should get index ids for intent', async () => {
-    const indexIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
-    expect(indexIds).toEqual([fixture.networkId]);
+    const networkIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
+    expect(networkIds).toEqual([fixture.networkId]);
     const empty = await adapter.getNetworkIdsForIntent(uuidv4());
     expect(empty).toEqual([]);
   });

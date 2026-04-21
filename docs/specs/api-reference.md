@@ -269,7 +269,7 @@ SSE streaming endpoint for chat messages with context support. Streams graph eve
   "sessionId": "string | null (optional — creates new session if omitted)",
   "useCheckpointer": "boolean (optional, default: true)",
   "fileIds": ["string (optional — file IDs to attach)"],
-  "indexId": "string | null (optional — scope to a specific index)",
+  "networkId": "string | null (optional — scope to a specific network)",
   "recipientUserId": "string | null (optional — DM recipient for ghost invites)",
   "prefillMessages": [
     { "role": "assistant | user", "content": "string (max 10000 chars)" }
@@ -692,7 +692,7 @@ The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'
   "context": {
     "ownUser": { /* UserNegotiationContext for the claiming user */ },
     "otherUser": { /* UserNegotiationContext for the counterparty */ },
-    "indexContext": { "networkId": "...", "prompt": "..." },
+    "networkContext": { "networkId": "...", "prompt": "..." },
     "seedAssessment": { "score": 82, "reasoning": "...", "valencyRole": "..." },
     "isDiscoverer": true,
     "discoveryQuery": "optional — only set when the negotiation originated from a discovery query"
@@ -1030,7 +1030,7 @@ Returns a full diagnostic snapshot for a single intent, including the intent rec
     "newestGeneratedAt": "..."
   },
   "indexAssignments": [
-    { "indexId": "...", "indexTitle": "...", "indexPrompt": "..." }
+    { "networkId": "...", "networkTitle": "...", "networkPrompt": "..." }
   ],
   "opportunities": {
     "total": 5,
@@ -1042,7 +1042,7 @@ Returns a full diagnostic snapshot for a single intent, including the intent rec
         "confidence": 0.9,
         "status": "accepted",
         "createdAt": "...",
-        "indexId": "..."
+        "networkId": "..."
       }
     ]
   },
@@ -1077,7 +1077,7 @@ Returns a home-level diagnostic snapshot for the authenticated user, including i
     "orphaned": 1
   },
   "indexes": [
-    { "indexId": "...", "title": "...", "userIntentsAssigned": 3 }
+    { "networkId": "...", "title": "...", "userIntentsAssigned": 3 }
   ],
   "opportunities": {
     "total": 15,
@@ -1139,7 +1139,7 @@ Returns a debug-friendly view of a chat session, including messages and per-turn
   "sessionId": "...",
   "exportedAt": "...",
   "title": "...",
-  "indexId": "...",
+  "networkId": "...",
   "messages": [
     { "role": "user | assistant", "content": "..." }
   ],
@@ -1218,7 +1218,7 @@ Search users by name/email, optionally excluding existing members of an index.
 
 **Query params**:
 - `q` — Search query string
-- `indexId` — Exclude members of this network (optional)
+- `networkId` — Exclude members of this network (optional)
 
 **Response**:
 ```json
@@ -1553,7 +1553,7 @@ List connected accounts for the authenticated user.
 **Auth**: AuthGuard
 
 **Query params**:
-- `indexId` — Filter to connections linked to this network (optional)
+- `networkId` — Filter to connections linked to this network (optional)
 
 **Response**:
 ```json
@@ -1587,7 +1587,7 @@ Link a toolkit connection to an index.
 **Request body**:
 ```json
 {
-  "indexId": "string (required)"
+  "networkId": "string (required)"
 }
 ```
 
@@ -1606,7 +1606,7 @@ Unlink a toolkit from an index. Does not revoke the OAuth connection.
 - `toolkit` — `gmail` or `slack`
 
 **Query params**:
-- `indexId` — Network to unlink from (required)
+- `networkId` — Network to unlink from (required)
 
 **Response**:
 ```json
@@ -1625,7 +1625,7 @@ Import contacts from a connected toolkit into an index.
 **Request body**:
 ```json
 {
-  "indexId": "string (optional — defaults to personal index)"
+  "networkId": "string (optional — defaults to personal index)"
 }
 ```
 
@@ -1714,7 +1714,7 @@ Confirm a proposed intent from chat. Persists the pre-verified intent directly.
 {
   "proposalId": "string (required)",
   "description": "string (required)",
-  "indexId": "string (optional)"
+  "networkId": "string (optional)"
 }
 ```
 
@@ -1927,7 +1927,7 @@ Home view with dynamic sections including LLM-categorized opportunities, present
 **Auth**: AuthGuard
 
 **Query params**:
-- `indexId` — Scope to a specific network (optional)
+- `networkId` — Scope to a specific network (optional)
 - `limit` — Max results (optional)
 
 **Response**: JSON with categorized home sections.
@@ -2024,14 +2024,14 @@ Runs the same side effects as `PATCH .../status` with `status=accepted` (sibling
 
 **Controller prefix**: `/networks` (separate controller registered alongside NetworkController)
 
-### GET /api/networks/:indexId/opportunities
+### GET /api/networks/:networkId/opportunities
 
 List opportunities for an index. Requires membership.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `indexId` — Network ID
+- `networkId` — Network ID
 
 **Query params**:
 - `status` — Filter by status (optional)
@@ -2045,14 +2045,14 @@ List opportunities for an index. Requires membership.
 }
 ```
 
-### POST /api/networks/:indexId/opportunities
+### POST /api/networks/:networkId/opportunities
 
 Create a manual opportunity (curator). Requires owner or member permission.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `indexId` — Network ID
+- `networkId` — Network ID
 
 **Request body**:
 ```json

@@ -8,7 +8,7 @@ import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const { graphs, userDb, systemDb } = deps;
 
-  const readIndexes = defineTool({
+  const readNetworks = defineTool({
     name: "read_networks",
     description:
       "Lists the authenticated user's networks (communities), including ones they own and public communities they can join.\n\n" +
@@ -60,7 +60,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const readIndexMemberships = defineTool({
+  const readNetworkMemberships = defineTool({
     name: "read_network_memberships",
     description:
       "Reads index membership information — who is in which community. Essential for understanding the social graph before " +
@@ -538,5 +538,5 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [readIndexes, readIndexMemberships, updateNetwork, createNetwork, deleteNetwork, createNetworkMembership, deleteNetworkMembership] as const;
+  return [readNetworks, readNetworkMemberships, updateNetwork, createNetwork, deleteNetwork, createNetworkMembership, deleteNetworkMembership] as const;
 }

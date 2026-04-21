@@ -18,7 +18,7 @@ export interface IntentForIndexing {
  * Index and member prompts for a single index (user must be member with autoAssign).
  * (Migrated from the old index.graph.state.ts)
  */
-export interface IndexMemberContext {
+export interface IndexerMemberContext {
   networkId: string;
   networkPrompt: string | null;
   memberPrompt: string | null;
@@ -91,7 +91,7 @@ export const IntentNetworkGraphState = Annotation.Root({
   }),
 
   /** Index + member context. Null if user not eligible. */
-  networkContext: Annotation<IndexMemberContext | null>({
+  networkContext: Annotation<IndexerMemberContext | null>({
     reducer: (_, next) => next,
     default: () => null,
   }),

@@ -144,7 +144,7 @@ describe('IntroducerDiscovery', () => {
       const firstCall = (queue.addJob as ReturnType<typeof mock>).mock.calls[0];
       expect(firstCall[0].intentId).toStartWith('introducer:');
       expect(firstCall[0].userId).toBe(userId);
-      expect(firstCall[0].indexIds).toEqual([personalNetworkId]);
+      expect(firstCall[0].networkIds).toEqual([personalNetworkId]);
       expect(firstCall[1].priority).toBe(15);
     });
 

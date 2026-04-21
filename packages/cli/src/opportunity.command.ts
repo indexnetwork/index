@@ -196,13 +196,13 @@ async function discoverIntroduction(
     return;
   }
 
-  const indexesA = ((membershipsA.data?.memberships ?? membershipsA.data?.indexes) as Array<{ networkId: string }>) ?? [];
-  const indexesB = ((membershipsB.data?.memberships ?? membershipsB.data?.indexes) as Array<{ networkId: string }>) ?? [];
-  const idsA = new Set(indexesA.map((m) => m.networkId));
-  const shared = indexesB.filter((m) => idsA.has(m.networkId));
+  const networksA = ((membershipsA.data?.memberships ?? membershipsA.data?.networks) as Array<{ networkId: string }>) ?? [];
+  const networksB = ((membershipsB.data?.memberships ?? membershipsB.data?.networks) as Array<{ networkId: string }>) ?? [];
+  const idsA = new Set(networksA.map((m) => m.networkId));
+  const shared = networksB.filter((m) => idsA.has(m.networkId));
 
   if (shared.length === 0) {
-    const err = "No shared indexes found between these users. They must be members of at least one common network.";
+    const err = "No shared networks found between these users. They must be members of at least one common network.";
     if (json) { console.log(JSON.stringify({ success: false, error: err })); return; }
     output.error(err, 1);
     return;

@@ -143,7 +143,7 @@ sequenceDiagram
     participant Tools as Chat Tools
     participant SubGraphs as SubGraphs
 
-    User->>ChatGraph: message + userId + indexId?
+    User->>ChatGraph: message + userId + networkId?
     ChatGraph->>ChatGraph: Load session context + truncate tokens
     ChatGraph->>Agent: ChatAgent.create(context)
     Note over Agent: Resolve user name/email, index name from DB
@@ -224,7 +224,7 @@ sequenceDiagram
     participant HG as HyDE Graph
 
     User->>Agent: "I'm looking for a React co-founder"
-    Agent->>CI: create_intent({content: "Looking for React co-founder", indexId})
+    Agent->>CI: create_intent({content: "Looking for React co-founder", networkId})
 
     CI->>IC: Check semantic entropy
     Note over IC: Entropy acceptable — commissive act, specific enough
@@ -238,7 +238,7 @@ sequenceDiagram
 
     IG-->>CI: intent created (felicitous)
     CI->>CO: Auto-triggers discovery
-    CO->>OG: invoke(userId, sourceText, indexId)
+    CO->>OG: invoke(userId, sourceText, networkId)
 
     OG->>HG: Generate HyDE docs
     Note over HG: Mirror: "ideal co-founder bio for React + startup stage"

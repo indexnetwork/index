@@ -128,7 +128,7 @@ Graph factories do not depend on the full `Database` interface. Instead, each fa
 export interface Database {
   getUser(id: string): Promise<UserRecord | null>;
   getIntent(id: string): Promise<IntentRecord | null>;
-  assignIntentToIndex(intentId: string, indexId: string, score: number): Promise<void>;
+  assignIntentToNetwork(intentId: string, networkId: string, score: number): Promise<void>;
   // ... many more
 }
 

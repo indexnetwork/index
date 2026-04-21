@@ -77,7 +77,6 @@ vi.mock('@/contexts/APIContext', () => {
     useAPI: () =>
       new Proxy({}, { get: () => noopService }),
     useNetworks: () => noopService,
-    useIndexes: () => noopService,
     useIntents: () => noopService,
     useConnections: () => noopService,
     useSynthesis: () => noopService,

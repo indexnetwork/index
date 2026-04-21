@@ -47,7 +47,7 @@ describe("Opportunity Graph — Negotiation Integration", () => {
           profile: { name: c.userId },
             },
       })),
-      { indexId: "idx-1", prompt: "Test" },
+      { networkId: "idx-1", prompt: "Test" },
     );
 
     expect(results).toHaveLength(1);

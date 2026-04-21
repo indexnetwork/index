@@ -1324,12 +1324,12 @@ export class ChatDatabaseAdapter {
    * Get public indexes that the user has not joined (for discovery).
    */
   async getPublicNetworksNotJoined(userId: string) {
-    const userIndexIds = await db
+    const userNetworkIdRows = await db
       .select({ networkId: schema.networkMembers.networkId })
       .from(schema.networkMembers)
       .where(eq(schema.networkMembers.userId, userId));
     
-    const excludeIds = userIndexIds.map(r => r.networkId);
+    const excludeIds = userNetworkIdRows.map(r => r.networkId);
     
     const whereConditions = [
       isNull(schema.networks.deletedAt),
@@ -2059,14 +2059,14 @@ export class ChatDatabaseAdapter {
 
   /**
    * Update a network's key. Owner-only check should be done at the service level.
-   * @param indexId - The network ID
+   * @param networkId - The network ID
    * @param key - The new key value
    * @returns Updated network or null
    */
-  async updateNetworkKey(indexId: string, key: string) {
+  async updateNetworkKey(networkId: string, key: string) {
     const result = await db.update(networks)
       .set({ key, updatedAt: new Date() })
-      .where(and(eq(networks.id, indexId), isNull(networks.deletedAt)))
+      .where(and(eq(networks.id, networkId), isNull(networks.deletedAt)))
       .returning();
     return result[0] ?? null;
   }
@@ -3167,12 +3167,12 @@ export class ChatDatabaseAdapter {
     if (otherUserIds.length === 0) return;
 
     // Batch lookup personal indexes for all other users
-    const personalIndexRows = await db
+    const personalNetworkRows = await db
       .select({ userId: schema.personalNetworks.userId, networkId: schema.personalNetworks.networkId })
       .from(schema.personalNetworks)
       .where(inArray(schema.personalNetworks.userId, otherUserIds));
 
-    const personalNetworkIds = personalIndexRows.map(r => r.networkId);
+    const personalNetworkIds = personalNetworkRows.map(r => r.networkId);
     if (personalNetworkIds.length === 0) return;
 
     // Single DELETE across all matching personal indexes
@@ -5023,11 +5023,11 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       }
       return intent;
     },
-    associateIntentWithNetworks: async (intentId: string, indexIds: string[]) => {
+    associateIntentWithNetworks: async (intentId: string, networkIds: string[]) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      for (const networkId of indexIds) {
+      for (const networkId of networkIds) {
         await db.assignIntentToNetwork(intentId, networkId);
       }
     },
@@ -6445,7 +6445,7 @@ export class ConversationDatabaseAdapter {
   /**
    * Create a new chat session (H2A conversation with system-agent participant).
    * Creates a conversation, adds user + system-agent as participants,
-   * and stores title/indexId in conversation_metadata.
+   * and stores title/networkId in conversation_metadata.
    */
   async createChatSession(data: CreateSessionInput): Promise<void> {
     const now = new Date();

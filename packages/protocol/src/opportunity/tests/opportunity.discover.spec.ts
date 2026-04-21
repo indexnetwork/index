@@ -668,9 +668,9 @@ describe("introducer discovery cards - secondParty (Bug 1)", () => {
           {
             id: "opp-intro-1",
             actors: [
-              { indexId: "idx-1", userId: targetId, role: "patient" },
-              { indexId: "idx-1", userId: candidateId, role: "agent" },
-              { indexId: "idx-1", userId: introducerId, role: "introducer" },
+              { networkId: "idx-1", userId: targetId, role: "patient" },
+              { networkId: "idx-1", userId: candidateId, role: "agent" },
+              { networkId: "idx-1", userId: introducerId, role: "introducer" },
             ],
             interpretation: {
               reasoning: "Bob and Alice share interest in AI.",
@@ -714,8 +714,8 @@ describe("introducer discovery cards - secondParty (Bug 1)", () => {
           {
             id: "opp-standard",
             actors: [
-              { indexId: "idx-1", userId: "u1", role: "patient" },
-              { indexId: "idx-1", userId: candidateId, role: "agent" },
+              { networkId: "idx-1", userId: "u1", role: "patient" },
+              { networkId: "idx-1", userId: candidateId, role: "agent" },
             ],
             interpretation: {
               reasoning: "Good match.",

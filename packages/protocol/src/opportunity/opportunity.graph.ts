@@ -995,8 +995,8 @@ export class OpportunityGraphFactory {
             });
             const byKey = new Map<string, CandidateMatch>();
             for (const c of all) {
-              // Dedup by candidateUserId + intent (or profile), NOT by indexId.
-              // Including indexId caused the same user to appear once per index they belong to.
+              // Dedup by candidateUserId + intent (or profile), NOT by networkId.
+              // Including networkId caused the same user to appear once per network they belong to.
               const key = `${c.candidateUserId}:${c.candidateIntentId ?? 'profile'}`;
               if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);

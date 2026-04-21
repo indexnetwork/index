@@ -50,7 +50,7 @@ export interface IntentQueueDeps {
 /**
  * Intent HyDE queue: BullMQ queue plus worker and job handlers.
  *
- * Handles `generate_hyde` (assign intent to user indexes, run HyDE graph, enqueue opportunity discovery)
+ * Handles `generate_hyde` (assign intent to user networks, run HyDE graph, enqueue opportunity discovery)
  * and `delete_hyde` (remove HyDE documents for an intent). Implements {@link IntentGraphQueue} so
  * the protocol intent graph can enqueue jobs without depending on this module.
  *
@@ -187,14 +187,14 @@ export class IntentQueue implements IntentGraphQueue {
     }
     this.logger.info('[IntentHyde] Starting HyDE generation', { intentId, userId });
     this.logger.debug('[IntentHyde] Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
-    let assignedIndexCount = 0;
+    let assignedNetworkCount = 0;
     try {
-      const userIndexIds = await db.getUserNetworkIds(userId);
-      this.logger.info('[IntentHyde] User indexes found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
+      const userNetworkIds = await db.getUserNetworkIds(userId);
+      this.logger.info('[IntentHyde] User networks found', { intentId, userId, networkCount: userNetworkIds.length, networkIds: userNetworkIds });
 
       // Fetch prompts for each network to determine which need scoring
       const networkContexts = await Promise.all(
-        userIndexIds.map(async (networkId) => {
+        userNetworkIds.map(async (networkId) => {
           const ctx = await db.getNetworkMemberContext(networkId, userId);
           return { networkId, ctx };
         })
@@ -212,9 +212,9 @@ export class IntentQueue implements IntentGraphQueue {
       for (const { networkId } of noPromptNetworks) {
         try {
           await db.assignIntentToNetwork(intentId, networkId, 1.0);
-          assignedIndexCount++;
+          assignedNetworkCount++;
         } catch (assignErr) {
-          this.logger.debug('[IntentHyde] Assign intent to index skipped', { intentId, networkId, error: assignErr });
+          this.logger.debug('[IntentHyde] Assign intent to network skipped', { intentId, networkId, error: assignErr });
         }
       }
 
@@ -236,7 +236,7 @@ export class IntentQueue implements IntentGraphQueue {
                 : 1.0;
               return { networkId, score };
             } catch (err) {
-              this.logger.warn('[IntentHyde] IntentIndexer failed for index, using default score', { intentId, networkId, error: err });
+              this.logger.warn('[IntentHyde] IntentIndexer failed for network, using default score', { intentId, networkId, error: err });
               return { networkId, score: 1.0 };
             }
           })
@@ -245,20 +245,20 @@ export class IntentQueue implements IntentGraphQueue {
         for (const { networkId, score } of scoringResults) {
           try {
             await db.assignIntentToNetwork(intentId, networkId, score);
-            assignedIndexCount++;
+            assignedNetworkCount++;
           } catch (assignErr) {
-            this.logger.debug('[IntentHyde] Assign intent to index skipped', { intentId, networkId, error: assignErr });
+            this.logger.debug('[IntentHyde] Assign intent to network skipped', { intentId, networkId, error: assignErr });
           }
         }
       }
     } catch (err) {
-      this.logger.warn('[IntentHyde] Failed to assign intent to user indexes', {
+      this.logger.warn('[IntentHyde] Failed to assign intent to user networks', {
         intentId,
         userId,
         error: err,
       });
     }
-    this.logger.info('[IntentHyde] Index assignment complete', { intentId, assignedIndexCount });
+    this.logger.info('[IntentHyde] Network assignment complete', { intentId, assignedNetworkCount });
 
     // Fetch discoverer profile + active intents for HyDE context (best-effort)
     let profileContext: string | undefined;

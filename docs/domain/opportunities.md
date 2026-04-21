@@ -184,7 +184,7 @@ Provenance information: what triggered the discovery, who or what caused it, and
 
 The parties involved and their roles. Each actor has:
 - `userId`: Who they are
-- `indexId`: The index through which they were found
+- `networkId`: The network through which they were found
 - `intent`: The specific intent that drove the match (optional)
 - `role`: Their valency role (agent, patient, peer)
 
@@ -199,7 +199,7 @@ The evaluator's analysis:
 ### Context
 
 Additional metadata:
-- `indexId`: The index scope (if index-scoped discovery)
+- `networkId`: The network scope (if network-scoped discovery)
 - `conversationId`: The conversation where this opportunity was discussed (if chat-driven)
 
 ---

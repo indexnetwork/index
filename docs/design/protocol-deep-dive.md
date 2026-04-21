@@ -1,6 +1,7 @@
 ---
 
 ## title: "Protocol Deep Dive"
+
 type: design
 tags: [protocol, langgraph, agents, graphs, tools, hyde, opportunity, intent, profile, negotiation, mcp]
 created: 2026-03-26
@@ -103,7 +104,7 @@ The factory pattern ensures no hardcoded infrastructure dependencies. Database i
 **File:** `chat/chat.graph.ts`
 **Purpose:** ReAct-style agent loop -- the entry point for all user interactions via chat.
 **Nodes:** `agent_loop`
-**State:** `ChatGraphState` (userId, messages, sessionId, indexId, responseText, iterationCount, shouldContinue, error, debugMeta)
+**State:** `ChatGraphState` (userId, messages, sessionId, networkId, responseText, iterationCount, shouldContinue, error, debugMeta)
 **Flow:** `START -> agent_loop -> END`
 
 The chat graph is architecturally simple: a single node that delegates all complexity to the `ChatAgent`. The agent loop runs up to 12 iterations where the LLM decides to either call tools or produce a final response. After iteration 8, a nudge message is injected asking the agent to wrap up.
@@ -117,7 +118,7 @@ The graph supports streaming via `config.writer()` so text tokens and tool-activ
 **File:** `intent/intent.graph.ts`
 **Purpose:** Extract, verify, reconcile, and persist user intents.
 **Nodes:** `prep`, `query`, `inference`, `verification`, `reconciler`, `executor`
-**State:** `IntentGraphState` (userId, inputContent, operationMode, targetIntentIds, indexId, inferredIntents, verifiedIntents, actions, executionResults, etc.)
+**State:** `IntentGraphState` (userId, inputContent, operationMode, targetIntentIds, networkId, inferredIntents, verifiedIntents, actions, executionResults, etc.)
 **Conditional edges:**
 
 - After `prep`: routes to `query` (read mode), `inference` (create/update), `reconciler` (delete), or `END` (error)
@@ -167,7 +168,7 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 **File:** `opportunity/opportunity.graph.ts`
 **Purpose:** End-to-end opportunity discovery and lifecycle management: scoping, HyDE generation, vector search, evaluation, ranking, deduplication, negotiation, persistence, plus CRUD read/update/delete and `send` operations, and introducer-path validation/evaluation for contact-driven introductions.
 **Nodes:** `prep`, `scope`, `resolve`, `discovery`, `evaluation`, `ranking`, `intro_validation`, `intro_evaluation`, `persist`, `negotiate`, `read`, `update`, `delete_opp`, `send`
-**State:** `OpportunityGraphState` (userId, searchQuery, indexId, triggerIntentId, targetUserId, candidates, evaluatedOpportunities, trigger, dedupAlreadyAccepted, etc.)
+**State:** `OpportunityGraphState` (userId, searchQuery, networkId, triggerIntentId, targetUserId, candidates, evaluatedOpportunities, trigger, dedupAlreadyAccepted, etc.)
 **Conditional edges:**
 
 - After `prep`: routes to `scope` or `END` (no index memberships)
@@ -214,7 +215,7 @@ The graph is designed for efficiency: it checks both Redis cache and PostgreSQL 
 **File:** `network/network.graph.ts`
 **Purpose:** CRUD operations for indexes (networks/communities).
 **Nodes:** `read`, `create`, `update`, `delete_idx`
-**State:** `NetworkGraphState` (userId, operationMode, indexId, createInput, updateInput, readResult, mutationResult)
+**State:** `NetworkGraphState` (userId, operationMode, networkId, createInput, updateInput, readResult, mutationResult)
 **Conditional edges:**
 
 - From `START`: routes by `operationMode` to the matching CRUD node
@@ -230,7 +231,7 @@ All operations are database-only -- no LLM calls. Create sets the caller as owne
 **File:** `network/membership/membership.graph.ts`
 **Purpose:** Manage member join/leave/invite for indexes.
 **Nodes:** `add_member`, `list_members`, `remove_member`
-**State:** `NetworkMembershipGraphState` (userId, operationMode, indexId, targetUserId, readResult, mutationResult)
+**State:** `NetworkMembershipGraphState` (userId, operationMode, networkId, targetUserId, readResult, mutationResult)
 **Conditional edges:**
 
 - From `START`: routes by `operationMode` to the matching node
@@ -246,7 +247,7 @@ Self-join is only allowed for public indexes (`joinPolicy: 'anyone'`). Inviting 
 **File:** `network/indexer/indexer.graph.ts`
 **Purpose:** Manage the many-to-many relationship between intents and indexes (the `intent_networks` junction table).
 **Nodes:** `assign`, `read`, `unassign`
-**State:** `IntentNetworkGraphState` (userId, operationMode, intentId, indexId, skipEvaluation, evaluation, assignmentResult, etc.)
+**State:** `IntentNetworkGraphState` (userId, operationMode, intentId, networkId, skipEvaluation, evaluation, assignmentResult, etc.)
 **Conditional edges:**
 
 - From `START`: routes by `operationMode`
@@ -263,7 +264,7 @@ The `assign` node has two sub-paths:
 **File:** `opportunity/feed/feed.graph.ts`
 **Purpose:** Build the opportunity home feed view with dynamic sections.
 **Nodes:** `loadOpportunities`, `checkPresenterCache`, `generateCardText`, `cachePresenterResults`, `checkCategorizerCache`, `categorizeDynamically`, `cacheCategorizerResults`, `normalizeAndSort`
-**State:** `HomeGraphState` (userId, indexId, limit, opportunities, cards, sections, cachedCards, sectionProposals, etc.)
+**State:** `HomeGraphState` (userId, networkId, limit, opportunities, cards, sections, cachedCards, sectionProposals, etc.)
 **Conditional edges:**
 
 - After `checkPresenterCache`: routes to `generateCardText` (cache misses) or `cachePresenterResults` (all cached)
@@ -293,7 +294,7 @@ The health scorer considers connection count, connector flow count, expired coun
 **File:** `negotiation/negotiation.graph.ts`
 **Purpose:** Bilateral agent-to-agent negotiation to validate opportunity quality before persistence.
 **Nodes:** `init`, `turn`, `finalize`
-**State:** `NegotiationGraphState` (sourceUser, candidateUser, indexContext, seedAssessment, conversationId, taskId, messages, turnCount, currentSpeaker, lastTurn, outcome, maxTurns)
+**State:** `NegotiationGraphState` (sourceUser, candidateUser, networkContext, seedAssessment, conversationId, taskId, messages, turnCount, currentSpeaker, lastTurn, outcome, maxTurns)
 **Conditional edges:**
 
 - After `init`: routes to `turn` or `finalize` (error)
@@ -639,7 +640,7 @@ Each match gets a score (0-100), reasoning (written from a third-party analytica
 
 ### Deduplication and ranking
 
-Candidates are deduplicated by `(sourceUserId, candidateUserId, indexId)` with the highest-scoring entry winning. When a candidate appears across multiple shared indexes, the index with the highest relevancy score (from `intent_networks.relevancyScore`) is preferred as the tiebreaker.
+Candidates are deduplicated by `(sourceUserId, candidateUserId, networkId)` with the highest-scoring entry winning. When a candidate appears across multiple shared indexes, the index with the highest relevancy score (from `intent_networks.relevancyScore`) is preferred as the tiebreaker.
 
 ### Negotiation (optional)
 

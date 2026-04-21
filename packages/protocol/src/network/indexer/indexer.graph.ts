@@ -10,7 +10,7 @@ import type { DebugMetaAgent } from "../../chat/chat-streaming.types.js";
 import {
   IntentNetworkGraphState,
   type IntentForIndexing,
-  type IndexMemberContext,
+  type IndexerMemberContext,
   type AssignmentResult,
 } from "./indexer.state.js";
 

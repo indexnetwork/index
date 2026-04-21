@@ -13,12 +13,12 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test';
 
 // Mock getPersonalNetworkId before importing the module under test.
 // This prevents verifySharedIndex from hitting the real DB.
-const mockGetPersonalIndexId = mock(() => Promise.resolve(null));
+const mockGetPersonalNetworkId = mock(() => Promise.resolve(null));
 mock.module('../database.adapter', () => {
   const actual = require('../database.adapter');
   return {
     ...actual,
-    getPersonalNetworkId: mockGetPersonalIndexId,
+    getPersonalNetworkId: mockGetPersonalNetworkId,
   };
 });
 
@@ -183,7 +183,7 @@ describe('createSystemDatabase', () => {
       expect(() => sysDb.createOpportunity(data)).toThrow('not in scope');
     });
 
-    it('createOpportunity allows data without context.indexId', async () => {
+    it('createOpportunity allows data without context.networkId', async () => {
       const data = { context: {} } as never;
       await sysDb.createOpportunity(data);
       expect(mockDb.createOpportunity).toHaveBeenCalled();

@@ -259,12 +259,12 @@ export function intentCard(intent: Intent): void {
     console.log(`  ${BOLD}Archived${RESET}      ${GRAY}${new Date(intent.archivedAt).toLocaleString()}${RESET}`);
   }
 
-  if (intent.indexes && intent.indexes.length > 0) {
+  if (intent.networks && intent.networks.length > 0) {
     console.log();
-    console.log(`  ${BOLD}Index Assignments${RESET}`);
-    for (const idx of intent.indexes) {
-      const score = idx.relevancyScore !== undefined ? ` (${idx.relevancyScore.toFixed(2)})` : "";
-      console.log(`  ${CYAN}*${RESET} ${idx.title}${GRAY}${score}${RESET}`);
+    console.log(`  ${BOLD}Network assignments${RESET}`);
+    for (const nw of intent.networks) {
+      const score = nw.relevancyScore !== undefined ? ` (${nw.relevancyScore.toFixed(2)})` : "";
+      console.log(`  ${CYAN}*${RESET} ${nw.title}${GRAY}${score}${RESET}`);
     }
   }
 

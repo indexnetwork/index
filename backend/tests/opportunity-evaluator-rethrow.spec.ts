@@ -23,7 +23,7 @@ describe('OpportunityEvaluator — rethrow on error', () => {
       entities: [
         {
           userId: 'user-2',
-          indexId: 'index-1',
+          networkId: 'index-1',
           profile: { name: 'Alice', bio: 'Engineer' },
         },
       ],

@@ -323,8 +323,8 @@ describe('getNetworkMemberships', () => {
 
     // Contact's memberships should NOT include the owner's personal index
     const memberships = await chatDb.getNetworkMemberships(fixture.contactUserId);
-    const ownerPersonalIndex = memberships.find(m => m.networkId === fixture.personalNetworkId);
-    expect(ownerPersonalIndex).toBeUndefined();
+    const ownerPersonalNetwork = memberships.find(m => m.networkId === fixture.personalNetworkId);
+    expect(ownerPersonalNetwork).toBeUndefined();
   });
 });
 

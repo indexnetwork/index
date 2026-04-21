@@ -42,10 +42,10 @@ const createMockDatabase = (): IntentGraphDatabase => {
     async getUser(_userId: string) {
       return { id: _userId, name: 'Test User', email: 'test@example.com' };
     },
-    async isNetworkMember(_indexId: string, _userId: string): Promise<boolean> {
+    async isNetworkMember(_networkId: string, _userId: string): Promise<boolean> {
       return true;
     },
-    async getNetworkIntentsForMember(_indexId: string, _requestingUserId: string, _options?: { limit?: number; offset?: number }) {
+    async getNetworkIntentsForMember(_networkId: string, _requestingUserId: string, _options?: { limit?: number; offset?: number }) {
       return intents.map(i => ({
         id: i.id,
         payload: i.payload,
@@ -90,7 +90,7 @@ const createMockDatabase = (): IntentGraphDatabase => {
         attributes: { skills: ['TypeScript'], interests: ['Web Dev'] },
       } as any;
     },
-    async assignIntentToNetwork(_intentId: string, _indexId: string): Promise<void> {
+    async assignIntentToNetwork(_intentId: string, _networkId: string): Promise<void> {
       // no-op for tests
     },
     async getPersonalNetworksForContact(_userId: string): Promise<{ networkId: string }[]> {
