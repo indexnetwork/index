@@ -129,17 +129,21 @@ The prompt tells the agent:
 > Call `confirm_opportunity_delivery` ONLY for opportunities worth an immediate notification.
 > Everything else will appear in the user's daily digest.
 
-### Layer 3 -- Separate delivery (deliver: true, pre-rendered)
+### Layer 3 -- Aggregated delivery (one message per evaluation cycle)
 
 After the evaluator subagent completes (`await subagent.run()` resolves):
 
 1. Re-fetch `/api/agents/{id}/opportunities/pending`
 2. Compare: IDs that were in `newOpps` but are no longer pending = confirmed by the evaluator
-3. For each confirmed opportunity, dispatch via `dispatchDelivery()` using the **pre-rendered card data** already in memory from the initial fetch
+3. Aggregate all confirmed opportunities into a **single delivery message** and dispatch once via `dispatchDelivery()`
+
+If the evaluator confirms 3 opportunities, the user gets **one** Telegram message containing all 3 -- not 3 separate notifications.
 
 `dispatchDelivery` already exists in `delivery.dispatcher.ts`. It uses `deliveryPrompt` ("Relay faithfully, don't add commentary") with `deliver: true`. The delivery subagent gets pre-authored content, not open-ended evaluation -- so there's no risk of verbose narration.
 
 **Why this is safe**: Even if the evaluator LLM goes rogue and produces paragraphs of text, that text never reaches the user because `deliver: false`. Only the pre-rendered cards from the Index Network backend reach the user.
+
+**Why the re-fetch is needed**: `SubagentRunResult` only returns `{ runId }` -- no output text, no list of confirmed IDs. The only way to detect the evaluator's decisions is by checking what `confirm_opportunity_delivery` removed from the pending list. This is a single lightweight GET to the backend. A future improvement could add a dedicated endpoint (e.g., `GET /opportunities/recently-confirmed`) to avoid the full pending re-fetch.
 
 ### Layer 4 -- System safety net (hard cap only)
 
@@ -199,7 +203,7 @@ if (deliveriesToday >= maxDaily) {
 
 Store `{ date, seenIds, deliveriesToday, lastDeliveryTimestamp }` in a JSON file. Load on startup. Implementation detail (file location, write strategy) left to implementer.
 
-### 3. Two-step evaluate + deliver
+### 3. Two-step evaluate + aggregated deliver
 
 ```typescript
 // Step 1: Evaluator runs silently
@@ -217,21 +221,31 @@ const afterBody = await afterRes.json();
 const stillPendingIds = new Set(afterBody.opportunities.map(o => o.opportunityId));
 const confirmedOpps = newOpps.filter(o => !stillPendingIds.has(o.opportunityId));
 
-// Step 3: Deliver confirmed ones using pre-rendered cards
-for (const opp of confirmedOpps) {
-  await dispatchDelivery(api, {
-    rendered: { headline: opp.headline, body: opp.personalizedSummary },
-    idempotencyKey: `index:delivery:ambient:${opp.opportunityId}`,
-  });
-}
-
-// Update state
-for (const id of allIds) seenOpportunityIds.add(id);
+// Step 3: Aggregate confirmed into a single delivery message
 if (confirmedOpps.length > 0) {
-  deliveriesToday += confirmedOpps.length;
+  const aggregatedBody = confirmedOpps
+    .map(o => `**${o.headline}**\n${o.personalizedSummary}\n→ ${o.suggestedAction}`)
+    .join('\n\n');
+
+  await dispatchDelivery(api, {
+    rendered: {
+      headline: confirmedOpps.length === 1
+        ? confirmedOpps[0].headline
+        : `${confirmedOpps.length} new connections`,
+      body: aggregatedBody,
+    },
+    idempotencyKey: `index:delivery:ambient:${config.agentId}:${dateStr}:${evalHash}`,
+  });
+
+  deliveriesToday++;
   lastDeliveryTimestamp = Date.now();
 }
+
+// Mark all as seen regardless of confirmation outcome
+for (const id of allIds) seenOpportunityIds.add(id);
 ```
+
+Note: the re-fetch (step 2) is needed because `SubagentRunResult` only returns `{ runId }` -- there's no way to read the evaluator's output or get a list of confirmed IDs. The re-fetch is a single lightweight GET. A future optimization could add a backend endpoint like `GET /opportunities/recently-confirmed?since=<timestamp>` to avoid the full pending re-fetch.
 
 ### 4. Decision context for the evaluator prompt
 
