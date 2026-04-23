@@ -5,135 +5,133 @@
 ```mermaid
 sequenceDiagram
     participant Sched as Scheduler Timer
-    participant Route as HTTP Route Handler
     participant Poller as ambient-discovery.poller
     participant Backend as Index Network Backend
     participant Subagent as OpenClaw Subagent
     participant Telegram as Telegram Chat
 
     Note over Sched: Plugin boot -> first trigger at 5s
-    Sched->>Route: POST /poll/ambient-discovery (every 5m * backoff)
-    Route->>Poller: handle(api, config)
+    Sched->>Poller: POST /poll/ambient-discovery (every 5m * backoff)
     Poller->>Backend: GET /api/agents/{id}/opportunities/pending (max 20)
     Backend-->>Poller: { opportunities: [...] }
 
-    alt No opportunities / no delivery config / batch hash unchanged
-        Poller-->>Route: return false
-        Route->>Sched: increaseBackoff() 5m->10m->20m->40m->80m
-    else New batch of candidates
+    alt No opportunities / batch hash unchanged
+        Poller->>Sched: increaseBackoff() 5m->10m->...->80m
+    else Batch changed
         Poller->>Subagent: subagent.run({deliver:true, message:evaluatorPrompt})
-        Subagent->>Subagent: LLM calls read_intents + read_user_profiles
-        Subagent->>Subagent: LLM evaluates each candidate
-        Subagent->>Backend: confirm_opportunity_delivery(id) per surfaced opp
-        Subagent->>Telegram: ALL output text delivered to user
-        Poller-->>Route: return true
-        Route->>Sched: resetBackoff() -> back to 5 min
+        Subagent->>Subagent: LLM evaluates all 20 candidates
+        Subagent->>Telegram: ALL text output delivered (including rejection reasoning)
+        Poller->>Sched: resetBackoff() -> back to 5 min
     end
 ```
 
-**Timing**: Base interval 5 min. Backoff doubles on `false` return (5m->10m->...->80m max). Resets to 5 min after successful dispatch.
+**Problem**: 6 messages in 10 minutes. Most are the LLM narrating its rejection reasoning. Batch hash dedup is too coarse (one new opp re-evaluates all 20). Backoff resets to 5 min after sending. No daily cap.
 
 **Key files**:
-- Scheduler: [`ambient-discovery.scheduler.ts`](../../packages/openclaw-plugin/src/polling/ambient-discovery/ambient-discovery.scheduler.ts) -- timer loop, backoff logic
-- Poller: [`ambient-discovery.poller.ts`](../../packages/openclaw-plugin/src/polling/ambient-discovery/ambient-discovery.poller.ts) -- fetches pending opps, dedup via batch hash, launches subagent
-- Prompt: [`opportunity-evaluator.prompt.ts`](../../packages/openclaw-plugin/src/polling/ambient-discovery/opportunity-evaluator.prompt.ts) -- LLM instructions for evaluating candidates
-- Route registration: [`index.ts`](../../packages/openclaw-plugin/src/index.ts) (lines 175-201) -- wires scheduler result to backoff/reset
-- Backend filter: [`opportunity-delivery.service.ts`](../../backend/src/services/opportunity-delivery.service.ts) (lines 290-353) -- SQL query for pending candidates, LIMIT 20, dedup via `opportunity_deliveries` ledger
-- Config: [`openclaw.plugin.json`](../../packages/openclaw-plugin/openclaw.plugin.json) -- plugin config schema
-- Delivery dispatcher: [`delivery.dispatcher.ts`](../../packages/openclaw-plugin/src/lib/delivery/delivery.dispatcher.ts) -- builds session key, dispatches pre-rendered cards via `deliver: true`
-- Delivery prompt: [`delivery.prompt.ts`](../../packages/openclaw-plugin/src/lib/delivery/delivery.prompt.ts) -- simple relay prompt: "deliver faithfully, don't add commentary"
+- [`ambient-discovery.scheduler.ts`](../../packages/openclaw-plugin/src/polling/ambient-discovery/ambient-discovery.scheduler.ts) -- timer, backoff
+- [`ambient-discovery.poller.ts`](../../packages/openclaw-plugin/src/polling/ambient-discovery/ambient-discovery.poller.ts) -- fetch, dedup, launch subagent
+- [`opportunity-evaluator.prompt.ts`](../../packages/openclaw-plugin/src/polling/ambient-discovery/opportunity-evaluator.prompt.ts) -- LLM instructions
+- [`index.ts`](../../packages/openclaw-plugin/src/index.ts) (lines 175-201) -- route handler, backoff wiring
+- [`delivery.dispatcher.ts`](../../packages/openclaw-plugin/src/lib/delivery/delivery.dispatcher.ts) -- dispatches pre-rendered cards
+- [`openclaw.plugin.json`](../../packages/openclaw-plugin/openclaw.plugin.json) -- plugin config schema
 
-**Deduplication layers**:
-1. Backend: `opportunity_deliveries` table prevents re-delivering the same opportunity at the same status
-2. Poller: `lastOpportunityBatchHash` skips subagent if the set of opportunity IDs hasn't changed
-3. Subagent: `idempotencyKey` per `agentId:date:batchHash` prevents duplicate subagent runs
-
-**What the LLM is told**: Evaluate candidates against user's intents/profile. Call `confirm_opportunity_delivery` for winners. Format as bold headline + summary for Telegram. "If no opportunity passes the bar: produce absolutely no output and call no tools."
-
-**What actually happens**: The LLM narrates its entire evaluation process (which candidates it rejected and why), and `deliver: true` sends all of that text straight to Telegram. After a successful dispatch, backoff resets to 5 min, so the next poll fires quickly, finds a slightly changed batch, and the cycle repeats.
-
-## Problem diagnosis
-
-The plugin sent **6 messages in ~10 minutes** (18:16-18:24). Most of them are the LLM "thinking out loud" about why candidates were rejected.
-
-Root causes:
-
-1. **Agent runs on every poll, not just new opportunities**: The batch hash dedup only catches "exact same set of IDs." If one new opp appears, the entire batch (up to 20) is re-evaluated from scratch, re-triggering LLM reasoning about already-seen candidates.
-
-2. **No separation between evaluation and delivery**: The subagent both evaluates AND delivers in one step with `deliver: true`. There's no system gate between the agent's decision and the user's notification.
-
-3. **Backoff logic is inverted**: Successful dispatch resets to 5 min (aggressive). Benign no-ops increase backoff (relaxed). Exactly backwards.
-
-4. **The LLM ignores the "no output" instruction**: The prompt says "produce absolutely no output" for rejections, but the model narrates its reasoning. With `deliver: true`, all of it goes to Telegram.
-
-## Proposed architecture
+## Proposed flow
 
 ```mermaid
 flowchart TD
-    Sched["Scheduler (5 min)"] --> Poll
-    Poll["Poller: fetch pending opps"] --> Diff
-    Diff{"new IDs not in seenSet?"} -->|"none"| NoOp["No-op (no LLM cost)"]
+    Sched["Scheduler fires every 5 min"] --> Poll
+    Poll["Fetch pending opps from backend"] --> Load
+    Load["Load seen IDs from file"] --> Diff
+    Diff{"New IDs not in seenSet?"} -->|"none"| NoOp["No-op, no LLM cost"]
     Diff -->|"1+ new"| Cap
-    Cap{"Daily cap exceeded?"} -->|"yes"| MarkSeen["Mark seen, digest handles rest"]
+    Cap{"Hit daily cap of 3?"} -->|"yes"| Wait["Skip — digest handles rest"]
     Cap -->|"no"| Evaluate
-    Evaluate["Evaluator subagent (deliver: false)"] --> Deliver
-    Deliver["Aggregate all new opps into one message"] --> Dispatch["dispatchDelivery (deliver: true, pre-rendered)"]
-    Dispatch --> Mark["Mark all as seen, persist to file"]
+    Evaluate["Evaluator subagent runs silently\n(deliver: false)\nThinks about new opps\nCalls confirm_opportunity_delivery\nfor the ones worth notifying"] --> Refetch
+    Refetch["Re-fetch pending from backend\nCompare: which IDs left the list?"] --> Any
+    Any{"Any confirmed?"} -->|"no"| Done["Nothing worth notifying\nSkipped opps stay unseen\nRe-evaluated next cycle"]
+    Any -->|"yes"| Deliver
+    Deliver["Aggregate confirmed opps\ninto one formatted message"] --> Send
+    Send["Delivery subagent\n(deliver: true)\nRelays the message to Telegram"] --> Persist
+    Persist["Add confirmed IDs to seenSet\nIncrement delivery count\nSave state to file"]
 ```
 
-Two subagent runs per cycle, each with a distinct job:
+### Step by step
 
-1. **Evaluator** (`deliver: false`): runs silently, calls `confirm_opportunity_delivery` for worthy opportunities (ledger cleanup -- confirmed ones won't appear in future polls or digest). Verbose LLM text is discarded.
-2. **Delivery** (`deliver: true`): relays all new opportunities as one aggregated, pre-rendered message. Uses the existing `dispatchDelivery` with the simple "relay faithfully" prompt. No LLM evaluation, no narration risk.
+**1. Scheduler fires every 5 minutes.**
 
-### Layer 1 -- Poller (cheap, no LLM)
+Same as today. On plugin startup, first trigger after 5 seconds.
 
-Replace batch hash with a **`seenOpportunityIds` set**, persisted to a JSON file so it survives restarts.
+**2. Fetch pending opportunities from the backend.**
 
-- Maintain `Set<string>` of all IDs the poller has fetched (reset daily)
-- `newOpps = fetched.filter(id => !seenSet.has(id))`
-- If empty: no-op, no LLM cost
-- If non-empty: evaluate + deliver
-- After processing: add all IDs to seen set and persist to file
-- On startup: load seen set from file (if same date)
+`GET /api/agents/{id}/opportunities/pending` with `x-api-key`. Returns up to 20 opportunities with pre-rendered card data (headline, personalizedSummary, suggestedAction).
 
-### Layer 2 -- Evaluator (deliver: false, ledger only)
+**3. Load seen IDs from file.**
 
-The evaluator subagent runs silently. Its text output never reaches the user.
+Read a persisted JSON file containing the set of opportunity IDs already processed. If the stored date doesn't match today, reset to empty (fresh day). This survives gateway restarts.
 
-The agent receives **decision context** to make informed calls:
-- **Deliveries so far today**: how many notifications already sent today
-- **Time since last notification**: minutes since the last ambient delivery
-- **Time of day**: so it can avoid notifying at odd hours
-- **Total pending count**: how many opportunities are waiting
+**4. Diff: find new opportunities.**
 
-The agent's job:
-1. Call `read_intents` and `read_user_profiles` to ground itself
-2. Evaluate each new opportunity against the user's profile and intents
-3. For each opportunity worth surfacing: call `confirm_opportunity_delivery` (this removes it from the pending list, so the digest won't re-surface it)
-4. For everything else: do nothing (stays pending, digest will show it)
+`newOpps = fetched.filter(id => !seenSet.has(id))`. If everything was already seen, do nothing -- no LLM call, zero cost.
 
-The evaluator curates the **ledger** -- it decides what disappears from pending (handled by ambient) vs. what stays for the daily digest to highlight.
+**5. Check daily cap.**
 
-### Layer 3 -- Aggregated delivery (deliver: true, pre-rendered)
+If 3 evaluator dispatches have already happened today, skip. The new opportunities stay unseen (they'll be picked up by the daily digest or re-evaluated tomorrow).
 
-After the evaluator completes, the poller delivers **all new opportunities** as one aggregated message via `dispatchDelivery()`. No re-fetch needed.
+**6. Evaluator subagent runs silently (`deliver: false`).**
 
-The pre-rendered cards come from the Index Network backend (headline, personalizedSummary, suggestedAction). They're already curated -- only opportunities that passed backend-level filtering (status, actor match, visibility) appear in the pending list.
+The evaluator's text output is discarded -- it never reaches the user. The LLM can think as verbosely as it wants.
 
-One evaluation cycle = one Telegram message, regardless of how many new opportunities appeared.
+The evaluator receives:
+- The new opportunities (only the ones not in the seen set)
+- Decision context: deliveries today, minutes since last delivery, current time, total pending count
 
-### Layer 4 -- System safety net (hard cap only)
+The evaluator's job:
+- Call `read_intents` and `read_user_profiles` to understand the user
+- Think about each new opportunity: is it genuinely valuable? Is this a good time to notify?
+- For each opportunity worth notifying about: call `confirm_opportunity_delivery` with its ID
+- For everything else: do nothing (they stay unseen and get re-evaluated next cycle)
 
-The only system-level gate is a **hard daily cap** (configurable, default **5**).
+**7. Re-fetch pending to detect the evaluator's decisions.**
 
-- Tracked in the poller, persisted alongside seen IDs
-- If cap exceeded: mark IDs as seen, skip both evaluator and delivery, digest handles them
-- No cooldown timer, no system-level throttling
+After the evaluator completes, fetch `/opportunities/pending` again. Compare against the new opportunities: any IDs that were in `newOpps` but are no longer in the pending list were confirmed by the evaluator. This is how the poller discovers which opportunities the agent approved.
+
+**8. If any were confirmed: aggregate into one message.**
+
+Take the confirmed opportunities and format them into a single message using the pre-rendered card data from step 2 (headline, personalizedSummary, suggestedAction). Example:
+
+> **Darlin Alberto — Brooklyn, AI & product** is a local technologist specializing in applied AI and B2B SaaS, based right in Brooklyn.
+> → Connect with Darlin on Index Network.
+>
+> **Zoe Weinberg — Agentic tech investor at ex/ante** is a VC focused on agentic technology and human agency in digital systems.
+> → Connect with Zoe to discuss agentic tech.
+
+**9. Delivery subagent sends to Telegram (`deliver: true`).**
+
+The aggregated message is dispatched via `dispatchDelivery()`, which wraps it in the "relay faithfully, don't add commentary" prompt and sends it through a delivery subagent. The user receives exactly one Telegram notification for this batch.
+
+**10. Persist state to file.**
+
+- Add confirmed IDs to `seenOpportunityIds` (they won't be re-evaluated)
+- Skipped IDs are NOT added to the seen set (they get another chance next cycle)
+- Increment `deliveriesToday`
+- Update `lastDeliveryTimestamp`
+- Write everything to the JSON file
+
+### What happens to skipped opportunities
+
+When the evaluator decides an opportunity isn't worth notifying about right now, it simply doesn't call `confirm_opportunity_delivery` for it. That opportunity:
+- Stays in the backend's pending list
+- Stays outside the `seenOpportunityIds` set
+- Gets re-evaluated next cycle with fresh context (different time of day, different delivery count)
+- Eventually shows up in the daily digest if it's never confirmed
+
+This means the agent can defer an opportunity because of timing ("I already notified twice today, this can wait") and reconsider it later when conditions change.
 
 ## Implementation
 
-### 1. Replace batch hash with seen-IDs set in `ambient-discovery.poller.ts`
+### 1. Seen-IDs set with file persistence
+
+In `ambient-discovery.poller.ts`:
 
 ```typescript
 let seenOpportunityIds = new Set<string>();
@@ -141,89 +139,83 @@ let seenDateStr: string | null = null;
 let deliveriesToday = 0;
 let lastDeliveryTimestamp: number | null = null;
 
-// In handle():
 const today = new Date().toISOString().slice(0, 10);
 if (seenDateStr !== today) {
   seenOpportunityIds = new Set();
   deliveriesToday = 0;
+  lastDeliveryTimestamp = null;
   seenDateStr = today;
 }
 
-const allIds = body.opportunities.map(o => o.opportunityId);
 const newOpps = body.opportunities.filter(o => !seenOpportunityIds.has(o.opportunityId));
+if (newOpps.length === 0) return 'no_new';
 
-if (newOpps.length === 0) {
-  for (const id of allIds) seenOpportunityIds.add(id);
-  return 'no_new';
-}
-
-// Hard daily cap -- safety net only
-const maxDaily = parseInt(readConfig(api, 'ambientMaxDaily') || '5', 10);
-if (deliveriesToday >= maxDaily) {
-  for (const id of allIds) seenOpportunityIds.add(id);
-  api.logger.info('Ambient discovery: daily cap reached, deferring to digest');
-  return 'no_new';
-}
+const maxDaily = parseInt(readConfig(api, 'ambientMaxDaily') || '3', 10);
+if (deliveriesToday >= maxDaily) return 'no_new';
 ```
 
-### 2. Persist seen-IDs to file
+File persistence: store `{ date, seenIds, deliveriesToday, lastDeliveryTimestamp }` in a JSON file. Load on startup. File location left to implementer.
 
-Store `{ date, seenIds, deliveriesToday, lastDeliveryTimestamp }` in a JSON file. Load on startup. Implementation detail (file location, write strategy) left to implementer.
-
-### 3. Evaluate silently + deliver all new opps
+### 2. Silent evaluator subagent
 
 ```typescript
-// Step 1: Evaluator runs silently -- curates the ledger
 await api.runtime.subagent.run({
   sessionKey,
-  idempotencyKey: `index:eval:opportunity-batch:${config.agentId}:${dateStr}:${evalHash}`,
-  message: opportunityEvaluatorPrompt(newOpps, decisionContext),
+  idempotencyKey: `index:eval:ambient:${config.agentId}:${dateStr}:${evalHash}`,
+  message: opportunityEvaluatorPrompt(newOpps, {
+    deliveriesToday,
+    minutesSinceLastDelivery: lastDeliveryTimestamp
+      ? Math.round((Date.now() - lastDeliveryTimestamp) / 60_000)
+      : null,
+    totalPendingCount: body.opportunities.length,
+    currentTime: new Date().toLocaleTimeString(),
+  }),
   deliver: false,
   model,
 });
-
-// Step 2: Deliver all new opportunities as one aggregated message
-const aggregatedBody = newOpps
-  .map(o => `**${o.headline}**\n${o.personalizedSummary}\n→ ${o.suggestedAction}`)
-  .join('\n\n');
-
-await dispatchDelivery(api, {
-  rendered: {
-    headline: newOpps.length === 1
-      ? newOpps[0].headline
-      : `${newOpps.length} new connections`,
-    body: aggregatedBody,
-  },
-  idempotencyKey: `index:delivery:ambient:${config.agentId}:${dateStr}:${evalHash}`,
-});
-
-// Update state
-for (const id of allIds) seenOpportunityIds.add(id);
-deliveriesToday++;
-lastDeliveryTimestamp = Date.now();
 ```
 
-### 4. Decision context for the evaluator prompt
+### 3. Re-fetch and diff
 
 ```typescript
-opportunityEvaluatorPrompt(newOpps, {
-  deliveriesToday,
-  minutesSinceLastDelivery: lastDeliveryTimestamp
-    ? Math.round((Date.now() - lastDeliveryTimestamp) / 60_000)
-    : null,
-  totalPendingCount: body.opportunities.length,
-  currentTime: new Date().toLocaleTimeString(),
-});
+const afterRes = await fetch(pendingUrl, { headers, signal });
+const afterBody = await afterRes.json();
+const stillPendingIds = new Set(afterBody.opportunities.map(o => o.opportunityId));
+const confirmedOpps = newOpps.filter(o => !stillPendingIds.has(o.opportunityId));
+```
+
+### 4. Aggregated delivery
+
+```typescript
+if (confirmedOpps.length > 0) {
+  const aggregatedBody = confirmedOpps
+    .map(o => `**${o.headline}**\n${o.personalizedSummary}\n→ ${o.suggestedAction}`)
+    .join('\n\n');
+
+  await dispatchDelivery(api, {
+    rendered: {
+      headline: confirmedOpps.length === 1
+        ? confirmedOpps[0].headline
+        : `${confirmedOpps.length} new connections`,
+      body: aggregatedBody,
+    },
+    idempotencyKey: `index:delivery:ambient:${config.agentId}:${dateStr}:${evalHash}`,
+  });
+
+  for (const opp of confirmedOpps) seenOpportunityIds.add(opp.opportunityId);
+  deliveriesToday++;
+  lastDeliveryTimestamp = Date.now();
+  // persist to file
+}
 ```
 
 ### 5. Redesign the evaluator prompt
 
-In `opportunity-evaluator.prompt.ts`:
-
-- Agent role: "You run silently. Your text output is discarded."
-- Provide decision context (deliveries today, time since last, time of day, etc.)
-- Agent calls `confirm_opportunity_delivery` for worthy opportunities -- this is ledger management, not delivery gating
-- Opportunities the agent confirms are removed from the pending list (handled). Unconfirmed ones stay pending for the daily digest.
+The evaluator runs silently. Its prompt should:
+- Explain its role: "You evaluate opportunities silently. Your text output is discarded."
+- Provide decision context (deliveries today, time since last, time of day, total pending)
+- Instruct: "Call `confirm_opportunity_delivery` for each opportunity worth an immediate notification. Everything you don't confirm stays pending and will be re-evaluated later or included in the daily digest."
+- List allowed opportunity IDs (injection hardening)
 
 ### 6. Change `handle()` return type
 
@@ -231,17 +223,20 @@ Return `'no_new' | 'dispatched' | 'error'` instead of boolean.
 
 ### 7. Fix backoff in route handler
 
-- `'error'` -> `increaseBackoff`
-- `'dispatched'` or `'no_new'` -> leave interval as-is (no reset to 5 min)
+In `index.ts`:
+- `'error'` → `increaseBackoff`
+- `'dispatched'` or `'no_new'` → leave interval as-is (don't reset to 5 min)
 
 ### 8. Add config to `openclaw.plugin.json`
 
-- `ambientMaxDaily` (default `"5"`) -- hard daily cap, safety net only
+- `ambientMaxDaily` (default `"3"`) -- hard daily cap
 
 ## Files to change
 
-- `packages/openclaw-plugin/src/polling/ambient-discovery/ambient-discovery.poller.ts` -- seen-IDs set (persisted), daily cap, two-step evaluate+deliver, new return type
-- `packages/openclaw-plugin/src/polling/ambient-discovery/opportunity-evaluator.prompt.ts` -- redesign: silent ledger curator with decision context
-- `packages/openclaw-plugin/src/index.ts` -- fix backoff for new return type
-- `packages/openclaw-plugin/openclaw.plugin.json` -- add `ambientMaxDaily`
-- `packages/openclaw-plugin/src/tests/opportunity-batch.spec.ts` -- update tests for new behavior
+| File | What changes |
+|------|-------------|
+| `packages/openclaw-plugin/src/polling/ambient-discovery/ambient-discovery.poller.ts` | Seen-IDs set (persisted), daily cap, two-step evaluate+deliver, re-fetch diff, new return type |
+| `packages/openclaw-plugin/src/polling/ambient-discovery/opportunity-evaluator.prompt.ts` | Redesign: silent evaluator with decision context |
+| `packages/openclaw-plugin/src/index.ts` | Fix backoff for new return type |
+| `packages/openclaw-plugin/openclaw.plugin.json` | Add `ambientMaxDaily` |
+| `packages/openclaw-plugin/src/tests/opportunity-batch.spec.ts` | Update tests |
