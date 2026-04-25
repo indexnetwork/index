@@ -8,7 +8,7 @@ import {
   McpServer,
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
-import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, OpportunityPresenter, createMcpServer } from '@indexnetwork/protocol';
+import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory } from '@indexnetwork/protocol';
 
 import { createDefaultProtocolDeps } from '../protocol-init';
@@ -49,8 +49,6 @@ function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>):
     undefined, undefined, negotiationGraph,
     deps.agentDispatcher,
     deps.queueNegotiateExisting,
-    deps.cache,
-    new OpportunityPresenter(),
   ).createGraph();
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
