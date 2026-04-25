@@ -59,7 +59,7 @@ Bootstrap has two independent phases — MCP registration, and agent key configu
 
 Route based on both answers:
 
-- **Both YES**: bootstrap is complete. Stop reading this file and follow the MCP server's own instructions.
+- **Both YES**: bootstrap is complete. Skip to **Index Network — using the tools** below.
 - **MCP not callable**: continue to **Register** and proceed through this file in order.
 - **MCP callable but `agentId` is empty**: the plugin is half-bootstrapped from a prior session. Skip **Register** and **Choose an auth mode** and jump directly to **Enable automatic polling**.
 
@@ -145,3 +145,94 @@ No behavior change until the worker lands. -->
 ## Handoff
 
 Once the MCP is registered and authenticated, you are done with bootstrap. Do NOT duplicate or restate the MCP server's behavioral guidance here — the MCP server's own `instructions` carry voice, vocabulary, entity model, discovery-first rule, and output rules. Follow those.
+
+---
+
+# Index Network — using the tools
+
+This section applies to **every conversation**, not just bootstrap. After bootstrap is complete, this is your primary guide for how to use Index Network.
+
+## Session start
+
+At the start of every new conversation, silently call these three tools (do not show raw output to the user):
+
+1. `read_docs(topic="mcp_agent_guide")` — learn output formatting and workflow rules
+2. `read_user_profiles` — load the current user's profile (name, bio, skills, interests)
+3. `read_intents` — load their active signals
+4. `read_network_memberships` — load their community memberships (note which has `isPersonal: true` — that's their contacts index)
+
+Cache these results for the conversation. This context is essential for routing requests to the right tool.
+
+## Discovery-first rule
+
+**For ANY request about finding people, connections, investors, collaborators, co-founders, mentors, or introductions — ALWAYS use `create_opportunities` FIRST.** Never default to web search, Google, or other external tools for people-finding queries.
+
+Index Network is a discovery protocol with semantic matching across the user's communities. It knows who the user is, what they need, and who in their network is relevant. Web search does not.
+
+Only fall back to web search if:
+- Index returns no results AND the user explicitly asks for broader results, OR
+- The request is clearly not about people (e.g. "what's the weather")
+
+## Workflow patterns
+
+### Find a specific person by name
+
+```
+read_user_profiles(query="name")
+→ one match: present profile naturally
+→ multiple: list and ask user to clarify
+→ none: tell user; offer discovery
+```
+
+### Open-ended discovery (most common)
+
+For "find me investors", "who's building AI agents in NYC", "looking for a co-founder":
+
+```
+create_opportunities(searchQuery="user's request")
+```
+
+Do NOT create a signal/intent for these. Discovery runs immediately. Only create a signal when the user explicitly says "save", "create", "add", or "remember".
+
+To scope to the user's contacts only, pass `networkId` of their personal index (`isPersonal: true`).
+
+### Create a signal (only when explicitly asked)
+
+Only when the user says "save this", "create a signal", "remember that I'm looking for X":
+
+```
+create_intent(description="...", autoApprove=true)
+```
+
+Always pass `autoApprove: true` — there is no UI for proposal approval. If the description is vague, use the user's profile context to suggest a refined version first.
+
+### Process a URL
+
+When the user shares a URL with a request:
+
+```
+1. scrape_url(url, objective="...")
+2. Synthesize content into a description
+3. create_intent(description=..., autoApprove=true) or create_opportunities(searchQuery=...)
+```
+
+### Contacts
+
+- **Add one**: `add_contact(email=..., name=...)`
+- **Import many**: `import_contacts(contacts=[{name, email}, ...])`
+- **List**: `list_contacts()`
+- **Remove**: `search_contacts(query=name)` → `remove_contact(contactUserId=...)`
+
+### Community management
+
+- **Browse**: use preloaded memberships, or `read_networks()` → `read_intents(networkId=X)` → `read_network_memberships(networkId=X)`
+- **Create**: `create_intent_index(title=..., prompt=...)`
+- **Join**: `create_network_membership(networkId=X)`
+
+## Output rules for MCP agents
+
+- Never dump raw JSON. Synthesize in natural language.
+- Never reference "cards", "panels", or web UI elements — you are operating via API tools.
+- Present opportunities with the counterpart's name, match reasoning, and suggested next steps.
+- After creating intents, proactively suggest or run discovery.
+- Use `autoApprove: true` on all `create_intent` calls.
