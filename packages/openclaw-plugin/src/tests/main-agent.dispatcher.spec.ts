@@ -151,6 +151,49 @@ describe('dispatchToMainAgent', () => {
     expect(body.to).toBe('telegram:from-origin');
   });
 
+  it('normalizes webchat surface to telegram when origin addresses are telegram:*', async () => {
+    // OpenClaw may label the session `webchat` while still using telegram:… in
+    // origin.{from,to} (e.g. Telegram via control UI / slash session keys).
+    writeSessions({
+      'agent:main:telegram:slash:5797608': {
+        sessionId: 'sess-slash',
+        origin: {
+          label: 'User',
+          provider: 'webchat',
+          surface: 'webchat',
+          from: 'telegram:5797608',
+          to: 'telegram:5797608',
+        },
+        updatedAt: 2000,
+      },
+      'agent:main:whatsapp:direct:222': {
+        origin: { provider: 'whatsapp', to: 'whatsapp:222' },
+        updatedAt: 1000,
+      },
+    });
+    mockOk();
+    await dispatchToMainAgent(mockApi, ctx);
+    const body = JSON.parse(captured[0].init?.body as string) as Record<string, unknown>;
+    expect(body.sessionKey).toBe('agent:main:telegram:slash:5797608');
+    expect(body.channel).toBe('telegram');
+    expect(body.to).toBe('telegram:5797608');
+  });
+
+  it('derives telegram routing from session key when origin/lastTo are missing', async () => {
+    writeSessions({
+      'agent:main:telegram:direct:5797608': {
+        sessionId: 'sess-dangling',
+        updatedAt: 1500,
+      },
+    });
+    mockOk();
+    await dispatchToMainAgent(mockApi, ctx);
+    const body = JSON.parse(captured[0].init?.body as string) as Record<string, unknown>;
+    expect(body.sessionKey).toBe('agent:main:telegram:direct:5797608');
+    expect(body.channel).toBe('telegram');
+    expect(body.to).toBe('telegram:5797608');
+  });
+
   it('picks most-recently-updated chat session when multiple exist', async () => {
     writeSessions({
       'agent:main:telegram:direct:111': {

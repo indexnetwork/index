@@ -74,6 +74,7 @@ interface SessionsMapEntry {
   updatedAt?: number;
   origin?: {
     to?: string;
+    from?: string;
     provider?: string;
     surface?: string;
   };
@@ -89,34 +90,76 @@ interface ChatTarget {
   to: string;
 }
 
+function isTelegramAddress(addr: string): boolean {
+  return addr.startsWith('telegram:');
+}
+
 /**
- * Extracts the routing pair from a sessions.json entry. Prefers the
- * current OpenClaw schema where chat info lives under `origin.to` and
- * `origin.provider`/`origin.surface`. Falls back to a top-level `lastTo`
- * of the form `<channel>:<id>` for legacy entries that still carry it.
+ * Derives `channel` + `to` from an `agent:main:<channel>:…` session key when
+ * OpenClaw omits `origin` (seen on `telegram:direct` rows). Uses the last
+ * `:`-separated segment as the peer id (matches `direct` / `slash` Telegram keys).
  */
-function readChannelTo(val: SessionsMapEntry): { channel: string; to: string } | undefined {
+function routeFromSessionKey(
+  sessionKey: string,
+): { channel: string; to: string } | undefined {
+  const prefix = 'agent:main:';
+  if (!sessionKey.startsWith(prefix)) return undefined;
+  const parts = sessionKey.slice(prefix.length).split(':');
+  if (parts.length < 3) return undefined;
+  const channel = parts[0];
+  if (!CHAT_CHANNEL_PREFIXES.includes(channel)) return undefined;
+  const id = parts[parts.length - 1];
+  if (!id) return undefined;
+  return { channel, to: `${channel}:${id}` };
+}
+
+/**
+ * Extracts the routing pair from a sessions.json row plus its session key.
+ * Prefers `origin`; normalizes OpenClaw's `webchat` surface when `origin.to` /
+ * `origin.from` are still `telegram:…` (Telegram bridged through the web UI).
+ * Falls back to top-level `lastTo`, then to parsing the session key.
+ */
+function readChannelTo(
+  sessionKey: string,
+  val: SessionsMapEntry,
+): { channel: string; to: string } | undefined {
   const originTo = typeof val.origin?.to === 'string' ? val.origin.to : '';
+  const originFrom = typeof val.origin?.from === 'string' ? val.origin.from : '';
   const originChannel =
     (typeof val.origin?.provider === 'string' && val.origin.provider) ||
     (typeof val.origin?.surface === 'string' && val.origin.surface) ||
     '';
+
   if (originTo && originChannel) {
+    if (
+      originChannel === 'webchat' &&
+      (isTelegramAddress(originTo) || isTelegramAddress(originFrom))
+    ) {
+      const to = isTelegramAddress(originTo) ? originTo : originFrom;
+      return { channel: 'telegram', to };
+    }
     return { channel: originChannel, to: originTo };
   }
+
+  if (originChannel === 'webchat' && isTelegramAddress(originFrom)) {
+    return { channel: 'telegram', to: originFrom };
+  }
+
   const lastTo = typeof val.lastTo === 'string' ? val.lastTo : '';
   const colonIdx = lastTo.indexOf(':');
   if (colonIdx > 0) {
     return { channel: lastTo.slice(0, colonIdx), to: lastTo };
   }
-  return undefined;
+
+  return routeFromSessionKey(sessionKey);
 }
 
 /**
  * Locates the user's most-recently-active chat-bound session by reading
  * `~/.openclaw/agents/main/sessions/sessions.json` and filtering for
- * sessions whose channel (from `origin.provider` / `origin.surface`,
- * with `lastTo` as legacy fallback) is a known chat-channel prefix.
+ * rows that resolve to a known chat channel via `origin` (including
+ * `webchat` + `telegram:*` normalization), `lastTo`, or the session key
+ * (`agent:main:<channel>:…`).
  *
  * Returns the routing triple `{sessionKey, channel, to}` or `undefined`
  * when no such session exists. `/hooks/agent` needs all three together
@@ -162,7 +205,7 @@ async function findChatTarget(
       if (key.startsWith('agent:main:hook:')) return false;
       if (key === 'agent:main:main') return false;
       if (key.startsWith('agent:main:index:')) return false;
-      const target = readChannelTo(val);
+      const target = readChannelTo(key, val);
       return target !== undefined && CHAT_CHANNEL_PREFIXES.includes(target.channel);
     })
     .sort(([, a], [, b]) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
@@ -170,7 +213,7 @@ async function findChatTarget(
   const top = candidates[0];
   if (!top) return undefined;
 
-  const target = readChannelTo(top[1]);
+  const target = readChannelTo(top[0], top[1]);
   if (!target) return undefined;
   return { sessionKey: top[0], channel: target.channel, to: target.to };
 }
