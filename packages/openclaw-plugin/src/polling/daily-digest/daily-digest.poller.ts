@@ -66,8 +66,8 @@ export async function handle(
       personalizedSummary: o.rendered.personalizedSummary,
       suggestedAction: o.rendered.suggestedAction,
       narratorRemark: o.rendered.narratorRemark,
-      profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
-      acceptUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`,
+      profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}?link_preview=false`,
+      acceptUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/accept?link_preview=false`,
     }));
 
   if (!candidates.length) return false;
