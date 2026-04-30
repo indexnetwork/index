@@ -32,7 +32,6 @@ export async function handle(
     res = await fetch(pendingUrl, {
       method: 'GET',
       headers: { 'x-api-key': config.apiKey },
-      signal: AbortSignal.timeout(15_000),
     });
   } catch (err) {
     api.logger.warn(`Daily digest fetch errored: ${err instanceof Error ? err.message : String(err)}`);

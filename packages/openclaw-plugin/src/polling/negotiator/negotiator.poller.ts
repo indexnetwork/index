@@ -31,7 +31,6 @@ export async function handle(
   const res = await fetch(pickupUrl, {
     method: 'POST',
     headers: { 'x-api-key': config.apiKey },
-    signal: AbortSignal.timeout(10_000),
   });
 
   if (res.status === 204) {

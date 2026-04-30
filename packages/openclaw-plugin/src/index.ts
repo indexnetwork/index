@@ -15,6 +15,7 @@
  */
 
 import type { OpenClawPluginApi } from './lib/openclaw/plugin-api.js';
+import { setDefaultResultOrder } from 'node:dns';
 import * as negotiatorPoller from './polling/negotiator/negotiator.poller.js';
 import * as negotiatorScheduler from './polling/negotiator/negotiator.scheduler.js';
 import * as dailyDigestPoller from './polling/daily-digest/daily-digest.poller.js';
@@ -25,6 +26,13 @@ import * as testMessagePoller from './polling/test-message/test-message.poller.j
 import * as testMessageScheduler from './polling/test-message/test-message.scheduler.js';
 import { registerSetupCli } from './setup/setup.cli.js';
 import { deriveUrls } from './lib/utils/url.js';
+
+/**
+ * Prefer A records before AAAA. Bun's fetch can stall on broken or link-local-only
+ * IPv6 while the TCP attempt lingers; curl from the same host often succeeds quickly
+ * because it may pick IPv4 first — same request, different resolver order.
+ */
+setDefaultResultOrder('ipv4first');
 
 /** Prevents double-registration when OpenClaw calls register() more than once. */
 let registered = false;

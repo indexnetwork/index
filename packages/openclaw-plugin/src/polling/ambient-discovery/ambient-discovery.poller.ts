@@ -16,6 +16,15 @@ const PENDING_LIMIT = 10;
 /** Hash of the last opportunity batch dispatched. Used to skip unchanged batches. */
 let lastOpportunityBatchHash: string | null = null;
 
+/** Single-line error text for logs (host loggers often omit structured meta). */
+function formatErr(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = err.cause;
+  const tail =
+    cause === undefined ? '' : `; cause: ${cause instanceof Error ? cause.message : String(cause)}`;
+  return `${err.name}: ${err.message}${tail}`;
+}
+
 /**
  * Handles one ambient discovery poll cycle. Single-pass:
  *  1. GET /opportunities/pending?limit=10
@@ -68,25 +77,29 @@ async function fetchAmbientDeliveredToday(
     const res = await fetch(url, {
       method: 'GET',
       headers: { 'x-api-key': config.apiKey },
-      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
-      const detail = { url, status: res.status, agentId: config.agentId };
+      const detail = { url, status: res.status, agentId: config.agentId, method: 'GET' };
       if (res.status === 401 || res.status === 403) {
-        api.logger.error('Ambient stats fetch unauthorized — soft cap disabled', detail);
+        api.logger.error(
+          `Ambient delivery-stats: HTTP ${res.status} (unauthorized — soft cap disabled) agentId=${config.agentId} method=GET url=${url}`,
+          detail,
+        );
       } else {
-        api.logger.warn('Ambient stats fetch failed', detail);
+        api.logger.warn(
+          `Ambient delivery-stats: HTTP ${res.status} agentId=${config.agentId} method=GET url=${url}`,
+          detail,
+        );
       }
       return null;
     }
     const body = (await res.json()) as { ambient?: unknown };
     return Number.isFinite(body.ambient) ? (body.ambient as number) : null;
   } catch (err) {
-    api.logger.warn('Ambient stats fetch errored', {
-      url,
-      agentId: config.agentId,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    api.logger.warn(
+      `Ambient delivery-stats: request failed — ${formatErr(err)} agentId=${config.agentId} method=GET url=${url}`,
+      { url, agentId: config.agentId, method: 'GET', error: formatErr(err) },
+    );
     return null;
   }
 }
@@ -102,24 +115,35 @@ export async function handle(
     res = await fetch(pendingUrl, {
       method: 'GET',
       headers: { 'x-api-key': config.apiKey },
-      signal: AbortSignal.timeout(15_000),
     });
   } catch (err) {
-    api.logger.warn('Ambient discovery fetch errored', {
-      url: pendingUrl,
-      agentId: config.agentId,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    api.logger.warn(
+      `Ambient discovery: pending opportunities request failed — ${formatErr(err)} agentId=${config.agentId} method=GET url=${pendingUrl}`,
+      { url: pendingUrl, agentId: config.agentId, method: 'GET', error: formatErr(err) },
+    );
     return 'error';
   }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    const detail = { url: pendingUrl, status: res.status, body: text, agentId: config.agentId };
+    const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 280);
+    const detail = {
+      url: pendingUrl,
+      status: res.status,
+      body: text,
+      agentId: config.agentId,
+      method: 'GET',
+    };
     if (res.status === 401 || res.status === 403) {
-      api.logger.error('Ambient discovery fetch unauthorized', detail);
+      api.logger.error(
+        `Ambient discovery: pending GET HTTP ${res.status} (check API key) agentId=${config.agentId} method=GET url=${pendingUrl}`,
+        detail,
+      );
     } else {
-      api.logger.warn('Ambient discovery fetch failed', detail);
+      api.logger.warn(
+        `Ambient discovery: pending GET HTTP ${res.status}${snippet ? ` — ${snippet}` : ''} agentId=${config.agentId} method=GET url=${pendingUrl}`,
+        detail,
+      );
     }
     return 'error';
   }

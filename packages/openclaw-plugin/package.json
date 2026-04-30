@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/openclaw-plugin",
-  "version": "0.22.1",
+  "version": "0.22.6",
   "description": "Index Network — OpenClaw plugin. Find the right people and let them find you.",
   "license": "MIT",
   "private": false,

@@ -50,8 +50,9 @@ export function start(config: AmbientDiscoverySchedulerConfig): void {
 export function increaseBackoff(logger: PluginLogger): void {
   if (backoffMultiplier < MAX_BACKOFF_MULTIPLIER) {
     backoffMultiplier = Math.min(backoffMultiplier * 2, MAX_BACKOFF_MULTIPLIER);
+    const seconds = (BASE_INTERVAL_MS * backoffMultiplier / 1000).toFixed(0);
     logger.info(
-      `Ambient discovery backing off — next poll in ${(BASE_INTERVAL_MS * backoffMultiplier / 1000).toFixed(0)}s`,
+      `Ambient discovery backing off — next poll in ${seconds}s (×${backoffMultiplier} base interval after error; see preceding warn/error)`,
     );
   }
 }

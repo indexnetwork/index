@@ -29,7 +29,6 @@ export async function handle(
   const pickupRes = await fetch(pickupUrl, {
     method: 'POST',
     headers: { 'x-api-key': config.apiKey },
-    signal: AbortSignal.timeout(10_000),
   });
 
   if (pickupRes.status === 204) return false;
@@ -69,7 +68,6 @@ export async function handle(
     method: 'POST',
     headers: { 'x-api-key': config.apiKey, 'content-type': 'application/json' },
     body: JSON.stringify({ reservationToken: reservation.reservationToken }),
-    signal: AbortSignal.timeout(10_000),
   }).catch((err) => {
     api.logger.warn(
       `Test-message confirm failed for ${reservation.id}: ${err instanceof Error ? err.message : String(err)}`,
