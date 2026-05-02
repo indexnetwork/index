@@ -43,6 +43,10 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/page"),
       },
       {
+        path: "/landing-v4",
+        lazy: () => import("@/app/landing-v4/page"),
+      },
+      {
         path: "/about",
         lazy: () => import("@/app/about/page"),
       },
