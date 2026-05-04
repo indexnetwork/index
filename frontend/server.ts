@@ -45,8 +45,22 @@ Bun.serve({
     }
 
     const filePath = join(DIST, pathname);
-    if (pathname !== "/" && existsSync(filePath) && statSync(filePath).isFile()) {
-      return new Response(Bun.file(filePath));
+    if (pathname !== "/" && existsSync(filePath)) {
+      const stat = statSync(filePath);
+      if (stat.isFile()) {
+        return new Response(Bun.file(filePath));
+      }
+      if (stat.isDirectory()) {
+        const indexPath = join(filePath, "index.html");
+        if (existsSync(indexPath) && statSync(indexPath).isFile()) {
+          if (!pathname.endsWith("/")) {
+            return Response.redirect(`${pathname}/${reqUrl.search}`, 308);
+          }
+          return new Response(Bun.file(indexPath), {
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          });
+        }
+      }
     }
 
     const meta = metaMap[pathname];
