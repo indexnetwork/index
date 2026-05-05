@@ -4,7 +4,7 @@
    Scoped under .landing-v4-page so it doesn't leak to the rest of the app.
    ────────────────────────────────────────────── */
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap");
 
 .landing-v4-page {
   --paper: #0c0c0d;
@@ -13,9 +13,11 @@
   --ink-dim: #8a8a86;
   --rule: #2a2a2c;
   --rule-strong: #3a3a3c;
-  --accent: #ecdf6a;
-  --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
-  --sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --accent: #2f8456;
+  --mono: "Space Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --display: "Space Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --sans: "Space Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --code: "Space Mono", "IBM Plex Mono", ui-monospace, monospace;
 
   background: var(--paper);
   color: var(--ink);
@@ -86,20 +88,35 @@
 /* ─────────────── MAIN ─────────────── */
 .landing-v4-page .main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  grid-template-columns: minmax(320px, 480px) minmax(0, 1fr);
   gap: 64px;
   align-items: center;
 }
+.landing-v4-page .main .video-wrap { justify-self: end; margin-left: auto; }
 
 /* ─────────────── VIDEO CARD ─────────────── */
 .landing-v4-page .video-wrap {
   position: relative;
   width: 100%;
-  max-width: 680px;
+  max-width: 540px;
   aspect-ratio: 16 / 10;
   background: #000;
-  border: 1px solid var(--rule-strong);
   overflow: hidden;
+}
+/* Glitch slice ghost — uses poster as a still-frame to overlay during bursts */
+.landing-v4-page .video-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background-image: url("/landing-v4/street_poster.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  mix-blend-mode: screen;
+  opacity: 0;
+  pointer-events: none;
+  animation: lv4-glitch-slice 6.5s infinite linear;
 }
 .landing-v4-page .video-wrap::after {
   content: "";
@@ -109,8 +126,9 @@
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px),
     radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.45) 100%);
   pointer-events: none;
-  z-index: 2;
+  z-index: 3;
   mix-blend-mode: overlay;
+  animation: lv4-scanline-drift 0.32s steps(3) infinite;
 }
 .landing-v4-page .video-wrap video,
 .landing-v4-page .video-wrap img.poster {
@@ -122,7 +140,59 @@
   display: block;
 }
 .landing-v4-page .video-wrap img.poster { z-index: 0; }
-.landing-v4-page .video-wrap video      { z-index: 1; }
+.landing-v4-page .video-wrap video {
+  z-index: 1;
+  animation: lv4-glitch-jitter 6.5s infinite linear;
+}
+
+@keyframes lv4-glitch-jitter {
+  0%, 19.9%, 21.2%, 51.9%, 53.2%, 84.9%, 86.2%, 100% {
+    transform: translate3d(0, 0, 0);
+    filter: none;
+  }
+  20%   { transform: translate3d(-4px, 0, 0); filter: hue-rotate(10deg) saturate(1.5) contrast(1.1); }
+  20.5% { transform: translate3d(3px, 1px, 0); filter: hue-rotate(-15deg) contrast(1.3); }
+  21%   { transform: translate3d(-2px, 0, 0); filter: brightness(1.2); }
+
+  52%   { transform: translate3d(2px, -1px, 0); filter: hue-rotate(-12deg) saturate(0.7); }
+  52.5% { transform: translate3d(-3px, 0, 0); filter: invert(0.08) hue-rotate(20deg); }
+  53%   { transform: translate3d(1px, 0, 0); filter: contrast(1.3); }
+
+  85%   { transform: translate3d(-3px, 0, 0); filter: hue-rotate(25deg); }
+  85.5% { transform: translate3d(4px, 1px, 0); filter: contrast(1.4) saturate(1.3); }
+  86%   { transform: translate3d(-1px, 0, 0); filter: brightness(0.9); }
+}
+
+@keyframes lv4-glitch-slice {
+  0%, 19.9%, 21.2%, 51.9%, 53.2%, 84.9%, 86.2%, 100% {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+    transform: translate3d(0, 0, 0);
+    filter: none;
+  }
+  20%   { opacity: 0.5;  clip-path: inset(18% 0 65% 0); transform: translate3d(-9px, 0, 0); filter: hue-rotate(120deg) saturate(2.5); }
+  20.5% { opacity: 0.4;  clip-path: inset(50% 0 35% 0); transform: translate3d(7px, 0, 0);  filter: hue-rotate(-120deg) saturate(2.5); }
+  21%   { opacity: 0.45; clip-path: inset(72% 0 12% 0); transform: translate3d(-4px, 0, 0); filter: hue-rotate(60deg) saturate(2.5); }
+
+  52%   { opacity: 0.45; clip-path: inset(35% 0 50% 0); transform: translate3d(8px, 0, 0);  filter: hue-rotate(-90deg) saturate(2.5); }
+  52.5% { opacity: 0.35; clip-path: inset(10% 0 78% 0); transform: translate3d(-6px, 0, 0); filter: hue-rotate(150deg) saturate(2.5); }
+  53%   { opacity: 0.4;  clip-path: inset(60% 0 25% 0); transform: translate3d(3px, 0, 0);  filter: hue-rotate(40deg) saturate(2.5); }
+
+  85%   { opacity: 0.5;  clip-path: inset(55% 0 30% 0); transform: translate3d(-7px, 0, 0); filter: hue-rotate(180deg) saturate(2.5); }
+  85.5% { opacity: 0.4;  clip-path: inset(25% 0 60% 0); transform: translate3d(6px, 0, 0);  filter: hue-rotate(-60deg) saturate(2.5); }
+  86%   { opacity: 0.45; clip-path: inset(80% 0 8% 0);  transform: translate3d(-3px, 0, 0); filter: hue-rotate(100deg) saturate(2.5); }
+}
+
+@keyframes lv4-scanline-drift {
+  from { background-position: 0 0, center center; }
+  to   { background-position: 0 6px, center center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-v4-page .video-wrap video,
+  .landing-v4-page .video-wrap::before,
+  .landing-v4-page .video-wrap::after { animation: none; }
+}
 
 /* ─────────────── RIGHT RAIL — what is index ─────────────── */
 .landing-v4-page .rail {
@@ -132,36 +202,41 @@
   max-width: 480px;
 }
 
-/* Eyebrow — quiet numbered marker, no decoration */
+/* Eyebrow — quiet protocol marker */
 .landing-v4-page .rail .eyebrow {
   display: inline-flex;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   margin: 0;
   font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: 0.22em;
   text-transform: uppercase;
 }
-.landing-v4-page .rail .eyebrow .num   { color: var(--accent); }
-.landing-v4-page .rail .eyebrow .sep   { color: var(--rule-strong); font-weight: 400; }
+.landing-v4-page .rail .eyebrow .bullet {
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  display: inline-block;
+  flex-shrink: 0;
+}
 .landing-v4-page .rail .eyebrow .label { color: var(--ink-dim); }
 
-/* Display — lighter, single block, controlled wrapping */
+/* Display — Space Grotesk headline, tight tracking for editorial weight */
 .landing-v4-page .rail .display {
-  font-family: var(--mono);
-  font-size: clamp(26px, 2.8vw, 34px);
-  line-height: 1.18;
-  font-weight: 400;
-  letter-spacing: -0.01em;
+  font-family: var(--display);
+  font-size: clamp(34px, 3.4vw, 44px);
+  line-height: 1.08;
+  font-weight: 500;
+  letter-spacing: -0.02em;
   color: var(--ink);
   margin: 0;
   max-width: 22ch;
 }
 .landing-v4-page .rail .display .accent {
   color: var(--accent);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .landing-v4-page .rail .lede {
@@ -309,7 +384,7 @@
 
 .landing-v4-page .surface-row.is-active {
   border-color: var(--accent);
-  background: rgba(236, 223, 106, 0.04);
+  background: rgba(47, 132, 86, 0.08);
 }
 .landing-v4-page .surface-row.is-active .surface-glyph { color: var(--accent); }
 .landing-v4-page .surface-row.is-active .surface-dot {
@@ -359,7 +434,7 @@
 .landing-v4-page .code-body {
   margin: 0;
   padding: 20px 22px;
-  font-family: var(--mono);
+  font-family: var(--code);
   font-size: 12.5px;
   line-height: 1.65;
   color: var(--ink);
@@ -386,7 +461,7 @@
 .landing-v4-page .code-out {
   margin: 0;
   padding: 16px 22px 22px;
-  font-family: var(--mono);
+  font-family: var(--code);
   font-size: 12.5px;
   line-height: 1.65;
   color: var(--ink-dim);
@@ -428,7 +503,7 @@
 /* ─────────────── REC dot on video ─────────────── */
 .landing-v4-page .video-tag {
   position: absolute;
-  z-index: 3;
+  z-index: 4;
   font-family: var(--mono);
   font-size: 10.5px;
   letter-spacing: 0.1em;

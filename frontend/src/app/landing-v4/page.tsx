@@ -188,7 +188,7 @@ function LandingV4Page() {
         <div className="left">
           <Link to="/" className="brand" aria-label="Index Network">
             <img
-              src="/logo.svg"
+              src="/logo.png"
               alt="Index Network"
               width={200}
               height={36}
@@ -201,8 +201,32 @@ function LandingV4Page() {
         </div>
       </header>
 
-      {/* ─────────── MAIN: video + lede ─────────── */}
-      <main className="main" data-screen-label="01 Hero">
+      {/* ─────────── MAIN: lede + video ─────────── */}
+      <main className="main">
+        <aside className="rail">
+          <p className="eyebrow">
+            <span className="bullet" aria-hidden="true" />
+            <span className="label">index · protocol</span>
+          </p>
+
+          <h1 className="display">
+            <span className="accent">intent-driven</span>
+            <br />
+            discovery protocol.
+          </h1>
+
+          <p className="lede">
+            Broadcast what you&rsquo;re looking for. The network finds who you
+            need&nbsp;— and who needs you. People, opportunities, and
+            knowledge, surfaced through signals, not searches.
+          </p>
+
+          <a href="#surfaces" className="rail-cta">
+            <span className="rail-cta-label">open index.network/app</span>
+            <span className="rail-cta-arr" aria-hidden="true">→</span>
+          </a>
+        </aside>
+
         <figure className="video-wrap">
           <img
             className="poster"
@@ -223,33 +247,7 @@ function LandingV4Page() {
             <span className="dot" />
             REC · ANONYMIZED
           </span>
-          <span className="video-tag br">SAMPLE 04 / 12</span>
         </figure>
-
-        <aside className="rail">
-          <p className="eyebrow">
-            <span className="num">01</span>
-            <span className="sep">/</span>
-            <span className="label">index</span>
-          </p>
-
-          <h1 className="display">
-            <span className="accent">intent-driven</span>
-            <br />
-            discovery protocol.
-          </h1>
-
-          <p className="lede">
-            Broadcast what you&rsquo;re looking for. The network finds who you
-            need&nbsp;— and who needs you. People, opportunities, and
-            knowledge, surfaced through signals, not searches.
-          </p>
-
-          <a href="#surfaces" className="rail-cta">
-            <span className="rail-cta-label">open index.network/app</span>
-            <span className="rail-cta-arr" aria-hidden="true">→</span>
-          </a>
-        </aside>
       </main>
 
       {/* ─────────── INTERFACES ─────────── */}
