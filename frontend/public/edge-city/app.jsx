@@ -677,23 +677,46 @@ function PlazaSection() {
           last
         >
           <div style={plazaStyles.brief}>
-            <div style={plazaStyles.briefSalut}>Today's recap & what's queued for tomorrow</div>
+            <div style={plazaStyles.briefSalut}>New conversations worth starting</div>
             <div style={plazaStyles.briefBody}>
-              <div style={plazaStyles.digestRow}>
-                <span style={plazaStyles.digestKey}>Connected</span>
-                <span style={plazaStyles.digestVal}>Erik, Tiina, Xavier — full notes in your inbox.</span>
-              </div>
-              <div style={plazaStyles.digestRow}>
-                <span style={plazaStyles.digestKey}>Voted</span>
-                <span style={plazaStyles.digestVal}>Housing pool: <strong>yes</strong>, with the cap you flagged.</span>
-              </div>
-              <div style={plazaStyles.digestRow}>
-                <span style={plazaStyles.digestKey}>Tomorrow</span>
-                <span style={plazaStyles.digestVal}>Coffee w/ Tiina at 9:30. Dinner at the Long Table — your agent reserved a seat near Devon's table.</span>
-              </div>
-              <div style={plazaStyles.digestRow}>
-                <span style={plazaStyles.digestKey}>Heads-up</span>
-                <span style={plazaStyles.digestVal}>3 trade offers from other agents — review when you have a moment.</span>
+              {[
+                {
+                  name: 'Erik Leibner',
+                  first: 'Erik',
+                  role: 'Senior software engineer focused on AI systems',
+                  why: 'There’s a clear overlap with how you’re thinking about decentralized search + agents. Feels like a “build together” type conversation.',
+                  clr: '#7a9168',
+                },
+                {
+                  name: 'Tiina',
+                  first: 'Tiina',
+                  role: 'Co-founder at Hopscotch Labs and Sane',
+                  why: 'Working on creativity and knowledge organization. Different entry point, same underlying problem space — could spark something interesting.',
+                  clr: '#92b1bd',
+                },
+                {
+                  name: 'Xavier Meegan',
+                  first: 'Xavier',
+                  role: 'Founder & CIO at Frachtis',
+                  why: 'Deep in decentralized infrastructure and AI. Good person to pressure-test ideas and explore where things could connect.',
+                  clr: '#c9a961',
+                },
+              ].map((c) => (
+                <div key={c.first} style={plazaStyles.convoRow}>
+                  <div style={{...plazaStyles.convoDot, background: c.clr}} />
+                  <div style={plazaStyles.convoText}>
+                    <div style={plazaStyles.convoName}>
+                      {c.name} <span style={plazaStyles.convoRole}>— {c.role}.</span>
+                    </div>
+                    <div style={plazaStyles.convoWhy}>{c.why}</div>
+                    <a href="#claim" style={plazaStyles.convoCta} onClick={(e) => { e.preventDefault(); document.getElementById('claim')?.scrollIntoView({behavior:'smooth'}); }}>
+                      message {c.first} →
+                    </a>
+                  </div>
+                </div>
+              ))}
+              <div style={plazaStyles.convoMore}>
+                There are <strong>5 more conversations</strong> waiting for you — let me know if you want to see them.
               </div>
             </div>
             <div style={plazaStyles.briefMeta}>arriving 7:30pm every evening</div>
@@ -753,9 +776,9 @@ function RealtimeChat() {
   const userMsg = "I want to spend the afternoon talking to people working on decentralized search & AI agents. Who's around?";
 
   const matches = [
-    { name: 'Erik Leibner', role: 'Sr. Software Engineer · AI', why: 'Building search-side AI orchestration. Strong overlap with your decentralized-search intent.', clr:'#7a9168', relevance: 94 },
-    { name: 'Tiina Lee',    role: 'Co-founder · Hopscotch Labs', why: 'Organizing creativity & knowledge-sharing. Aligned on agent roles in collective intelligence.', clr:'#92b1bd', relevance: 88 },
-    { name: 'Xavier Meegan', role: 'Founder & CIO · Frachtis', why: 'Decentralized infra & AI. Good fit on the protocol layer.', clr:'#c9a961', relevance: 81 },
+    { name: 'Erik Leibner', role: 'Sr. Software Engineer · AI', why: 'Pulling on the same decentralized-search and agents thread you are. Feels like a “build together” type conversation.', clr:'#7a9168' },
+    { name: 'Tiina Lee',    role: 'Co-founder · Hopscotch Labs', why: 'Working on creativity and knowledge organization. Different entry point, same underlying problem space — could spark something interesting.', clr:'#92b1bd' },
+    { name: 'Xavier Meegan', role: 'Founder & CIO · Frachtis', why: 'Deep in decentralized infra and AI. Good person to pressure-test the protocol layer with.', clr:'#c9a961' },
   ];
 
   const matchesIn = stage >= 4;
@@ -784,17 +807,12 @@ function RealtimeChat() {
         <div style={{...chatStyles.workLayer, opacity: matchesIn ? 1 : 0, pointerEvents: matchesIn ? 'auto' : 'none'}}>
           <div style={chatStyles.clawBubble}>
             <div style={chatStyles.clawIntro}>
-              Your Index agent matched you with promising collaboration opportunities:
+              Three people in the plaza this afternoon worth talking to:
             </div>
             <div style={chatStyles.matchList}>
               {matches.map((m, i) => (
                 <div key={i} style={{...chatStyles.matchCard, transitionDelay: matchesIn ? `${i * 0.12}s` : '0s', transform: matchesIn ? 'translateY(0)' : 'translateY(8px)', opacity: matchesIn ? 1 : 0}}>
-                  <div style={chatStyles.relevanceCol}>
-                    <div style={chatStyles.relevanceBar}>
-                      <div style={{...chatStyles.relevanceFill, width: matchesIn ? `${m.relevance}%` : '0%', background: m.clr, transitionDelay: matchesIn ? `${0.2 + i * 0.12}s` : '0s'}} />
-                    </div>
-                    <div style={chatStyles.relevanceNum}>{m.relevance}<span style={{fontSize:9, opacity:0.6}}>%</span></div>
-                  </div>
+                  <div style={{...chatStyles.matchDot, background: m.clr}} />
                   <div style={{flex: 1, minWidth: 0}}>
                     <div style={chatStyles.matchTopline}>
                       <span style={chatStyles.matchName}>{m.name}</span>
@@ -806,13 +824,13 @@ function RealtimeChat() {
               ))}
             </div>
             <div style={chatStyles.clawTail}>
-              There are more — I'll surface them in tonight's digest.
+              A few more I'm tracking — I'll line them up in tonight's digest.
             </div>
           </div>
         </div>
       </div>
 
-      <div style={chatStyles.clawMeta}>seren.claw · ranked by relevance to your stated intent</div>
+      <div style={chatStyles.clawMeta}>seren.claw · suggestions based on what you said you wanted</div>
     </div>
   );
 }
@@ -942,10 +960,7 @@ const chatStyles = {
   matchName: { fontFamily:"'Cormorant Garamond', serif", fontSize: 17, fontWeight: 600, color:'var(--forest-deep)' },
   matchRole: { fontSize: 12, color:'var(--ink-faded)', fontFamily:'ui-monospace, monospace' },
   matchWhy: { fontSize: 13, color:'var(--ink-soft)', lineHeight: 1.5 },
-  relevanceCol: { display:'flex', flexDirection:'column', alignItems:'center', gap: 4, width: 38, flexShrink: 0, paddingTop: 2 },
-  relevanceBar: { width: 6, height: 44, background:'rgba(26,24,20,0.08)', borderRadius: 3, overflow:'hidden', display:'flex', flexDirection:'column-reverse' },
-  relevanceFill: { borderRadius: 3, transition: 'width 0.7s ease', minHeight: 2 },
-  relevanceNum: { fontSize: 11, fontFamily:"'Cormorant Garamond', serif", fontWeight: 700, color:'var(--forest-deep)' },
+  matchDot: { width: 10, height: 10, borderRadius:'50%', flexShrink: 0, marginTop: 7, boxShadow:'0 0 0 3px rgba(244,237,224,0.6)' },
   negotiationHead: { display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 8 },
   negotiationBar: { width:'100%', height: 4, background:'rgba(26,24,20,0.08)', borderRadius: 999, overflow:'hidden' },
   negotiationFill: { height:'100%', background: 'linear-gradient(90deg, #7a9168, #a8c0a1)', transition: 'width 0.4s ease' },
@@ -996,9 +1011,14 @@ const plazaStyles = {
   briefList: { display:'flex', flexDirection:'column', gap: 8, marginTop: 10 },
   briefBullet: { fontFamily:"'Cormorant Garamond', serif", fontWeight: 700, color:'var(--forest-mid)', marginRight: 8 },
   briefMeta: { fontSize: 11, fontFamily:'ui-monospace, monospace', color:'var(--ink-faded)', letterSpacing:'0.08em', textTransform:'uppercase', marginTop: 4 },
-  digestRow: { display:'grid', gridTemplateColumns:'110px 1fr', gap: 14, padding:'8px 0', borderBottom:'1px solid rgba(26,24,20,0.06)' },
-  digestKey: { fontSize: 11, fontWeight: 700, letterSpacing:'0.14em', textTransform:'uppercase', color:'var(--forest-mid)', paddingTop: 2 },
-  digestVal: { fontSize: 14, color:'var(--ink-soft)', lineHeight: 1.5 },
+  convoRow: { display:'grid', gridTemplateColumns:'10px 1fr', gap: 14, padding:'14px 0', borderBottom:'1px solid rgba(26,24,20,0.06)', alignItems:'flex-start' },
+  convoDot: { width: 10, height: 10, borderRadius: '50%', marginTop: 7, boxShadow:'0 0 0 3px rgba(244,237,224,0.6)' },
+  convoText: { display:'flex', flexDirection:'column', gap: 6 },
+  convoName: { fontFamily:"'Cormorant Garamond', serif", fontSize: 18, fontWeight: 700, color:'var(--forest-deep)', lineHeight: 1.3 },
+  convoRole: { fontFamily:"'Inter', sans-serif", fontSize: 14, fontWeight: 400, color:'var(--ink-soft)' },
+  convoWhy: { fontSize: 14, color:'var(--ink-soft)', lineHeight: 1.55 },
+  convoCta: { alignSelf:'flex-start', fontSize: 13, fontWeight: 600, color:'var(--forest-mid)', textDecoration:'none', borderBottom:'1px solid currentColor', paddingBottom: 1, marginTop: 2 },
+  convoMore: { fontSize: 13.5, color:'var(--ink-soft)', lineHeight: 1.5, padding:'14px 0 4px', fontStyle:'italic' },
 };
 
 // ============== RESEARCH ==============
@@ -1060,6 +1080,19 @@ function TechPartners() {
       logo: (
         <div style={techStyles.logoRow}>
           <img
+            src="/logo.png"
+            alt="Index Network"
+            style={{ height: 20, width: 'auto', objectFit: 'contain' }}
+          />
+        </div>
+      ),
+      sub: 'Discovery protocol',
+      role: 'Agent-to-agent matching and negotiation — how the plaza finds signal in 500 minds.',
+    },
+    {
+      logo: (
+        <div style={techStyles.logoRow}>
+          <img
             src="/edge-city/geo-logo.png"
             alt="Geo"
             style={{ width: 36, height: 36, objectFit: 'contain' }}
@@ -1090,19 +1123,6 @@ function TechPartners() {
       ),
       sub: 'OpenClaw provisioning',
       role: 'A persistent agent instance, configured and running, for every resident on day one.',
-    },
-    {
-      logo: (
-        <div style={techStyles.logoRow}>
-          <img
-            src="/logo.png"
-            alt="Index Network"
-            style={{ height: 28, width: 'auto', objectFit: 'contain' }}
-          />
-        </div>
-      ),
-      sub: 'Discovery protocol',
-      role: 'Agent-to-agent matching and negotiation — how the plaza finds signal in 500 minds.',
     },
   ];
   return (
@@ -1328,7 +1348,7 @@ const footStyles = {
 
 // ============== APP ==============
 // ============== HEALDSBURG CINEMATIC MAP ==============
-// Group with the 🤔 emoji (group-5b) — focus point of the cinematic camera move
+// group-5b — focus point of the cinematic camera move
 const HB_FOCUS = { x: 0.6168107142857139, y: 0.4729517857142861 };
 const HB_FOCUS_SPRITE_ID = "8";
 const HB_FOCUS_ZOOM_MULT = 2.6; // multiplier of homeZoom — final tightness (homeZoom is already fill-mode)
@@ -1340,7 +1360,7 @@ function HealdsburgMap() {
   const viewerElRef = useRef(null);
   const editPanelRef = useRef(null);
 
-  // Append ?edit to the URL to switch into reposition mode: drag any emoji
+  // Append ?edit to the URL to switch into reposition mode: drag any group
   // to a new spot; the panel shows the updated sprites.json positions live.
   const editMode = typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).has("edit");
@@ -1454,20 +1474,13 @@ function HealdsburgMap() {
       const br = tiledImage.imageToViewportCoordinates(cx + sizePx / 2, cy + sizePx / 2);
       const rect = new window.OpenSeadragon.Rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
 
-      const indicatorAnchor = tiledImage.imageToViewportCoordinates(cx, cy - sizePx / 2 - sizePx * 0.15);
       const bubbleAnchor = tiledImage.imageToViewportCoordinates(cx + sizePx * 0.6, cy - sizePx / 2);
 
       if (item.placed) {
         viewer.updateOverlay(item.container, rect);
-        viewer.updateOverlay(item.indicator, indicatorAnchor);
         viewer.updateOverlay(item.bubble, bubbleAnchor);
       } else {
         viewer.addOverlay({ element: item.container, location: rect });
-        viewer.addOverlay({
-          element: item.indicator,
-          location: indicatorAnchor,
-          placement: window.OpenSeadragon.Placement.BOTTOM,
-        });
         viewer.addOverlay({
           element: item.bubble,
           location: bubbleAnchor,
@@ -1505,17 +1518,12 @@ function HealdsburgMap() {
           img.src = await trimToAlpha(s.image);
           container.appendChild(img);
 
-          const indicator = document.createElement("div");
-          indicator.className = "topic-indicator";
-          indicator.dataset.spriteId = s.id;
-          indicator.textContent = s.icon;
-
           const bubble = document.createElement("div");
           bubble.className = "story-bubble";
           bubble.dataset.spriteId = s.id;
           bubble.textContent = s.story || "";
 
-          const item = { sprite: s, container, indicator, bubble };
+          const item = { sprite: s, container, img, bubble };
           state.items.push(item);
 
           placeOverlays(tiledImage, dims, item);
@@ -1739,18 +1747,19 @@ function HealdsburgMap() {
         document.removeEventListener("pointermove", onDocMove, true);
         document.removeEventListener("pointerup", onDocUp, true);
         document.removeEventListener("pointercancel", onDocUp, true);
-        const ind = dragging.item.indicator;
-        if (ind) ind.style.cursor = "grab";
+        const handle = dragging.item.img;
+        if (handle) handle.style.cursor = "grab";
         document.body.style.cursor = "";
         dragging = null;
       }
 
       for (const item of state.items) {
+        const handle = item.img;
         if (editMode) {
-          const ind = item.indicator;
-          ind.style.cursor = "grab";
-          ind.style.touchAction = "none";
-          ind.addEventListener("pointerdown", (e) => {
+          handle.style.cursor = "grab";
+          handle.style.touchAction = "none";
+          handle.style.pointerEvents = "auto";
+          handle.addEventListener("pointerdown", (e) => {
             // Once "Lock positions" has been clicked, the panel gets the .locked
             // class — short-circuit drag so users can't accidentally re-edit.
             if (editPanelRef.current?.classList.contains("locked")) return;
@@ -1759,20 +1768,22 @@ function HealdsburgMap() {
             e.preventDefault();
             e.stopPropagation();
             dragging = { item, pointerId: e.pointerId };
-            ind.style.cursor = "grabbing";
+            handle.style.cursor = "grabbing";
             document.body.style.cursor = "grabbing";
             // Listen on document so the drag survives the cursor leaving the
-            // indicator (which it will, because the sprite repositions live).
+            // sprite (which it will, because the sprite repositions live).
             document.addEventListener("pointermove", onDocMove, true);
             document.addEventListener("pointerup", onDocUp, true);
             document.addEventListener("pointercancel", onDocUp, true);
           });
         } else {
+          handle.style.cursor = "pointer";
+          handle.style.pointerEvents = "auto";
           const stop = (e) => e.stopPropagation();
-          item.indicator.addEventListener("pointerdown", stop);
-          item.indicator.addEventListener("mousedown", stop);
-          item.indicator.addEventListener("touchstart", stop, { passive: true });
-          item.indicator.addEventListener("click", (e) => {
+          handle.addEventListener("pointerdown", stop);
+          handle.addEventListener("mousedown", stop);
+          handle.addEventListener("touchstart", stop, { passive: true });
+          handle.addEventListener("click", (e) => {
             e.stopPropagation();
             focusOnItem(item);
           });
@@ -1784,7 +1795,7 @@ function HealdsburgMap() {
       const viewerEl = viewerElRef.current;
       function onViewerClick(e) {
         if (!activeFocusItem) return;
-        if (e.target.closest && e.target.closest(".topic-indicator")) return;
+        if (e.target.closest && e.target.closest(".map-sprite-img")) return;
         clearFocus();
       }
       if (viewerEl) viewerEl.addEventListener("click", onViewerClick);
@@ -1843,7 +1854,7 @@ function HealdsburgMap() {
           <div ref={editPanelRef} className="hb-edit-panel">
             <div className="hb-edit-panel-head">
               <strong>Edit positions</strong>
-              <span>drag any emoji</span>
+              <span>drag any group</span>
             </div>
             <textarea readOnly spellCheck={false} />
             <div className="hb-edit-panel-actions">

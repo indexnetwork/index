@@ -118,27 +118,15 @@
     height: auto;
     object-fit: contain;
     filter: drop-shadow(2px 4px 4px rgba(0, 0, 0, 0.3));
-    pointer-events: none;
-    user-select: none;
-    -webkit-user-drag: none;
-  }
-  .topic-indicator {
-    font-size: 68px;
-    line-height: 1;
-    text-shadow:
-      0 0 12px rgba(255, 245, 220, 1.0),
-      0 0 24px rgba(255, 220, 150, 0.6),
-      0 2px 4px rgba(0, 0, 0, 0.6);
     pointer-events: auto;
     cursor: pointer;
     user-select: none;
-    animation: hb-float 3s ease-in-out infinite;
-    transition: transform 180ms ease;
+    -webkit-user-drag: none;
+    transition: transform 180ms ease, filter 180ms ease;
   }
-  .topic-indicator:hover { transform: scale(1.12); }
-  @keyframes hb-float {
-    0%, 100% { transform: translateY(0); }
-    50%      { transform: translateY(-6px); }
+  .map-sprite-img:hover {
+    transform: scale(1.06);
+    filter: drop-shadow(2px 6px 8px rgba(0, 0, 0, 0.4));
   }
   .story-bubble {
     background: #f5ede0;
