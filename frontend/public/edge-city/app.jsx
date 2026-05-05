@@ -68,7 +68,7 @@ const navStyles = {
     pointerEvents: 'auto',
   },
   brandText: { fontFamily: "'Cormorant Garamond', serif", fontSize: 22, fontWeight: 600, color: 'var(--forest-deep)', letterSpacing: '-0.01em' },
-  brandItalic: { fontStyle: 'italic', fontFamily: "'Instrument Serif', serif", fontWeight: 400, marginLeft: 2 },
+  brandItalic: { fontFamily: "'Inter', sans-serif", fontWeight: 400, marginLeft: 2 },
   pills: {
     display: 'flex', alignItems: 'center', gap: 4,
     background: 'rgba(244, 237, 224, 0.85)',
@@ -199,17 +199,16 @@ const heroStyles = {
     color: 'var(--forest-deep)', marginBottom: 36, textAlign:'center',
   },
   lockupTop: {
-    fontFamily: "'Instrument Serif', 'Cormorant Garamond', serif", fontStyle: 'italic', fontWeight: 400,
+    fontFamily: "'Inter', sans-serif", fontWeight: 400,
     fontSize: 'clamp(40px, 6.5vw, 88px)', letterSpacing: '-0.01em',
   },
   lockupBottom: {
-    fontFamily: "'Instrument Serif', 'Cormorant Garamond', serif", fontStyle: 'italic', fontWeight: 400,
+    fontFamily: "'Inter', sans-serif", fontWeight: 400,
     fontSize: 'clamp(56px, 9vw, 132px)', marginTop: '-0.05em', letterSpacing: '-0.01em',
   },
   tagline: {
-    fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(20px, 2vw, 26px)',
+    fontFamily: "'Inter', sans-serif", fontSize: 'clamp(20px, 2vw, 26px)',
     color: 'var(--ink-soft)', lineHeight: 1.5, fontWeight: 400, marginBottom: 40,
-    fontStyle: 'italic',
   },
   ctaRow: { display:'flex', gap: 16, alignItems:'center', marginBottom: 64, flexWrap:'wrap', justifyContent:'center' },
   cta: {
@@ -330,7 +329,7 @@ const howStyles = {
     fontWeight: 500, lineHeight: 1.08, letterSpacing: '-0.01em', color: 'var(--forest-deep)',
     margin: 0,
   },
-  titleItalic: { fontFamily: "'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400, color: 'var(--forest-mid)' },
+  titleItalic: { fontFamily: "'Inter', sans-serif", fontWeight: 400, color: 'var(--forest-mid)' },
   grid: { display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap: 0 },
   step: {
     padding: '4px 24px 4px 0',
@@ -346,7 +345,7 @@ const howStyles = {
     boxShadow: '0 0 0 4px rgba(255,253,247,0.6)',
   },
   num: {
-    fontFamily:"'Instrument Serif', serif", fontStyle:'italic',
+    fontFamily:"'Inter', sans-serif",
     fontSize: 14, color: 'var(--ink-soft)', letterSpacing:'0.05em',
   },
   stepTitle: {
@@ -356,8 +355,8 @@ const howStyles = {
     margin: 0,
   },
   stepTitleItalic: {
-    fontFamily: "'PPNeueMachina', 'Inter', system-ui, sans-serif",
-    fontStyle: 'normal', fontWeight: 700,
+    fontFamily: "'Inter', system-ui, sans-serif",
+    fontWeight: 700,
     transition: 'color 0.25s ease',
   },
   stepBody: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', margin: 0 },
@@ -367,7 +366,7 @@ const howStyles = {
 const FEATURES = [
   {
     eyebrow: 'Social discovery',
-    title: 'Introductions, made warm',
+    title: 'Engineering serendipity, your agent will find your others',
     body: "Your Claw knows what you're working on, who you'd want to meet, and who is actually around this week. It negotiates with their agent, drafts a one-line frame, and proposes a coffee at a time you'd actually take.",
   },
   {
@@ -565,7 +564,6 @@ const featStyles = {
   },
   intro: {
     fontFamily: "'Inter', sans-serif",
-    fontStyle: 'italic',
     fontSize: 18,
     color: '#29311e',
     lineHeight: 1.55,
@@ -583,8 +581,7 @@ const featStyles = {
     margin: 0,
   },
   featureEyebrow: {
-    fontFamily: "'Instrument Serif', 'Cormorant Garamond', serif",
-    fontStyle: 'italic',
+    fontFamily: "'Inter', sans-serif",
     fontWeight: 400,
     fontSize: 16,
     color: '#29311e',
@@ -969,7 +966,7 @@ const chatStyles = {
     padding:'6px 12px', borderRadius: 999, fontSize: 11, fontWeight: 600, letterSpacing:'0.06em', textTransform:'uppercase',
     flexShrink: 0, alignSelf:'center',
   },
-  clawTail: { fontSize: 13.5, color:'var(--ink-soft)', fontStyle:'italic', borderTop:'1px solid rgba(26,24,20,0.08)', paddingTop: 12 },
+  clawTail: { fontFamily:"'Inter', sans-serif", fontSize: 13.5, color:'var(--ink-soft)', borderTop:'1px solid rgba(26,24,20,0.08)', paddingTop: 12 },
   clawMeta: { fontSize: 11, color:'var(--ink-faded)', fontFamily:'ui-monospace, monospace' },
   dot: { width: 6, height: 6, borderRadius:'50%', background:'rgba(244,237,224,0.7)', animation:'typingBlink 1s ease-in-out infinite' },
 };
@@ -978,7 +975,7 @@ const plazaStyles = {
   wrap: { position:'relative', zIndex: 2, maxWidth: 1100, margin: '0 auto', padding: '80px 32px' },
   head: { display:'flex', flexDirection:'column', gap: 16, marginBottom: 56, maxWidth: 760 },
   title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(40px, 5vw, 64px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
-  italic: { fontFamily:"'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400, color:'var(--forest-mid)' },
+  italic: { fontFamily:"'Inter', sans-serif", fontWeight: 400, color:'var(--forest-mid)' },
   subtitle: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', marginTop: 6 },
   timeline: { display:'flex', flexDirection:'column', gap: 0 },
   row: { display:'grid', gridTemplateColumns:'120px 1fr', gap: 28, alignItems:'flex-start' },
@@ -996,7 +993,7 @@ const plazaStyles = {
   briefBody: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)' },
   briefSection: { display:'flex', flexDirection:'column', gap: 10, paddingTop: 12, borderTop:'1px solid rgba(26,24,20,0.08)' },
   briefSectionHead: { fontFamily:"'Cormorant Garamond', serif", fontSize: 17, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em', marginBottom: 2 },
-  briefSectionLead: { fontSize: 13.5, color:'var(--ink-soft)', lineHeight: 1.55, marginBottom: 4, fontStyle:'italic' },
+  briefSectionLead: { fontFamily:"'Inter', sans-serif", fontSize: 13.5, color:'var(--ink-soft)', lineHeight: 1.55, marginBottom: 4 },
   briefItem: { display:'flex', flexDirection:'column', gap: 4 },
   briefItemTop: { display:'flex', alignItems:'baseline', flexWrap:'wrap', gap: 8 },
   briefName: { fontFamily:"'Cormorant Garamond', serif", fontSize: 16, fontWeight: 700, color:'var(--forest-deep)' },
@@ -1007,7 +1004,7 @@ const plazaStyles = {
   shortRow: { display:'grid', gridTemplateColumns:'28px 1fr', gap: 10, padding:'8px 12px', background:'rgba(201,169,97,0.08)', borderRadius: 10, alignItems:'baseline' },
   shortNum: { fontFamily:"'Cormorant Garamond', serif", fontSize: 18, fontWeight: 700, color:'var(--forest-mid)' },
   shortText: { fontSize: 13.5, color:'var(--ink-soft)', lineHeight: 1.5 },
-  briefFootnote: { fontSize: 12.5, color:'var(--ink-faded)', fontStyle:'italic', lineHeight: 1.5, paddingTop: 14, borderTop:'1px solid rgba(26,24,20,0.06)' },
+  briefFootnote: { fontFamily:"'Inter', sans-serif", fontSize: 12.5, color:'var(--ink-faded)', lineHeight: 1.5, paddingTop: 14, borderTop:'1px solid rgba(26,24,20,0.06)' },
   briefList: { display:'flex', flexDirection:'column', gap: 8, marginTop: 10 },
   briefBullet: { fontFamily:"'Cormorant Garamond', serif", fontWeight: 700, color:'var(--forest-mid)', marginRight: 8 },
   briefMeta: { fontSize: 11, fontFamily:'ui-monospace, monospace', color:'var(--ink-faded)', letterSpacing:'0.08em', textTransform:'uppercase', marginTop: 4 },
@@ -1018,7 +1015,7 @@ const plazaStyles = {
   convoRole: { fontFamily:"'Inter', sans-serif", fontSize: 14, fontWeight: 400, color:'var(--ink-soft)' },
   convoWhy: { fontSize: 14, color:'var(--ink-soft)', lineHeight: 1.55 },
   convoCta: { alignSelf:'flex-start', fontSize: 13, fontWeight: 600, color:'var(--forest-mid)', textDecoration:'none', borderBottom:'1px solid currentColor', paddingBottom: 1, marginTop: 2 },
-  convoMore: { fontSize: 13.5, color:'var(--ink-soft)', lineHeight: 1.5, padding:'14px 0 4px', fontStyle:'italic' },
+  convoMore: { fontFamily:"'Inter', sans-serif", fontSize: 13.5, color:'var(--ink-soft)', lineHeight: 1.5, padding:'14px 0 4px' },
 };
 
 // ============== RESEARCH ==============
@@ -1080,19 +1077,6 @@ function TechPartners() {
       logo: (
         <div style={techStyles.logoRow}>
           <img
-            src="/logo.png"
-            alt="Index Network"
-            style={{ height: 20, width: 'auto', objectFit: 'contain' }}
-          />
-        </div>
-      ),
-      sub: 'Discovery protocol',
-      role: 'Agent-to-agent matching and negotiation — how the plaza finds signal in 500 minds.',
-    },
-    {
-      logo: (
-        <div style={techStyles.logoRow}>
-          <img
             src="/edge-city/geo-logo.png"
             alt="Geo"
             style={{ width: 36, height: 36, objectFit: 'contain' }}
@@ -1107,8 +1091,21 @@ function TechPartners() {
           </svg>
         </div>
       ),
-      sub: 'Yaniv Tal',
+      sub: 'Community knowledge graph',
       role: 'Community knowledge graph — the shared memory the agents read and write into.',
+    },
+    {
+      logo: (
+        <div style={techStyles.logoRow}>
+          <img
+            src="/logo.png"
+            alt="Index Network"
+            style={{ height: 20, width: 'auto', objectFit: 'contain' }}
+          />
+        </div>
+      ),
+      sub: 'Discovery protocol',
+      role: 'Agent-to-agent matching and negotiation — how the plaza finds signal in 500 minds.',
     },
     {
       logo: (
@@ -1151,7 +1148,7 @@ const techStyles = {
   wrap: { position:'relative', zIndex: 2, maxWidth: 1280, margin:'0 auto', padding: '100px 32px 60px' },
   head: { display:'flex', flexDirection:'column', gap: 14, marginBottom: 40, maxWidth: 760 },
   title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(36px, 4.4vw, 54px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
-  italic: { fontFamily:"'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400, color:'var(--forest-mid)' },
+  italic: { fontFamily:"'Inter', sans-serif", fontWeight: 400, color:'var(--forest-mid)' },
   body: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', maxWidth: 640, marginTop: 4 },
   grid: { display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap: 16 },
   card: { background:'rgba(255,253,247,0.85)', border:'1px solid rgba(26,24,20,0.1)', borderRadius: 18, padding:'28px 28px 32px', display:'flex', flexDirection:'column', gap: 18, minHeight: 200 },
@@ -1172,7 +1169,7 @@ const researchStyles = {
   inner: { maxWidth: 1280, margin:'0 auto', padding:'64px 32px' },
   head: { maxWidth: 820, marginBottom: 32 },
   title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(32px, 3.6vw, 44px)', fontWeight: 600, lineHeight: 1.08, letterSpacing:'-0.02em', color:'var(--cream)', marginTop: 12 },
-  italic: { fontFamily:"'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400, color:'#c5d1ae' },
+  italic: { fontFamily:"'Inter', sans-serif", fontWeight: 400, color:'#c5d1ae' },
   body: { fontSize: 18, lineHeight: 1.55, color:'rgba(244,237,224,0.78)', marginTop: 12, maxWidth: 680 },
   grid: { display:'grid', gridTemplateColumns:'1.4fr 1fr', gap: 20, marginBottom: 32 },
   bigCard: { background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius: 18, padding:'24px 28px' },
@@ -1273,7 +1270,7 @@ const claimStyles = {
   },
   left: { padding: '56px 56px 48px', display:'flex', flexDirection:'column', gap: 20 },
   title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(40px, 4.5vw, 60px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
-  italic: { fontFamily:"'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400 },
+  italic: { fontFamily:"'Inter', sans-serif", fontWeight: 400 },
   body: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', maxWidth: 520 },
   form: { display:'flex', gap: 8, marginTop: 8, padding: 6, background:'#fff', border:'1px solid rgba(26,24,20,0.12)', borderRadius: 999, maxWidth: 520 },
   input: { flex:1, border:'none', outline:'none', padding:'12px 18px', fontSize: 15, color:'var(--ink)', background:'transparent', fontFamily:'inherit' },
@@ -1297,7 +1294,7 @@ function Footer() {
         <div style={footStyles.brandCol}>
           <div style={{display:'flex', alignItems:'center', gap: 10, marginBottom: 16}}>
             <ClawMark size={28} color="var(--cream)" />
-            <span style={{fontFamily:"'Cormorant Garamond', serif", fontSize: 26, fontWeight: 600, color:'var(--cream)'}}>Edge<span style={{fontStyle:'italic'}}>Claw</span></span>
+            <span style={{fontFamily:"'Cormorant Garamond', serif", fontSize: 26, fontWeight: 600, color:'var(--cream)'}}>Edge<span style={{fontFamily:"'Inter', sans-serif"}}>Claw</span></span>
           </div>
           <p style={{fontSize: 13.5, lineHeight: 1.6, color:'rgba(244,237,224,0.65)', maxWidth: 320}}>
             A month-long live experiment in human-agent coordination, run inside Edge Esmeralda 2026.
