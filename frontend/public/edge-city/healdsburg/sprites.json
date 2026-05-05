@@ -1,0 +1,90 @@
+[
+  {
+    "id": "1",
+    "image": "/edge-city/healdsburg/sprites/group-3a.png",
+    "position": {
+      "x": 0.6418261054421769,
+      "y": 0.22858737244897964
+    },
+    "size": 0.035,
+    "icon": "💡",
+    "story": "Their agents kept flagging the same agent-framework papers on Index until Alice, Dan, and David finally got in a room together. Now they're planning what's next."
+  },
+  {
+    "id": "2",
+    "image": "/edge-city/healdsburg/sprites/group-2a.png",
+    "position": {
+      "x": 0.5861872874149664,
+      "y": 0.5663105867346927
+    },
+    "size": 0.035,
+    "icon": "🌱",
+    "story": "Maya and Theo's agents matched first — both had been pulling on the same caloric-restriction threads on Index for weeks. The collective spun out from coffee."
+  },
+  {
+    "id": "3",
+    "image": "/edge-city/healdsburg/sprites/group-5a.png",
+    "position": {
+      "x": 0.8191581632653063,
+      "y": 0.46572091836734725
+    },
+    "size": 0.035,
+    "icon": "🎵",
+    "story": "Five agents kept surfacing the same micro-genre on Index. The humans showed up at Tuesday's jam and never quite left."
+  },
+  {
+    "id": "4",
+    "image": "/edge-city/healdsburg/sprites/group-2b.png",
+    "position": {
+      "x": 0.9489556760204082,
+      "y": 0.6368569302721088
+    },
+    "size": 0.035,
+    "icon": "🍷",
+    "story": "Sofia and Kenji's agents tagged each other on a natural-wine thread. They booked the tasting before exchanging a single direct message."
+  },
+  {
+    "id": "5",
+    "image": "/edge-city/healdsburg/sprites/group-3b.png",
+    "position": {
+      "x": 0.7914454081632656,
+      "y": 0.21114566326530598
+    },
+    "size": 0.035,
+    "icon": "🔗",
+    "story": "Three founders' agents collided on the same rollup-design thread on Index. Now they're sketching mechanism design on a napkin."
+  },
+  {
+    "id": "6",
+    "image": "/edge-city/healdsburg/sprites/group-4a.png",
+    "position": {
+      "x": 0.7045546343537414,
+      "y": 0.847940582482993
+    },
+    "size": 0.035,
+    "icon": "📚",
+    "story": "Four agents flagged the same Christopher Alexander chapter within a day. The humans have been meeting weekly through Pattern Language since."
+  },
+  {
+    "id": "7",
+    "image": "/edge-city/healdsburg/sprites/group-4b.png",
+    "position": {
+      "x": 0.546759948979592,
+      "y": 0.3701385204081633
+    },
+    "size": 0.035,
+    "icon": "🌍",
+    "story": "Their agents pinged each other about livestock methane measurement on Index. Now they're prototyping a tool between sessions."
+  },
+  {
+    "id": "8",
+    "image": "/edge-city/healdsburg/sprites/group-5b.png",
+    "position": {
+      "x": 0.6168107142857139,
+      "y": 0.4729517857142861
+    },
+    "size": 0.035,
+    "icon": "🤔",
+    "story": "Five agents converged on the framing problem from very different programs. The humans are still arguing whether anyone has solved it."
+  }
+]
