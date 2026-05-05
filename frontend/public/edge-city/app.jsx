@@ -322,8 +322,8 @@ const howStyles = {
   },
   headLeft: { display:'flex', flexDirection:'column', gap: 12, maxWidth: 620 },
   headSub: {
-    fontSize: 14, lineHeight: 1.55, color: 'var(--ink-soft)',
-    maxWidth: 320, margin: 0, paddingBottom: 4,
+    fontSize: 18, lineHeight: 1.55, color: 'var(--ink-soft)',
+    maxWidth: 380, margin: 0, paddingBottom: 4,
   },
   title: {
     fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(28px, 3.2vw, 42px)',
@@ -350,73 +350,70 @@ const howStyles = {
     fontSize: 14, color: 'var(--ink-soft)', letterSpacing:'0.05em',
   },
   stepTitle: {
-    fontFamily:"'Cormorant Garamond', serif", fontSize: 22, fontWeight: 500,
-    color:'var(--forest-deep)', letterSpacing:'-0.01em', lineHeight: 1.2,
+    fontFamily: "'PPNeueMachina', 'Inter', system-ui, sans-serif",
+    fontSize: 24, fontWeight: 700,
+    color: '#29311e', letterSpacing: '-0.01em', lineHeight: 1.2,
     margin: 0,
   },
   stepTitleItalic: {
-    fontFamily:"'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400,
+    fontFamily: "'PPNeueMachina', 'Inter', system-ui, sans-serif",
+    fontStyle: 'normal', fontWeight: 700,
     transition: 'color 0.25s ease',
   },
-  stepBody: { fontSize: 13.5, lineHeight: 1.55, color:'var(--ink-soft)', margin: 0, maxWidth: 230 },
+  stepBody: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', margin: 0 },
 };
 
 // ============== FEATURES ==============
+const FEATURES = [
+  {
+    eyebrow: 'Social discovery',
+    title: 'Introductions, made warm',
+    body: "Your Claw knows what you're working on, who you'd want to meet, and who is actually around this week. It negotiates with their agent, drafts a one-line frame, and proposes a coffee at a time you'd actually take.",
+  },
+  {
+    eyebrow: 'Ask anything',
+    title: 'Know the village inside-out',
+    body: 'Sessions, residents, venues, side-quests, the bus from SFO — your Claw read every page of Edge Esmeralda before you landed. Ask in plain words; get the bit you needed.',
+  },
+  {
+    eyebrow: 'Plaza',
+    title: '500 agents, one shared space',
+    body: "A persistent digital plaza where every resident's agent coexists for 28 days. Conventions form. Conversations spawn. You watch.",
+  },
+  {
+    eyebrow: 'Governance',
+    title: "Show up to decisions you'd otherwise miss",
+    body: "Programming priorities, capital allocation, deliberation on village-wide questions. Your agent summarizes, surfaces what you'd care about, drafts your position, and votes only with your sign-off.",
+  },
+];
+
 function Features() {
   return (
     <section id="features" style={featStyles.wrap} data-screen-label="features">
-      <div style={featStyles.head}>
-        <span className="eyebrow" style={{color:'var(--forest-mid)'}}>What it does</span>
-        <h2 className="section-title">Four jobs, running in parallel</h2>
-      </div>
-
       <div style={featStyles.grid}>
-        <FeatureCard
-          big
-          eyebrow="Social discovery"
-          title="Introductions, made warm"
-          body="Your Claw knows what you're working on, who you'd want to meet, and who is actually around this week. It negotiates with their agent, drafts a one-line frame, and proposes a coffee at a time you'd actually take."
-          visual={<IntroVisual />}
-        />
-        <FeatureCard
-          eyebrow="Ask anything"
-          title="Know the village inside-out"
-          body="Sessions, residents, venues, side-quests, the bus from SFO — your Claw read every page of Edge Esmeralda before you landed. Ask in plain words; get the bit you needed."
-          visual={<ScheduleVisual />}
-        />
-        <FeatureCard
-          eyebrow="Plaza"
-          title="500 agents, one shared space"
-          body="A persistent digital plaza where every resident's agent coexists for 28 days. Conventions form. Conversations spawn. You watch."
-          visual={<PlazaVisual />}
-        />
-        <FeatureCard
-          big
-          eyebrow="Governance"
-          title="Show up to decisions you'd otherwise miss"
-          body="Programming priorities, capital allocation, deliberation on village-wide questions. Your agent summarizes, surfaces what you'd care about, drafts your position, and votes only with your sign-off."
-          visual={<GovVisual />}
-        />
+        <div style={featStyles.cell}>
+          <h2 className="section-title">Four jobs, running in parallel</h2>
+          <p style={featStyles.intro}>
+            Your Claw works for you in four parallel modes — discovering people, answering questions,
+            joining the plaza, and standing in for you when decisions get made.
+          </p>
+        </div>
+        {FEATURES.map((it, i) => (
+          <div key={i} style={featStyles.cell}>
+            <h3 style={featStyles.featureTitle}>{it.title}</h3>
+            <p style={featStyles.featureEyebrow}>{it.eyebrow}</p>
+            <p style={featStyles.featureBody}>{it.body}</p>
+          </div>
+        ))}
+        <div style={{...featStyles.cell, ...featStyles.cellImage}}>
+          <img
+            src="/edge-city/village-island.png"
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        </div>
       </div>
     </section>
-  );
-}
-
-function FeatureCard({ eyebrow, title, body, visual, big }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <div
-      style={{...featStyles.card, ...(big ? featStyles.cardBig : {}), ...(hover ? featStyles.cardHover : {})}}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      <div style={featStyles.visualSlot}>{visual}</div>
-      <div style={featStyles.cardContent}>
-        <span className="eyebrow" style={{color:'var(--ink-faded)'}}>{eyebrow}</span>
-        <h3 style={featStyles.featureTitle}>{title}</h3>
-        <p style={featStyles.featureBody}>{body}</p>
-      </div>
-    </div>
   );
 }
 
@@ -549,22 +546,64 @@ function GovVisual() {
 
 const featStyles = {
   wrap: { position:'relative', zIndex:2, maxWidth: 1280, margin:'0 auto', padding: '80px 32px' },
-  head: { display:'flex', flexDirection:'column', gap: 18, marginBottom: 48, maxWidth: 800 },
-  title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(40px, 5vw, 64px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
-  titleItalic: { fontFamily:"'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400, color:'var(--forest-mid)' },
-  grid: { display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap: 20, gridAutoRows: '420px' },
-  card: {
-    background:'rgba(255,253,247,0.78)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)',
-    border:'1px solid rgba(26,24,20,0.1)', borderRadius: 24,
-    overflow:'hidden', display:'flex', flexDirection:'column',
-    transition:'all 0.3s ease',
+  // 1px gap on a dark background paints the dividers between cells; outer
+  // border closes the frame on the right and bottom edges.
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '1px',
+    background: '#29311e',
+    border: '1px solid #29311e',
   },
-  cardBig: { gridColumn: 'span 2' },
-  cardHover: { transform:'translateY(-4px)', boxShadow:'0 24px 48px rgba(15,26,18,0.12)' },
-  visualSlot: { flex:1, background: 'linear-gradient(180deg, rgba(244,237,224,0.6), rgba(232,238,240,0.4))', borderBottom: '1px solid rgba(26,24,20,0.08)', position:'relative', overflow:'hidden' },
-  cardContent: { padding: '22px 26px 28px', display:'flex', flexDirection:'column', gap: 8 },
-  featureTitle: { fontFamily:"'Cormorant Garamond', serif", fontSize: 24, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em' },
-  featureBody: { fontSize: 14, lineHeight: 1.55, color:'var(--ink-soft)' },
+  cell: {
+    background: 'var(--cream-soft)',
+    padding: 'clamp(28px, 3.4vw, 48px)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+    minHeight: 280,
+  },
+  intro: {
+    fontFamily: "'Inter', sans-serif",
+    fontStyle: 'italic',
+    fontSize: 18,
+    color: '#29311e',
+    lineHeight: 1.55,
+    margin: 0,
+    maxWidth: 480,
+    marginTop: 8,
+  },
+  featureTitle: {
+    fontFamily: "'PPNeueMachina', 'Inter', system-ui, sans-serif",
+    fontWeight: 700,
+    fontSize: 'clamp(22px, 2.4vw, 32px)',
+    color: '#29311e',
+    letterSpacing: '-0.01em',
+    lineHeight: 1.1,
+    margin: 0,
+  },
+  featureEyebrow: {
+    fontFamily: "'Instrument Serif', 'Cormorant Garamond', serif",
+    fontStyle: 'italic',
+    fontWeight: 400,
+    fontSize: 16,
+    color: '#29311e',
+    margin: 0,
+    opacity: 0.8,
+  },
+  featureBody: {
+    fontFamily: "'Inter', sans-serif",
+    fontSize: 18,
+    lineHeight: 1.55,
+    color: '#29311e',
+    margin: 0,
+    marginTop: 4,
+  },
+  cellImage: {
+    padding: 0,
+    overflow: 'hidden',
+    minHeight: 280,
+  },
 };
 
 // ============== A DAY WITH YOUR CLAW ==============
@@ -616,23 +655,7 @@ function PlazaSection() {
               </div>
             </div>
 
-            <div style={plazaStyles.briefSection}>
-              <div style={plazaStyles.briefSectionHead}>Today's short list</div>
-              <div style={plazaStyles.shortList}>
-                {[
-                  '1. Send the Maya opportunity — overlap on memory',
-                  "2. Show up to Kai's 3pm — adjacent problem",
-                  '3. Lunch with Priya — ownership × discovery',
-                ].map((s, i) => (
-                  <div key={i} style={plazaStyles.shortRow}>
-                    <span style={plazaStyles.shortNum}>{s.split('.')[0]}</span>
-                    <span style={plazaStyles.shortText}>{s.replace(/^\d+\.\s*/, '')}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={plazaStyles.briefMeta}>delivered to chat · voice · email</div>
+            <div style={plazaStyles.briefMeta}>delivered to telegram</div>
           </div>
         </TimeBlock>
 
@@ -941,7 +964,7 @@ const plazaStyles = {
   head: { display:'flex', flexDirection:'column', gap: 16, marginBottom: 56, maxWidth: 760 },
   title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(40px, 5vw, 64px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
   italic: { fontFamily:"'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400, color:'var(--forest-mid)' },
-  subtitle: { fontSize: 17, lineHeight: 1.55, color:'var(--ink-soft)', marginTop: 6 },
+  subtitle: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', marginTop: 6 },
   timeline: { display:'flex', flexDirection:'column', gap: 0 },
   row: { display:'grid', gridTemplateColumns:'120px 1fr', gap: 28, alignItems:'flex-start' },
   timeCol: { position:'relative', display:'flex', flexDirection:'column', alignItems:'center', paddingTop: 4, minHeight: '100%', alignSelf:'stretch' },
@@ -955,7 +978,7 @@ const plazaStyles = {
   tag: { fontSize: 10, fontWeight: 700, letterSpacing:'0.16em', textTransform:'uppercase', padding:'4px 10px', borderRadius: 999, border:'1px solid', flexShrink: 0, alignSelf:'center' },
   brief: { background:'rgba(255,253,247,0.78)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', border:'1px solid rgba(26,24,20,0.1)', borderRadius: 18, padding:'22px 26px 20px', display:'flex', flexDirection:'column', gap: 14 },
   briefSalut: { fontFamily:"'Cormorant Garamond', serif", fontSize: 22, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em' },
-  briefBody: { fontSize: 14, lineHeight: 1.55, color:'var(--ink-soft)' },
+  briefBody: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)' },
   briefSection: { display:'flex', flexDirection:'column', gap: 10, paddingTop: 12, borderTop:'1px solid rgba(26,24,20,0.08)' },
   briefSectionHead: { fontFamily:"'Cormorant Garamond', serif", fontSize: 17, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em', marginBottom: 2 },
   briefSectionLead: { fontSize: 13.5, color:'var(--ink-soft)', lineHeight: 1.55, marginBottom: 4, fontStyle:'italic' },
@@ -985,7 +1008,7 @@ function Research() {
       <div style={researchStyles.inner}>
         <div style={researchStyles.head}>
           <span className="eyebrow" style={{color:'rgba(244,237,224,0.65)'}}>Your agent is also part of a research</span>
-          <h2 className="section-title">The largest live experiment in human–AI collective intelligence, run to date.</h2>
+          <h2 className="section-title" style={{color: 'var(--cream)'}}>The largest live experiment in human–AI collective intelligence, run to date.</h2>
           <p style={researchStyles.body}>
             EE26 is a longitudinal field study with pre-registered hypotheses and open outputs. Claiming your Claw contributes anonymized interaction data to a public dataset the field needs.
           </p>
@@ -1033,9 +1056,54 @@ function Research() {
 // ============== TECH PARTNERS ==============
 function TechPartners() {
   const partners = [
-    { name:'Geo', sub:'Yaniv Tal', role:'Community knowledge graph — the shared memory the agents read and write into.' },
-    { name:'InstaClaw.io', sub:'OpenClaw provisioning', role:'A persistent agent instance, configured and running, for every resident on day one.' },
-    { name:'Index Network', sub:'Discovery protocol', role:'Agent-to-agent matching and negotiation — how the plaza finds signal in 500 minds.' },
+    {
+      logo: (
+        <div style={techStyles.logoRow}>
+          <img
+            src="/edge-city/geo-logo.png"
+            alt="Geo"
+            style={{ width: 36, height: 36, objectFit: 'contain' }}
+          />
+          <svg
+            viewBox="14 121 62 24"
+            aria-label="GEO"
+            style={{ height: 22, width: 'auto', flexShrink: 0, color: 'var(--forest-deep)' }}
+            fill="currentColor"
+          >
+            <path d="M 75.578 133.272 C 75.578 139.779 71.311 144.543 65.231 144.543 C 59.151 144.543 54.919 139.779 54.919 133.272 C 54.919 126.729 59.151 122 65.231 122 C 71.311 122 75.578 126.729 75.578 133.272 Z M 70.991 133.272 C 70.991 129.005 68.716 126.054 65.231 126.054 C 61.781 126.054 59.541 129.005 59.541 133.272 C 59.541 137.539 61.781 140.49 65.231 140.49 C 68.716 140.49 70.991 137.539 70.991 133.272 Z M 37.652 122.355 L 52.479 122.355 L 52.479 126.338 L 42.132 126.338 L 42.132 131.103 L 51.519 131.103 L 51.519 134.978 L 42.132 134.978 L 42.132 140.17 L 52.479 140.17 L 52.479 144.188 L 37.652 144.188 Z M 30.075 136.365 L 25.915 136.365 L 25.915 132.738 L 34.519 132.738 L 34.519 134.658 C 34.519 140.703 30.537 144.543 25.025 144.543 C 18.945 144.543 14.5 139.957 14.5 133.272 C 14.5 126.587 18.98 122 24.919 122 C 30.181 122 33.346 125.022 34.164 129.396 L 29.577 129.396 C 28.794 127.334 27.443 126.054 24.919 126.054 C 21.327 126.054 19.123 129.076 19.123 133.272 C 19.123 137.503 21.363 140.525 25.025 140.525 C 27.835 140.525 29.577 138.854 30.075 136.365 Z" />
+          </svg>
+        </div>
+      ),
+      sub: 'Yaniv Tal',
+      role: 'Community knowledge graph — the shared memory the agents read and write into.',
+    },
+    {
+      logo: (
+        <div style={techStyles.logoRow}>
+          <img
+            src="/edge-city/instaclaw-logo.png"
+            alt="InstaClaw"
+            style={{ width: 36, height: 36, imageRendering: 'pixelated', objectFit: 'contain' }}
+          />
+          <span style={techStyles.wordmarkSerif}>InstaClaw</span>
+        </div>
+      ),
+      sub: 'OpenClaw provisioning',
+      role: 'A persistent agent instance, configured and running, for every resident on day one.',
+    },
+    {
+      logo: (
+        <div style={techStyles.logoRow}>
+          <img
+            src="/logo.png"
+            alt="Index Network"
+            style={{ height: 28, width: 'auto', objectFit: 'contain' }}
+          />
+        </div>
+      ),
+      sub: 'Discovery protocol',
+      role: 'Agent-to-agent matching and negotiation — how the plaza finds signal in 500 minds.',
+    },
   ];
   return (
     <section style={techStyles.wrap} data-screen-label="tech-partners">
@@ -1048,7 +1116,7 @@ function TechPartners() {
         {partners.map((p, i) => (
           <div key={i} style={techStyles.card}>
             <div style={techStyles.cardHead}>
-              <div style={techStyles.cardName}>{p.name}</div>
+              {p.logo}
               <div style={techStyles.cardSub}>{p.sub}</div>
             </div>
             <div style={techStyles.cardRole}>{p.role}</div>
@@ -1064,11 +1132,17 @@ const techStyles = {
   head: { display:'flex', flexDirection:'column', gap: 14, marginBottom: 40, maxWidth: 760 },
   title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(36px, 4.4vw, 54px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
   italic: { fontFamily:"'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400, color:'var(--forest-mid)' },
-  body: { fontSize: 16, lineHeight: 1.55, color:'var(--ink-soft)', maxWidth: 640, marginTop: 4 },
+  body: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', maxWidth: 640, marginTop: 4 },
   grid: { display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap: 16 },
   card: { background:'rgba(255,253,247,0.85)', border:'1px solid rgba(26,24,20,0.1)', borderRadius: 18, padding:'28px 28px 32px', display:'flex', flexDirection:'column', gap: 18, minHeight: 200 },
-  cardHead: { display:'flex', flexDirection:'column', gap: 4, paddingBottom: 16, borderBottom:'1px solid rgba(26,24,20,0.08)' },
-  cardName: { fontFamily:"'Cormorant Garamond', serif", fontSize: 30, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em', lineHeight: 1 },
+  cardHead: { display:'flex', flexDirection:'column', gap: 10, paddingBottom: 16, borderBottom:'1px solid rgba(26,24,20,0.08)', minHeight: 56, justifyContent:'center' },
+  logoRow: { display:'flex', alignItems:'center', gap: 10, height: 36 },
+  wordmarkSerif: {
+    fontFamily: "'Instrument Serif', 'Cormorant Garamond', serif",
+    fontStyle: 'normal', fontWeight: 400,
+    fontSize: 30, lineHeight: 1, letterSpacing: '-0.01em',
+    color: 'var(--forest-deep)',
+  },
   cardSub: { fontSize: 12, fontFamily:'ui-monospace, monospace', color:'var(--ink-faded)', letterSpacing:'0.04em' },
   cardRole: { fontSize: 14.5, lineHeight: 1.55, color:'var(--ink-soft)' },
 };
@@ -1079,7 +1153,7 @@ const researchStyles = {
   head: { maxWidth: 820, marginBottom: 32 },
   title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(32px, 3.6vw, 44px)', fontWeight: 600, lineHeight: 1.08, letterSpacing:'-0.02em', color:'var(--cream)', marginTop: 12 },
   italic: { fontFamily:"'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400, color:'#c5d1ae' },
-  body: { fontSize: 15.5, lineHeight: 1.55, color:'rgba(244,237,224,0.78)', marginTop: 12, maxWidth: 680 },
+  body: { fontSize: 18, lineHeight: 1.55, color:'rgba(244,237,224,0.78)', marginTop: 12, maxWidth: 680 },
   grid: { display:'grid', gridTemplateColumns:'1.4fr 1fr', gap: 20, marginBottom: 32 },
   bigCard: { background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius: 18, padding:'24px 28px' },
   bigEyebrow: { fontSize: 11, fontWeight: 700, letterSpacing:'0.18em', textTransform:'uppercase', color:'#c5d1ae' },
@@ -1180,7 +1254,7 @@ const claimStyles = {
   left: { padding: '56px 56px 48px', display:'flex', flexDirection:'column', gap: 20 },
   title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(40px, 4.5vw, 60px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
   italic: { fontFamily:"'Instrument Serif', serif", fontStyle:'italic', fontWeight: 400 },
-  body: { fontSize: 16, lineHeight: 1.55, color:'var(--ink-soft)', maxWidth: 480 },
+  body: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', maxWidth: 520 },
   form: { display:'flex', gap: 8, marginTop: 8, padding: 6, background:'#fff', border:'1px solid rgba(26,24,20,0.12)', borderRadius: 999, maxWidth: 520 },
   input: { flex:1, border:'none', outline:'none', padding:'12px 18px', fontSize: 15, color:'var(--ink)', background:'transparent', fontFamily:'inherit' },
   submit: {
@@ -1822,44 +1896,41 @@ function HealdsburgMap() {
 
 // ============== MAP HERO OVERLAY ==============
 function MapHeroOverlay() {
-  const [hover, setHover] = useState(false);
   return (
     <div style={mapHeroStyles.card} data-screen-label="map-hero">
       <div style={mapHeroStyles.eyebrow}>
-        <span style={mapHeroStyles.dot} /> May 30 — June 27, 2026 · Healdsburg, CA
+        May 30 — June 27, 2026 · Healdsburg, CA
       </div>
 
-      <h1 className="section-title" style={{marginBottom: 24}}>
-        You wake up to the right day.
+      <h1 className="section-title" style={mapHeroStyles.title}>
+        Your agent runs the village with you.
       </h1>
 
       <p style={mapHeroStyles.tagline}>
-        Your personal agent for the village. It navigates the schedule,
-        finds you opportunities, and meets the other 500 agents on your behalf.
+        EdgeClaw is your personal agent for Edge Esmeralda 2026. It navigates the
+        schedule, finds you opportunities, and meets the other 500 agents on your behalf.
       </p>
 
-      <div style={mapHeroStyles.ctaRow}>
-        <button
-          style={{...mapHeroStyles.cta, ...(hover ? mapHeroStyles.ctaHover : {})}}
-          onMouseEnter={() => setHover(true)}
-          onMouseLeave={() => setHover(false)}
-          onClick={() => document.getElementById('claim')?.scrollIntoView({behavior:'smooth'})}
-        >
-          <span>Meet your EdgeClaw agent</span>
-          <span style={mapHeroStyles.ctaArrow}>→</span>
-        </button>
-        <a href="#how" style={mapHeroStyles.ghostCta}>Read the brief</a>
-      </div>
-
-      <div style={mapHeroStyles.statline}>
-        <Stat n="500+" label="residents" />
-        <Stat n="28" label="days" />
-        <Stat n="1:1" label="agent / human" />
-        <Stat n="open" label="research" />
-      </div>
+      <a
+        href="#claim"
+        style={mapHeroStyles.cta}
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById('claim')?.scrollIntoView({behavior:'smooth'});
+        }}
+      >
+        <span style={mapHeroStyles.ctaLabel}>Meet your EdgeClaw agent</span>
+        <span style={mapHeroStyles.ctaCircle} aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 7h7M7 3l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </span>
+      </a>
     </div>
   );
 }
+
+const HERO_INK = '#29311e';
 
 const mapHeroStyles = {
   card: {
@@ -1867,76 +1938,66 @@ const mapHeroStyles = {
     left: 'clamp(20px, 4vw, 56px)',
     top: '50%',
     transform: 'translateY(-50%)',
-    width: 'min(560px, calc(100vw - 40px))',
-    padding: 'clamp(24px, 3vw, 36px) clamp(28px, 3.2vw, 40px) clamp(22px, 2.6vw, 30px)',
-    background: 'rgba(244, 237, 224, 0.62)',
-    backdropFilter: 'blur(22px) saturate(1.15)',
-    WebkitBackdropFilter: 'blur(22px) saturate(1.15)',
-    border: '1px solid rgba(255, 255, 255, 0.4)',
-    borderRadius: 28,
-    boxShadow: '0 24px 56px rgba(15, 26, 18, 0.32), inset 0 1px 0 rgba(255,255,255,0.55)',
+    width: 'min(640px, calc(100vw - 40px))',
+    padding: 'clamp(36px, 4vw, 56px) clamp(36px, 4vw, 56px) clamp(36px, 4vw, 48px)',
+    // very light cream tint — the village reads strongly through the glass
+    background: 'linear-gradient(135deg, rgba(244, 237, 224, 0.14) 0%, rgba(244, 237, 224, 0.08) 100%)',
+    backdropFilter: 'blur(8px) saturate(1.15)',
+    WebkitBackdropFilter: 'blur(8px) saturate(1.15)',
+    border: '1px solid rgba(255, 255, 255, 0.32)',
+    borderRadius: 32,
+    boxShadow: '0 24px 60px rgba(15, 26, 18, 0.14), inset 0 1px 0 rgba(255,255,255,0.4)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-start',
     textAlign: 'left',
     zIndex: 10,
     pointerEvents: 'auto',
+    color: HERO_INK,
   },
   eyebrow: {
-    display:'inline-flex', alignItems:'center', gap: 10,
-    fontSize: 11, fontWeight: 600, letterSpacing: '0.18em', textTransform: 'uppercase',
-    color: 'var(--forest-deep)', marginBottom: 22,
-    padding: '7px 14px', background:'rgba(255,255,255,0.55)', borderRadius: 999,
-    border: '1px solid rgba(26,24,20,0.1)',
+    fontFamily: "'Inter', sans-serif",
+    fontSize: 13, fontWeight: 500, letterSpacing: '0.04em',
+    color: HERO_INK,
+    opacity: 0.78,
+    marginBottom: 24,
   },
-  dot: { width: 6, height: 6, borderRadius:'50%', background:'#7a9168' },
-  lockup: {
-    display:'flex', flexDirection: 'column', alignItems:'flex-start', lineHeight: 0.95,
-    color: 'var(--forest-deep)', marginBottom: 20, textAlign:'left',
-  },
-  lockupTop: {
-    fontFamily: "'Instrument Serif', 'Cormorant Garamond', serif", fontStyle: 'italic', fontWeight: 400,
-    fontSize: 'clamp(28px, 3vw, 44px)', letterSpacing: '-0.01em',
-  },
-  lockupBottom: {
-    fontFamily: "'Instrument Serif', 'Cormorant Garamond', serif", fontStyle: 'italic', fontWeight: 400,
-    fontSize: 'clamp(40px, 5.2vw, 72px)', marginTop: '-0.06em', letterSpacing: '-0.02em',
+  title: {
+    color: HERO_INK,
+    marginBottom: 28,
   },
   tagline: {
-    fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(15px, 1.25vw, 18px)',
-    color: 'var(--ink-soft)', lineHeight: 1.5, fontWeight: 400, marginBottom: 24,
-    fontStyle: 'italic',
-    maxWidth: 460,
-  },
-  ctaRow: {
-    display:'flex', gap: 10, alignItems:'center', marginBottom: 24, flexWrap:'wrap',
+    fontFamily: "'Inter', sans-serif",
+    fontSize: 18,
+    color: HERO_INK,
+    lineHeight: 1.55,
+    fontWeight: 400,
+    marginBottom: 36,
+    maxWidth: 520,
   },
   cta: {
-    display:'inline-flex', alignItems:'center', gap: 10,
-    background: 'var(--forest-deep)', color: 'var(--cream)',
-    padding: '13px 22px', borderRadius: 999,
-    fontSize: 12.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase',
-    transition: 'all 0.25s ease',
-    boxShadow: '0 4px 18px rgba(15,26,18,0.22)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 14,
+    color: HERO_INK,
+    textDecoration: 'none',
+    paddingBottom: 6,
+    borderBottom: `1px solid ${HERO_INK}`,
   },
-  ctaHover: {
-    background: 'var(--forest-mid)',
-    transform: 'translateY(-2px)',
-    boxShadow: '0 8px 26px rgba(15,26,18,0.28)',
+  ctaLabel: {
+    fontFamily: "'Inter', sans-serif",
+    fontSize: 17,
+    fontWeight: 500,
+    letterSpacing: '-0.005em',
   },
-  ctaArrow: { transition: 'transform 0.2s' },
-  ghostCta: {
-    fontSize: 12.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase',
-    color: 'var(--forest-deep)', padding: '13px 14px',
-    borderBottom: '1px solid rgba(15,26,18,0.3)',
-  },
-  statline: {
-    display:'flex', gap: 'clamp(18px, 2.6vw, 32px)',
-    paddingTop: 18,
-    borderTop: '1px solid rgba(26,24,20,0.14)',
-    width: '100%',
-    flexWrap: 'wrap',
-    alignItems: 'flex-end',
+  ctaCircle: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 28, height: 28,
+    borderRadius: '50%',
+    background: HERO_INK,
+    color: '#f4ede0',
   },
 };
 
