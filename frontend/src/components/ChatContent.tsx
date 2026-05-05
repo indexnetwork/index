@@ -29,6 +29,7 @@ import OpportunityCard, {
   type OpportunityCardData,
   OpportunitySkeleton,
 } from "@/components/chat/OpportunityCardInChat";
+import ClarificationCardInChat from "@/components/chat/ClarificationCardInChat";
 import IntentProposalCard, {
   type IntentProposalData,
   IntentProposalSkeleton,
@@ -1776,6 +1777,26 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         );
                       })}
                     </div>
+                  )}
+                {/* Clarification questions surfaced from rejecting counterpart
+                   agents during orchestrator-inline negotiation. After all
+                   questions resolve, auto-send a follow-up message so the
+                   agent re-runs discovery with the now-enriched intent. */}
+                {msg.role === "assistant" &&
+                  msg.pendingClarifications &&
+                  msg.pendingClarifications.length > 0 && (
+                    <ClarificationCardInChat
+                      questions={msg.pendingClarifications}
+                      onAllResolved={(resolved) => {
+                        if (resolved.length === 0) return;
+                        const summary = resolved
+                          .map((r) => `- ${r.question}\n  ${r.answer}`)
+                          .join("\n");
+                        sendMessage(
+                          `I added more details so you can find more matches:\n${summary}`,
+                        ).catch(() => {});
+                      }}
+                    />
                   )}
               </div>
             ))}

@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from "../lib/router/router.decorators";
 import { chatSessionService } from "../services/chat.service";
+import { clarificationService } from "../services/clarification.service";
 import { fileService } from "../services/file.service";
 import { SuggestionGenerator } from '@indexnetwork/protocol';
 import {
@@ -287,6 +288,20 @@ export class ChatController {
                   ...subgraphResults,
                   [event.subgraph]: event.data,
                 };
+              } else if (event.type === "clarification_request") {
+                // Persist so the user can answer later (page reload safe) and
+                // the answer endpoint can look the row up.
+                clarificationService
+                  .persist({
+                    conversationId: sessionId,
+                    userId: user.id,
+                    intentId: event.intentId ?? null,
+                    searchQuery: event.searchQuery ?? null,
+                    questions: event.questions,
+                  })
+                  .catch((err) =>
+                    logger.error("Failed to persist clarifications", { sessionId, error: err }),
+                  );
               } else if (event.type === "debug_meta") {
                 debugMeta = {
                   graph: event.graph,
@@ -435,6 +450,69 @@ export class ChatController {
   async getSessions(req: Request, user: AuthenticatedUser) {
     const sessions = await chatSessionService.getUserSessions(user.id);
     return Response.json({ sessions });
+  }
+
+  /**
+   * List unanswered clarification questions for a chat session.
+   * Used on page reload to re-render any pending card the user hasn't answered yet.
+   */
+  @Post("/session/clarifications")
+  @UseGuards(AuthGuard)
+  async listClarifications(req: Request, user: AuthenticatedUser) {
+    let body: { sessionId?: string };
+    try {
+      body = (await req.json()) as { sessionId?: string };
+    } catch {
+      return Response.json(
+        { error: "Invalid request body. Expected { sessionId: string }" },
+        { status: 400 },
+      );
+    }
+    if (!body.sessionId) {
+      return Response.json({ error: "sessionId is required" }, { status: 400 });
+    }
+    const session = await chatSessionService.getSession(body.sessionId, user.id);
+    if (!session) {
+      return Response.json({ error: "Session not found" }, { status: 404 });
+    }
+    const rows = await clarificationService.listPending(body.sessionId, user.id);
+    return Response.json({ clarifications: rows });
+  }
+
+  /**
+   * Answer or skip a single clarification question.
+   *
+   * On answer: appends Q+A to the source intent payload, regenerates its
+   * embedding, and emits IntentEvents.onUpdated which kicks off rediscovery.
+   * On skip: simply marks the row resolved.
+   */
+  @Post("/session/clarification/answer")
+  @UseGuards(AuthGuard)
+  async answerClarification(req: Request, user: AuthenticatedUser) {
+    let body: { questionId?: string; answer?: string; skip?: boolean };
+    try {
+      body = (await req.json()) as { questionId?: string; answer?: string; skip?: boolean };
+    } catch {
+      return Response.json(
+        { error: "Invalid request body. Expected { questionId: string, answer?: string, skip?: boolean }" },
+        { status: 400 },
+      );
+    }
+    if (!body.questionId) {
+      return Response.json({ error: "questionId is required" }, { status: 400 });
+    }
+
+    const result = await clarificationService.recordAnswer({
+      questionId: body.questionId,
+      userId: user.id,
+      ...(body.answer !== undefined && { answer: body.answer }),
+      ...(body.skip !== undefined && { skip: body.skip }),
+    });
+
+    if (!result.ok) {
+      return Response.json({ error: result.error ?? "Failed" }, { status: result.status });
+    }
+    return Response.json({ ok: true, ...(result.intentId && { intentId: result.intentId }) });
   }
 
   /**

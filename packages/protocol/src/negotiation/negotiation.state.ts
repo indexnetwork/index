@@ -1,42 +1,38 @@
 import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 
+/**
+ * Shared assessment shape. `clarificationQuestion` is populated only when an agent
+ * rejects on missing-but-fillable information — surfaced to the user as a chat card
+ * so they can enrich the source intent and re-run the negotiation.
+ */
+const AssessmentShape = {
+  reasoning: z.string(),
+  suggestedRoles: z.object({
+    ownUser: z.enum(["agent", "patient", "peer"]),
+    otherUser: z.enum(["agent", "patient", "peer"]),
+  }),
+  clarificationQuestion: z.string().nullable().optional(),
+} as const;
+
 /** Zod schema for a single negotiation turn (DataPart payload in A2A message). */
 export const NegotiationTurnSchema = z.object({
   action: z.enum(["propose", "accept", "reject", "counter", "question"]),
-  assessment: z.object({
-    reasoning: z.string(),
-    suggestedRoles: z.object({
-      ownUser: z.enum(["agent", "patient", "peer"]),
-      otherUser: z.enum(["agent", "patient", "peer"]),
-    }),
-  }),
+  assessment: z.object(AssessmentShape),
   message: z.string().nullable().optional(),
 });
 
 /** Restricted turn schema for the system agent (no question action). */
 export const SystemNegotiationTurnSchema = z.object({
   action: z.enum(["propose", "accept", "reject", "counter"]),
-  assessment: z.object({
-    reasoning: z.string(),
-    suggestedRoles: z.object({
-      ownUser: z.enum(["agent", "patient", "peer"]),
-      otherUser: z.enum(["agent", "patient", "peer"]),
-    }),
-  }),
+  assessment: z.object(AssessmentShape),
   message: z.string().nullable().optional(),
 });
 
 /** Turn schema for system agent's final allowed turn (must decide). */
 export const FinalNegotiationTurnSchema = z.object({
   action: z.enum(["accept", "reject"]),
-  assessment: z.object({
-    reasoning: z.string(),
-    suggestedRoles: z.object({
-      ownUser: z.enum(["agent", "patient", "peer"]),
-      otherUser: z.enum(["agent", "patient", "peer"]),
-    }),
-  }),
+  assessment: z.object(AssessmentShape),
   message: z.string().nullable().optional(),
 });
 

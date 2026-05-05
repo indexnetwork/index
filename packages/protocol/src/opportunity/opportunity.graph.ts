@@ -1877,7 +1877,7 @@ export class OpportunityGraphFactory {
             }
           : undefined;
 
-        const acceptedResults = await negotiateCandidates(
+        const fanout = await negotiateCandidates(
           this.negotiationGraph, sourceUser, candidates,
           { networkId: '', prompt: '' }, // base context, overridden per-candidate below
           { maxTurns, traceEmitter: traceEmitter ?? undefined,
@@ -1886,6 +1886,43 @@ export class OpportunityGraphFactory {
             trigger: state.trigger === 'orchestrator' ? 'orchestrator' : 'ambient',
             ...(onCandidateResolved && { onCandidateResolved }) },
         );
+        const acceptedResults = fanout.accepted;
+
+        // Orchestrator-only: surface up to 3 high-relevancy clarifications as a
+        // chat card so the user can enrich their intent and re-run discovery.
+        // Hard rejections (turn-cap, query mismatch) and ambient runs are excluded.
+        const CLARIFICATION_RELEVANCY_FLOOR = 0.7;
+        const CLARIFICATION_MAX = 3;
+        if (state.trigger === 'orchestrator' && fanout.clarifications.length > 0) {
+          const sortedClarifications = fanout.clarifications
+            .map((c) => ({
+              ...c,
+              relevancyScore: c.networkId ? state.indexRelevancyScores[c.networkId] ?? 0 : 0,
+            }))
+            .filter((c) => c.relevancyScore >= CLARIFICATION_RELEVANCY_FLOOR)
+            .sort((a, b) => b.relevancyScore - a.relevancyScore)
+            .slice(0, CLARIFICATION_MAX);
+          if (sortedClarifications.length > 0) {
+            const intentId = state.triggerIntentId ?? null;
+            const searchQuery = state.searchQuery?.trim() ?? null;
+            const emitWide = (event: Record<string, unknown>) =>
+              (traceEmitter as ((e: Record<string, unknown>) => void) | undefined)?.(event);
+            emitWide({
+              type: 'clarification_request',
+              ...(intentId && { intentId }),
+              ...(searchQuery && { searchQuery }),
+              questions: sortedClarifications.map((c) => ({
+                id: crypto.randomUUID(),
+                candidateUserId: c.userId,
+                ...(c.opportunityId && { opportunityId: c.opportunityId }),
+                ...(c.candidateName && { sourceAgentName: c.candidateName }),
+                ...(c.networkId && { networkId: c.networkId }),
+                question: c.question,
+                relevancyScore: c.relevancyScore,
+              })),
+            });
+          }
+        }
 
         // No filtering: every candidate's outcome (accept/reject/stalled) was applied to its
         // opportunity row by the negotiation graph's finalize node via the opportunityId we
@@ -3076,7 +3113,7 @@ export class OpportunityGraphFactory {
           if (prompt) indexContextMap.set(candidate.networkId, prompt);
         }
 
-        const acceptedResults = await negotiateCandidates(
+        const fanoutExisting = await negotiateCandidates(
           this.negotiationGraph, sourceUser, [candidate],
           { networkId: '', prompt: '' },
           {
@@ -3086,6 +3123,7 @@ export class OpportunityGraphFactory {
             trigger: 'ambient',
           },
         );
+        const acceptedResults = fanoutExisting.accepted;
 
         // Send notifications to non-introducer actors if negotiation was accepted
         if (acceptedResults.length > 0 && this.queueNotification) {

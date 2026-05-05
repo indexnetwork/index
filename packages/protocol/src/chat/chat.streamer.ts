@@ -10,6 +10,7 @@ import type {
 import {
   createAgentEndEvent,
   createAgentStartEvent,
+  createClarificationRequestEvent,
   createDebugMetaEvent,
   createErrorEvent,
   createGraphEndEvent,
@@ -252,6 +253,14 @@ export class ChatStreamer {
 
           if (event.type === "agent_end") {
             yield createAgentEndEvent(sessionId, event.name, event.durationMs, event.summary);
+          }
+
+          if (event.type === "clarification_request") {
+            yield createClarificationRequestEvent(sessionId, {
+              ...(event.intentId && { intentId: event.intentId }),
+              ...(event.searchQuery && { searchQuery: event.searchQuery }),
+              questions: event.questions,
+            });
           }
         }
 

@@ -25,6 +25,7 @@ Rules:
 - Focus on concrete intent alignment, not vague overlap.
 - Do NOT reference internal system details like scores, pre-screens, or evaluator outputs.
 - suggestedRoles: "agent" = can help, "patient" = seeks help, "peer" = mutual benefit.
+- assessment.clarificationQuestion: When (and ONLY when) you "reject" because a SPECIFIC piece of information is missing from {userName}'s intent or profile that — if provided — would let you reconsider, populate this field with a single, concrete question phrased directly to {userName} (e.g. "What stage is your company at?" or "Which sectors are you raising for?"). Leave null on accept/counter/propose, on rejections caused by hard mismatches (wrong role, wrong query subject, fundamentally different goals), and when no specific answer would change your mind.
 {finalTurnInstruction}`;
 
 export interface NegotiationAgentInput {

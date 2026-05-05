@@ -129,6 +129,24 @@ export type AgentStreamEvent =
       turnCount: number;
       reasoning?: string;
       agreedRoles?: { ownUser?: string; otherUser?: string };
+    }
+  | {
+      // Emitted from OpportunityGraph.negotiateNode when one or more
+      // high-relevancy candidates rejected with a counterpart-authored
+      // clarification question. Frontend renders these as a paginated card
+      // so the user can enrich the source intent and re-run discovery.
+      type: "clarification_request";
+      intentId?: string;
+      searchQuery?: string;
+      questions: Array<{
+        id: string;
+        candidateUserId: string;
+        opportunityId?: string;
+        networkId?: string;
+        sourceAgentName?: string;
+        question: string;
+        relevancyScore: number;
+      }>;
     };
 
 // ═══════════════════════════════════════════════════════════════════════════════

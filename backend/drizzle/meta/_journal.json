@@ -456,6 +456,13 @@
       "when": 1777992206004,
       "tag": "0064_add_organic_email_unique_index",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1778001050098,
+      "tag": "0065_add_pending_clarifications",
+      "breakpoints": true
     }
   ]
 }

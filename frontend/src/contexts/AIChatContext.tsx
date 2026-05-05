@@ -49,6 +49,25 @@ export interface StreamingDraft {
  */
 export type { OpportunityCardData } from "@/components/chat/OpportunityCardInChat";
 
+/**
+ * One clarification question delivered via the `clarification_request` SSE
+ * event from an orchestrator-inline negotiation. Mirrors the backend's
+ * `ClarificationQuestion` type — keep in sync.
+ */
+export interface PendingClarification {
+  id: string;
+  candidateUserId: string;
+  opportunityId?: string;
+  networkId?: string;
+  sourceAgentName?: string;
+  question: string;
+  relevancyScore?: number;
+  /** Search query that triggered this discovery (optional context for the card header). */
+  searchQuery?: string;
+  /** The intent that will be enriched when the user answers (null if not anchored). */
+  intentId?: string;
+}
+
 export interface ToolCallStep {
   step: string;
   detail?: string;
@@ -120,6 +139,12 @@ interface ChatMessage {
    * cards stay visible after the stream ends.
    */
   streamingDrafts?: StreamingDraft[];
+  /**
+   * Clarification questions surfaced when high-relevancy candidates rejected
+   * on missing-but-fillable info. Rendered as an inline card after the
+   * assistant message; answers update the source intent server-side.
+   */
+  pendingClarifications?: PendingClarification[];
   traceEvents?: TraceEvent[];
 }
 
@@ -645,6 +670,44 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                         if (msg.id !== assistantMessageId) return msg;
                         const streamingDrafts = [...(msg.streamingDrafts || []), draft];
                         return { ...msg, streamingDrafts };
+                      }),
+                    );
+                    break;
+                  }
+                  case "clarification_request": {
+                    // High-relevancy candidates rejected with a counterpart-authored
+                    // question. Attach to the assistant message; the chat UI renders
+                    // a paginated free-text card so the user can enrich the source
+                    // intent and unlock more matches.
+                    const incoming: PendingClarification[] = (event.questions ?? []).map(
+                      (q: {
+                        id: string;
+                        candidateUserId: string;
+                        opportunityId?: string;
+                        networkId?: string;
+                        sourceAgentName?: string;
+                        question: string;
+                        relevancyScore?: number;
+                      }) => ({
+                        id: q.id,
+                        candidateUserId: q.candidateUserId,
+                        ...(q.opportunityId && { opportunityId: q.opportunityId }),
+                        ...(q.networkId && { networkId: q.networkId }),
+                        ...(q.sourceAgentName && { sourceAgentName: q.sourceAgentName }),
+                        question: q.question,
+                        ...(q.relevancyScore !== undefined && { relevancyScore: q.relevancyScore }),
+                        ...(event.searchQuery && { searchQuery: event.searchQuery as string }),
+                        ...(event.intentId && { intentId: event.intentId as string }),
+                      }),
+                    );
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const pendingClarifications = [
+                          ...(msg.pendingClarifications || []),
+                          ...incoming,
+                        ];
+                        return { ...msg, pendingClarifications };
                       }),
                     );
                     break;

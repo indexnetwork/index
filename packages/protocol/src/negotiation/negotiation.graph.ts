@@ -372,6 +372,27 @@ export interface NegotiationResult {
 }
 
 /**
+ * Surfaced when a candidate's negotiation rejects on missing-but-fillable info.
+ * The counterpart agent's verbatim question is shown to the source user as a
+ * chat card; their answer enriches the source intent so the negotiation can
+ * re-run with stronger context.
+ */
+export interface ClarificationCandidate {
+  /** The candidate user (the one the source was being matched against). */
+  userId: string;
+  /** Opportunity row tied to this negotiation, if any (orchestrator path always sets this). */
+  opportunityId?: string;
+  /** The candidate counterpart's display name, when known — used in the card chip. */
+  candidateName?: string;
+  /** Network the negotiation ran on. Used to attach a relevancyScore via state.indexRelevancyScores. */
+  networkId?: string;
+  /** Verbatim question from the rejecting counterpart turn. */
+  question: string;
+  /** Reasoning text from the rejecting turn (for context, not surfaced to user). */
+  reasoning: string;
+}
+
+/**
  * Per-candidate resolution hook — fires as each negotiation settles, before
  * Promise.all aggregates. Used by the orchestrator branch to progressively
  * stream `opportunity_draft_ready` events as each candidate resolves, rather
@@ -384,8 +405,23 @@ export type OnNegotiationResolved = (entry: {
 }) => Promise<void>;
 
 /**
+ * Aggregate result from a multi-candidate negotiation pass.
+ *
+ * @property accepted - Candidates whose negotiation reached an `accept` outcome.
+ * @property clarifications - Candidates whose negotiation rejected with a
+ *   counterpart-authored clarification question. Empty for hard rejections
+ *   (wrong role, query mismatch) and for turn-cap/timeout outcomes. Caller
+ *   filters by relevancy score before surfacing to the user.
+ */
+export interface NegotiationFanoutResult {
+  accepted: NegotiationResult[];
+  clarifications: ClarificationCandidate[];
+}
+
+/**
  * Runs bilateral negotiation for each candidate in parallel.
- * @returns Only candidates that produced an opportunity
+ * @returns Aggregate result with accepted opportunities and any clarification
+ *   questions the rejecting counterparts asked.
  */
 export async function negotiateCandidates(
   negotiationGraph: NegotiationGraphLike,
@@ -400,7 +436,7 @@ export async function negotiateCandidates(
     onCandidateResolved?: OnNegotiationResolved;
     trigger?: "orchestrator" | "ambient";
   },
-): Promise<NegotiationResult[]> {
+): Promise<NegotiationFanoutResult> {
   const { maxTurns, traceEmitter, indexContextOverrides, timeoutMs, onCandidateResolved, trigger } = opts ?? {};
 
   // Local helper to emit events whose shape is wider than the declared
@@ -481,6 +517,33 @@ export async function negotiateCandidates(
             }
           : null;
 
+        // Surface a clarification only when the negotiation rejected (not
+        // accepted, not at turn-cap, not timed-out) AND the rejecting turn
+        // carries a counterpart-authored question. The rejecter is the SECOND
+        // party — the source proposes first, so a final reject is the
+        // candidate's voice; that is whose question we want to relay.
+        let clarification: ClarificationCandidate | null = null;
+        if (!accepted && !outcome?.reason) {
+          const turns: NegotiationTurn[] = (result.messages ?? [])
+            .map((m) => {
+              const dataPart = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === "data");
+              return dataPart?.data as NegotiationTurn | undefined;
+            })
+            .filter((t): t is NegotiationTurn => Boolean(t));
+          const lastTurn = turns[turns.length - 1];
+          const question = lastTurn?.assessment?.clarificationQuestion?.trim();
+          if (lastTurn?.action === "reject" && question) {
+            clarification = {
+              userId: candidate.userId,
+              ...(candidate.opportunityId && { opportunityId: candidate.opportunityId }),
+              ...(candidate.candidateUser.profile?.name && { candidateName: candidate.candidateUser.profile.name }),
+              ...(candidate.networkId && { networkId: candidate.networkId }),
+              question,
+              reasoning: lastTurn.assessment.reasoning ?? "",
+            };
+          }
+        }
+
         if (onCandidateResolved) {
           try {
             await onCandidateResolved({ candidate, accepted });
@@ -495,7 +558,7 @@ export async function negotiateCandidates(
           }
         }
 
-        return accepted;
+        return { accepted, clarification };
       } catch (err) {
         const durationMs = Date.now() - start;
         traceEmitter?.({ type: "agent_end", name: "Negotiating candidate", durationMs, summary: `${candidate.userId}: error` });
@@ -515,12 +578,19 @@ export async function negotiateCandidates(
             // ignore hook failure on error path
           }
         }
-        return null;
+        return { accepted: null, clarification: null };
       }
     }),
   );
 
-  return results.filter((r): r is NegotiationResult => r !== null);
+  return {
+    accepted: results
+      .map((r) => r.accepted)
+      .filter((r): r is NegotiationResult => r !== null),
+    clarifications: results
+      .map((r) => r.clarification)
+      .filter((c): c is ClarificationCandidate => c !== null),
+  };
 }
 
 /**

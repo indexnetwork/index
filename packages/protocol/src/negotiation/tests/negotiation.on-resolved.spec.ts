@@ -99,8 +99,8 @@ describe('negotiateCandidates — onCandidateResolved hook', () => {
       { onCandidateResolved: hook },
     );
 
-    expect(results).toHaveLength(1);
-    expect(results[0]?.userId).toBe('user-a');
+    expect(results.accepted).toHaveLength(1);
+    expect(results.accepted[0]?.userId).toBe('user-a');
 
     const byUser = new Map(received.map((r) => [r.userId, r.acceptedUserId]));
     expect(byUser.get('user-a')).toBe('user-a');
@@ -119,8 +119,8 @@ describe('negotiateCandidates — onCandidateResolved hook', () => {
       { networkId: '', prompt: '' },
     );
 
-    expect(results).toHaveLength(1);
-    expect(results[0]?.userId).toBe('user-a');
+    expect(results.accepted).toHaveLength(1);
+    expect(results.accepted[0]?.userId).toBe('user-a');
   });
 
   it('does not drop the accepted result when the hook throws', async () => {
@@ -140,8 +140,8 @@ describe('negotiateCandidates — onCandidateResolved hook', () => {
       { onCandidateResolved: hook },
     );
 
-    expect(results).toHaveLength(1);
-    expect(results[0]?.userId).toBe('user-a');
+    expect(results.accepted).toHaveLength(1);
+    expect(results.accepted[0]?.userId).toBe('user-a');
   });
 
   it('fires the hook with accepted=null when negotiation invocation throws', async () => {
@@ -167,7 +167,7 @@ describe('negotiateCandidates — onCandidateResolved hook', () => {
       { onCandidateResolved: hook },
     );
 
-    expect(results).toHaveLength(0);
+    expect(results.accepted).toHaveLength(0);
     expect(received).toEqual([{ userId: 'user-a', acceptedUserId: null }]);
   });
 });
