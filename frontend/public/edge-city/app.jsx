@@ -183,7 +183,7 @@ const heroStyles = {
   },
   centerVeil: {
     position: 'absolute', inset: '-10% -20%', zIndex: 1,
-    background: 'radial-gradient(ellipse 50% 45% at 50% 50%, rgba(244,237,224,0.7) 0%, rgba(244,237,224,0.35) 50%, rgba(244,237,224,0) 78%)',
+    background: 'radial-gradient(ellipse 60% 55% at 50% 50%, rgba(244,237,224,0.98) 0%, rgba(244,237,224,0.92) 35%, rgba(244,237,224,0.7) 60%, rgba(244,237,224,0) 85%)',
     pointerEvents: 'none',
   },
   eyebrow: {
@@ -235,7 +235,7 @@ const heroStyles = {
     display:'flex', gap: 56, padding: '20px 40px',
     background: 'rgba(255,255,255,0.4)', borderRadius: 999,
     border: '1px solid rgba(26,24,20,0.08)',
-    backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+    backdropFilter: 'blur(24px) saturate(1.2)', WebkitBackdropFilter: 'blur(24px) saturate(1.2)',
   },
 };
 
@@ -1940,10 +1940,9 @@ const mapHeroStyles = {
     transform: 'translateY(-50%)',
     width: 'min(640px, calc(100vw - 40px))',
     padding: 'clamp(36px, 4vw, 56px) clamp(36px, 4vw, 56px) clamp(36px, 4vw, 48px)',
-    // very light cream tint — the village reads strongly through the glass
-    background: 'linear-gradient(135deg, rgba(244, 237, 224, 0.14) 0%, rgba(244, 237, 224, 0.08) 100%)',
-    backdropFilter: 'blur(8px) saturate(1.15)',
-    WebkitBackdropFilter: 'blur(8px) saturate(1.15)',
+    background: 'linear-gradient(135deg, rgba(244, 237, 224, 0.26) 0%, rgba(244, 237, 224, 0.18) 100%)',
+    backdropFilter: 'blur(10px) saturate(1.18)',
+    WebkitBackdropFilter: 'blur(10px) saturate(1.18)',
     border: '1px solid rgba(255, 255, 255, 0.32)',
     borderRadius: 32,
     boxShadow: '0 24px 60px rgba(15, 26, 18, 0.14), inset 0 1px 0 rgba(255,255,255,0.4)',
