@@ -1077,6 +1077,20 @@ function TechPartners() {
       logo: (
         <div style={techStyles.logoRow}>
           <img
+            src="/edge-city/instaclaw-logo.png"
+            alt="InstaClaw"
+            style={{ width: 36, height: 36, imageRendering: 'pixelated', objectFit: 'contain' }}
+          />
+          <span style={techStyles.wordmarkSerif}>InstaClaw</span>
+        </div>
+      ),
+      sub: 'OpenClaw provisioning',
+      role: 'A persistent agent instance, configured and running, for every resident on day one.',
+    },
+    {
+      logo: (
+        <div style={techStyles.logoRow}>
+          <img
             src="/edge-city/geo-logo.png"
             alt="Geo"
             style={{ width: 36, height: 36, objectFit: 'contain' }}
@@ -1106,20 +1120,6 @@ function TechPartners() {
       ),
       sub: 'Discovery protocol',
       role: 'Agent-to-agent matching and negotiation — how the plaza finds signal in 500 minds.',
-    },
-    {
-      logo: (
-        <div style={techStyles.logoRow}>
-          <img
-            src="/edge-city/instaclaw-logo.png"
-            alt="InstaClaw"
-            style={{ width: 36, height: 36, imageRendering: 'pixelated', objectFit: 'contain' }}
-          />
-          <span style={techStyles.wordmarkSerif}>InstaClaw</span>
-        </div>
-      ),
-      sub: 'OpenClaw provisioning',
-      role: 'A persistent agent instance, configured and running, for every resident on day one.',
     },
   ];
   return (
