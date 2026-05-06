@@ -67,7 +67,7 @@ const navStyles = {
     border: '1px solid rgba(26,24,20,0.08)',
     pointerEvents: 'auto',
   },
-  brandText: { fontFamily: "'Cormorant Garamond', serif", fontSize: 22, fontWeight: 600, color: 'var(--forest-deep)', letterSpacing: '-0.01em' },
+  brandText: { fontFamily: "'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize: 22, fontWeight: 600, color: 'var(--forest-deep)', letterSpacing: '-0.01em' },
   brandItalic: { fontFamily: "'Inter', sans-serif", fontWeight: 400, marginLeft: 2 },
   pills: {
     display: 'flex', alignItems: 'center', gap: 4,
@@ -153,7 +153,7 @@ function Hero() {
 function Stat({ n, label }) {
   return (
     <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap: 2}}>
-      <span style={{fontFamily:"'Cormorant Garamond', serif", fontSize: 26, fontWeight: 600, color:'var(--forest-deep)'}}>{n}</span>
+      <span style={{fontFamily:"'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize: 26, fontWeight: 600, color:'var(--forest-deep)'}}>{n}</span>
       <span style={{fontSize: 11, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-faded)'}}>{label}</span>
     </div>
   );
@@ -325,7 +325,7 @@ const howStyles = {
     maxWidth: 380, margin: 0, paddingBottom: 4,
   },
   title: {
-    fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(28px, 3.2vw, 42px)',
+    fontFamily: "'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize: 'clamp(28px, 3.2vw, 42px)',
     fontWeight: 500, lineHeight: 1.08, letterSpacing: '-0.01em', color: 'var(--forest-deep)',
     margin: 0,
   },
@@ -652,6 +652,19 @@ function PlazaSection() {
               </div>
             </div>
 
+            <div style={plazaStyles.briefSection}>
+              <div style={plazaStyles.briefSectionHead}>Help your community find theirs</div>
+              <div style={plazaStyles.briefSectionLead}>A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.</div>
+              <div style={plazaStyles.briefItem}>
+                <div style={plazaStyles.briefItemTop}><span style={plazaStyles.briefName}>Remi</span> <span style={plazaStyles.briefHandle}>@remi</span></div>
+                <div style={plazaStyles.briefItemBody}>Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone?</div>
+              </div>
+              <div style={plazaStyles.briefItem}>
+                <div style={plazaStyles.briefItemTop}><span style={plazaStyles.briefName}>Celia</span> <span style={plazaStyles.briefHandle}>@celia</span></div>
+                <div style={plazaStyles.briefItemBody}>Designing governance tooling for popup communities. Coordination, consent, collective decision-making. Point her at the right people.</div>
+              </div>
+            </div>
+
             <div style={plazaStyles.briefMeta}>delivered to telegram</div>
           </div>
         </TimeBlock>
@@ -950,11 +963,11 @@ const chatStyles = {
   matchAvatar: {
     width: 36, height: 36, borderRadius:'50%',
     display:'flex', alignItems:'center', justifyContent:'center',
-    fontFamily:"'Cormorant Garamond', serif", fontWeight: 700, fontSize: 14, color:'var(--forest-deep)',
+    fontFamily:"'Inter', sans-serif", fontWeight: 700, fontSize: 14, color:'var(--forest-deep)',
     flexShrink: 0,
   },
   matchTopline: { display:'flex', alignItems:'baseline', flexWrap:'wrap', marginBottom: 4 },
-  matchName: { fontFamily:"'Cormorant Garamond', serif", fontSize: 17, fontWeight: 600, color:'var(--forest-deep)' },
+  matchName: { fontFamily:"'Inter', sans-serif", fontSize: 17, fontWeight: 600, color:'var(--forest-deep)' },
   matchRole: { fontSize: 12, color:'var(--ink-faded)', fontFamily:'ui-monospace, monospace' },
   matchWhy: { fontSize: 13, color:'var(--ink-soft)', lineHeight: 1.5 },
   matchDot: { width: 10, height: 10, borderRadius:'50%', flexShrink: 0, marginTop: 7, boxShadow:'0 0 0 3px rgba(244,237,224,0.6)' },
@@ -974,44 +987,44 @@ const chatStyles = {
 const plazaStyles = {
   wrap: { position:'relative', zIndex: 2, maxWidth: 1100, margin: '0 auto', padding: '80px 32px' },
   head: { display:'flex', flexDirection:'column', gap: 16, marginBottom: 56, maxWidth: 760 },
-  title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(40px, 5vw, 64px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
+  title: { fontFamily:"'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize:'clamp(40px, 5vw, 64px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
   italic: { fontFamily:"'Inter', sans-serif", fontWeight: 400, color:'var(--forest-mid)' },
   subtitle: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', marginTop: 6 },
   timeline: { display:'flex', flexDirection:'column', gap: 0 },
   row: { display:'grid', gridTemplateColumns:'120px 1fr', gap: 28, alignItems:'flex-start' },
   timeCol: { position:'relative', display:'flex', flexDirection:'column', alignItems:'center', paddingTop: 4, minHeight: '100%', alignSelf:'stretch' },
-  timeStamp: { fontFamily:"'Cormorant Garamond', serif", fontSize: 22, fontWeight: 600, color:'var(--forest-deep)', marginBottom: 12, letterSpacing:'0.02em' },
+  timeStamp: { fontFamily:"'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize: 22, fontWeight: 600, color:'var(--forest-deep)', marginBottom: 12, letterSpacing:'0.02em' },
   timeNode: { width: 14, height: 14, borderRadius:'50%', position:'relative', boxShadow:'0 0 0 4px var(--cream)', zIndex: 2 },
   timeNodePulse: { position:'absolute', inset:-6, borderRadius:'50%', border:'2px solid', animation:'ringPulse 1.5s ease-out infinite' },
   timeLine: { position:'absolute', top: 50, bottom: -40, width: 2, background: 'linear-gradient(180deg, rgba(26,24,20,0.18), rgba(26,24,20,0.06))', zIndex: 1 },
   contentCol: { paddingBottom: 56 },
   blockHead: { display:'flex', alignItems:'center', gap: 14, marginBottom: 16, flexWrap:'wrap' },
-  blockTitle: { fontFamily:"'Cormorant Garamond', serif", fontSize: 28, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em', flex:'1 1 auto', minWidth: 0 },
+  blockTitle: { fontFamily:"'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize: 28, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em', flex:'1 1 auto', minWidth: 0 },
   tag: { fontSize: 10, fontWeight: 700, letterSpacing:'0.16em', textTransform:'uppercase', padding:'4px 10px', borderRadius: 999, border:'1px solid', flexShrink: 0, alignSelf:'center' },
   brief: { background:'rgba(255,253,247,0.78)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', border:'1px solid rgba(26,24,20,0.1)', borderRadius: 18, padding:'22px 26px 20px', display:'flex', flexDirection:'column', gap: 14 },
-  briefSalut: { fontFamily:"'Cormorant Garamond', serif", fontSize: 22, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em' },
-  briefBody: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)' },
+  briefSalut: { fontFamily:"'Inter', sans-serif", fontSize: 17, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em' },
+  briefBody: { fontSize: 14, lineHeight: 1.55, color:'var(--ink-soft)' },
   briefSection: { display:'flex', flexDirection:'column', gap: 10, paddingTop: 12, borderTop:'1px solid rgba(26,24,20,0.08)' },
-  briefSectionHead: { fontFamily:"'Cormorant Garamond', serif", fontSize: 17, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em', marginBottom: 2 },
+  briefSectionHead: { fontFamily:"'Inter', sans-serif", fontSize: 17, fontWeight: 600, color:'var(--forest-deep)', letterSpacing:'-0.01em', marginBottom: 2 },
   briefSectionLead: { fontFamily:"'Inter', sans-serif", fontSize: 13.5, color:'var(--ink-soft)', lineHeight: 1.55, marginBottom: 4 },
   briefItem: { display:'flex', flexDirection:'column', gap: 4 },
   briefItemTop: { display:'flex', alignItems:'baseline', flexWrap:'wrap', gap: 8 },
-  briefName: { fontFamily:"'Cormorant Garamond', serif", fontSize: 16, fontWeight: 700, color:'var(--forest-deep)' },
+  briefName: { fontFamily:"'Inter', sans-serif", fontSize: 16, fontWeight: 700, color:'var(--forest-deep)' },
   briefHandle: { fontSize: 12, fontFamily:'ui-monospace, monospace', color:'var(--ink-faded)' },
   briefWhen: { fontSize: 11, fontWeight: 700, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--forest-mid)', padding:'2px 8px', background:'rgba(90,140,79,0.1)', borderRadius: 999, marginLeft:'auto' },
   briefItemBody: { fontSize: 13.5, color:'var(--ink-soft)', lineHeight: 1.55 },
   shortList: { display:'flex', flexDirection:'column', gap: 6, marginTop: 4 },
   shortRow: { display:'grid', gridTemplateColumns:'28px 1fr', gap: 10, padding:'8px 12px', background:'rgba(201,169,97,0.08)', borderRadius: 10, alignItems:'baseline' },
-  shortNum: { fontFamily:"'Cormorant Garamond', serif", fontSize: 18, fontWeight: 700, color:'var(--forest-mid)' },
+  shortNum: { fontFamily:"'Inter', sans-serif", fontSize: 18, fontWeight: 700, color:'var(--forest-mid)' },
   shortText: { fontSize: 13.5, color:'var(--ink-soft)', lineHeight: 1.5 },
   briefFootnote: { fontFamily:"'Inter', sans-serif", fontSize: 12.5, color:'var(--ink-faded)', lineHeight: 1.5, paddingTop: 14, borderTop:'1px solid rgba(26,24,20,0.06)' },
   briefList: { display:'flex', flexDirection:'column', gap: 8, marginTop: 10 },
-  briefBullet: { fontFamily:"'Cormorant Garamond', serif", fontWeight: 700, color:'var(--forest-mid)', marginRight: 8 },
+  briefBullet: { fontFamily:"'Inter', sans-serif", fontWeight: 700, color:'var(--forest-mid)', marginRight: 8 },
   briefMeta: { fontSize: 11, fontFamily:'ui-monospace, monospace', color:'var(--ink-faded)', letterSpacing:'0.08em', textTransform:'uppercase', marginTop: 4 },
   convoRow: { display:'grid', gridTemplateColumns:'10px 1fr', gap: 14, padding:'14px 0', borderBottom:'1px solid rgba(26,24,20,0.06)', alignItems:'flex-start' },
   convoDot: { width: 10, height: 10, borderRadius: '50%', marginTop: 7, boxShadow:'0 0 0 3px rgba(244,237,224,0.6)' },
   convoText: { display:'flex', flexDirection:'column', gap: 6 },
-  convoName: { fontFamily:"'Cormorant Garamond', serif", fontSize: 18, fontWeight: 700, color:'var(--forest-deep)', lineHeight: 1.3 },
+  convoName: { fontFamily:"'Inter', sans-serif", fontSize: 18, fontWeight: 700, color:'var(--forest-deep)', lineHeight: 1.3 },
   convoRole: { fontFamily:"'Inter', sans-serif", fontSize: 14, fontWeight: 400, color:'var(--ink-soft)' },
   convoWhy: { fontSize: 14, color:'var(--ink-soft)', lineHeight: 1.55 },
   convoCta: { alignSelf:'flex-start', fontSize: 13, fontWeight: 600, color:'var(--forest-mid)', textDecoration:'none', borderBottom:'1px solid currentColor', paddingBottom: 1, marginTop: 2 },
@@ -1147,7 +1160,7 @@ function TechPartners() {
 const techStyles = {
   wrap: { position:'relative', zIndex: 2, maxWidth: 1280, margin:'0 auto', padding: '100px 32px 60px' },
   head: { display:'flex', flexDirection:'column', gap: 14, marginBottom: 40, maxWidth: 760 },
-  title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(36px, 4.4vw, 54px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
+  title: { fontFamily:"'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize:'clamp(36px, 4.4vw, 54px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
   italic: { fontFamily:"'Inter', sans-serif", fontWeight: 400, color:'var(--forest-mid)' },
   body: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', maxWidth: 640, marginTop: 4 },
   grid: { display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap: 16 },
@@ -1155,7 +1168,7 @@ const techStyles = {
   cardHead: { display:'flex', flexDirection:'column', gap: 10, paddingBottom: 16, borderBottom:'1px solid rgba(26,24,20,0.08)', minHeight: 56, justifyContent:'center' },
   logoRow: { display:'flex', alignItems:'center', gap: 10, height: 36 },
   wordmarkSerif: {
-    fontFamily: "'Instrument Serif', 'Cormorant Garamond', serif",
+    fontFamily: "'Instrument Serif', 'PPNeueMachina', 'Inter', system-ui, sans-serif",
     fontStyle: 'normal', fontWeight: 400,
     fontSize: 30, lineHeight: 1, letterSpacing: '-0.01em',
     color: 'var(--forest-deep)',
@@ -1168,7 +1181,7 @@ const researchStyles = {
   wrap: { position:'relative', zIndex: 2, background:'var(--forest-deep)', color:'var(--cream)', marginTop: 40 },
   inner: { maxWidth: 1280, margin:'0 auto', padding:'64px 32px' },
   head: { maxWidth: 820, marginBottom: 32 },
-  title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(32px, 3.6vw, 44px)', fontWeight: 600, lineHeight: 1.08, letterSpacing:'-0.02em', color:'var(--cream)', marginTop: 12 },
+  title: { fontFamily:"'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize:'clamp(32px, 3.6vw, 44px)', fontWeight: 600, lineHeight: 1.08, letterSpacing:'-0.02em', color:'var(--cream)', marginTop: 12 },
   italic: { fontFamily:"'Inter', sans-serif", fontWeight: 400, color:'#c5d1ae' },
   body: { fontSize: 18, lineHeight: 1.55, color:'rgba(244,237,224,0.78)', marginTop: 12, maxWidth: 680 },
   grid: { display:'grid', gridTemplateColumns:'1.4fr 1fr', gap: 20, marginBottom: 32 },
@@ -1178,11 +1191,11 @@ const researchStyles = {
   advisorsCol: { display:'flex', flexDirection:'column', gap: 12, padding:'4px 4px 4px 0' },
   advisorsLabel: { fontSize: 11, fontWeight: 700, letterSpacing:'0.18em', textTransform:'uppercase', color:'rgba(244,237,224,0.5)', marginBottom: 4 },
   advisor: { background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding:'16px 18px', display:'flex', flexDirection:'column', gap: 4 },
-  advisorName: { fontFamily:"'Cormorant Garamond', serif", fontSize: 22, fontWeight: 600, color:'var(--cream)', letterSpacing:'-0.01em', lineHeight: 1.1 },
+  advisorName: { fontFamily:"'Inter', sans-serif", fontSize: 22, fontWeight: 600, color:'var(--cream)', letterSpacing:'-0.01em', lineHeight: 1.1 },
   advisorSub: { fontSize: 12, fontFamily:'ui-monospace, monospace', color:'rgba(244,237,224,0.55)', letterSpacing:'0.02em' },
   cta: { padding: '24px 28px', background:'rgba(191,214,179,0.08)', border:'1px solid rgba(191,214,179,0.25)', borderRadius: 18, display:'grid', gridTemplateColumns:'1.5fr 1fr', gap: 24, alignItems:'center' },
   ctaLeft: { display:'flex', flexDirection:'column', gap: 8 },
-  ctaTitle: { fontFamily:"'Cormorant Garamond', serif", fontSize: 24, fontWeight: 600, lineHeight: 1.15, letterSpacing:'-0.01em', color:'var(--cream)' },
+  ctaTitle: { fontFamily:"'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize: 24, fontWeight: 600, lineHeight: 1.15, letterSpacing:'-0.01em', color:'var(--cream)' },
   ctaBody: { fontSize: 13.5, lineHeight: 1.55, color:'rgba(244,237,224,0.72)' },
   ctaRight: { display:'flex', flexDirection:'column', gap: 8, alignItems:'flex-start' },
   ctaBtn: { display:'inline-flex', alignItems:'center', padding:'12px 20px', background:'#c5d1ae', color:'var(--forest-deep)', borderRadius: 999, fontSize: 13.5, fontWeight: 600, letterSpacing:'0.02em', textDecoration:'none', whiteSpace:'nowrap' },
@@ -1224,7 +1237,7 @@ function Claim() {
             <div style={claimStyles.success}>
               <span style={{fontSize: 22}}>✓</span>
               <div>
-                <div style={{fontFamily:"'Cormorant Garamond', serif", fontSize: 22, fontWeight: 600, color:'var(--forest-deep)'}}>Your Claw is reserved.</div>
+                <div style={{fontFamily:"'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize: 22, fontWeight: 600, color:'var(--forest-deep)'}}>Your Claw is reserved.</div>
                 <div style={{fontSize: 13, color:'var(--ink-soft)', marginTop: 4}}>Onboarding link arrives May 23.</div>
               </div>
             </div>
@@ -1269,7 +1282,7 @@ const claimStyles = {
     boxShadow:'0 30px 60px rgba(15,26,18,0.12)',
   },
   left: { padding: '56px 56px 48px', display:'flex', flexDirection:'column', gap: 20 },
-  title: { fontFamily:"'Cormorant Garamond', serif", fontSize:'clamp(40px, 4.5vw, 60px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
+  title: { fontFamily:"'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize:'clamp(40px, 4.5vw, 60px)', fontWeight: 600, lineHeight: 1.05, letterSpacing:'-0.02em', color:'var(--forest-deep)' },
   italic: { fontFamily:"'Inter', sans-serif", fontWeight: 400 },
   body: { fontSize: 18, lineHeight: 1.55, color:'var(--ink-soft)', maxWidth: 520 },
   form: { display:'flex', gap: 8, marginTop: 8, padding: 6, background:'#fff', border:'1px solid rgba(26,24,20,0.12)', borderRadius: 999, maxWidth: 520 },
@@ -1294,7 +1307,7 @@ function Footer() {
         <div style={footStyles.brandCol}>
           <div style={{display:'flex', alignItems:'center', gap: 10, marginBottom: 16}}>
             <ClawMark size={28} color="var(--cream)" />
-            <span style={{fontFamily:"'Cormorant Garamond', serif", fontSize: 26, fontWeight: 600, color:'var(--cream)'}}>Edge<span style={{fontFamily:"'Inter', sans-serif"}}>Claw</span></span>
+            <span style={{fontFamily:"'PPNeueMachina', 'Inter', system-ui, sans-serif", fontSize: 26, fontWeight: 600, color:'var(--cream)'}}>Edge<span style={{fontFamily:"'Inter', sans-serif"}}>Claw</span></span>
           </div>
           <p style={{fontSize: 13.5, lineHeight: 1.6, color:'rgba(244,237,224,0.65)', maxWidth: 320}}>
             A month-long live experiment in human-agent coordination, run inside Edge Esmeralda 2026.
@@ -1585,6 +1598,23 @@ function HealdsburgMap() {
         }, animMs);
       }
 
+      function playReverseCinematic() {
+        if (mapState !== "focused") return;
+        mapState = "animating";
+        activeFocusItem = null;
+        for (const it of state.items) it.bubble.classList.remove("show");
+
+        viewer.viewport.zoomTo(homeZoom);
+        viewer.viewport.panTo(homeCenter);
+
+        const animMs = getAnimMs();
+        if (bubbleTimer) clearTimeout(bubbleTimer);
+        if (stateTimer) clearTimeout(stateTimer);
+        stateTimer = setTimeout(() => {
+          if (mapState === "animating") mapState = "home";
+        }, animMs);
+      }
+
       // The map section is one viewport tall and sits at the very top of the page,
       // so the wheel/touch listener only intercepts when the section is the dominant view.
       function isSectionDominant() {
@@ -1599,8 +1629,31 @@ function HealdsburgMap() {
       // which blocks page scrolling over the canvas. Listen in the capture phase so we
       // can stopImmediatePropagation before OSD's listener ever runs.
       function onWheel(e) {
-        if (e.deltaY <= 0) return;            // only intercept downward scroll
         if (!isSectionDominant()) return;
+
+        // ----- SCROLL UP -----
+        if (e.deltaY < 0) {
+          // While the camera is mid-flight, hold the page in either direction.
+          if (mapState === "animating") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return;
+          }
+          // Let the browser scroll the page back up to the top first.
+          if (window.scrollY > 0) return;
+          // Page is pinned at the top: reverse the cinematic from focused → home.
+          if (mapState === "focused") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            playReverseCinematic();
+            return;
+          }
+          // mapState === "home": already there, nothing to do.
+          return;
+        }
+
+        // ----- SCROLL DOWN -----
+        if (e.deltaY <= 0) return;
         if (mapState === "home") {
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -1624,8 +1677,28 @@ function HealdsburgMap() {
       function onTouchMove(e) {
         if (touchStartY == null) return;
         const dy = touchStartY - e.touches[0].clientY; // positive = swiping up = scrolling down
-        if (dy <= 8) return;
+        if (Math.abs(dy) <= 8) return;
         if (!isSectionDominant()) return;
+
+        // ----- SWIPE DOWN (finger moving down → page scrolls up) -----
+        if (dy < 0) {
+          if (mapState === "animating") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return;
+          }
+          if (window.scrollY > 0) return;
+          if (mapState === "focused") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            playReverseCinematic();
+            touchStartY = null;
+            return;
+          }
+          return;
+        }
+
+        // ----- SWIPE UP (finger moving up → page scrolls down) -----
         if (mapState === "home") {
           e.preventDefault();
           e.stopImmediatePropagation();
