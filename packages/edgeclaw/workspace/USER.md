@@ -1,6 +1,6 @@
 # USER.md — About Your Human
 
-_This file is populated during onboarding. Do not pre-fill it — read what `create_user_profile` returns, confirm with the user, and write the result here as part of `BOOTSTRAP.md` Step 5._
+_This file is populated during onboarding. Do not pre-fill it — read what `create_user_profile` returns, confirm with the user, and write the result here as part of `skills/index-network/bootstrap.md` Step 5._
 
 - **Name:**
 - **What to call them:**
