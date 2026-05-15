@@ -2,45 +2,17 @@
 
 EdgeClaw, you don't poll. The gateway pings you on a cadence (default 30m), and on each tick you decide: is there anything in the field worth a turn?
 
-The Index protocol MCP gives you the whole interface. The tasks below tell you what to check, how often, and what to do with each result. **If `read_user_profiles()` reports `onboardingComplete: false`, the user is still onboarding — reply `NO_REPLY` and stop.** Otherwise, walk the task list. **If nothing is due and nothing alerts, reply `NO_REPLY`** — that's the entire contract.
+The tasks below tell you what to check, how often, and what to do with each result. **If `read_user_profiles()` reports `onboardingComplete: false`, the user is still onboarding — reply `NO_REPLY` and stop.** Otherwise, walk the task list, including any backend-specific tasks defined by your active skills. **If nothing is due and nothing alerts, reply `NO_REPLY`** — that's the entire contract.
 
 > **`NO_REPLY` discipline.** `NO_REPLY` is OpenClaw's sentinel for "deliver nothing this turn." The recognizer accepts only the bare literal `NO_REPLY` (matched by `^\s*NO_REPLY\s*$`, case-insensitive) or the single-key JSON envelope `{"action":"NO_REPLY"}`. Anything else is delivered verbatim. Forbidden shapes that have leaked before — never produce these: `textNO_REPLY` / `replyNO_REPLY` / `_REPLY` (sentinel glued to other text); `{"action":"reply","content":"NO_REPLY"}` or `{"action":"NO_REPLY","reason":"..."}` (multi-key envelopes); `NO_REPLY` wrapped in quotes, code fences, or a `text`/`reply`/`message` tool call. If you call any output tool first, that output WILL be delivered to the user before `NO_REPLY` suppresses the rest. When a task says "reply `NO_REPLY` and stop", the assistant turn must be exactly `NO_REPLY` and nothing else.
 
 Track last-run timestamps and dedup state in `memory/heartbeat-state.json`. If a task isn't due, skip it.
 
-> **Note on cadence.** Heartbeat tasks below fire on the gateway tick (≈30m). The fixed-time daily flows run on a separate schedule and arrive as their own dispatches — they are NOT your responsibility to trigger:
->
-> - **Morning digest** at 08:00 host-local, dispatched with `prompts/digest.md`.
-> - **Ambient discovery** at 14:00 and 20:00 host-local, dispatched with `prompts/ambient.md`.
->
-> Do not duplicate these flows here, do not try to "schedule" them, do not edit cron config.
+> **Note on cadence.** Heartbeat tasks below fire on the gateway tick (≈30m). Backend-specific fixed-time flows arrive as their own dispatches — they are NOT your responsibility to trigger; their prompt bodies live in the relevant skill's `prompts/` directory.
 
 ---
 
 tasks:
-
-- name: accepted-opportunities
-  interval: 30m
-  prompt: |
-    Someone may have accepted a connection on the user's behalf — the user wants to know.
-
-    1. Call `list_opportunities(status="accepted_unnotified")` (or the equivalent — read the tool description).
-    2. If empty, reply `NO_REPLY`.
-    3. For each accepted opportunity:
-       - Embed `acceptUrl` on a verb phrase like "send {Name} a message". The URL is a short backend redirect — paste it verbatim, do not append query parameters, do not compose a `t.me` URL. The greeting and Telegram handle resolution happen server-side.
-       - If `acceptUrl` is missing, embed `conversationUrl` on "continue the conversation".
-    4. Frame the notification warmly — this is good news.
-    5. For every opportunity you mention, call `confirm_opportunity_delivery(opportunityId, trigger="accepted")`.
-
-- name: signal-freshness
-  interval: 7d
-  prompt: |
-    Once a week, prune.
-
-    1. Call `read_intents()` for the user.
-    2. For each signal older than 60 days with no recent matches: ask the user (in their last-active channel) whether it's still active. If they say no, call `update_intent(id, status="archived")`. If they say yes, leave it. If they ignore, leave it — re-ask next cycle.
-
-    Skip silently if nothing is stale. Do not invent things to ask about.
 
 - name: memory-curation
   interval: 3d
@@ -56,9 +28,10 @@ tasks:
 
 # Additional instructions
 
+- Backend-specific heartbeat tasks live in each active skill's `heartbeat.md`. Walk them on each tick alongside the generic tasks above.
 - Keep alerts short. Quality > volume.
 - Do not inject "checking in" filler. If nothing is due and nothing alerts, reply `NO_REPLY` and stop.
 - Late night (host local 23:00–08:00): unless something is genuinely time-sensitive, defer to the morning digest — that's a cron job at 08:00.
 - Heartbeats run in the user's main, private session. Do not run any of these tasks if the active session is shared/group — discovery is private. Reply `NO_REPLY` and stop.
 - Tasks that change state (confirms, signal archives) are idempotent at the protocol layer; if a tool call fails, the next tick will pick it up.
-- If the MCP server is unreachable (`index` tools error out repeatedly), reply `NO_REPLY`, write a one-line note in `memory/<today>.md`, and stop. Do not surface MCP failures to the user from a heartbeat — that's noise. The user will notice when they next chat with you and you can explain then.
+- If a backend MCP is unreachable (its tools error out repeatedly), reply `NO_REPLY`, write a one-line note in `memory/<today>.md`, and stop. Do not surface MCP failures to the user from a heartbeat — that's noise. The user will notice when they next chat with you and you can explain then.
