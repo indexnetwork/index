@@ -25,8 +25,8 @@ See the project hub for the full diagram and decisions.
 ## What's here
 
 - `workspace/IDENTITY.md` — what an EdgeClaw agent knows about itself and the village
-- `workspace/` — the full runtime workspace bundle (prompts, soul, heartbeat, community context)
-- `skills/` — directory for backend-specific skill bundles
+- `workspace/` — backend-agnostic agent core (identity, voice, community context, generic operating rules)
+- `skills/` — backend-specific skill bundles registered with OpenClaw via per-bundle `SKILL.md`. The Index Network bundle is shipped today; EdgeOS and Geo land alongside their backend wiring.
 - `onboarding/` — intent-capture flow for new agents (1 to 2 questions during setup)
 - `install/` — bootstrap scripts for plugging EdgeClaw into a runtime
 
@@ -157,8 +157,9 @@ The installer:
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at `https://protocol.index.network/mcp` with your API key in `x-api-key`.
 2. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
 3. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds your lived notes from `BOOTSTRAP.md`); pass `--wipe-user` to overwrite it.
-4. Installs three cron jobs: daily digest (`0 8 * * *`), ambient discovery afternoon (`0 14 * * *`), ambient discovery evening (`0 20 * * *`).
-5. Restarts the gateway so all config changes take effect.
+4. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/` so OpenClaw registers them as workspace skills.
+5. Installs three cron jobs: daily digest (`0 8 * * *`), ambient discovery afternoon (`0 14 * * *`), ambient discovery evening (`0 20 * * *`).
+6. Restarts the gateway so all config changes take effect.
 
 Send any message in your chat to bring EdgeClaw online:
 
@@ -196,17 +197,15 @@ The remaining ambient/accepted/freshness/memory work stays on the heartbeat tick
 
 | File | Purpose |
 | --- | --- |
-| `BOOTSTRAP.md` | First-run ritual: greet, run onboarding, capture platform handle, welcome. **Not** deleted at the end — the server's `onboardingComplete` flag is the source of truth, so the file stays around in case onboarding ever needs to be re-run. |
-| `AGENTS.md` | Operating instructions + canonical voice exemplars (welcome, morning digest, ambient update, greeting drafts). The first-run gate checks `onboardingComplete` from `read_user_profiles()`, not local file state. |
+| `BOOTSTRAP.md` | Thin shell that checks `onboardingComplete` and dispatches to the active skill's `bootstrap.md`. Backend-agnostic. **Not** deleted at the end of onboarding — the server's `onboardingComplete` flag is the source of truth, so the file stays around in case onboarding ever needs to be re-run. |
+| `AGENTS.md` | Cross-backend operating instructions: session startup, memory, surfacing-opportunities quality bar, generic red lines, group-chat rules. Per-backend voice exemplars and ritual steps live in the relevant skill. |
 | `COMMUNITY.md` | Edge Esmeralda context — dates, attendee count, programming format, design principles. The agent reads this when composing welcomes and digests. |
 | `SOUL.md` | Voice, banned vocabulary, "never name the plumbing", boundaries, continuity. |
 | `IDENTITY.md` | EdgeClaw identity — role, context, tone. |
-| `USER.md` | Lived notebook — populated by `BOOTSTRAP.md` from the user's onboarding answers. |
-| `TOOLS.md` | MCP endpoint, full tool family list, output translation table, channel formatting, URL preservation rule. |
-| `HEARTBEAT.md` | Background tasks that run on the OpenClaw heartbeat tick: accepted opportunities, signal freshness, memory curation. |
-| `prompts/welcome.md` | Self-contained prompt for the welcome pass — used by `BOOTSTRAP.md` Step 6. Self-dedupes via `memory/welcome-state.json` and gates on server-side `onboardingComplete`. |
-| `prompts/digest.md` | Self-contained prompt for the daily 08:00 digest cron. Filters against `memory/heartbeat-state.json:deliveredToday` so opportunities already surfaced earlier today are skipped. |
-| `prompts/ambient.md` | Self-contained prompt for the 14:00 + 20:00 ambient discovery crons. Selective: max 3 direct + 3 introducer per dispatch. Dedup: `memory/heartbeat-state.json:lastAmbientHash` (skip pass when the fetched set is unchanged) + `deliveredToday` (drop opportunities already surfaced earlier today by digest or ambient). |
+| `USER.md` | Lived notebook — populated by the active skill's bootstrap ritual from the user's onboarding answers. |
+| `TOOLS.md` | Cross-backend rules: channel formatting (Discord/WhatsApp/Telegram), URL preservation, Local files index. Per-backend tool families live in the relevant skill. |
+| `HEARTBEAT.md` | Generic heartbeat tick rules + the cross-backend `memory-curation` task. Backend-specific tasks live in each active skill's `heartbeat.md`. |
+| `skills/index-network/SKILL.md` | Index Network skill bundle entry point. Registered with OpenClaw on install; gates on `mcp.servers.index`. Body points at the bundle's sibling reference files. |
 
 ## Auth
 
