@@ -59,13 +59,14 @@ const apiBaseUrl = (
   'http://localhost:3001'
 ).replace(/\/+$/, '');
 
-const mintConnectLink = async ({ userId, opportunityId, kind, greeting }: {
+const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferredSurface }: {
   userId: string;
   opportunityId: string;
   kind: ConnectLinkKind;
   greeting?: string | null;
+  preferredSurface?: 'telegram' | 'web';
 }): Promise<{ url: string }> => {
-  const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting });
+  const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting, preferredSurface });
   return { url: buildConnectShortUrl(apiBaseUrl, code) };
 };
 
@@ -209,7 +210,8 @@ export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
 }
 
 const authResolver: McpAuthResolver = {
-  async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string; isSessionAuth?: boolean; networkScopeId?: string | null }> {
+  async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string; isSessionAuth?: boolean; networkScopeId?: string | null; clientSurface?: 'telegram' | 'web' }> {
+    const clientSurface = parseClientSurface(request.headers.get('x-index-surface'));
     const authHeader = request.headers.get('Authorization');
     const [scheme, token] = authHeader?.split(/\s+/, 2) ?? [];
 
@@ -223,8 +225,8 @@ const authResolver: McpAuthResolver = {
         // (not omitted) so callers cannot conflate "no scope" with "scope unset".
         try {
           const { payload } = await jwtVerify(token, JWKS);
-          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null };
-          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null };
+          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface };
+          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface };
           throw new Error('JWT payload missing user ID');
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -243,7 +245,7 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return { userId: data.userId, isSessionAuth: true, networkScopeId: null };
+            if (data?.userId) return { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface };
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -309,12 +311,13 @@ const authResolver: McpAuthResolver = {
               userId,
               ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
               networkScopeId,
+              clientSurface,
             };
           }
         }
 
         if (sessionUserId) {
-          return { userId: sessionUserId, networkScopeId: null };
+          return { userId: sessionUserId, networkScopeId: null, clientSurface };
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
