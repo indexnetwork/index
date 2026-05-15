@@ -179,6 +179,8 @@ function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string
   }
 }
 
+// Module-scope on purpose: dedupes the warn across the process lifetime so an
+// unknown header value only logs once per server process, not once per request.
 const seenInvalidSurfaces = new Set<string>();
 
 /**
@@ -197,6 +199,7 @@ export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
   const normalized = raw.trim().toLowerCase();
   if (normalized === '') return 'web';
   if (normalized === 'telegram') return 'telegram';
+  // Short-circuit for the known-valid value so explicit `web` doesn't trigger the unknown-value warn.
   if (normalized === 'web') return 'web';
   if (!seenInvalidSurfaces.has(normalized)) {
     seenInvalidSurfaces.add(normalized);

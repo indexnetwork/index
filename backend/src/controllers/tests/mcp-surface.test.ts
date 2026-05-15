@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import { parseClientSurface } from '../mcp.controller';
 
@@ -34,5 +34,18 @@ describe('parseClientSurface', () => {
     expect(parseClientSurface('slack')).toBe('web');
     expect(parseClientSurface('foo')).toBe('web');
     expect(parseClientSurface('true')).toBe('web');
+  });
+
+  test('warns exactly once per unknown value, not on subsequent calls', () => {
+    const spy = spyOn(console, 'warn');
+    // Use a value not seen by any earlier test so the Set is empty for it.
+    parseClientSurface('zz-novel-unknown-value');
+    parseClientSurface('zz-novel-unknown-value');
+    parseClientSurface('zz-novel-unknown-value');
+    const callCount = spy.mock.calls.filter((call) =>
+      typeof call[0] === 'string' && call[0].includes('zz-novel-unknown-value')
+    ).length;
+    expect(callCount).toBe(1);
+    spy.mockRestore();
   });
 });
