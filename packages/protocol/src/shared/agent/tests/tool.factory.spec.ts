@@ -2002,9 +2002,27 @@ describe("createChatTools — MCP connect-link wiring", () => {
   }
 
   test("invokes deps.mintConnectLink and surfaces the returned URL as acceptUrl", async () => {
-    const mintCalls: Array<{ userId: string; opportunityId: string; kind: string; greeting: string | null | undefined }> = [];
-    const mintConnectLink = async (args: { userId: string; opportunityId: string; kind: string; greeting?: string | null }) => {
-      mintCalls.push({ userId: args.userId, opportunityId: args.opportunityId, kind: args.kind, greeting: args.greeting ?? null });
+    const mintCalls: Array<{
+      userId: string;
+      opportunityId: string;
+      kind: string;
+      greeting: string | null | undefined;
+      preferredSurface: 'telegram' | 'web' | undefined;
+    }> = [];
+    const mintConnectLink = async (args: {
+      userId: string;
+      opportunityId: string;
+      kind: string;
+      greeting?: string | null;
+      preferredSurface?: 'telegram' | 'web';
+    }) => {
+      mintCalls.push({
+        userId: args.userId,
+        opportunityId: args.opportunityId,
+        kind: args.kind,
+        greeting: args.greeting ?? null,
+        preferredSurface: args.preferredSurface,
+      });
       return { url: FAKE_URL };
     };
 
@@ -2044,6 +2062,63 @@ describe("createChatTools — MCP connect-link wiring", () => {
     // profileUrl is always ${frontendUrl}/u/<id>?link_preview=false (IND-289).
     // Catches frontendUrl-forwarding regressions.
     expect(parsed.data.message).toContain(`profileUrl: ${FRONTEND_URL}/u/${COUNTERPART_ID}?link_preview=false`);
+  });
+
+  test("forwards context.clientSurface as preferredSurface into deps.mintConnectLink", async () => {
+    const mintCalls: Array<{
+      userId: string;
+      opportunityId: string;
+      kind: string;
+      greeting: string | null | undefined;
+      preferredSurface: 'telegram' | 'web' | undefined;
+    }> = [];
+    const mintConnectLink = async (args: {
+      userId: string;
+      opportunityId: string;
+      kind: string;
+      greeting?: string | null;
+      preferredSurface?: 'telegram' | 'web';
+    }) => {
+      mintCalls.push({
+        userId: args.userId,
+        opportunityId: args.opportunityId,
+        kind: args.kind,
+        greeting: args.greeting ?? null,
+        preferredSurface: args.preferredSurface,
+      });
+      return { url: FAKE_URL };
+    };
+
+    const context: ToolContext = {
+      userId: VIEWER_ID,
+      database: buildMcpDb(),
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      ...mockProtocolDeps,
+      mintConnectLink,
+      apiBaseUrl: API_BASE_URL,
+      frontendUrl: FRONTEND_URL,
+    } as ToolContext;
+
+    // Reuse the standard MCP resolved context but stamp clientSurface on it.
+    const resolved = buildMcpResolvedContext();
+    resolved.clientSurface = 'telegram';
+
+    const tools = await createChatTools(context, resolved);
+    const listTool = tools.find((t: { name: string }) => t.name === "list_opportunities") as { invoke: (args: unknown) => Promise<string> };
+    expect(listTool).toBeDefined();
+
+    const raw = await listTool.invoke({});
+    const parsed = JSON.parse(raw);
+    expect(parsed.success).toBe(true);
+
+    expect(mintCalls.length).toBe(1);
+    expect(mintCalls[0]).toMatchObject({
+      userId: VIEWER_ID,
+      opportunityId: OPP_ID,
+      kind: "connect",
+      preferredSurface: 'telegram',
+    });
   });
 
   test("skips minting silently when deps.mintConnectLink is not provided", async () => {
