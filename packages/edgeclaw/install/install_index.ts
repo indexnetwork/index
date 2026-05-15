@@ -44,7 +44,10 @@ function writeMcpServerEntry(apiKey: string): void {
   const mcpEntry = JSON.stringify({
     url: PROTOCOL_MCP_URL,
     transport: "streamable-http",
-    headers: { "x-api-key": apiKey },
+    headers: {
+      "x-api-key": apiKey,
+      "x-index-surface": "telegram",
+    },
   });
   console.log("→ writing mcp.servers.index");
   execSync(`openclaw config set mcp.servers.index '${mcpEntry}' --strict-json`, {
