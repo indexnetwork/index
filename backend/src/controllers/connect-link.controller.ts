@@ -145,20 +145,33 @@ export class ConnectLinkController {
       const result = await opportunityService.startChat(link.opportunityId, link.userId);
       if ('error' in result) return jsonError(result.error, result.status);
 
-      const handle = await opportunityService.getCounterpartTelegramHandle(result.counterpartUserId);
-      const target = handle
-        ? (greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`)
-        : (greeting
-            ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
-            : `${frontendUrl}/u/${result.counterpartUserId}/chat`);
+      // Receiver surface determines redirect target. preferredSurface = 'telegram'
+      // means the click came from a Telegram-rendering MCP client (EdgeClaw) and
+      // we should attempt the t.me deep link. Anything else (including NULL on
+      // pre-rollout rows) goes to the web frontend.
+      if (link.preferredSurface === 'telegram') {
+        const handle = await opportunityService.getCounterpartTelegramHandle(result.counterpartUserId);
+        const target = handle
+          ? (greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`)
+          : (greeting
+              ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
+              : `${frontendUrl}/u/${result.counterpartUserId}/chat`);
+        return Response.json({ url: target });
+      }
+
+      const target = greeting
+        ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
+        : `${frontendUrl}/u/${result.counterpartUserId}/chat`;
       return Response.json({ url: target });
     }
 
     if (link.kind === 'outreach') {
-      const handle = await opportunityService.getCounterpartTelegramHandleForOpp(link.opportunityId, link.userId);
-      if (handle) {
-        const target = greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`;
-        return Response.json({ url: target });
+      if (link.preferredSurface === 'telegram') {
+        const handle = await opportunityService.getCounterpartTelegramHandleForOpp(link.opportunityId, link.userId);
+        if (handle) {
+          const target = greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`;
+          return Response.json({ url: target });
+        }
       }
       const conversationId = await opportunityService.getConversationIdForOpp(link.opportunityId, link.userId);
       const target = conversationId
