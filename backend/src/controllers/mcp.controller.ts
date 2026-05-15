@@ -179,6 +179,32 @@ function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string
   }
 }
 
+const seenInvalidSurfaces = new Set<string>();
+
+/**
+ * Normalize the `x-index-surface` request header to one of the two values the
+ * connect-link click handler understands.
+ *
+ * Absent or unrecognized values collapse to `'web'` — the new default. Only
+ * `'telegram'` activates the t.me redirect path at click time.
+ *
+ * @param raw - The raw header value (case-insensitive; whitespace-trimmed).
+ * @returns `'telegram'` if and only if the trimmed lower-case value is exactly
+ *   `'telegram'`; `'web'` otherwise (including for `null`, `''`, and unknowns).
+ */
+export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
+  if (raw === null) return 'web';
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === '') return 'web';
+  if (normalized === 'telegram') return 'telegram';
+  if (normalized === 'web') return 'web';
+  if (!seenInvalidSurfaces.has(normalized)) {
+    seenInvalidSurfaces.add(normalized);
+    console.warn(`[mcp] unknown x-index-surface value "${normalized}" — coercing to "web"`);
+  }
+  return 'web';
+}
+
 const authResolver: McpAuthResolver = {
   async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string; isSessionAuth?: boolean; networkScopeId?: string | null }> {
     const authHeader = request.headers.get('Authorization');
