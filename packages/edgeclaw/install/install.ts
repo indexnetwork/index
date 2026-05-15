@@ -13,8 +13,10 @@
  *     setting is loaded on the very first gateway start (not deferred until
  *     the first bootstrap turn drains).
  *   - Copy the workspace markdown bundle (BOOTSTRAP, AGENTS, SOUL, USER,
- *     IDENTITY, TOOLS, HEARTBEAT, COMMUNITY, prompts/*) into
- *     `~/.openclaw/workspace/`.
+ *     IDENTITY, TOOLS, HEARTBEAT, COMMUNITY) into `~/.openclaw/workspace/`.
+ *   - Copy backend skill bundles from `skills/` into
+ *     `~/.openclaw/workspace/skills/` so OpenClaw registers them as
+ *     workspace skills.
  *   - Call each backend installer in `install_<backend>.ts`.
  *   - Bind any `EdgeClaw — *` cron jobs to the user's Telegram chat once a
  *     session exists, so digest / ambient deliveries route correctly.
@@ -56,7 +58,9 @@ import { installGeo } from "./install_geo";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const SOURCE_WORKSPACE = join(SCRIPT_DIR, "../workspace");
+const SOURCE_SKILLS = join(SCRIPT_DIR, "../skills");
 const TARGET_WORKSPACE = join(homedir(), ".openclaw", "workspace");
+const TARGET_SKILLS = join(TARGET_WORKSPACE, "skills");
 
 function ensureOpenclawAvailable(): void {
   try {
@@ -115,6 +119,33 @@ function copyWorkspaceFiles(wipeUser: boolean): void {
   console.log(`→ staged ${copied} workspace files into ${TARGET_WORKSPACE}`);
   if (preservedUserNotes) {
     console.log("  (USER.md preserved — pass --wipe-user to overwrite it)");
+  }
+}
+
+function copyMarkdownTree(sourceDir: string, targetDir: string): number {
+  if (!existsSync(sourceDir)) return 0;
+  if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
+
+  let copied = 0;
+  for (const entry of readdirSync(sourceDir)) {
+    const sourcePath = join(sourceDir, entry);
+    const targetPath = join(targetDir, entry);
+    const stat = statSync(sourcePath);
+
+    if (stat.isDirectory()) {
+      copied += copyMarkdownTree(sourcePath, targetPath);
+    } else if (entry.endsWith(".md")) {
+      copyFileSync(sourcePath, targetPath);
+      copied++;
+    }
+  }
+  return copied;
+}
+
+function copySkillFiles(): void {
+  const copied = copyMarkdownTree(SOURCE_SKILLS, TARGET_SKILLS);
+  if (copied > 0) {
+    console.log(`→ staged ${copied} skill files into ${TARGET_SKILLS}`);
   }
 }
 
@@ -211,6 +242,7 @@ function main(): void {
 
   disableTelegramTidepooling();
   copyWorkspaceFiles(wipeUser);
+  copySkillFiles();
 
   installIndex();
   installEdgeos();
