@@ -91,6 +91,7 @@ export const connectLinks = pgTable(
       .references(() => opportunities.id, { onDelete: 'cascade' }),
     kind: text('kind').notNull(),
     greeting: text('greeting'),
+    preferredSurface: text('preferred_surface'), // null = web; 'telegram' activates t.me redirect
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },

@@ -470,6 +470,13 @@
       "when": 1778257645788,
       "tag": "0066_add_connect_links",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1778847453877,
+      "tag": "0067_add_connect_link_preferred_surface",
+      "breakpoints": true
     }
   ]
 }
