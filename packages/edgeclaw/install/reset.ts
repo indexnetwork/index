@@ -41,7 +41,7 @@ const WORKSPACE_FILES = [
   "IDENTITY.md",
   "SOUL.md",
   "TOOLS.md",
-  "prompts",
+  "skills",
 ];
 
 function ensureOpenclawAvailable(): void {

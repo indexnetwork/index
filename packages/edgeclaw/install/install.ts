@@ -23,8 +23,9 @@
  *   - Restart the gateway so all config changes and cron jobs take effect.
  *
  * Anything the agent should *do at runtime* (greet the user, create their
- * profile, send the welcome message body) stays in BOOTSTRAP.md /
- * prompts/welcome.md — the installer does not impersonate the agent.
+ * profile, send the welcome message body) stays in
+ * skills/index-network/bootstrap.md / skills/index-network/prompts/welcome.md —
+ * the installer does not impersonate the agent.
  *
  * Re-running the installer is the supported way to bind cron deliveries to
  * the user's Telegram chat once they've sent their first message. By
