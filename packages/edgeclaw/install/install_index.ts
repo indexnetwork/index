@@ -92,7 +92,7 @@ function installCronJobs(): void {
       --light-context \
       --no-deliver \
       --channel last \
-      --message "$(cat ${workspaceDir}/prompts/digest.md)"`,
+      --message "$(cat ${workspaceDir}/skills/index-network/prompts/digest.md)"`,
     { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
   );
 
@@ -104,7 +104,7 @@ function installCronJobs(): void {
       --light-context \
       --no-deliver \
       --channel last \
-      --message "$(cat ${workspaceDir}/prompts/ambient.md)"`,
+      --message "$(cat ${workspaceDir}/skills/index-network/prompts/ambient.md)"`,
     { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
   );
 
@@ -116,7 +116,7 @@ function installCronJobs(): void {
       --light-context \
       --no-deliver \
       --channel last \
-      --message "$(cat ${workspaceDir}/prompts/ambient.md)"`,
+      --message "$(cat ${workspaceDir}/skills/index-network/prompts/ambient.md)"`,
     { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
   );
 }
