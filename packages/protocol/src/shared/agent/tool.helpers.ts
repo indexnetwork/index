@@ -74,6 +74,14 @@ export interface ResolvedToolContext {
   isMcp?: boolean;
   /** Agent ID when the request originates from an API key linked to an agent. */
   agentId?: string;
+  /**
+   * Receiver's rendering surface declared by the MCP client via the
+   * `x-index-surface` request header. `'telegram'` means the MCP response is
+   * being rendered inside a Telegram chat (today, only EdgeClaw); anything
+   * else (including `undefined`) is treated as web. Forwarded into
+   * `mintConnectLink` so the click-time redirect can branch.
+   */
+  clientSurface?: 'telegram' | 'web';
 }
 
 /**
