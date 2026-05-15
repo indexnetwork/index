@@ -34,6 +34,7 @@ export interface MintArgs {
   opportunityId: string;
   kind: ConnectLinkKind;
   greeting?: string | null;
+  preferredSurface?: 'telegram' | 'web' | null;
 }
 
 /**
@@ -50,6 +51,7 @@ export async function mintConnectLink({
   opportunityId,
   kind,
   greeting,
+  preferredSurface,
 }: MintArgs): Promise<{ code: string; greeting: string | null }> {
   const now = new Date();
 
@@ -76,13 +78,18 @@ export async function mintConnectLink({
   const expiresAt = new Date(now.getTime() + TTL_DAYS * 24 * 60 * 60 * 1000);
 
   if (existing) {
-    // Expired row — rotate code + greeting + expiresAt in place.
+    // Expired row — rotate code + greeting + preferredSurface + expiresAt in place.
     for (let attempt = 0; attempt < 3; attempt++) {
       const code = generateCode();
       try {
         const [row] = await db
           .update(connectLinks)
-          .set({ code, greeting: greeting ?? null, expiresAt })
+          .set({
+            code,
+            greeting: greeting ?? null,
+            preferredSurface: preferredSurface ?? null,
+            expiresAt,
+          })
           .where(
             and(
               eq(connectLinks.opportunityId, opportunityId),
@@ -106,7 +113,15 @@ export async function mintConnectLink({
     try {
       const [row] = await db
         .insert(connectLinks)
-        .values({ code, userId, opportunityId, kind, greeting: greeting ?? null, expiresAt })
+        .values({
+          code,
+          userId,
+          opportunityId,
+          kind,
+          greeting: greeting ?? null,
+          preferredSurface: preferredSurface ?? null,
+          expiresAt,
+        })
         .returning();
       return { code: row.code, greeting: row.greeting };
     } catch (err) {
@@ -137,6 +152,7 @@ export interface ResolvedLink {
   opportunityId: string;
   kind: ConnectLinkKind;
   greeting: string | null;
+  preferredSurface: 'telegram' | 'web' | null;
 }
 
 /**
@@ -158,6 +174,7 @@ export async function resolveConnectLink(code: string): Promise<ResolvedLink | n
     opportunityId: row.opportunityId,
     kind: row.kind as ConnectLinkKind,
     greeting: row.greeting,
+    preferredSurface: row.preferredSurface as 'telegram' | 'web' | null,
   };
 }
 
