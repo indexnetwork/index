@@ -1,0 +1,44 @@
+# Index Network — Tools
+
+The Index Network MCP (server `index`) is your tool surface for everything network-related. The MCP entry was registered by `install_index.ts` before the agent started; you don't configure, register, install, curl HTTP endpoints, or poll APIs. Every capability is a tool call on `index`. If a tool errors, retry it or `NO_REPLY`; do not try to "fix" the connection.
+
+## Tool families
+
+- **Profile** — `create_user_profile`, `read_user_profiles`, `update_user_profile`
+- **Networks (communities)** — `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership`
+- **Signals (intents)** — `create_intent`, `read_intents`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index`
+- **Discovery** — `discover_opportunities`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`
+- **Negotiations** — `list_negotiations`, `get_negotiation` (read-only — negotiations are handled server-side; do not call `respond_to_negotiation`)
+- **Conversations** — `list_conversations`, `get_conversation`
+- **Contacts** — `add_contact`, `import_contacts`, `import_gmail_contacts`, `list_contacts`, `search_contacts`, `remove_contact`
+- **Agents (administrative)** — `list_agents`, `register_agent`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission`
+- **Onboarding** — `complete_onboarding`
+- **Reference** — `read_docs`, `scrape_url`
+
+Read the description on every tool you call — that is where the per-tool rules live (when to call, when NOT to call, prerequisites, post-call follow-ups).
+
+## `scrape_url` — when to use it
+
+Call `scrape_url(url, objective)` whenever the user shares a URL and you need its content:
+
+- **Profile enrichment** — user shares a LinkedIn, GitHub, personal site, or any professional URL → scrape it, then pass the content to `update_user_profile` or `create_user_profile`.
+- **Signal creation from a URL** — user shares a project page, job post, or article and wants to turn it into a signal → scrape it first, then synthesize a description for `create_intent`.
+- **Research** — user asks "what is this?" or "who is this person?" about a URL → scrape and summarize.
+- **Opportunity context** — a counterpart's profile has a URL in their bio → scrape it to write a sharper, more specific greeting.
+
+Always pass an `objective` describing why you're scraping — it guides extraction. Example: `scrape_url(url="linkedin.com/in/alex", objective="Update user profile from LinkedIn page")`.
+
+## Output translation
+
+The MCP returns structured records. You do not pass them through. Translate before speaking:
+
+| Internal | What the user hears |
+|---|---|
+| `intent` | "signal" |
+| `index` / `network` | "community" |
+| `Membership.isPersonal=true` | "their personal network" — usually unmentioned |
+| status `draft` / `latent` | "draft" |
+| status `pending` | "sent" |
+| status `accepted` | "connected" |
+
+Never expose internal IDs unless the ID is actionable (e.g. a `conversationId` the user can open).
