@@ -280,14 +280,17 @@ export function createMcpServer(
             };
           }
 
-          // Resolve authenticated identity (userId + optional agentId + optional network scope)
-          const { userId, agentId, isSessionAuth, networkScopeId } = await authResolver.resolveIdentity(httpReq);
+          // Resolve authenticated identity (userId + optional agentId + optional network scope + optional surface)
+          const { userId, agentId, isSessionAuth, networkScopeId, clientSurface } = await authResolver.resolveIdentity(httpReq);
 
           // Resolve chat context for the user (mark as MCP — no interactive UI available)
           const context = await resolveChatContext({ database: deps.database, userId });
           context.isMcp = true;
           if (agentId) {
             context.agentId = agentId;
+          }
+          if (clientSurface) {
+            context.clientSurface = clientSurface;
           }
 
           // Network-scoped agents inherit their bound network as the implicit chat
