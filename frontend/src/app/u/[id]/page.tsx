@@ -11,6 +11,7 @@ import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import InviteMessageModal from "@/components/InviteMessageModal";
 import NegotiationHistory from "@/components/NegotiationHistory";
+import { getPublicUserProfile } from "@/services/users";
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -43,20 +44,17 @@ export default function UserProfilePage() {
   }, [id, isOtherUser, usersService]);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) navigate('/');
-  }, [authLoading, isAuthenticated, navigate]);
-
-  useEffect(() => {
     const fetchData = async () => {
-      if (!isAuthenticated || authLoading) return;
+      if (authLoading) return;
       try {
         setIsLoading(true);
         setError(null);
-        const profile = await usersService.getUserProfile(id);
+        const profile = isAuthenticated
+          ? await usersService.getUserProfile(id)
+          : await getPublicUserProfile(id!);
         setProfileData(profile);
 
-        // Fetch shared networks separately so a failure doesn't break the profile
-        if (user?.id && user.id !== id) {
+        if (isAuthenticated && user?.id && user.id !== id) {
           try {
             const networks = await indexesService.getSharedIndexes(id!);
             setSharedNetworks(networks);
@@ -178,20 +176,22 @@ export default function UserProfilePage() {
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                if (profileData.isGhost) {
-                  setInviteMessage(`Hey ${profileData.name}, would love to connect!`);
-                  setShowInviteModal(true);
-                } else {
-                  navigate(`/u/${id}/chat`);
-                }
-              }}
-              className="flex items-center gap-2 bg-[#041729] text-white px-4 py-2 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors flex-shrink-0"
-            >
-              <MessageCircle className="w-4 h-4" />
-              Message
-            </button>
+            {isAuthenticated && isOtherUser && (
+              <button
+                onClick={() => {
+                  if (profileData.isGhost) {
+                    setInviteMessage(`Hey ${profileData.name}, would love to connect!`);
+                    setShowInviteModal(true);
+                  } else {
+                    navigate(`/u/${id}/chat`);
+                  }
+                }}
+                className="flex items-center gap-2 bg-[#041729] text-white px-4 py-2 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors flex-shrink-0"
+              >
+                <MessageCircle className="w-4 h-4" />
+                Message
+              </button>
+            )}
           </div>
 
           {/* Intro */}
@@ -219,8 +219,8 @@ export default function UserProfilePage() {
             </div>
           )}
 
-          {/* Past Negotiations */}
-          {id && (
+          {/* Past Negotiations — only for authenticated users */}
+          {isAuthenticated && id && (
             <div>
               <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Negotiations</h3>
               <NegotiationHistory

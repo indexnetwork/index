@@ -455,8 +455,7 @@ export class UserController {
   }
 
   @Get('/:userId')
-  @UseGuards(AuthGuard)
-  async getUser(_req: Request, _user: AuthenticatedUser, params: { userId: string }) {
+  async getUser(_req: Request, _user: unknown, params: { userId: string }) {
     logger.verbose('Get user requested', { userId: params.userId });
     const user = await userService.findByIdOrKey(params.userId);
     if (!user) {
