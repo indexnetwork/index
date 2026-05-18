@@ -1227,10 +1227,10 @@ function ToolRow({
       {/* Tool header row */}
       <div
         className={cn(
-          "flex items-center gap-2 px-3 py-1.5",
-          isRunning && "bg-yellow-900/10",
-          isStopped && "bg-amber-900/10",
-          !isRunning && !isStopped && tool.status === "error" && "bg-red-900/10",
+          "flex items-center gap-2 px-3.5 py-1.5",
+          isRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+          isStopped && "bg-amber-50",
+          !isRunning && !isStopped && tool.status === "error" && "bg-red-50",
         )}
       >
         {hasSteps ? (
@@ -1240,7 +1240,7 @@ function ToolRow({
             aria-label={isToolExpanded ? `Collapse ${desc.action} details` : `Expand ${desc.action} details`}
             aria-expanded={isToolExpanded}
             aria-controls={`tool-steps-${toolIdx}`}
-            className="w-3 h-3 flex items-center justify-center text-gray-500 hover:text-gray-300"
+            className="w-3 h-3 flex items-center justify-center text-gray-500 hover:text-gray-700"
           >
             {isToolExpanded ? (
               <ChevronDown className="w-3 h-3" />
@@ -1249,20 +1249,18 @@ function ToolRow({
             )}
           </button>
         ) : isRunning ? (
-          <Loader2 className="w-3 h-3 text-yellow-400 animate-spin flex-shrink-0" />
+          <Loader2 className="w-3 h-3 text-gray-500 animate-spin flex-shrink-0" />
         ) : isStopped ? (
-          <Square className="w-3 h-3 text-amber-400 fill-amber-400 flex-shrink-0" />
-        ) : tool.status === "success" ? (
-          <Play className="w-3 h-3 text-cyan-400 fill-cyan-400 flex-shrink-0" />
+          <Square className="w-3 h-3 text-amber-600 fill-amber-600 flex-shrink-0" />
         ) : tool.status === "error" ? (
-          <X className="w-3 h-3 text-red-500 flex-shrink-0" />
+          <XCircle className="w-3 h-3 text-red-600 flex-shrink-0" />
         ) : (
-          <Play className="w-3 h-3 text-cyan-400 fill-cyan-400 flex-shrink-0" />
+          <Wrench className="w-3 h-3 text-gray-800 flex-shrink-0" />
         )}
 
         <span className={cn(
           "flex-1",
-          isStopped ? "text-amber-300" : tool.status === "error" ? "text-red-300" : "text-cyan-300",
+          isStopped ? "text-amber-700" : tool.status === "error" ? "text-red-700" : "text-gray-900",
         )}>
           {isRunning
             ? desc.running
@@ -1272,11 +1270,11 @@ function ToolRow({
                 ? `Failed: ${desc.action}`
                 : desc.action}
           {!isRunning && !isStopped && tool.summary && (
-            <span className="text-gray-500"> — {tool.summary}</span>
+            <span className="text-gray-400"> — {tool.summary}</span>
           )}
         </span>
 
-        <span className="tabular-nums flex-shrink-0 ml-auto text-gray-500">
+        <span className="tabular-nums flex-shrink-0 ml-auto text-gray-400">
           {isRunning && tool.startTimestamp ? (
             <RunningTimer startedAt={tool.startTimestamp} />
           ) : isStopped && stoppedAt && tool.startTimestamp ? (
@@ -1304,7 +1302,7 @@ function ToolRow({
 
       {/* Expandable steps detail */}
       {hasSteps && isToolExpanded && (
-        <div id={`tool-steps-${toolIdx}`} className="bg-gray-950 border-l-2 border-gray-700 ml-4 py-1">
+        <div id={`tool-steps-${toolIdx}`} className="bg-[#FAFAFA] border-l-2 border-[#E8E8E8] ml-4 py-1">
           {groupSteps(tool.steps!).map((group, groupIdx) => {
             if (group.kind === "match_group") {
               return <MatchGroupSummary key={`match-group-${groupIdx}`} steps={group.steps} />;
