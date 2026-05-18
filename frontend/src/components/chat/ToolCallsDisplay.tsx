@@ -1073,36 +1073,33 @@ function GraphRow({ graph, wasStoppedByUser, stoppedAt }: GraphRowProps) {
   const isRunning = graph.isRunning && !wasStoppedByUser;
   const isPhase = graph.kind === "phase";
   const displayName = getGraphDisplayName(graph.name);
-  // Phases get a distinct visual: hollow square + slate text. Reinforces that
-  // they're logical groupings, not LangGraph state machines.
-  const runningBg = isPhase ? "bg-slate-900/10" : "bg-teal-900/10";
-  const idleIconClasses = isPhase
-    ? "text-slate-400 flex-shrink-0"
-    : "text-teal-500 fill-teal-500 flex-shrink-0";
-  const runningIconColor = isPhase ? "text-slate-400" : "text-teal-400";
-  const labelColor = isStopped ? "text-amber-300" : isPhase ? "text-slate-300" : "text-teal-300";
 
   return (
     <>
       <div
         className={cn(
-          "flex items-center gap-2 pl-8 pr-3 py-0.5",
-          isRunning && runningBg,
-          isStopped && "bg-amber-900/10",
+          "flex items-center gap-2 pl-8 pr-3.5 py-0.5",
+          isRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+          isStopped && "bg-amber-50",
         )}
       >
-        <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
+        <span className="text-gray-300 flex-shrink-0 select-none">└─</span>
         {isRunning ? (
-          <Loader2 className={cn("w-2.5 h-2.5 animate-spin flex-shrink-0", runningIconColor)} />
+          <Loader2 className="w-3 h-3 text-gray-500 animate-spin flex-shrink-0" />
         ) : isStopped ? (
-          <Square className="w-2.5 h-2.5 text-amber-400 fill-amber-400 flex-shrink-0" />
+          <Square className="w-3 h-3 text-amber-600 fill-amber-600 flex-shrink-0" />
+        ) : isPhase ? (
+          <Square className="w-3 h-3 text-slate-500 flex-shrink-0" />
         ) : (
-          <Square className={cn("w-2.5 h-2.5", idleIconClasses)} />
+          <Workflow className="w-3 h-3 text-gray-800 flex-shrink-0" />
         )}
-        <span className={cn("flex-1 truncate", labelColor)}>
+        <span className={cn(
+          "flex-1 truncate",
+          isStopped ? "text-amber-700" : isPhase ? "text-slate-600" : "text-gray-900",
+        )}>
           {isStopped ? "Stopped" : displayName}
         </span>
-        <span className="tabular-nums flex-shrink-0 text-gray-500">
+        <span className="tabular-nums flex-shrink-0 text-gray-400">
           {isRunning && graph.startTimestamp ? (
             <RunningTimer startedAt={graph.startTimestamp} />
           ) : isStopped && stoppedAt && graph.startTimestamp ? (
