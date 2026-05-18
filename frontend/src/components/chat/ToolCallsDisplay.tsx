@@ -1130,21 +1130,19 @@ function GraphRow({ graph, wasStoppedByUser, stoppedAt }: GraphRowProps) {
   );
 }
 
-function outcomeIcon(o: NegotiationNode["outcome"]): string {
-  if (!o) return "⚪";
-  if (o === "accepted") return "🟢";
-  if (o === "waiting_for_agent") return "⏳";
-  return "🔴";
-}
-
 function NegotiationTree({ negotiations }: { negotiations: NegotiationNode[] }) {
   const [openIdxs, setOpenIdxs] = useState<Set<number>>(new Set());
 
   if (negotiations.length === 0) return null;
 
   return (
-    <div className="mt-2 pl-3 border-l border-gray-200">
-      <div className="text-xs text-gray-500 mb-1">Negotiations ({negotiations.length})</div>
+    <div className="pl-8 pr-3.5 py-1 bg-white">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-gray-300 flex-shrink-0 select-none">└─</span>
+        <MessagesSquare className="w-3 h-3 text-gray-800 flex-shrink-0" />
+        <span className="text-gray-600">Negotiations</span>
+        <span className="text-gray-400">({negotiations.length})</span>
+      </div>
       {negotiations.map((n, i) => {
         const isOpen = openIdxs.has(i);
         const toggle = () => {
@@ -1152,35 +1150,48 @@ function NegotiationTree({ negotiations }: { negotiations: NegotiationNode[] }) 
           if (isOpen) next.delete(i); else next.add(i);
           setOpenIdxs(next);
         };
+        const outcomeColor =
+          n.outcome === "accepted"
+            ? "text-emerald-700"
+            : n.outcome === "waiting_for_agent" || n.isRunning
+              ? "text-gray-500"
+              : "text-gray-600";
         return (
-          <div key={`${n.opportunityId}-${i}`} className="mb-1">
+          <div key={`${n.opportunityId}-${i}`} className="ml-5 mb-0.5">
             <button
               type="button"
               onClick={toggle}
-              className="flex items-center gap-1 text-xs text-gray-700 hover:text-gray-900"
+              className="flex items-center gap-2 text-left hover:text-gray-900 transition-colors"
               title={n.outcomeReasoning ?? ""}
             >
-              <span>{isOpen ? "▾" : "▸"}</span>
-              <span>{outcomeIcon(n.outcome)}</span>
-              <span className="font-medium">{n.candidateName ?? n.candidateUserId}</span>
-              <span className="text-gray-500">
-                {" — "}{n.outcome ?? (n.isRunning ? "running" : "unknown")}
-                {" ("}{n.turns.length} turn{n.turns.length === 1 ? "" : "s"}
-                {n.durationMs != null ? `, ${n.durationMs}ms` : ""}
-                {")"}
+              {isOpen ? (
+                <ChevronDown className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
+              )}
+              <span className="font-medium text-gray-700">{n.candidateName ?? n.candidateUserId}</span>
+              <span className={outcomeColor}>
+                — {n.outcome ?? (n.isRunning ? "running" : "unknown")}
+              </span>
+              <span className="text-gray-400">
+                ({n.turns.length} turn{n.turns.length === 1 ? "" : "s"}
+                {n.durationMs != null ? `, ${formatDuration(n.durationMs)}` : ""})
               </span>
             </button>
             {isOpen && (
-              <ol className="ml-5 mt-1 space-y-0.5 text-xs text-gray-700">
+              <ol className="ml-5 mt-1 space-y-0.5">
                 {n.turns.map((t) => (
-                  <li key={t.turnIndex}>
-                    <span className="text-gray-500">{t.turnIndex + 1}.</span>{" "}
-                    <span className="font-mono text-[10px] text-gray-500">[{t.actor}]</span>{" "}
-                    <span className="font-medium">{t.action}</span>
-                    {t.message && <span> — {t.message}</span>}
-                    {t.reasoning && (
-                      <div className="ml-5 text-gray-400 italic">{t.reasoning}</div>
-                    )}
+                  <li key={t.turnIndex} className="flex items-start gap-2">
+                    <ArrowLeftRight className="w-2.5 h-2.5 text-gray-500 flex-shrink-0 mt-1" />
+                    <div className="flex-1">
+                      <span className="text-gray-400">{t.turnIndex + 1}.</span>{" "}
+                      <span className="text-gray-400 text-[10px]">[{t.actor}]</span>{" "}
+                      <span className="font-medium text-gray-700">{t.action}</span>
+                      {t.message && <span className="text-gray-600"> — {t.message}</span>}
+                      {t.reasoning && (
+                        <div className="ml-5 text-gray-400 italic">{t.reasoning}</div>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ol>
