@@ -994,7 +994,7 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
             const scored = agents.filter((a) => isAgentSummaryPassed(a.summary)).length;
             return scored > 0
               ? <span className="text-gray-400"> — <span className="text-emerald-700">{scored} scored</span>, {agents.length - scored} no match</span>
-              : <span className="text-gray-400"> — no matches</span>;
+              : <span className="text-gray-500"> — no matches</span>;
           })()}
         </span>
         <span className="tabular-nums flex-shrink-0 text-gray-400">
@@ -1168,6 +1168,13 @@ function NegotiationTree({ negotiations }: { negotiations: NegotiationNode[] }) 
                 <ChevronDown className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
               ) : (
                 <ChevronRight className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
+              )}
+              {n.isRunning ? (
+                <Loader2 className="w-2.5 h-2.5 text-gray-500 animate-spin flex-shrink-0" />
+              ) : n.outcome === "timed_out" || n.outcome === "rejected_stalled" || n.outcome === "turn_cap" ? (
+                <Square className="w-2.5 h-2.5 text-amber-600 fill-amber-600 flex-shrink-0" />
+              ) : (
+                <MessagesSquare className="w-2.5 h-2.5 text-gray-800 flex-shrink-0" />
               )}
               <span className="font-medium text-gray-700">{n.candidateName ?? n.candidateUserId}</span>
               <span className={outcomeColor}>
