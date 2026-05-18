@@ -74,6 +74,8 @@ export type AgentStreamEvent =
   | { type: "hallucination_detected"; blockType: string; tool: string }
   | { type: "graph_start"; name: string }
   | { type: "graph_end"; name: string; durationMs: number }
+  | { type: "phase_start"; name: string }
+  | { type: "phase_end"; name: string; durationMs: number }
   | { type: "agent_start"; name: string }
   | { type: "agent_end"; name: string; durationMs: number; summary: string }
   | {

@@ -5,12 +5,12 @@ export type Answer =
   | { kind: 'other'; text: string };
 
 export function flattenAnswers(questions: Question[], answers: Answer[]): string {
+  const multi = questions.length > 1;
   return questions
     .map((q, i) => {
       const a = answers[i];
-      const prefix = `${q.title} (${q.prompt})`;
-      if (a.kind === 'other') return `${prefix}: Other: ${a.text}`;
-      return `${prefix}: ${a.selectedLabels.join(', ')}`;
+      const text = a.kind === 'other' ? a.text.trim() : a.selectedLabels.join(', ');
+      return multi ? `${q.title}: ${text}` : text;
     })
     .join('\n');
 }

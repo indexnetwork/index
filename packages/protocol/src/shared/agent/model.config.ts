@@ -59,6 +59,7 @@ function getModelConfig(config?: ModelConfig) {
     negotiationInsights:  { model: "google/gemini-2.5-flash", temperature: 0.4, maxTokens: 512 },
     chatContextSummarizer: { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 512 },
     discoveryQuestionGenerator: { model: "google/gemini-2.5-flash", temperature: 0.5, maxTokens: 1024 },
+    negotiationSummarizer:      { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 256 },
     inviteGenerator:      { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 512 },
     chat: {
       model: merged.chatModel ?? process.env.CHAT_MODEL ?? "google/gemini-3-pro-preview",
@@ -92,6 +93,19 @@ export function createModel(agent: keyof ReturnType<typeof getModelConfig>, conf
     throw new Error(`createModel(${agent}): OPENROUTER_API_KEY is required. Pass via configureProtocol({ apiKey }) or set the OPENROUTER_API_KEY environment variable.`);
   }
   const cfg = getModelConfig(merged)[agent] as ModelSettings;
+  // Hard upper bound on a single LLM call. Without this, langchain's HTTP
+  // client waits until the upstream cuts the socket (~3 minutes via
+  // OpenRouter), blocking the entire chat response. 60 s is generous enough
+  // for slow providers but bounds the worst case.
+  const timeoutEnv = Number.parseInt(process.env.OPENROUTER_REQUEST_TIMEOUT_MS ?? "", 10);
+  const timeout = Number.isFinite(timeoutEnv) && timeoutEnv > 0 ? timeoutEnv : 60_000;
+  // ChatOpenAI defaults to maxRetries=2. That means a single hung upstream
+  // provider gets retried up to 2 more times, each waiting `timeout` before
+  // failing — so worst-case latency becomes timeout * 3. Cap retries at 1
+  // so the worst case stays bounded at ~2 * timeout. Configurable via
+  // OPENROUTER_MAX_RETRIES.
+  const retriesEnv = Number.parseInt(process.env.OPENROUTER_MAX_RETRIES ?? "", 10);
+  const maxRetries = Number.isFinite(retriesEnv) && retriesEnv >= 0 ? retriesEnv : 1;
   return new ChatOpenAI({
     model: cfg.model,
     configuration: {
@@ -100,6 +114,8 @@ export function createModel(agent: keyof ReturnType<typeof getModelConfig>, conf
     },
     temperature: cfg.temperature,
     maxTokens: cfg.maxTokens,
+    timeout,
+    maxRetries,
     ...(cfg.reasoning && { modelKwargs: { reasoning: cfg.reasoning } }),
   });
 }

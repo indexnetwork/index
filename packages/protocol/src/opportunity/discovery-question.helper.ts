@@ -3,9 +3,9 @@
  * `DiscoveryQuestionInput`. No I/O. Side-effect-free.
  */
 import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
+import type { DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
 import type { SourceProfileData } from "./opportunity.state.js";
 import type {
-  DiscoveryNegotiation,
   DiscoveryQuestionInput,
   DiscoverySourceProfile,
   DiscoverySummary,
@@ -14,7 +14,7 @@ import type {
 export interface BuildDiscoveryQuestionInputArgs {
   query: string;
   sourceProfile: SourceProfileData | null;
-  negotiations: DiscoveryNegotiation[];
+  negotiationDigests: DiscoveryNegotiationDigest[];
   summary: DiscoverySummary;
   chatContext?: ChatContextDigest;
   now: string;
@@ -24,7 +24,7 @@ export function buildDiscoveryQuestionInput(args: BuildDiscoveryQuestionInputArg
   return {
     query: args.query,
     sourceProfile: extractSourceProfile(args.sourceProfile),
-    negotiations: args.negotiations,
+    negotiationDigests: args.negotiationDigests,
     summary: args.summary,
     ...(args.chatContext !== undefined ? { chatContext: args.chatContext } : {}),
     now: args.now,

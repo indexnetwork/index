@@ -7,6 +7,7 @@
  * orchestrates this module + an LLM client.
  */
 import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
+import type { DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
 
 /** Roles used in the existing negotiation framework. */
 export type NegotiationRole = "agent" | "patient" | "peer";
@@ -71,23 +72,19 @@ export interface DiscoveryQuestionInput {
   /** The seeker's original natural-language query / signal that triggered discovery. */
   query: string;
   sourceProfile: DiscoverySourceProfile;
-  /** Negotiations from THIS discovery turn (capped/sorted by the builder). */
-  negotiations: DiscoveryNegotiation[];
+  /**
+   * Compact per-negotiation digests from THIS discovery turn. Each digest is a
+   * fixed-size structured summary (counterparty hint, index, outcome role,
+   * keyTake) — pre-summarized so this prompt stays small regardless of how
+   * many candidates were negotiated. Raw negotiations are NOT passed here.
+   */
+  negotiationDigests: DiscoveryNegotiationDigest[];
   summary: DiscoverySummary;
   /** Distilled chat-session digest, when a session is in scope. */
   chatContext?: ChatContextDigest;
   /** ISO timestamp used as the "now" anchor in the prompt. */
   now: string;
 }
-
-/** Upper bound on negotiations included in the prompt; ~10 KB total prompt budget. */
-const MAX_NEGOTIATIONS = 8;
-/** Upper bound on turns included per negotiation (last N retained). */
-const MAX_TURNS_PER_NEGOTIATION = 6;
-/** Per-turn reasoning truncation. */
-const MAX_TURN_REASONING_CHARS = 200;
-/** Outcome reasoning truncation. */
-const MAX_OUTCOME_REASONING_CHARS = 300;
 
 export const SYSTEM_PROMPT = `You sit between a human and a discovery protocol that just ran negotiations on their behalf. Your job: surface the minimum set of structured decision questions the human must answer to make the next discovery turn sharper, or improve their outlook on the intent.
 
@@ -124,7 +121,7 @@ Output. Return at most 3 entries in the "questions" array. Each entry must inclu
 /** Pure builder: assembles the user message string from a structured input. */
 export function buildQuestionPrompt(input: DiscoveryQuestionInput): string {
   const profileSummary = renderProfile(input.sourceProfile);
-  const negotiationBlocks = renderNegotiations(input.negotiations);
+  const negotiationBlocks = renderDiscoveryNegotiationDigests(input.negotiationDigests);
   const chatContextBlock = input.chatContext
     ? renderDigest(input.chatContext)
     : "(no chat context available)";
@@ -143,7 +140,7 @@ export function buildQuestionPrompt(input: DiscoveryQuestionInput): string {
     `- ${input.summary.noOpportunityCount} ended without opportunity (${input.summary.timeoutCount} hit turn-cap/timeout)`,
     `- Role distribution across outcomes: ${roleDistribution}`,
     "",
-    "## Negotiation evidence",
+    "## Negotiation evidence (compact digests)",
     negotiationBlocks,
     "",
     "## What the user has already said in this session",
@@ -157,6 +154,29 @@ export function buildQuestionPrompt(input: DiscoveryQuestionInput): string {
     "the next discovery turn sharper. Apply every rule from your system prompt",
     "before outputting. Return an empty `questions` array if nothing is worth asking.",
   ].join("\n");
+}
+
+/**
+ * Render the negotiation-digest collection into compact one-liners. Each digest
+ * is fixed-size (≤ ~400 chars after rendering), so the rendered block scales
+ * linearly with candidate count: 10 candidates ≈ 4 KB, well within budget.
+ */
+function renderDiscoveryNegotiationDigests(digests: DiscoveryNegotiationDigest[]): string {
+  if (digests.length === 0) return "(no negotiations)";
+  return digests
+    .map((d) => {
+      const reasonSuffix = d.outcomeReason ? ` (${d.outcomeReason})` : "";
+      const rolesSuffix = d.suggestedRoles
+        ? ` — roles=${d.suggestedRoles.ownUser}↔${d.suggestedRoles.otherUser}`
+        : "";
+      return [
+        `- Counterparty: ${d.counterpartyHint}`,
+        `  Index: ${d.indexContext}`,
+        `  Outcome: ${d.outcomeRole}${reasonSuffix}${rolesSuffix}`,
+        `  Take: ${d.keyTake}`,
+      ].join("\n");
+    })
+    .join("\n\n");
 }
 
 function renderProfile(p: DiscoverySourceProfile): string {
@@ -197,51 +217,3 @@ function renderDigest(d: ChatContextDigest): string {
   return lines.length > 0 ? lines.join("\n") : "(digest is empty)";
 }
 
-function renderNegotiations(negotiations: DiscoveryNegotiation[]): string {
-  if (negotiations.length === 0) return "(no negotiations)";
-  const selected = selectNegotiations(negotiations).map(renderNegotiation);
-  return selected.join("\n\n");
-}
-
-/** Sort + cap selection: top MAX_NEGOTIATIONS by [turns.length desc, seedAssessmentScore desc]. */
-function selectNegotiations(negotiations: DiscoveryNegotiation[]): DiscoveryNegotiation[] {
-  if (negotiations.length <= MAX_NEGOTIATIONS) return negotiations;
-  return [...negotiations]
-    .sort((a, b) => {
-      if (b.turns.length !== a.turns.length) return b.turns.length - a.turns.length;
-      const scoreDiff = (b.seedAssessmentScore ?? 0) - (a.seedAssessmentScore ?? 0);
-      if (scoreDiff !== 0) return scoreDiff;
-      // Stable final tiebreaker so the prompt is input-order-independent. The
-      // counterparty id is opaque and never rendered; we use it only to break ties.
-      return a.counterpartyId.localeCompare(b.counterpartyId);
-    })
-    .slice(0, MAX_NEGOTIATIONS);
-}
-
-function renderNegotiation(n: DiscoveryNegotiation): string {
-  const lastTurns = n.turns.slice(-MAX_TURNS_PER_NEGOTIATION);
-  const turnsRendered = lastTurns
-    .map((t) => `    [${t.action}] (${t.suggestedRoles.ownUser}↔${t.suggestedRoles.otherUser}) ${truncate(t.reasoning, MAX_TURN_REASONING_CHARS)}`)
-    .join("\n");
-  const outcomeRole = n.outcome.hasOpportunity ? "opportunity" : "no-opportunity";
-  const reasonSuffix = n.outcome.reason ? ` (${n.outcome.reason})` : "";
-  return [
-    `- Counterparty: ${n.counterpartyHint}`,
-    `  Index: ${n.indexContext}`,
-    `  Turns (last ${lastTurns.length} of ${n.turns.length}):`,
-    turnsRendered,
-    `  Outcome: ${outcomeRole}${reasonSuffix} — ${truncate(n.outcome.reasoning, MAX_OUTCOME_REASONING_CHARS)}`,
-  ].join("\n");
-}
-
-/**
- * Truncate a string to `max` UTF-16 code units. Operates on `length`, not on
- * Unicode code points — a slice at an odd boundary in non-BMP text could split
- * a surrogate pair. Acceptable for v1: the inputs (negotiation reasoning, outcome
- * reasoning) are bounded prose that rarely contains emoji or astral-plane chars.
- * If that changes, switch to `Array.from(s).slice(0, max).join("")` for code-point
- * truncation at the cost of one extra allocation.
- */
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) : s;
-}

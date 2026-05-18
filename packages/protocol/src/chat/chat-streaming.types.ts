@@ -34,6 +34,8 @@ export type ChatStreamEventType =
   | "debug_meta"
   | "graph_start"
   | "graph_end"
+  | "phase_start"
+  | "phase_end"
   | "agent_start"
   | "agent_end"
   | "hallucination_detected"
@@ -438,6 +440,24 @@ export interface GraphEndEvent extends ChatStreamEventBase {
   durationMs: number;
 }
 
+/**
+ * Phase start event — emitted when a logical groupings of inline work begins
+ * inside a tool. Phases share container semantics with graphs (they can host
+ * agents) but render differently in the trace UI so users can tell them
+ * apart from LangGraph state machines.
+ */
+export interface PhaseStartEvent extends ChatStreamEventBase {
+  type: "phase_start";
+  phaseName: string;
+}
+
+/** Phase end event — emitted when a logical phase completes. */
+export interface PhaseEndEvent extends ChatStreamEventBase {
+  type: "phase_end";
+  phaseName: string;
+  durationMs: number;
+}
+
 /** Agent start event — emitted when an LLM agent begins inside a graph node. */
 export interface AgentStartEvent extends ChatStreamEventBase {
   type: "agent_start";
@@ -568,6 +588,8 @@ export type ChatStreamEvent =
   // Trace hierarchy events
   | GraphStartEvent
   | GraphEndEvent
+  | PhaseStartEvent
+  | PhaseEndEvent
   | AgentStartEvent
   | AgentEndEvent
   | NegotiationSessionStartEvent
@@ -951,6 +973,14 @@ export function createGraphStartEvent(sessionId: string, graphName: string): Gra
  */
 export function createGraphEndEvent(sessionId: string, graphName: string, durationMs: number): GraphEndEvent {
   return createStreamEvent<GraphEndEvent>("graph_end", sessionId, { graphName, durationMs });
+}
+
+export function createPhaseStartEvent(sessionId: string, phaseName: string): PhaseStartEvent {
+  return createStreamEvent<PhaseStartEvent>("phase_start", sessionId, { phaseName });
+}
+
+export function createPhaseEndEvent(sessionId: string, phaseName: string, durationMs: number): PhaseEndEvent {
+  return createStreamEvent<PhaseEndEvent>("phase_end", sessionId, { phaseName, durationMs });
 }
 
 /**

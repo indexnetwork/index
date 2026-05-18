@@ -66,6 +66,8 @@ export type TraceEventType =
   | "tool_end"
   | "graph_start"
   | "graph_end"
+  | "phase_start"
+  | "phase_end"
   | "agent_start"
   | "agent_end"
   | "negotiation_session_start"
@@ -511,6 +513,39 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     );
                     break;
                   }
+                  case "phase_start": {
+                    const ev: TraceEvent = {
+                      type: "phase_start",
+                      timestamp: Date.now(),
+                      name: (event as { phaseName?: string }).phaseName,
+                    };
+                    streamTraceEvents.push(ev);
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id !== assistantMessageId
+                          ? msg
+                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
+                      ),
+                    );
+                    break;
+                  }
+                  case "phase_end": {
+                    const ev: TraceEvent = {
+                      type: "phase_end",
+                      timestamp: Date.now(),
+                      name: (event as { phaseName?: string }).phaseName,
+                      durationMs: (event as { durationMs?: number }).durationMs,
+                    };
+                    streamTraceEvents.push(ev);
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id !== assistantMessageId
+                          ? msg
+                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
+                      ),
+                    );
+                    break;
+                  }
                   case "agent_start": {
                     const agentStartEvent: TraceEvent = {
                       type: "agent_start",
@@ -542,6 +577,120 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                         const traceEvents = [...(msg.traceEvents || []), agentEndEvent];
                         return { ...msg, traceEvents };
                       }),
+                    );
+                    break;
+                  }
+                  case "negotiation_summarizer_start": {
+                    const count = typeof (event as { count?: number }).count === "number"
+                      ? (event as { count: number }).count
+                      : 0;
+                    const ev: TraceEvent = {
+                      type: "agent_start",
+                      timestamp: Date.now(),
+                      name: `Negotiation summary (${count})`,
+                    };
+                    streamTraceEvents.push(ev);
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id !== assistantMessageId
+                          ? msg
+                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
+                      ),
+                    );
+                    break;
+                  }
+                  case "negotiation_summarizer_end": {
+                    const count = typeof (event as { count?: number }).count === "number"
+                      ? (event as { count: number }).count
+                      : 0;
+                    const durationMs = typeof (event as { durationMs?: number }).durationMs === "number"
+                      ? (event as { durationMs: number }).durationMs
+                      : undefined;
+                    const ev: TraceEvent = {
+                      type: "agent_end",
+                      timestamp: Date.now(),
+                      name: `Negotiation summary (${count})`,
+                      durationMs,
+                      summary: `${count} digest${count === 1 ? "" : "s"}`,
+                    };
+                    streamTraceEvents.push(ev);
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id !== assistantMessageId
+                          ? msg
+                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
+                      ),
+                    );
+                    break;
+                  }
+                  case "chat_summarizer_start": {
+                    const ev: TraceEvent = {
+                      type: "agent_start",
+                      timestamp: Date.now(),
+                      name: "Chat summary",
+                    };
+                    streamTraceEvents.push(ev);
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id !== assistantMessageId
+                          ? msg
+                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
+                      ),
+                    );
+                    break;
+                  }
+                  case "chat_summarizer_end": {
+                    const ev: TraceEvent = {
+                      type: "agent_end",
+                      timestamp: Date.now(),
+                      name: "Chat summary",
+                      durationMs:
+                        (event as { payload?: { durationMs?: number } }).payload?.durationMs ??
+                        event.durationMs,
+                    };
+                    streamTraceEvents.push(ev);
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id !== assistantMessageId
+                          ? msg
+                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
+                      ),
+                    );
+                    break;
+                  }
+                  case "question_generator_start": {
+                    const ev: TraceEvent = {
+                      type: "agent_start",
+                      timestamp: Date.now(),
+                      name: "Decision questions",
+                    };
+                    streamTraceEvents.push(ev);
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id !== assistantMessageId
+                          ? msg
+                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
+                      ),
+                    );
+                    break;
+                  }
+                  case "question_generator_end": {
+                    const payload = (event as { payload?: { finalCount?: number; durationMs?: number } }).payload;
+                    const finalCount = payload?.finalCount ?? 0;
+                    const ev: TraceEvent = {
+                      type: "agent_end",
+                      timestamp: Date.now(),
+                      name: "Decision questions",
+                      durationMs: payload?.durationMs ?? event.durationMs,
+                      summary: `${finalCount} question${finalCount === 1 ? "" : "s"}`,
+                    };
+                    streamTraceEvents.push(ev);
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id !== assistantMessageId
+                          ? msg
+                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
+                      ),
                     );
                     break;
                   }

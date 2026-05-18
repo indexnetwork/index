@@ -886,6 +886,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ...(runDiscoveryOrchestrator && { trigger: 'orchestrator' as const }),
         ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
         ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
+        ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
         // Decision questions add an uncapped LLM call after the negotiation phase.
         // For chat sessions, they're rendered by the frontend via streamed events
         // (Slice 4). For MCP, they drive a sequential elicitation/create flow

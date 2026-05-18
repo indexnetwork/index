@@ -15,6 +15,8 @@ import {
   createDecisionQuestionsEvent,
   createErrorEvent,
   createGraphEndEvent,
+  createPhaseStartEvent,
+  createPhaseEndEvent,
   createGraphStartEvent,
   createIterationStartEvent,
   createLlmStartEvent,
@@ -250,6 +252,14 @@ export class ChatStreamer {
 
           if (event.type === "graph_end") {
             yield createGraphEndEvent(sessionId, event.name, event.durationMs);
+          }
+
+          if (event.type === "phase_start") {
+            yield createPhaseStartEvent(sessionId, event.name);
+          }
+
+          if (event.type === "phase_end") {
+            yield createPhaseEndEvent(sessionId, event.name, event.durationMs);
           }
 
           if (event.type === "agent_start") {

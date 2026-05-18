@@ -20,6 +20,7 @@ import type { ChatSessionReader } from "../interfaces/chat-session.interface.js"
 import type { ChatSummaryReader } from "../interfaces/chat-summary.interface.js";
 import type { ChatMessageWriter } from "../interfaces/chat-message-writer.interface.js";
 import type { QuestionGeneratorReader } from "../interfaces/question-generator.interface.js";
+import type { NegotiationSummaryReader } from "../interfaces/negotiation-summary.interface.js";
 import type { Embedder } from "../interfaces/embedder.interface.js";
 import type { AgentDatabase } from "../interfaces/agent.interface.js";
 import type { NegotiationTimeoutQueue } from "../interfaces/negotiation-events.interface.js";
@@ -128,6 +129,8 @@ export interface ToolContext {
   chatMessageWriter?: ChatMessageWriter;
   /** Decision-question generator. Optional; consumers fall back to no `questions`. */
   questionGenerator?: QuestionGeneratorReader;
+  /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
+  negotiationSummary?: NegotiationSummaryReader;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
   /** Database adapter for negotiation/conversation operations. */
@@ -364,6 +367,8 @@ export interface ToolDeps {
   chatMessageWriter?: ChatMessageWriter;
   /** Decision-question generator. Optional; consumers fall back to no `questions`. */
   questionGenerator?: QuestionGeneratorReader;
+  /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
+  negotiationSummary?: NegotiationSummaryReader;
   /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
   negotiationTimeoutQueue?: NegotiationTimeoutQueue;
   /** Agent registry database adapter (optional — absent when host does not support agents). */

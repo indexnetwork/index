@@ -27,14 +27,11 @@ import { protocolLogger, withCallLogging } from "../shared/observability/protoco
 import type { ChatSummaryReader } from "../shared/interfaces/chat-summary.interface.js";
 import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
 import type { QuestionGeneratorReader } from "../shared/interfaces/question-generator.interface.js";
+import type { NegotiationSummaryReader } from "../shared/interfaces/negotiation-summary.interface.js";
+import type { DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
+import { buildFallbackDigest } from "../negotiation/negotiation.summarizer.js";
 import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
-import { requestContext } from "../shared/observability/request-context.js";
-import {
-  createChatSummarizerStartEvent,
-  createChatSummarizerEndEvent,
-  createQuestionGeneratorStartEvent,
-  createQuestionGeneratorEndEvent,
-} from "../chat/chat-streaming.types.js";
+import { traceAgent, tracePhase } from "../shared/observability/trace.js";
 import { buildDiscoveryQuestionInput } from "./discovery-question.helper.js";
 
 const logger = protocolLogger("OpportunityDiscover");
@@ -92,6 +89,13 @@ export interface DiscoverInput {
   negotiateTimeoutMs?: number;
   /** Optional read-through chat-session digest reader. Required for chatContext enrichment. */
   chatSummary?: ChatSummaryReader;
+  /**
+   * Optional negotiation summarizer. When provided, each post-negotiation digest
+   * replaces the raw negotiation in the decision-question generator's input,
+   * keeping that prompt small and predictable regardless of candidate count.
+   * When omitted, a deterministic fallback digest is built per negotiation.
+   */
+  negotiationSummary?: NegotiationSummaryReader;
   /** Optional decision-question generator. When omitted, no questions are produced. */
   questionGenerator?: QuestionGeneratorReader;
   /**
@@ -703,17 +707,33 @@ export async function runDiscoverFromQuery(
         }
       }
 
-      // Build decision questions early so they can be attached to all return paths
-      // (including the "no opportunities found" cases — questions are especially
-      // useful when the user gets zero results and needs to refine their query).
-      const questionPayload = await maybeBuildQuestions({
-        trigger,
-        enableQuestions: input.enableQuestions ?? false,
-        chatSummary: input.chatSummary,
-        questionGenerator: input.questionGenerator,
-        chatSessionId,
-        graphResult: result,
-        query: queryOrEmpty,
+      // Refine phase: a sibling of the opportunity graph in the trace tree.
+      // Holds the three post-discovery summarization steps. Each step is its
+      // own traced agent so it appears as a leaf in the trace UI.
+      //
+      // Negotiation summary: compress each raw negotiation into a fixed-size
+      // structured digest so the question generator's prompt stays small
+      // (a 10-candidate turn used to balloon past 60 KB and stall upstream).
+      // Decision questions: generate up to 3 clarifying questions from the
+      // digests + chat context.
+      const { questionPayload } = await tracePhase("Refine", async () => {
+        const negotiationDigests = await summarizeNegotiations({
+          negotiations: result.discoveryNegotiations ?? [],
+          summarizer: input.negotiationSummary,
+          enableQuestions: input.enableQuestions ?? false,
+          trigger,
+        });
+        const questionPayload = await maybeBuildQuestions({
+          trigger,
+          enableQuestions: input.enableQuestions ?? false,
+          chatSummary: input.chatSummary,
+          questionGenerator: input.questionGenerator,
+          chatSessionId,
+          graphResult: result,
+          negotiationDigests,
+          query: queryOrEmpty,
+        });
+        return { negotiationDigests, questionPayload };
       });
 
       if (result.createIntentSuggested && result.suggestedIntentDescription) {
@@ -899,7 +919,48 @@ interface MaybeBuildQuestionsInput {
   questionGenerator: QuestionGeneratorReader | undefined;
   chatSessionId: string | undefined;
   graphResult: GraphResultLike;
+  /** Pre-built per-negotiation digests. Pass [] when summarization is unavailable or disabled. */
+  negotiationDigests: DiscoveryNegotiationDigest[];
   query: string;
+}
+
+/**
+ * Run the negotiation summarizer over every negotiation in this discovery turn.
+ * Each summarization is independent — run them concurrently via Promise.all.
+ * When the summarizer is missing (no LLM available) or fails for an individual
+ * negotiation, fall back to a deterministic digest so the downstream generator
+ * still has structured input.
+ */
+async function summarizeNegotiations(args: {
+  negotiations: DiscoveryNegotiation[];
+  summarizer: NegotiationSummaryReader | undefined;
+  enableQuestions: boolean;
+  trigger: 'ambient' | 'orchestrator' | undefined;
+}): Promise<DiscoveryNegotiationDigest[]> {
+  // Skip the LLM round-trip entirely when questions won't be built.
+  if (!args.enableQuestions || args.trigger !== 'orchestrator') return [];
+  if (args.negotiations.length === 0) return [];
+
+  return traceAgent(
+    `Negotiation summary (${args.negotiations.length})`,
+    () =>
+      Promise.all(
+        args.negotiations.map(async (n) => {
+          if (!args.summarizer) return buildFallbackDigest(n);
+          try {
+            const d = await args.summarizer.summarize(n);
+            return d ?? buildFallbackDigest(n);
+          } catch (err) {
+            logger.warn("negotiationSummary.summarize threw — using fallback digest", {
+              counterpartyHint: n.counterpartyHint,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return buildFallbackDigest(n);
+          }
+        }),
+      ),
+    (digests) => `${digests.length} digest${digests.length === 1 ? "" : "s"}`,
+  );
 }
 
 async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
@@ -910,16 +971,9 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
   if (args.trigger !== 'orchestrator') return {};
   if (!args.questionGenerator) return {};
 
-  // Use a wide-cast emitter so the new event types don't require touching TraceEmitter.
-  // This follows the same pattern used in negotiation.graph.ts (emitWide).
-  const rawEmitter = requestContext.getStore()?.traceEmitter;
-  const emitWide = (event: Record<string, unknown>) =>
-    (rawEmitter as ((e: Record<string, unknown>) => void) | undefined)?.(event);
-
-  // Slice 3 supports only the `transcripts` input mode; `insights` is planned
-  // for a later slice. We hardcode here so the trace event accurately reflects
-  // what was used. If the env var is set to "insights", log a warning so
-  // operators aren't surprised when reporting still says "transcripts".
+  // Hardcoded — `insights` mode is planned for a later slice. Warn if the env
+  // var is set so operators aren't surprised when reporting still says
+  // "transcripts".
   if (process.env.DISCOVERY_QUESTIONS_INPUT_MODE === "insights") {
     logger.warn("DISCOVERY_QUESTIONS_INPUT_MODE=insights is not yet implemented; falling back to transcripts");
   }
@@ -927,23 +981,26 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
 
   let chatContext: ChatContextDigest | undefined;
   if (args.chatSummary && args.chatSessionId) {
-    const summarizerStart = Date.now();
-    emitWide(createChatSummarizerStartEvent("", { sessionId: args.chatSessionId }) as unknown as Record<string, unknown>);
-    try {
-      chatContext = (await args.chatSummary.getDigest(args.chatSessionId)) ?? undefined;
-    } catch (err) {
-      logger.warn("chatSummary.getDigest threw — proceeding without digest", {
-        sessionId: args.chatSessionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      chatContext = undefined;
-    }
-    emitWide(createChatSummarizerEndEvent("", {
-      durationMs: Date.now() - summarizerStart,
-    }) as unknown as Record<string, unknown>);
+    const sessionId = args.chatSessionId;
+    const summary = args.chatSummary;
+    chatContext = await traceAgent(
+      "Chat summary",
+      async () => {
+        try {
+          return (await summary.getDigest(sessionId)) ?? undefined;
+        } catch (err) {
+          logger.warn("chatSummary.getDigest threw — proceeding without digest", {
+            sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return undefined;
+        }
+      },
+      (digest) => (digest ? "loaded" : "empty"),
+    );
   }
 
-  const negotiations = args.graphResult.discoveryNegotiations ?? [];
+  const negotiationDigests = args.negotiationDigests;
   const summary = args.graphResult.discoverySummary ?? {
     totalCandidates: 0,
     opportunitiesFound: 0,
@@ -952,42 +1009,38 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
     roleDistribution: {},
   };
 
-  const generatorStart = Date.now();
-  emitWide(createQuestionGeneratorStartEvent("", {
-    inputMode,
-    negotiationCount: negotiations.length,
-    hasChatContext: chatContext !== undefined,
-  }) as unknown as Record<string, unknown>);
-
   const input = buildDiscoveryQuestionInput({
     query: args.query,
     sourceProfile: args.graphResult.sourceProfile ?? null,
-    negotiations,
+    negotiationDigests,
     summary,
     chatContext,
     now: new Date().toISOString(),
   });
 
-  let genResult: Awaited<ReturnType<typeof args.questionGenerator.generate>> = null;
-  try {
-    genResult = await args.questionGenerator.generate(input);
-  } catch (err) {
-    logger.warn("questionGenerator.generate threw — suppressing questions, recording debug duration only", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    genResult = null;
-  }
+  const questionGenerator = args.questionGenerator;
+  const generatorStart = Date.now();
+  const genResult = await traceAgent(
+    "Decision questions",
+    async () => {
+      try {
+        return await questionGenerator.generate(input);
+      } catch (err) {
+        logger.warn("questionGenerator.generate threw — suppressing questions", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+    },
+    (r) => {
+      const count = r?.questions?.length ?? 0;
+      return `${count} question${count === 1 ? "" : "s"}`;
+    },
+  );
   const durationMs = Date.now() - generatorStart;
 
   const finalCount = genResult?.questions?.length ?? 0;
   const strategies: QuestionStrategy[] = genResult?.strategies ?? [];
-
-  emitWide(createQuestionGeneratorEndEvent("", {
-    finalCount,
-    strategies,
-    durationMs,
-    inputMode,
-  }) as unknown as Record<string, unknown>);
 
   return {
     ...(genResult && genResult.questions.length > 0 ? { questions: genResult.questions } : {}),

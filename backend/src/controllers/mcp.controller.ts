@@ -31,6 +31,7 @@ import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
 import { QuestionGeneratorService } from '../services/question-generator.service';
+import { NegotiationSummaryService } from '../services/negotiation-summary.service';
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
 import { IntegrationService } from '../services/integration.service';
@@ -57,6 +58,7 @@ const integration = new ComposioIntegrationAdapter();
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
 const questionGeneratorService = new QuestionGeneratorService();
+const negotiationSummaryService = new NegotiationSummaryService();
 const integrationImporter = new IntegrationService(integration, contactService);
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
 
@@ -89,6 +91,7 @@ const protocolDeps = {
   contactService,
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
+  negotiationSummary: negotiationSummaryService,
   questionGenerator: questionGeneratorService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
@@ -382,6 +385,7 @@ function getOrCreateMcpServer(): McpServer {
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
     chatSession: protocolDeps.chatSession,
     chatSummary: protocolDeps.chatSummary,
+    negotiationSummary: protocolDeps.negotiationSummary,
     questionGenerator: protocolDeps.questionGenerator,
     chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,

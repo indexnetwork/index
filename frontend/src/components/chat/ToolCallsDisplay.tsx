@@ -377,6 +377,8 @@ interface AgentNode {
 
 interface GraphNode {
   name: string;
+  /** "graph" = LangGraph state machine (Opportunity graph, etc). "phase" = logical grouping of inline work. */
+  kind: "graph" | "phase";
   startTimestamp?: number;
   durationMs?: number;
   isRunning: boolean;
@@ -533,9 +535,12 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
         break;
       }
 
-      case "graph_start": {
+      case "graph_start":
+      case "phase_start": {
+        const kind = event.type === "phase_start" ? "phase" : "graph";
         const graphNode: GraphNode = {
           name: event.name ?? "",
+          kind,
           startTimestamp: event.timestamp,
           isRunning: true,
           agents: [],
@@ -549,11 +554,13 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
         break;
       }
 
-      case "graph_end": {
-        // Find the most-recently opened graph with this name that is still running
+      case "graph_end":
+      case "phase_end": {
+        const kind = event.type === "phase_end" ? "phase" : "graph";
+        // Find the most-recently opened container of matching kind with this name that is still running
         const allGraphs = tools.flatMap((t) => t.graphs);
         const graphNode = [...allGraphs].reverse().find(
-          (g) => g.name === (event.name ?? "") && g.isRunning,
+          (g) => g.kind === kind && g.name === (event.name ?? "") && g.isRunning,
         );
         if (graphNode) {
           graphNode.durationMs = event.durationMs ?? (graphNode.startTimestamp && event.timestamp
@@ -1060,29 +1067,35 @@ interface GraphRowProps {
 function GraphRow({ graph, wasStoppedByUser, stoppedAt }: GraphRowProps) {
   const isStopped = graph.isRunning && wasStoppedByUser && stoppedAt;
   const isRunning = graph.isRunning && !wasStoppedByUser;
+  const isPhase = graph.kind === "phase";
   const displayName = getGraphDisplayName(graph.name);
+  // Phases get a distinct visual: hollow square + slate text. Reinforces that
+  // they're logical groupings, not LangGraph state machines.
+  const runningBg = isPhase ? "bg-slate-900/10" : "bg-teal-900/10";
+  const idleIconClasses = isPhase
+    ? "text-slate-400 flex-shrink-0"
+    : "text-teal-500 fill-teal-500 flex-shrink-0";
+  const runningIconColor = isPhase ? "text-slate-400" : "text-teal-400";
+  const labelColor = isStopped ? "text-amber-300" : isPhase ? "text-slate-300" : "text-teal-300";
 
   return (
     <>
       <div
         className={cn(
           "flex items-center gap-2 pl-8 pr-3 py-0.5",
-          isRunning && "bg-teal-900/10",
+          isRunning && runningBg,
           isStopped && "bg-amber-900/10",
         )}
       >
         <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
         {isRunning ? (
-          <Loader2 className="w-2.5 h-2.5 text-teal-400 animate-spin flex-shrink-0" />
+          <Loader2 className={cn("w-2.5 h-2.5 animate-spin flex-shrink-0", runningIconColor)} />
         ) : isStopped ? (
           <Square className="w-2.5 h-2.5 text-amber-400 fill-amber-400 flex-shrink-0" />
         ) : (
-          <Square className="w-2.5 h-2.5 text-teal-500 fill-teal-500 flex-shrink-0" />
+          <Square className={cn("w-2.5 h-2.5", idleIconClasses)} />
         )}
-        <span className={cn(
-          "flex-1 truncate",
-          isStopped ? "text-amber-300" : "text-teal-300",
-        )}>
+        <span className={cn("flex-1 truncate", labelColor)}>
           {isStopped ? "Stopped" : displayName}
         </span>
         <span className="tabular-nums flex-shrink-0 text-gray-500">

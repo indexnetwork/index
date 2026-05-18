@@ -53,16 +53,16 @@ export function QuestionCard({
   return (
     <div
       className={cn(
-        'rounded-2xl border border-[#E8E8E8] p-4 flex flex-col gap-3 bg-white',
+        'rounded-md p-4 flex flex-col gap-3 bg-[#F8F8F8]',
         disabled && 'opacity-60',
       )}
     >
-      <span className="inline-block self-start text-[10px] uppercase tracking-wider font-bold bg-[#FAFAFA] border border-[#E8E8E8] rounded-md px-2 py-0.5 text-gray-900">
+      <span className="inline-block self-start text-[10px] uppercase tracking-wider font-bold bg-white border border-[#E8E8E8] rounded-sm px-2 py-0.5 text-gray-900">
         {question.title}
       </span>
-      <p className="text-sm text-gray-900">{question.prompt}</p>
+      <p className="text-[14px] text-[#3D3D3D] leading-relaxed">{question.prompt}</p>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         {question.options.map((opt) => (
           <OptionRow
             key={opt.label}
@@ -105,7 +105,7 @@ export function QuestionCard({
               setOtherText(e.target.value);
               onAnswerChange({ kind: 'other', text: e.target.value });
             }}
-            className="text-sm border border-[#E8E8E8] rounded-lg px-3 py-2"
+            className="text-[14px] text-[#3D3D3D] bg-white border border-[#E8E8E8] rounded-md px-3 py-2 focus:outline-none focus:border-[#3D3D3D]"
           />
         )}
       </div>
