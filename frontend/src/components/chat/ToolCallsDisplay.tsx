@@ -900,29 +900,29 @@ function AgentRow({ agent, wasStoppedByUser, stoppedAt }: AgentRowProps) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 pl-12 pr-3 py-0.5",
-        isRunning && "bg-orange-900/10",
-        isStopped && "bg-amber-900/10",
+        "flex items-center gap-2 pl-12 pr-3.5 py-0.5",
+        isRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+        isStopped && "bg-amber-50",
       )}
     >
-      <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
+      <span className="text-gray-300 flex-shrink-0 select-none">└─</span>
       {isRunning ? (
-        <Loader2 className="w-2.5 h-2.5 text-orange-400 animate-spin flex-shrink-0" />
+        <Loader2 className="w-2.5 h-2.5 text-gray-500 animate-spin flex-shrink-0" />
       ) : isStopped ? (
-        <Square className="w-2.5 h-2.5 text-amber-400 fill-amber-400 flex-shrink-0" />
+        <Square className="w-2.5 h-2.5 text-amber-600 fill-amber-600 flex-shrink-0" />
       ) : (
-        <Circle className="w-2.5 h-2.5 text-orange-400 fill-orange-400 flex-shrink-0" />
+        <Bot className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
       )}
       <span className={cn(
         "flex-1 truncate",
-        isStopped ? "text-amber-300" : "text-orange-300",
+        isStopped ? "text-amber-700" : "text-gray-600",
       )}>
         {isStopped ? "Stopped" : displayName}
         {!isRunning && !isStopped && agent.summary && (
-          <span className="text-gray-500"> — {agent.summary}</span>
+          <span className="text-gray-400"> — {agent.summary}</span>
         )}
       </span>
-      <span className="tabular-nums flex-shrink-0 text-gray-500">
+      <span className="tabular-nums flex-shrink-0 text-gray-400">
         {isRunning && agent.startTimestamp ? (
           <RunningTimer startedAt={agent.startTimestamp} />
         ) : isStopped && stoppedAt && agent.startTimestamp ? (
@@ -951,8 +951,6 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
   const anyRunning = runningCount > 0;
   const anyStopped = stoppedCount > 0 && !anyRunning;
 
-  // Total duration: sum of completed durations. If any are still running, show a live timer
-  // from the earliest start timestamp.
   const earliestStart = agents.reduce<number | undefined>(
     (min, a) => (a.startTimestamp !== undefined ? (min === undefined ? a.startTimestamp : Math.min(min, a.startTimestamp)) : min),
     undefined,
@@ -961,46 +959,45 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
 
   return (
     <div>
-      {/* Collapsed summary row */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          "flex items-center gap-2 pl-12 pr-3 py-0.5 w-full text-left hover:bg-gray-800/50 transition-colors",
-          anyRunning && "bg-orange-900/10",
-          anyStopped && "bg-amber-900/10",
+          "flex items-center gap-2 pl-12 pr-3.5 py-0.5 w-full text-left hover:bg-gray-50 transition-colors",
+          anyRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+          anyStopped && "bg-amber-50",
         )}
       >
-        <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
+        <span className="text-gray-300 flex-shrink-0 select-none">└─</span>
         {isExpanded ? (
           <ChevronDown className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
         ) : (
           <ChevronRight className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
         )}
         {anyRunning ? (
-          <Loader2 className="w-2.5 h-2.5 text-orange-400 animate-spin flex-shrink-0" />
+          <Loader2 className="w-2.5 h-2.5 text-gray-500 animate-spin flex-shrink-0" />
         ) : anyStopped ? (
-          <Square className="w-2.5 h-2.5 text-amber-400 fill-amber-400 flex-shrink-0" />
+          <Square className="w-2.5 h-2.5 text-amber-600 fill-amber-600 flex-shrink-0" />
         ) : (
-          <Circle className="w-2.5 h-2.5 text-orange-400 fill-orange-400 flex-shrink-0" />
+          <Bot className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
         )}
         <span className={cn(
           "flex-1 truncate",
-          anyStopped ? "text-amber-300" : "text-orange-300",
+          anyStopped ? "text-amber-700" : "text-gray-600",
         )}>
           {anyStopped ? "Stopped" : displayName}
-          <span className="text-gray-500"> ({agents.length})</span>
+          <span className="text-gray-400"> ({agents.length})</span>
           {anyRunning && runningCount < agents.length && (
-            <span className="text-gray-600"> — {agents.length - runningCount} done, {runningCount} running</span>
+            <span className="text-gray-400"> — {agents.length - runningCount} done, {runningCount} running</span>
           )}
           {!anyRunning && !anyStopped && (() => {
             const scored = agents.filter((a) => isAgentSummaryPassed(a.summary)).length;
             return scored > 0
-              ? <span className="text-gray-600"> — <span className="text-green-400">{scored} scored</span>, {agents.length - scored} no match</span>
-              : <span className="text-gray-600"> — no matches</span>;
+              ? <span className="text-gray-400"> — <span className="text-emerald-700">{scored} scored</span>, {agents.length - scored} no match</span>
+              : <span className="text-gray-400"> — no matches</span>;
           })()}
         </span>
-        <span className="tabular-nums flex-shrink-0 text-gray-500">
+        <span className="tabular-nums flex-shrink-0 text-gray-400">
           {anyRunning && earliestStart ? (
             <RunningTimer startedAt={earliestStart} />
           ) : anyStopped && stoppedAt && earliestStart ? (
@@ -1011,7 +1008,6 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
         </span>
       </button>
 
-      {/* Expanded: individual agent sub-rows */}
       {isExpanded && agents.map((agent, aIdx) => {
         const agentIsRunning = agent.isRunning && !wasStoppedByUser;
         const agentIsStopped = agent.isRunning && wasStoppedByUser && !!stoppedAt;
@@ -1021,24 +1017,24 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
           <div
             key={`${agent.name}-group-${aIdx}`}
             className={cn(
-              "flex items-center gap-2 pl-16 pr-3 py-0.5",
-              agentIsRunning && "bg-orange-900/5",
-              agentIsStopped && "bg-amber-900/5",
+              "flex items-center gap-2 pl-16 pr-3.5 py-0.5",
+              agentIsRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+              agentIsStopped && "bg-amber-50",
             )}
           >
-            <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
+            <span className="text-gray-300 flex-shrink-0 select-none">└─</span>
             {agentIsRunning ? (
-              <Loader2 className="w-2 h-2 text-orange-400 animate-spin flex-shrink-0" />
+              <Loader2 className="w-2 h-2 text-gray-500 animate-spin flex-shrink-0" />
             ) : agentIsStopped ? (
-              <Square className="w-2 h-2 text-amber-400 fill-amber-400 flex-shrink-0" />
+              <Square className="w-2 h-2 text-amber-600 fill-amber-600 flex-shrink-0" />
             ) : passed ? (
-              <Circle className="w-2 h-2 text-green-400 fill-green-400 flex-shrink-0" />
+              <Circle className="w-2 h-2 text-emerald-600 fill-emerald-600 flex-shrink-0" />
             ) : (
-              <Circle className="w-2 h-2 text-gray-500 fill-gray-500 flex-shrink-0" />
+              <Circle className="w-2 h-2 text-gray-400 fill-gray-400 flex-shrink-0" />
             )}
             <span className={cn(
               "flex-1 truncate",
-              agentIsStopped ? "text-amber-300" : agentIsRunning ? "text-orange-300" : "text-gray-400",
+              agentIsStopped ? "text-amber-700" : agentIsRunning ? "text-gray-700" : "text-gray-500",
             )}>
               {agentIsStopped
                 ? "Stopped"
@@ -1046,7 +1042,7 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
                   ? "Running..."
                   : agent.summary ?? getAgentDisplayName(agent.name)}
             </span>
-            <span className="tabular-nums flex-shrink-0 text-gray-600">
+            <span className="tabular-nums flex-shrink-0 text-gray-400">
               {agentIsRunning && agent.startTimestamp ? (
                 <RunningTimer startedAt={agent.startTimestamp} />
               ) : agentIsStopped && stoppedAt && agent.startTimestamp ? (
