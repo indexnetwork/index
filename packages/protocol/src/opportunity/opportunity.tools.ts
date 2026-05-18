@@ -416,7 +416,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       continueFrom: z
         .string()
         .optional()
-        .describe("Pagination token: pass the discoveryId from a previous discover_opportunities result to evaluate the next batch of candidates. Do not combine with other mode parameters."),
+        .describe("Pagination token: pass the discoveryId from a previous discover_opportunities result to evaluate the next batch of candidates. Do not combine with searchQuery or other mode parameters — when a fresh searchQuery is also present, the server ignores continueFrom and runs a fresh discovery."),
       searchQuery: z
         .string()
         .optional()
@@ -504,8 +504,21 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const effectiveIndexId =
         (context.networkId || query.networkId?.trim()) ?? undefined;
 
-      // ── Continuation mode ── (must take strict precedence — it's a pagination token)
-      if (query.continueFrom) {
+      // ── Continuation mode ──
+      // `continueFrom` is a pagination token for resuming a prior discovery's
+      // cached candidates. When a caller (typically an MCP client's LLM) sends
+      // a fresh `searchQuery` alongside a stale `continueFrom`, treat it as a
+      // fresh search — the explicit search intent wins. Resuming against the
+      // stale session's exhausted cache silently produced the "No more
+      // matching opportunities found in the remaining candidates" response
+      // for users who expected fresh results (IND-305).
+      if (query.continueFrom && query.searchQuery?.trim()) {
+        logger.warn("discover_opportunities: dropping stale continueFrom in favor of fresh searchQuery", {
+          userId: context.userId,
+          continueFrom: query.continueFrom,
+        });
+      }
+      if (query.continueFrom && !query.searchQuery?.trim()) {
         const _continueTraceEmitter = requestContext.getStore()?.traceEmitter;
         const _graphStart = Date.now();
         _continueTraceEmitter?.({ type: "graph_start", name: "opportunity" });
