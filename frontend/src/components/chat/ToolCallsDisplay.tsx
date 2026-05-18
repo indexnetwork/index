@@ -1381,7 +1381,6 @@ export function ToolCallsDisplay({
   const parsed = parseTraceEvents(traceEvents);
 
   const runningTools = parsed.tools.filter((t) => t.isRunning).length;
-  const hasErrors = parsed.tools.some((t) => t.status === "error");
 
   const firstEvent = traceEvents[0];
   const lastEvent = traceEvents[traceEvents.length - 1];
@@ -1401,36 +1400,30 @@ export function ToolCallsDisplay({
   };
 
   return (
-    <div className="mb-3 font-mono text-[11px] leading-tight border border-gray-200 rounded-lg overflow-hidden bg-gray-900 text-gray-100">
+    <div className="mb-3 font-mono text-[11px] leading-tight border border-[#E8E8E8] rounded-sm overflow-hidden bg-white text-gray-700">
       {/* Header */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         aria-label={isExpanded ? "Collapse trace" : "Expand trace"}
         aria-expanded={isExpanded}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-gray-300 hover:bg-gray-800 transition-colors border-b border-gray-700"
+        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-gray-700 hover:bg-gray-50 transition-colors border-b border-[#E8E8E8] bg-[#FAFAFA]"
       >
         {isExpanded ? (
           <ChevronDown className="w-3 h-3 text-gray-500" />
         ) : (
           <ChevronRight className="w-3 h-3 text-gray-500" />
         )}
-        <span className="text-gray-500">TRACE</span>
-        <span className="text-gray-600">│</span>
-        <span>
-          {runningTools > 0 || (isStreaming && !wasStoppedByUser) ? (
-            <span className="text-yellow-400">{traceEvents.length} events</span>
-          ) : wasStoppedByUser ? (
-            <span className="text-amber-400">{traceEvents.length} events (stopped)</span>
-          ) : (
-            <span className={hasErrors ? "text-red-400" : "text-green-400"}>
-              {traceEvents.length} events
-            </span>
-          )}
+        <span className="font-['Public_Sans'] text-[10px] uppercase tracking-wider font-bold text-black">
+          Trace
         </span>
-        <span className="text-gray-600 ml-auto">
+        <span className="w-px h-2.5 bg-gray-300" />
+        <span className="text-gray-500 tabular-nums">
+          {traceEvents.length} events{wasStoppedByUser ? " (stopped)" : ""}
+        </span>
+        <span className="text-gray-400 ml-auto flex items-center gap-2">
           {runningTools > 0 || (isStreaming && !wasStoppedByUser) ? (
-            <Loader2 className="w-3 h-3 animate-spin text-yellow-400" />
+            <Loader2 className="w-3 h-3 animate-spin text-gray-500" />
           ) : wasStoppedByUser && stoppedAt && firstEvent ? (
             formatDuration(stoppedAt - firstEvent.timestamp)
           ) : (
@@ -1440,7 +1433,7 @@ export function ToolCallsDisplay({
       </button>
 
       {isExpanded && (
-        <div className="divide-y divide-gray-800">
+        <div className="divide-y divide-[#F4F4F4]">
           {parsed.timeline.map((entry, idx) => {
             if (entry.kind === "tool") {
               return (
