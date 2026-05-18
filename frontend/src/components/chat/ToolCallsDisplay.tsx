@@ -1447,13 +1447,13 @@ export function ToolCallsDisplay({
               return (
                 <div
                   key={`iter-${idx}`}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-900/20"
+                  className="flex items-center gap-2 px-3.5 py-1.5 bg-[#FFF5F6] shadow-[inset_2px_0_0_#FAB8BD]"
                 >
-                  <Zap className="w-3 h-3 text-blue-400 flex-shrink-0" />
-                  <span className="text-blue-300 font-medium">
+                  <RotateCw className="w-3 h-3 text-[#FAB8BD] flex-shrink-0" />
+                  <span className="text-gray-900 font-medium">
                     Starting iteration {event.iteration}
                   </span>
-                  <span className="text-gray-600 text-[10px] ml-auto">
+                  <span className="text-gray-400 text-[10px] ml-auto">
                     {formatTime(event.timestamp)}
                   </span>
                 </div>
@@ -1464,13 +1464,13 @@ export function ToolCallsDisplay({
               return (
                 <div
                   key={`hallucination-${idx}`}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20"
+                  className="flex items-center gap-2 px-3.5 py-1.5 bg-amber-50"
                 >
-                  <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
-                  <span className="text-amber-300 font-medium">
+                  <AlertTriangle className="w-3 h-3 text-amber-600 flex-shrink-0" />
+                  <span className="text-amber-700 font-medium">
                     Hallucinated {event.summary} block — auto-invoking {event.name}
                   </span>
-                  <span className="text-gray-600 text-[10px] ml-auto">
+                  <span className="text-gray-400 text-[10px] ml-auto">
                     {formatTime(event.timestamp)}
                   </span>
                 </div>
@@ -1487,26 +1487,26 @@ export function ToolCallsDisplay({
                 <div
                   key={`llm-start-${idx}`}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-1.5",
-                    isRunning && "bg-purple-900/10",
-                    isStopped && "bg-amber-900/10",
+                    "flex items-center gap-2 px-3.5 py-1.5",
+                    isRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+                    isStopped && "bg-amber-50",
                   )}
                 >
                   {isRunning ? (
-                    <Loader2 className="w-3 h-3 text-purple-400 animate-spin flex-shrink-0" />
+                    <Loader2 className="w-3 h-3 text-gray-500 animate-spin flex-shrink-0" />
                   ) : isStopped ? (
-                    <Square className="w-3 h-3 text-amber-400 fill-amber-400 flex-shrink-0" />
+                    <Square className="w-3 h-3 text-amber-600 fill-amber-600 flex-shrink-0" />
                   ) : (
-                    <Cpu className="w-3 h-3 text-purple-400 flex-shrink-0" />
+                    <Sparkles className="w-3 h-3 text-gray-500 flex-shrink-0" />
                   )}
-                  <span className={isStopped ? "text-amber-300" : "text-purple-300"}>
+                  <span className={isStopped ? "text-amber-700" : "text-gray-800"}>
                     {isRunning
                       ? "Thinking about your request..."
                       : isStopped
                         ? "Stopped"
                         : "Analyzed your request"}
                   </span>
-                  <span className="tabular-nums flex-shrink-0 ml-auto text-gray-500">
+                  <span className="tabular-nums flex-shrink-0 ml-auto text-gray-400">
                     {isRunning ? (
                       <RunningTimer startedAt={event.timestamp} />
                     ) : isStopped && stoppedAt ? (
@@ -1521,9 +1521,9 @@ export function ToolCallsDisplay({
 
             if (item.kind === "llm_end") {
               return (
-                <div key={`llm-end-${idx}`} className="flex items-center gap-2 px-3 py-1.5">
-                  <Square className="w-3 h-3 text-purple-500 fill-purple-500 flex-shrink-0" />
-                  <span className="text-purple-300">
+                <div key={`llm-end-${idx}`} className="flex items-center gap-2 px-3.5 py-1.5">
+                  <Sparkles className="w-3 h-3 text-[#FAB8BD] fill-[#FAB8BD] flex-shrink-0" />
+                  <span className="text-gray-800">
                     {event.hasToolCalls && event.toolNames
                       ? `Decided to ${event.toolNames
                           .map((t) => getToolDescription(t).action.toLowerCase())
