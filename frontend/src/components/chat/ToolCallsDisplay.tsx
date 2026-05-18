@@ -200,11 +200,11 @@ function getAgentDisplayName(name: string): string {
 }
 
 const SPEECH_ACT_LABELS: Record<string, { label: string; color: string }> = {
-  COMMISSIVE: { label: "Commitment", color: "text-green-400" },
-  DIRECTIVE: { label: "Request", color: "text-blue-400" },
-  DECLARATION: { label: "Declaration", color: "text-purple-400" },
-  ASSERTIVE: { label: "Statement", color: "text-gray-400" },
-  EXPRESSIVE: { label: "Expression", color: "text-yellow-400" },
+  COMMISSIVE: { label: "Commitment", color: "text-emerald-700" },
+  DIRECTIVE: { label: "Request", color: "text-sky-700" },
+  DECLARATION: { label: "Declaration", color: "text-violet-700" },
+  ASSERTIVE: { label: "Statement", color: "text-gray-600" },
+  EXPRESSIVE: { label: "Expression", color: "text-amber-700" },
 };
 
 function ScoreBar({ value, label }: { value: number; label: string }) {
@@ -219,13 +219,13 @@ function ScoreBar({ value, label }: { value: number; label: string }) {
   return (
     <div className="flex items-center gap-2 text-[10px]">
       <span className="w-16 text-gray-500">{label}</span>
-      <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
         <div
           className={cn("h-full rounded-full", color)}
           style={{ width: `${percentage}%` }}
         />
       </div>
-      <span className="w-8 text-right tabular-nums text-gray-400">
+      <span className="w-8 text-right tabular-nums text-gray-500">
         {Math.round(value)}
       </span>
     </div>
@@ -263,25 +263,25 @@ function CandidateScore({ data }: { data: CandidateData }) {
 
   const scoreColor =
     displayScore >= 70
-      ? "text-green-400"
+      ? "text-emerald-600"
       : displayScore >= 50
-        ? "text-yellow-400"
-        : "text-red-400";
+        ? "text-amber-600"
+        : "text-red-600";
 
   return (
-    <div className="ml-5 mt-1 mb-1 p-2 bg-gray-800/50 rounded border border-gray-700/50 space-y-1">
+    <div className="ml-5 mt-1 mb-1 p-2 bg-[#FAFAFA] rounded-sm border border-[#E8E8E8] space-y-1">
       <div className="flex items-center gap-3 text-[11px]">
-        {name && <span className="text-gray-300 font-medium">{name}</span>}
+        {name && <span className="text-gray-700 font-medium">{name}</span>}
         <span className={cn("font-mono", scoreColor)}>
           {displayScore}/100
         </span>
         {passed !== undefined && (
-          <span className={passed ? "text-green-500" : "text-red-500"}>
+          <span className={passed ? "text-emerald-700" : "text-red-700"}>
             {passed ? "✓ passed" : "✗ below threshold"}
           </span>
         )}
         {strategy && (
-          <span className="text-gray-500">via {strategy}</span>
+          <span className="text-gray-400">via {strategy}</span>
         )}
       </div>
       {bio && (
@@ -290,7 +290,7 @@ function CandidateScore({ data }: { data: CandidateData }) {
         </div>
       )}
       {reasoning && (
-        <div className="text-[10px] text-gray-400 leading-relaxed">
+        <div className="text-[10px] text-gray-600 leading-relaxed">
           {reasoning}
         </div>
       )}
@@ -313,13 +313,13 @@ function SearchQueryDisplay({ data }: { data: SearchQueryData }) {
   if (!displayText) return null;
 
   return (
-    <div className="ml-5 mt-1 mb-1 p-2 bg-blue-900/20 rounded border border-blue-800/30">
+    <div className="ml-5 mt-1 mb-1 p-2 bg-[#FAFAFA] rounded-sm border border-[#E8E8E8]">
       {strategy && (
-        <div className="text-[10px] text-blue-400 font-medium mb-1">
+        <div className="text-[10px] text-gray-500 font-medium mb-1">
           Strategy: {strategy}
         </div>
       )}
-      <div className="text-[10px] text-blue-200 leading-relaxed whitespace-pre-wrap">
+      <div className="text-[10px] text-gray-700 leading-relaxed whitespace-pre-wrap">
         {displayText}
       </div>
     </div>
@@ -338,7 +338,7 @@ function FelicityScores({ data }: { data: FelicityData }) {
   if (!hasScores && !classification) return null;
 
   return (
-    <div className="ml-5 mt-1 mb-1 p-2 bg-gray-800/50 rounded border border-gray-700/50 space-y-1.5">
+    <div className="ml-5 mt-1 mb-1 p-2 bg-[#FAFAFA] rounded-sm border border-[#E8E8E8] space-y-1.5">
       {speechAct && (
         <div className="flex items-center gap-2 text-[10px]">
           <span className="text-gray-500">Speech Act:</span>
@@ -746,13 +746,13 @@ function MatchGroupSummary({ steps }: { steps: ToolCallStep[] }) {
   const suffix = scores.length > 3 ? "..." : "";
 
   return (
-    <div className="px-3 py-0.5 text-gray-400">
+    <div className="px-3.5 py-0.5 text-gray-500">
       <div className="flex items-center gap-2">
-        <Circle className="w-1.5 h-1.5 text-gray-600 fill-gray-600 flex-shrink-0" />
+        <Circle className="w-1.5 h-1.5 text-gray-400 fill-gray-400 flex-shrink-0" />
         <span>
           {steps.length} matches
           {topScores.length > 0 && (
-            <span className="text-gray-500">
+            <span className="text-gray-400">
               {" "}(top: {topScores.join(", ")}{suffix})
             </span>
           )}
@@ -766,12 +766,12 @@ function CandidatePassedGroup({ steps }: { steps: ToolCallStep[] }) {
   return (
     <>
       {steps.map((step, stepIdx) => (
-        <div key={`cand-pass-${stepIdx}`} className="px-3 py-0.5 text-gray-400">
+        <div key={`cand-pass-${stepIdx}`} className="px-3.5 py-0.5 text-gray-500">
           <div className="flex items-center gap-2">
-            <Circle className="w-1.5 h-1.5 text-green-600 fill-green-600 flex-shrink-0" />
+            <Circle className="w-1.5 h-1.5 text-emerald-600 fill-emerald-600 flex-shrink-0" />
             <span>
               candidate
-              {step.detail && <span className="text-gray-500">: {step.detail}</span>}
+              {step.detail && <span className="text-gray-400">: {step.detail}</span>}
             </span>
           </div>
           {step.data && <CandidateScore data={step.data as CandidateData} />}
@@ -785,18 +785,18 @@ function CandidateFailedGroup({ steps }: { steps: ToolCallStep[] }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="px-3 py-0.5 text-gray-400">
+    <div className="px-3.5 py-0.5 text-gray-500">
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 hover:text-gray-300 transition-colors"
+        className="flex items-center gap-2 hover:text-gray-700 transition-colors"
       >
         {isExpanded ? (
-          <ChevronDown className="w-2.5 h-2.5 text-gray-600 flex-shrink-0" />
+          <ChevronDown className="w-2.5 h-2.5 text-gray-400 flex-shrink-0" />
         ) : (
-          <ChevronRight className="w-2.5 h-2.5 text-gray-600 flex-shrink-0" />
+          <ChevronRight className="w-2.5 h-2.5 text-gray-400 flex-shrink-0" />
         )}
-        <span className="text-red-400/70">
+        <span className="text-gray-500">
           {steps.length} below threshold
         </span>
       </button>
@@ -805,10 +805,10 @@ function CandidateFailedGroup({ steps }: { steps: ToolCallStep[] }) {
           {steps.map((step, stepIdx) => (
             <div key={`cand-fail-${stepIdx}`} className="py-0.5">
               <div className="flex items-center gap-2 ml-4">
-                <Circle className="w-1.5 h-1.5 text-gray-600 fill-gray-600 flex-shrink-0" />
+                <Circle className="w-1.5 h-1.5 text-gray-400 fill-gray-400 flex-shrink-0" />
                 <span>
                   candidate
-                  {step.detail && <span className="text-gray-500">: {step.detail}</span>}
+                  {step.detail && <span className="text-gray-400">: {step.detail}</span>}
                 </span>
               </div>
               {step.data && <CandidateScore data={step.data as CandidateData} />}
@@ -1327,14 +1327,14 @@ function ToolRow({
             return (
               <div
                 key={`${step.step}-${groupIdx}`}
-                className="px-3 py-0.5 text-gray-400"
+                className="px-3.5 py-0.5 text-gray-500"
               >
                 <div className="flex items-center gap-2">
-                  <Circle className="w-1.5 h-1.5 text-gray-600 fill-gray-600 flex-shrink-0" />
+                  <Circle className="w-1.5 h-1.5 text-gray-400 fill-gray-400 flex-shrink-0" />
                   <span>
                     {step.step}
                     {step.detail && (
-                      <span className="text-gray-500">
+                      <span className="text-gray-400">
                         : {step.detail}
                       </span>
                     )}
@@ -1350,8 +1350,8 @@ function ToolRow({
                   <div className="ml-4 mt-1 text-xs text-gray-500 space-y-0.5">
                     {Object.entries(step.data).map(([key, value]) => (
                       <div key={key} className="flex gap-2">
-                        <span className="text-gray-600 flex-shrink-0">{key}:</span>
-                        <span className="text-gray-400 break-all">
+                        <span className="text-gray-400 flex-shrink-0">{key}:</span>
+                        <span className="text-gray-500 break-all">
                           {typeof value === "string"
                             ? value.length > 200 ? value.slice(0, 200) + "..." : value
                             : (() => { const s = JSON.stringify(value); return s.length > 200 ? s.slice(0, 200) + "..." : s; })()}
