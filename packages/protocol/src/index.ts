@@ -21,6 +21,7 @@ export type * from "./shared/interfaces/auth.interface.js";
 export type * from "./shared/interfaces/cache.interface.js";
 export type * from "./shared/interfaces/chat-session.interface.js";
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
+export type { ChatMessageWriter } from "./shared/interfaces/chat-message-writer.interface.js";
 export type { QuestionGeneratorReader } from "./shared/interfaces/question-generator.interface.js";
 export type * from "./shared/interfaces/contact.interface.js";
 export type * from "./shared/interfaces/database.interface.js";
@@ -167,6 +168,9 @@ export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 
 export { createMcpServer, computeAgentIndexScope } from "./mcp/mcp.server.js";
 export type { ScopedDepsFactory } from "./mcp/mcp.server.js";
+export { buildElicitationCreate, flattenChoice } from "./mcp/elicitation.builder.js";
+export { dispatchElicitations } from "./mcp/elicitation.dispatcher.js";
+export type { ElicitResultLike, ElicitInputFn, DispatchElicitationsParams } from "./mcp/elicitation.dispatcher.js";
 
 // ─── States (for advanced graph consumers) ────────────────────────────────────
 

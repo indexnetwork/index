@@ -473,6 +473,13 @@ When `create_intent` successfully creates an intent, it automatically triggers o
 
 **MCP-only negotiate-phase budget.** When `discover_opportunities` is invoked from the MCP transport (external runtimes like OpenClaw, Claude Code, or a personal agent), the internal negotiate phase is wall-clock capped at 20 s (`OpportunityGraphOptions.negotiateTimeoutMs`). Candidates that finalize their assessment within the budget surface as draft opportunities; those still in negotiation remain in a `negotiating` state and the tool instructs the LLM to check `list_opportunities` in a moment. This is a temporary constraint removable when IND-274 (negotiation conversation continuation) ships and persistent bilateral state becomes feasible.
 
+**MCP decision questions and elicitation.** When `ENABLE_DISCOVERY_QUESTIONS=true` and the MCP path has a session or runs from an agent, `discover_opportunities` may return up to 3 decision questions alongside its opportunities. The MCP server's post-result hook in `mcp.server.ts` does two things with them:
+
+1. Always appends a JSON content block to the tool result prefixed with `Decision questions (structured): {...}`. LLM-driven clients without elicitation support can parse this and resurface the questions in prose.
+2. If the client declared the `elicitation` capability, sequentially dispatches one `elicitation/create` per question (`dispatchElicitations` in `packages/protocol/src/mcp/elicitation.dispatcher.ts`). On `accept`, the flattened choice is posted as a user message into the user's most-recent index.network chat session via `ChatMessageWriter` (`packages/protocol/src/shared/interfaces/chat-message-writer.interface.ts`, implemented by `backend/src/adapters/chat-message-writer.adapter.ts`). `decline` is a no-op; `cancel` breaks the loop; transport errors break the loop with a warn; write errors log and continue. Users with no chat session are logged as `chat_message_write_skipped_no_session` and the answer is dropped on this path — the JSON envelope only carries the questions, not accepted choices.
+
+The relevant public exports from `@indexnetwork/protocol` for runtime authors building on top of this: `ChatMessageWriter`, `buildElicitationCreate`, `flattenChoice`, `dispatchElicitations`, `ElicitInputFn`, `ElicitResultLike`, `DispatchElicitationsParams`.
+
 ## 5a. MCP Server
 
 The protocol exposes every registered chat tool over the Model Context Protocol via `createMcpServer` in `packages/protocol/src/mcp/mcp.server.ts`. This is the surface that external runtimes — OpenClaw, Claude Code, Codex, Cursor — speak to when they act on behalf of a user.

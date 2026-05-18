@@ -25,8 +25,10 @@ import { intentQueue } from '../queues/intent.queue';
 import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
+import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { agentService } from '../services/agent.service';
+import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
 import { QuestionGeneratorService } from '../services/question-generator.service';
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
@@ -99,6 +101,7 @@ const protocolDeps = {
   grantDefaultSystemPermissions: (userId: string) =>
     agentService.grantDefaultSystemPermissions(userId),
   agentDispatcher,
+  chatMessageWriter: new ChatMessageWriterAdapter(chatSessionService),
   deliveryLedger: opportunityDeliveryService,
   negotiationTimeoutQueue,
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
@@ -378,6 +381,9 @@ function getOrCreateMcpServer(): McpServer {
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
     chatSession: protocolDeps.chatSession,
+    chatSummary: protocolDeps.chatSummary,
+    questionGenerator: protocolDeps.questionGenerator,
+    chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
     mintConnectToken: protocolDeps.mintConnectToken,
     mintConnectLink: protocolDeps.mintConnectLink,

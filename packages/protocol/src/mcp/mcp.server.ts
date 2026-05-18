@@ -12,6 +12,9 @@ import type { ServerContext, JsonSchemaType } from '@modelcontextprotocol/server
 import type { McpAuthResolver } from '../shared/interfaces/auth.interface.js';
 import type { ToolDeps, ResolvedToolContext } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
+import type { Question } from '../shared/schemas/question.schema.js';
+import { QuestionSchema } from '../shared/schemas/question.schema.js';
+import { dispatchElicitations } from './elicitation.dispatcher.js';
 import { createToolRegistry } from '../shared/agent/tool.registry.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
@@ -119,6 +122,48 @@ export function sanitizeMcpResult(text: string): { text: string; isError: boolea
   } catch {
     return { text, isError: false };
   }
+}
+
+/** Spec cap on the number of decision questions surfaced per turn. */
+const MAX_DECISION_QUESTIONS = 3;
+
+/**
+ * Extracts decision questions from a parsed tool-result text, if present.
+ * Validates each entry against `QuestionSchema` and drops malformed items;
+ * caps the array at `MAX_DECISION_QUESTIONS` (defense-in-depth — Slice 2's
+ * generator already caps at 3, but we don't trust the cast here).
+ *
+ * Returns null when the text isn't JSON, has no `data.questions`, or
+ * contains zero valid questions after validation.
+ */
+export function extractDecisionQuestions(text: string): Question[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+
+  const rawQs = (parsed as { data?: { questions?: unknown } } | null)?.data?.questions;
+  if (!Array.isArray(rawQs) || rawQs.length === 0) return null;
+
+  const valid: Question[] = [];
+  for (const raw of rawQs) {
+    const result = QuestionSchema.safeParse(raw);
+    if (result.success) valid.push(result.data);
+    if (valid.length === MAX_DECISION_QUESTIONS) break;
+  }
+  return valid.length > 0 ? valid : null;
+}
+
+/**
+ * Renders the JSON-envelope text block appended to the tool result content
+ * when decision questions are present. The leading sentinel string lets the
+ * LLM client recognize and surface the questions in prose for clients
+ * without elicitation support.
+ */
+export function renderQuestionsEnvelope(questions: Question[]): string {
+  return `Decision questions (structured): ${JSON.stringify({ questions })}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -356,6 +401,46 @@ export function createMcpServer(
           const result = await requestTool.handler({ context, query: validatedArgs });
 
           const { text: sanitizedText, isError: toolIsError } = sanitizeMcpResult(result);
+
+          // Slice 5: decision questions post-processing for discover_opportunities only.
+          if (toolName === "discover_opportunities" && !toolIsError) {
+            const questions = extractDecisionQuestions(sanitizedText);
+            if (questions) {
+              const envelopeBlock = {
+                type: "text" as const,
+                text: renderQuestionsEnvelope(questions),
+              };
+
+              const supportsElicitation =
+                !!server.server.getClientCapabilities()?.elicitation;
+
+              // Capture into a local const so TS preserves the narrowing
+              // inside the callback below. Optional chains don't survive
+              // across closure boundaries under strict mode.
+              const elicitInput = ctx.mcpReq?.elicitInput;
+
+              if (supportsElicitation && elicitInput) {
+                // Sequential — never parallel (day-one rule). We await the loop
+                // before returning the tool result so test harnesses can observe
+                // the dispatched calls deterministically.
+                await dispatchElicitations({
+                  userId,
+                  questions,
+                  elicitInput: (params) => elicitInput(params),
+                  chatMessageWriter: deps.chatMessageWriter,
+                });
+              }
+
+              return {
+                content: [
+                  { type: "text" as const, text: sanitizedText },
+                  envelopeBlock,
+                ],
+                ...(toolIsError ? { isError: true } : {}),
+              };
+            }
+          }
+
           return {
             content: [{ type: 'text' as const, text: sanitizedText }],
             ...(toolIsError ? { isError: true } : {}),

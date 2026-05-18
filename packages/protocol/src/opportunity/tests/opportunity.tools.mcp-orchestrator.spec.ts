@@ -2,16 +2,20 @@ import { config } from 'dotenv';
 config({ path: '.env.development', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
-import { describe, test, expect, mock, beforeEach } from 'bun:test';
+import { describe, test, expect, mock, beforeEach, afterEach, afterAll } from 'bun:test';
 
 // Capture every call to runDiscoverFromQuery.
 // mock.module is hoisted by Bun, so this runs before any static import of the mocked module.
-type DiscoverCall = { trigger?: string; userId: string };
+type DiscoverCall = { trigger?: string; userId: string; enableQuestions?: boolean };
 let discoverCalls: DiscoverCall[] = [];
 
 mock.module('../opportunity.discover.js', () => ({
   runDiscoverFromQuery: async (args: Record<string, unknown>) => {
-    discoverCalls.push({ trigger: args?.trigger as string | undefined, userId: args?.userId as string });
+    discoverCalls.push({
+      trigger: args?.trigger as string | undefined,
+      userId: args?.userId as string,
+      enableQuestions: args?.enableQuestions as boolean | undefined,
+    });
     return { found: false, count: 0, message: 'no results' };
   },
   // Stub the other named export so the import doesn't fail.
@@ -85,5 +89,59 @@ describe('discover_opportunities — orchestrator trigger routing', () => {
 
     expect(discoverCalls).toHaveLength(1);
     expect(discoverCalls[0].trigger).toBeUndefined();
+  });
+});
+
+describe('discover_opportunities — enableQuestions gating', () => {
+  const prevFlag = process.env.ENABLE_DISCOVERY_QUESTIONS;
+
+  beforeEach(() => {
+    discoverCalls = [];
+  });
+
+  // Restore the env between tests so a failing/skipped test in this block
+  // cannot leak state into siblings or the rest of the file.
+  afterEach(() => {
+    if (prevFlag === undefined) delete process.env.ENABLE_DISCOVERY_QUESTIONS;
+    else process.env.ENABLE_DISCOVERY_QUESTIONS = prevFlag;
+  });
+
+  // Belt-and-suspenders: also restore after the whole describe in case
+  // a future test forgets afterEach for any reason.
+  afterAll(() => {
+    if (prevFlag === undefined) delete process.env.ENABLE_DISCOVERY_QUESTIONS;
+    else process.env.ENABLE_DISCOVERY_QUESTIONS = prevFlag;
+  });
+
+  test('MCP context with flag on → enableQuestions=true', async () => {
+    process.env.ENABLE_DISCOVERY_QUESTIONS = 'true';
+    const tool = captureDiscoverTool(makeDeps());
+    await tool.handler({ context: makeContext({ isMcp: true }), query: {} });
+
+    expect(discoverCalls[0].enableQuestions).toBe(true);
+  });
+
+  test('MCP context with flag off → enableQuestions=false', async () => {
+    delete process.env.ENABLE_DISCOVERY_QUESTIONS;
+    const tool = captureDiscoverTool(makeDeps());
+    await tool.handler({ context: makeContext({ isMcp: true }), query: {} });
+
+    expect(discoverCalls[0].enableQuestions).toBe(false);
+  });
+
+  test('Chat context with flag on → enableQuestions=true', async () => {
+    process.env.ENABLE_DISCOVERY_QUESTIONS = 'true';
+    const tool = captureDiscoverTool(makeDeps());
+    await tool.handler({ context: makeContext({ sessionId: 'session-abc' }), query: {} });
+
+    expect(discoverCalls[0].enableQuestions).toBe(true);
+  });
+
+  test('Ambient context (no MCP, no session) with flag on → enableQuestions=false', async () => {
+    process.env.ENABLE_DISCOVERY_QUESTIONS = 'true';
+    const tool = captureDiscoverTool(makeDeps());
+    await tool.handler({ context: makeContext({}), query: {} });
+
+    expect(discoverCalls[0].enableQuestions).toBe(false);
   });
 });

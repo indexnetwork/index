@@ -18,6 +18,7 @@ import type { ProfileEnricher } from "../interfaces/enrichment.interface.js";
 import type { IntentGraphQueue } from "../interfaces/queue.interface.js";
 import type { ChatSessionReader } from "../interfaces/chat-session.interface.js";
 import type { ChatSummaryReader } from "../interfaces/chat-summary.interface.js";
+import type { ChatMessageWriter } from "../interfaces/chat-message-writer.interface.js";
 import type { QuestionGeneratorReader } from "../interfaces/question-generator.interface.js";
 import type { Embedder } from "../interfaces/embedder.interface.js";
 import type { AgentDatabase } from "../interfaces/agent.interface.js";
@@ -123,6 +124,8 @@ export interface ToolContext {
   chatSession: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
   chatSummary?: ChatSummaryReader;
+  /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
+  chatMessageWriter?: ChatMessageWriter;
   /** Decision-question generator. Optional; consumers fall back to no `questions`. */
   questionGenerator?: QuestionGeneratorReader;
   /** Profile enrichment from external data sources. */
@@ -357,6 +360,8 @@ export interface ToolDeps {
   chatSession?: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
   chatSummary?: ChatSummaryReader;
+  /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
+  chatMessageWriter?: ChatMessageWriter;
   /** Decision-question generator. Optional; consumers fall back to no `questions`. */
   questionGenerator?: QuestionGeneratorReader;
   /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
