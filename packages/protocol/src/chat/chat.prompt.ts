@@ -24,8 +24,11 @@ function buildCoreHead(ctx: ResolvedToolContext): string {
   const roleLabel = !ctx.networkId
     ? "general"
     : (ctx.scopedMembershipRole ?? (ctx.isOwner ? "owner" : "member"));
+  const reachable = ctx.networkId
+    ? `, reach: ${ctx.indexScope.length} index(es) including your personal index`
+    : "";
   const indexScope = ctx.networkId
-    ? `index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.networkId}), role: ${roleLabel}`
+    ? `index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.networkId}), role: ${roleLabel}${reachable}`
     : "no index scope (general chat)";
 
   return `You are Index. You help the right people find the user and help the user find them.
@@ -300,7 +303,7 @@ function buildScoping(ctx: ResolvedToolContext): string {
 ${
   ctx.networkId
     ? `- This chat is scoped to index "${ctx.indexName}" (id: ${ctx.networkId}). Default networkId for read_intents and create_intent is ${ctx.networkId}.
-- **Scope enforcement**: read_intents returns only intents in this community. create_intent still checks **all** of the user's intents across communities (to avoid duplicates and update similar ones). Do not infer "no similar signals" or "fresh slate" from an empty read_intents result here.
+- **Scope enforcement**: read_intents (no params) returns the caller's own intents across their reachable indexes (the bound community plus their personal index). To browse all members' intents in this community, pass networkId explicitly. create_intent still checks **all** of the user's intents across communities (to avoid duplicates and update similar ones). Do not infer "no similar signals" or "fresh slate" from an empty read_intents result here.
 - **Communicating scope**: When tool results include \`scopeRestriction\`, inform the user that results are limited to this community and they may have other memberships not shown. Never imply the scoped results represent all their data.
 - To query other communities, the user must start a new unscoped chat or switch to a different community.
 - When presenting, you may use the index title; avoid being vocal about 'indexes' unless the user asks.`
