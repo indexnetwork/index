@@ -925,6 +925,19 @@ export interface Database {
   ): Promise<IndexedIntentDetails[]>;
 
   /**
+   * Get the caller's own active intents across a set of indexes.
+   * Returns intents owned by `userId` that are linked (via intent_networks)
+   * to at least one of `indexIds`. Used by network-scoped agents to honor
+   * indexScope without falling back to global getActiveIntents (which would
+   * include intents in indexes outside scope).
+   *
+   * @param userId - The intent owner (always the caller).
+   * @param indexIds - The set of index IDs to filter on. Empty → empty result.
+   * @returns Active intents owned by userId in any of indexIds, deduped by intent id.
+   */
+  getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]): Promise<ActiveIntent[]>;
+
+  /**
    * Update index settings.
    * **OWNER ONLY** - throws if user is not an owner.
    *
@@ -1570,6 +1583,19 @@ export interface SystemDatabase {
   /** Get a specific user's intents in an index (requires shared membership). */
   getUserIntentsInIndex(userId: string, networkId: string): Promise<ActiveIntent[]>;
 
+  /**
+   * Get the caller's own active intents across a set of indexes.
+   * Returns intents owned by `userId` that are linked (via intent_networks)
+   * to at least one of `indexIds`. Used by network-scoped agents to honor
+   * indexScope without falling back to global getActiveIntents (which would
+   * include intents in indexes outside scope).
+   *
+   * @param userId - The intent owner (always the caller).
+   * @param indexIds - The set of index IDs to filter on. Empty → empty result.
+   * @returns Active intents owned by userId in any of indexIds, deduped by intent id.
+   */
+  getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]): Promise<ActiveIntent[]>;
+
   /** Get a single intent by ID (if in scope). */
   getIntent(intentId: string): Promise<IntentRecord | null>;
 
@@ -1723,6 +1749,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // Direct ChatGraph operations
   | 'getProfile'
   | 'getActiveIntents'
+  | 'getActiveIntentsAcrossIndexes'
   | 'getIntentsInIndexForMember'
   // ProfileGraph subgraph requirements
   | 'getUser'
@@ -2023,6 +2050,7 @@ export type OpportunityControllerDatabase = Pick<
 export type IntentGraphDatabase = Pick<
   Database,
   | 'getActiveIntents'
+  | 'getActiveIntentsAcrossIndexes'
   | 'getIntentsInIndexForMember'
   | 'createIntent'
   | 'updateIntent'
