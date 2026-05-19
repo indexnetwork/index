@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
+import Footer from "@/app/landing-v5/Footer";
 import "@/app/landing-v5/landing-v5.css";
 import "./about-v5.css";
 
@@ -129,6 +130,8 @@ function AboutV5Page() {
           </div>
         </div>
       </section>
+
+      <Footer />
     </div>
   );
 }

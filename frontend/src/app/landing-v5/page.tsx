@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { getAllPosts, type BlogPost } from "@/lib/blog";
 import Nav, { ensureLandingV5Fonts } from "./Nav";
+import Footer from "./Footer";
 import "./landing-v5.css";
 
 type Token = [className: string, text: string];
@@ -126,10 +127,6 @@ function Hero() {
       <div className="canvas-area">
         <Nav />
         <div className="well">
-          <div className="eyebrow">
-            <span className="dot-g" aria-hidden="true" />
-            <span>Open-source discovery protocol</span>
-          </div>
           <h1 className="display">
             Wake up to your
             <br />
@@ -145,10 +142,6 @@ function Hero() {
           </div>
         </div>
         <span className="crosshair ch-1" aria-hidden="true" />
-        <div className="corner-br">
-          <div className="caption coord">40.7128° N · 74.0060° W</div>
-          <div className="caption">scan 01 / 03</div>
-        </div>
       </div>
     </div>
   );
@@ -359,6 +352,7 @@ function LandingV5Page() {
       <Surfaces />
       <OpenSource />
       <LatestPosts />
+      <Footer />
     </div>
   );
 }

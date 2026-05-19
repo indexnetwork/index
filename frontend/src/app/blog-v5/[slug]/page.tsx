@@ -4,6 +4,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import { visit } from "unist-util-visit";
 import type { Root } from "hast";
 import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
+import Footer from "@/app/landing-v5/Footer";
 import { type BlogPost, getPostBySlug } from "@/lib/blog";
 import "@/app/landing-v5/landing-v5.css";
 import "../blog-v5.css";
@@ -154,6 +155,8 @@ function BlogV5PostPage() {
           </>
         )}
       </article>
+
+      <Footer />
     </div>
   );
 }

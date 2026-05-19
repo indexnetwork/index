@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
+import Footer from "@/app/landing-v5/Footer";
 import { type BlogPost, getAllPosts } from "@/lib/blog";
 import "@/app/landing-v5/landing-v5.css";
 import "./blog-v5.css";
@@ -90,8 +91,11 @@ function BlogV5IndexPage() {
               ))
             )}
           </div>
+
         </div>
       </section>
+
+      <Footer />
     </div>
   );
 }
