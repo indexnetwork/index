@@ -57,19 +57,19 @@ export interface ResolvedToolContext {
   indexName?: string;
   /** True when chat is index-scoped and the user owns the index. */
   isOwner?: boolean;
-  /**
-   * Indexes the tool is allowed to read across in the absence of an explicit
-   * `networkId`. Resolved at chat init from the user's memberships (and for
-   * network-scoped agents, clamped to that bound network plus the personal
-   * index). Empty array / undefined means "no scope override — caller's
-   * global state".
-   */
-  indexScope?: string[];
-
   // Rich identity context for prompt/tool orchestration (profile omits embedding to keep context lean).
   user: UserRecord;
   userProfile: ProfileContext;
   userNetworks: NetworkMembership[];
+  /**
+   * The set of index IDs this caller can reach in the current request.
+   * For unscoped chats: every index the user is a member of.
+   * For network-scoped agents: `[boundNetwork, personalIndex]`.
+   * This is the same set used to clamp the DB-level systemDb.
+   * Tools that filter intents/profiles default to this set; `networkId` is
+   * the "primary focus" hint, not a read filter.
+   */
+  indexScope: string[];
   scopedIndex?: {
     id: string;
     title: string;
@@ -119,7 +119,8 @@ export interface ToolContext {
    * Optional override of the resolved `indexScope` for the tool wrapper. The
    * MCP path computes this externally (network-scoped agent clamp) and passes
    * it here so the chat-context resolver doesn't have to repeat the work.
-   * When omitted, the resolver computes scope from the user's memberships.
+   * When omitted, the resolver computes scope from the user's memberships
+   * (see ResolvedToolContext.indexScope for the resolved-side semantics).
    */
   indexScope?: string[];
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
@@ -292,6 +293,8 @@ export async function resolveChatContext(params: {
   const userEmail = user.email ?? "";
   const hasName = !!user.name?.trim();
 
+  const indexScope = userNetworks.map((m) => m.networkId);
+
   return {
     userId,
     userName,
@@ -302,6 +305,7 @@ export async function resolveChatContext(params: {
     user,
     userProfile,
     userNetworks,
+    indexScope,
     scopedIndex,
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
