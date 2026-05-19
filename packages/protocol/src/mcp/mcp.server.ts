@@ -285,6 +285,18 @@ Opportunities move through: draft → pending → accepted (or rejected).
 - **accepted**: both sides are connected — a direct conversation exists. Surface the conversationId to the user if available.
 
 Never accept a received opportunity without explicit user approval in the current conversation.
+
+# Decision questions after discovery
+
+After \`discover_opportunities\`, the tool result may include a second text block starting with \`Decision questions (structured): ...\`. This means the discovery engine ran negotiations but needs human input to sharpen the next turn — e.g. clarify timing, role, stage, or location.
+
+**When this block is present:**
+1. Parse the \`questions\` array from the JSON after the sentinel.
+2. Each question has \`title\` (decision domain, ≤12 chars), \`prompt\` (ends in \`?\`), \`options\` (2–4 items, each with \`label\` and \`description\`), and \`multiSelect\`. The safest option is labeled \`... (Recommended)\`.
+3. Present each question in natural language: ask the \`prompt\`, list options as \`**{label}** — {description}\`. Never expose the JSON or technical field names.
+4. Wait for the user's answer, then fold it into the next \`discover_opportunities(searchQuery=...)\` call.
+
+**Elicitation-capable clients** (those that declared \`elicitation\` support in \`initialize\`): the server dispatches \`elicitation/create\` requests directly — answers are written back to the chat session automatically. You will not see the envelope as a follow-up task in that case.
 `.trim();
 
 export function createMcpServer(

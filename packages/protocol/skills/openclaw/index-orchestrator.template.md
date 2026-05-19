@@ -47,6 +47,31 @@ For "find me a mentor", "who needs a React dev", "looking for investors":
 - If the tool returns `suggestIntentCreationForVisibility: true` and `suggestedIntentDescription`: after presenting results, ask once: "Would you also like to create a signal for this so others can find you?" If yes, call `create_intent(description=suggestedIntentDescription)`
 - When all candidates are exhausted, suggest the user create a signal — do NOT offer "show more"
 
+## Pattern 1b: Decision questions from discovery
+
+When `discover_opportunities` returns a second text block beginning with `Decision questions (structured):`, the engine found candidates but needs human input to sharpen the next turn.
+
+This block only appears for non-elicitation clients. Elicitation-capable clients (those that declared `"elicitation":{}` during MCP handshake) receive `elicitation/create` requests directly from the server — answers are written back to the session automatically and you will not see this block.
+
+For non-elicitation clients:
+
+```
+1. Parse the "questions" array from the JSON after the sentinel string.
+2. Each question has:
+   - title: decision domain noun (≤12 chars, e.g. "Stage", "Timing")
+   - prompt: the question to ask (ends in ?)
+   - options: 2-4 items, each with label + description (consequence of choosing)
+   - multiSelect: whether multiple options can be chosen
+   The safest path option is suffixed " (Recommended)" and listed first.
+3. Present each question as prose: ask the prompt, list options as
+   "**{label}** — {description}". Never expose the JSON or field names.
+4. Wait for the user's answer.
+5. Fold the chosen label(s) into the next discover_opportunities(searchQuery=...) call
+   alongside the original request.
+```
+
+Never ask multiple questions at once if the first answer would make the others irrelevant.
+
 ## Pattern 1a: Connect with a specific mentioned person
 
 When the user mentions a specific person AND wants to connect:
