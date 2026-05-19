@@ -232,6 +232,9 @@ export const applyNetworkScopeToContext = (
   const isOwner = bound.permissions?.includes('owner') ?? false;
   context.scopedMembershipRole = isOwner ? 'owner' : 'member';
   context.isOwner = isOwner;
+  context.indexScope = context.userNetworks
+    .filter((m) => m.networkId === networkScopeId || m.isPersonal === true)
+    .map((m) => m.networkId);
 };
 
 /**
@@ -381,8 +384,9 @@ export function createMcpServer(
           // personal index — they cannot reach other networks even when the user is
           // a member of them. The personal-index reachability is preserved so the
           // agent can still manage its owner's profile and contacts.
-          const indexScope = computeAgentIndexScope(context.userNetworks, networkScopeId ?? null);
-          const scopedDbs = scopedDepsFactory.create(userId, indexScope);
+          // context.indexScope is now the single source of truth: set by
+          // resolveChatContext (full set) and narrowed by applyNetworkScopeToContext.
+          const scopedDbs = scopedDepsFactory.create(userId, context.indexScope);
 
           // Override deps with per-request scoped databases
           const requestDeps: ToolDeps = { ...deps, ...scopedDbs };
