@@ -829,8 +829,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         }
         indexScope = [effectiveIndexId];
       } else if (context.networkId) {
-        // When scoped but no explicit networkId, use the scoped index
-        indexScope = [context.networkId];
+        // Scoped chat: use the agent's full reach so personal-index
+        // signals participate in opportunity discovery. See IND-306.
+        indexScope = context.indexScope.length > 0
+          ? [...context.indexScope]
+          : [context.networkId];
       } else {
         // No scope - use all indexes (only in unscoped chat)
         const _scopeGraphStart = Date.now();
