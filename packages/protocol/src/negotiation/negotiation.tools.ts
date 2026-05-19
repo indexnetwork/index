@@ -555,18 +555,35 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           // Dispatcher returned an agent turn directly
           aiTurn = dispatchResult.turn;
         } else {
-          // No agent or timeout — run the system AI agent inline
+          // No agent or timeout — run the system AI agent inline.
+          // The agent honors a per-turn LLM timeout (AbortSignal), so invoke
+          // can reject. Mirror the graph turnNode's reject-shaped fallback so
+          // a timed-out or failed call degrades gracefully instead of leaving
+          // the task pinned in `working` while the outer catch returns a bare
+          // error to the user.
           await negotiationDatabase.updateTaskState(task.id, 'working');
 
           const agent = new IndexNegotiator();
-          aiTurn = await agent.invoke({
-            ownUser: ownUserCtx,
-            otherUser: otherUserCtx,
-            indexContext: { networkId: '' },
-            seedAssessment,
-            history: historyForDispatch,
-            isFinalTurn,
-          });
+          try {
+            aiTurn = await agent.invoke({
+              ownUser: ownUserCtx,
+              otherUser: otherUserCtx,
+              indexContext: { networkId: '' },
+              seedAssessment,
+              history: historyForDispatch,
+              isFinalTurn,
+            });
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            logger.warn('System negotiator inline invoke failed; treating as reject', { taskId: task.id, error: errMsg });
+            aiTurn = {
+              action: 'reject',
+              assessment: {
+                reasoning: `System negotiator failed: ${errMsg}`,
+                suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
+              },
+            };
+          }
         }
 
         // Persist the counterparty's turn (from dispatcher or inline AI)

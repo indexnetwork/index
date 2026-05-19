@@ -26,17 +26,27 @@ const seedAssessment: SeedAssessment = {
 const indexContext = { networkId: 'net-1', prompt: 'AI founders & engineers' };
 
 describe('IndexNegotiator turn timeout', () => {
-  it('throws when the per-turn timeout fires before the LLM responds', async () => {
+  it('throws a TimeoutError when the per-turn timeout fires before the LLM responds', async () => {
     const negotiator = new IndexNegotiator({ turnTimeoutMs: 1 });
-    await expect(
-      negotiator.invoke({
+    let caught: unknown;
+    try {
+      await negotiator.invoke({
         ownUser: sourceUser,
         otherUser,
         indexContext,
         seedAssessment,
         history: [],
-      })
-    ).rejects.toBeDefined();
+      });
+    } catch (err) {
+      caught = err;
+    }
+    // Assert specifically on timeout/abort so the test isn't satisfied by
+    // unrelated rejections (missing API key, schema error, network blip).
+    // AbortSignal.timeout produces a DOMException with name 'TimeoutError'.
+    expect(caught).toBeDefined();
+    const e = caught as { name?: string; message?: string };
+    const signature = `${e.name ?? ''} ${e.message ?? ''}`;
+    expect(/timeout|abort/i.test(signature)).toBe(true);
   }, 30_000);
 
   it('completes normally with a generous timeout', async () => {
