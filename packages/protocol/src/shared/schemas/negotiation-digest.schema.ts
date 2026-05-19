@@ -9,11 +9,21 @@
  */
 import { z } from "zod";
 
+// LLMs ignore .max() length constraints often enough that strict validation
+// throws every call and forces a fallback. Slice strings down before validating
+// so JSON schema still advertises the limit but a small overshoot doesn't drop
+// the whole digest.
+const clampedString = (maxLen: number) =>
+  z.preprocess(
+    (v) => (typeof v === "string" ? v.slice(0, maxLen) : v),
+    z.string().min(1).max(maxLen),
+  );
+
 export const DiscoveryNegotiationDigestSchema = z.object({
   /** Abstract counterparty descriptor (no PII, no IDs). E.g. "AI infra founder, Berlin". */
-  counterpartyHint: z.string().min(1).max(120),
+  counterpartyHint: clampedString(120),
   /** The network the negotiation ran under (community prompt). */
-  indexContext: z.string().min(1).max(120),
+  indexContext: clampedString(120),
   /** Whether the negotiation produced an opportunity. */
   outcomeRole: z.enum(["opportunity", "no-opportunity"]),
   /** When `outcomeRole === "no-opportunity"`, why the negotiation didn't yield one. Null otherwise. */
@@ -23,7 +33,7 @@ export const DiscoveryNegotiationDigestSchema = z.object({
    * this negotiation. Written for the downstream question generator — should
    * highlight a fact or tension that could inform a clarifying question.
    */
-  keyTake: z.string().min(1).max(180),
+  keyTake: clampedString(180),
   /** Suggested roles agreed by both parties. Null when no agreement reached. */
   suggestedRoles: z
     .object({
