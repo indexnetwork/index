@@ -338,8 +338,14 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return api.uploadFile(`/networks/${networkId}/members/import/parse`, file, undefined, 'file');
   },
 
-  // CSV Import — confirm import of parsed rows
-  importMembers: async (networkId: string, members: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>): Promise<{ imported: number; skipped: number }> => {
+  // CSV Import — confirm import of parsed rows. For experiment networks the
+  // backend emails the network owner(s) one summary message with every minted
+  // API key as an inline CSV; per-user invitation emails are not sent.
+  importMembers: async (networkId: string, members: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>): Promise<{
+    imported: number;
+    skipped: number;
+    ownersNotified: number;
+  }> => {
     return api.post(`/networks/${networkId}/members/import`, { members });
   },
 

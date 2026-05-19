@@ -450,7 +450,10 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     try {
       const result = await indexesService.importMembers(index.id, rows);
       setCsvPreview(null);
-      success(`Imported ${result.imported} member${result.imported !== 1 ? 's' : ''}${result.skipped > 0 ? ` · ${result.skipped} skipped` : ''}`);
+      const suffix = result.ownersNotified > 0
+        ? ` · credentials emailed to ${result.ownersNotified} owner${result.ownersNotified !== 1 ? 's' : ''}`
+        : '';
+      success(`Imported ${result.imported} member${result.imported !== 1 ? 's' : ''}${result.skipped > 0 ? ` · ${result.skipped} skipped` : ''}${suffix}`);
       await loadMembers();
     } catch {
       error('Import failed');

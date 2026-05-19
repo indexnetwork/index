@@ -1865,11 +1865,12 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, exper
 
 **Response 200**:
 ```json
-{ "imported": 42, "skipped": 3 }
+{ "imported": 42, "skipped": 3, "ownersNotified": 1 }
 ```
 
 - `imported` — Number of new accounts provisioned and added as members.
-- `skipped` — Number of rows that were skipped (existing users already invited, or errors).
+- `skipped` — Number of rows that were skipped (errors).
+- `ownersNotified` — Number of network owners who received a credentials summary email. The email contains an inline CSV with every minted API key (`email,name,api_key`). Per-user invitation emails are not sent for bulk imports — the owner distributes keys out-of-band.
 
 **Errors**:
 - `400` — `members` array is missing or empty.
