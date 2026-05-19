@@ -47,6 +47,22 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/landing-v4/page"),
       },
       {
+        path: "/landing-v5",
+        lazy: () => import("@/app/landing-v5/page"),
+      },
+      {
+        path: "/blog-v5",
+        lazy: () => import("@/app/blog-v5/page"),
+      },
+      {
+        path: "/blog-v5/:slug",
+        lazy: () => import("@/app/blog-v5/[slug]/page"),
+      },
+      {
+        path: "/about-v5",
+        lazy: () => import("@/app/about-v5/page"),
+      },
+      {
         path: "/about",
         lazy: () => import("@/app/about/page"),
       },

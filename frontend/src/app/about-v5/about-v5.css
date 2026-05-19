@@ -1,0 +1,68 @@
+/* about-v5 — uses landing-v5.css palette; adds page-level layout */
+
+.landing-v5.about-v5 {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.about-nav-wrap {
+  border-bottom: 1px solid var(--rule);
+}
+
+.about-hero {
+  padding: 96px 56px 72px;
+  border-bottom: 1px solid var(--rule);
+}
+.about-inner {
+  max-width: 980px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.about-display {
+  font-size: 52px;
+  letter-spacing: -0.03em;
+  max-width: 22ch;
+}
+
+.about-lede {
+  font-family: 'Inter', sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.55;
+  color: var(--cream-soft);
+  max-width: 60ch;
+  margin: 0;
+}
+
+.about-link {
+  text-decoration: none;
+  border-bottom: 1px solid rgba(142, 195, 216, 0.35);
+  transition: border-color 120ms ease;
+}
+.about-link:hover { border-bottom-color: var(--cream); }
+
+.about-join-body {
+  padding: 12px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.about-join-line {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  color: var(--cream);
+  margin: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.about-join-line .hash { color: var(--cream-faint); margin-right: 8px; }
+.about-join-line .cursor { margin-left: 8px; }
+
+@media (max-width: 720px) {
+  .about-hero { padding: 64px 22px 56px; }
+  .about-display { font-size: 34px; }
+}
