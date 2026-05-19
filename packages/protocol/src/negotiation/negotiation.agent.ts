@@ -40,16 +40,50 @@ export interface NegotiationAgentInput {
   discoveryQuery?: string;
 }
 
+export interface IndexNegotiatorConfig {
+  /**
+   * Hard ceiling on a single LLM turn round-trip, in ms. When the underlying
+   * model.invoke call exceeds this, an AbortSignal cancels the request and the
+   * promise rejects — the calling turn node catches the rejection and treats it
+   * as a failed turn, so one slow upstream call cannot consume the whole
+   * negotiate-phase budget.
+   *
+   * Defaults to `NEGOTIATOR_TURN_TIMEOUT_MS` env var when set, otherwise
+   * `DEFAULT_TURN_TIMEOUT_MS`. Sized to clip the p99 tail on Gemini-2.5-Flash
+   * (~20 s today on OpenRouter) without trimming p90 (~12 s).
+   */
+  turnTimeoutMs?: number;
+}
+
+const DEFAULT_TURN_TIMEOUT_MS = 15_000;
+
+function resolveTurnTimeoutMs(override?: number): number {
+  if (typeof override === "number" && override > 0) return override;
+  const envValue = process.env.NEGOTIATOR_TURN_TIMEOUT_MS;
+  if (envValue) {
+    const parsed = Number(envValue);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return DEFAULT_TURN_TIMEOUT_MS;
+}
+
 /**
  * Unified system negotiation agent that advocates for its user.
  * Adapts behavior based on turn position (first turn = propose, subsequent = respond).
  * @remarks Uses structured output constrained to NegotiationTurnSchema (without question action).
  */
 export class IndexNegotiator {
+  private readonly turnTimeoutMs: number;
+
+  constructor(config?: IndexNegotiatorConfig) {
+    this.turnTimeoutMs = resolveTurnTimeoutMs(config?.turnTimeoutMs);
+  }
+
   /**
    * Generate a negotiation turn.
    * @param input - User contexts, seed assessment, history, and final turn flag
    * @returns A structured NegotiationTurn
+   * @throws If the per-turn timeout fires before the LLM responds.
    */
   async invoke(input: NegotiationAgentInput): Promise<NegotiationTurn> {
     const schema = input.isFinalTurn ? FinalNegotiationTurnSchema : SystemNegotiationTurnSchema;
@@ -112,10 +146,13 @@ Why this match was suggested: ${input.seedAssessment.reasoning}${historyText}
 ${discoveryQueryReminder}
 ${input.history.length === 0 ? "This is the opening turn. Propose the connection case." : "Evaluate the latest arguments and respond."}`;
 
-    const result = await model.invoke([
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ]);
+    const result = await model.invoke(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      { signal: AbortSignal.timeout(this.turnTimeoutMs) },
+    );
 
     return result as NegotiationTurn;
   }
