@@ -674,6 +674,42 @@ export class IntentGraphFactory {
         });
 
         try {
+          // Scope-aware default: caller's intents across all reachable indexes.
+          // Triggered when the tool layer passed indexScope and did not pick a
+          // specific networkId or queryUserId — i.e. "my intents" in a chat
+          // where the agent's reach is more than one index.
+          if (
+            !state.queryUserId &&
+            !state.networkId &&
+            state.indexScope &&
+            state.indexScope.length > 0
+          ) {
+            const intents = await this.database.getActiveIntentsAcrossIndexes(
+              state.userId,
+              state.indexScope,
+            );
+            if (intents.length === 0) {
+              return {
+                readResult: {
+                  count: 0,
+                  intents: [],
+                  message: "You don't have any active intents yet. Share what you're looking for.",
+                },
+              };
+            }
+            return {
+              readResult: {
+                count: intents.length,
+                intents: intents.map((i) => ({
+                  id: i.id,
+                  description: i.payload,
+                  summary: i.summary,
+                  createdAt: i.createdAt,
+                })),
+              },
+            };
+          }
+
           // When allUserIntents is true, ignore index scope and return all
           const effectiveIndexId = state.allUserIntents ? undefined : state.networkId;
 
