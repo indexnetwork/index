@@ -44,7 +44,7 @@ export class OpportunityController {
    * GET /opportunities — list opportunities for the authenticated user.
    */
   @Get('')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthOrApiKeyGuard)
   async listOpportunities(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
