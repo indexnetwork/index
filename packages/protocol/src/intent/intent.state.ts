@@ -181,6 +181,17 @@ export const IntentGraphState = Annotation.Root({
   // --- Read Mode Fields ---
 
   /**
+   * For read mode: the set of index IDs the caller's agent can reach.
+   * When set and neither networkId nor queryUserId is provided, the graph
+   * returns the caller's own intents across all indexes in this set (scope-aware
+   * default path). Populated by the tool layer from context.indexScope.
+   */
+  indexScope: Annotation<string[] | undefined>({
+    reducer: (_curr, next) => next,
+    default: () => undefined,
+  }),
+
+  /**
    * For read mode: filter intents by a specific user when reading in an index.
    * When omitted and index-scoped, returns all intents in the index.
    */
