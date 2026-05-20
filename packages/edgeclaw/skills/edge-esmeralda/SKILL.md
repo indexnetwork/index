@@ -299,17 +299,17 @@ For questions about logistics, the organization, or announcements, fetch the lat
 
 **Edge Esmeralda Wiki** (tickets, accommodation, travel, venues, health, kids, transport, etc.):
 ```bash
-curl -s "https://raw.githubusercontent.com/aromeoes/edge-agent-skill/main/references/wiki-content.md"
+curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edge-esmeralda/references/wiki-content.md"
 ```
 
 **Edge City Website** (mission, leadership, roadmap, ecosystem, media):
 ```bash
-curl -s "https://raw.githubusercontent.com/aromeoes/edge-agent-skill/main/references/website-content.md"
+curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edge-esmeralda/references/website-content.md"
 ```
 
 **Edge Esmeralda Newsletter** (residencies, fellowships, housing, tickets, programming):
 ```bash
-curl -s "https://raw.githubusercontent.com/aromeoes/edge-agent-skill/main/references/newsletter-digest.md"
+curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edge-esmeralda/references/newsletter-digest.md"
 ```
 
 These files are updated automatically every 15 minutes. Fetch them when the user asks about:
