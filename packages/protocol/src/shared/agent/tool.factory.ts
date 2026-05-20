@@ -145,17 +145,18 @@ export async function createChatTools(
   const intentNetworkGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
 
   // ─── Create context-bound databases ────────────────────────────────────────
-  // Get the user's network scope (all networks they have access to)
-  const networkScope = [...new Set([
-    ...resolvedContext.userNetworks.map((m) => m.networkId),
-    ...(resolvedContext.scopedIndex?.id ? [resolvedContext.scopedIndex.id] : []),
-  ])];
-
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
   // database used for graphs so that scope checks (e.g. ensureScopedMembership, opportunity
   // update) use the same adapter as the rest of the tool pipeline.
+  //
+  // The systemDb's DB-level clamp uses `resolvedContext.indexScope` — the same
+  // set tools see — so the JSDoc claim that indexScope is "the same set used
+  // to clamp the DB-level systemDb" holds for both the MCP path (where the
+  // MCP server already populated indexScope via applyNetworkScopeToContext)
+  // and the web-chat path (where resolveChatContext clamps to [bound, personal]
+  // when networkId is set).
   const userDb = deps.userDb ?? deps.createUserDatabase(database, resolvedContext.userId);
-  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, networkScope, embedder);
+  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, resolvedContext.indexScope, embedder);
 
   // ─── Assemble dependencies ─────────────────────────────────────────────────
   const cache = deps.cache;

@@ -703,27 +703,32 @@ export class IntentDatabaseAdapter {
   }
 
   async getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]) {
-    if (indexIds.length === 0) return [];
+    try {
+      if (indexIds.length === 0) return [];
 
-    const rows = await db
-      .selectDistinctOn([schema.intents.id], {
-        id: schema.intents.id,
-        payload: schema.intents.payload,
-        summary: schema.intents.summary,
-        createdAt: schema.intents.createdAt,
-      })
-      .from(schema.intents)
-      .innerJoin(schema.intentNetworks, eq(schema.intentNetworks.intentId, schema.intents.id))
-      .where(
-        and(
-          eq(schema.intents.userId, userId),
-          isNull(schema.intents.archivedAt),
-          inArray(schema.intentNetworks.networkId, indexIds),
-        ),
-      )
-      .orderBy(schema.intents.id, desc(schema.intents.createdAt));
+      const rows = await db
+        .selectDistinctOn([schema.intents.id], {
+          id: schema.intents.id,
+          payload: schema.intents.payload,
+          summary: schema.intents.summary,
+          createdAt: schema.intents.createdAt,
+        })
+        .from(schema.intents)
+        .innerJoin(schema.intentNetworks, eq(schema.intentNetworks.intentId, schema.intents.id))
+        .where(
+          and(
+            eq(schema.intents.userId, userId),
+            isNull(schema.intents.archivedAt),
+            inArray(schema.intentNetworks.networkId, indexIds),
+          ),
+        )
+        .orderBy(schema.intents.id, desc(schema.intents.createdAt));
 
-    return rows;
+      return rows;
+    } catch (error: unknown) {
+      logger.error('IntentDatabaseAdapter.getActiveIntentsAcrossIndexes error', { error: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
   }
 }
 
@@ -2047,27 +2052,32 @@ export class ChatDatabaseAdapter {
   }
 
   async getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]) {
-    if (indexIds.length === 0) return [];
+    try {
+      if (indexIds.length === 0) return [];
 
-    const rows = await db
-      .selectDistinctOn([intents.id], {
-        id: intents.id,
-        payload: intents.payload,
-        summary: intents.summary,
-        createdAt: intents.createdAt,
-      })
-      .from(intents)
-      .innerJoin(intentNetworks, eq(intentNetworks.intentId, intents.id))
-      .where(
-        and(
-          eq(intents.userId, userId),
-          isNull(intents.archivedAt),
-          inArray(intentNetworks.networkId, indexIds),
-        ),
-      )
-      .orderBy(intents.id, desc(intents.createdAt));
+      const rows = await db
+        .selectDistinctOn([intents.id], {
+          id: intents.id,
+          payload: intents.payload,
+          summary: intents.summary,
+          createdAt: intents.createdAt,
+        })
+        .from(intents)
+        .innerJoin(intentNetworks, eq(intentNetworks.intentId, intents.id))
+        .where(
+          and(
+            eq(intents.userId, userId),
+            isNull(intents.archivedAt),
+            inArray(intentNetworks.networkId, indexIds),
+          ),
+        )
+        .orderBy(intents.id, desc(intents.createdAt));
 
-    return rows;
+      return rows;
+    } catch (error: unknown) {
+      logger.error('ChatDatabaseAdapter.getActiveIntentsAcrossIndexes error', { error: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
   }
 
   async updateIndexSettings(
