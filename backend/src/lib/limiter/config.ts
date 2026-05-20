@@ -26,6 +26,12 @@ const CLASS_ENV: Record<LimiterClass, { envVar: string; fallback: number }> = {
   write:      { envVar: 'LIMITER_WRITE_PER_MIN',      fallback: 60 },
 };
 
+/**
+ * Resolve the active config for a given rate-limit class.
+ * Reads env vars fresh on every call so runtime overrides take effect
+ * without a module reload (in contrast to the static {@link CLASS_CONFIG}
+ * snapshot, which is captured at module load).
+ */
 export function resolveClassConfig(cls: LimiterClass): ClassConfig {
   const { envVar, fallback } = CLASS_ENV[cls];
   return { perMinute: intEnv(envVar, fallback), windowSec: 60 };
