@@ -21,6 +21,17 @@ import { networkInvitationService } from './network-invitation.service';
 
 const logger = log.service.from('experiment');
 
+/**
+ * Thrown by {@link ExperimentService.lookupSignup} when the (network, email)
+ * pair is not in a fully-provisioned state. The controller maps it to HTTP 409.
+ */
+export class SignupNotCompleteError extends Error {
+  constructor() {
+    super('User has not completed signup for this network');
+    this.name = 'SignupNotCompleteError';
+  }
+}
+
 export interface ImportRow {
   email: string;
   name?: string;
@@ -91,6 +102,44 @@ class ExperimentService {
       mcpServer: buildMcpServerConfig(apiKey),
       created: result.created,
     };
+  }
+
+  /**
+   * Read-only check that `(networkId, email)` is fully provisioned. Does NOT
+   * create, update, or rotate anything. Used by the headless signup-lookup
+   * endpoint so integrators can verify state without invalidating a deployed key.
+   *
+   * @throws SignupNotCompleteError when the user is missing/soft-deleted, has
+   *         no live membership in the network, or has no live scoped agent for it.
+   */
+  async lookupSignup(
+    networkId: string,
+    email: string,
+  ): Promise<{ user: { id: string; email: string } }> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const [user] = await db
+      .select({ id: schema.users.id, email: schema.users.email })
+      .from(schema.users)
+      .where(and(eq(schema.users.email, normalizedEmail), isNull(schema.users.deletedAt)))
+      .limit(1);
+    if (!user) throw new SignupNotCompleteError();
+
+    const [membership] = await db
+      .select({ userId: schema.networkMembers.userId })
+      .from(schema.networkMembers)
+      .where(and(
+        eq(schema.networkMembers.networkId, networkId),
+        eq(schema.networkMembers.userId, user.id),
+        isNull(schema.networkMembers.deletedAt),
+      ))
+      .limit(1);
+    if (!membership) throw new SignupNotCompleteError();
+
+    const agentId = await networkInvitationService.findScopedAgentId(user.id, networkId);
+    if (!agentId) throw new SignupNotCompleteError();
+
+    return { user };
   }
 
   async importMembers(
