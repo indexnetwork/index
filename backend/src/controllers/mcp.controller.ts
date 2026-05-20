@@ -112,7 +112,7 @@ const protocolDeps = {
   },
   mintConnectToken: signConnectToken,
   mintConnectLink,
-  frontendUrl: process.env.FRONTEND_URL ?? 'https://index.network',
+  frontendUrl: process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'https://index.network',
   apiBaseUrl,
 };
 

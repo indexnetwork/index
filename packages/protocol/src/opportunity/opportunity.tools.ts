@@ -108,6 +108,16 @@ export async function attachActionableLinks(
     preferredSurface?: 'telegram' | 'web';
   },
 ): Promise<void> {
+  // profileUrl is independent of whether the (status, viewerRole) combination
+  // is actionable — every counterpart has a profile page worth linking to,
+  // even on a fresh draft where there is no acceptUrl yet. Setting it before
+  // the early-return below means cards from non-actionable combinations
+  // (e.g. draft + party in `discover_opportunities` direct mode) still carry
+  // the profile link the agent needs to render. Without this, the agent gets
+  // a name with no URL attached and tends to fabricate one.
+  const profileUrl = buildProfileUrl(opts.counterpartUser, opts.counterpartUserId, opts.frontendUrl);
+  if (profileUrl) card.profileUrl = profileUrl;
+
   const kind = resolveActionableLinkKind({
     status: card.status,
     viewerRole: card.viewerRole,
@@ -132,11 +142,9 @@ export async function attachActionableLinks(
     });
     card.acceptUrl = url;
     card.feedCategory = card.viewerRole === "introducer" ? "connector-flow" : "connection";
-    const profileUrl = buildProfileUrl(opts.counterpartUser, opts.counterpartUserId, opts.frontendUrl);
-    if (profileUrl) card.profileUrl = profileUrl;
   } catch (err) {
     logger.warn(
-      "Failed to mint MCP opportunity link — surfacing card without acceptUrl/profileUrl",
+      "Failed to mint MCP opportunity link — surfacing card without acceptUrl/feedCategory; profileUrl is still attached",
       {
         opportunityId: card.opportunityId,
         kind,

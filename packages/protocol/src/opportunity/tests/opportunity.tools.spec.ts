@@ -320,7 +320,7 @@ describe("attachActionableLinks — mutation and resilience", () => {
     expect(card.feedCategory).toBe("connector-flow");
   });
 
-  test("draft + introducer + viewerApproved=true → no mint, card unchanged", async () => {
+  test("draft + introducer + viewerApproved=true → no mint, profileUrl still attached", async () => {
     const card = makeCard({ opportunityId: "opp-4", viewerRole: "introducer", status: "draft" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -333,11 +333,11 @@ describe("attachActionableLinks — mutation and resilience", () => {
     });
     expect(calls.length).toBe(0);
     expect(card.acceptUrl).toBeUndefined();
-    expect(card.profileUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-4?link_preview=false");
     expect(card.feedCategory).toBeUndefined();
   });
 
-  test("draft + party (sender) → no mint, card unchanged", async () => {
+  test("draft + party (sender) → no mint, profileUrl still attached", async () => {
     const card = makeCard({ opportunityId: "opp-5", viewerRole: "party", status: "draft" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -349,11 +349,11 @@ describe("attachActionableLinks — mutation and resilience", () => {
     });
     expect(calls.length).toBe(0);
     expect(card.acceptUrl).toBeUndefined();
-    expect(card.profileUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-5?link_preview=false");
     expect(card.feedCategory).toBeUndefined();
   });
 
-  test("pending + introducer → no mint, card unchanged", async () => {
+  test("pending + introducer → no mint, profileUrl still attached", async () => {
     const card = makeCard({ opportunityId: "opp-6", viewerRole: "introducer", status: "pending" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -365,9 +365,10 @@ describe("attachActionableLinks — mutation and resilience", () => {
     });
     expect(calls.length).toBe(0);
     expect(card.acceptUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-6?link_preview=false");
   });
 
-  test("accepted + introducer → no mint, card unchanged", async () => {
+  test("accepted + introducer → no mint, profileUrl still attached", async () => {
     const card = makeCard({ opportunityId: "opp-7", viewerRole: "introducer", status: "accepted" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -379,9 +380,10 @@ describe("attachActionableLinks — mutation and resilience", () => {
     });
     expect(calls.length).toBe(0);
     expect(card.acceptUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-7?link_preview=false");
   });
 
-  test("rejected (any role) → no mint, card unchanged", async () => {
+  test("rejected (any role) → no mint, profileUrl still attached", async () => {
     const card = makeCard({ opportunityId: "opp-8", viewerRole: "party", status: "rejected" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -393,6 +395,7 @@ describe("attachActionableLinks — mutation and resilience", () => {
     });
     expect(calls.length).toBe(0);
     expect(card.acceptUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-8?link_preview=false");
   });
 
   test("profileUrl uses the web URL when counterpart has no socials", async () => {
@@ -423,7 +426,7 @@ describe("attachActionableLinks — mutation and resilience", () => {
     expect(card.feedCategory).toBe("connection");
   });
 
-  test("mint error is swallowed; card has no acceptUrl/profileUrl/feedCategory", async () => {
+  test("mint error is swallowed; card has no acceptUrl/feedCategory but profileUrl is preserved", async () => {
     const card = makeCard({ opportunityId: "opp-11", viewerRole: "party", status: "pending" });
     const mintConnectLink = async (_args: { userId: string; opportunityId: string; kind: string; greeting?: string | null }) => {
       throw new Error("DB down");
@@ -438,7 +441,7 @@ describe("attachActionableLinks — mutation and resilience", () => {
       }),
     ).resolves.toBeUndefined();
     expect(card.acceptUrl).toBeUndefined();
-    expect(card.profileUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-11?link_preview=false");
     expect(card.feedCategory).toBeUndefined();
   });
 
