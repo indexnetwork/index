@@ -121,7 +121,7 @@ class ExperimentService {
     const [user] = await db
       .select({ id: schema.users.id, email: schema.users.email })
       .from(schema.users)
-      .where(and(eq(schema.users.email, normalizedEmail), isNull(schema.users.deletedAt)))
+      .where(and(sql`lower(${schema.users.email}) = ${normalizedEmail}`, isNull(schema.users.deletedAt)))
       .limit(1);
     if (!user) throw new SignupNotCompleteError();
 

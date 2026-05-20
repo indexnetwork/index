@@ -197,6 +197,26 @@ describe('experimentService.lookupSignup', () => {
 
     expect(result.user.id).toBe(signedUp.user.id);
   }, 15_000);
+
+  it('finds user via case-insensitive email lookup (legacy mixed-case rows)', async () => {
+    const { networkId } = await setupExperimentNetwork();
+    const localPart = `lookup-legacy-${randomUUID()}`;
+    const lowercaseEmail = `${localPart}@example.com`;
+
+    const signedUp = await experimentService.signup(networkId, { email: lowercaseEmail });
+    cleanup.push(() => cleanupUser(signedUp.user.id));
+
+    // Simulate a legacy row written before email normalization existed: the
+    // user is stored with mixed-case email but everything else (membership,
+    // scoped agent) is unchanged.
+    const mixedCaseEmail = `${localPart}@EXAMPLE.com`;
+    await db.update(users).set({ email: mixedCaseEmail }).where(eq(users.id, signedUp.user.id));
+
+    const result = await experimentService.lookupSignup(networkId, lowercaseEmail);
+
+    expect(result.user.id).toBe(signedUp.user.id);
+    expect(result.user.email).toBe(mixedCaseEmail);
+  }, 15_000);
 });
 
 async function setupExperimentNetworkWithKey() {
