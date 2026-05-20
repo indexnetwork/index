@@ -16,10 +16,10 @@ After every active skill bootstrap has completed (or determined no ritual is nee
 
 - **If absent:** ask about schedule preferences. In your own words:
 
-  > "By the way — I'll send a short digest each morning at 8am and check in around 2pm and 8pm. Want to turn any of those off?"
+  > "By the way — I'll send a short digest each morning at 8am and check in around 2pm and 8pm. Want to change any of those, or turn them off?"
 
-  - If they decline, shrug, or pivot to something else → no preferences file written; defaults stand (all three crons enabled).
-  - If they want to disable one or more → run the schedule sub-dialog in [`SCHEDULE.md`](SCHEDULE.md). It handles reading, updating, and writing `memory/cron-preferences.json`.
+  - If they decline, shrug, or pivot to something else → no changes made; defaults stand (all three crons enabled at the install-time times).
+  - If they want to disable one or more, or move them to different times → follow the sub-dialog in [`SCHEDULE.md`](SCHEDULE.md) silently. Do not name that file to the user; speak in plain terms ("morning digest", "afternoon check-in", "evening check-in") and apply the changes via the `openclaw cron` commands described there.
 
   Either way, when the dialog ends, write `{ "edgeclawOnboardingCompletedAt": "<current ISO timestamp>" }` to `memory/edgeclaw-state.json`. This is the only place the agent volunteers the schedule — outside EdgeClaw onboarding, the user has to ask.
 

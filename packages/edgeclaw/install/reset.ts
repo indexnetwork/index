@@ -14,6 +14,10 @@
  *     Preserves USER.md and the agent-curated MEMORY.md by default — pass
  *     --wipe-user to also remove them.
  *
+ * With --wipe-user, also removes ALL agent sessions under
+ * ~/.openclaw/agents/main/sessions/ so the next user message spawns a brand
+ * new session against a freshly-bootstrapped workspace.
+ *
  * What is NOT touched:
  *   - Telegram bot token and channel config
  *   - OpenRouter API key and model config
@@ -22,7 +26,7 @@
  *
  * Usage:
  *   bun reset.ts
- *   bun reset.ts --wipe-user    # also removes USER.md and MEMORY.md
+ *   bun reset.ts --wipe-user    # also removes USER.md, MEMORY.md, and all sessions
  */
 
 import { existsSync, rmSync, statSync } from "node:fs";
@@ -31,6 +35,7 @@ import { join } from "node:path";
 import { execSync } from "node:child_process";
 
 const TARGET_WORKSPACE = join(homedir(), ".openclaw", "workspace");
+const SESSIONS_DIR = join(homedir(), ".openclaw", "agents", "main", "sessions");
 
 const CRON_NAME_PREFIX = "EdgeClaw";
 
@@ -142,6 +147,20 @@ function removeWorkspaceFiles(wipeUser: boolean): void {
   }
 }
 
+function removeSessions(): void {
+  if (!existsSync(SESSIONS_DIR)) {
+    console.log("→ no sessions directory to remove");
+    return;
+  }
+  // Wipe the whole sessions dir so the gateway restart sees zero prior state.
+  // Sessions hold both message logs (`<id>.jsonl`) and OpenClaw's session
+  // registry (`sessions.json` + telegram-message dedup caches) — leaving any
+  // of those behind would let the next session reuse a stale ID instead of
+  // starting fresh, which defeats the point of a wipe.
+  rmSync(SESSIONS_DIR, { recursive: true, force: true });
+  console.log(`→ removed ${SESSIONS_DIR}`);
+}
+
 function restartGateway(): void {
   try {
     execSync("openclaw gateway restart", { stdio: ["ignore", "ignore", "inherit"] });
@@ -162,6 +181,7 @@ function main(): void {
   removeCronJobs();
   unpatchOpenclawConfig();
   removeWorkspaceFiles(wipeUser);
+  if (wipeUser) removeSessions();
   restartGateway();
 
   console.log("");

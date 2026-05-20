@@ -184,7 +184,7 @@ Then re-install:
 bun install/install.ts <YOUR_API_KEY>
 ```
 
-Pass `--wipe-user` to also remove `USER.md`, `MEMORY.md`, the `.openclaw/` first-run marker, and the entire `memory/` directory (including `edgeclaw-state.json`, `welcome-state.json`, `cron-preferences.json`, and daily notes):
+Pass `--wipe-user` to also remove `USER.md`, `MEMORY.md`, the `.openclaw/` first-run marker, the entire `memory/` directory (including `edgeclaw-state.json`, `welcome-state.json`, and daily notes), and all agent sessions under `~/.openclaw/agents/main/sessions/` — so the next message spawns a brand new session against a freshly-bootstrapped workspace:
 
 ```bash
 bun install/reset.ts --wipe-user
@@ -202,7 +202,7 @@ The remaining ambient/accepted/freshness/memory work stays on the heartbeat tick
 | --- | --- |
 | `BOOTSTRAP.md` | EdgeClaw's session-start dispatcher. Runs each active skill's `bootstrap.md` (gated on that skill's backend state) and then EdgeClaw's own onboarding step (gated on `memory/edgeclaw-state.json`). **Not** deleted at the end of onboarding — re-runs whenever the local marker is wiped. |
 | `AGENTS.md` | Cross-backend operating instructions: session startup, memory, surfacing-opportunities quality bar, cron-schedule trigger, generic red lines, group-chat rules. Per-backend voice exemplars and ritual steps live in the relevant skill. |
-| `SCHEDULE.md` | Cron on/off sub-dialog. Used from `BOOTSTRAP.md` during onboarding and any time the user later asks to toggle a cron. Owns the schema for `memory/cron-preferences.json`. |
+| `SCHEDULE.md` | Cron toggle + reschedule sub-dialog. Used from `BOOTSTRAP.md` during onboarding and any time the user later asks to enable, disable, or move a cron. Operates directly on OpenClaw's cron list (`openclaw cron list/enable/disable/edit`); no separate preferences file. |
 | `COMMUNITY.md` | Edge Esmeralda context — dates, attendee count, programming format, design principles. The agent reads this when composing welcomes and digests. |
 | `SOUL.md` | Voice, banned vocabulary, "never name the plumbing", boundaries, continuity. |
 | `IDENTITY.md` | EdgeClaw identity — role, context, tone. |

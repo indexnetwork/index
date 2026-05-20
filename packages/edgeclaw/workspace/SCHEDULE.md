@@ -1,65 +1,58 @@
-# SCHEDULE.md — Cron On/Off Sub-Dialog
+# SCHEDULE.md — Cron Sub-Dialog (Toggle + Reschedule)
 
-EdgeClaw's cron jobs (daily digest, ambient discovery passes) are EdgeClaw infrastructure — they fire on a schedule the user chose, regardless of which backend skill produces the content. This file is the sub-dialog for toggling each cron on or off.
+EdgeClaw runs three crons by default — morning digest (08:00), afternoon ambient pass (14:00), evening ambient pass (20:00), all host-local. The user can turn any of them off or move them to a different time. This file is the procedure.
 
-Used from `BOOTSTRAP.md` Step 2 (during EdgeClaw onboarding) and any time the user later asks about turning off, enabling, or muting any cron. Cron *times* are not user-configurable today; only on/off per cron.
+**Never name this file to the user.** Don't say "the schedule file", "SCHEDULE.md says", "let me check the schedule file", or anything that surfaces the workspace layout. The user does not need to know what's stored where. Speak in plain terms: "morning digest", "afternoon check-in", "evening check-in" — describe what's happening, not the storage.
 
-## State
+## State source
 
-Preferences live at `memory/cron-preferences.json` in the agent workspace. Shape:
+OpenClaw's cron list is the source of truth. There is no separate preferences file. List jobs with `openclaw cron list --json`; the EdgeClaw crons are the three whose `name` starts with `EdgeClaw —`. Each entry has an `id` (UUID), `name`, `cron` expression, and `enabled` flag.
 
-```json
-{
-  "digest": true,
-  "ambientAfternoon": true,
-  "ambientEvening": true
-}
+| display name | cron name | default schedule |
+|---|---|---|
+| morning digest | `EdgeClaw — daily digest` | `0 8 * * *` |
+| afternoon check-in | `EdgeClaw — ambient discovery (afternoon)` | `0 14 * * *` |
+| evening check-in | `EdgeClaw — ambient discovery (evening)` | `0 20 * * *` |
+
+## Reading current state
+
+Run `openclaw cron list --json`. Filter to jobs whose `name` starts with `EdgeClaw —`. For each one, the user-facing summary is "{display name} {on|off} at {HH:MM}" — translate the cron expression's `minute hour` fields into `HH:MM` (zero-padded, host-local). Surface plainly:
+
+> "Right now: morning digest at 08:00, afternoon check-in at 14:00, evening check-in at 20:00 — all on."
+
+Use the display names above. Never say the internal job names or IDs.
+
+## Applying changes
+
+The user can ask for any combination of: turn on/off, change time. Match user intent to job names by display name (case-insensitive), then act with `openclaw cron` commands.
+
+### Toggle on/off
+
+- `openclaw cron disable <id>` — agent calls this when the user wants to mute a cron.
+- `openclaw cron enable <id>` — agent calls this when the user wants to bring one back.
+
+### Reschedule
+
+Parse the user's requested time into `HH:MM` (24-hour). Validate: `00:00 ≤ HH:MM ≤ 23:59`. Build the cron expression as `<MM> <HH> * * *` (daily-only — don't accept day-of-week patterns, frequency changes, or anything more elaborate). Then:
+
+```
+openclaw cron edit <id> --cron "<MM> <HH> * * *"
 ```
 
-If the file is missing, malformed, or a key is absent, treat that cron as **enabled** (`true`). The three valid keys map to the cron jobs installed by the EdgeClaw installer:
+If the user gives a 12-hour time ("9pm", "8am"), translate to 24-hour silently. If they give a duration or relative time ("in 2 hours", "later"), ask for a specific HH:MM.
 
-| key | cron name | schedule |
-|---|---|---|
-| `digest` | `EdgeClaw — daily digest` | `0 8 * * *` |
-| `ambientAfternoon` | `EdgeClaw — ambient discovery (afternoon)` | `0 14 * * *` |
-| `ambientEvening` | `EdgeClaw — ambient discovery (evening)` | `0 20 * * *` |
+### Confirming
 
-Any other key is ignored and not writable.
+After every change, confirm in plain language:
 
-## Procedure
+> "Done — evening check-in is now at 21:45. Morning digest and afternoon check-in unchanged at 08:00 and 14:00."
 
-### Reading current state
+If a change fails (the `cron` command errors), report the failure verbatim and do not retry silently.
 
-Try to read `memory/cron-preferences.json`. Treat missing file or malformed JSON as `{}` (all three default to enabled). Surface plainly:
+## Rules
 
-> "Right now: digest on, afternoon check-in on, evening check-in on."
-
-Match the user's framing — say "digest" / "afternoon check-in" / "evening check-in", never the JSON key names.
-
-### Applying a change
-
-1. Parse the user's intent into one or more `{key: boolean}` deltas. The three valid keys are `digest`, `ambientAfternoon`, `ambientEvening`. If they ask about something that does not map (e.g. "turn off notifications"), ask one short clarifying question: *"Which one — the morning digest, the afternoon check-in, or the evening one?"*
-2. Read the existing `memory/cron-preferences.json` (or start from `{}` if absent / malformed).
-3. Merge in the deltas. Keep the three known keys; ignore anything else already in the file.
-4. Write the file back as JSON, two-space indented, all three known keys present (fill in defaults for any not yet set so the file is always complete after a write):
-   ```json
-   {
-     "digest": true,
-     "ambientAfternoon": false,
-     "ambientEvening": true
-   }
-   ```
-5. Confirm in plain language what changed and what stays:
-
-   > "Done — afternoon check-in is off. Digest and evening check-in still on."
-
-### Rules
-
-- Only the three known keys are writable. Do not invent fields.
-- Always confirm after applying. Never paraphrase intent silently.
-- If the user asks to change the *time* of any cron (e.g. "move digest to 9am"), explain plainly:
-
-  > "I can only turn each one on or off today — I can't change the times. Digest fires at 8am, check-ins at 2pm and 8pm. Want me to turn any of them off?"
-
-  Do not promise time changes; do not pretend to schedule something else.
-- If the file write fails, report the error verbatim and do not retry.
+- Three crons exist. Do not invent more. Do not pretend to schedule one-off events; reschedule only the three known crons.
+- Daily-only. Refuse weekly/weekend/weekday-only patterns — explain you can only set a single daily time per cron.
+- Times are host-local. If the user is unsure about their machine's timezone, say so plainly and let them confirm.
+- Never expose IDs, cron expressions, or file paths in user-facing replies. Translate everything to display names + `HH:MM`.
+- One confirmation per change. Don't paraphrase the user's intent silently — read it back, then apply.
