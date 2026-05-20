@@ -9,7 +9,7 @@
     },
     "backend": {
       "name": "protocol",
-      "version": "0.23.0",
+      "version": "0.24.1",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",
@@ -66,7 +66,7 @@
     },
     "frontend": {
       "name": "frontend",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "dependencies": {
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-checkbox": "^1.3.2",
@@ -126,7 +126,7 @@
     },
     "packages/claude-plugin": {
       "name": "@indexnetwork/claude-plugin",
-      "version": "0.1.3",
+      "version": "0.1.4",
     },
     "packages/cli": {
       "name": "@indexnetwork/cli",
@@ -138,22 +138,22 @@
         "@types/bun": "latest",
       },
       "optionalDependencies": {
-        "@indexnetwork/cli-darwin-arm64": "0.10.2",
-        "@indexnetwork/cli-darwin-x64": "0.10.2",
-        "@indexnetwork/cli-linux-arm64": "0.10.2",
-        "@indexnetwork/cli-linux-x64": "0.10.2",
+        "@indexnetwork/cli-darwin-arm64": "0.10.4",
+        "@indexnetwork/cli-darwin-x64": "0.10.4",
+        "@indexnetwork/cli-linux-arm64": "0.10.4",
+        "@indexnetwork/cli-linux-x64": "0.10.4",
       },
     },
     "packages/edgeclaw": {
       "name": "@edge-city/edgeclaw",
-      "version": "0.5.0",
+      "version": "0.8.0",
       "bin": {
         "edgeclaw": "./install/install.ts",
       },
     },
     "packages/openclaw-plugin": {
       "name": "@indexnetwork/openclaw-plugin",
-      "version": "0.29.8",
+      "version": "0.29.9",
       "devDependencies": {
         "@types/node": "^22.0.0",
         "bun-types": "latest",
@@ -162,7 +162,7 @@
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "1.4.0",
+      "version": "1.5.1",
       "dependencies": {
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",
@@ -466,13 +466,13 @@
 
     "@indexnetwork/cli": ["@indexnetwork/cli@workspace:packages/cli"],
 
-    "@indexnetwork/cli-darwin-arm64": ["@indexnetwork/cli-darwin-arm64@0.10.2", "", { "os": "darwin", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-N3RDqjyX6h4vBPTPW7mx85Q1FLcEa73C0oRrQVXR2SyUSKaN5jSDrkmyGrQ1FKIKffaywT2fYsp+PCnhNhbQjg=="],
+    "@indexnetwork/cli-darwin-arm64": ["@indexnetwork/cli-darwin-arm64@0.10.4", "", { "os": "darwin", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-c4FR5VaOP8hooVBU1fC3BzRhNjvBR2kwZzMlK/cHZ5Mbp3L6O7s454wqzal2ZTu7DrDLslYrsg2/2KDyNxBfiw=="],
 
-    "@indexnetwork/cli-darwin-x64": ["@indexnetwork/cli-darwin-x64@0.10.2", "", { "os": "darwin", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-gp91G1Oug4eCi93Zsuz+V0maSEXcBxWjIALFvrUbwjkcGT23YawO9+OvFFYnj0EVH2q2Hd+J3J1M01OzX66x9A=="],
+    "@indexnetwork/cli-darwin-x64": ["@indexnetwork/cli-darwin-x64@0.10.4", "", { "os": "darwin", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-KmV9cte8XKsOTZY128sOIurHtRyra5CcJWEKel81H4Ixb4gx8mBfK+64/hauxp96/NY7ZuwGdUkaQtO5R6Ajfg=="],
 
-    "@indexnetwork/cli-linux-arm64": ["@indexnetwork/cli-linux-arm64@0.10.2", "", { "os": "linux", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-HdeBHgQ3P4qyUdINxwtARjTWmALDiQ0HRMSeqsNRf5PuFXgnds/PuVkvRsq2lXR6uauzDNnnYCtNSIg80DjNNw=="],
+    "@indexnetwork/cli-linux-arm64": ["@indexnetwork/cli-linux-arm64@0.10.4", "", { "os": "linux", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-6yfl3WqkAB9oRUc63FBiBgypHotlsNncNlDQLsdAjd7u8HBvWC/2fk+xvvgwa5m8k+leVSNldAeYK0Gn58aYyQ=="],
 
-    "@indexnetwork/cli-linux-x64": ["@indexnetwork/cli-linux-x64@0.10.2", "", { "os": "linux", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-pkg48o34b5OJtrRPqGgs0PzfZl43VYXSM4AtWqsJ01fuE+dt0H0K7uA+j1OGeCZd46aaSD1pvxtqRsrbfb8LEw=="],
+    "@indexnetwork/cli-linux-x64": ["@indexnetwork/cli-linux-x64@0.10.4", "", { "os": "linux", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-SaGq9p7feHWoP3BN6Cstv2QEAkfYBWVEZBrXpjfNYEiFaE9PuG+8arngPxUUe+CNna7R4wKDsm3Cy0kPhVNbwg=="],
 
     "@indexnetwork/openclaw-plugin": ["@indexnetwork/openclaw-plugin@workspace:packages/openclaw-plugin"],
 
