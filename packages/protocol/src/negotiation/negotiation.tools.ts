@@ -575,11 +575,25 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
             });
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
-            logger.warn('System negotiator inline invoke failed; treating as reject', { taskId: task.id, error: errMsg });
+            const errName = (err as { name?: string })?.name ?? '';
+            const isTimeout = errName === 'TimeoutError' || /timeout|abort/i.test(errMsg);
+            // Log the raw error for ops, but keep the persisted/returned
+            // reasoning generic — this string round-trips back to the caller
+            // via counterpartyResponse.reasoning and ends up in the negotiation
+            // history visible through get_negotiation, so we don't want raw
+            // provider messages (URLs, request IDs, internal stack hints) on
+            // the wire.
+            logger.warn('System negotiator inline invoke failed; treating as reject', {
+              taskId: task.id,
+              isTimeout,
+              error: errMsg,
+            });
             aiTurn = {
               action: 'reject',
               assessment: {
-                reasoning: `System negotiator failed: ${errMsg}`,
+                reasoning: isTimeout
+                  ? 'Negotiator response timed out.'
+                  : 'Negotiator failed to produce a response.',
                 suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
               },
             };

@@ -61,4 +61,16 @@ describe('IndexNegotiator turn timeout', () => {
     expect(result.action).toBeDefined();
     expect(['propose', 'counter', 'accept', 'reject']).toContain(result.action);
   }, 60_000);
+
+  it('falls back to the default when an override is Infinity or NaN', () => {
+    // `AbortSignal.timeout(Infinity|NaN)` throws at runtime — the resolver must
+    // reject non-finite overrides and use the env/default instead. We can't
+    // observe the resolved value directly without invoking the LLM, so verify
+    // construction succeeds (the constructor would throw downstream if a bad
+    // value leaked through).
+    expect(() => new IndexNegotiator({ turnTimeoutMs: Number.POSITIVE_INFINITY })).not.toThrow();
+    expect(() => new IndexNegotiator({ turnTimeoutMs: Number.NaN })).not.toThrow();
+    expect(() => new IndexNegotiator({ turnTimeoutMs: -1 })).not.toThrow();
+    expect(() => new IndexNegotiator({ turnTimeoutMs: 0 })).not.toThrow();
+  });
 });

@@ -58,7 +58,10 @@ export interface IndexNegotiatorConfig {
 const DEFAULT_TURN_TIMEOUT_MS = 15_000;
 
 function resolveTurnTimeoutMs(override?: number): number {
-  if (typeof override === "number" && override > 0) return override;
+  // `> 0` alone would accept Infinity (`Infinity > 0` is true) and reject NaN
+  // by coincidence (NaN comparisons are always false). `AbortSignal.timeout`
+  // throws on both, so require a finite positive number explicitly.
+  if (typeof override === "number" && Number.isFinite(override) && override > 0) return override;
   const envValue = process.env.NEGOTIATOR_TURN_TIMEOUT_MS;
   if (envValue) {
     const parsed = Number(envValue);
