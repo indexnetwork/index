@@ -57,11 +57,14 @@ export interface IndexNegotiatorConfig {
 
 const DEFAULT_TURN_TIMEOUT_MS = 15_000;
 
-// `AbortSignal.timeout(...)` throws when its argument is outside
-// `[0, Number.MAX_SAFE_INTEGER]`. `Number.isFinite` alone allows values like
-// `1e30` to pass — finite, positive, but well above the safe-integer ceiling.
-// Reject anything in that range and fall back to the default so a misconfigured
-// env value can't crash a turn at runtime.
+// Resolver-valid range is `(0, Number.MAX_SAFE_INTEGER]`. The upper bound is
+// the runtime ceiling: `AbortSignal.timeout(N)` throws when N is outside
+// `[0, Number.MAX_SAFE_INTEGER]`, so `Number.isFinite` alone isn't enough —
+// values like `1e30` pass finiteness but blow up at the AbortSignal call.
+// The lower bound (`n > 0`) is a design choice rather than a runtime
+// constraint: `AbortSignal.timeout(0)` is technically legal but would abort
+// every turn before the LLM produces a response, so we reject it and fall
+// back to the default just like any other invalid override.
 function isValidTimeoutMs(n: number): boolean {
   return Number.isFinite(n) && n > 0 && n <= Number.MAX_SAFE_INTEGER;
 }

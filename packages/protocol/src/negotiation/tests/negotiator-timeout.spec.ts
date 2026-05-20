@@ -63,17 +63,18 @@ describe('IndexNegotiator turn timeout', () => {
   }, 60_000);
 
   it('falls back to the default for out-of-range overrides', () => {
-    // `AbortSignal.timeout(N)` throws when N is non-finite or outside
-    // [0, Number.MAX_SAFE_INTEGER]. The resolver must reject every bad shape
-    // and use the env/default instead. We can't observe the resolved value
-    // directly without invoking the LLM, so verify construction succeeds —
-    // the constructor would propagate downstream if a bad value leaked through.
+    // Resolver-valid range is `(0, Number.MAX_SAFE_INTEGER]`. The upper bound
+    // is enforced because `AbortSignal.timeout` throws above it. The lower
+    // bound is strict (`n > 0`) by design — `AbortSignal.timeout(0)` is
+    // technically legal but would immediate-abort every turn. Anything else
+    // (non-finite, negative, zero, above safe-integer ceiling) must fall back
+    // to the env/default. We can't observe the resolved value directly without
+    // invoking the LLM, so verify construction succeeds — the constructor
+    // would propagate downstream if a bad value leaked through.
     expect(() => new IndexNegotiator({ turnTimeoutMs: Number.POSITIVE_INFINITY })).not.toThrow();
     expect(() => new IndexNegotiator({ turnTimeoutMs: Number.NaN })).not.toThrow();
     expect(() => new IndexNegotiator({ turnTimeoutMs: -1 })).not.toThrow();
     expect(() => new IndexNegotiator({ turnTimeoutMs: 0 })).not.toThrow();
-    // Finite + positive but above Number.MAX_SAFE_INTEGER — e.g. a misconfigured
-    // `NEGOTIATOR_TURN_TIMEOUT_MS=1e30`. AbortSignal.timeout rejects this too.
     expect(() => new IndexNegotiator({ turnTimeoutMs: 1e30 })).not.toThrow();
     expect(() => new IndexNegotiator({ turnTimeoutMs: Number.MAX_SAFE_INTEGER + 1 })).not.toThrow();
   });
