@@ -220,6 +220,14 @@ export const applyNetworkScopeToContext = (
   if (context.networkId) return;
 
   context.networkId = networkScopeId;
+  // Clamp indexScope to [boundNetwork, personalIndex] BEFORE the membership
+  // check below. If the bound network is not in userNetworks (defensive case),
+  // the filter still produces a safe scope (personal index only) rather than
+  // leaving the unclamped scope set by resolveChatContext.
+  context.indexScope = context.userNetworks
+    .filter((m) => m.networkId === networkScopeId || m.isPersonal === true)
+    .map((m) => m.networkId);
+
   const bound = context.userNetworks.find((m) => m.networkId === networkScopeId);
   if (!bound) return;
 
@@ -232,9 +240,6 @@ export const applyNetworkScopeToContext = (
   const isOwner = bound.permissions?.includes('owner') ?? false;
   context.scopedMembershipRole = isOwner ? 'owner' : 'member';
   context.isOwner = isOwner;
-  context.indexScope = context.userNetworks
-    .filter((m) => m.networkId === networkScopeId || m.isPersonal === true)
-    .map((m) => m.networkId);
 };
 
 /**

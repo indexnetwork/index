@@ -5763,6 +5763,12 @@ export function createSystemDatabase(
       return db.getIntentsInIndexForMember(userId, networkId);
     },
     getActiveIntentsAcrossIndexes: async (userId: string, indexIds: string[]) => {
+      // Caller-only semantic: the method returns the *caller's own* intents.
+      // Reject cross-user lookups at the systemDb boundary as defense-in-depth,
+      // even though the tool layer always passes context.userId today.
+      if (userId !== authUserId) {
+        throw new Error('Access denied: getActiveIntentsAcrossIndexes is caller-only');
+      }
       // Filter to only IDs within scope before delegating.
       const scopedIds = indexIds.filter((id) => indexScope.includes(id));
       return db.getActiveIntentsAcrossIndexes(userId, scopedIds);

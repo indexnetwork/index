@@ -59,12 +59,6 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
     handler: async ({ context, query }) => {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
       if (scopeErr) return error(scopeErr);
-      // Strict scope enforcement: when chat is index-scoped, only allow querying that index
-      if (context.networkId && query.networkId?.trim() && query.networkId.trim() !== context.networkId) {
-        return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from this community.`
-        );
-      }
 
       // Distinguish "explicit network browse" from "implicit scope-aware read"
       const explicitNetworkId = query.networkId?.trim();
@@ -75,9 +69,10 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid network ID format.");
       }
 
-      // Strict scope enforcement: an explicit networkId must match context.networkId
-      // when set (or be in indexScope, since the agent could legitimately query
-      // any reachable index). The pre-existing rule about scoped chats stands.
+      // Strict scope enforcement: in a scoped chat, the only allowed explicit
+      // networkId is context.networkId itself. The chat's focus is the bound
+      // network; cross-network browse must happen in a separate (unscoped)
+      // chat or a chat scoped to that other network.
       if (context.networkId && explicitNetworkId && explicitNetworkId !== context.networkId) {
         return error(
           `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from this community.`
