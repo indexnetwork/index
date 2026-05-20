@@ -128,11 +128,27 @@ function copyWorkspaceFiles(wipeUser: boolean): void {
   // be "reset to template" like USER.md — it's deleted instead. Without this,
   // the agent's long-term memories survive `--wipe-user` and keep biasing the
   // re-onboarding session toward the prior user identity.
+  //
+  // workspace-state.json holds OpenClaw's `bootstrapSeededAt` /
+  // `setupCompletedAt` markers — its presence is what OpenClaw uses to skip
+  // BOOTSTRAP.md injection on subsequent sessions. Deleting it makes OpenClaw
+  // treat the workspace as fresh on the next session, so BOOTSTRAP.md (which
+  // we re-staged above) is injected into the prompt and the onboarding ritual
+  // re-runs.
   if (wipeUser) {
     const memoryFile = join(TARGET_WORKSPACE, "MEMORY.md");
     if (existsSync(memoryFile)) {
       rmSync(memoryFile, { force: true });
       console.log("→ removed MEMORY.md (--wipe-user)");
+    }
+    const workspaceStateFile = join(
+      TARGET_WORKSPACE,
+      ".openclaw",
+      "workspace-state.json",
+    );
+    if (existsSync(workspaceStateFile)) {
+      rmSync(workspaceStateFile, { force: true });
+      console.log("→ removed workspace-state.json (--wipe-user)");
     }
   }
 }

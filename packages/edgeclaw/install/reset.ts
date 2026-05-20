@@ -124,6 +124,16 @@ function removeWorkspaceFiles(wipeUser: boolean): void {
       removed++;
       console.log("→ removed workspace/memory/");
     }
+    // workspace-state.json holds OpenClaw's bootstrapSeededAt / setupCompletedAt
+    // markers — its presence is what OpenClaw uses to skip BOOTSTRAP.md
+    // injection on subsequent sessions. Removing it makes OpenClaw treat the
+    // workspace as fresh on next session and re-inject the bootstrap ritual.
+    const openclawStateDir = join(TARGET_WORKSPACE, ".openclaw");
+    if (existsSync(openclawStateDir)) {
+      rmSync(openclawStateDir, { recursive: true, force: true });
+      removed++;
+      console.log("→ removed workspace/.openclaw/");
+    }
   }
 
   console.log(`→ removed ${removed} workspace entries from ${TARGET_WORKSPACE}`);
