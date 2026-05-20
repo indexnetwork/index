@@ -71,6 +71,14 @@ export async function createChatTools(
       sessionId: deps.sessionId,
     }));
 
+  // Allow callers (e.g. MCP server, tests) to override the computed indexScope
+  // without going through a full re-resolve. The MCP path sets this via
+  // applyNetworkScopeToContext; ToolContext.indexScope provides the same override
+  // when no preResolvedContext is given.
+  if (!preResolvedContext && deps.indexScope !== undefined) {
+    resolvedContext.indexScope = deps.indexScope;
+  }
+
   // ─── Tool wrapper ──────────────────────────────────────────────────────────
   /**
    * Standardized tool factory. Auto-injects resolved context and

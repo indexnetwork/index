@@ -43,8 +43,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       "Retrieves intents (signals of interest/need, e.g. 'Looking for a React developer in Berlin'). " +
       "Intents are the core unit of discovery — they represent what users are seeking and drive semantic matching for opportunities.\n\n" +
       "**Usage modes:**\n" +
-      "- No parameters: returns the authenticated user's own active intents across all indexes.\n" +
-      "- With networkId: returns all intents in that index (community). Add userId to filter to one member's intents.\n" +
+      "- No parameters: returns the **caller's own** active intents. In an index-scoped chat the result is clamped to the reachable indexes (the bound index plus the user's personal index). In an unscoped chat the result spans all of the user's active intents.\n" +
+      "- With networkId: returns **all members'** intents in that index (community browse path). Add userId to filter to one member.\n" +
       "- With userId alone: only works for the current user (cannot read another user's global intents without an index scope).\n\n" +
       "**Workflow:** To explore what members of an index are looking for, first call read_network_memberships(networkId) to list members, " +
       "then read_intents(networkId) to see all intents in that community. " +
@@ -66,18 +66,27 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
-      const effectiveIndexId = context.networkId || query.networkId?.trim() || undefined;
-      if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
+      // Distinguish "explicit network browse" from "implicit scope-aware read"
+      const explicitNetworkId = query.networkId?.trim();
+      const explicitUserId = query.userId?.trim();
+
+      // Validate explicit networkId format
+      if (explicitNetworkId && !UUID_REGEX.test(explicitNetworkId)) {
         return error("Invalid network ID format.");
       }
 
-      const queryUserId = query.userId?.trim() || undefined;
+      // Strict scope enforcement: an explicit networkId must match context.networkId
+      // when set (or be in indexScope, since the agent could legitimately query
+      // any reachable index). The pre-existing rule about scoped chats stands.
+      if (context.networkId && explicitNetworkId && explicitNetworkId !== context.networkId) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from this community.`
+        );
+      }
 
-      // When scoped, reading another user's intents is restricted to the scoped index
-      if (context.networkId && queryUserId && queryUserId !== context.userId) {
-        // Verify target user is a member of the scoped index
-        const db = deps.systemDb;
-        const isInScopedIndex = await db.isNetworkMember(context.networkId, queryUserId);
+      // Cross-user read in scoped chat: target user must be a member of the scoped index
+      if (context.networkId && explicitUserId && explicitUserId !== context.userId) {
+        const isInScopedIndex = await deps.systemDb.isNetworkMember(context.networkId, explicitUserId);
         if (!isInScopedIndex) {
           return error(
             `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from members of this community.`
@@ -85,35 +94,49 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
-      if (!effectiveIndexId && queryUserId && queryUserId !== context.userId) {
+      // Cross-user global read is disallowed without an index scope
+      if (!explicitNetworkId && !context.networkId && explicitUserId && explicitUserId !== context.userId) {
         return error("Cannot read another user's global intents. Use networkId to scope to a shared network.");
       }
 
-      // Verify the caller is a member of the index they're querying (unscoped chat only - scoped is already validated)
-      if (!context.networkId && effectiveIndexId) {
-        const db = deps.systemDb;
-        const callerIsMember = await db.isNetworkMember(effectiveIndexId, context.userId);
+      // Membership check for explicit cross-network reads in unscoped chats
+      if (!context.networkId && explicitNetworkId) {
+        const callerIsMember = await deps.systemDb.isNetworkMember(explicitNetworkId, context.userId);
         if (!callerIsMember) {
-          return error(
-            "You can only read intents from indexes you are a member of."
-          );
+          return error("You can only read intents from indexes you are a member of.");
         }
       }
 
-      // When scoped, we should NOT return all user intents across indexes - only those in the scoped index
-      const allUserIntents = !context.networkId && !effectiveIndexId && (!queryUserId || queryUserId === context.userId);
+      // ── Choose the read mode ──
+      // 1. Explicit networkId (browse all members in that index) — pass networkId, no queryUserId.
+      // 2. Explicit userId (filter to one user, possibly the caller) — same plus queryUserId.
+      // 3. Implicit (no explicit network/user) in scoped chat — pass indexScope, no networkId.
+      // 4. Implicit in unscoped chat — global getActiveIntents (caller's own).
+      const graphInput: Record<string, unknown> = {
+        userId: context.userId,
+        userProfile: "",
+        operationMode: 'read' as const,
+      };
+
+      if (explicitNetworkId) {
+        graphInput.networkId = explicitNetworkId;
+        if (explicitUserId) graphInput.queryUserId = explicitUserId;
+      } else if (explicitUserId) {
+        // userId-only implies "my intents" (cross-user is rejected above)
+        graphInput.queryUserId = explicitUserId;
+        graphInput.allUserIntents = true;
+      } else if (context.indexScope && context.indexScope.length > 0 && context.networkId) {
+        // Scoped chat, implicit read: caller-only across reachable indexes.
+        graphInput.indexScope = context.indexScope;
+      } else {
+        // Unscoped, implicit read: caller's global intents.
+        graphInput.allUserIntents = true;
+      }
 
       const _readIntentGraphStart = Date.now();
       const _readIntentTraceEmitter = requestContext.getStore()?.traceEmitter;
       _readIntentTraceEmitter?.({ type: "graph_start", name: "intent" });
-      const result = await graphs.intent.invoke({
-        userId: context.userId,
-        userProfile: "",
-        networkId: effectiveIndexId,
-        operationMode: 'read' as const,
-        queryUserId,
-        allUserIntents,
-      });
+      const result = await graphs.intent.invoke(graphInput);
       const _readIntentGraphMs = Date.now() - _readIntentGraphStart;
       _readIntentTraceEmitter?.({ type: "graph_end", name: "intent", durationMs: _readIntentGraphMs });
 

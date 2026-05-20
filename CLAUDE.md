@@ -176,6 +176,23 @@ git subtree pull --squash --prefix=packages/edgeclaw https://github.com/indexnet
 gh repo sync indexnetwork/edgeclaw --source Edge-City/edgeclaw --branch main --force
 ```
 
+#### packages/edgeclaw/skills/ → indexnetwork/edgeclaw-skills (fork of Edge-City/edgeclaw-skills)
+
+The `edgeclaw-skills` multi-skill registry — sibling repo to `edgeclaw`, mounted at `edgeclaw/skills/` as a nested subtree upstream-side. Each subfolder is one skill (`edge-esmeralda/`, `index-network/`, future `geo/`). In our monorepo this path is a nested subtree: `packages/edgeclaw/` mirrors `Edge-City/edgeclaw`, and inside that, `packages/edgeclaw/skills/` separately mirrors `Edge-City/edgeclaw-skills` via the `indexnetwork/edgeclaw-skills` fork (same fork pattern used for edgeclaw because `Edge-City` is a different organization).
+
+Auto-refresh: a CI workflow inside the upstream skills repo (`.github/workflows/index-references.yml`) re-runs the `edge-esmeralda` indexer every 15 minutes and commits the regenerated `edge-esmeralda/references/` content. Those commits propagate through the nested subtree chain — fork sync pulls them into `Edge-City/edgeclaw-skills`, the parent edgeclaw subtree-pull picks them up at `edgeclaw/skills/`, and our monorepo sync pulls them down at `packages/edgeclaw/skills/`.
+
+```bash
+# Manual push if the workflow failed (sync monorepo skills/ into the fork)
+git subtree push --prefix=packages/edgeclaw/skills https://github.com/indexnetwork/edgeclaw-skills.git <branch>
+
+# Manual pull from the fork (if it has changes the monorepo hasn't picked up)
+git subtree pull --squash --prefix=packages/edgeclaw/skills https://github.com/indexnetwork/edgeclaw-skills.git main
+
+# Force-sync the fork from Edge-City (e.g. after an upstream merge or a CI auto-commit)
+gh repo sync indexnetwork/edgeclaw-skills --source Edge-City/edgeclaw-skills --branch main --force
+```
+
 ### Root
 
 ```bash
