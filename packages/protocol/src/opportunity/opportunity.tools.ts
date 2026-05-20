@@ -501,8 +501,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
-      const effectiveIndexId =
-        (context.networkId || query.networkId?.trim()) ?? undefined;
+      // Distinguish an explicit `query.networkId` override (caller wants discovery
+      // scoped to one specific index) from an implicit scoped-chat context
+      // (caller is in a scoped chat with no explicit override — discovery should
+      // span the chat's reach, i.e. context.indexScope = [bound, personal]).
+      // Conflating them via `context.networkId || query.networkId` made the
+      // implicit branch unreachable.
+      const explicitIndexId = query.networkId?.trim() || undefined;
+      const effectiveIndexId = explicitIndexId;
 
       // ── Continuation mode ──
       // `continueFrom` is a pagination token for resuming a prior discovery's
