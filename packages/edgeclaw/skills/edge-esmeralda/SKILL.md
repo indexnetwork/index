@@ -255,22 +255,102 @@ If the user hasn't set `$EDGEOS_BEARER_TOKEN`, tell them they need to obtain an 
 
 ---
 
-## 3. Knowledge Discovery (Index Network) — Placeholder
+## 3. Knowledge Discovery (Index Network)
 
-> **Status**: Stub. The Index Network team will replace this section via PR.
+[Index Network](https://index.network) is a private, intent-driven discovery protocol. Agents register the Index MCP server and call its tools to surface relevant people across Edge Esmeralda — connections based on what residents are looking for, beyond what keyword search of the attendee directory can find.
 
-Reserved for [Index Network](https://index.network) tooling — semantic search and cross-village knowledge discovery (past discussions, session notes, research links, decentralized knowledge graphs across Edge City popups).
+### Setup
 
-<!-- INDEX_NETWORK_PLACEHOLDER
-PR authors, replace this block with:
-- Endpoint(s) or SDK calls the agent should use
-- Auth: env var name (suggest `$INDEX_NETWORK_TOKEN`), scope, how the user obtains a token
-- 3–5 example curl commands or SDK snippets covering the common flows
-- Expected response shape
-- When NOT to use this tool (overlap with EdgeOS Events / Citizen Portal / Reference Content)
-END -->
+Index Network is exposed as an **MCP server**, not an HTTP API. The user generates an API key at `index.network/agents` (or a community-branded node) and the agent's MCP config registers the server:
 
-**Until this is wired up**: Tell the user that semantic search across Edge City content isn't live yet. Fall back to the indexed reference content in §5 (wiki, website, newsletter) and direct keyword search via `GET /events/portal/events?search=…` (§1).
+```json
+{
+  "name": "index",
+  "url": "https://protocol.index.network/mcp",
+  "transport": "streamable-http",
+  "headers": {
+    "x-api-key": "ix_..."
+  }
+}
+```
+
+Required env var: `INDEX_API_KEY=ix_...`
+
+**If the user has not provided an Index API key, tell them they need to generate one at `index.network/agents` and stop.** Do not invent a key or silently fall back to the §2 directory — that misses the protocol's discovery layer.
+
+### Tool families
+
+Once registered, every capability is a tool call on the `index` MCP server. Tool descriptions are authoritative — read them before calling. Major families:
+
+- **Profile** — `create_user_profile`, `read_user_profiles`, `update_user_profile`. Identity, bio, skills, interests, embeddings.
+- **Signals (intents)** — `create_intent`, `read_intents`, `update_intent`, `delete_intent`, `search_intents`. What a user is looking for; the discovery layer's primary unit.
+- **Discovery** — `discover_opportunities`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`. Surfaces connections between users based on signal overlap.
+- **Negotiations** — `list_negotiations`, `get_negotiation`. Read-only — negotiations are handled server-side; do not call `respond_to_negotiation` from the agent.
+- **Networks (communities)** — `read_networks`, `create_network_membership`. Edge Esmeralda's community lives at a specific network ID; the server auto-assigns membership after `complete_onboarding`.
+- **Contacts** — `add_contact`, `list_contacts`, `search_contacts`. The user's personal index.
+- **Reference** — `scrape_url(url, objective)`. Extract content from any URL when enriching a profile or composing a signal from a link.
+- **Onboarding** — `complete_onboarding`. Required after profile + first signal capture.
+
+### Typical flows
+
+**Look up the calling user's profile and onboarding status:**
+
+```
+read_user_profiles()
+```
+
+Returns the user's profile plus an `onboardingComplete` flag. New users need the onboarding ritual: `create_user_profile()` → confirm with the user → `create_intent(description="...")` for their first signal → `complete_onboarding()`.
+
+**Surface discovered opportunities:**
+
+```
+list_opportunities(status="pending", limit=10)
+```
+
+Each opportunity carries `profileUrl`, `acceptUrl` (an opaque backend redirect — never modify it), `mainText`, and a `feedCategory` (`connection` if the user is a party, `connector-flow` if the user is the introducer). Filter by quality before surfacing.
+
+**Search the protocol for relevant signals:**
+
+```
+search_intents(query="agent memory layer", limit=20)
+```
+
+Use this when the user asks "is anyone here interested in X?" — semantic search across all open signals on the protocol.
+
+**Enrich a profile from a URL the user shares:**
+
+```
+scrape_url(url="https://linkedin.com/in/alex", objective="Update user profile from LinkedIn page")
+```
+
+Always pass an `objective` describing why you're scraping — it guides extraction.
+
+### Output translation
+
+The MCP returns structured records. Translate before speaking:
+
+| Internal | What the user hears |
+|---|---|
+| `intent` | "signal" |
+| `index` / `network` | "community" |
+| status `draft` / `latent` | "draft" |
+| status `pending` | "sent" |
+| status `accepted` | "connected" |
+
+Never expose internal IDs unless the ID is actionable (e.g. a `conversationId` the user can open).
+
+### When NOT to use this
+
+- For Edge Esmeralda's published calendar, RSVPs, or venues, use §1 (EdgeOS Events API) — Index Network does not index events.
+- For looking up a specific attendee by name, organization, or role, use §2 (Citizen Portal directory) — it has the canonical registration fields. Index Network covers protocol-side signals (what people are looking for), not registration-side data.
+- For wiki, website, or newsletter content, use §5 — Index Network is not a content store.
+
+### Errors
+
+- `401` — missing or invalid API key.
+- `403` — key lacks scope for the operation (e.g. trying to read other users' raw intents).
+- `404` — record not visible to the caller (often a privacy boundary, not a missing record).
+- `429` — rate limited; back off and retry.
 
 ---
 
