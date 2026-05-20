@@ -324,6 +324,18 @@ Negotiation-specific events (`negotiation_session_start/end`, `negotiation_turn`
 
 Model settings centralized in `packages/protocol/src/shared/agent/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental). Use `configureProtocol({ apiKey, chatModel, ... })` to inject config programmatically.
 
+### Rate Limiting
+
+The protocol applies per-route-class limits via the `RateLimit(class)` guard from `src/guards/limiter.guard.ts`. Three classes:
+
+- `read` — all `GET` routes (default 120/min)
+- `write` — all `POST/PUT/PATCH/DELETE` routes (default 60/min)
+- `auth_write` — credential-mutation endpoints on `/api/auth/*` (default 10/min); enforced by Better Auth's own `rateLimit` block
+
+Buckets are keyed per identifier: verified JWT user → API key hash → session cookie hash → client IP. Apply via `@UseGuards(RateLimit('read'), AuthOrApiKeyGuard)` — `RateLimit` must be FIRST so it short-circuits before any DB work. Agent-poller endpoints (`POST /agents/:id/negotiations/pickup`, `GET /agents/:id/opportunities/pending`, `GET /agents/:id/opportunities/accepted`) intentionally omit the guard. Storage is Redis (shared across Bun instances) with in-memory fallback when `REDIS_URL` is unset. Set `LIMITER_DISABLE=1` to disable as an incident escape hatch.
+
+See `docs/superpowers/specs/2026-05-21-protocol-rate-limiting-design.md` for the full design.
+
 ## Environment Setup
 
 See `docs/guides/getting-started.md` for full setup guide.
