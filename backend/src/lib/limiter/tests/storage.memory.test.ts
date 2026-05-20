@@ -1,9 +1,10 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { MemoryStorage } from '../storage.memory';
 
 describe('MemoryStorage', () => {
   let s: MemoryStorage;
   beforeEach(() => { s = new MemoryStorage(); });
+  afterEach(() => { s.stop(); });
 
   test('increments and marks denied past max', async () => {
     const r1 = await s.hit('k', 60, 2);
