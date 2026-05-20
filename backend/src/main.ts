@@ -30,6 +30,7 @@ import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
 import { RateLimiterError } from './lib/limiter/error';
+import { getRateLimitInfo } from './guards/limiter.guard';
 import { log } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
@@ -354,11 +355,24 @@ Bun.serve({
             const result = await handler.call(instance, req, guardResult, routeParams);
             logger.verbose('Handler invoked successfully');
 
+            // Attach ratelimit headers if available
+            const limiterInfo = getRateLimitInfo(req);
+            const limiterHeaders: Record<string, string> = limiterInfo
+              ? {
+                  'ratelimit-limit': String(limiterInfo.limit),
+                  'ratelimit-remaining': String(limiterInfo.remaining),
+                  'ratelimit-reset': String(Math.max(0, Math.ceil((limiterInfo.resetAt - Date.now()) / 1000))),
+                }
+              : {};
+
             // If result is a Response object, add CORS headers and return it.
             if (result instanceof Response) {
               // Clone the response with CORS headers added
               const newHeaders = new Headers(result.headers);
               Object.entries(corsHeaders).forEach(([key, value]) => {
+                newHeaders.set(key, value);
+              });
+              Object.entries(limiterHeaders).forEach(([key, value]) => {
                 newHeaders.set(key, value);
               });
               return new Response(result.body, {
@@ -368,7 +382,7 @@ Bun.serve({
               });
             }
             // Otherwise assume JSON
-            return Response.json(result, { headers: corsHeaders });
+            return Response.json(result, { headers: { ...corsHeaders, ...limiterHeaders } });
 
           } catch (error: unknown) {
             logger.error('Error handling request', {
