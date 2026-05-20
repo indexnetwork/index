@@ -27,8 +27,8 @@ describe('resolveClientIp (Railway env)', () => {
     expect(resolveClientIp(r)).toBe('198.51.100.7');
   });
 
-  test('returns "unknown" when nothing parses', () => {
-    expect(resolveClientIp(req({}))).toBe('unknown');
+  test('returns "unresolved" on Railway when nothing parses', () => {
+    expect(resolveClientIp(req({}))).toBe('unresolved');
   });
 
   test('rejects malformed IP and tries the next header', () => {

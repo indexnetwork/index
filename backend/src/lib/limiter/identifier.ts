@@ -17,11 +17,14 @@ const DEFAULT_IP_HEADERS = [
   'x-real-ip',
 ];
 
-const IP_HEADERS: string[] = (
-  process.env.LIMITER_IP_HEADERS
-    ?.split(',').map(s => s.trim()).filter(Boolean)
-  ?? DEFAULT_IP_HEADERS
-);
+/** Read LIMITER_IP_HEADERS per-call so test overrides take effect without re-import. */
+function getIpHeaders(): string[] {
+  return (
+    process.env.LIMITER_IP_HEADERS
+      ?.split(',').map(s => s.trim()).filter(Boolean)
+    ?? DEFAULT_IP_HEADERS
+  );
+}
 
 const isRailway = () => !!process.env.RAILWAY_ENVIRONMENT;
 
@@ -34,12 +37,16 @@ export function resolveClientIp(
   server?: { requestIP(req: Request): { address: string } | null },
 ): string {
   if (isRailway()) {
-    for (const h of IP_HEADERS) {
+    for (const h of getIpHeaders()) {
       const v = req.headers.get(h);
       if (!v) continue;
       const first = v.split(',')[0]?.trim();
       if (first && isValidIp(first)) return first;
     }
+    // On Railway with no resolvable header — explicit sentinel that does NOT bypass
+    // the rate limiter. Requests share a shared bucket (ip:unresolved) as a defensive
+    // default. Operators should check edge header configuration.
+    return 'unresolved';
   }
   const peer = server?.requestIP(req);
   return peer?.address ?? 'unknown';

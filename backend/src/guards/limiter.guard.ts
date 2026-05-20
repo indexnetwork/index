@@ -1,3 +1,5 @@
+import { SYSTEM_AGENT_IDS } from '@indexnetwork/protocol';
+
 import type { Guard } from '../lib/router/router.decorators';
 import { resolveIdentifier } from '../lib/limiter/identifier';
 import {
@@ -23,6 +25,21 @@ export function getRateLimitInfo(req: Request): RateLimitInfo | undefined {
   return infoByRequest.get(req);
 }
 
+/**
+ * Well-known system agent IDs that should never be rate-limited.
+ *
+ * @remarks This bypass is per spec but currently vestigial — the JWT payload
+ * carries `user.id`, not `agentId`, so system agents authenticate inline rather
+ * than via JWT. Kept as defense-in-depth for future token shapes.
+ */
+const SYSTEM_AGENT_USER_IDS = new Set<string>([
+  SYSTEM_AGENT_IDS.chatOrchestrator,
+  SYSTEM_AGENT_IDS.negotiator,
+]);
+
+/** Fired at most once per process when Railway edge headers aren't forwarding IPs. */
+let warnedUnresolved = false;
+
 const PRIVATE_IPV4 = [
   /^10\./,
   /^192\.168\./,
@@ -30,8 +47,11 @@ const PRIVATE_IPV4 = [
   /^127\./,
   /^169\.254\./,
 ];
+
 const isPrivateOrLoopback = (ip: string) =>
-  ip === 'unknown' || ip === '::1' || ip.startsWith('fc') || ip.startsWith('fd') ||
+  ip === 'unknown' || ip === '::1' ||
+  ip.startsWith('fc') || ip.startsWith('fd') ||    // ULA fc00::/7
+  /^fe[89ab]/i.test(ip) ||                          // link-local fe80::/10
   PRIVATE_IPV4.some(re => re.test(ip));
 
 /**
@@ -48,6 +68,20 @@ export function RateLimit(cls: LimiterClass): Guard {
     if (isLimiterDisabled()) return null;
 
     const id = await resolveIdentifier(req);
+
+    // System agents bypass rate limiting (per spec; vestigial today — see SYSTEM_AGENT_USER_IDS).
+    if (id.kind === 'user' && SYSTEM_AGENT_USER_IDS.has(id.value)) return null;
+
+    // 'unresolved' means Railway is running but no edge header carried a valid IP — rate-limit
+    // under a shared bucket as a defensive default. Log once so operators notice the misconfig.
+    if (id.kind === 'ip' && id.value === 'unresolved') {
+      if (!warnedUnresolved) {
+        warnedUnresolved = true;
+        logger.warn('Client IP could not be resolved on Railway — rate-limiting under shared bucket. Check edge headers.');
+      }
+    }
+
+    // 'unknown' is the off-Railway sentinel (no socket peer available in local dev) — bypass.
     if (id.kind === 'ip' && isPrivateOrLoopback(id.value)) return null;
 
     const { perMinute, windowSec } = resolveClassConfig(cls);
@@ -69,7 +103,11 @@ export function RateLimit(cls: LimiterClass): Guard {
 
     if (!result.allowed) {
       logger.warn('rate_limited', {
-        cls, identifier_kind: id.kind, count: result.count, limit: result.limit,
+        cls,
+        identifier_kind: id.kind,
+        key_hash: id.value.slice(0, 16),
+        count: result.count,
+        limit: result.limit,
       });
       throw new RateLimiterError(cls, result.limit, 0, result.resetAt);
     }
