@@ -281,6 +281,37 @@ describe('NetworkController.signupLookup', () => {
     expect(res.status).toBe(409);
   }, 15_000);
 
+  it('normalizes the email (case + whitespace) at the controller boundary', async () => {
+    const { networkId, masterKey } = await setupExperimentNetworkWithKey();
+    const email = `http-norm-${randomUUID()}@example.com`;
+    const signedUp = await experimentService.signup(networkId, { email });
+    cleanup.push(() => cleanupUser(signedUp.user.id));
+
+    const res = await controller.signupLookup(
+      buildLookupRequest(networkId, masterKey, { email: `  ${email.toUpperCase()}  ` }),
+      null,
+      { id: networkId },
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { user: { id: string; email: string } };
+    expect(body.user.id).toBe(signedUp.user.id);
+  }, 15_000);
+
+  it('returns 400 when email is whitespace-only', async () => {
+    const { networkId, masterKey } = await setupExperimentNetworkWithKey();
+
+    const res = await controller.signupLookup(
+      buildLookupRequest(networkId, masterKey, { email: '   ' }),
+      null,
+      { id: networkId },
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe('email is required');
+  }, 15_000);
+
   it('returns 400 when body is missing email', async () => {
     const { networkId, masterKey } = await setupExperimentNetworkWithKey();
 

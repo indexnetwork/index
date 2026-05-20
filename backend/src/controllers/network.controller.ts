@@ -253,13 +253,20 @@ export class NetworkController {
     }
 
     const body = await req.json().catch(() => null) as { email?: string } | null;
-    if (!body || typeof body.email !== 'string' || body.email.length === 0) {
+    if (!body || typeof body.email !== 'string') {
       return new Response(JSON.stringify({ error: 'email is required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    if (!EMAIL_REGEX.test(body.email)) {
+    const normalizedEmail = body.email.toLowerCase().trim();
+    if (normalizedEmail.length === 0) {
+      return new Response(JSON.stringify({ error: 'email is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
       return new Response(JSON.stringify({ error: 'Invalid email format' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -267,7 +274,7 @@ export class NetworkController {
     }
 
     try {
-      const result = await experimentService.lookupSignup(network.id, body.email);
+      const result = await experimentService.lookupSignup(network.id, normalizedEmail);
       return Response.json(result, { status: 200 });
     } catch (err: unknown) {
       if (err instanceof SignupNotCompleteError) {
