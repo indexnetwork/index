@@ -111,6 +111,14 @@ export function createAuth(deps: AuthDeps) {
         await redis.del(`better-auth:${key}`);
       },
     },
+    session: {
+      /**
+       * Keep sessions in Postgres even when secondaryStorage is configured.
+       * Without this, Better Auth silently migrates sessions to Redis on first
+       * restart, logging out every existing user.
+       */
+      storeSessionInDatabase: true,
+    },
     rateLimit: {
       enabled: true,
       storage: "secondary-storage",
