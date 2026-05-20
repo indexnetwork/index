@@ -36,8 +36,9 @@ const logger = protocolLogger("ChatTools:Opportunity");
  *   party. Issued by `discover_opportunities` in direct (no-introducer)
  *   mode: the match has already passed evaluation, the row exists in
  *   draft state, and the sender just needs to release it. Clicking flips
- *   the opp to pending so the counterpart's flow can pick it up; no chat
- *   opens (the counterpart still has to accept on their side).
+ *   the opp straight to accepted and opens the chat with a greeting —
+ *   same handler path as `connect`. The counterpart's side sees the new
+ *   accepted opp and can engage or ignore.
  */
 export function resolveActionableLinkKind(input: {
   status: string;
