@@ -283,12 +283,13 @@ Required env var: `INDEX_API_KEY=ix_...`
 Once registered, every capability is a tool call on the `index` MCP server. Tool descriptions are authoritative — read them before calling. Major families:
 
 - **Profile** — `create_user_profile`, `read_user_profiles`, `update_user_profile`. Identity, bio, skills, interests, embeddings.
-- **Signals (intents)** — `create_intent`, `read_intents`, `update_intent`, `delete_intent`, `search_intents`. What a user is looking for; the discovery layer's primary unit.
+- **Signals (intents)** — `create_intent`, `read_intents`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index`. What a user is looking for; the discovery layer's primary unit. The `intent_index` tools tag a signal to a specific community.
 - **Discovery** — `discover_opportunities`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`. Surfaces connections between users based on signal overlap.
 - **Negotiations** — `list_negotiations`, `get_negotiation`. Read-only — negotiations are handled server-side; do not call `respond_to_negotiation` from the agent.
+- **Conversations** — `list_conversations`, `get_conversation`. Open and read conversation threads with other users.
 - **Networks (communities)** — `read_networks`, `create_network_membership`. Edge Esmeralda's community lives at a specific network ID; the server auto-assigns membership after `complete_onboarding`.
-- **Contacts** — `add_contact`, `list_contacts`, `search_contacts`. The user's personal index.
-- **Reference** — `scrape_url(url, objective)`. Extract content from any URL when enriching a profile or composing a signal from a link.
+- **Contacts** — `add_contact`, `import_contacts`, `import_gmail_contacts`, `list_contacts`, `search_contacts`, `remove_contact`. The user's personal index. `import_gmail_contacts` pulls from a connected Gmail account; `import_contacts` accepts a structured list.
+- **Reference** — `read_docs`, `scrape_url(url, objective)`. Read Index Network protocol documentation, or extract content from any URL when enriching a profile or composing a signal from a link.
 - **Onboarding** — `complete_onboarding`. Required after profile + first signal capture.
 
 ### Typical flows
@@ -299,7 +300,7 @@ Once registered, every capability is a tool call on the `index` MCP server. Tool
 read_user_profiles()
 ```
 
-Returns the user's profile plus an `onboardingComplete` flag. New users need the onboarding ritual: `create_user_profile()` → confirm with the user → `create_intent(description="...")` for their first signal → `complete_onboarding()`.
+Returns the user's profile plus an `onboardingComplete` flag. For returning users (`onboardingComplete: true`), proceed directly to discovery — no ritual needed. For new users (`onboardingComplete: false`), run the onboarding ritual: `create_user_profile()` → confirm with the user → `create_intent(description="...")` for their first signal → `complete_onboarding()`.
 
 **Surface discovered opportunities:**
 
