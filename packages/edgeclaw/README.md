@@ -26,7 +26,9 @@ See the project hub for the full diagram and decisions.
 
 - `workspace/IDENTITY.md` — what an EdgeClaw agent knows about itself and the village
 - `workspace/` — backend-agnostic agent core (identity, voice, community context, generic operating rules)
-- `skills/` — backend-specific skill bundles registered with OpenClaw via per-bundle `SKILL.md`. The Index Network bundle is shipped today; EdgeOS and Geo land alongside their backend wiring.
+- `skills/` — per-backend skill bundles registered with OpenClaw via per-bundle `SKILL.md`. Mirrors `Edge-City/edgeclaw-skills` as a subtree; today this hosts:
+  - `skills/index-network/` — Index Network MCP procedural knowledge (onboarding ritual, voice exemplars, cron prompts, heartbeat tasks)
+  - `skills/edge-esmeralda/` — EdgeOS calendar + attendee directory + curated wiki/website/newsletter references (vendored from `Edge-City/edgeclaw-skills`; refreshed by upstream CI)
 - `onboarding/` — intent-capture flow for new agents (1 to 2 questions during setup)
 - `install/` — bootstrap scripts for plugging EdgeClaw into a runtime
 
@@ -206,6 +208,7 @@ The remaining ambient/accepted/freshness/memory work stays on the heartbeat tick
 | `TOOLS.md` | Cross-backend rules: channel formatting (Discord/WhatsApp/Telegram), URL preservation, Local files index. Per-backend tool families live in the relevant skill. |
 | `HEARTBEAT.md` | Generic heartbeat tick rules + the cross-backend `memory-curation` task. Backend-specific tasks live in each active skill's `heartbeat.md`. |
 | `skills/index-network/SKILL.md` | Index Network skill bundle entry point. Registered with OpenClaw on install; gates on `mcp.servers.index`. Body points at the bundle's sibling reference files. |
+| `skills/edge-esmeralda/SKILL.md` | Edge Esmeralda data skill: EdgeOS events + attendee directory + curated wiki/website/newsletter references. Loaded by OpenClaw alongside index-network. Vendored from `Edge-City/edgeclaw-skills`. |
 
 ## Auth
 
