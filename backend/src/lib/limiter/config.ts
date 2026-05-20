@@ -20,8 +20,15 @@ export const CLASS_CONFIG: Record<LimiterClass, ClassConfig> = {
   write:      { perMinute: intEnv('LIMITER_WRITE_PER_MIN', 60),      windowSec: 60 },
 };
 
+const CLASS_ENV: Record<LimiterClass, { envVar: string; fallback: number }> = {
+  auth_write: { envVar: 'LIMITER_AUTH_WRITE_PER_MIN', fallback: 10 },
+  read:       { envVar: 'LIMITER_READ_PER_MIN',       fallback: 120 },
+  write:      { envVar: 'LIMITER_WRITE_PER_MIN',      fallback: 60 },
+};
+
 export function resolveClassConfig(cls: LimiterClass): ClassConfig {
-  return CLASS_CONFIG[cls];
+  const { envVar, fallback } = CLASS_ENV[cls];
+  return { perMinute: intEnv(envVar, fallback), windowSec: 60 };
 }
 
 export function isLimiterDisabled(): boolean {
