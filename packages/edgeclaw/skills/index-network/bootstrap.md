@@ -8,8 +8,8 @@ This file is the Index Network onboarding ritual. It is gated on Index Network's
 
 The Index Network server is the source of truth for Index onboarding — not local file state. At session start, call `read_user_profiles()` (no args) and check `onboardingComplete`:
 
-- **If `onboardingComplete` is `false`:** follow this ritual end-to-end. Do not skip or reorder steps. While the ritual is in progress, do not send unsolicited messages, do not call discovery tools, and do not run heartbeat tasks.
-- **If `onboardingComplete` is `true`:** skip this file. Index Network is already onboarded for this user; EdgeClaw onboarding may or may not still need to run — that is handled separately by `BOOTSTRAP.md`.
+- **If `onboardingComplete` is `false`:** follow this ritual end-to-end. Do not skip or reorder steps. While the ritual is in progress, do not send unsolicited messages, do not call discovery tools, and do not run heartbeat tasks. After Step 6 (or any path that ends the ritual), append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` before handing back to `AGENTS.md` for the EdgeClaw gate.
+- **If `onboardingComplete` is `true`:** skip the ritual. Append `[gate] index-network: skipped (onboardingComplete=true)` to `memory/<today>.md`, then hand back to `AGENTS.md` for the EdgeClaw gate. Index Network is already onboarded server-side; EdgeClaw onboarding may or may not still need to run, which is handled by the next gate in `AGENTS.md` "First-message gates".
 
 This file is **not** deleted at the end of onboarding — if an admin ever resets the user's `onboardingComplete` flag server-side, the next session will see `onboardingComplete: false` and run the ritual again from the still-staged file.
 
@@ -76,9 +76,9 @@ Update `USER.md` with what you learned in this conversation. Capture only the th
 
 ## Step 6 — First ambient pass (welcome message)
 
-Run the welcome pass — follow `prompts/welcome.md`. It handles the message composition, dedup, and `confirm_opportunity_delivery` calls. After it returns, write a single line into `memory/<today>.md` noting that Index Network onboarding completed for this user. The next ambient/accepted heartbeat tick will pick up from here.
+Run the welcome pass — follow `prompts/welcome.md`. It handles the message composition, dedup, and `confirm_opportunity_delivery` calls. After it returns, append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` (the gate-trace line from the session-start gate above — this is the only place in the ritual that writes it). The next ambient/accepted heartbeat tick will pick up from here.
 
-Cron-schedule preferences are not asked about here — they belong to EdgeClaw, not Index Network. `AGENTS.md` "Session startup" runs that step after this ritual finishes.
+Cron-schedule preferences are not asked about here — they belong to EdgeClaw, not Index Network. `AGENTS.md` "First-message gates" runs that step after this ritual finishes.
 
 ---
 
