@@ -3,7 +3,7 @@ import { AuthGuard, AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/
 import { ExperimentMasterKeyGuard, type ExperimentNetwork } from '../guards/experiment.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
-import { experimentService, type ImportRow } from '../services/experiment.service';
+import { experimentService, SignupNotCompleteError, type ImportRow } from '../services/experiment.service';
 import { networkInvitationService } from '../services/network-invitation.service';
 import { networkService } from '../services/network.service';
 
@@ -229,6 +229,55 @@ export class NetworkController {
     } catch (err: unknown) {
       logger.error('Experiment signup failed', { networkId: network.id, error: errorMessage(err) });
       return new Response(JSON.stringify({ error: 'Signup failed' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
+  /**
+   * Read-only signup state check for an experiment network. Master-key
+   * authenticated. Returns 200 with `{ user: { id, email } }` when the user is
+   * fully provisioned for this network; 409 (single canned message) for any
+   * partial/missing state. No side effects — safe to call from retry loops or
+   * health probes.
+   */
+  @Post('/:id/signup/lookup')
+  async signupLookup(req: Request, _user: unknown, params: Record<string, string>) {
+    let network: ExperimentNetwork;
+    try {
+      network = await ExperimentMasterKeyGuard(req, params);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    const body = await req.json().catch(() => null) as { email?: string } | null;
+    if (!body || typeof body.email !== 'string' || body.email.length === 0) {
+      return new Response(JSON.stringify({ error: 'email is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (!EMAIL_REGEX.test(body.email)) {
+      return new Response(JSON.stringify({ error: 'Invalid email format' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    try {
+      const result = await experimentService.lookupSignup(network.id, body.email);
+      return Response.json(result, { status: 200 });
+    } catch (err: unknown) {
+      if (err instanceof SignupNotCompleteError) {
+        return new Response(
+          JSON.stringify({ error: 'User has not completed signup for this network' }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      logger.error('Signup lookup failed', { networkId: network.id, error: errorMessage(err) });
+      return new Response(JSON.stringify({ error: 'Lookup failed' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
