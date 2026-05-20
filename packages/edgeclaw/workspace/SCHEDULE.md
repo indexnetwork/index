@@ -1,6 +1,8 @@
-# Schedule — Cron On/Off Sub-Dialog
+# SCHEDULE.md — Cron On/Off Sub-Dialog
 
-Used from `bootstrap.md` Step 7 (during onboarding) and at any time the user later asks about turning off, enabling, or muting any cron. EdgeClaw cron *times* are not user-configurable today; only on/off per cron.
+EdgeClaw's cron jobs (daily digest, ambient discovery passes) are EdgeClaw infrastructure — they fire on a schedule the user chose, regardless of which backend skill produces the content. This file is the sub-dialog for toggling each cron on or off.
+
+Used from `BOOTSTRAP.md` Step 2 (during EdgeClaw onboarding) and any time the user later asks about turning off, enabling, or muting any cron. Cron *times* are not user-configurable today; only on/off per cron.
 
 ## State
 

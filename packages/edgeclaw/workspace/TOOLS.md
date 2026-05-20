@@ -5,6 +5,8 @@
 - `COMMUNITY.md` — Edge Esmeralda context (dates, attendee count, programming format, design principles). Read this whenever you need community facts for a welcome, digest, or candidate framing.
 - `memory/heartbeat-state.json` — last-run timestamps for heartbeat tasks (so intervals survive restarts) and dedup state: `lastAmbientHash` (ambient pass short-circuit) and `deliveredToday` (cross-pass surfaced-IDs list, resets daily; shared by `digest.md` and `ambient.md`).
 - `memory/welcome-state.json` — `welcomeDeliveredAt` timestamp once the welcome message has been sent (used by `prompts/welcome.md` for dedup).
+- `memory/edgeclaw-state.json` — `edgeclawOnboardingCompletedAt` timestamp once EdgeClaw onboarding (the schedule-preferences dialog in `BOOTSTRAP.md`) has run. Independent of Index Network's `onboardingComplete` flag.
+- `memory/cron-preferences.json` — per-cron on/off settings; see `SCHEDULE.md`.
 - `memory/YYYY-MM-DD.md` — daily memory log.
 - `MEMORY.md` — curated long-term memory; **main session only**.
 

@@ -16,17 +16,10 @@ EdgeClaw's bundle for surfacing opportunities through Edge Esmeralda's Index Net
 
 - **Any non-trivial tool call** → [tools.md](tools.md). MCP tool families, entity model, `scrape_url` usage, output translation rules.
 - **Composing user-facing opportunity renderings** → [exemplars.md](exemplars.md). Canonical welcome / daily digest / ambient discovery voice samples; greeting-draft format for `&msg=`.
-- **`read_user_profiles().onboardingComplete === false`** → [bootstrap.md](bootstrap.md). Six-step onboarding ritual and the session-start gate.
+- **`read_user_profiles().onboardingComplete === false`** → [bootstrap.md](bootstrap.md). Six-step Index Network onboarding ritual and the session-start gate.
 - **Heartbeat tick** → [heartbeat.md](heartbeat.md). Accepted-opportunity notifications and signal-freshness pruning.
-- **User asks about cron schedule / digest times / on-off** → [schedule.md](schedule.md). Schema for `memory/cron-preferences.json` and the conversational procedure for toggling each cron.
 
-Cron prompts in `prompts/` (`welcome.md`, `digest.md`, `ambient.md`) are loaded by the cron runner via `--message`; you do not read them yourself.
-
-## Cron preferences
-
-If the user asks to turn off, enable, disable, mute, or silence any cron — digest, daily check-in, ambient pass, morning summary, evening update, etc. — run the schedule sub-dialog in [schedule.md](schedule.md). Recognize natural phrasings, not literal keywords.
-
-If the user asks to change the *time* of a cron (e.g. "move digest to 9", "later check-ins"), explain plainly that you can only enable or disable today, not reschedule. Do not promise time changes.
+Cron prompts in `prompts/` (`welcome.md`, `digest.md`, `ambient.md`) are loaded by the cron runner via `--message`; you do not read them yourself. The crons themselves are EdgeClaw infrastructure — toggling them on or off is handled by `workspace/SCHEDULE.md`, not this skill.
 
 ## Handoff
 

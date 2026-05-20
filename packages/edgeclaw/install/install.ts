@@ -135,20 +135,26 @@ function copyWorkspaceFiles(wipeUser: boolean): void {
   // treat the workspace as fresh on the next session, so BOOTSTRAP.md (which
   // we re-staged above) is injected into the prompt and the onboarding ritual
   // re-runs.
+  //
+  // memory/edgeclaw-state.json is EdgeClaw's own onboarding marker (separate
+  // from Index Network's server-side `onboardingComplete` flag). Wiping it
+  // makes the next session re-enter EdgeClaw onboarding from BOOTSTRAP.md.
+  // memory/welcome-state.json is the Index-side welcome-message dedup marker;
+  // re-onboarding should re-deliver the welcome, so it goes too. cron-prefs
+  // are reset because they are set as part of EdgeClaw onboarding.
   if (wipeUser) {
-    const memoryFile = join(TARGET_WORKSPACE, "MEMORY.md");
-    if (existsSync(memoryFile)) {
-      rmSync(memoryFile, { force: true });
-      console.log("→ removed MEMORY.md (--wipe-user)");
-    }
-    const workspaceStateFile = join(
-      TARGET_WORKSPACE,
-      ".openclaw",
-      "workspace-state.json",
-    );
-    if (existsSync(workspaceStateFile)) {
-      rmSync(workspaceStateFile, { force: true });
-      console.log("→ removed workspace-state.json (--wipe-user)");
+    const filesToWipe = [
+      join(TARGET_WORKSPACE, "MEMORY.md"),
+      join(TARGET_WORKSPACE, ".openclaw", "workspace-state.json"),
+      join(TARGET_WORKSPACE, "memory", "edgeclaw-state.json"),
+      join(TARGET_WORKSPACE, "memory", "welcome-state.json"),
+      join(TARGET_WORKSPACE, "memory", "cron-preferences.json"),
+    ];
+    for (const path of filesToWipe) {
+      if (existsSync(path)) {
+        rmSync(path, { force: true });
+        console.log(`→ removed ${path.replace(TARGET_WORKSPACE + "/", "")} (--wipe-user)`);
+      }
     }
   }
 }
