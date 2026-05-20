@@ -166,7 +166,7 @@ The installer:
 Send any message in your chat to bring EdgeClaw online. EdgeClaw has two independent onboarding gates that run at session start:
 
 - **Index Network onboarding** — gated on the server-side `onboardingComplete` flag returned by `read_user_profiles()`. Owned by `skills/index-network/bootstrap.md`. If `false`, the six-step ritual runs (greet → create profile → capture intent → capture handle → `complete_onboarding()` → populate `USER.md` → welcome).
-- **EdgeClaw onboarding** — gated on the local marker `memory/edgeclaw-state.json` (`edgeclawOnboardingCompletedAt`). Owned by `workspace/BOOTSTRAP.md`. Today's only step is the schedule-preferences dialog (which crons you want firing). It runs after the active skill bootstraps complete.
+- **EdgeClaw onboarding** — gated on the local marker `memory/edgeclaw-state.json` (`edgeclawOnboardingCompletedAt`). Owned by `workspace/AGENTS.md` under "Session startup". Today's only step is the schedule-preferences dialog (which crons you want firing, and at what times). It runs after the active skill bootstraps complete. (AGENTS.md hosts this gate rather than BOOTSTRAP.md because OpenClaw deletes BOOTSTRAP.md after first-run setup, so the file is not reliably injected on subsequent sessions.)
 
 The two states are decoupled. A user can be onboarded to Index Network from another surface (CLI, web) and still need EdgeClaw's schedule dialog. Conversely, an admin resetting `onboardingComplete` server-side re-triggers only the Index ritual, not the schedule prompt. Wiping local state via `install/install.ts --wipe-user` resets the EdgeClaw side without touching Index's flag.
 
@@ -200,8 +200,8 @@ The remaining ambient/accepted/freshness/memory work stays on the heartbeat tick
 
 | File | Purpose |
 | --- | --- |
-| `BOOTSTRAP.md` | EdgeClaw's session-start dispatcher. Runs each active skill's `bootstrap.md` (gated on that skill's backend state) and then EdgeClaw's own onboarding step (gated on `memory/edgeclaw-state.json`). **Not** deleted at the end of onboarding — re-runs whenever the local marker is wiped. |
-| `AGENTS.md` | Cross-backend operating instructions: session startup, memory, surfacing-opportunities quality bar, cron-schedule trigger, generic red lines, group-chat rules. Per-backend voice exemplars and ritual steps live in the relevant skill. |
+| `AGENTS.md` | Canonical session-start instructions plus operating rules. Hosts the dual onboarding gates (skill-side + EdgeClaw-side), the cron-schedule trigger, memory contract, opportunity-quality bar, red lines, and group-chat rules. Always injected by OpenClaw. |
+| `BOOTSTRAP.md` | OpenClaw convention for the first-run file. EdgeClaw ships only a stub pointing to `AGENTS.md` here, because OpenClaw deletes BOOTSTRAP.md after first-run setup — anything stored in it is not durable. |
 | `SCHEDULE.md` | Cron toggle + reschedule sub-dialog. Used from `BOOTSTRAP.md` during onboarding and any time the user later asks to enable, disable, or move a cron. Operates directly on OpenClaw's cron list (`openclaw cron list/enable/disable/edit`); no separate preferences file. |
 | `COMMUNITY.md` | Edge Esmeralda context — dates, attendee count, programming format, design principles. The agent reads this when composing welcomes and digests. |
 | `SOUL.md` | Voice, banned vocabulary, "never name the plumbing", boundaries, continuity. |

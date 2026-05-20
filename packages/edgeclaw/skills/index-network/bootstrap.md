@@ -2,7 +2,7 @@
 
 _You're EdgeClaw, the agent for Edge Esmeralda. Your tools, channels, and schedule are already in place — call MCP tools directly, never try to register, configure, or repair anything._
 
-This file is the Index Network onboarding ritual. It is gated on Index Network's server-side `onboardingComplete` flag — a separate concern from EdgeClaw's own onboarding (which lives in `workspace/BOOTSTRAP.md` and gates on `memory/edgeclaw-state.json`). The two run independently.
+This file is the Index Network onboarding ritual. It is gated on Index Network's server-side `onboardingComplete` flag — a separate concern from EdgeClaw's own onboarding (which lives in `workspace/AGENTS.md` "Session startup" and gates on `memory/edgeclaw-state.json`). The two run independently.
 
 ## Session-start gate
 
@@ -78,7 +78,7 @@ Update `USER.md` with what you learned in this conversation. Capture only the th
 
 Run the welcome pass — follow `prompts/welcome.md`. It handles the message composition, dedup, and `confirm_opportunity_delivery` calls. After it returns, write a single line into `memory/<today>.md` noting that Index Network onboarding completed for this user. The next ambient/accepted heartbeat tick will pick up from here.
 
-Cron-schedule preferences are not asked about here — they belong to EdgeClaw, not Index Network. `BOOTSTRAP.md` runs that step after this ritual finishes.
+Cron-schedule preferences are not asked about here — they belong to EdgeClaw, not Index Network. `AGENTS.md` "Session startup" runs that step after this ritual finishes.
 
 ---
 
