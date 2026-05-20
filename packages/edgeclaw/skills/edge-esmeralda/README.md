@@ -13,9 +13,10 @@ Set environment variables:
 ```bash
 export EDGEOS_API_KEY="eos_live_..."      # Required for the calendar (events, RSVPs, venues)
 export EDGEOS_BEARER_TOKEN="your-token"   # Required for attendee directory search
+export INDEX_API_KEY="ix_..."             # Required for the Index Network discovery layer (§3)
 ```
 
-Generate the calendar token from the EdgeOS portal under `/portal/api-keys`.
+Generate the calendar token from the EdgeOS portal under `/portal/api-keys`. Generate the Index Network key at `index.network/agents` (or a community-branded node).
 
 ## For Maintainers
 
@@ -47,15 +48,16 @@ A GitHub Action runs the indexer every 15 minutes and commits any changes.
 | Notion Wiki | Preprocessed | None (public) | Live |
 | Edge City Website | Preprocessed | None | Live |
 | Substack Newsletter | Preprocessed | None | Live |
-| Index Network (semantic search) | Live API | TBD | **Placeholder — awaiting PR** |
+| Index Network (semantic search) | Live MCP | `x-api-key` (ix_...) | Live |
 | Geo Browser (spatial / map) | Live API | TBD | **Placeholder — awaiting PR** |
 
-## Contributing tooling (Index Network, Geo Browser, others)
+## Contributing tooling (Geo Browser, others)
 
-Two sections in `SKILL.md` are reserved as stubs for external teams to PR concrete tooling into:
+One section in `SKILL.md` is still reserved as a stub for an external team to PR concrete tooling into:
 
-- **§3 Knowledge Discovery (Index Network)** — marker: `<!-- INDEX_NETWORK_PLACEHOLDER ... END -->`
 - **§4 Spatial Browsing (Geo Browser)** — marker: `<!-- GEO_BROWSER_PLACEHOLDER ... END -->`
+
+(§3 Knowledge Discovery was previously a placeholder; it is now live — see SKILL.md.)
 
 To contribute a section:
 
