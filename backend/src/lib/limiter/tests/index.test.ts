@@ -21,4 +21,17 @@ describe('limiter selector', () => {
     const s = await getStorage();
     expect(s.constructor.name).toBe('RedisStorage');
   });
+
+  test('successive calls share the same storage instance (promise cached on success)', async () => {
+    // Verifies the happy-path side of the retry fix: when init() succeeds, the promise
+    // is kept cached so we get the same instance on subsequent calls.
+    const realRedis = process.env.REDIS_URL ?? 'redis://localhost:6379';
+    process.env.REDIS_URL = realRedis;
+    const mod = await import(`../index?cb=${Math.random()}`);
+    const s1 = await mod.getStorage();
+    const s2 = await mod.getStorage();
+    // Both calls resolve to the same storage instance — no double-init
+    expect(s1).toBe(s2);
+    expect(s1.constructor.name).toBe('RedisStorage');
+  });
 });

@@ -8,7 +8,12 @@ let storagePromise: Promise<LimiterStorage> | null = null;
 
 export async function getStorage(): Promise<LimiterStorage> {
   if (!storagePromise) storagePromise = init();
-  return storagePromise;
+  try {
+    return await storagePromise;
+  } catch (err) {
+    storagePromise = null; // allow next call to retry
+    throw err;
+  }
 }
 
 async function init(): Promise<LimiterStorage> {
