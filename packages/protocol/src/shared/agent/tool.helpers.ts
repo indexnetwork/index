@@ -57,6 +57,14 @@ export interface ResolvedToolContext {
   indexName?: string;
   /** True when chat is index-scoped and the user owns the index. */
   isOwner?: boolean;
+  /**
+   * Indexes the tool is allowed to read across in the absence of an explicit
+   * `networkId`. Resolved at chat init from the user's memberships (and for
+   * network-scoped agents, clamped to that bound network plus the personal
+   * index). Empty array / undefined means "no scope override — caller's
+   * global state".
+   */
+  indexScope?: string[];
 
   // Rich identity context for prompt/tool orchestration (profile omits embedding to keep context lean).
   user: UserRecord;
@@ -107,6 +115,13 @@ export interface ToolContext {
   scraper: Scraper;
   /** When set, chat is scoped to this index; tools use it as default for read_intents and create_intent. */
   networkId?: string;
+  /**
+   * Optional override of the resolved `indexScope` for the tool wrapper. The
+   * MCP path computes this externally (network-scoped agent clamp) and passes
+   * it here so the chat-context resolver doesn't have to repeat the work.
+   * When omitted, the resolver computes scope from the user's memberships.
+   */
+  indexScope?: string[];
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
   sessionId?: string;
 
