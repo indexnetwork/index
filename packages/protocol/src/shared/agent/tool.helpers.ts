@@ -293,7 +293,16 @@ export async function resolveChatContext(params: {
   const userEmail = user.email ?? "";
   const hasName = !!user.name?.trim();
 
-  const indexScope = userNetworks.map((m) => m.networkId);
+  // When scoped to an index, clamp the caller's reach to [scopedIndex, personalIndex]
+  // so the chat's data model matches its "focus" semantic: a chat scoped to a
+  // community sees that community plus the user's personal index, not their
+  // other unrelated memberships. Mirrors the MCP path's clamp for network-scoped
+  // agents (see applyNetworkScopeToContext / computeAgentIndexScope).
+  const indexScope = networkId
+    ? userNetworks
+        .filter((m) => m.networkId === networkId || m.isPersonal === true)
+        .map((m) => m.networkId)
+    : userNetworks.map((m) => m.networkId);
 
   return {
     userId,
