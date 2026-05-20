@@ -1077,6 +1077,25 @@ export class OpportunityService {
   }
 
   /**
+   * Resolve the non-viewer counterpart's userId on an opportunity. Prefers
+   * a non-introducer counterpart (matching the connector-flow vs direct
+   * convention used elsewhere) and falls back to any non-viewer actor.
+   * Returns null if the opportunity is gone or has no other actor.
+   *
+   * @param opportunityId - The opportunity to inspect.
+   * @param viewerUserId - The user whose perspective the counterpart is relative to.
+   * @returns The counterpart's userId, or null.
+   */
+  async getCounterpartUserId(opportunityId: string, viewerUserId: string): Promise<string | null> {
+    const opp = await this.db.getOpportunity(opportunityId);
+    if (!opp) return null;
+    const counterpart =
+      opp.actors.find((a) => a.role !== 'introducer' && a.userId !== viewerUserId)
+      ?? opp.actors.find((a) => a.userId !== viewerUserId);
+    return counterpart?.userId ?? null;
+  }
+
+  /**
    * Conversation id (DM) for the (opportunity, viewer) pair.
    *
    * Resolves the counterpart from the opportunity's actors JSONB and returns

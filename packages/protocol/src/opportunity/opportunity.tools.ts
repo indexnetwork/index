@@ -32,10 +32,12 @@ const logger = protocolLogger("ChatTools:Opportunity");
  *   link is the only MCP path to approve.
  * - `outreach` — accepted opp where viewer is a non-introducer party.
  *   Clicking opens the existing chat (no state change).
- *
- * Callers that pass `viewerApproved: undefined` for a fresh draft (e.g.
- * `discover_opportunities` paths that just inserted the row with approved=false)
- * get `approve_introduction` — the default matches the just-created state.
+ * - `send_direct` — draft or latent opp where viewer is a non-introducer
+ *   party. Issued by `discover_opportunities` in direct (no-introducer)
+ *   mode: the match has already passed evaluation, the row exists in
+ *   draft state, and the sender just needs to release it. Clicking flips
+ *   the opp to pending so the counterpart's flow can pick it up; no chat
+ *   opens (the counterpart still has to accept on their side).
  */
 export function resolveActionableLinkKind(input: {
   status: string;
@@ -51,7 +53,7 @@ export function resolveActionableLinkKind(input: {
     return isIntroducer ? null : "connect";
   }
   if (status === "draft" || status === "latent") {
-    if (!isIntroducer) return null;
+    if (!isIntroducer) return "send_direct";
     return viewerApproved === true ? null : "approve_introduction";
   }
   return null;

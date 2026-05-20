@@ -186,6 +186,40 @@ export class ConnectLinkController {
       return Response.json({ kind: 'approve_introduction' });
     }
 
+    if (link.kind === 'send_direct') {
+      // Flip draft/latent → pending. No chat opens here; the counterpart
+      // accepts on their side via a `connect` link. After the send, route
+      // the user to the counterpart's profile so they have somewhere to
+      // land (and can review who they just reached out to).
+      const sendResult = await opportunityService.updateOpportunityStatus(
+        link.opportunityId,
+        'pending',
+        link.userId,
+      );
+      if (sendResult && 'error' in sendResult) {
+        return jsonError(sendResult.error, sendResult.status);
+      }
+      // Land the sender on the counterpart's profile so they have somewhere
+      // to read while the counterpart's flow decides whether to accept.
+      // Telegram-surface clicks prefer the t.me deep link, mirroring how
+      // `connect` and `outreach` route EdgeClaw-originated traffic.
+      if (link.preferredSurface === 'telegram') {
+        const counterpartTgHandle = await opportunityService
+          .getCounterpartTelegramHandleForOpp(link.opportunityId, link.userId);
+        if (counterpartTgHandle) {
+          return Response.json({ url: `https://t.me/${counterpartTgHandle}` });
+        }
+      }
+      const counterpartUserId = await opportunityService.getCounterpartUserId(
+        link.opportunityId,
+        link.userId,
+      );
+      const target = counterpartUserId
+        ? `${frontendUrl}/u/${counterpartUserId}`
+        : frontendUrl;
+      return Response.json({ url: target });
+    }
+
     return jsonError('Unknown link kind', 400);
   }
 }

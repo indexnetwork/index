@@ -1,9 +1,19 @@
 /**
  * Kind of connect link being minted. Determines the action endpoint the short
- * URL eventually redirects to (per-status: pending+introducer ->
- * approve_introduction, accepted -> outreach, otherwise -> connect).
+ * URL eventually redirects to:
+ *
+ * - `connect` — receiver of a `pending` opp clicks to flip it to `accepted`
+ *   and open the chat with a pre-filled greeting.
+ * - `approve_introduction` — unapproved introducer on a `draft`/`latent` opp
+ *   clicks to flip `approved=true` and kick off negotiation.
+ * - `outreach` — non-introducer party on an `accepted` opp clicks to open
+ *   the existing chat (no state change).
+ * - `send_direct` — sender (non-introducer party) of a `draft`/`latent`
+ *   direct-mode opp clicks to flip it to `pending`, releasing it to the
+ *   counterpart's flow. No chat is opened — the counterpart must accept
+ *   first via a `connect` link from their side.
  */
-export type ConnectLinkKind = 'connect' | 'approve_introduction' | 'outreach';
+export type ConnectLinkKind = 'connect' | 'approve_introduction' | 'outreach' | 'send_direct';
 
 /**
  * Mints (or reuses) a short link for the given recipient and kind, snapshotting

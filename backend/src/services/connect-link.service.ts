@@ -3,7 +3,7 @@ import { and, eq, gt } from 'drizzle-orm';
 import db from '../lib/drizzle/drizzle';
 import { connectLinks } from '../schemas/database.schema';
 
-export type ConnectLinkKind = 'connect' | 'approve_introduction' | 'outreach';
+export type ConnectLinkKind = 'connect' | 'approve_introduction' | 'outreach' | 'send_direct';
 
 const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const CODE_LENGTH = 10;

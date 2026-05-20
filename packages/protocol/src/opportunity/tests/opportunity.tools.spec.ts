@@ -213,9 +213,9 @@ describe("resolveActionableLinkKind — actionability matrix", () => {
     ).toBeNull();
   });
 
-  test("draft + non-introducer → null (sender needs update_opportunity)", () => {
-    expect(resolveActionableLinkKind({ status: "draft", viewerRole: "party" })).toBeNull();
-    expect(resolveActionableLinkKind({ status: "draft", viewerRole: "agent" })).toBeNull();
+  test("draft + non-introducer → send_direct (sender releases the draft)", () => {
+    expect(resolveActionableLinkKind({ status: "draft", viewerRole: "party" })).toBe("send_direct");
+    expect(resolveActionableLinkKind({ status: "draft", viewerRole: "agent" })).toBe("send_direct");
   });
 
   test("terminal / unknown statuses → null", () => {
@@ -239,10 +239,10 @@ describe("resolveActionableLinkKind — actionability matrix", () => {
     ).toBeNull();
   });
 
-  test("latent + non-introducer → null (chat surface filters this case out anyway)", () => {
-    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "party" })).toBeNull();
-    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "agent" })).toBeNull();
-    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "patient" })).toBeNull();
+  test("latent + non-introducer → send_direct (parallel to the draft case)", () => {
+    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "party" })).toBe("send_direct");
+    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "agent" })).toBe("send_direct");
+    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "patient" })).toBe("send_direct");
   });
 });
 
@@ -337,7 +337,7 @@ describe("attachActionableLinks — mutation and resilience", () => {
     expect(card.feedCategory).toBeUndefined();
   });
 
-  test("draft + party (sender) → no mint, profileUrl still attached", async () => {
+  test("draft + party (sender) → mints send_direct, feedCategory=connection, profileUrl attached", async () => {
     const card = makeCard({ opportunityId: "opp-5", viewerRole: "party", status: "draft" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -347,10 +347,11 @@ describe("attachActionableLinks — mutation and resilience", () => {
       mintConnectLink,
       frontendUrl: "https://app.test",
     });
-    expect(calls.length).toBe(0);
-    expect(card.acceptUrl).toBeUndefined();
+    expect(calls.length).toBe(1);
+    expect(calls[0].kind).toBe("send_direct");
+    expect(card.acceptUrl).toBe("https://api.test/c/AAAAAAAAAA");
     expect(card.profileUrl).toBe("https://app.test/u/counterpart-5?link_preview=false");
-    expect(card.feedCategory).toBeUndefined();
+    expect(card.feedCategory).toBe("connection");
   });
 
   test("pending + introducer → no mint, profileUrl still attached", async () => {
