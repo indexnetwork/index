@@ -22,6 +22,8 @@ mock.module('../opportunity.discover.js', () => ({
   continueDiscovery: async () => ({ found: false, count: 0, message: 'no results' }),
 }));
 
+afterAll(() => mock.restore());
+
 // Import the tool factory AFTER mock.module so the mock is wired in.
 const { createOpportunityTools } = await import('../opportunity.tools.js');
 import type { ToolDeps, ResolvedToolContext } from '../../shared/agent/tool.helpers.js';

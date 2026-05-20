@@ -15,6 +15,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "bun test",
+    "test:isolated": "bun scripts/test.ts",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {

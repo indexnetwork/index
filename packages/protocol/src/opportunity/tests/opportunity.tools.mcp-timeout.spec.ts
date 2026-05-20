@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.development', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
-import { describe, test, expect, mock, beforeEach } from 'bun:test';
+import { describe, test, expect, mock, beforeEach, afterAll } from 'bun:test';
 import type { DiscoverResult, FormattedDiscoveryCandidate } from '../opportunity.discover.js';
 
 // ─── Stubs captured by mock.module ──────────────────────────────────────────
@@ -22,6 +22,8 @@ mock.module('../opportunity.discover.js', () => ({
   },
   continueDiscovery: async () => ({ found: false, count: 0, message: 'no results' } satisfies DiscoverResult),
 }));
+
+afterAll(() => mock.restore());
 
 const { createOpportunityTools } = await import('../opportunity.tools.js');
 import type { ToolDeps, ResolvedToolContext } from '../../shared/agent/tool.helpers.js';

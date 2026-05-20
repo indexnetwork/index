@@ -13,7 +13,7 @@ config({ path: ".env.test" });
 process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key";
 process.env.NODE_ENV = "test";
 
-import { mock, describe, it, expect } from "bun:test";
+import { mock, describe, it, expect, afterAll } from "bun:test";
 
 // ─── Mock model.config so no real API key is needed ──────────────────────────
 mock.module("../../shared/agent/model.config", () => ({
@@ -32,6 +32,8 @@ mock.module("../../shared/agent/tool.factory", () => ({
 mock.module("../../shared/agent/tool.helpers", () => ({
   resolveChatContext: async (_ctx: unknown) => ({ userId: "u-test", networkId: undefined, sessionId: undefined, personal: null, memberships: [] }),
 }));
+
+afterAll(() => mock.restore());
 
 import { ChatAgent } from "../chat.agent.js";
 import type { Question, QuestionStrategy } from "../../shared/schemas/question.schema.js";

@@ -1,7 +1,7 @@
 // Stub API key to prevent module-level createModel() from throwing
 process.env.OPENROUTER_API_KEY = 'test-key-unused';
 
-import { mock, describe, expect, it } from 'bun:test';
+import { mock, describe, expect, it, afterAll } from 'bun:test';
 import { getOrCreateDeliveryCardBatch } from './delivery-card.cache.js';
 import type { OpportunityPresenter } from './opportunity.presenter.js';
 import type { PresenterDatabase } from './opportunity.presenter.js';
@@ -13,6 +13,8 @@ mock.module('./opportunity.presenter.js', () => ({
     opportunityStatus: opp.status,
   })),
 }));
+
+afterAll(() => mock.restore());
 
 describe('getOrCreateDeliveryCardBatch', () => {
   it('returns cached card without calling presenter on cache hit', async () => {

@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.development', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
-import { describe, test, expect, mock, beforeEach } from 'bun:test';
+import { describe, test, expect, mock, beforeEach, afterAll } from 'bun:test';
 
 // IND-305 reproducer: the bug report shows MCP `discover_opportunities` returning
 //   { found: false, count: 0, message: "No more matching opportunities found in the remaining candidates." }
@@ -30,6 +30,8 @@ mock.module('../opportunity.discover.js', () => ({
     };
   },
 }));
+
+afterAll(() => mock.restore());
 
 const { createOpportunityTools } = await import('../opportunity.tools.js');
 import type { ToolDeps, ResolvedToolContext } from '../../shared/agent/tool.helpers.js';
