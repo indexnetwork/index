@@ -56,3 +56,26 @@ describe('sha256Truncated', () => {
     expect(await sha256Truncated('hello')).toBe(h);
   });
 });
+
+describe('resolveIdentifier (smoke)', () => {
+  test('x-api-key produces kind=apikey with hashed value', async () => {
+    const { resolveIdentifier } = await import('../identifier');
+    const r = new Request('http://example.com/x', {
+      headers: { 'x-api-key': 'super-secret-key' },
+    });
+    const id = await resolveIdentifier(r);
+    expect(id.kind).toBe('apikey');
+    expect(id.value).toMatch(/^[a-f0-9]{16}$/);
+    expect(id.value).not.toBe('super-secret-key');
+  });
+
+  test('session cookie produces kind=cookie with hashed value', async () => {
+    const { resolveIdentifier } = await import('../identifier');
+    const r = new Request('http://example.com/x', {
+      headers: { cookie: 'other=foo; better-auth.session_token=abc-123-def' },
+    });
+    const id = await resolveIdentifier(r);
+    expect(id.kind).toBe('cookie');
+    expect(id.value).toMatch(/^[a-f0-9]{16}$/);
+  });
+});
