@@ -1824,6 +1824,51 @@ Validation caps: `name` 200 chars, `bio` 2000 chars, `location` 200 chars, `soci
 
 ---
 
+### POST /api/networks/:id/signup/lookup
+
+Read-only sibling of `/signup`. Verifies, without side effects, that a given email is fully provisioned for this experiment network — user is live, member of the network, and has a network-scoped personal agent. Use this to check provisioning state without rotating the user's API key (which is what `/signup` does on every call).
+
+**Auth**: `ExperimentMasterKeyGuard` — `x-api-key` header containing the network's master key.
+
+**Path params**:
+- `id` — Network ID (must be an experiment network with a master key set).
+
+**Request body**:
+```json
+{ "email": "attendee@example.com" }
+```
+
+Only `email` is read; any other fields in the body are ignored. Email is normalized (lowercased + trimmed) before lookup.
+
+**Response 200** (fully provisioned):
+```json
+{ "user": { "id": "uuid", "email": "attendee@example.com" } }
+```
+
+The response does **not** include an API key or an MCP server config — the integrator is presumed to hold the key from its original `/signup` call. If the key has been lost, call `/signup` to mint a fresh one (this will rotate any deployed key, so prefer not to).
+
+**Response 409** — User is not in a fully-provisioned state. A single canned message is returned for every "no" path (email unknown, user soft-deleted, no membership, membership soft-deleted, no scoped agent, scoped agent soft-deleted). The integrator's recovery is the same in all cases: call `/signup` proper.
+```json
+{ "error": "User has not completed signup for this network" }
+```
+
+**Idempotency**: 100% read-only. Safe to call from retry loops, dashboards, or health probes. Calling 1× or N× has identical effect.
+
+**Errors**:
+- `400` — Missing or malformed email; unparseable body.
+- `401` — Missing `x-api-key` header.
+- `403` — Master key invalid; network not experiment type; network deleted.
+
+**Example (curl)**:
+```bash
+curl -X POST https://protocol.index.network/api/networks/<NETWORK_ID>/signup/lookup \
+  -H 'x-api-key: <MASTER_KEY>' \
+  -H 'content-type: application/json' \
+  -d '{ "email": "attendee@example.com" }'
+```
+
+---
+
 ### POST /api/networks/:id/members/import/parse
 
 Parse a CSV file and validate rows before committing an import. Owner-only, experiment networks only. Intended for large files (> 500 rows) where client-side parsing is skipped.
