@@ -32,7 +32,8 @@
  * default, `USER.md` is preserved on re-install — it holds the user's
  * lived notes populated during `BOOTSTRAP.md`, and overwriting it with the
  * blank template would silently erase those notes. Pass `--wipe-user` to
- * overwrite it explicitly. (Mirrors `reset.ts --wipe-user`.)
+ * overwrite `USER.md` and delete the agent-curated `MEMORY.md` so the next
+ * session re-onboards from scratch. (Mirrors `reset.ts --wipe-user`.)
  *
  * Usage:
  *   bun install.ts <API_KEY>
@@ -46,6 +47,7 @@ import {
   copyFileSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -120,6 +122,18 @@ function copyWorkspaceFiles(wipeUser: boolean): void {
   console.log(`→ staged ${copied} workspace files into ${TARGET_WORKSPACE}`);
   if (preservedUserNotes) {
     console.log("  (USER.md preserved — pass --wipe-user to overwrite it)");
+  }
+
+  // MEMORY.md is agent-curated at runtime (not shipped in source), so it can't
+  // be "reset to template" like USER.md — it's deleted instead. Without this,
+  // the agent's long-term memories survive `--wipe-user` and keep biasing the
+  // re-onboarding session toward the prior user identity.
+  if (wipeUser) {
+    const memoryFile = join(TARGET_WORKSPACE, "MEMORY.md");
+    if (existsSync(memoryFile)) {
+      rmSync(memoryFile, { force: true });
+      console.log("→ removed MEMORY.md (--wipe-user)");
+    }
   }
 }
 

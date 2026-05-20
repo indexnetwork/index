@@ -11,7 +11,8 @@
  *   - `mcp.servers.index` config entry
  *   - `channels.telegram.streaming.mode` override (restores gateway default)
  *   - All workspace files staged by the installer (AGENTS.md, SOUL.md, etc.)
- *     Preserves USER.md by default — pass --wipe-user to also remove it.
+ *     Preserves USER.md and the agent-curated MEMORY.md by default — pass
+ *     --wipe-user to also remove them.
  *
  * What is NOT touched:
  *   - Telegram bot token and channel config
@@ -21,7 +22,7 @@
  *
  * Usage:
  *   bun reset.ts
- *   bun reset.ts --wipe-user    # also removes USER.md
+ *   bun reset.ts --wipe-user    # also removes USER.md and MEMORY.md
  */
 
 import { existsSync, rmSync, statSync } from "node:fs";
@@ -102,7 +103,9 @@ function removeWorkspaceFiles(wipeUser: boolean): void {
     return;
   }
 
-  const toRemove = wipeUser ? [...WORKSPACE_FILES, "USER.md"] : WORKSPACE_FILES;
+  const toRemove = wipeUser
+    ? [...WORKSPACE_FILES, "USER.md", "MEMORY.md"]
+    : WORKSPACE_FILES;
   let removed = 0;
 
   for (const entry of toRemove) {

@@ -158,7 +158,7 @@ The installer:
 
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at `https://protocol.index.network/mcp` with your API key in `x-api-key`.
 2. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
-3. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds your lived notes from `BOOTSTRAP.md`); pass `--wipe-user` to overwrite it.
+3. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds your lived notes from `BOOTSTRAP.md`); pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated `MEMORY.md` so the next session re-onboards from scratch.
 4. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/` so OpenClaw registers them as workspace skills.
 5. Installs three cron jobs: daily digest (`0 8 * * *`), ambient discovery afternoon (`0 14 * * *`), ambient discovery evening (`0 20 * * *`).
 6. Restarts the gateway so all config changes take effect.
@@ -183,7 +183,7 @@ Then re-install:
 bun install/install.ts <YOUR_API_KEY>
 ```
 
-Pass `--wipe-user` to also remove `USER.md` and the `memory/` directory:
+Pass `--wipe-user` to also remove `USER.md`, `MEMORY.md`, and the `memory/` directory:
 
 ```bash
 bun install/reset.ts --wipe-user
