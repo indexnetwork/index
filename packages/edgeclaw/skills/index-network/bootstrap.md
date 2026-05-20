@@ -78,6 +78,17 @@ Update `USER.md` with what you learned in this conversation. Capture only the th
 
 Run the welcome pass — follow `prompts/welcome.md`. It handles the message composition, dedup, and `confirm_opportunity_delivery` calls. After it returns, write a single line into `memory/<today>.md` noting that bootstrap completed for Edge Esmeralda. The next ambient/accepted heartbeat tick will pick up from here.
 
+## Step 7 — Schedule preferences (opt-in)
+
+Tell the user briefly, in your own words:
+
+> "By the way — I'll send a short digest each morning at 8am and check in around 2pm and 8pm. Want to turn any of those off?"
+
+- If they decline, shrug, or pivot to something else → finish onboarding silently. Do not write the preferences file. Defaults stand (all three crons enabled).
+- If they want to disable one or more → run the schedule sub-dialog in [`schedule.md`](schedule.md). It handles parsing, reading, updating, and writing `memory/cron-preferences.json`.
+
+This step is the only place the agent volunteers the schedule. Outside onboarding, the user has to ask. Do not nudge or re-offer.
+
 ---
 
 ## Rules
