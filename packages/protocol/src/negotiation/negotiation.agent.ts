@@ -57,15 +57,21 @@ export interface IndexNegotiatorConfig {
 
 const DEFAULT_TURN_TIMEOUT_MS = 15_000;
 
+// `AbortSignal.timeout(...)` throws when its argument is outside
+// `[0, Number.MAX_SAFE_INTEGER]`. `Number.isFinite` alone allows values like
+// `1e30` to pass — finite, positive, but well above the safe-integer ceiling.
+// Reject anything in that range and fall back to the default so a misconfigured
+// env value can't crash a turn at runtime.
+function isValidTimeoutMs(n: number): boolean {
+  return Number.isFinite(n) && n > 0 && n <= Number.MAX_SAFE_INTEGER;
+}
+
 function resolveTurnTimeoutMs(override?: number): number {
-  // `> 0` alone would accept Infinity (`Infinity > 0` is true) and reject NaN
-  // by coincidence (NaN comparisons are always false). `AbortSignal.timeout`
-  // throws on both, so require a finite positive number explicitly.
-  if (typeof override === "number" && Number.isFinite(override) && override > 0) return override;
+  if (typeof override === "number" && isValidTimeoutMs(override)) return override;
   const envValue = process.env.NEGOTIATOR_TURN_TIMEOUT_MS;
   if (envValue) {
     const parsed = Number(envValue);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    if (isValidTimeoutMs(parsed)) return parsed;
   }
   return DEFAULT_TURN_TIMEOUT_MS;
 }

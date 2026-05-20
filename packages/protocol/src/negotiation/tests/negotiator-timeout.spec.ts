@@ -62,15 +62,19 @@ describe('IndexNegotiator turn timeout', () => {
     expect(['propose', 'counter', 'accept', 'reject']).toContain(result.action);
   }, 60_000);
 
-  it('falls back to the default when an override is Infinity or NaN', () => {
-    // `AbortSignal.timeout(Infinity|NaN)` throws at runtime — the resolver must
-    // reject non-finite overrides and use the env/default instead. We can't
-    // observe the resolved value directly without invoking the LLM, so verify
-    // construction succeeds (the constructor would throw downstream if a bad
-    // value leaked through).
+  it('falls back to the default for out-of-range overrides', () => {
+    // `AbortSignal.timeout(N)` throws when N is non-finite or outside
+    // [0, Number.MAX_SAFE_INTEGER]. The resolver must reject every bad shape
+    // and use the env/default instead. We can't observe the resolved value
+    // directly without invoking the LLM, so verify construction succeeds —
+    // the constructor would propagate downstream if a bad value leaked through.
     expect(() => new IndexNegotiator({ turnTimeoutMs: Number.POSITIVE_INFINITY })).not.toThrow();
     expect(() => new IndexNegotiator({ turnTimeoutMs: Number.NaN })).not.toThrow();
     expect(() => new IndexNegotiator({ turnTimeoutMs: -1 })).not.toThrow();
     expect(() => new IndexNegotiator({ turnTimeoutMs: 0 })).not.toThrow();
+    // Finite + positive but above Number.MAX_SAFE_INTEGER — e.g. a misconfigured
+    // `NEGOTIATOR_TURN_TIMEOUT_MS=1e30`. AbortSignal.timeout rejects this too.
+    expect(() => new IndexNegotiator({ turnTimeoutMs: 1e30 })).not.toThrow();
+    expect(() => new IndexNegotiator({ turnTimeoutMs: Number.MAX_SAFE_INTEGER + 1 })).not.toThrow();
   });
 });
