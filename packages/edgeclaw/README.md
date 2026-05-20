@@ -135,6 +135,11 @@ Displays the returned `mcpServer` object to the attendee as a copyable config sn
 - [OpenClaw](https://openclaw.dev) installed and configured (`openclaw onboard --mode local` or `openclaw setup`).
 - An API key for the Index protocol. Generate one on your agents page at [index.network](https://index.network) (or your community-branded node).
 - [Bun](https://bun.sh) — the installer is a Bun script (Node 20+ also works if you swap the shebang).
+- *(Optional)* EdgeOS tokens, if you want live event/attendee recipes to work without per-query prompting:
+  - `EDGEOS_API_KEY` — your personal access token (`eos_live_…`), generated at `/portal/api-keys` in the EdgeOS portal. Unlocks the calendar/RSVPs/venues recipes in `skills/edge-esmeralda/SKILL.md`.
+  - `EDGEOS_BEARER_TOKEN` — your citizen-portal JWT. Unlocks the attendee-directory recipes.
+
+  Both are optional from EdgeClaw's perspective. Without them the agent still runs; EdgeOS recipes will just ask the user for the missing token on first use per the SKILL.md instructions.
 
 ## Install
 
@@ -154,14 +159,25 @@ bun install/install.ts <YOUR_DEV_API_KEY> --dev
 
 Or override the MCP URL explicitly via `INDEX_MCP_URL=…`. Without either, the installer points at `https://protocol.index.network/mcp` (production).
 
+To wire the optional EdgeOS tokens at the same time, supply them in env:
+
+```bash
+EDGEOS_API_KEY=eos_live_… \
+EDGEOS_BEARER_TOKEN=eyJ… \
+bun install/install.ts <YOUR_API_KEY>
+```
+
+The installer writes any tokens it finds into `env.vars.*` in `~/.openclaw/openclaw.json`; on the next gateway start they become process-env on the gateway and inherit into the agent's shell tool, so `curl -H "Authorization: Bearer $EDGEOS_API_KEY"` recipes work without further plumbing.
+
 The installer:
 
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at `https://protocol.index.network/mcp` with your API key in `x-api-key`.
-2. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
-3. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds your lived notes from `BOOTSTRAP.md`); pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated `MEMORY.md`, OpenClaw's `workspace-state.json` first-run marker, and the local onboarding/welcome/cron-preference markers under `memory/` so the next session re-onboards from scratch.
-4. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/` so OpenClaw registers them as workspace skills.
-5. Installs three cron jobs: daily digest (`0 8 * * *`), ambient discovery afternoon (`0 14 * * *`), ambient discovery evening (`0 20 * * *`).
-6. Restarts the gateway so all config changes take effect.
+2. If `EDGEOS_API_KEY` and/or `EDGEOS_BEARER_TOKEN` are set in env, writes each to `env.vars.<NAME>` so the gateway exposes them to the agent's subprocesses on its next start.
+3. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
+4. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds your lived notes from `BOOTSTRAP.md`); pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated `MEMORY.md`, OpenClaw's `workspace-state.json` first-run marker, and the local onboarding/welcome/cron-preference markers under `memory/` so the next session re-onboards from scratch.
+5. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/` so OpenClaw registers them as workspace skills.
+6. Installs three cron jobs: daily digest (`0 8 * * *`), ambient discovery afternoon (`0 14 * * *`), ambient discovery evening (`0 20 * * *`).
+7. Restarts the gateway so all config changes take effect.
 
 Send any message in your chat to bring EdgeClaw online. EdgeClaw has two independent onboarding gates that run at session start:
 

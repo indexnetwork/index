@@ -100,6 +100,19 @@ function unpatchOpenclawConfig(): void {
   } catch {
     // Not set — fine.
   }
+
+  // EdgeOS tokens written into env.vars.* by install_edgeos.ts. Re-install
+  // re-reads them from env so removing here is non-destructive — the user
+  // (or Cooper's provisioning flow) just needs them still set in env on the
+  // next install.
+  for (const key of ["EDGEOS_API_KEY", "EDGEOS_BEARER_TOKEN"]) {
+    try {
+      execSync(`openclaw config unset env.vars.${key}`, { stdio: "ignore" });
+      console.log(`→ removed env.vars.${key}`);
+    } catch {
+      // Not set — fine.
+    }
+  }
 }
 
 function removeWorkspaceFiles(wipeUser: boolean): void {

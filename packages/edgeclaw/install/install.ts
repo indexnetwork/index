@@ -39,6 +39,10 @@
  *   bun install.ts <API_KEY>
  *   bun install.ts <API_KEY> --wipe-user
  *   API_KEY=... bun install.ts
+ *
+ * Optional EdgeOS tokens (consumed by install_edgeos.ts and written into
+ * `env.vars.*` so the agent's curl/HTTP recipes can read them):
+ *   EDGEOS_API_KEY=eos_live_... EDGEOS_BEARER_TOKEN=... bun install.ts <API_KEY>
  */
 
 import {
