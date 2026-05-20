@@ -1,7 +1,7 @@
 import { SYSTEM_AGENT_IDS } from '@indexnetwork/protocol';
 
 import type { Guard } from '../lib/router/router.decorators';
-import { resolveIdentifier } from '../lib/limiter/identifier';
+import { resolveIdentifier, sha256Truncated } from '../lib/limiter/identifier';
 import {
   getStorage,
   resolveClassConfig,
@@ -102,10 +102,14 @@ export function RateLimit(cls: LimiterClass): Guard {
     infoByRequest.set(req, { limit: result.limit, remaining, resetAt: result.resetAt });
 
     if (!result.allowed) {
+      // For `apikey`/`cookie` the value is already a 16-char SHA-256 prefix.
+      // For `user` it's a UUID — hash to avoid leaking user identity in logs.
+      // For `ip` we keep the IP for operator correlation.
+      const keyHash = id.kind === 'user' ? await sha256Truncated(id.value) : id.value;
       logger.warn('rate_limited', {
         cls,
         identifier_kind: id.kind,
-        key_hash: id.value.slice(0, 16),
+        key_hash: keyHash,
         count: result.count,
         limit: result.limit,
       });
