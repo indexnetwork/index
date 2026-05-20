@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedUser } from "../guards/auth.guard";
+import { RateLimit } from "../guards/limiter.guard";
 import { requestContext } from "../lib/request-context";
 import { log } from "../lib/log";
 import {
@@ -57,7 +58,7 @@ export class ChatController {
    * @returns JSON response with graph execution result including responseText
    */
   @Post("/message")
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async message(req: Request, user: AuthenticatedUser) {
     // 1. Parse request body for message
     let messageContent: string;
@@ -101,7 +102,7 @@ export class ChatController {
    * @returns SSE Response stream
    */
   @Post("/stream")
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async messageStream(
     req: Request,
     user: AuthenticatedUser,
@@ -439,7 +440,7 @@ export class ChatController {
    * @returns JSON response with list of sessions
    */
   @Get("/sessions")
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getSessions(req: Request, user: AuthenticatedUser) {
     const sessions = await chatSessionService.getUserSessions(user.id);
     return Response.json({ sessions });
@@ -454,7 +455,7 @@ export class ChatController {
    * @returns JSON response with session and messages
    */
   @Post("/session")
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async getSession(req: Request, user: AuthenticatedUser) {
     let body: { sessionId?: string };
     try {
@@ -516,7 +517,7 @@ export class ChatController {
    * @returns JSON response with success status
    */
   @Post("/session/delete")
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async deleteSession(req: Request, user: AuthenticatedUser) {
     let body: { sessionId?: string };
     try {
@@ -551,7 +552,7 @@ export class ChatController {
    * @returns JSON response with updated session or error
    */
   @Post("/session/title")
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async updateSessionTitle(req: Request, user: AuthenticatedUser) {
     let body: { sessionId?: string; title?: string };
     try {
@@ -591,7 +592,7 @@ export class ChatController {
   }
 
   @Post("/session/share")
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async shareSession(req: Request, user: AuthenticatedUser) {
     let body: { sessionId?: string };
     try {
@@ -619,7 +620,7 @@ export class ChatController {
   }
 
   @Post("/session/unshare")
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async unshareSession(req: Request, user: AuthenticatedUser) {
     let body: { sessionId?: string };
     try {
@@ -656,7 +657,7 @@ export class ChatController {
    * @returns JSON response with success status
    */
   @Post("/message/:id/metadata")
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async updateMessageMetadata(
     req: Request,
     user: AuthenticatedUser,
@@ -716,6 +717,7 @@ export class ChatController {
   }
 
   @Get("/shared/:token")
+  @UseGuards(RateLimit('read'))
   async getSharedSession(
     _req: Request,
     _user: unknown,

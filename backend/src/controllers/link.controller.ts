@@ -1,4 +1,5 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { linkService } from '../services/link.service';
@@ -11,7 +12,7 @@ export class LinkController {
    * List all links for the authenticated user.
    */
   @Get('')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async list(_req: Request, user: AuthenticatedUser) {
     const rows = await linkService.listLinks(user.id);
 
@@ -28,7 +29,7 @@ export class LinkController {
    * Create a new link.
    */
   @Post('')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async create(req: Request, user: AuthenticatedUser) {
     const body = await req.json().catch(() => ({})) as { url?: string };
     if (!body.url) {
@@ -52,7 +53,7 @@ export class LinkController {
    * Delete a link.
    */
   @Delete('/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async delete(_req: Request, user: AuthenticatedUser, params: { id: string }) {
     const deleted = await linkService.deleteLink(params.id, user.id);
 
@@ -67,7 +68,7 @@ export class LinkController {
    * Get link content (stub — returns stored metadata).
    */
   @Get('/:id/content')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getContent(_req: Request, user: AuthenticatedUser, params: { id: string }) {
     const link = await linkService.getLinkContent(params.id, user.id);
 

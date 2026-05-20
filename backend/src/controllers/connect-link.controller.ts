@@ -1,4 +1,5 @@
-import { Controller, Get } from '../lib/router/router.decorators';
+import { RateLimit } from '../guards/limiter.guard';
+import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
 import { resolveConnectLink } from '../services/connect-link.service';
 import { opportunityService } from '../services/opportunity.service';
 
@@ -85,6 +86,7 @@ export class ConnectLinkController {
    *   for approve_introduction; expired HTML 404 if the code is unknown.
    */
   @Get('/:code')
+  @UseGuards(RateLimit('read'))
   async resolve(_req: Request, _user: unknown, params?: RouteParams) {
     const code = params?.code;
     if (!code) return new Response('Missing code', { status: 400 });
@@ -129,6 +131,7 @@ export class ConnectLinkController {
    *   approval and returns `{ kind: 'approve_introduction' }` for completeness.
    */
   @Get('/:code/go')
+  @UseGuards(RateLimit('read'))
   async go(_req: Request, _user: unknown, params?: RouteParams) {
     const code = params?.code;
     if (!code) return jsonError('Missing code', 400);

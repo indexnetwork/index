@@ -1,4 +1,5 @@
-import { Controller, Post } from '../lib/router/router.decorators';
+import { RateLimit } from '../guards/limiter.guard';
+import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('subscribe');
@@ -9,6 +10,7 @@ const logger = log.controller.from('subscribe');
 @Controller('/subscribe')
 export class SubscribeController {
   @Post('')
+  @UseGuards(RateLimit('write'))
   async subscribe(req: Request) {
     let body: {
       email: string;

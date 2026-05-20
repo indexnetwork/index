@@ -4,6 +4,7 @@ import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
 import { AuthGuard, AuthOrApiKeyGuard } from '../guards/auth.guard';
+import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
 import { mintConnectLink, type ConnectLinkKind } from '../services/connect-link.service';
@@ -44,7 +45,7 @@ export class OpportunityController {
    * GET /opportunities — list opportunities for the authenticated user.
    */
   @Get('')
-  @UseGuards(AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
   async listOpportunities(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
@@ -82,7 +83,7 @@ export class OpportunityController {
    * @returns JSON with opportunity cards for the chat context
    */
   @Get('/chat-context')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getChatContext(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const peerUserId = url.searchParams.get('peerUserId');
@@ -104,7 +105,7 @@ export class OpportunityController {
    * GET /opportunities/home — home view with dynamic sections (LLM-categorized, presenter text, Lucide icons).
    */
   @Get('/home')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getHome(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const networkId = url.searchParams.get('networkId') ?? undefined;
@@ -129,7 +130,7 @@ export class OpportunityController {
    * GET /opportunities/:id/invite-message — generate an invite message for a ghost counterpart.
    */
   @Get('/:id/invite-message')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getInviteMessage(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -150,7 +151,7 @@ export class OpportunityController {
    * Accepts full UUID or short ID prefix.
    */
   @Get('/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getOpportunity(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -192,7 +193,7 @@ export class OpportunityController {
    * Accepts full UUID or short ID prefix.
    */
   @Patch('/:id/status')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async updateStatus(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -253,7 +254,7 @@ export class OpportunityController {
    *   counterpart, 403 for non-actors, 404 when the opp does not exist).
    */
   @Post('/:id/start-chat')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async startChat(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -277,7 +278,7 @@ export class OpportunityController {
    * Requires x-api-key (agent polling) or session auth.
    */
   @Post('/:id/connect-token')
-  @UseGuards(AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
   async createConnectToken(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -304,7 +305,7 @@ export class OpportunityController {
    * @returns `{ url: string }` — full short URL pointing at `${BASE_URL}/c/:code`.
    */
   @Post('/:id/connect-link')
-  @UseGuards(AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
   async createConnectLink(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -356,6 +357,7 @@ export class OpportunityController {
    * No guard: authentication is via the token query parameter.
    */
   @Get('/:id/connect')
+  @UseGuards(RateLimit('read'))
   async connect(req: Request, _user: unknown, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -418,6 +420,7 @@ export class OpportunityController {
    * mechanism as the `/connect` endpoint).
    */
   @Get('/:id/approve-introduction')
+  @UseGuards(RateLimit('read'))
   async approveIntroduction(req: Request, _user: unknown, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -455,7 +458,7 @@ export class OpportunityController {
    * POST /opportunities/discover — discover opportunities via HyDE graph.
    */
   @Post('/discover')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async discover(req: Request, user: AuthenticatedUser) {
     let body: unknown;
     try {
@@ -499,7 +502,7 @@ export class NetworkOpportunityController {
    * GET /networks/:networkId/opportunities — list opportunities for a network (owner or member).
    */
   @Get('/:networkId/opportunities')
-  @UseGuards(AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
   async listForIndex(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {
@@ -546,7 +549,7 @@ export class NetworkOpportunityController {
    * POST /networks/:networkId/opportunities — create a manual opportunity (curator).
    */
   @Post('/:networkId/opportunities')
-  @UseGuards(AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
   async createManual(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {

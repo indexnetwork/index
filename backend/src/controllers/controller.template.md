@@ -617,6 +617,28 @@ async protectedMethod(req: Request, user: AuthenticatedUser) {
 }
 ```
 
+### Rate limiting
+
+Add the `RateLimit` guard as the FIRST entry in `@UseGuards(...)`:
+
+```ts
+import { RateLimit } from '../guards/limiter.guard';
+
+@Get('/:id')
+@UseGuards(RateLimit('read'), AuthGuard)
+async getData(...) { ... }
+
+@Post('/process')
+@UseGuards(RateLimit('write'), AuthGuard)
+async process(...) { ... }
+```
+
+- **GET** routes → `RateLimit('read')`
+- **POST/PUT/PATCH/DELETE** routes → `RateLimit('write')`
+- Public endpoints (no auth guard) still need rate limiting: `@UseGuards(RateLimit('read'))`.
+
+Agent-poller endpoints (`/agents/:id/negotiations/pickup`, `/agents/:id/opportunities/pending`, `/agents/:id/opportunities/accepted`) intentionally omit the guard — they are designed for short-cadence polling.
+
 ### 6. Graph Integration
 
 ```typescript

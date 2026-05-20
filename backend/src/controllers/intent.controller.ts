@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
 import { AuthGuard, AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { intentService } from '../services/intent.service';
@@ -26,7 +27,7 @@ export class IntentController {
    * List intents with pagination and filters.
    */
   @Post('/list')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async list(req: Request, user: AuthenticatedUser) {
     const body = await req.json().catch(() => ({})) as {
       page?: number;
@@ -61,7 +62,7 @@ export class IntentController {
    * @returns The created intent
    */
   @Post('/confirm')
-  @UseGuards(AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
   async confirm(req: Request, user: AuthenticatedUser) {
     const raw = await req.json().catch(() => ({}));
     const parsed = ConfirmSchema.safeParse(raw);
@@ -100,7 +101,7 @@ export class IntentController {
    * @returns Acknowledgement with the proposal ID
    */
   @Post('/reject')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async reject(req: Request, user: AuthenticatedUser) {
     const raw = await req.json().catch(() => ({}));
     const parsed = RejectSchema.safeParse(raw);
@@ -127,7 +128,7 @@ export class IntentController {
    * @returns Map of proposalId -> status
    */
   @Post('/proposals/status')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async proposalStatuses(req: Request, user: AuthenticatedUser) {
     const raw = await req.json().catch(() => ({}));
     const parsed = ProposalStatusesSchema.safeParse(raw);
@@ -148,7 +149,7 @@ export class IntentController {
    * Get a single intent by ID or short prefix.
    */
   @Get('/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getById(_req: Request, user: AuthenticatedUser, params: { id: string }) {
     const resolved = await intentService.resolveId(params.id, user.id);
     if ('error' in resolved) {
@@ -175,7 +176,7 @@ export class IntentController {
    * Archive an intent by ID or short prefix.
    */
   @Patch('/:id/archive')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async archive(_req: Request, user: AuthenticatedUser, params: { id: string }) {
     const resolved = await intentService.resolveId(params.id, user.id);
     if ('error' in resolved) {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
@@ -46,6 +47,7 @@ export class AuthController {
    * Returns the list of configured social auth providers (public, no auth required).
    */
   @Get('/providers')
+  @UseGuards(RateLimit('read'))
   async providers() {
     const providers: string[] = [];
     if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
@@ -59,7 +61,7 @@ export class AuthController {
    * Response shape: { user: User } for frontend APIResponse compatibility.
    */
   @Get('/me')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async me(_req: Request, user: AuthenticatedUser) {
     logger.verbose('Auth me requested', { userId: user.id });
     const fullUser = await userService.findWithGraph(user.id);
@@ -91,7 +93,7 @@ export class AuthController {
    * Response shape: { user: User } for frontend APIResponse compatibility.
    */
   @Patch('/profile/update')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async updateProfile(req: Request, user: AuthenticatedUser) {
     const parsed = updateProfileSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -123,7 +125,7 @@ export class AuthController {
    * Soft-deletes the authenticated user's account.
    */
   @Delete('/account')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async deleteAccount(_req: Request, user: AuthenticatedUser) {
     logger.verbose('Account deletion requested', { userId: user.id });
     await userService.softDelete(user.id);

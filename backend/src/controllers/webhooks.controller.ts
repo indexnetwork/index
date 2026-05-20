@@ -1,4 +1,5 @@
-import { Controller, Post } from '../lib/router/router.decorators';
+import { RateLimit } from '../guards/limiter.guard';
+import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
 import { handleInbound } from '../gateways/telegram.gateway';
 import { log } from '../lib/log';
 
@@ -26,6 +27,7 @@ export class WebhooksController {
    * POST /webhooks/telegram
    */
   @Post('/telegram')
+  @UseGuards(RateLimit('write'))
   async telegram(req: Request): Promise<Response> {
     const secret = req.headers.get('X-Telegram-Bot-Api-Secret-Token');
     if (!secret || secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
