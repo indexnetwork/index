@@ -3,26 +3,18 @@ import { describe, it, expect } from "bun:test";
 import {
   buildQuestionPrompt,
   type DiscoveryQuestionInput,
-  type DiscoveryNegotiation,
 } from "../question.prompt.js";
+import type { DiscoveryNegotiationDigest } from "../../shared/schemas/negotiation-digest.schema.js";
 import type { ChatContextDigest } from "../../shared/schemas/chat-context.schema.js";
 
-function makeNegotiation(overrides: Partial<DiscoveryNegotiation> = {}): DiscoveryNegotiation {
+function makeDigest(overrides: Partial<DiscoveryNegotiationDigest> = {}): DiscoveryNegotiationDigest {
   return {
-    counterpartyId: "u1",
     counterpartyHint: "Backend engineer in Berlin",
     indexContext: "Builders looking for co-founders",
-    turns: [
-      {
-        action: "propose",
-        reasoning: "Could be a fit; both backend-heavy",
-        suggestedRoles: { ownUser: "peer", otherUser: "peer" },
-      },
-    ],
-    outcome: {
-      hasOpportunity: false,
-      reasoning: "No clear stage alignment",
-    },
+    outcomeRole: "no-opportunity",
+    outcomeReason: "stalled",
+    keyTake: "Both backend-heavy, no clear stage alignment.",
+    suggestedRoles: { ownUser: "peer", otherUser: "peer" },
     ...overrides,
   };
 }
@@ -31,7 +23,7 @@ function makeInput(overrides: Partial<DiscoveryQuestionInput> = {}): DiscoveryQu
   return {
     query: "I'm looking for a technical co-founder",
     sourceProfile: { name: "Alex" },
-    negotiations: [makeNegotiation()],
+    negotiationDigests: [makeDigest()],
     summary: {
       totalCandidates: 1,
       opportunitiesFound: 0,
@@ -90,80 +82,38 @@ describe("buildQuestionPrompt", () => {
     expect(out).toContain("2026-12-25T00:00:00.000Z");
   });
 
-  it("truncates per-turn reasoning to 200 chars", () => {
-    const longReasoning = "x".repeat(500);
-    const neg = makeNegotiation({
-      turns: [{
-        action: "propose",
-        reasoning: longReasoning,
-        suggestedRoles: { ownUser: "peer", otherUser: "peer" },
-      }],
-    });
-    const out = buildQuestionPrompt(makeInput({ negotiations: [neg] }));
-    expect(out).toContain("x".repeat(200));
-    expect(out).not.toContain("x".repeat(201));
-  });
-
-  it("truncates outcome.reasoning to 300 chars", () => {
-    const longReasoning = "y".repeat(500);
-    const neg = makeNegotiation({
-      outcome: { hasOpportunity: false, reasoning: longReasoning },
-    });
-    const out = buildQuestionPrompt(makeInput({ negotiations: [neg] }));
-    expect(out).toContain("y".repeat(300));
-    expect(out).not.toContain("y".repeat(301));
-  });
-
-  it("keeps only the last 6 turns per negotiation", () => {
-    const turns = Array.from({ length: 10 }, (_, i) => ({
-      action: "propose" as const,
-      reasoning: `turn-${i}`,
-      suggestedRoles: { ownUser: "peer" as const, otherUser: "peer" as const },
-    }));
-    const out = buildQuestionPrompt(makeInput({ negotiations: [makeNegotiation({ turns })] }));
-    // First 4 turns dropped; last 6 retained.
-    expect(out).not.toContain("turn-0");
-    expect(out).not.toContain("turn-3");
-    expect(out).toContain("turn-4");
-    expect(out).toContain("turn-9");
-  });
-
-  it("caps the number of negotiations at 8, sorting by [turns desc, seedAssessmentScore desc]", () => {
-    // 10 negotiations, distinguishable by counterpartyHint.
-    // The two with the FEWEST turns and lowest scores should be dropped.
-    const negotiations: DiscoveryNegotiation[] = Array.from({ length: 10 }, (_, i) => makeNegotiation({
-      counterpartyHint: `cp-${i}`,
-      // i=0..7 get many turns; i=8,9 get one turn — they should be dropped.
-      turns: Array.from({ length: i < 8 ? 5 : 1 }, () => ({
-        action: "propose" as const,
-        reasoning: `t-${i}`,
-        suggestedRoles: { ownUser: "peer" as const, otherUser: "peer" as const },
-      })),
-      seedAssessmentScore: 1.0 - i * 0.1,
-    }));
-    const out = buildQuestionPrompt(makeInput({ negotiations }));
-    for (let i = 0; i < 8; i++) {
-      expect(out).toContain(`cp-${i}`);
-    }
-    expect(out).not.toContain("cp-8");
-    expect(out).not.toContain("cp-9");
-  });
-
-  it("includes counterpartyHint and indexContext per negotiation", () => {
+  it("includes counterpartyHint, indexContext, and keyTake per digest", () => {
     const out = buildQuestionPrompt(makeInput({
-      negotiations: [makeNegotiation({
+      negotiationDigests: [makeDigest({
         counterpartyHint: "AI infra founder, Berlin",
         indexContext: "Builders network",
+        keyTake: "Multiple candidates flagged a Series A funding gap.",
       })],
     }));
     expect(out).toContain("AI infra founder, Berlin");
     expect(out).toContain("Builders network");
+    expect(out).toContain("Series A funding gap");
   });
 
-  it("never includes counterpartyId", () => {
+  it("renders zero negotiations as '(no negotiations)'", () => {
+    const out = buildQuestionPrompt(makeInput({ negotiationDigests: [] }));
+    expect(out).toContain("(no negotiations)");
+  });
+
+  it("renders outcomeReason when present", () => {
     const out = buildQuestionPrompt(makeInput({
-      negotiations: [makeNegotiation({ counterpartyId: "user-abc123-secret" })],
+      negotiationDigests: [makeDigest({ outcomeReason: "turn_cap" })],
     }));
-    expect(out).not.toContain("user-abc123-secret");
+    expect(out).toContain("turn_cap");
+  });
+
+  it("renders suggestedRoles when present", () => {
+    const out = buildQuestionPrompt(makeInput({
+      negotiationDigests: [makeDigest({
+        suggestedRoles: { ownUser: "agent", otherUser: "patient" },
+      })],
+    }));
+    expect(out).toContain("agent");
+    expect(out).toContain("patient");
   });
 });

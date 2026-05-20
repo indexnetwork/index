@@ -1,16 +1,16 @@
 import { describe, it, expect } from "bun:test";
 import { buildDiscoveryQuestionInput } from "../discovery-question.helper.js";
 import type { ChatContextDigest } from "../../shared/schemas/chat-context.schema.js";
-import type { DiscoveryNegotiation, DiscoverySummary } from "../question.prompt.js";
+import type { DiscoveryNegotiationDigest } from "../../shared/schemas/negotiation-digest.schema.js";
+import type { DiscoverySummary } from "../question.prompt.js";
 
-const negotiation: DiscoveryNegotiation = {
-  counterpartyId: "u-1",
+const digest: DiscoveryNegotiationDigest = {
   counterpartyHint: "founder, NYC",
   indexContext: "ai-builders",
-  turns: [
-    { action: "propose", reasoning: "let's pair", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
-  ],
-  outcome: { hasOpportunity: false, reasoning: "no fit" },
+  outcomeRole: "no-opportunity",
+  outcomeReason: "stalled",
+  keyTake: "No fit on stage.",
+  suggestedRoles: { ownUser: "peer", otherUser: "peer" },
 };
 
 const summary: DiscoverySummary = {
@@ -22,7 +22,7 @@ const summary: DiscoverySummary = {
 };
 
 describe("buildDiscoveryQuestionInput", () => {
-  it("maps query, source profile, negotiations, summary, and timestamp", () => {
+  it("maps query, source profile, negotiation digests, summary, and timestamp", () => {
     const input = buildDiscoveryQuestionInput({
       query: "find AI cofounders",
       sourceProfile: {
@@ -30,7 +30,7 @@ describe("buildDiscoveryQuestionInput", () => {
         identity: { name: "Eda", bio: "engineer", location: "NYC" },
         attributes: { skills: ["ml"], interests: ["startups"] },
       },
-      negotiations: [negotiation],
+      negotiationDigests: [digest],
       summary,
       chatContext: undefined,
       now: "2026-05-15T12:00:00.000Z",
@@ -43,14 +43,14 @@ describe("buildDiscoveryQuestionInput", () => {
       skills: ["ml"],
       interests: ["startups"],
     });
-    expect(input.negotiations).toEqual([negotiation]);
+    expect(input.negotiationDigests).toEqual([digest]);
     expect(input.summary).toEqual(summary);
     expect(input.now).toBe("2026-05-15T12:00:00.000Z");
     expect(input.chatContext).toBeUndefined();
   });
 
   it("forwards a provided chatContext digest verbatim", () => {
-    const digest: ChatContextDigest = {
+    const ctx: ChatContextDigest = {
       statedFacts: ["pre-revenue"],
       openQuestions: [],
       rejectionReasons: [],
@@ -59,19 +59,19 @@ describe("buildDiscoveryQuestionInput", () => {
     const input = buildDiscoveryQuestionInput({
       query: "q",
       sourceProfile: null,
-      negotiations: [],
+      negotiationDigests: [],
       summary,
-      chatContext: digest,
+      chatContext: ctx,
       now: "2026-05-15T12:00:00.000Z",
     });
-    expect(input.chatContext).toEqual(digest);
+    expect(input.chatContext).toEqual(ctx);
   });
 
   it("tolerates a null source profile", () => {
     const input = buildDiscoveryQuestionInput({
       query: "q",
       sourceProfile: null,
-      negotiations: [],
+      negotiationDigests: [],
       summary,
       chatContext: undefined,
       now: "2026-05-15T12:00:00.000Z",
