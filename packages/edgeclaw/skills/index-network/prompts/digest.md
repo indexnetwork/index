@@ -6,6 +6,8 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
 # Job
 Send a morning brief to the user via the `message` tool.
 
+0. **Read preferences.** Read `memory/cron-preferences.json`. Treat a missing file, malformed JSON, or absent `digest` key as `digest: true`. If `digest` is explicitly `false`, exit silently: do not call any MCP tool, do not write any memory file, do not send a message. End your turn here.
+
 1. **Read dedup state.** Read `memory/heartbeat-state.json`. Treat a missing file or malformed JSON as `{}`. Resolve the dedup set: if `deliveredToday.date` equals today's host-local date (`YYYY-MM-DD`) AND `deliveredToday.ids` is an array, use that array as the dedup set; in every other case (no `deliveredToday`, date mismatch, missing `ids`, `ids` not an array, any other unexpected shape) treat the dedup set as empty (the date will roll forward when you write the file back at the end).
 
 2. Call `list_opportunities(status="pending", limit=10)`.
