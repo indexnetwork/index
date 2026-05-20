@@ -104,7 +104,7 @@ export default function Footer() {
               </svg>
             </a>
             <a
-              href="https://github.com/indexnetwork"
+              href="https://github.com/indexnetwork/index"
               target="_blank"
               rel="noreferrer"
               aria-label="GitHub"

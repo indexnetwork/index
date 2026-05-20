@@ -120,9 +120,11 @@ function BlogV5PostPage() {
 
   return (
     <div className="landing-v5 blog-v5 blog-post">
-      <header className="blog-nav-wrap">
-        <Nav />
-      </header>
+      <div className="hero h1 page-hero post-nav-only">
+        <div className="canvas-area">
+          <Nav />
+        </div>
+      </div>
 
       <article className="post-frame">
         <Link className="post-back" to="/blog-v5">

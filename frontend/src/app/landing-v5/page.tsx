@@ -1,18 +1,15 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { getAllPosts, type BlogPost } from "@/lib/blog";
 import Nav, { ensureLandingV5Fonts } from "./Nav";
 import Footer from "./Footer";
 import "./landing-v5.css";
 
-type Token = [className: string, text: string];
-type LinePart = string | Token;
-type Line = LinePart[];
-
 type Step = {
   num: string;
   title: string;
   line: string;
+  example: ReactNode;
 };
 
 const STEPS: Step[] = [
@@ -20,128 +17,315 @@ const STEPS: Step[] = [
     num: "01",
     title: "You share what you're working toward",
     line: "In natural language — the raw stuff, not a polished pitch",
+    example: (
+      <div className="ex-card cli-card">
+        <div className="ex-head">
+          <span className="ex-tag">› intent</span>
+          <span className="ex-meta">ttl · 30d</span>
+        </div>
+        <div className="cli-body">
+          <div className="cli-line">
+            <span className="cli-prompt">$</span>
+            <span className="cli-cmd">index intent</span>
+          </div>
+          <div className="cli-line cli-input">
+            <span className="cli-prompt">›</span>
+            <span>“I&apos;m going to SF next month — who should I meet?”</span>
+          </div>
+        </div>
+        <div className="ex-foot">
+          <span className="ex-ok">● posted</span>
+          <span className="ex-dim">#int_4f8c</span>
+        </div>
+      </div>
+    ),
   },
   {
     num: "02",
-    title: "Your agent holds your intents privately",
-    line: "No broadcasting or performing needed",
+    title: "Your agent reads it and fills in the gaps",
+    line: "Expands your shorthand into the kind of people worth meeting — privately, on-device",
+    example: (
+      <div className="ex-card cli-card">
+        <div className="ex-head">
+          <span className="ex-tag">› agent.understand</span>
+          <span className="ex-meta">local · private</span>
+        </div>
+        <div className="cli-body">
+          <div className="cli-line">
+            <span className="cli-prompt">$</span>
+            <span className="cli-cmd">agent.understand --local</span>
+          </div>
+          <div className="cli-output">
+            <div className="cli-comment">
+              <span className="cli-hash">#</span> user is heading to SF for a week.
+            </div>
+            <div className="cli-comment">
+              <span className="cli-hash">#</span> looking for{" "}
+              <span className="ex-hl">investors</span>,{" "}
+              <span className="ex-hl">builders interested in ai &amp; privacy</span>,{" "}
+              <span className="ex-hl">long-term collaborator</span>.
+            </div>
+            <div className="cli-comment">
+              <span className="cli-hash">#</span> weighting toward people available for coffee.
+            </div>
+          </div>
+        </div>
+        <div className="ex-foot">
+          <span className="ex-ok">✓ ready to negotiate</span>
+          <span className="ex-dim">never leaves your device</span>
+        </div>
+      </div>
+    ),
   },
   {
     num: "03",
     title: "Agents negotiate across the network",
-    line: "Checking for timing and relevance",
+    line: "Checking for timing, context and relevance — quietly, in the background",
+    example: <NegotiationStream />,
   },
   {
     num: "04",
     title: "The right people surface",
-    line: "While you sleep — wake up and decide who's worth a conversation",
+    line: "Wake up and decide who's worth a conversation",
+    example: (
+      <div className="ex-card cli-card">
+        <div className="ex-head">
+          <span className="ex-tag">› opportunities</span>
+          <span className="ex-meta">3 surfaced</span>
+        </div>
+        <div className="cli-body">
+          <div className="cli-line">
+            <span className="cli-prompt">$</span>
+            <span className="cli-cmd">index opportunities --inbox</span>
+          </div>
+          <ul className="cli-list">
+            <li>
+              <span className="cli-bullet">●</span>
+              <span className="cli-list-name">alice</span>
+              <span className="cli-list-why">
+                free thursday afternoon — runs infra fund, loves talking shop.
+              </span>
+            </li>
+            <li>
+              <span className="cli-bullet">●</span>
+              <span className="cli-list-name">marcus</span>
+              <span className="cli-list-why">
+                building an agent platform; said yes to a coffee next week.
+              </span>
+            </li>
+            <li>
+              <span className="cli-bullet">●</span>
+              <span className="cli-list-name">jenny</span>
+              <span className="cli-list-why">
+                looking for the same kind of cofounder — in SF the same week.
+              </span>
+            </li>
+          </ul>
+        </div>
+        <div className="ex-foot">
+          <span className="ex-dim">open inbox</span>
+          <span className="ex-arrow">→</span>
+        </div>
+      </div>
+    ),
   },
   {
     num: "05",
-    title: "Your next opportunity arrives",
-    line: "For once — you're excited about Mondays again",
-  },
-];
-
-type SurfaceBlock = {
-  num: string;
-  label: string;
-  kind: string;
-  lines: Line[];
-  comments: string[];
-};
-
-const SURFACES: SurfaceBlock[] = [
-  {
-    num: "01",
-    label: "for humans",
-    kind: "CLI",
-    lines: [
-      [["prompt", "$ "], "index intent ", ["str", "\"looking for a cofounder — ai infra, NYC, 2026\""]],
-      [["dim", "· embedding locally  "], ["ok", "[768d ok]"]],
-      [["dim", "· signing with "], ["acc", "ed25519:0x3a91…b6"]],
-      [["dim", "· posting to "], ["acc", "0x3a.relay.indexnetwork"]],
-      [["ok", "✓ "], "intent ", ["acc", "#int_8q2r"], " posted ", ["dim", "· ttl 14d"]],
-    ],
-    comments: [
-      "you write what you're after — in your own words.",
-      "no broker, no profile to maintain. the cli is the product.",
-    ],
-  },
-  {
-    num: "02",
-    label: "for agents",
-    kind: "MCP",
-    lines: [
-      [["prompt", "→ "], "mcp.connect ", ["str", "\"indexnetwork\""]],
-      [["dim", "· handshake "], ["ok", "ok"], ["dim", "  · tools "], "4"],
-      [["acc", "intent.publish   "], ["dim", "# share what your principal wants"]],
-      [["acc", "intent.search    "], ["dim", "# query open intents on the network"]],
-      [["acc", "match.cosign     "], ["dim", "# corroborate fit"]],
-      [["acc", "inbox.read       "], ["dim", "# fetch warm intros"]],
-    ],
-    comments: [
-      "drop the mcp server into claude, cursor, or any host.",
-      "your agent speaks the protocol natively.",
-    ],
-  },
-  {
-    num: "03",
-    label: "for developers",
-    kind: "SDK",
-    lines: [
-      [["dim", "import"], " { Index } ", ["dim", "from"], " ", ["str", "\"@indexnetwork/sdk\""]],
-      [["dim", "const"], " index = ", ["acc", "new "], "Index({ ", ["dim", "keystore:"], " env.KEY })"],
-      [["dim", "await"], " index.intents.publish({"],
-      ["  ", ["dim", "text:"], "  ", ["str", "\"hiring sr eng — protocols\""], ","],
-      ["  ", ["dim", "ttl:"], "   ", ["str", "\"14d\""], ","],
-      ["  ", ["dim", "scope:"], " [", ["str", "\"nyc\""], ", ", ["str", "\"crypto\""], "]"],
-      ["})"],
-    ],
-    comments: [
-      "embed discovery into your app in ~10 lines.",
-      "apache-2.0 · 12kb gz · ts · py · rs.",
-    ],
-  },
-];
-
-function renderLine(parts: Line): ReactNode {
-  return parts.map((p, i) => {
-    if (typeof p === "string") return <Fragment key={i}>{p}</Fragment>;
-    const [cls, txt] = p;
-    return (
-      <span key={i} className={cls}>
-        {txt}
-      </span>
-    );
-  });
-}
-
-function Hero() {
-  return (
-    <div className="hero h1">
-      <div className="bgimg" aria-hidden="true">
-        <img src="/landing-v5/hero-bridges.png" alt="" />
-        <span className="scan" />
-      </div>
-      <div className="canvas-area">
-        <Nav />
-        <div className="well">
-          <h1 className="display">
-            Wake up to your
-            <br />
-            next opportunity
-          </h1>
-          <p className="body-italic">
-            A protocol for finding your others in an agentic web.
-          </p>
-          <div className="actions">
-            <a className="cta" href="#waitlist">
-              Join the waitlist
-            </a>
+    title: "And it keeps surfacing — quietly, while you live",
+    line: "For once, you're excited about Mondays again",
+    example: (
+      <div className="ex-card cli-card">
+        <div className="ex-head">
+          <span className="ex-tag">› ambient · 2 days later</span>
+          <span className="ex-meta">digest · 06:00</span>
+        </div>
+        <div className="cli-body">
+          <div className="cli-line">
+            <span className="cli-prompt">$</span>
+            <span className="cli-cmd">digest --ambient</span>
+          </div>
+          <div className="cli-output">
+            <div className="cli-narrative">
+              <span className="cli-plus">+</span> sarah just joined the network. her intent overlaps yours —
+              she&apos;s looking for an infra cofounder, ex-anthropic, nyc.
+            </div>
           </div>
         </div>
-        <span className="crosshair ch-1" aria-hidden="true" />
+        <div className="ex-foot">
+          <span className="ex-ok">+1 surfaced</span>
+          <span className="ex-dim">no input from you</span>
+        </div>
+      </div>
+    ),
+  },
+];
+
+type SurfaceTab = {
+  id: string;
+  kind: string;
+  label: string;
+  blurb: string;
+  steps: { num: string; title: string; cmd: string }[];
+};
+
+const SURFACE_TABS: SurfaceTab[] = [
+  {
+    id: "web",
+    kind: "WEB",
+    label: "web app",
+    blurb: "Sign in, write what you want, and let the network bring people to you.",
+    steps: [
+      { num: "1", title: "sign in", cmd: "open https://index.network" },
+      {
+        num: "2",
+        title: "write intent",
+        cmd: "looking for a cofounder",
+      },
+      { num: "3", title: "check inbox", cmd: "index.network/inbox" },
+    ],
+  },
+  {
+    id: "cli",
+    kind: "CLI",
+    label: "cli",
+    blurb: "Terminal-native intents. Write what you want, get warm intros.",
+    steps: [
+      { num: "1", title: "install", cmd: "npm i -g @indexnetwork/cli" },
+      {
+        num: "2",
+        title: "share intent",
+        cmd: "index intent \"looking for a cofounder\"",
+      },
+      { num: "3", title: "watch", cmd: "index watch --status pending" },
+    ],
+  },
+  {
+    id: "skill",
+    kind: "SKILL",
+    label: "agent skill",
+    blurb: "Ships as a Hermes plugin and an OpenClaw plugin — your intents, available to your agent natively.",
+    steps: [
+      {
+        num: "1",
+        title: "install (hermes)",
+        cmd: "/plugin install indexnetwork/claude-plugin",
+      },
+      {
+        num: "2",
+        title: "install (openclaw)",
+        cmd: "openclaw plugins install @indexnetwork/openclaw-plugin",
+      },
+      {
+        num: "3",
+        title: "share intent",
+        cmd: "share my intent: looking for a cofounder",
+      },
+    ],
+  },
+  {
+    id: "mcp",
+    kind: "MCP",
+    label: "mcp",
+    blurb: "Plug the MCP server into Claude, Cursor, or any host. Your agent speaks the protocol natively.",
+    steps: [
+      {
+        num: "1",
+        title: "connect",
+        cmd: "claude mcp add indexnetwork --url https://mcp.index.network",
+      },
+      {
+        num: "2",
+        title: "publish",
+        cmd: "intent.publish \"hiring sr eng — protocols\"",
+      },
+      { num: "3", title: "receive", cmd: "inbox.read --warm" },
+    ],
+  },
+];
+
+function Hero() {
+  const [activeId, setActiveId] = useState<string>(SURFACE_TABS[0].id);
+  const [copied, setCopied] = useState<string | null>(null);
+  const active = SURFACE_TABS.find((t) => t.id === activeId) ?? SURFACE_TABS[0];
+
+  const copy = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1400);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  return (
+    <div className="hero h1">
+      <div className="canvas-area">
+        <Nav />
+        <div className="hero-split">
+          <div className="well">
+            <h1 className="display">
+              Wake up to your
+              <br />
+              next opportunity
+            </h1>
+            <p className="body-italic">
+              A social discovery protocol where agents surface the right
+              people and opportunities—before you even think to look for them.
+            </p>
+
+            <div className="hero-surf">
+              <div className="surf-tabs" role="tablist" aria-label="surfaces">
+                {SURFACE_TABS.map((t) => {
+                  const isActive = t.id === activeId;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      className={"surf-tab" + (isActive ? " is-active" : "")}
+                      onClick={() => setActiveId(t.id)}
+                    >
+                      <span className="surf-tab-label">{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="surf-blurb">{active.blurb}</p>
+
+              <div className="hero-cli">
+                {active.steps.map((s) => {
+                  const key = `${active.id}-${s.num}`;
+                  return (
+                    <div className="hero-cli-step" key={key}>
+                      <div className="hero-cli-head">
+                        <span className="hero-cli-title">
+                          {s.num}. {s.title}
+                        </span>
+                        <button
+                          type="button"
+                          className="hero-cli-copy"
+                          onClick={() => copy(key, s.cmd)}
+                        >
+                          {copied === key ? "copied" : "copy"}
+                        </button>
+                      </div>
+                      <div className="hero-cli-box">
+                        <span className="hero-cli-cmd">{s.cmd}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="hero-image">
+            <img src="/landing-v5/hero-bridges.png" alt="" />
+            <span className="scan" aria-hidden="true" />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -149,29 +333,30 @@ function Hero() {
 
 function HowItWorks() {
   return (
-    <section className="how">
+    <section className="how how-it-works">
       <div className="how-inner">
         <div className="how-head">
           <span className="title">
             <span className="arrow">›</span>how it works
           </span>
-          <span className="meta">
-            <span className="dot" aria-hidden="true" />5 phases · running 24/7 · ~0.4s per match
-          </span>
+          <span className="meta" />
         </div>
 
-        <div className="log">
+        <div className="log how-log">
           {STEPS.map((s) => (
-            <div className="block" key={s.num}>
-              <div className="step-row">
-                <span className="num">[{s.num}]</span>
-                <span className="cmd">{s.title}</span>
-                <span className="spacer" aria-hidden="true" />
+            <div className="block how-block" key={s.num}>
+              <div className="how-block-text">
+                <div className="step-row">
+                  <span className="num">[{s.num}]</span>
+                  <span className="cmd">{s.title}</span>
+                  <span className="spacer" aria-hidden="true" />
+                </div>
+                <div className="comment">
+                  <span className="hash">#</span>
+                  {s.line}
+                </div>
               </div>
-              <div className="comment">
-                <span className="hash">#</span>
-                {s.line}
-              </div>
+              <div className="how-block-example">{s.example}</div>
             </div>
           ))}
 
@@ -185,44 +370,93 @@ function HowItWorks() {
   );
 }
 
-function Surfaces() {
+const STREAM_EVENTS = [
+  "embedding intent → 1536-d vector",
+  "scanning index (12,481,002 records)",
+  "opportunity detected",
+  "proposer agent spawned",
+  "responder agent engaged",
+  "proposer: makes case",
+  "responder: counter-argues",
+  "exchange round 1 complete",
+  "exchange round 2 complete",
+  "trust handshake → 0.86",
+  "alignment check: ok",
+  "opportunity accepted · routing to inbox",
+  "embedding intent → 1536-d vector",
+  "scanning index (12,481,029 records)",
+  "opportunity detected",
+  "proposer: presents context",
+  "responder: requests proof",
+  "verification handshake",
+  "exchange round 1 complete",
+  "exchange round 2 complete",
+];
+
+const VISIBLE_ROWS = 9;
+const STREAM_INTERVAL_MS = 1300;
+const STREAM_STEP_MS = 142;
+const STREAM_BASE_MS = 219;
+
+const padN = (n: number) => n.toString().padStart(2, "0");
+
+function tsFromTick(tick: number): string {
+  const total = STREAM_BASE_MS + tick * STREAM_STEP_MS;
+  const ms = total % 100;
+  const ss = Math.floor(total / 100) % 60;
+  const mm = Math.floor(total / 6000);
+  return `${padN(mm)}:${padN(ss)}:${padN(ms)}`;
+}
+
+type StreamItem = { id: number; ts: string; text: string };
+
+function makeRow(tick: number): StreamItem {
+  return {
+    id: tick,
+    ts: tsFromTick(tick),
+    text: STREAM_EVENTS[tick % STREAM_EVENTS.length],
+  };
+}
+
+function NegotiationStream() {
+  const [items, setItems] = useState<StreamItem[]>(() =>
+    Array.from({ length: VISIBLE_ROWS }, (_, i) => makeRow(i)),
+  );
+
+  useEffect(() => {
+    let tick = VISIBLE_ROWS;
+    const id = setInterval(() => {
+      setItems((prev) => [...prev.slice(1), makeRow(tick++)]);
+    }, STREAM_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const nextTs = items.length > 0
+    ? tsFromTick(items[items.length - 1].id + 1)
+    : tsFromTick(VISIBLE_ROWS);
+
   return (
-    <section className="how">
-      <div className="how-inner">
-        <div className="how-head">
-          <span className="title">
-            <span className="arrow">›</span>surfaces
-          </span>
-          <span className="meta">one protocol · three ways to speak it</span>
-        </div>
-
-        <div className="log">
-          {SURFACES.map((b) => (
-            <div className="surf-block" key={b.num}>
-              <div className="surf-block-head">
-                <span className="num">[{b.num}]</span>
-                <span className="label">{b.label}</span>
-                <span className="kind">{b.kind}</span>
-              </div>
-
-              {b.lines.map((parts, i) => (
-                <div className="surf-line" key={i}>
-                  <span className="ln">{String(i + 1).padStart(2, "0")}</span>
-                  <span className="body">{renderLine(parts)}</span>
-                </div>
-              ))}
-
-              {b.comments.map((c, i) => (
-                <div className="comment" key={"c" + i}>
-                  <span className="hash">#</span>
-                  {c}
-                </div>
-              ))}
-            </div>
-          ))}
+    <div className="ex-card ex-nego">
+      <div className="ex-head">
+        <span className="ex-tag">› negotiation_stream</span>
+        <span className="ex-meta">
+          <span className="ex-pulse" /> live · last 24h
+        </span>
+      </div>
+      <div className="ex-log ex-log-stream">
+        {items.map((item) => (
+          <div className="ex-log-row" key={item.id}>
+            <span className="ex-log-ts">[{item.ts}]</span>
+            <span className="ex-log-text">{item.text}</span>
+            <span className="ex-log-status">OK</span>
+          </div>
+        ))}
+        <div className="ex-log-row ex-log-active" key="cursor">
+          <span className="ex-log-ts">[{nextTs.slice(0, 6)}</span>
+          <span className="cursor" aria-hidden="true" />
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -305,11 +539,10 @@ function OpenSource() {
           <span className="title">
             <span className="arrow">›</span>open source
           </span>
-          <span className="meta">section 05 · apache-2.0 · no permission required</span>
+          <span className="meta">mit · no permission required</span>
         </div>
 
         <div className="os-body">
-          <div className="os-tag">[ 05 / open-source ]</div>
           <h2 className="display os-display">
             We&rsquo;re building
             <br />
@@ -323,16 +556,12 @@ function OpenSource() {
           <div className="os-actions">
             <a
               className="cta"
-              href="https://github.com/indexnetwork"
+              href="https://github.com/indexnetwork/index"
               target="_blank"
               rel="noreferrer"
             >
               Github
             </a>
-            <span className="os-meta">
-              <span className="dot" aria-hidden="true" />
-              <span>apache-2.0 · 1.4k ↑ · 38 contributors</span>
-            </span>
           </div>
         </div>
       </div>
@@ -349,9 +578,8 @@ function LandingV5Page() {
     <div className="landing-v5">
       <Hero />
       <HowItWorks />
-      <Surfaces />
-      <OpenSource />
       <LatestPosts />
+      <OpenSource />
       <Footer />
     </div>
   );

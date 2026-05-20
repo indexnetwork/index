@@ -14,6 +14,34 @@ function formatPostDate(iso: string) {
     .toUpperCase();
 }
 
+type ExternalEntry = {
+  kind: "external";
+  href: string;
+  date: string;
+  title: string;
+};
+
+const EXTERNAL_ENTRIES: ExternalEntry[] = [
+  {
+    kind: "external",
+    href: "/found-in-translation",
+    date: "2026-04-01",
+    title: "Found in Translation",
+  },
+];
+
+function mergeEntries(
+  posts: BlogPost[],
+  extras: ExternalEntry[],
+): Array<BlogPost | ExternalEntry> {
+  const combined: Array<BlogPost | ExternalEntry> = [...posts, ...extras];
+  return combined.sort((a, b) => {
+    const ta = new Date(a.date).getTime();
+    const tb = new Date(b.date).getTime();
+    return tb - ta;
+  });
+}
+
 function BlogV5IndexPage() {
   const [posts, setPosts] = useState<BlogPost[] | null>(null);
 
@@ -37,23 +65,28 @@ function BlogV5IndexPage() {
 
   return (
     <div className="landing-v5 blog-v5">
-      <header className="blog-nav-wrap">
-        <Nav />
-      </header>
-
-      <section className="blog-hero">
-        <div className="blog-inner">
-          <div className="eyebrow">
-            <span className="dot-g" aria-hidden="true" />
-            <span>section · journal</span>
+      <div className="hero h1 page-hero">
+        <div className="canvas-area">
+          <Nav />
+          <div className="hero-split">
+            <div className="well">
+              <div className="eyebrow">
+                <span className="dot-g" aria-hidden="true" />
+                <span>section · journal</span>
+              </div>
+              <h1 className="display">Letters from Index</h1>
+              <p className="body-italic">
+                Notes from inside the protocol — what we&rsquo;re building,
+                what we&rsquo;re reading, who we&rsquo;re finding.
+              </p>
+            </div>
+            <div className="hero-image">
+              <img src="/landing-v5/hero-bridges.png" alt="" />
+              <span className="scan" aria-hidden="true" />
+            </div>
           </div>
-          <h1 className="display blog-display">Letters from Index</h1>
-          <p className="blog-lede">
-            Notes from inside the protocol — what we&rsquo;re building, what
-            we&rsquo;re reading, who we&rsquo;re finding.
-          </p>
         </div>
-      </section>
+      </div>
 
       <section className="how blog-list-section">
         <div className="how-inner">
@@ -62,7 +95,9 @@ function BlogV5IndexPage() {
               <span className="arrow">›</span>all posts
             </span>
             <span className="meta">
-              {posts === null ? "loading…" : `${posts.length} entries`}
+              {posts === null
+                ? "loading…"
+                : `${posts.length + EXTERNAL_ENTRIES.length} entries`}
             </span>
           </div>
 
@@ -71,24 +106,35 @@ function BlogV5IndexPage() {
               <div className="comment">
                 <span className="hash">#</span>loading…
               </div>
-            ) : posts.length === 0 ? (
-              <div className="comment">
-                <span className="hash">#</span>no posts yet. check back soon.
-              </div>
             ) : (
-              posts.map((p) => (
-                <Link
-                  className="blog-row"
-                  to={`/blog-v5/${p.slug}`}
-                  key={p.slug}
-                  aria-label={p.title}
-                >
-                  <span className="blog-date">{formatPostDate(p.date)}</span>
-                  <span className="blog-title">{p.title}</span>
-                  <span className="spacer" aria-hidden="true" />
-                  <span className="blog-arrow">→</span>
-                </Link>
-              ))
+              [...mergeEntries(posts, EXTERNAL_ENTRIES)].map((entry) =>
+                "kind" in entry ? (
+                  <Link
+                    className="blog-row"
+                    to={entry.href}
+                    key={`ext:${entry.href}`}
+                    aria-label={entry.title}
+                  >
+                    <span className="blog-date">{formatPostDate(entry.date)}</span>
+                    <span className="blog-title">{entry.title}</span>
+                    <span className="blog-tag">experience</span>
+                    <span className="spacer" aria-hidden="true" />
+                    <span className="blog-arrow">→</span>
+                  </Link>
+                ) : (
+                  <Link
+                    className="blog-row"
+                    to={`/blog-v5/${entry.slug}`}
+                    key={entry.slug}
+                    aria-label={entry.title}
+                  >
+                    <span className="blog-date">{formatPostDate(entry.date)}</span>
+                    <span className="blog-title">{entry.title}</span>
+                    <span className="spacer" aria-hidden="true" />
+                    <span className="blog-arrow">→</span>
+                  </Link>
+                ),
+              )
             )}
           </div>
 

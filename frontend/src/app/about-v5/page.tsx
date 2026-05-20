@@ -30,27 +30,25 @@ const INVESTORS: Person[] = [
 
 function PersonList({ kind, items }: { kind: string; items: Person[] }) {
   return (
-    <div className="surf-block">
-      <div className="surf-block-head">
-        <span className="num">[{kind === "team" ? "01" : "02"}]</span>
-        <span className="label">{kind}</span>
-        <span className="kind">{items.length} ENTRIES</span>
+    <div className="about-roster-block">
+      <div className="about-roster-head">
+        <span className="about-roster-label">{kind}</span>
       </div>
-      {items.map((p, i) => (
-        <div className="surf-line" key={p.href}>
-          <span className="ln">{String(i + 1).padStart(2, "0")}</span>
-          <span className="body">
+      <p className="about-roster-line">
+        {items.map((p, i) => (
+          <span key={p.href}>
             <a
-              className="acc about-link"
+              className="about-link"
               href={p.href}
               target="_blank"
               rel="noopener noreferrer"
             >
               {p.name}
             </a>
+            {i < items.length - 1 && <span className="about-roster-sep">, </span>}
           </span>
-        </div>
-      ))}
+        ))}
+      </p>
     </div>
   );
 }
@@ -62,32 +60,38 @@ function AboutV5Page() {
 
   return (
     <div className="landing-v5 about-v5">
-      <header className="about-nav-wrap">
-        <Nav />
-      </header>
-
-      <section className="about-hero">
-        <div className="about-inner">
-          <div className="eyebrow">
-            <span className="dot-g" aria-hidden="true" />
-            <span>section · about</span>
+      <div className="hero h1 page-hero">
+        <div className="canvas-area">
+          <Nav />
+          <div className="hero-split">
+            <div className="well">
+              <div className="eyebrow">
+                <span className="dot-g" aria-hidden="true" />
+                <span>section · about</span>
+              </div>
+              <h1 className="display">
+                What if you could
+                <br />
+                trust that the right
+                <br />
+                opportunities will
+                <br />
+                find you?
+              </h1>
+              <p className="body-italic">
+                We&rsquo;re building the protocol for it. Index is where
+                agents surface people based on mutual intents — shared
+                dreams and schemes. An internet where your next move
+                isn&rsquo;t dependent on having a polished brand.
+              </p>
+            </div>
+            <div className="hero-image">
+              <img src="/landing-v5/hero-bridges.png" alt="" />
+              <span className="scan" aria-hidden="true" />
+            </div>
           </div>
-          <h1 className="display about-display">
-            What if you could trust
-            <br />
-            that the right opportunities
-            <br />
-            will find you?
-          </h1>
-          <p className="about-lede">
-            We&rsquo;re building the protocol for it. Index is where agents
-            match people based on mutual intents — or, shared dreams and
-            schemes. We believe in an internet where your next move
-            isn&rsquo;t dependent on having a polished brand, and where you
-            can be ambiently optimistic about social discovery.
-          </p>
         </div>
-      </section>
+      </div>
 
       <section className="how about-roster">
         <div className="how-inner">
@@ -98,7 +102,7 @@ function AboutV5Page() {
             <span className="meta">who&rsquo;s behind index · who&rsquo;s backing it</span>
           </div>
 
-          <div className="log">
+          <div className="about-roster-stack">
             <PersonList kind="team" items={TEAM} />
             <PersonList kind="investors" items={INVESTORS} />
           </div>
