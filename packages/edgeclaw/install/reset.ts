@@ -39,12 +39,17 @@ const SESSIONS_DIR = join(homedir(), ".openclaw", "agents", "main", "sessions");
 
 const CRON_NAME_PREFIX = "EdgeClaw";
 
+// Keep in sync with the workspace markdown files copied by install.ts.
+// install.ts walks `workspace/` with readdirSync so it picks up new files
+// automatically; reset.ts uses an explicit list to stay conservative about
+// what it deletes from the user's installed workspace.
 const WORKSPACE_FILES = [
   "AGENTS.md",
   "BOOTSTRAP.md",
   "COMMUNITY.md",
   "HEARTBEAT.md",
   "IDENTITY.md",
+  "SCHEDULE.md",
   "SOUL.md",
   "TOOLS.md",
   "skills",

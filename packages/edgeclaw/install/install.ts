@@ -12,8 +12,8 @@
  *   - Disable Telegram progress-draft "tidepooling" so the streaming-off
  *     setting is loaded on the very first gateway start (not deferred until
  *     the first bootstrap turn drains).
- *   - Copy the workspace markdown bundle (BOOTSTRAP, AGENTS, SOUL, USER,
- *     IDENTITY, TOOLS, HEARTBEAT, COMMUNITY) into `~/.openclaw/workspace/`.
+ *   - Copy every markdown file under `workspace/` into
+ *     `~/.openclaw/workspace/`.
  *   - Copy backend skill bundles from `skills/` into
  *     `~/.openclaw/workspace/skills/` so OpenClaw registers them as
  *     workspace skills.
@@ -30,10 +30,11 @@
  * Re-running the installer is the supported way to bind cron deliveries to
  * the user's Telegram chat once they've sent their first message. By
  * default, `USER.md` is preserved on re-install — it holds the user's
- * lived notes populated during `BOOTSTRAP.md`, and overwriting it with the
- * blank template would silently erase those notes. Pass `--wipe-user` to
- * overwrite `USER.md` and delete the agent-curated `MEMORY.md` so the next
- * session re-onboards from scratch. (Mirrors `reset.ts --wipe-user`.)
+ * lived notes populated by the active skill's bootstrap ritual, and
+ * overwriting it with the blank template would silently erase those notes.
+ * Pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated
+ * `MEMORY.md` so the next session re-onboards from scratch. (Mirrors
+ * `reset.ts --wipe-user`.)
  *
  * Usage:
  *   bun install.ts <API_KEY>
@@ -111,9 +112,10 @@ function copyWorkspaceFiles(wipeUser: boolean): void {
         copied++;
       }
     } else if (entry.endsWith(".md")) {
-      // USER.md holds the user's lived notes populated by BOOTSTRAP.md.
-      // Re-running the installer (to bind cron deliveries) must not erase
-      // those notes — preserve unless --wipe-user is set. Mirrors reset.ts.
+      // USER.md holds the user's lived notes — populated by whichever
+      // active skill's bootstrap ritual ran during onboarding. Re-running
+      // the installer (to bind cron deliveries) must not erase those notes
+      // — preserve unless --wipe-user is set. Mirrors reset.ts.
       if (entry === "USER.md" && !wipeUser && existsSync(targetPath)) {
         preservedUserNotes = true;
         continue;

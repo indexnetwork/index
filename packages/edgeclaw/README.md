@@ -29,7 +29,6 @@ See the project hub for the full diagram and decisions.
 - `skills/` — per-backend skill bundles registered with OpenClaw via per-bundle `SKILL.md`. Mirrors `Edge-City/edgeclaw-skills` as a subtree; today this hosts:
   - `skills/index-network/` — Index Network MCP procedural knowledge (onboarding ritual, voice exemplars, cron prompts, heartbeat tasks)
   - `skills/edge-esmeralda/` — EdgeOS calendar + attendee directory + curated wiki/website/newsletter references (vendored from `Edge-City/edgeclaw-skills`; refreshed by upstream CI)
-- `onboarding/` — intent-capture flow for new agents (1 to 2 questions during setup)
 - `install/` — bootstrap scripts for plugging EdgeClaw into a runtime
 
 ## Getting an agent connected
@@ -174,7 +173,7 @@ The installer:
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at `https://protocol.index.network/mcp` with your API key in `x-api-key`.
 2. If `EDGEOS_API_KEY` and/or `EDGEOS_BEARER_TOKEN` are set in env, writes each to `env.vars.<NAME>` so the gateway exposes them to the agent's subprocesses on its next start.
 3. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
-4. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds your lived notes from `BOOTSTRAP.md`); pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated `MEMORY.md`, OpenClaw's `workspace-state.json` first-run marker, and the local onboarding/welcome/cron-preference markers under `memory/` so the next session re-onboards from scratch.
+4. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds the lived notes the active skill's bootstrap ritual populated for you); pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated `MEMORY.md`, OpenClaw's `workspace-state.json` first-run marker, and the local onboarding/welcome/cron-preference markers under `memory/` so the next session re-onboards from scratch.
 5. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/` so OpenClaw registers them as workspace skills.
 6. Installs three cron jobs: daily digest (`0 8 * * *`), ambient discovery afternoon (`0 14 * * *`), ambient discovery evening (`0 20 * * *`).
 7. Restarts the gateway so all config changes take effect.
@@ -208,9 +207,9 @@ bun install/reset.ts --wipe-user
 
 ## How it runs
 
-Time-sensitive work (the daily digest) runs as an **OpenClaw cron job**, not a heartbeat task — cron has its own scheduler and runs in isolated sessions with `--light-context` so each tick is cheap. The cron jobs are installed by `install/install.ts` and restart with the gateway.
+Time-sensitive prompts (today: the daily digest at 08:00 and the two ambient passes at 14:00 and 20:00 — host-local) run as **OpenClaw cron jobs**, not heartbeat tasks. Cron has its own scheduler and runs in isolated sessions with `--light-context` so each tick is cheap. Cron jobs are installed by `install/install.ts` and restart with the gateway. Future per-backend skills can add their own cron prompts the same way.
 
-The remaining ambient/accepted/freshness/memory work stays on the heartbeat tick because 30-minute latency is acceptable for those flows.
+Accepted-opportunity notifications, freshness audits, memory curation, and any other latency-tolerant background work stay on the heartbeat tick because 30-minute latency is acceptable for those flows.
 
 ## Workspace layout
 
@@ -227,6 +226,62 @@ The remaining ambient/accepted/freshness/memory work stays on the heartbeat tick
 | `HEARTBEAT.md` | Generic heartbeat tick rules + the cross-backend `memory-curation` task. Backend-specific tasks live in each active skill's `heartbeat.md`. |
 | `skills/index-network/SKILL.md` | Index Network skill bundle entry point. Registered with OpenClaw on install; gates on `mcp.servers.index`. Body points at the bundle's sibling reference files. |
 | `skills/edge-esmeralda/SKILL.md` | Edge Esmeralda data skill: EdgeOS events + attendee directory + curated wiki/website/newsletter references. Loaded by OpenClaw alongside index-network. Vendored from `Edge-City/edgeclaw-skills`. |
+
+## Configuration guide
+
+EdgeClaw's behaviour is markdown-driven. Almost everything you'd want to change lives in `workspace/` or `skills/<backend>/`. This section maps common customizations to the file that owns them.
+
+**Deploy cycle.** All edits go into this repo. The agent only sees them after `install/install.ts` runs again, since the installer copies `workspace/` and `skills/` into `~/.openclaw/workspace/`. Re-running without `--wipe-user` preserves the attendee's `USER.md`, `MEMORY.md`, and onboarding markers — safe for content/tone edits. Use `--wipe-user` only when you want the next session to re-onboard from scratch.
+
+### Tone & voice
+
+| You want to… | Edit | Notes |
+|---|---|---|
+| Tighten or loosen overall voice (more analytical / more playful) | `workspace/SOUL.md` | The "voice" rules apply to every message the agent composes. Voice exemplars in skill bundles inherit from here. |
+| Change banned vocabulary (e.g. drop a word, ban a new one) | `workspace/SOUL.md` | Bans propagate to all skill prompts via SOUL.md. |
+| Change the canonical look of welcome / digest / ambient messages | `skills/index-network/exemplars.md` | These exemplars are the bar the agent imitates. Edit the literal sample messages, not abstract rules. |
+| Rename the agent (rebrand for another event) | `workspace/IDENTITY.md` + every `prompts/*.md` and `bootstrap.md` referring to "EdgeClaw" | Grep `EdgeClaw` under `workspace/` and `skills/`. Also update `COMMUNITY.md` and `package.json` `name` if forking. |
+| Add or change emoji conventions | `skills/index-network/exemplars.md` and `skills/index-network/prompts/*.md` | Exemplars set the look; prompts set the time-of-day greeting table in `digest.md`. |
+
+### Content
+
+| You want to… | Edit | Notes |
+|---|---|---|
+| Update community facts (dates, headcount, venue, programming format) | `workspace/COMMUNITY.md` | This is the only authoritative source the agent reads for community context. Don't duplicate the facts into prompts. |
+| Change what the daily digest says or how it's structured | `skills/index-network/prompts/digest.md` | Time-aware greeting lookup table lives here. Renumber steps if you add or drop one. |
+| Change what an ambient pass surfaces (quality bar, cap, framing) | `skills/index-network/prompts/ambient.md` | The cap (3 direct + 3 introducer) is in this prompt, not in code. |
+| Change the one-time welcome message | `skills/index-network/prompts/welcome.md` + `skills/index-network/bootstrap.md` | `welcome.md` is the post-onboarding welcome run; `bootstrap.md` is the onboarding ritual that precedes it. |
+| Change the EdgeClaw welcome line for returning users on fresh workspaces | `workspace/AGENTS.md` (first-message gates section) | Two branches: when Index gate triggered → "By the way..." opener; when Index gate skipped → full Edge Esmeralda welcome opener. |
+| Change the lived-notebook (`USER.md`) template | `skills/index-network/bootstrap.md` | The bootstrap ritual writes `USER.md`. Editing the file in `workspace/` only affects the empty stub copied in by `--wipe-user`. |
+| Change how the agent calls EdgeOS APIs (events, attendees, RSVPs, venues, wiki recipes) | `skills/edge-esmeralda/SKILL.md` | This is the hand-edited recipe file. The auto-refreshed reference data under `skills/edge-esmeralda/references/` is a different surface — see "Backends & skills" below for the don't-edit-this caveat. |
+
+### Behaviour & gates
+
+| You want to… | Edit | Notes |
+|---|---|---|
+| Add, remove, or reorder operating rules (memory contract, opportunity quality bar, red lines, group-chat rules) | `workspace/AGENTS.md` | This file is always injected by OpenClaw on every session — durable, unlike `BOOTSTRAP.md`. |
+| Add a new first-message gate (e.g. another skill needs onboarding) | `workspace/AGENTS.md` "Active skills" section + the new `skills/<name>/bootstrap.md` | Gates loop over the active-skills registry. Add the skill row first, then point its bootstrap at the trigger condition (server flag, local marker, …). |
+| Change the EdgeClaw onboarding gate (currently just the schedule dialog) | `workspace/AGENTS.md` "Session startup" + `workspace/SCHEDULE.md` | The local marker is `memory/edgeclaw-state.json` (`edgeclawOnboardingCompletedAt`). |
+| Change heartbeat tick behaviour (what tasks fire, dedup rules) | `workspace/HEARTBEAT.md` for cross-backend rules; `skills/<backend>/heartbeat.md` for backend-specific tasks | The tick cadence itself (default ~30 min) is an OpenClaw-side setting, configured through `openclaw config` — not a file in this repo. |
+| Change how URLs / formatting render per channel (Telegram, WhatsApp, Discord) | `workspace/TOOLS.md` | Cross-backend rule: Telegram is Markdown, not HTML — raw `<…>` tags get escaped. |
+
+### Schedule & cron
+
+| You want to… | Edit | Notes |
+|---|---|---|
+| Add, remove, or move a cron job (e.g. add a midday check) | `install/install_index.ts` (cron install block) + `workspace/SCHEDULE.md` | The installer is what actually writes the cron entries; `SCHEDULE.md` is the user-facing dialog for enabling/disabling/rescheduling existing ones via `openclaw cron …`. Both must agree. |
+| Change a cron prompt without changing the schedule | the matching `skills/index-network/prompts/<name>.md` | The installer references prompt files by path; rename only if you also rename in the installer. |
+| Change the user-facing schedule-change wording | `workspace/SCHEDULE.md` | Operates on `openclaw cron list/enable/disable/edit` directly — no preferences file to keep in sync. |
+
+### Backends & skills
+
+| You want to… | Edit | Notes |
+|---|---|---|
+| Wire a brand-new backend (e.g. Geo today, others later) | new `install/install_<name>.ts` (modeled on `install_index.ts` for MCP+cron wiring or `install_edgeos.ts` for env-token wiring) + new `skills/<name>/` bundle with `SKILL.md` + register in `workspace/AGENTS.md` "Active skills" | The orchestrator (`install/install.ts`) already calls `installIndex()`, `installEdgeos()`, `installGeo()` in sequence — add your `install_<name>()` call alongside. |
+| Extend an existing backend (Index, EdgeOS, Geo when wired) | The matching `install/install_<name>.ts` and `skills/<name>/` bundle | Runtime config (env vars, MCP entries, cron jobs) lives in `install_<name>.ts`; agent-facing instructions live in the skill bundle's `SKILL.md` and siblings. |
+| Wire optional env vars an existing backend needs | `install/install_<name>.ts` + the Prerequisites section of this README | The installer writes `env.vars.<NAME>`; the gateway exposes those to the agent's shell tools on next start. `install_edgeos.ts` is the worked example. |
+| Change which skills the agent loads | `workspace/AGENTS.md` "Active skills" section | Mark a skill as eager (gates fire at session start) or reactive (only consulted when needed). |
+| Update the vendored `edge-esmeralda` reference data (events, attendee directory, wiki snapshots) | Don't — it's auto-refreshed from upstream | Upstream CI in `Edge-City/edgeclaw-skills` regenerates `skills/edge-esmeralda/references/` every 15 minutes; the change propagates through the nested subtree chain. See the monorepo's `CLAUDE.md` for the sync flow. The recipes in `SKILL.md` are hand-edited — see the "Content" section above. |
 
 ## Auth
 
