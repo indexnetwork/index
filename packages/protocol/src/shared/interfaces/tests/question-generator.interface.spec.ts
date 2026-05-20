@@ -15,7 +15,7 @@ describe("QuestionGeneratorReader contract", () => {
     const result = await fake.generate({
       query: "x",
       sourceProfile: {},
-      negotiations: [],
+      negotiationDigests: [],
       summary: {
         totalCandidates: 0,
         opportunitiesFound: 0,
@@ -32,7 +32,7 @@ describe("QuestionGeneratorReader contract", () => {
     const q: Question = { title: "T", prompt: "P?", options: [{ label: "a", description: "x" }, { label: "b", description: "y" }], multiSelect: false };
     const s: QuestionStrategy[] = ["refine_intent"];
     const ok: QuestionGeneratorReader = { generate: async () => ({ questions: [q], strategies: s }) };
-    const r = await ok.generate({ query: "x", sourceProfile: {}, negotiations: [], summary: { totalCandidates: 0, opportunitiesFound: 0, noOpportunityCount: 0, timeoutCount: 0, roleDistribution: {} }, now: "" });
+    const r = await ok.generate({ query: "x", sourceProfile: {}, negotiationDigests: [], summary: { totalCandidates: 0, opportunitiesFound: 0, noOpportunityCount: 0, timeoutCount: 0, roleDistribution: {} }, now: "" });
     expect(r?.questions).toHaveLength(1);
   });
 });

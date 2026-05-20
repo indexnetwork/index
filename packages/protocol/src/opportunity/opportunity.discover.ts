@@ -32,9 +32,55 @@ import type { DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-d
 import { buildFallbackDigest } from "../negotiation/negotiation.summarizer.js";
 import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
 import { traceAgent, tracePhase } from "../shared/observability/trace.js";
+import { requestContext } from "../shared/observability/request-context.js";
 import { buildDiscoveryQuestionInput } from "./discovery-question.helper.js";
 
 const logger = protocolLogger("OpportunityDiscover");
+
+/**
+ * Per-negotiation summarizer budget. The summarizer fires one LLM call per
+ * partial-or-full negotiation (concurrently via Promise.all). Without a cap
+ * one slow OpenRouter route dominates the post-discovery tail and pushes the
+ * whole MCP response past Railway's ~60 s no-upstream-bytes timeout. Falls
+ * back to a deterministic digest when the deadline fires, so question
+ * generation still has structured input.
+ */
+const NEGOTIATION_SUMMARY_TIMEOUT_MS_DEFAULT = 5_000;
+/**
+ * Question-generator budget. Sized against Railway's ~60 s edge timeout:
+ * the discovery + evaluation + negotiate phases consume ~50 s on the slow
+ * path, leaving ~10 s of headroom for the tail. 12 s is the larger end of
+ * "fits"; the question step usually completes in 4-8 s, so most legitimate
+ * calls finish well inside. Aborted calls return `null` (no questions);
+ * the rest of the discovery payload still ships.
+ *
+ * Documented at opportunity.tools.ts:912-921 as historically uncapped —
+ * this is the cap.
+ */
+const DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT = 12_000;
+
+/**
+ * Parse a positive integer env var, clamped to the safe-integer range so a
+ * malformed env value cannot crash `AbortSignal.timeout` (which throws on
+ * values outside `[0, MAX_SAFE_INTEGER]`). Mirrors the precedent in
+ * `negotiation.agent.ts` (`isValidTimeoutMs`).
+ */
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0 || n > Number.MAX_SAFE_INTEGER) return fallback;
+  return n;
+}
+
+function combineWithDeadline(
+  callerSignal: AbortSignal | undefined,
+  deadlineMs: number,
+): AbortSignal {
+  const deadline = AbortSignal.timeout(deadlineMs);
+  if (!callerSignal) return deadline;
+  return AbortSignal.any([callerSignal, deadline]);
+}
 
 /** Compiled opportunity graph (from OpportunityGraphFactory.createGraph()). */
 export type CompiledOpportunityGraph = ReturnType<
@@ -941,18 +987,34 @@ async function summarizeNegotiations(args: {
   if (!args.enableQuestions || args.trigger !== 'orchestrator') return [];
   if (args.negotiations.length === 0) return [];
 
+  const perNegTimeoutMs = parsePositiveIntEnv(
+    "NEGOTIATION_SUMMARY_TIMEOUT_MS",
+    NEGOTIATION_SUMMARY_TIMEOUT_MS_DEFAULT,
+  );
+  const callerSignal = requestContext.getStore()?.abortSignal;
+
   return traceAgent(
     `Negotiation summary (${args.negotiations.length})`,
     () =>
       Promise.all(
         args.negotiations.map(async (n) => {
           if (!args.summarizer) return buildFallbackDigest(n);
+          // Per-negotiation deadline: one slow OpenRouter route used to
+          // dominate the post-discovery tail. With a cap, an aborted
+          // summarizer falls back to a deterministic digest so the
+          // question generator still has structured input.
+          const signal = combineWithDeadline(callerSignal, perNegTimeoutMs);
           try {
-            const d = await args.summarizer.summarize(n);
+            const d = await args.summarizer.summarize(n, { signal });
             return d ?? buildFallbackDigest(n);
           } catch (err) {
+            // Attribute cause from err.name (AbortError), not from
+            // signal.aborted — the latter is read post-catch and can race a
+            // deadline-trip-after-unrelated-error, producing a misleading log.
+            const aborted = err instanceof Error && err.name === "AbortError";
             logger.warn("negotiationSummary.summarize threw — using fallback digest", {
               counterpartyHint: n.counterpartyHint,
+              aborted,
               error: err instanceof Error ? err.message : String(err),
             });
             return buildFallbackDigest(n);
@@ -1020,11 +1082,19 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
 
   const questionGenerator = args.questionGenerator;
   const generatorStart = Date.now();
+  const questionsTimeoutMs = parsePositiveIntEnv(
+    "DISCOVERY_QUESTIONS_TIMEOUT_MS",
+    DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT,
+  );
+  const questionsSignal = combineWithDeadline(
+    requestContext.getStore()?.abortSignal,
+    questionsTimeoutMs,
+  );
   const genResult = await traceAgent(
     "Decision questions",
     async () => {
       try {
-        return await questionGenerator.generate(input);
+        return await questionGenerator.generate(input, { signal: questionsSignal });
       } catch (err) {
         logger.warn("questionGenerator.generate threw — suppressing questions", {
           error: err instanceof Error ? err.message : String(err),

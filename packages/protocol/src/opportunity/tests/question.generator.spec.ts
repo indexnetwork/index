@@ -10,7 +10,7 @@ function makeInput(): DiscoveryQuestionInput {
   return {
     query: "test query",
     sourceProfile: { name: "Tester" },
-    negotiations: [],
+    negotiationDigests: [],
     summary: {
       totalCandidates: 0,
       opportunitiesFound: 0,
@@ -22,7 +22,9 @@ function makeInput(): DiscoveryQuestionInput {
   };
 }
 
-function makeGenerator(invokeImpl: (input: unknown) => Promise<unknown>) {
+function makeGenerator(
+  invokeImpl: (input: unknown, config?: { signal?: AbortSignal }) => Promise<unknown>,
+) {
   const gen = new QuestionGenerator();
   (gen as unknown as { model: { invoke: typeof invokeImpl } }).model = { invoke: invokeImpl };
   return gen;
@@ -145,6 +147,45 @@ describe("QuestionGenerator", () => {
       "refine_intent",
       "surface_missing_detail",
     ]);
+  });
+
+  it("forwards the AbortSignal in the RunnableConfig second arg", async () => {
+    let captured: { signal?: AbortSignal } | undefined;
+    const gen = makeGenerator(async (_input, config) => {
+      captured = config;
+      return { questions: [makeQuestion({ title: "Stage" })] };
+    });
+    const controller = new AbortController();
+    const result = await gen.generate(makeInput(), { signal: controller.signal });
+    expect(result).not.toBeNull();
+    expect(captured?.signal).toBe(controller.signal);
+  });
+
+  it("omits config entirely when no signal is passed (preserves prior behavior)", async () => {
+    let captured: { signal?: AbortSignal } | undefined = { signal: new AbortController().signal };
+    const gen = makeGenerator(async (_input, config) => {
+      captured = config;
+      return { questions: [makeQuestion({ title: "Stage" })] };
+    });
+    await gen.generate(makeInput());
+    expect(captured).toBeUndefined();
+  });
+
+  it("returns null when the in-flight model call rejects after the signal aborts", async () => {
+    // Simulates LangChain's AbortError path: the LLM call rejects with the
+    // signal already in aborted state. Generator must swallow and return null.
+    const controller = new AbortController();
+    const gen = makeGenerator(async (_input, config) => {
+      controller.abort(new Error("deadline"));
+      const err = new Error("aborted");
+      err.name = "AbortError";
+      // Reading config.signal here mirrors how withStructuredOutput inspects
+      // the signal; the test would also pass without this read.
+      void config?.signal?.aborted;
+      throw err;
+    });
+    const result = await gen.generate(makeInput(), { signal: controller.signal });
+    expect(result).toBeNull();
   });
 
   it("drops the 3rd same-strategy question (never 3 of the same)", async () => {

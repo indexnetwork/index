@@ -47,24 +47,42 @@ export class QuestionGenerator {
 
   /**
    * Generate up to 3 decision questions from the given discovery turn.
+   *
+   * @param input  Discovery turn payload.
+   * @param options.signal  Optional AbortSignal. Passed to LangChain so an
+   *   aborted call cancels the underlying HTTP fetch instead of leaving a
+   *   floating promise burning OpenRouter capacity.
    * @returns A result with parallel questions[] and strategies[] arrays,
-   *   or null when the LLM fails, the output is malformed, or the
-   *   guardrails leave zero questions standing.
+   *   or null when the LLM fails, the output is malformed, the call was
+   *   aborted, or the guardrails leave zero questions standing.
    */
   @Timed()
-  async generate(input: DiscoveryQuestionInput): Promise<QuestionGenerationResult | null> {
+  async generate(
+    input: DiscoveryQuestionInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<QuestionGenerationResult | null> {
     const user = buildQuestionPrompt(input);
 
     let raw: unknown;
     try {
-      raw = await this.model.invoke([
-        new SystemMessage(SYSTEM_PROMPT),
-        new HumanMessage(user),
-      ]);
+      raw = await this.model.invoke(
+        [new SystemMessage(SYSTEM_PROMPT), new HumanMessage(user)],
+        options?.signal ? { signal: options.signal } : undefined,
+      );
     } catch (err) {
-      logger.warn("QuestionGenerator LLM call failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
+      // AbortError is the expected outcome under deadline pressure — caller
+      // already wants to skip questions in that case, so log at info rather
+      // than warn to keep dashboards clean.
+      const aborted = options?.signal?.aborted ?? false;
+      if (aborted) {
+        logger.info("QuestionGenerator aborted by signal", {
+          reason: options?.signal?.reason instanceof Error ? options.signal.reason.message : String(options?.signal?.reason ?? "unknown"),
+        });
+      } else {
+        logger.warn("QuestionGenerator LLM call failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       return null;
     }
 

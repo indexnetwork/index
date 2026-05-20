@@ -11,8 +11,17 @@ import type { QuestionGenerationResult } from "../schemas/question.schema.js";
 export interface QuestionGeneratorReader {
   /**
    * Run the question generator over a single discovery turn.
+   *
+   * @param input  Discovery turn payload (query + negotiation digests + chat context).
+   * @param options.signal  Optional AbortSignal. When aborted (deadline reached or
+   *   upstream cancel) the in-flight LLM call is cancelled and `null` is returned —
+   *   discovery still emits its response, just without questions.
    * @returns The structured result, or `null` when generation failed,
-   *   guardrails dropped all candidates, or the underlying LLM threw.
+   *   guardrails dropped all candidates, the underlying LLM threw, or
+   *   the call was aborted.
    */
-  generate(input: DiscoveryQuestionInput): Promise<QuestionGenerationResult | null>;
+  generate(
+    input: DiscoveryQuestionInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<QuestionGenerationResult | null>;
 }

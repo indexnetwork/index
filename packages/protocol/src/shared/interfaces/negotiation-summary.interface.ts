@@ -13,9 +13,15 @@ export interface NegotiationSummaryReader {
   /**
    * Summarize a single negotiation into a compact digest.
    *
-   * @returns the digest, or `null` when summarization fails (caller should
-   *   fall back to a deterministic minimal digest so questions can still
-   *   be generated).
+   * @param negotiation  The raw negotiation to compress.
+   * @param options.signal  Optional AbortSignal. When aborted (deadline reached or
+   *   upstream cancel) the in-flight LLM call is cancelled and `null` is returned —
+   *   callers fall back to a deterministic digest so question generation can
+   *   still proceed.
+   * @returns the digest, or `null` when summarization fails or is aborted.
    */
-  summarize(negotiation: DiscoveryNegotiation): Promise<DiscoveryNegotiationDigest | null>;
+  summarize(
+    negotiation: DiscoveryNegotiation,
+    options?: { signal?: AbortSignal },
+  ): Promise<DiscoveryNegotiationDigest | null>;
 }

@@ -16,7 +16,10 @@ import { log } from "../lib/log";
 const logger = log.service.from("NegotiationSummaryService");
 
 export interface NegotiationSummarizerLike {
-  summarize(n: DiscoveryNegotiation): Promise<DiscoveryNegotiationDigest | null>;
+  summarize(
+    n: DiscoveryNegotiation,
+    options?: { signal?: AbortSignal },
+  ): Promise<DiscoveryNegotiationDigest | null>;
 }
 
 export class NegotiationSummaryService implements NegotiationSummaryReader {
@@ -33,9 +36,12 @@ export class NegotiationSummaryService implements NegotiationSummaryReader {
     return this.summarizer;
   }
 
-  async summarize(negotiation: DiscoveryNegotiation): Promise<DiscoveryNegotiationDigest | null> {
+  async summarize(
+    negotiation: DiscoveryNegotiation,
+    options?: { signal?: AbortSignal },
+  ): Promise<DiscoveryNegotiationDigest | null> {
     try {
-      return await this.getSummarizer().summarize(negotiation);
+      return await this.getSummarizer().summarize(negotiation, options);
     } catch (err) {
       logger.warn("negotiation-summarizer threw", {
         error: err instanceof Error ? err.message : String(err),

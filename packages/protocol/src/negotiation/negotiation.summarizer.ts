@@ -64,18 +64,28 @@ export class NegotiationSummarizer {
     });
   }
 
-  async summarize(negotiation: DiscoveryNegotiation): Promise<DiscoveryNegotiationDigest | null> {
+  async summarize(
+    negotiation: DiscoveryNegotiation,
+    options?: { signal?: AbortSignal },
+  ): Promise<DiscoveryNegotiationDigest | null> {
     const user = buildUserPrompt(negotiation);
     let raw: unknown;
     try {
-      raw = await this.model.invoke([
-        new SystemMessage(SYSTEM_PROMPT),
-        new HumanMessage(user),
-      ]);
+      raw = await this.model.invoke(
+        [new SystemMessage(SYSTEM_PROMPT), new HumanMessage(user)],
+        options?.signal ? { signal: options.signal } : undefined,
+      );
     } catch (err) {
-      logger.warn("NegotiationSummarizer LLM call failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
+      const aborted = options?.signal?.aborted ?? false;
+      if (aborted) {
+        logger.info("NegotiationSummarizer aborted by signal", {
+          reason: options?.signal?.reason instanceof Error ? options.signal.reason.message : String(options?.signal?.reason ?? "unknown"),
+        });
+      } else {
+        logger.warn("NegotiationSummarizer LLM call failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       return null;
     }
 

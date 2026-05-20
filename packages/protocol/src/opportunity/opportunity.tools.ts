@@ -909,12 +909,17 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
         ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
         ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
-        // Decision questions add an uncapped LLM call after the negotiation phase.
-        // For chat sessions, they're rendered by the frontend via streamed events
-        // (Slice 4). For MCP, they drive a sequential elicitation/create flow
-        // (Slice 5) and can exceed the 20s budget documented above — the MCP
-        // tool handler awaits the elicitations before returning the tool result.
-        // Master switch remains ENABLE_DISCOVERY_QUESTIONS.
+        // Decision questions add an LLM call after the negotiation phase.
+        // Capped at DISCOVERY_QUESTIONS_TIMEOUT_MS (12 s default,
+        // env-overridable; see opportunity.discover.ts). Aborted calls return
+        // no questions but the rest of the discovery payload still ships.
+        // For chat sessions, questions are rendered by the frontend via
+        // streamed events (Slice 4). For MCP, they drive a sequential
+        // elicitation/create flow (Slice 5) — the MCP tool handler awaits the
+        // elicitations before returning the tool result. The per-negotiation
+        // summarizer is similarly capped at NEGOTIATION_SUMMARY_TIMEOUT_MS
+        // (5 s default per negotiation). Master switch remains
+        // ENABLE_DISCOVERY_QUESTIONS.
         enableQuestions:
           process.env.ENABLE_DISCOVERY_QUESTIONS === "true" &&
           (!!context.sessionId || !!context.isMcp),

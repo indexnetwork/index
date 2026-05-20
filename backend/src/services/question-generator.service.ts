@@ -17,7 +17,10 @@ const logger = log.service.from("QuestionGeneratorService");
 
 /** Minimal generator shape — used as the constructor type so tests can inject a fake. */
 export interface QuestionGeneratorLike {
-  generate(input: DiscoveryQuestionInput): Promise<QuestionGenerationResult | null>;
+  generate(
+    input: DiscoveryQuestionInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<QuestionGenerationResult | null>;
 }
 
 export class QuestionGeneratorService implements QuestionGeneratorReader {
@@ -35,9 +38,12 @@ export class QuestionGeneratorService implements QuestionGeneratorReader {
     return this.generator;
   }
 
-  async generate(input: DiscoveryQuestionInput): Promise<QuestionGenerationResult | null> {
+  async generate(
+    input: DiscoveryQuestionInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<QuestionGenerationResult | null> {
     try {
-      return await this.getGenerator().generate(input);
+      return await this.getGenerator().generate(input, options);
     } catch (err) {
       logger.warn("question-generator threw", { error: err instanceof Error ? err.message : String(err) });
       return null;
