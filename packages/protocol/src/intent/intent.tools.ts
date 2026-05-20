@@ -43,16 +43,17 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       "Retrieves intents (signals of interest/need, e.g. 'Looking for a React developer in Berlin'). " +
       "Intents are the core unit of discovery — they represent what users are seeking and drive semantic matching for opportunities.\n\n" +
       "**Usage modes:**\n" +
-      "- No parameters: returns the **caller's own** active intents. In an index-scoped chat the result is clamped to the reachable indexes (the bound index plus the user's personal index). In an unscoped chat the result spans all of the user's active intents.\n" +
+      "- No parameters: returns the **caller's own** active intents. In an index-scoped chat the result is clamped to the reachable indexes (the bound index plus the user's personal index). In an unscoped chat the result spans all of the user's active intents. There is no implicit default to the scoped index — to browse the bound community's intents, pass `networkId` explicitly.\n" +
       "- With networkId: returns **all members'** intents in that index (community browse path). Add userId to filter to one member.\n" +
-      "- With userId alone: only works for the current user (cannot read another user's global intents without an index scope).\n\n" +
+      "- With userId in an index-scoped chat: reads that member's intents in the bound index. The target user must be a member of that index.\n" +
+      "- With userId in an unscoped chat: only works for the current user (cannot read another user's global intents without an index scope).\n\n" +
       "**Workflow:** To explore what members of an index are looking for, first call read_network_memberships(networkId) to list members, " +
       "then read_intents(networkId) to see all intents in that community. " +
       "Each intent includes: id, description (payload), summary, confidence (0-1), inferenceType (explicit/implicit), status, and linked indexes.\n\n" +
       "**Returns:** Paginated list of intents with count. Use the intent IDs in subsequent calls to update_intent, delete_intent, or create_intent_index.",
     querySchema: z.object({
-      networkId: z.string().optional().describe("Index UUID — filters intents to this index (community). When in an index-scoped chat, defaults to the scoped index. Get index IDs from read_networks."),
-      userId: z.string().optional().describe("User ID — filters to this user's intents. Must be combined with networkId when looking up another user. Omit to get the current user's intents."),
+      networkId: z.string().optional().describe("Index UUID — filters intents to this index (community browse path: returns all members' intents). There is no implicit default in index-scoped chats; omit to get caller-owned intents across the reachable indexes, or pass the scoped index UUID to browse community members. Get index IDs from read_networks."),
+      userId: z.string().optional().describe("User ID — filters to this user's intents. In an index-scoped chat, this reads that member's intents in the bound index (no networkId required). In an unscoped chat, only the current user is allowed without networkId; cross-user reads require an index scope. Omit for caller-owned intents."),
       limit: z.number().int().min(1).max(100).optional().describe("Page size (1-100). Defaults to returning all results if omitted."),
       page: z.number().int().min(1).optional().describe("Page number (1-based). Only used when limit is also provided."),
     }),

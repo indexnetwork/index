@@ -424,7 +424,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       networkId: z
         .string()
         .optional()
-        .describe("Index UUID to scope discovery to a specific community. Get from read_networks. Defaults to the scoped index in index-scoped chats. Pass the personal index ID (from read_networks, isPersonal=true) to scope to the user's contacts only."),
+        .describe("Index UUID to scope discovery to a specific community. Get from read_networks. In an index-scoped chat, omitting this runs discovery across the full reachable scope (the bound community plus the user's personal index); pass an explicit networkId to force single-index discovery. Pass the personal index ID (from read_networks, isPersonal=true) to scope to the user's contacts only."),
       intentId: z
         .string()
         .optional()
