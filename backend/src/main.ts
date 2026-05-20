@@ -31,6 +31,7 @@ import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
+import { bindLimiterServer } from './lib/limiter/identifier';
 import { log } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
@@ -220,7 +221,7 @@ controllerInstances.set(ToolController, new ToolController(toolService));
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
 // Cron jobs (newsletter, opportunity finder, HyDE) are registered in index.ts (runs with queue workers).
-Bun.serve({
+const server = Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors
   async fetch(req) {
@@ -425,6 +426,10 @@ Bun.serve({
     return new Response('Not Found', { status: 404, headers: corsHeaders });
   },
 });
+
+// Bind the live server to the limiter so resolveClientIp can fall back to
+// the socket peer in environments where RAILWAY_ENVIRONMENT isn't set.
+bindLimiterServer(server);
 
 logger.info('Server running', { port: PORT });
 

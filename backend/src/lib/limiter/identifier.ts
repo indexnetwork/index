@@ -32,9 +32,27 @@ const IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?
 const IPV6 = /^[0-9a-fA-F:]+$/;
 const isValidIp = (s: string) => IPV4.test(s) || (IPV6.test(s) && s.includes(':'));
 
+/**
+ * Minimal subset of Bun.Server we use — captured to look up the socket peer
+ * IP when forwarded headers aren't available (local dev or non-Railway deploys).
+ */
+export interface ServerLike {
+  requestIP(req: Request): { address: string } | null;
+}
+
+let boundServer: ServerLike | null = null;
+
+/**
+ * Called once from main.ts after `Bun.serve(...)` so the limiter can resolve
+ * the socket peer IP in environments where `RAILWAY_ENVIRONMENT` isn't set.
+ */
+export function bindLimiterServer(server: ServerLike): void {
+  boundServer = server;
+}
+
 export function resolveClientIp(
   req: Request,
-  server?: { requestIP(req: Request): { address: string } | null },
+  server?: ServerLike,
 ): string {
   if (isRailway()) {
     for (const h of getIpHeaders()) {
@@ -48,7 +66,7 @@ export function resolveClientIp(
     // default. Operators should check edge header configuration.
     return 'unresolved';
   }
-  const peer = server?.requestIP(req);
+  const peer = (server ?? boundServer)?.requestIP(req);
   return peer?.address ?? 'unknown';
 }
 
@@ -62,7 +80,7 @@ const JWKS = createRemoteJWKSet(new URL('/api/auth/jwks', BASE_URL));
 
 export async function resolveIdentifier(
   req: Request,
-  server?: { requestIP(req: Request): { address: string } | null },
+  server?: ServerLike,
 ): Promise<Identifier> {
   const auth = req.headers.get('Authorization');
   if (auth?.startsWith('Bearer ')) {
@@ -70,8 +88,14 @@ export async function resolveIdentifier(
       const { payload } = await jwtVerify(auth.slice(7), JWKS, {
         issuer: BASE_URL, audience: JWT_AUDIENCE,
       });
-      const userId = payload.id;
-      if (typeof userId === 'string' && userId.length > 0) {
+      // Better Auth JWTs carry `id`; MCP OAuth tokens (also signed by the
+      // same JWKS) carry `sub` per the OAuth/OIDC convention. Accept either.
+      const userId = typeof payload.id === 'string' && payload.id.length > 0
+        ? payload.id
+        : typeof payload.sub === 'string' && payload.sub.length > 0
+          ? payload.sub
+          : null;
+      if (userId) {
         return { kind: 'user', value: userId };
       }
     } catch { /* fall through */ }

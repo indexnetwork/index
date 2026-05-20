@@ -48,11 +48,15 @@ const PRIVATE_IPV4 = [
   /^169\.254\./,
 ];
 
-const isPrivateOrLoopback = (ip: string) =>
-  ip === 'unknown' || ip === '::1' ||
-  ip.startsWith('fc') || ip.startsWith('fd') ||    // ULA fc00::/7
-  /^fe[89ab]/i.test(ip) ||                          // link-local fe80::/10
-  PRIVATE_IPV4.some(re => re.test(ip));
+const isPrivateOrLoopback = (ip: string) => {
+  if (ip === 'unknown' || ip === '::1') return true;
+  // IPv6: normalize case before prefix checks; RFC 5952 mandates lowercase but
+  // some clients send uppercase (e.g. FC00::1).
+  const lower = ip.toLowerCase();
+  if (lower.startsWith('fc') || lower.startsWith('fd')) return true;  // ULA fc00::/7
+  if (/^fe[89ab]/.test(lower)) return true;                            // link-local fe80::/10
+  return PRIVATE_IPV4.some(re => re.test(ip));
+};
 
 /**
  * RateLimit(class): returns a Guard that enforces the given route-class limit
