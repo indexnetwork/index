@@ -302,7 +302,7 @@ function buildScoping(ctx: ResolvedToolContext): string {
 ### Index Scope
 ${
   ctx.networkId
-    ? `- This chat is scoped to index "${ctx.indexName}" (id: ${ctx.networkId}). Default networkId for read_intents and create_intent is ${ctx.networkId}.
+    ? `- This chat is scoped to index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.networkId}). Default networkId for read_intents and create_intent is ${ctx.networkId}.
 - **Scope enforcement**: read_intents (no params) returns the caller's own intents across their reachable indexes (the bound community plus their personal index). To browse all members' intents in this community, pass networkId explicitly. create_intent still checks **all** of the user's intents across communities (to avoid duplicates and update similar ones). Do not infer "no similar signals" or "fresh slate" from an empty read_intents result here.
 - **Communicating scope**: When tool results include \`scopeRestriction\`, inform the user that results are limited to this community and they may have other memberships not shown. Never imply the scoped results represent all their data.
 - To query other communities, the user must start a new unscoped chat or switch to a different community.

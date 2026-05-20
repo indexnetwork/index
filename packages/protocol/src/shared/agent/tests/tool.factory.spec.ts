@@ -755,6 +755,44 @@ describe("read_intents tool (no networkId)", () => {
     expect(parsed.data.count).toBe(2);
   });
 
+  test("with context.networkId and explicit userId of co-member, reads that member's intents in the bound network (not caller's globals)", async () => {
+    const networkId = testIndexId;
+    const otherUserId = "00000000-0000-0000-0000-000000000099";
+    let getIntentsInIndexForMemberCall: { userId: string; networkId: string } | null = null;
+
+    const mockDb = createMockDatabase(
+      async (uid: string, idx: string) => {
+        getIntentsInIndexForMemberCall = { userId: uid, networkId: idx };
+        return [{ id: "other-1", payload: "Their intent in bound", summary: "T", createdAt: new Date(), userId: uid, userName: "Other" }];
+      },
+      { isNetworkMember: async () => true }
+    );
+
+    const context: ToolContext = {
+      userId: testUserId,
+      database: mockDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      networkId,
+      indexScope: [networkId, "personal-test-idx"],
+      ...mockProtocolDeps,
+    };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { userId?: string }) => Promise<string> };
+    const result = await tool.invoke({ userId: otherUserId });
+
+    // The new branch routes scoped+userId reads through getIntentsInIndexForMember
+    // with the bound network. Before the fix this branch sent the read down the
+    // global getActiveIntents path with the caller's userId — leaking caller's
+    // intents instead of returning the queried member's intents in the network.
+    expect(getIntentsInIndexForMemberCall).toMatchObject({ userId: otherUserId, networkId });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.count).toBe(1);
+    expect(parsed.data.intents[0]).toMatchObject({ id: "other-1", userId: otherUserId });
+  });
+
   test("without networkId, when userId arg is another user, returns error (no viewing other users' global intents)", async () => {
     const mockDb = createMockDatabase(async () => []);
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };

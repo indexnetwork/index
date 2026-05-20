@@ -103,10 +103,11 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // ── Choose the read mode ──
-      // 1. Explicit networkId (browse all members in that index) — pass networkId, no queryUserId.
-      // 2. Explicit userId (filter to one user, possibly the caller) — same plus queryUserId.
-      // 3. Implicit (no explicit network/user) in scoped chat — pass indexScope, no networkId.
-      // 4. Implicit in unscoped chat — global getActiveIntents (caller's own).
+      // 1. Explicit networkId (browse all members in that index) — pass networkId, optionally + queryUserId.
+      // 2. Explicit userId in a scoped chat — read that user's intents in the bound network.
+      // 3. Explicit userId in an unscoped chat — only self (cross-user rejected above); global "my intents".
+      // 4. Implicit (no explicit network/user) in scoped chat — pass indexScope, no networkId.
+      // 5. Implicit in unscoped chat — global getActiveIntents (caller's own).
       const graphInput: Record<string, unknown> = {
         userId: context.userId,
         userProfile: "",
@@ -116,8 +117,13 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (explicitNetworkId) {
         graphInput.networkId = explicitNetworkId;
         if (explicitUserId) graphInput.queryUserId = explicitUserId;
+      } else if (explicitUserId && context.networkId) {
+        // Scoped chat + userId: implicit network is the chat's bound network.
+        // Membership of the target user was verified above.
+        graphInput.networkId = context.networkId;
+        graphInput.queryUserId = explicitUserId;
       } else if (explicitUserId) {
-        // userId-only implies "my intents" (cross-user is rejected above)
+        // Unscoped chat + userId: only allowed for self (others rejected above).
         graphInput.queryUserId = explicitUserId;
         graphInput.allUserIntents = true;
       } else if (context.indexScope && context.indexScope.length > 0 && context.networkId) {
