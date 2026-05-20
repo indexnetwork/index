@@ -29,6 +29,7 @@ import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
+import { RateLimiterError } from './lib/limiter/error';
 import { log } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
@@ -380,6 +381,9 @@ Bun.serve({
             // a network they aren't bound to)
             if (error instanceof ScopeViolationError) {
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+            }
+            if (error instanceof RateLimiterError) {
+              return new Response(error.toBody(), error.toResponseInit(corsHeaders));
             }
             // Map common auth errors
             if (
