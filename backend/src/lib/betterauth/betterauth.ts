@@ -3,7 +3,6 @@ import { magicLink, bearer, jwt, mcp } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
 import { log } from "../log";
-import { getRedisClient } from "../../adapters/cache.adapter";
 import { resolveClassConfig } from "../limiter/config";
 
 const logger = log.server.from("betterauth");
@@ -26,6 +25,17 @@ export interface AuthDbContract {
 }
 
 /**
+ * Better Auth's `secondaryStorage` contract — a generic KV used by the
+ * library for rate-limit counters (when `rateLimit.storage` is set to
+ * `'secondary-storage'`) and for any other secondary-storage needs.
+ */
+export interface AuthSecondaryStorage {
+  get(key: string): Promise<string | null | undefined>;
+  set(key: string, value: string, ttl?: number): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+/**
  * Dependencies injected into the Better Auth factory.
  * Keeps this lib module free of direct adapter/infrastructure imports.
  */
@@ -33,6 +43,8 @@ export interface AuthDeps {
   authDb: AuthDbContract;
   getTrustedOrigins: (req?: Request) => Promise<string[]> | string[];
   sendMagicLinkEmail: (email: string, url: string) => Promise<void>;
+  /** Backing store for Better Auth's rate-limit counters. */
+  secondaryStorage: AuthSecondaryStorage;
 }
 
 /**
@@ -47,7 +59,7 @@ export interface AuthDeps {
  * as a dev-only fallback for email/password signups.
  */
 export function createAuth(deps: AuthDeps) {
-  const { authDb, getTrustedOrigins, sendMagicLinkEmail } = deps;
+  const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage } = deps;
 
   return betterAuth({
     baseURL: BASE_URL,
@@ -83,36 +95,13 @@ export function createAuth(deps: AuthDeps) {
     },
     basePath: "/api/auth",
     /**
-     * Shared Redis secondary storage — used by the rateLimit block below so
-     * Better Auth's auth-endpoint throttling shares the same Redis instance as
-     * the app-level rate limiter (keyspace prefix: 'better-auth:').
+     * Backing store for Better Auth's rate-limit counters. Injected via
+     * AuthDeps so this lib module stays free of direct adapter imports.
      *
      * Better Auth v1.6+ resolves `rateLimit.storage = 'secondary-storage'`
      * against this top-level object (Pattern B in the rate-limiter plan).
-     * The `set` value is always a JSON string when Better Auth writes rate-limit
-     * state; `get` must return a string (or null/undefined) — Better Auth
-     * JSON.parses it internally.
      */
-    secondaryStorage: {
-      get: async (key: string) => {
-        const redis = getRedisClient();
-        return redis.get(`better-auth:${key}`);
-      },
-      set: async (key: string, value: string, ttl?: number) => {
-        const redis = getRedisClient();
-        if (ttl != null && ttl > 0) {
-          await redis.setex(`better-auth:${key}`, ttl, value);
-        } else {
-          // Better Auth occasionally writes keys without a TTL; cap at 30 days
-          // to prevent unbounded Redis growth.
-          await redis.setex(`better-auth:${key}`, 60 * 60 * 24 * 30, value);
-        }
-      },
-      delete: async (key: string) => {
-        const redis = getRedisClient();
-        await redis.del(`better-auth:${key}`);
-      },
-    },
+    secondaryStorage,
     session: {
       /**
        * Keep sessions in Postgres even when secondaryStorage is configured.
