@@ -30,19 +30,23 @@ function injectMeta(meta: PageMeta, pathname: string): string {
 
 const port = parseInt(process.env.PORT || "4173", 10);
 
+function stripPreviewSurface(html: string): string {
+  return html
+    .replace(
+      /<meta\s+(?:property|name)="(?:og:[^"]+|twitter:[^"]+)"[^>]*>\s*/gi,
+      "",
+    )
+    .replace(/<meta\s+name="description"[^>]*>\s*/gi, "")
+    .replace(/<title>[^<]*<\/title>\s*/i, "<title></title>");
+}
+
 Bun.serve({
   port,
   hostname: "0.0.0.0",
   fetch(req) {
     const reqUrl = new URL(req.url);
     const pathname = reqUrl.pathname;
-
-    if (
-      reqUrl.searchParams.get("link_preview") === "false" &&
-      (req.headers.get("user-agent") ?? "").includes("TelegramBot")
-    ) {
-      return new Response("", { status: 403 });
-    }
+    const suppressPreview = reqUrl.searchParams.get("link_preview") === "false";
 
     const filePath = join(DIST, pathname);
     if (pathname !== "/" && existsSync(filePath) && statSync(filePath).isFile()) {
@@ -50,7 +54,8 @@ Bun.serve({
     }
 
     const meta = metaMap[pathname];
-    const html = meta ? injectMeta(meta, pathname) : template;
+    let html = meta ? injectMeta(meta, pathname) : template;
+    if (suppressPreview) html = stripPreviewSurface(html);
     return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   },
 });
