@@ -103,7 +103,9 @@ export function createAuth(deps: AuthDeps) {
         if (ttl != null && ttl > 0) {
           await redis.setex(`better-auth:${key}`, ttl, value);
         } else {
-          await redis.set(`better-auth:${key}`, value);
+          // Better Auth occasionally writes keys without a TTL; cap at 30 days
+          // to prevent unbounded Redis growth.
+          await redis.setex(`better-auth:${key}`, 60 * 60 * 24 * 30, value);
         }
       },
       delete: async (key: string) => {
