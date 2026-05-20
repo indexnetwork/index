@@ -116,11 +116,15 @@ export interface ToolContext {
   /** When set, chat is scoped to this index; tools use it as default for read_intents and create_intent. */
   networkId?: string;
   /**
-   * Optional override of the resolved `indexScope` for the tool wrapper. The
-   * MCP path computes this externally (network-scoped agent clamp) and passes
-   * it here so the chat-context resolver doesn't have to repeat the work.
-   * When omitted, the resolver computes scope from the user's memberships
-   * (see ResolvedToolContext.indexScope for the resolved-side semantics).
+   * Optional override of the resolved `indexScope`. `resolveChatContext` always
+   * computes `indexScope` from the user's memberships (clamped to [bound,
+   * personal] when `networkId` is set). When the caller has already computed
+   * a clamped scope — notably the MCP server, which clamps via
+   * `applyNetworkScopeToContext` for network-scoped agents — passing it on
+   * `ToolContext.indexScope` causes `createChatTools` (in tool.factory.ts) to
+   * override `resolvedContext.indexScope` with this value rather than the
+   * freshly computed one. See ResolvedToolContext.indexScope for the
+   * resolved-side semantics.
    */
   indexScope?: string[];
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
