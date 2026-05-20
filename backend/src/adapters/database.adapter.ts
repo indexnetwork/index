@@ -701,6 +701,35 @@ export class IntentDatabaseAdapter {
       relevancyScore: r.relevancyScore != null ? Number(r.relevancyScore) : null,
     }));
   }
+
+  async getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]) {
+    try {
+      if (indexIds.length === 0) return [];
+
+      const rows = await db
+        .selectDistinctOn([schema.intents.id], {
+          id: schema.intents.id,
+          payload: schema.intents.payload,
+          summary: schema.intents.summary,
+          createdAt: schema.intents.createdAt,
+        })
+        .from(schema.intents)
+        .innerJoin(schema.intentNetworks, eq(schema.intentNetworks.intentId, schema.intents.id))
+        .where(
+          and(
+            eq(schema.intents.userId, userId),
+            isNull(schema.intents.archivedAt),
+            inArray(schema.intentNetworks.networkId, indexIds),
+          ),
+        )
+        .orderBy(schema.intents.id, desc(schema.intents.createdAt));
+
+      return rows;
+    } catch (error: unknown) {
+      logger.error('IntentDatabaseAdapter.getActiveIntentsAcrossIndexes error', { error: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2020,6 +2049,35 @@ export class ChatDatabaseAdapter {
       userName: r.userName,
       createdAt: r.createdAt,
     }));
+  }
+
+  async getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]) {
+    try {
+      if (indexIds.length === 0) return [];
+
+      const rows = await db
+        .selectDistinctOn([intents.id], {
+          id: intents.id,
+          payload: intents.payload,
+          summary: intents.summary,
+          createdAt: intents.createdAt,
+        })
+        .from(intents)
+        .innerJoin(intentNetworks, eq(intentNetworks.intentId, intents.id))
+        .where(
+          and(
+            eq(intents.userId, userId),
+            isNull(intents.archivedAt),
+            inArray(intentNetworks.networkId, indexIds),
+          ),
+        )
+        .orderBy(intents.id, desc(intents.createdAt));
+
+      return rows;
+    } catch (error: unknown) {
+      logger.error('ChatDatabaseAdapter.getActiveIntentsAcrossIndexes error', { error: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
   }
 
   async updateIndexSettings(
@@ -5713,6 +5771,17 @@ export function createSystemDatabase(
     getUserIntentsInIndex: async (userId: string, networkId: string) => {
       verifyScope(networkId);
       return db.getIntentsInIndexForMember(userId, networkId);
+    },
+    getActiveIntentsAcrossIndexes: async (userId: string, indexIds: string[]) => {
+      // Caller-only semantic: the method returns the *caller's own* intents.
+      // Reject cross-user lookups at the systemDb boundary as defense-in-depth,
+      // even though the tool layer always passes context.userId today.
+      if (userId !== authUserId) {
+        throw new Error('Access denied: getActiveIntentsAcrossIndexes is caller-only');
+      }
+      // Filter to only IDs within scope before delegating.
+      const scopedIds = indexIds.filter((id) => indexScope.includes(id));
+      return db.getActiveIntentsAcrossIndexes(userId, scopedIds);
     },
     /**
      * Retrieves an intent by ID without scope check.

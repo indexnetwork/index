@@ -220,6 +220,14 @@ export const applyNetworkScopeToContext = (
   if (context.networkId) return;
 
   context.networkId = networkScopeId;
+  // Clamp indexScope to [boundNetwork, personalIndex] BEFORE the membership
+  // check below. If the bound network is not in userNetworks (defensive case),
+  // the filter still produces a safe scope (personal index only) rather than
+  // leaving the unclamped scope set by resolveChatContext.
+  context.indexScope = context.userNetworks
+    .filter((m) => m.networkId === networkScopeId || m.isPersonal === true)
+    .map((m) => m.networkId);
+
   const bound = context.userNetworks.find((m) => m.networkId === networkScopeId);
   if (!bound) return;
 
@@ -381,8 +389,9 @@ export function createMcpServer(
           // personal index — they cannot reach other networks even when the user is
           // a member of them. The personal-index reachability is preserved so the
           // agent can still manage its owner's profile and contacts.
-          const indexScope = computeAgentIndexScope(context.userNetworks, networkScopeId ?? null);
-          const scopedDbs = scopedDepsFactory.create(userId, indexScope);
+          // context.indexScope is now the single source of truth: set by
+          // resolveChatContext (full set) and narrowed by applyNetworkScopeToContext.
+          const scopedDbs = scopedDepsFactory.create(userId, context.indexScope);
 
           // Override deps with per-request scoped databases
           const requestDeps: ToolDeps = { ...deps, ...scopedDbs };

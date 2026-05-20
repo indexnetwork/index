@@ -206,6 +206,9 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         // Own memberships - use userDb
         memberships = await userDb.getNetworkMemberships();
 
+        // NOTE: context.networkId here is the *focus* of the scoped chat — it filters
+        // what we show, not what we can reach. indexScope is the reach; the bound
+        // network is one element of it. See IND-306 for the equivalent in read_intents.
         // Strict scope enforcement: when chat is index-scoped, only return the scoped index membership
         if (context.networkId && !networkId) {
           memberships = memberships.filter((m) => m.networkId === context.networkId);

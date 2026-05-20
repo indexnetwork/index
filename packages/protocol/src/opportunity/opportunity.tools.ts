@@ -424,7 +424,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       networkId: z
         .string()
         .optional()
-        .describe("Index UUID to scope discovery to a specific community. Get from read_networks. Defaults to the scoped index in index-scoped chats. Pass the personal index ID (from read_networks, isPersonal=true) to scope to the user's contacts only."),
+        .describe("Index UUID to scope discovery to a specific community. Get from read_networks. In an index-scoped chat, omitting this runs discovery across the full reachable scope (the bound community plus the user's personal index); pass an explicit networkId to force single-index discovery. Pass the personal index ID (from read_networks, isPersonal=true) to scope to the user's contacts only."),
       intentId: z
         .string()
         .optional()
@@ -501,8 +501,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
-      const effectiveIndexId =
-        (context.networkId || query.networkId?.trim()) ?? undefined;
+      // Distinguish an explicit `query.networkId` override (caller wants discovery
+      // scoped to one specific index) from an implicit scoped-chat context
+      // (caller is in a scoped chat with no explicit override — discovery should
+      // span the chat's reach, i.e. context.indexScope = [bound, personal]).
+      // Conflating them via `context.networkId || query.networkId` made the
+      // implicit branch unreachable.
+      const explicitIndexId = query.networkId?.trim() || undefined;
+      const effectiveIndexId = explicitIndexId;
 
       // ── Continuation mode ──
       // `continueFrom` is a pagination token for resuming a prior discovery's
@@ -829,8 +835,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         }
         indexScope = [effectiveIndexId];
       } else if (context.networkId) {
-        // When scoped but no explicit networkId, use the scoped index
-        indexScope = [context.networkId];
+        // Scoped chat: use the agent's full reach so personal-index
+        // signals participate in opportunity discovery. See IND-306.
+        indexScope = context.indexScope.length > 0
+          ? [...context.indexScope]
+          : [context.networkId];
       } else {
         // No scope - use all indexes (only in unscoped chat)
         const _scopeGraphStart = Date.now();
