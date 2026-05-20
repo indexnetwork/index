@@ -144,7 +144,7 @@ class NetworkInvitationService {
     };
   }
 
-  private async findScopedAgentId(userId: string, networkId: string): Promise<string | null> {
+  async findScopedAgentId(userId: string, networkId: string): Promise<string | null> {
     const [row] = await db
       .select({ agentId: schema.agentPermissions.agentId })
       .from(schema.agentPermissions)
