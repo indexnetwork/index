@@ -89,7 +89,13 @@ export function RateLimit(cls: LimiterClass): Guard {
     if (id.kind === 'ip' && isPrivateOrLoopback(id.value)) return null;
 
     const { perMinute, windowSec } = resolveClassConfig(cls);
-    const key = `limiter:${cls}:${id.kind}:${id.value}`;
+    // Hash the user UUID so the raw identity isn't written into the Redis
+    // keyspace (defense-in-depth — operators inspecting Redis won't see user
+    // IDs). `apikey` and `cookie` values are already SHA-256 truncated by
+    // resolveIdentifier; `ip` and the `unresolved`/`unknown` sentinels are
+    // operator-relevant and kept readable.
+    const bucketValue = id.kind === 'user' ? await sha256Truncated(id.value) : id.value;
+    const key = `limiter:${cls}:${id.kind}:${bucketValue}`;
 
     let result;
     try {
@@ -106,14 +112,10 @@ export function RateLimit(cls: LimiterClass): Guard {
     infoByRequest.set(req, { limit: result.limit, remaining, resetAt: result.resetAt });
 
     if (!result.allowed) {
-      // For `apikey`/`cookie` the value is already a 16-char SHA-256 prefix.
-      // For `user` it's a UUID — hash to avoid leaking user identity in logs.
-      // For `ip` we keep the IP for operator correlation.
-      const keyHash = id.kind === 'user' ? await sha256Truncated(id.value) : id.value;
       logger.warn('rate_limited', {
         cls,
         identifier_kind: id.kind,
-        key_hash: keyHash,
+        key_hash: bucketValue,   // already-hashed for user; raw for apikey/cookie/ip per the comment above
         count: result.count,
         limit: result.limit,
       });
