@@ -44,7 +44,7 @@ For the batteries-included OpenClaw experience (workspace, installer, cron jobs,
 
 ### Index Network
 
-The `index-network` skill requires an Index Network MCP server connection. On Claude Code and Codex, the plugin manifest declares the MCP endpoint automatically. You need an API key — obtain one at [edgecity.live/agentvillage](https://edgecity.live/agentvillage) or from your community admin.
+The `index-network` skill requires an Index Network MCP server connection. On Claude Code and Codex, the plugin manifest declares the MCP endpoint automatically. On OpenClaw, use the full [EdgeClaw](https://github.com/Edge-City/edgeclaw) package — its installer registers `mcp.servers.index` for you. You need an API key — obtain one at [edgecity.live/agentvillage](https://edgecity.live/agentvillage) or from your community admin.
 
 ### EdgeOS
 
