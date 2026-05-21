@@ -24,9 +24,9 @@ You need two tokens, both passed as `Authorization: Bearer <token>` (never as th
 - **`$EDGEOS_BEARER_TOKEN`** — human session JWT. Required for: `/humans/me`, `/applications/my/directory/{popup_id}`, `/api-keys`, `/openapi.json`. Scopes: `portal:self_read`, `portal:directory_read`, `portal:api_keys_manage`.
 - **`$EDGEOS_API_KEY`** — long-lived `eos_live_...` automation key. Required for events, RSVPs, venues. Gated by EdgeOS to event-automation routes only.
 
-If either env var is missing, **stop and ask the user to follow the operator skill's onboarding flow**. For Edge Esmeralda 2026, the `edge-esmeralda` skill carries the onboarding URL. Say something like:
+If `$EDGEOS_BEARER_TOKEN` is missing, **stop and ask the user to follow the active operator skill's onboarding flow** before doing anything — every route this skill exposes needs at least the bearer. If only `$EDGEOS_API_KEY` is missing, you can still serve directory lookups, the user's own profile, the OpenAPI spec, and minting a fresh key (§10) — but events, RSVPs, and venue writes will return `401` until the user mints one via the same onboarding flow. Say something like:
 
-> To talk to EdgeOS I need `$EDGEOS_BEARER_TOKEN` and `$EDGEOS_API_KEY` in your environment. The active operator skill (e.g. `edge-esmeralda`) explains how to obtain them. Once you have them, set them in your host's env config and try again.
+> To talk to EdgeOS I need `$EDGEOS_BEARER_TOKEN` and `$EDGEOS_API_KEY` in your environment. The active operator skill (the popup-specific skill loaded alongside this one — `edge-esmeralda` for Edge Esmeralda 2026) explains how to obtain them. Once you have them, set them in your host's env config and try again.
 
 Do not attempt to drive OTP from chat — that flow lives on the operator's onboarding page, not in this skill.
 
@@ -34,7 +34,7 @@ Do not attempt to drive OTP from chat — that flow lives on the operator's onbo
 
 ## 2. Conventions
 
-- List endpoints return `{ results: T[], paging }`. Single-resource endpoints return the resource directly.
+- List endpoints return a `results: T[]` array plus a paging object whose key name varies by endpoint (`paging` for events, `pagination` for the directory). Single-resource endpoints return the resource directly. When in doubt, consult the response shape documented in the relevant section, or the OpenAPI spec via §11.
 - Times are ISO-8601 with timezone. UUIDs are RFC-4122.
 - Recurring events expand into virtual occurrences when `start_after` is set. When RSVPing to one instance of a recurring event, pass that occurrence's `start_time` as `occurrence_start`.
 - Error codes: `401` missing/expired token · `403` token lacks the required scope · `404` not visible to caller · `409` resource has dependents · `422` validation · `429` rate limit (see `Retry-After`).
@@ -52,13 +52,13 @@ curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
 **List events in a date range:**
 ```bash
 curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
-  "https://api.edgeos.world/api/v1/events/portal/events?start_after=2026-05-30T00:00:00Z&start_before=2026-06-27T23:59:59Z&limit=100"
+  "https://api.edgeos.world/api/v1/events/portal/events?start_after={start_iso}&start_before={end_iso}&limit=100"
 ```
 
 **Search events by title:**
 ```bash
 curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
-  "https://api.edgeos.world/api/v1/events/portal/events?search=KEYWORD&start_after=2026-05-30T00:00:00Z&limit=50"
+  "https://api.edgeos.world/api/v1/events/portal/events?search=KEYWORD&start_after={start_iso}&limit=50"
 ```
 
 **Filter by tag, kind, venue, or track:**
@@ -79,7 +79,7 @@ curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
   "https://api.edgeos.world/api/v1/events/portal/events/{event_id}"
 ```
 
-For a recurring event, scope the RSVP lookup to one instance with `?occurrence_start=2026-06-15T17:00:00Z`.
+For a recurring event, scope the RSVP lookup to one instance with `?occurrence_start={occurrence_iso}`.
 
 **Pagination:** use `skip` and `limit` (max `100`). Stop when `results.length < limit`.
 
@@ -90,7 +90,7 @@ For a recurring event, scope the RSVP lookup to one instance with `?occurrence_s
 curl -s -X PATCH -H "Authorization: Bearer $EDGEOS_API_KEY" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/events/portal/events/{event_id}" \
-  -d '{"title":"Updated title","start_time":"2026-06-15T17:00:00Z","end_time":"2026-06-15T18:00:00Z","timezone":"America/Los_Angeles","tags":["AI"]}'
+  -d '{"title":"Updated title","start_time":"{start_iso}","end_time":"{end_iso}","timezone":"{timezone}","tags":["AI"]}'
 ```
 
 Patchable fields: `title`, `content`, `start_time`, `end_time`, `timezone`, `venue_id`, `custom_location_name`, `custom_location_url`, `cover_url`, `meeting_url`, `max_participant`, `tags`, `track_id`, `visibility` (`public` | `private` | `unlisted`), `status`, `host_display_name`.
@@ -140,7 +140,7 @@ curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
 curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/event-participants/portal/register/{event_id}" \
-  -d '{"occurrence_start":"2026-06-15T17:00:00Z"}'
+  -d '{"occurrence_start":"{occurrence_iso}"}'
 ```
 
 **Cancel a previous RSVP:**
