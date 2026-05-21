@@ -10,6 +10,7 @@
   "repository": "https://github.com/Edge-City/edgeclaw-skills",
   "license": "MIT",
   "keywords": ["edge-city", "edge-esmeralda", "popup-village", "community", "discovery"],
+  "skills": "./",
   "mcpServers": "./mcp.json",
   "interface": {
     "displayName": "EdgeClaw Skills",
