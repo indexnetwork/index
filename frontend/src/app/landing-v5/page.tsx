@@ -155,7 +155,7 @@ type SurfaceTab = {
   kind: string;
   label: string;
   blurb: string;
-  steps: { num: string; title: string; cmd?: string | string[]; soon?: boolean }[];
+  steps: { num?: string; title?: string; cmd?: string | string[]; soon?: boolean }[];
   docs?: { href: string; label: string };
   cta?: { href: string; label: string };
 };
@@ -213,18 +213,8 @@ const SURFACE_TABS: SurfaceTab[] = [
     blurb: "Plug the MCP server into Claude, Cursor, or any host. Your agent speaks the protocol natively.",
     steps: [
       {
-        num: "1",
-        title: "add to mcp config",
-        cmd: [
-          "{",
-          "  \"mcpServers\": {",
-          "    \"index\": {",
-          "      \"type\": \"http\",",
-          "      \"url\": \"https://protocol.index.network/mcp\"",
-          "    }",
-          "  }",
-          "}",
-        ],
+        title: "server url",
+        cmd: "https://protocol.index.network/mcp",
       },
     ],
   },
@@ -286,25 +276,28 @@ function Hero() {
                 {active.steps.map((s) => {
                   const key = `${active.id}-${s.num}`;
                   const lines = Array.isArray(s.cmd) ? s.cmd : s.cmd ? [s.cmd] : [];
+                  const showNum = active.steps.length > 1;
                   return (
                     <div className="hero-cli-step" key={key}>
-                      <div className="hero-cli-head">
-                        <span className="hero-cli-title">
-                          {s.num}. {s.title}
-                          {s.soon ? (
-                            <span className="hero-cli-soon">soon</span>
-                          ) : null}
-                        </span>
-                        {s.soon ? null : (
-                          <button
-                            type="button"
-                            className="hero-cli-copy"
-                            onClick={() => copy(key, lines.join("\n"))}
-                          >
-                            {copied === key ? "copied" : "copy"}
-                          </button>
-                        )}
-                      </div>
+                      {s.title ? (
+                        <div className="hero-cli-head">
+                          <span className="hero-cli-title">
+                            {showNum ? `${s.num}. ` : ""}{s.title}
+                            {s.soon ? (
+                              <span className="hero-cli-soon">soon</span>
+                            ) : null}
+                          </span>
+                          {s.soon ? null : (
+                            <button
+                              type="button"
+                              className="hero-cli-copy"
+                              onClick={() => copy(key, lines.join("\n"))}
+                            >
+                              {copied === key ? "copied" : "copy"}
+                            </button>
+                          )}
+                        </div>
+                      ) : null}
                       {s.soon ? null : (
                         <div className="hero-cli-box">
                           {lines.map((line, i) => (
@@ -482,6 +475,22 @@ function formatPostDate(iso: string) {
     .toUpperCase();
 }
 
+type ExternalEntry = {
+  kind: "external";
+  href: string;
+  date: string;
+  title: string;
+};
+
+const EXTERNAL_ENTRIES: ExternalEntry[] = [
+  {
+    kind: "external",
+    href: "/found-in-translation",
+    date: "2026-04-01",
+    title: "Found in Translation",
+  },
+];
+
 function LatestPosts() {
   const [posts, setPosts] = useState<BlogPost[] | null>(null);
 
@@ -489,7 +498,7 @@ function LatestPosts() {
     let cancelled = false;
     getAllPosts()
       .then((all) => {
-        if (!cancelled) setPosts(all.slice(0, 3));
+        if (!cancelled) setPosts(all);
       })
       .catch(() => {
         if (!cancelled) setPosts([]);
@@ -498,6 +507,16 @@ function LatestPosts() {
       cancelled = true;
     };
   }, []);
+
+  const entries =
+    posts === null
+      ? null
+      : [...posts, ...EXTERNAL_ENTRIES]
+          .sort(
+            (a, b) =>
+              new Date(b.date).getTime() - new Date(a.date).getTime(),
+          )
+          .slice(0, 3);
 
   return (
     <section className="how blog">
@@ -510,28 +529,42 @@ function LatestPosts() {
         </div>
 
         <div className="log">
-          {posts === null ? (
+          {entries === null ? (
             <div className="comment">
               <span className="hash">#</span>loading…
             </div>
-          ) : posts.length === 0 ? (
+          ) : entries.length === 0 ? (
             <div className="comment">
               <span className="hash">#</span>no posts yet.
             </div>
           ) : (
-            posts.map((p) => (
-              <Link
-                className="blog-row"
-                to={`/blog/${p.slug}`}
-                key={p.slug}
-                aria-label={p.title}
-              >
-                <span className="blog-date">{formatPostDate(p.date)}</span>
-                <span className="blog-title">{p.title}</span>
-                <span className="spacer" aria-hidden="true" />
-                <span className="blog-arrow">→</span>
-              </Link>
-            ))
+            entries.map((entry) =>
+              "kind" in entry ? (
+                <Link
+                  className="blog-row"
+                  to={entry.href}
+                  key={`ext:${entry.href}`}
+                  aria-label={entry.title}
+                >
+                  <span className="blog-date">{formatPostDate(entry.date)}</span>
+                  <span className="blog-title">{entry.title}</span>
+                  <span className="spacer" aria-hidden="true" />
+                  <span className="blog-arrow">→</span>
+                </Link>
+              ) : (
+                <Link
+                  className="blog-row"
+                  to={`/blog/${entry.slug}`}
+                  key={entry.slug}
+                  aria-label={entry.title}
+                >
+                  <span className="blog-date">{formatPostDate(entry.date)}</span>
+                  <span className="blog-title">{entry.title}</span>
+                  <span className="spacer" aria-hidden="true" />
+                  <span className="blog-arrow">→</span>
+                </Link>
+              ),
+            )
           )}
         </div>
 
