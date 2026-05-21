@@ -136,7 +136,7 @@ function SendTestMessageDialog({
     setSending(true);
     try {
       await agentsService.sendTestMessage(agentId, content.trim());
-      success("Sent — should arrive in your OpenClaw gateway within ~30s");
+      success("Sent — should arrive in your agent within ~30s");
       onOpenChange(false);
     } catch (err) {
       error(
@@ -221,7 +221,7 @@ function NotificationsSection({
           <span>
             <span className="block text-sm font-medium text-gray-900">Notify me about new opportunities</span>
             <span className="block text-xs text-gray-400 mt-0.5">
-              Only applies when your agent is polling via OpenClaw.
+              Only applies when your personal agent is polling.
             </span>
           </span>
         </label>
@@ -237,7 +237,7 @@ function NotificationsSection({
           <span>
             <span className="block text-sm font-medium text-gray-900">Send a daily summary</span>
             <span className="block text-xs text-gray-400 mt-0.5">
-              Once per 24 hours, through the same OpenClaw channel.
+              Once per 24 hours, through the same channel.
             </span>
           </span>
         </label>
@@ -256,7 +256,7 @@ function NotificationsSection({
               <AlphaBadge />
             </span>
             <span className="block text-xs text-gray-400 mt-0.5">
-              Experimental — your personal agent will respond to negotiation turns through the OpenClaw pickup loop.
+              Experimental — your personal agent will respond to negotiation turns through the pickup loop.
             </span>
           </span>
         </label>
@@ -576,10 +576,8 @@ function WizardRow({
   );
 }
 
-// MIRROR: This grid previews the OpenClaw setup wizard prompts for users
-// who can't run an LLM-driven setup. Keep it in sync with `runSetup` in
-// `packages/openclaw-plugin/src/setup/setup.cli.ts` — any prompt added,
-// renamed, or removed there must be reflected here (and vice versa).
+// This grid previews the agent setup wizard prompts for users
+// who can't run an LLM-driven setup.
 function WizardPromptGrid({
   serverUrl,
   apiKey,

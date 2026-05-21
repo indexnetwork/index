@@ -31,7 +31,6 @@
     "Bump frontend/package.json version for changes under frontend/",
     "Bump packages/protocol/package.json version for changes under packages/protocol/",
     "Bump packages/cli/package.json version for changes under packages/cli/",
-    "Bump packages/openclaw-plugin/package.json AND packages/openclaw-plugin/openclaw.plugin.json version for changes under packages/openclaw-plugin/ (both files must match)",
     "Bump packages/claude-plugin/package.json version for changes under packages/claude-plugin/"
   ],
   "directives": {
