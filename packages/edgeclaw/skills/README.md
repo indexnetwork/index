@@ -17,26 +17,19 @@ The skills cross-reference each other. `edge-esmeralda` supplies the popup id th
 ### Claude Code
 
 ```bash
-claude plugin install edgeclaw
-```
-
-Or from GitHub directly:
-
-```bash
-claude plugin install --from github Edge-City/edgeclaw-skills
-```
-
-### Codex
-
-```bash
-codex plugin install Edge-City/edgeclaw-skills
+claude plugin marketplace add Edge-City/edgeclaw-skills
+claude plugin install edgeclaw@edgeclaw-skills
 ```
 
 ### OpenClaw
 
 ```bash
-openclaw plugins install Edge-City/edgeclaw-skills
+openclaw plugins install edgeclaw --marketplace Edge-City/edgeclaw-skills
 ```
+
+### Codex
+
+Not yet supported. Codex requires plugins in a `plugins/<name>/` subdirectory layout, which this repo doesn't use.
 
 For the batteries-included OpenClaw experience (workspace, installer, cron jobs, onboarding), use the full [EdgeClaw](https://github.com/Edge-City/edgeclaw) package instead.
 
@@ -44,7 +37,14 @@ For the batteries-included OpenClaw experience (workspace, installer, cron jobs,
 
 ### Index Network
 
-The `index-network` skill requires an Index Network MCP server connection. On Claude Code and Codex, the plugin manifest declares the MCP endpoint automatically. On OpenClaw, use the full [EdgeClaw](https://github.com/Edge-City/edgeclaw) package — its installer registers `mcp.servers.index` for you. You need an API key — obtain one at [edgecity.live/agentvillage](https://edgecity.live/agentvillage) or from your community admin.
+The `index-network` skill requires an Index Network MCP server connection. On Claude Code, the plugin manifest declares the MCP endpoint automatically and prompts for the API key on install. On OpenClaw, register the MCP server manually after installing the plugin:
+
+```bash
+openclaw config set mcp.servers.index '{"url":"https://protocol.index.network/mcp","transport":"streamable-http","headers":{"x-api-key":"YOUR_API_KEY"}}'
+openclaw gateway restart
+```
+
+Obtain your API key at [edgecity.live/agentvillage](https://edgecity.live/agentvillage) or from your community admin.
 
 ### EdgeOS
 
