@@ -102,5 +102,4 @@ Mechanical find-and-replace across ~38 files. No logic, behavior, schema, or que
 - packages/protocol/package.json
 - packages/cli/package.json
 - packages/claude-plugin/package.json
-- packages/openclaw-plugin/package.json AND packages/openclaw-plugin/openclaw.plugin.json (both must match)
 - frontend/package.json
