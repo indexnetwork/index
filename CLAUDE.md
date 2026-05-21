@@ -97,24 +97,6 @@ The following packages are git subtrees tracked to external repos. **Syncing is 
 
 > **Exception — edgeclaw.** `packages/edgeclaw/` mirrors the `indexnetwork/edgeclaw` GitHub fork of `Edge-City/edgeclaw`. The monorepo force-pushes to the fork; merges into the upstream `Edge-City/edgeclaw` happen by PR from the fork. See the `packages/edgeclaw/` section below for the full flow.
 
-#### packages/openclaw-plugin/ → indexnetwork/openclaw-plugin
-
-The `@indexnetwork/openclaw-plugin` package — an OpenClaw plugin that (a) registers the Index Network MCP server via a bootstrap skill, (b) runs a background poller that pulls pending negotiation turns from `POST /agents/:id/negotiations/pickup` and dispatches silent subagents via `api.runtime.subagent.run` to respond via `POST /agents/:id/negotiations/:negotiationId/respond`, and (c) polls for pending opportunities (ambient discovery, daily digest, test messages) and accepted-opportunity notifications, dispatching them to the user's main OpenClaw agent via the gateway's `POST /hooks/agent` endpoint with `deliver: true, channel: "last"` — the gateway then routes the agent's reply to whichever channel the user last chatted on. The setup wizard bootstraps the OpenClaw `hooks` subsystem (`hooks.enabled`, `hooks.token`, `hooks.path`) on first run; the dispatch path requires it. Behavioral guidance for the negotiation subagent lives in the MCP server's `MCP_INSTRUCTIONS`, not in the plugin. The `skills/index-network/SKILL.md` shipped inside the package is generated from `packages/protocol/skills/openclaw/SKILL.md.template` by `scripts/build-skills.ts` — edit the template, re-run the build, then commit both the template and the materialized output.
-
-**Version fields (bump BOTH on every release):**
-- `package.json` → `version` (npm / workspace-facing)
-- `openclaw.plugin.json` → `version` (**this is what `openclaw plugins list` reports**)
-
-The OpenClaw CLI reads the plugin's installed version from `openclaw.plugin.json`, not `package.json`. If only `package.json` is bumped, `openclaw plugins install` succeeds but `openclaw plugins list` keeps showing the old number and the install looks like a no-op — a silent foot-gun. Keep the two numbers identical.
-
-```bash
-# Manual push if the hook failed (use dev or main)
-git subtree push --prefix=packages/openclaw-plugin https://github.com/indexnetwork/openclaw-plugin.git <branch>
-
-# Pull if external repo was edited directly (avoid — always edit via this repo)
-git subtree pull --squash --prefix=packages/openclaw-plugin https://github.com/indexnetwork/openclaw-plugin.git <branch>
-```
-
 #### packages/protocol/ → indexnetwork/protocol
 
 The `@indexnetwork/protocol` npm package (agent graphs, interfaces, tools). Two-way: edit here or in the external repo.
@@ -199,7 +181,6 @@ index/
 ├── packages/
 │   ├── protocol/        # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
 │   ├── cli/             # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
-│   ├── openclaw-plugin/ # @indexnetwork/openclaw-plugin — bootstrap + negotiation poller, subtree → indexnetwork/openclaw-plugin
 │   └── claude-plugin/   # @indexnetwork/claude-plugin — index-orchestrator and index-negotiator skills, subtree → indexnetwork/claude-plugin
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
@@ -459,7 +440,6 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
    - `docs/guides/` — if dev workflow or environment setup changed
 2. Delete any related superpowers plans/specs from `docs/superpowers/plans/` and `docs/superpowers/specs/`
 3. **Bump package versions** for every package touched by the branch, following [Semantic Versioning 2.0.0](https://semver.org/). Do this before merging or pushing — never skip it.
-   - **`packages/openclaw-plugin/`**: bump **both** `package.json` AND `openclaw.plugin.json` to the same version. The CLI reads `openclaw.plugin.json`; mismatched versions silently look like a no-op install.
    - **`packages/cli/`** and **`packages/protocol/`**: bump `package.json` version.
 4. Merge into dev: `git checkout dev && git merge <branch-name>`
 5. Push both remotes: `git push upstream dev && git push origin dev`

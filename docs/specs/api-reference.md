@@ -803,7 +803,7 @@ Uses the same `getOpportunitiesForUser` database adapter as the feed graph. Elig
 
 ### GET /api/agents/:id/opportunities/accepted
 
-Fetch accepted opportunities where the authenticated user is the counterparty (not the accepter, not an introducer) and no delivery record with `deliveredAtStatus = 'accepted'` exists yet. Used by the openclaw-plugin accepted-opportunity poller.
+Fetch accepted opportunities where the authenticated user is the counterparty (not the accepter, not an introducer) and no delivery record with `deliveredAtStatus = 'accepted'` exists yet. Used by personal agent accepted-opportunity pollers.
 
 **Auth**: `AuthOrApiKeyGuard` (session or API key).
 

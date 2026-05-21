@@ -71,7 +71,6 @@ index/
 ├── packages/
 │   ├── protocol/        # @indexnetwork/protocol NPM package (graphs, agents, tools)
 │   ├── cli/             # @indexnetwork/cli — CLI client, Bun, TypeScript
-│   └── openclaw-plugin/ # indexnetwork-openclaw-plugin (bootstrap + negotiation poller)
 ├── docs/                # Project documentation (design, domain, specs, guides)
 ├── scripts/             # Worktree helpers, hooks, dev launcher
 ├── package.json         # Root workspace config

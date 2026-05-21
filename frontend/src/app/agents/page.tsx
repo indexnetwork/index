@@ -10,12 +10,7 @@ import { Input } from '@/components/ui/input';
 import { useAgents } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import {
-  buildMcpConfigs,
-  OPENCLAW_INSTALL_CMD,
-  OPENCLAW_SETUP_CMD,
-  OPENCLAW_UPDATE_CMD,
-} from '@/lib/mcp-config';
+import { buildMcpConfigs } from '@/lib/mcp-config';
 import type { Agent, AgentTokenInfo } from '@/services/agents';
 
 function formatDate(dateStr: string | null): string {
@@ -195,42 +190,6 @@ function WizardPromptGrid({
   );
 }
 
-function OpenClawSetup({
-  install,
-  update,
-  setup,
-}: {
-  install: string;
-  update: string;
-  setup: string;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-3 items-start">
-        <div className="flex flex-col items-center pt-1 shrink-0">
-          <div className="w-2 h-2 rounded-full bg-gray-300" />
-          <div className="w-px h-4 bg-gray-200 my-1" />
-          <div className="w-2 h-2 rounded-full bg-gray-300" />
-        </div>
-        <div className="flex-1 space-y-2">
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Install (first time)</p>
-            <ClickableCodeBlock code={install} />
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Update (if already installed)</p>
-            <ClickableCodeBlock code={update} />
-          </div>
-        </div>
-      </div>
-      <div>
-        <p className="text-xs text-gray-500 mb-1">Run setup wizard</p>
-        <ClickableCodeBlock code={setup} />
-      </div>
-    </div>
-  );
-}
-
 function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
   const keyValue = apiKey || 'YOUR_API_KEY';
   const agentValue = agentId || 'YOUR_AGENT_ID';
@@ -247,15 +206,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Hermes Agent</p>
         <ClickableCodeBlock code={hermesConfig} />
       </div>
-      <div className="space-y-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-        <OpenClawSetup
-          install={OPENCLAW_INSTALL_CMD}
-          update={OPENCLAW_UPDATE_CMD}
-          setup={OPENCLAW_SETUP_CMD}
-        />
-        <WizardPromptGrid serverUrl={baseUrl} agentId={agentValue} apiKey={keyValue} />
-      </div>
+      <WizardPromptGrid serverUrl={baseUrl} agentId={agentValue} apiKey={keyValue} />
     </div>
   );
 }

@@ -2,8 +2,7 @@
 name: Release Manager
 description: >
   Promotes dev to main. Audits version bumps across all touched packages,
-  validates openclaw-plugin dual-version consistency, drafts a changelog from
-  merged PRs, and opens a release PR from dev into main.
+  drafts a changelog from merged PRs, and opens a release PR from dev into main.
 permissions:
   contents: read
   pull-requests: write
@@ -49,7 +48,6 @@ its version was bumped. A package is "touched" if `git diff LAST_RELEASE..HEAD
 
 | Package | Prefix | Version file(s) |
 |---|---|---|
-| `@indexnetwork/openclaw-plugin` | `packages/openclaw-plugin/` | `package.json` **and** `openclaw.plugin.json` |
 | `@indexnetwork/protocol` | `packages/protocol/` | `package.json` |
 | `@indexnetwork/cli` | `packages/cli/` | `package.json` |
 | `@indexnetwork/claude-plugin` | `packages/claude-plugin/` | `package.json` |
@@ -57,11 +55,6 @@ its version was bumped. A package is "touched" if `git diff LAST_RELEASE..HEAD
 Read the version fields:
 
 ```bash
-# openclaw-plugin — must match in both files
-cat packages/openclaw-plugin/package.json | jq -r '.version'
-cat packages/openclaw-plugin/openclaw.plugin.json | jq -r '.version'
-
-# protocol, cli, claude-plugin
 cat packages/protocol/package.json | jq -r '.version'
 cat packages/cli/package.json | jq -r '.version'
 cat packages/claude-plugin/package.json | jq -r '.version'
@@ -70,9 +63,6 @@ cat packages/claude-plugin/package.json | jq -r '.version'
 **Blocking conditions — do NOT open the PR if any of these are true:**
 
 1. A touched package has the same version as at `LAST_RELEASE`.
-2. `packages/openclaw-plugin/package.json` version ≠ `openclaw.plugin.json`
-   version. The OpenClaw CLI reads `openclaw.plugin.json`; a mismatch makes
-   `openclaw plugins install` silently look like a no-op.
 
 If a blocking condition is found, **stop** and post a comment on the triggering
 PR (or open a GitHub Issue if there is no triggering PR) listing exactly which
@@ -133,7 +123,6 @@ gh pr create \
 ---
 
 **Package versions in this release:**
-- `@indexnetwork/openclaw-plugin` — <version> (package.json + openclaw.plugin.json)
 - `@indexnetwork/protocol` — <version>
 - `@indexnetwork/cli` — <version>
 - `@indexnetwork/claude-plugin` — <version>
