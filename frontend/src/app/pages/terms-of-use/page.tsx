@@ -1,164 +1,247 @@
-import ClientLayout from "@/components/ClientLayout";
-import Footer from "@/components/Footer";
+import { useEffect, type ReactNode } from "react";
+import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
+import Footer from "@/app/landing-v5/Footer";
+import "@/app/landing-v5/landing-v5.css";
+import "@/app/pages/privacy-policy/legal-v5.css";
+
+type Section = {
+  id: string;
+  title: string;
+  body: ReactNode;
+};
+
+const EFFECTIVE_DATE = new Date(2025, 9, 20).toLocaleDateString("en-US", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
+
+const SECTIONS: Section[] = [
+  {
+    id: "acceptance",
+    title: "acceptance of terms",
+    body: (
+      <p>
+        These Terms of Use (&ldquo;Terms&rdquo;) govern your access to and use of
+        the websites, products, and services provided by Index Network, Inc.
+        (&ldquo;Index&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;). By accessing
+        or using our services, you agree to be bound by these Terms and our
+        Privacy Policy. If you do not agree, do not use the services.
+      </p>
+    ),
+  },
+  {
+    id: "eligibility",
+    title: "eligibility & accounts",
+    body: (
+      <p>
+        You must be legally able to form a binding contract and comply with
+        applicable laws. You are responsible for maintaining the confidentiality
+        of your account credentials and for all activities under your account.
+        Notify us immediately of any unauthorized use.
+      </p>
+    ),
+  },
+  {
+    id: "conduct",
+    title: "user conduct & acceptable use",
+    body: (
+      <ul className="legal-list">
+        <li>Do not violate laws, intellectual property, privacy, or other rights.</li>
+        <li>
+          Do not upload harmful code, attempt to disrupt or bypass security, or
+          misuse APIs.
+        </li>
+        <li>
+          Do not use the services to spam, harass, or engage in fraudulent or
+          misleading activities.
+        </li>
+        <li>Respect rate limits and fair use guidelines we may publish.</li>
+      </ul>
+    ),
+  },
+  {
+    id: "ip",
+    title: "intellectual property",
+    body: (
+      <>
+        <p>
+          We and our licensors own all rights in the services, including
+          software, content, logos, and trademarks. These are protected by
+          intellectual property laws. Except as expressly allowed, you may not
+          copy, modify, distribute, or create derivative works.
+        </p>
+        <p>
+          You retain ownership of content you submit. You grant us a limited,
+          non-exclusive, worldwide, royalty-free license to host, store,
+          reproduce, and display your content solely to operate and improve the
+          services.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "feedback",
+    title: "feedback",
+    body: (
+      <p>
+        If you provide feedback or suggestions, you grant us a non-exclusive,
+        transferable, sublicensable, worldwide, perpetual license to use the
+        feedback without restriction or compensation to you.
+      </p>
+    ),
+  },
+  {
+    id: "third-party",
+    title: "third-party services & links",
+    body: (
+      <p>
+        The services may link to or integrate third-party content or services. We
+        do not control and are not responsible for third-party services. Your
+        use of them is subject to their terms and policies.
+      </p>
+    ),
+  },
+  {
+    id: "disclaimer",
+    title: "disclaimers",
+    body: (
+      <p className="legal-caps">
+        The services are provided &ldquo;as is&rdquo; and &ldquo;as
+        available&rdquo; without warranties of any kind, express or implied,
+        including merchantability, fitness for a particular purpose, and
+        non-infringement. We do not warrant that the services will be
+        uninterrupted, secure, or error-free.
+      </p>
+    ),
+  },
+  {
+    id: "liability",
+    title: "limitation of liability",
+    body: (
+      <p className="legal-caps">
+        To the maximum extent permitted by law, in no event will Index or its
+        affiliates be liable for any indirect, incidental, special,
+        consequential, or punitive damages, or any loss of profits or revenues,
+        whether incurred directly or indirectly, or any loss of data, use,
+        goodwill, or other intangible losses.
+      </p>
+    ),
+  },
+  {
+    id: "indemnification",
+    title: "indemnification",
+    body: (
+      <p>
+        You agree to defend, indemnify, and hold harmless Index and its
+        affiliates from and against any claims, liabilities, damages, losses,
+        and expenses arising out of or related to your use of the services or
+        your violation of these Terms or applicable law.
+      </p>
+    ),
+  },
+  {
+    id: "termination",
+    title: "termination & suspension",
+    body: (
+      <p>
+        We may suspend or terminate access to the services at any time if we
+        believe you have violated these Terms or to protect the services or
+        other users. Upon termination, your right to use the services ceases
+        immediately.
+      </p>
+    ),
+  },
+  {
+    id: "law",
+    title: "governing law & disputes",
+    body: (
+      <p>
+        These Terms are governed by the laws of the State of Delaware, without
+        regard to conflict of law rules. Any disputes will be resolved in the
+        state or federal courts located in Delaware, and you consent to
+        jurisdiction and venue in those courts. Where applicable law requires,
+        you and Index agree to first attempt to resolve disputes informally.
+      </p>
+    ),
+  },
+  {
+    id: "changes",
+    title: "changes to terms",
+    body: (
+      <p>
+        We may update these Terms from time to time. If changes are material, we
+        will provide notice where required by law. The updated Terms will be
+        effective when posted with a revised effective date.
+      </p>
+    ),
+  },
+  {
+    id: "contact",
+    title: "contact",
+    body: (
+      <>
+        <p>
+          Questions about these Terms?{" "}
+          <a href="mailto:hello@index.network">hello@index.network</a>
+        </p>
+        <p>Index Network, Inc.</p>
+      </>
+    ),
+  },
+];
 
 export default function TermsOfUsePage() {
-  const effectiveDate = new Date(2025, 9, 20).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
+  useEffect(() => {
+    ensureLandingV5Fonts();
+  }, []);
 
   return (
-    <ClientLayout>
-      <div className="flex flex-col min-h-[calc(100vh-76px)]">
-        <main className="flex-1 flex flex-col px-6 lg:px-12 pt-[40px] pb-[80px] font-sans text-[15px] text-black">
-          <div className="max-w-[960px] w-full mx-auto">
-        <h1 className="font-garamond text-3xl font-medium text-black mb-2">Terms of Use</h1>
-        <p className="text-sm text-gray-600 mb-8">Effective: {effectiveDate}</p>
-
-        <nav className="mb-10 text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-gray-700">
-            <li><a className="hover:underline" href="#acceptance">Acceptance of Terms</a></li>
-            <li><a className="hover:underline" href="#eligibility">Eligibility & Accounts</a></li>
-            <li><a className="hover:underline" href="#conduct">User Conduct & Acceptable Use</a></li>
-            <li><a className="hover:underline" href="#ip">Intellectual Property</a></li>
-            <li><a className="hover:underline" href="#feedback">Feedback</a></li>
-            <li><a className="hover:underline" href="#third-party">Third-Party Services & Links</a></li>
-            <li><a className="hover:underline" href="#disclaimer">Disclaimers</a></li>
-            <li><a className="hover:underline" href="#liability">Limitation of Liability</a></li>
-            <li><a className="hover:underline" href="#indemnification">Indemnification</a></li>
-            <li><a className="hover:underline" href="#termination">Termination & Suspension</a></li>
-            <li><a className="hover:underline" href="#law">Governing Law & Dispute Resolution</a></li>
-            <li><a className="hover:underline" href="#changes">Changes to Terms</a></li>
-            <li><a className="hover:underline" href="#contact">Contact</a></li>
-          </ul>
-        </nav>
-
-        <section id="acceptance" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Acceptance of Terms</h2>
-          <p>
-            These Terms of Use ("Terms") govern your access to and use of the websites, products, and services
-            provided by Index Network, Inc. ("Index", "we", "us"). By accessing or using our services, you agree to
-            be bound by these Terms and our Privacy Policy. If you do not agree, do not use the services.
-          </p>
-        </section>
-
-        <section id="eligibility" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Eligibility & Accounts</h2>
-          <p>
-            You must be legally able to form a binding contract and comply with applicable laws. You are responsible
-            for maintaining the confidentiality of your account credentials and for all activities under your account.
-            Notify us immediately of any unauthorized use.
-          </p>
-        </section>
-
-        <section id="conduct" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">User Conduct & Acceptable Use</h2>
-          <ul className="list-disc pl-5 space-y-2">
-            <li>Do not violate laws, intellectual property, privacy, or other rights.</li>
-            <li>Do not upload harmful code, attempt to disrupt or bypass security, or misuse APIs.</li>
-            <li>Do not use the services to spam, harass, or engage in fraudulent or misleading activities.</li>
-            <li>Respect rate limits and fair use guidelines we may publish.</li>
-          </ul>
-        </section>
-
-        <section id="ip" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Intellectual Property</h2>
-          <p className="mb-3">
-            We and our licensors own all rights in the services, including software, content, logos, and trademarks.
-            These are protected by intellectual property laws. Except as expressly allowed, you may not copy, modify,
-            distribute, or create derivative works.
-          </p>
-          <p>
-            You retain ownership of content you submit. You grant us a limited, non-exclusive, worldwide, royalty-free
-            license to host, store, reproduce, and display your content solely to operate and improve the services.
-          </p>
-        </section>
-
-        <section id="feedback" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Feedback</h2>
-          <p>
-            If you provide feedback or suggestions, you grant us a non-exclusive, transferable, sublicensable,
-            worldwide, perpetual license to use the feedback without restriction or compensation to you.
-          </p>
-        </section>
-
-        <section id="third-party" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Third-Party Services & Links</h2>
-          <p>
-            The services may link to or integrate third-party content or services. We do not control and are not
-            responsible for third-party services. Your use of them is subject to their terms and policies.
-          </p>
-        </section>
-
-        <section id="disclaimer" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Disclaimers</h2>
-          <p>
-            THE SERVICES ARE PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED,
-            INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. We do not warrant that
-            the services will be uninterrupted, secure, or error-free.
-          </p>
-        </section>
-
-        <section id="liability" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Limitation of Liability</h2>
-          <p>
-            TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT WILL INDEX OR ITS AFFILIATES BE LIABLE FOR ANY
-            INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS OR REVENUES,
-            WHETHER INCURRED DIRECTLY OR INDIRECTLY, OR ANY LOSS OF DATA, USE, GOOD-WILL, OR OTHER INTANGIBLE LOSSES.
-          </p>
-        </section>
-
-        <section id="indemnification" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Indemnification</h2>
-          <p>
-            You agree to defend, indemnify, and hold harmless Index and its affiliates from and against any claims,
-            liabilities, damages, losses, and expenses arising out of or related to your use of the services or your
-            violation of these Terms or applicable law.
-          </p>
-        </section>
-
-        <section id="termination" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Termination & Suspension</h2>
-          <p>
-            We may suspend or terminate access to the services at any time if we believe you have violated these
-            Terms or to protect the services or other users. Upon termination, your right to use the services
-            ceases immediately.
-          </p>
-        </section>
-
-        <section id="law" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Governing Law & Dispute Resolution</h2>
-          <p>
-            These Terms are governed by the laws of the State of Delaware, without regard to conflict of law rules.
-            Any disputes will be resolved in the state or federal courts located in Delaware, and you consent to
-            jurisdiction and venue in those courts. Where applicable law requires, you and Index agree to first
-            attempt to resolve disputes informally.
-          </p>
-        </section>
-
-        <section id="changes" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Changes to Terms</h2>
-          <p>
-            We may update these Terms from time to time. If changes are material, we will provide notice where
-            required by law. The updated Terms will be effective when posted with a revised effective date.
-          </p>
-        </section>
-
-        <section id="contact" className="mb-2">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Contact</h2>
-          <p>
-            Questions about these Terms? Contact us at
-            <span className="whitespace-pre"> </span>
-            <a href="mailto:hello@index.network" className="underline">hello@index.network</a>.
-          </p>
-          <p className="mt-2">Index Network, Inc.</p>
-        </section>
+    <div className="landing-v5 legal-v5">
+      <div className="hero h1 page-hero">
+        <div className="canvas-area">
+          <Nav />
+          <div className="hero-split">
+            <div className="well">
+              <h1 className="display">Terms of Use</h1>
+              <p className="body-italic">
+                The agreement between you and Index — how the services may be
+                used and the limits that apply.
+              </p>
+              <p className="legal-effective">effective · {EFFECTIVE_DATE}</p>
+            </div>
           </div>
-        </main>
-        <Footer />
+        </div>
       </div>
-    </ClientLayout>
+
+      <section className="how legal-toc">
+        <div className="how-inner">
+          <ol className="legal-toc-list">
+            {SECTIONS.map((s, i) => (
+              <li key={s.id}>
+                <a href={`#${s.id}`}>
+                  <span className="legal-toc-num">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="legal-toc-title">{s.title}</span>
+                </a>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {SECTIONS.map((s) => (
+        <section key={s.id} id={s.id} className="how legal-section">
+          <div className="how-inner">
+            <h2 className="legal-section-title">{s.title}</h2>
+            <div className="legal-body">{s.body}</div>
+          </div>
+        </section>
+      ))}
+
+      <Footer />
+    </div>
   );
 }
 

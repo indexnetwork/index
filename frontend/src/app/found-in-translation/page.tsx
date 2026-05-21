@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
-import Header from '@/components/Header';
-import Footer from '@/components/Footer';
+import Nav, { ensureLandingV5Fonts } from '@/app/landing-v5/Nav';
+import Footer from '@/app/landing-v5/Footer';
+import '@/app/landing-v5/landing-v5.css';
 import { apiUrl } from '@/lib/api';
 
 // ── Found in Translation -1: Superstudio / Continuous Monument ──
@@ -23,22 +23,19 @@ const KF = `
     from { background-position: 0 0; }
     to   { background-position: 60px 0; }
   }
-  .fit-header img { filter: invert(1) brightness(10); }
-  .fit-header a { color: #fff !important; }
-  .fit-header button {
-    background: transparent !important;
-    color: #fff !important;
-    border: 2px solid rgba(255,255,255,0.8) !important;
-  }
-  .fit-footer footer { background: rgba(0,0,0,0.45) !important; }
-  .fit-footer a, .fit-footer p, .fit-footer span, .fit-footer label { color: rgba(255,255,255,0.75) !important; }
-  .fit-footer input { background: rgba(255,255,255,0.1) !important; border-color: rgba(255,255,255,0.25) !important; color: #fff !important; }
-  .fit-footer input::placeholder { color: rgba(255,255,255,0.4) !important; }
-  .fit-footer svg { color: rgba(255,255,255,0.75) !important; }
-  .fit-footer button { background: transparent !important; color: #fff !important; border: 1px solid rgba(255,255,255,0.6) !important; }
 `;
 
 const SANS = "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif";
+const MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+const PALETTE = {
+  bg: '#0b1612',
+  cream: '#ece3cf',
+  creamSoft: 'rgba(236, 227, 207, 0.78)',
+  creamFaint: 'rgba(236, 227, 207, 0.5)',
+  rule: 'rgba(236, 227, 207, 0.22)',
+  ruleStrong: 'rgba(236, 227, 207, 0.45)',
+};
 
 function useScrollProgress() {
   const [p, setP] = useState(0);
@@ -376,10 +373,10 @@ function MonumentCanvas() {
 // ── ARCH CALLOUT ────────────────────────────────────────────────
 function ArchCallout({ children }: { children: React.ReactNode }) {
   return (
-    <div data-fade style={{ margin: '4rem 0', border: '1.5px solid #aaa', padding: '3rem 3.5rem', background: '#000', color: '#fff', position: 'relative' }}>
-      <p style={{ fontFamily: SANS, fontWeight: 900, fontSize: 'clamp(1.4rem,3.5vw,2.6rem)', lineHeight: 1.1, letterSpacing: '-0.01em', textTransform: 'uppercase', margin: 0 }}>{children}</p>
+    <div data-fade style={{ margin: '4rem 0', border: `1px solid ${PALETTE.ruleStrong}`, padding: '3rem 3.5rem', background: 'transparent', color: PALETTE.cream, position: 'relative' }}>
+      <p style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(1.4rem,3.5vw,2.6rem)', lineHeight: 1.1, letterSpacing: '-0.02em', margin: 0 }}>{children}</p>
       {[{ top: 8, left: 8 }, { top: 8, right: 8 }, { bottom: 8, left: 8 }, { bottom: 8, right: 8 }].map((pos, i) => (
-        <div key={i} style={{ position: 'absolute', width: 12, height: 12, border: '2px solid #fff', ...pos }} />
+        <div key={i} style={{ position: 'absolute', width: 12, height: 12, border: `1px solid ${PALETTE.creamFaint}`, ...pos }} />
       ))}
     </div>
   );
@@ -389,7 +386,7 @@ function ArchCallout({ children }: { children: React.ReactNode }) {
 // Architectural elevation of two humans with intent lattice between them
 function ConversationFig() {
   return (
-    <figure data-fade style={{ margin: '3rem 0', border: '1.5px solid #aaa', position: 'relative', background: '#fff', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '3rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', position: 'relative', background: '#fff', overflow: 'hidden' }}>
       <svg viewBox="0 0 960 340" width="100%" style={{ display: 'block' }} aria-label="Fig. 01 — Two humans. Intent: latent.">
         {[{ x: 8, y: 8, r: true, b: false }, { x: 952, y: 8, r: false, b: false }, { x: 8, y: 332, r: true, b: true }, { x: 952, y: 332, r: false, b: true }].map(({ x, y, r, b }, i) => (
           <g key={i}>
@@ -405,7 +402,7 @@ function ConversationFig() {
         <line x1="148" y1="142" x2="118" y2="168" stroke="black" strokeWidth="1.5" />
         <line x1="158" y1="192" x2="144" y2="248" stroke="black" strokeWidth="1.5" />
         <line x1="172" y1="192" x2="186" y2="248" stroke="black" strokeWidth="1.5" />
-        <text x="165" y="272" textAnchor="middle" fontFamily="'IBM Plex Mono', monospace" fontSize="11" letterSpacing="2" fill="black">HUMAN A</text>
+        <text x="165" y="272" textAnchor="middle" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="11" letterSpacing="2" fill="black">HUMAN A</text>
 
         <circle cx="795" cy="90" r="26" fill="white" stroke="black" strokeWidth="1.5" />
         <line x1="795" y1="116" x2="795" y2="130" stroke="black" strokeWidth="1.5" />
@@ -414,7 +411,7 @@ function ConversationFig() {
         <line x1="812" y1="142" x2="842" y2="168" stroke="black" strokeWidth="1.5" />
         <line x1="788" y1="192" x2="774" y2="248" stroke="black" strokeWidth="1.5" />
         <line x1="802" y1="192" x2="816" y2="248" stroke="black" strokeWidth="1.5" />
-        <text x="795" y="272" textAnchor="middle" fontFamily="'IBM Plex Mono', monospace" fontSize="11" letterSpacing="2" fill="black">HUMAN B</text>
+        <text x="795" y="272" textAnchor="middle" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="11" letterSpacing="2" fill="black">HUMAN B</text>
 
         <rect x="350" y="58" width="260" height="162" fill="white" stroke="black" strokeWidth="2" />
         {[26, 52, 78, 104, 130, 156, 182, 208, 234].map((dx) => (
@@ -431,7 +428,7 @@ function ConversationFig() {
             <line x1={px} y1={py - 8} x2={px} y2={py - 14} stroke="black" strokeWidth="1.5" />
           </g>
         ))}
-        <text x="480" y="244" textAnchor="middle" fontFamily="'IBM Plex Mono', monospace" fontSize="9" letterSpacing="2" fill="black" opacity="0.6">INTENT: UNEXPRESSED</text>
+        <text x="480" y="244" textAnchor="middle" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="9" letterSpacing="2" fill="black" opacity="0.6">INTENT: UNEXPRESSED</text>
 
         <line x1="191" y1="100" x2="350" y2="130" stroke="black" strokeWidth="0.8" strokeDasharray="6,5" opacity="0.5" />
         <line x1="769" y1="100" x2="610" y2="130" stroke="black" strokeWidth="0.8" strokeDasharray="6,5" opacity="0.5" />
@@ -441,10 +438,10 @@ function ConversationFig() {
         <polygon points="795,297 795,303 807,300" fill="black" />
         <line x1="165" y1="293" x2="165" y2="307" stroke="black" strokeWidth="0.8" />
         <line x1="795" y1="293" x2="795" y2="307" stroke="black" strokeWidth="0.8" />
-        <text x="480" y="318" textAnchor="middle" fontFamily="'IBM Plex Mono', monospace" fontSize="9" letterSpacing="3" fill="black" opacity="0.6">DISTANCE: UNDEFINED · SIGNAL: LATENT</text>
+        <text x="480" y="318" textAnchor="middle" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="9" letterSpacing="3" fill="black" opacity="0.6">DISTANCE: UNDEFINED · SIGNAL: LATENT</text>
 
         <line x1="0" y1="330" x2="960" y2="330" stroke="black" strokeWidth="0.5" opacity="0.25" />
-        <text x="14" y="342" fontFamily="'IBM Plex Mono', monospace" fontSize="8" letterSpacing="1.8" fill="black" opacity="0.45">FIG. 01 — THE CONVERSATION · INTENT: LATENT · SYSTEM: NO MATCH</text>
+        <text x="14" y="342" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="8" letterSpacing="1.8" fill="black" opacity="0.45">FIG. 01 — THE CONVERSATION · INTENT: LATENT · SYSTEM: NO MATCH</text>
       </svg>
     </figure>
   );
@@ -470,7 +467,7 @@ function SearchFrustrationFig() {
   }
 
   return (
-    <figure data-fade style={{ margin: '3rem 0', border: '1.5px solid #aaa', background: '#fff', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '3rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', background: '#fff', overflow: 'hidden' }}>
       <svg viewBox="0 0 980 320" width="100%" style={{ display: 'block' }} aria-label="Fig. 02 — The futility of search.">
         {[{ x: 8, y: 8 }, { x: 972, y: 8 }, { x: 8, y: 312 }, { x: 972, y: 312 }].map(({ x, y }, i) => (
           <g key={i}>
@@ -486,7 +483,7 @@ function SearchFrustrationFig() {
         <line x1="124" y1="158" x2="96" y2="178" stroke="black" strokeWidth="1.5" />
         <line x1="133" y1="201" x2="122" y2="250" stroke="black" strokeWidth="1.5" />
         <line x1="147" y1="201" x2="158" y2="250" stroke="black" strokeWidth="1.5" />
-        <text x="140" y="270" textAnchor="middle" fontFamily="'IBM Plex Mono', monospace" fontSize="10" letterSpacing="2" fill="black">YOU</text>
+        <text x="140" y="270" textAnchor="middle" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="10" letterSpacing="2" fill="black">YOU</text>
 
         <line x1="235" y1="155" x2="295" y2="155" stroke="black" strokeWidth="1" strokeDasharray="5,4" opacity="0.5" />
         <polygon points="295,152 295,158 303,155" fill="black" opacity="0.5" />
@@ -504,15 +501,15 @@ function SearchFrustrationFig() {
         <line x1="300" y1="65" x2="940" y2="155" stroke="black" strokeWidth="0.4" opacity="0.12" strokeDasharray="4,4" />
         <line x1="300" y1="250" x2="940" y2="155" stroke="black" strokeWidth="0.4" opacity="0.12" strokeDasharray="4,4" />
 
-        <text x="935" y="132" fontFamily="'IBM Plex Mono', monospace" fontSize="28" fill="black" opacity="0.25" textAnchor="middle">∞</text>
+        <text x="935" y="132" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="28" fill="black" opacity="0.25" textAnchor="middle">∞</text>
 
         <line x1="300" y1="292" x2="920" y2="292" stroke="black" strokeWidth="0.7" />
         <polygon points="300,289 300,295 290,292" fill="black" />
         <polygon points="920,289 920,295 930,292" fill="black" />
-        <text x="610" y="308" textAnchor="middle" fontFamily="'IBM Plex Mono', monospace" fontSize="9" letterSpacing="2.5" fill="black" opacity="0.55">SEARCH RESULTS: n → ∞  ·  SIGNAL: 0</text>
+        <text x="610" y="308" textAnchor="middle" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="9" letterSpacing="2.5" fill="black" opacity="0.55">SEARCH RESULTS: n → ∞  ·  SIGNAL: 0</text>
 
         <line x1="0" y1="314" x2="980" y2="314" stroke="black" strokeWidth="0.5" opacity="0.2" />
-        <text x="14" y="323" fontFamily="'IBM Plex Mono', monospace" fontSize="8" letterSpacing="1.8" fill="black" opacity="0.4">FIG. 02 — INFINITE SCROLL · IDENTICAL RESULTS · INTENT: UNMATCHED</text>
+        <text x="14" y="323" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="8" letterSpacing="1.8" fill="black" opacity="0.4">FIG. 02 — INFINITE SCROLL · IDENTICAL RESULTS · INTENT: UNMATCHED</text>
       </svg>
     </figure>
   );
@@ -537,7 +534,7 @@ function MonumentElevation({ label }: { label: string }) {
   const figXs = [120, 320, 580, 900, 1220, 1480, 1700];
 
   return (
-    <div data-fade style={{ margin: '4rem -2rem', borderTop: '1.5px solid #aaa', borderBottom: '1.5px solid #aaa', overflow: 'hidden', background: '#fff', position: 'relative' }}>
+    <div data-fade style={{ margin: '4rem -2rem', borderTop: `1px solid ${PALETTE.rule}`, borderBottom: `1px solid ${PALETTE.rule}`, overflow: 'hidden', background: '#fff', position: 'relative' }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }} aria-label={label}>
         <rect x="0" y={monTop} width={W} height={groundY - monTop} fill="white" stroke="none" />
 
@@ -573,13 +570,13 @@ function MonumentElevation({ label }: { label: string }) {
         <line x1="52" y1={monTop} x2="52" y2={groundY} stroke="black" strokeWidth="0.8" />
         <polygon points="52,30 49,42 55,42" fill="black" opacity="0.6" />
         <polygon points="52,255 49,243 55,243" fill="black" opacity="0.6" />
-        <text x="38" y="145" textAnchor="middle" fontFamily="'IBM Plex Mono', monospace" fontSize="9" letterSpacing="1.5" fill="black" opacity="0.5" transform="rotate(-90 38 145)">HEIGHT: ∞</text>
+        <text x="38" y="145" textAnchor="middle" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="9" letterSpacing="1.5" fill="black" opacity="0.5" transform="rotate(-90 38 145)">HEIGHT: ∞</text>
 
-        <text x={W / 2} y={monTop - 10} textAnchor="middle" fontFamily="'IBM Plex Mono', monospace" fontSize="8" letterSpacing="2" fill="black" opacity="0.35">← MONUMENT EXTENDS TO INFINITY →</text>
+        <text x={W / 2} y={monTop - 10} textAnchor="middle" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="8" letterSpacing="2" fill="black" opacity="0.35">← MONUMENT EXTENDS TO INFINITY →</text>
 
         <line x1="0" y1={monTop + 20} x2="0" y2={monTop + 20} stroke="black" strokeWidth="1" strokeDasharray="5,3" />
 
-        <text x={W - 14} y={H - 10} textAnchor="end" fontFamily="'IBM Plex Mono', monospace" fontSize="9" letterSpacing="2" fill="black" opacity="0.4">{label}</text>
+        <text x={W - 14} y={H - 10} textAnchor="end" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="9" letterSpacing="2" fill="black" opacity="0.4">{label}</text>
 
         <circle cx="14" cy={groundY - 40} r="10" fill="none" stroke="black" strokeWidth="1" opacity="0.3" />
         <line x1="0" y1={groundY - 40} x2="28" y2={groundY - 40} stroke="black" strokeWidth="0.7" opacity="0.3" />
@@ -595,7 +592,7 @@ function MonumentElevation({ label }: { label: string }) {
 // ── FIG 03: CLI ERA ──────────────────────────────────────────────
 function InterfaceEvolutionFig() {
   return (
-    <figure data-fade style={{ margin: '2rem 0', border: '1.5px solid #aaa', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', overflow: 'hidden' }}>
       <img src="/found-in-translation/CLI.png" alt="CLI era terminal" style={{ display: 'block', width: '100%', height: 'auto' }} />
     </figure>
   );
@@ -604,7 +601,7 @@ function InterfaceEvolutionFig() {
 // ── FIG 04: GUI ERA ──────────────────────────────────────────────
 function GuiEraFig() {
   return (
-    <figure data-fade style={{ margin: '2rem 0', border: '1.5px solid #aaa', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', overflow: 'hidden' }}>
       <img src="/found-in-translation/GUI.jpg" alt="GUI era interface" style={{ display: 'block', width: '100%', height: 'auto' }} />
     </figure>
   );
@@ -613,31 +610,31 @@ function GuiEraFig() {
 // ── FIG 05: BEFORE / AFTER ──────────────────────────────────────
 function BeforeAfterFig() {
   return (
-    <figure data-fade style={{ margin: '2rem 0', border: '1.5px solid #aaa', background: '#f5f4f0', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', background: '#f5f4f0', overflow: 'hidden' }}>
       <svg viewBox="0 0 800 260" width="100%" style={{ display: 'block' }} aria-label="Before and after: keyword search vs expressive intent">
         {/* backgrounds first */}
         <rect x="0" y="0" width="400" height="260" fill="#f5f4f0" />
         <rect x="400" y="0" width="400" height="260" fill="#f5f4f0" />
 
         {/* left content */}
-        <text x="40" y="52" fontFamily="'IBM Plex Mono', monospace" fontSize="9" letterSpacing="2" fill="#aaa">BEFORE</text>
+        <text x="40" y="52" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="9" letterSpacing="2" fill="#aaa">BEFORE</text>
         {/* keyword tags */}
         <rect x="40" y="66" width="152" height="24" rx="12" fill="#fff" stroke="#ccc" strokeWidth="1.5" />
-        <text x="116" y="82" fontFamily="'IBM Plex Mono', monospace" fontSize="10" fill="#999" textAnchor="middle">creative technologist</text>
+        <text x="116" y="82" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="10" fill="#999" textAnchor="middle">creative technologist</text>
         <rect x="200" y="66" width="140" height="24" rx="12" fill="#fff" stroke="#ccc" strokeWidth="1.5" />
-        <text x="270" y="82" fontFamily="'IBM Plex Mono', monospace" fontSize="10" fill="#999" textAnchor="middle">software engineers</text>
+        <text x="270" y="82" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="10" fill="#999" textAnchor="middle">software engineers</text>
         <rect x="40" y="98" width="50" height="24" rx="12" fill="#fff" stroke="#ccc" strokeWidth="1.5" />
-        <text x="65" y="114" fontFamily="'IBM Plex Mono', monospace" fontSize="10" fill="#999" textAnchor="middle">nyc</text>
+        <text x="65" y="114" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="10" fill="#999" textAnchor="middle">nyc</text>
         <rect x="98" y="98" width="56" height="24" rx="12" fill="#fff" stroke="#ccc" strokeWidth="1.5" />
-        <text x="126" y="114" fontFamily="'IBM Plex Mono', monospace" fontSize="10" fill="#999" textAnchor="middle">saas</text>
+        <text x="126" y="114" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="10" fill="#999" textAnchor="middle">saas</text>
 
         {/* right content */}
-        <text x="440" y="52" fontFamily="'IBM Plex Mono', monospace" fontSize="9" letterSpacing="2" fill="#aaa">NOW</text>
+        <text x="440" y="52" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="9" letterSpacing="2" fill="#aaa">NOW</text>
         <rect x="440" y="68" width="320" height="88" rx="3" fill="#fff" stroke="#ccc" strokeWidth="1.5" />
-        <text x="456" y="89" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">&quot;I&apos;m a 0-1 builder who likes to stay close</text>
-        <text x="456" y="105" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">to consumer culture — looking for a team</text>
-        <text x="456" y="121" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">working on something new and weird,</text>
-        <text x="456" y="137" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">probably pre-seed or seed.&quot;</text>
+        <text x="456" y="89" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="11" fill="#555" fontStyle="italic">&quot;I&apos;m a 0-1 builder who likes to stay close</text>
+        <text x="456" y="105" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="11" fill="#555" fontStyle="italic">to consumer culture — looking for a team</text>
+        <text x="456" y="121" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="11" fill="#555" fontStyle="italic">working on something new and weird,</text>
+        <text x="456" y="137" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="11" fill="#555" fontStyle="italic">probably pre-seed or seed.&quot;</text>
 
         {/* divider — drawn after content but before arrow */}
         <line x1="400" y1="0" x2="400" y2="260" stroke="#ccc" strokeWidth="1.5" />
@@ -647,7 +644,7 @@ function BeforeAfterFig() {
         <line x1="389" y1="112" x2="407" y2="112" stroke="#fff" strokeWidth="2" />
         <polygon points="405,107 405,117 414,112" fill="#fff" />
 
-        <text x="20" y="252" fontFamily="'IBM Plex Mono', monospace" fontSize="8" letterSpacing="1.8" fill="#000" opacity="0.2">FIG. 05 — INTENT EXPRESSION · KEYWORD → CONTEXT-RICH</text>
+        <text x="20" y="252" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="8" letterSpacing="1.8" fill="#000" opacity="0.2">FIG. 05 — INTENT EXPRESSION · KEYWORD → CONTEXT-RICH</text>
       </svg>
     </figure>
   );
@@ -675,7 +672,7 @@ function AgentNetworkPlan() {
   ];
 
   return (
-    <figure data-fade style={{ margin: '3rem 0', border: '1.5px solid #aaa', background: '#fff', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '3rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', background: '#fff', overflow: 'hidden' }}>
       <svg viewBox="0 0 800 490" width="100%" style={{ display: 'block' }} aria-label="Agent network — plan view">
         {Array.from({ length: 26 }, (_, row) =>
           Array.from({ length: 17 }, (_, col) => (
@@ -715,7 +712,7 @@ function AgentNetworkPlan() {
             <circle cx={n.x} cy={n.y} r={n.r} fill={n.fill} stroke="black" strokeWidth={n.isYou ? 2.5 : 1.5} />
             <text
               x={n.x} y={n.y + (n.isYou ? 5 : 4)} textAnchor="middle"
-              fontFamily="'IBM Plex Mono', monospace"
+              fontFamily="'JetBrains Mono', ui-monospace, monospace"
               fontSize={n.isYou ? 10 : 8}
               fontWeight={n.isYou ? 700 : 400}
               letterSpacing="1"
@@ -726,7 +723,7 @@ function AgentNetworkPlan() {
             {!n.isYou && (
               <text
                 x={n.x + n.r + 14} y={n.y - n.r + 4}
-                fontFamily="'IBM Plex Mono', monospace"
+                fontFamily="'JetBrains Mono', ui-monospace, monospace"
                 fontSize="7"
                 fill="black"
                 opacity="0.35"
@@ -738,7 +735,7 @@ function AgentNetworkPlan() {
           </g>
         ))}
 
-        <text x="400" y="472" textAnchor="middle" fontFamily="'IBM Plex Mono', monospace" fontSize="9" letterSpacing="2.5" fill="black" opacity="0.5">AGENT NETWORK — PLAN VIEW · SCALE 1:1000 · 9 NODES</text>
+        <text x="400" y="472" textAnchor="middle" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="9" letterSpacing="2.5" fill="black" opacity="0.5">AGENT NETWORK — PLAN VIEW · SCALE 1:1000 · 9 NODES</text>
       </svg>
     </figure>
   );
@@ -747,8 +744,8 @@ function AgentNetworkPlan() {
 // ── STRUCTURE CARD ──────────────────────────────────────────────
 function StructureCard({ title, sub, body }: { title: string; sub: string; body: string }) {
   return (
-    <div data-fade style={{ border: '1.5px solid #aaa', padding: '2rem', background: '#fff', position: 'relative' }}>
-      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.55rem', letterSpacing: '0.25em', textTransform: 'uppercase', marginBottom: '1rem', color: '#666' }}>{sub}</div>
+    <div data-fade style={{ border: '1px solid rgba(236, 227, 207, 0.22)', padding: '2rem', background: '#fff', position: 'relative' }}>
+      <div style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: '0.55rem', letterSpacing: '0.25em', textTransform: 'uppercase', marginBottom: '1rem', color: '#666' }}>{sub}</div>
       <div style={{ fontFamily: SANS, fontWeight: 900, fontSize: 'clamp(1.6rem,3vw,2.2rem)', letterSpacing: '-0.02em', textTransform: 'uppercase', marginBottom: '1rem', color: '#000', lineHeight: 1 }}>{title}</div>
       <p style={{ fontFamily: SANS, fontSize: '0.85rem', lineHeight: 1.7, color: '#333', margin: 0 }}>{body}</p>
     </div>
@@ -845,56 +842,116 @@ export default function FoundInTranslationPage() {
 
   const P: React.CSSProperties = {
     fontFamily: SANS,
-    fontSize: 'max(18px, 1.2rem)', lineHeight: 1.4, color: '#222', marginBottom: '0.8rem',
+    fontSize: 'max(18px, 1.2rem)', lineHeight: 1.5, color: PALETTE.creamSoft, marginBottom: '0.8rem',
   };
   const WRAP: React.CSSProperties = { maxWidth: 720, margin: '0 auto', padding: '0 2rem' };
 
+  useEffect(() => {
+    ensureLandingV5Fonts();
+  }, []);
+
   return (
-    <div ref={pageRef} style={{ background: '#f5f3ef', color: '#000', minHeight: '100vh', overflowX: 'hidden', fontFamily: SANS }}>
+    <div ref={pageRef} className="landing-v5" style={{ background: PALETTE.bg, color: PALETTE.cream, minHeight: '100vh', overflowX: 'hidden', fontFamily: SANS }}>
       <style>{KF}</style>
 
       {isWaitlistOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => waitlistStatus !== 'loading' && setIsWaitlistOpen(false)}>
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
-          <div className="relative bg-white w-full max-w-md p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setIsWaitlistOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black transition-colors" disabled={waitlistStatus === 'loading'}>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        <div
+          className="lv5-modal"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => waitlistStatus !== 'loading' && setIsWaitlistOpen(false)}
+        >
+          <div className="lv5-modal-backdrop" aria-hidden="true" />
+          <div className="lv5-modal-card" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="lv5-modal-close"
+              onClick={() => setIsWaitlistOpen(false)}
+              disabled={waitlistStatus === 'loading'}
+              aria-label="Close"
+            >
+              ×
             </button>
             {waitlistStatus === 'success' ? (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 bg-[#4091BB] rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                </div>
-                <h3 className="text-2xl font-garamond text-black mb-2">You&apos;re on the list!</h3>
-                <p className="text-gray-600 text-[15px]">Check your inbox for your welcome email.</p>
-                <button onClick={() => { setIsWaitlistOpen(false); setWaitlistStatus('idle'); setWaitlistForm({ name: '', email: '', whatYouDo: '', whoToMeet: '' }); }} className="mt-6 text-[#4091BB] hover:underline text-sm font-medium">Close</button>
+              <div className="lv5-modal-success">
+                <h3 className="lv5-modal-title">you&apos;re on the list</h3>
+                <p className="lv5-modal-lede">Check your inbox for your welcome email.</p>
+                <button
+                  type="button"
+                  className="lv5-modal-submit"
+                  onClick={() => { setIsWaitlistOpen(false); setWaitlistStatus('idle'); setWaitlistForm({ name: '', email: '', whatYouDo: '', whoToMeet: '' }); }}
+                >
+                  Close
+                </button>
               </div>
             ) : (
               <>
-                <h3 className="text-2xl font-garamond text-black mb-2">Join the waitlist</h3>
-                <p className="text-gray-600 text-[15px] mb-6">Tell us a bit about yourself! We&apos;ll let you know when we&apos;re live and keep you posted on updates.</p>
-                <form onSubmit={handleWaitlistSubmit} className="space-y-4">
-                  <div>
-                    <label htmlFor="fit-waitlist-name" className="block text-sm font-medium text-black mb-1.5">Name <span className="text-red-500">*</span></label>
-                    <input type="text" id="fit-waitlist-name" value={waitlistForm.name} onChange={(e) => setWaitlistForm({ ...waitlistForm, name: e.target.value })} className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm" required disabled={waitlistStatus === 'loading'} />
-                  </div>
-                  <div>
-                    <label htmlFor="fit-waitlist-email" className="block text-sm font-medium text-black mb-1.5">Email <span className="text-red-500">*</span></label>
-                    <input type="email" id="fit-waitlist-email" value={waitlistForm.email} onChange={(e) => setWaitlistForm({ ...waitlistForm, email: e.target.value })} className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm" required disabled={waitlistStatus === 'loading'} />
-                  </div>
-                  <div>
-                    <label htmlFor="fit-waitlist-whatYouDo" className="block text-sm font-medium text-black mb-1.5">What do you do?</label>
-                    <p className="text-xs text-gray-500 mb-1.5">Just to understand you a bit better.</p>
-                    <input type="text" id="fit-waitlist-whatYouDo" value={waitlistForm.whatYouDo} onChange={(e) => setWaitlistForm({ ...waitlistForm, whatYouDo: e.target.value })} className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm" disabled={waitlistStatus === 'loading'} />
-                  </div>
-                  <div>
-                    <label htmlFor="fit-waitlist-whoToMeet" className="block text-sm font-medium text-black mb-1.5">Who do you want to meet?</label>
-                    <p className="text-xs text-gray-500 mb-1.5">E.g., &quot;Founders building in climate tech,&quot; &quot;Someone who&apos;s scaled a consumer AI product&quot;</p>
-                    <textarea id="fit-waitlist-whoToMeet" value={waitlistForm.whoToMeet} onChange={(e) => setWaitlistForm({ ...waitlistForm, whoToMeet: e.target.value })} rows={3} className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm resize-none" disabled={waitlistStatus === 'loading'} />
-                  </div>
-                  {waitlistStatus === 'error' && <p className="text-red-500 text-sm">Something went wrong. Please try again.</p>}
-                  <button type="submit" disabled={waitlistStatus === 'loading'} className="w-full bg-[#041729] text-white py-3 text-sm font-semibold uppercase tracking-wider hover:bg-[#0a2d4a] transition-colors disabled:opacity-50 rounded-sm">
-                    {waitlistStatus === 'loading' ? 'Submitting...' : 'Join the waitlist'}
+                <h3 className="lv5-modal-title">join the waitlist</h3>
+                <p className="lv5-modal-lede">
+                  Tell us a bit about yourself — we&rsquo;ll let you know when we&rsquo;re live and keep you posted on updates.
+                </p>
+                <form onSubmit={handleWaitlistSubmit} className="lv5-modal-form">
+                  <label className="lv5-modal-label" htmlFor="fit-waitlist-name">
+                    Name<span className="lv5-modal-req">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="fit-waitlist-name"
+                    className="lv5-modal-input"
+                    value={waitlistForm.name}
+                    onChange={(e) => setWaitlistForm({ ...waitlistForm, name: e.target.value })}
+                    required
+                    disabled={waitlistStatus === 'loading'}
+                  />
+
+                  <label className="lv5-modal-label" htmlFor="fit-waitlist-email" style={{ marginTop: 10 }}>
+                    Email<span className="lv5-modal-req">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    id="fit-waitlist-email"
+                    className="lv5-modal-input"
+                    value={waitlistForm.email}
+                    onChange={(e) => setWaitlistForm({ ...waitlistForm, email: e.target.value })}
+                    required
+                    disabled={waitlistStatus === 'loading'}
+                  />
+
+                  <label className="lv5-modal-label" htmlFor="fit-waitlist-whatYouDo" style={{ marginTop: 10 }}>
+                    What do you do?
+                  </label>
+                  <input
+                    type="text"
+                    id="fit-waitlist-whatYouDo"
+                    className="lv5-modal-input"
+                    value={waitlistForm.whatYouDo}
+                    onChange={(e) => setWaitlistForm({ ...waitlistForm, whatYouDo: e.target.value })}
+                    disabled={waitlistStatus === 'loading'}
+                  />
+
+                  <label className="lv5-modal-label" htmlFor="fit-waitlist-whoToMeet" style={{ marginTop: 10 }}>
+                    Who do you want to meet?
+                  </label>
+                  <textarea
+                    id="fit-waitlist-whoToMeet"
+                    className="lv5-modal-input"
+                    style={{ resize: 'vertical', minHeight: 80 }}
+                    value={waitlistForm.whoToMeet}
+                    onChange={(e) => setWaitlistForm({ ...waitlistForm, whoToMeet: e.target.value })}
+                    rows={3}
+                    disabled={waitlistStatus === 'loading'}
+                  />
+
+                  {waitlistStatus === 'error' && (
+                    <p className="lv5-modal-error">Something went wrong. Please try again.</p>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="lv5-modal-submit"
+                    disabled={waitlistStatus === 'loading'}
+                  >
+                    {waitlistStatus === 'loading' ? 'Submitting…' : 'Join the waitlist'}
                   </button>
                 </form>
               </>
@@ -903,15 +960,13 @@ export default function FoundInTranslationPage() {
         </div>
       )}
 
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 4, zIndex: 100, background: '#e0e0e0' }}>
-        <div style={{ height: '100%', width: `${progress * 100}%`, background: '#000', transition: 'width 0.1s linear' }} />
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 3, zIndex: 100, background: PALETTE.rule }}>
+        <div style={{ height: '100%', width: `${progress * 100}%`, background: PALETTE.cream, transition: 'width 0.1s linear' }} />
       </div>
 
-      <section style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden', borderBottom: '1.5px solid #aaa', display: 'flex', flexDirection: 'column' }}>
-        <div className="fit-header" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 100%)' }}>
-          <div className="max-w-7xl mx-auto px-4">
-            <Header showHeaderButtons forcePublicView />
-          </div>
+      <section style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden', borderBottom: `1px solid ${PALETTE.ruleStrong}`, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+          <Nav />
         </div>
         <img
           src="/found-in-translation/found-in-translation-1-hero.png"
@@ -934,15 +989,15 @@ export default function FoundInTranslationPage() {
 
 
 
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.2)', height: 36, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', padding: '0 1.5rem', gap: '2rem', zIndex: 5 }}>
-          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.48rem', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.45)' }}>NEW YORK 2026</span>
-          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.12)' }} />
-          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.48rem', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.45)' }}>INDEX NETWORK · FOUND IN TRANSLATION</span>
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, borderTop: `1px solid ${PALETTE.rule}`, height: 36, background: 'rgba(11, 22, 18, 0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', padding: '0 1.5rem', gap: '2rem', zIndex: 5 }}>
+          <span style={{ fontFamily: MONO, fontSize: '0.48rem', letterSpacing: '0.14em', color: PALETTE.creamFaint }}>NEW YORK 2026</span>
+          <div style={{ flex: 1, height: 1, background: PALETTE.rule }} />
+          <span style={{ fontFamily: MONO, fontSize: '0.48rem', letterSpacing: '0.14em', color: PALETTE.creamFaint }}>INDEX NETWORK · FOUND IN TRANSLATION</span>
         </div>
       </section>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 1rem' }}>
-        <p data-fade style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(2.2rem,5vw,4.8rem)', lineHeight: 0.95, letterSpacing: '-0.04em', color: '#000', marginBottom: '1.75rem' }}>
+        <p data-fade style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(2.2rem,5vw,4.8rem)', lineHeight: 0.95, letterSpacing: '-0.04em', color: PALETTE.cream, marginBottom: '1.75rem' }}>
           Found in Translation
         </p>
         <p data-fade style={{ ...P, marginBottom: 0 }}>
@@ -954,7 +1009,7 @@ export default function FoundInTranslationPage() {
       </div>
 
       <div style={{ ...WRAP, padding: '0 2rem' }}>
-        <figure data-fade style={{ margin: '2rem 0', border: '1.5px solid #aaa', background: '#fff', overflow: 'hidden' }}>
+        <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', background: '#fff', overflow: 'hidden' }}>
           <img
             src="/found-in-translation/diagram1.jpeg"
             alt="Two people in conversation diagram"
@@ -970,7 +1025,7 @@ export default function FoundInTranslationPage() {
       </div>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 1rem' }}>
-        <h2 style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: '#000', margin: 0 }}>
+        <h2 style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: PALETTE.cream, margin: 0 }}>
           Somewhere along the way, we got lost in translation
         </h2>
       </div>
@@ -981,10 +1036,10 @@ export default function FoundInTranslationPage() {
         <p data-fade style={P}>Of course, we try. We build and inhabit semantic structures together to achieve our goals. Or, we use our words.</p>
       </div>
       <div data-fade style={{ maxWidth: 1000, margin: '0 auto', padding: '0.2rem 2rem 1rem', textAlign: 'center' }}>
-        <p style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(1rem,2vw,1.5rem)', color: '#1e1c19', lineHeight: 1.4, letterSpacing: '-0.01em', margin: '0 auto' }}>
+        <p style={{ fontFamily: SANS, fontStyle: 'italic', fontWeight: 300, fontSize: 'clamp(1rem,2vw,1.5rem)', color: PALETTE.cream, lineHeight: 1.4, letterSpacing: '-0.01em', margin: '0 auto' }}>
           &ldquo;When we say that meanings materialize, we mean that sensemaking is, importantly, an issue of language, talk, and communication. Situations, organizations, and environments are talked into existence.&rdquo;
         </p>
-        <div style={{ fontFamily: "'Public Sans', system-ui, sans-serif", fontSize: '0.82rem', letterSpacing: '0.03em', color: '#888', margin: '0.75rem 0 0', lineHeight: 1.7, whiteSpace: 'nowrap' }}>Andrew Hinton, Understanding Context: Environment, Language, and Information Architecture (2014)</div>
+        <div style={{ fontFamily: MONO, fontSize: '0.72rem', letterSpacing: '0.06em', color: PALETTE.creamFaint, margin: '0.75rem 0 0', lineHeight: 1.7, whiteSpace: 'nowrap', textTransform: 'uppercase' }}>Andrew Hinton, Understanding Context: Environment, Language, and Information Architecture (2014)</div>
       </div>
       <div style={{ ...WRAP, padding: '1rem 2rem 1rem' }}>
         <p data-fade style={P}>Over time, tools expanded the scope of opportunity. From telegraphs and telephones in the 1800s, to command line interfaces and graphic user interfaces in the 1900s, oh my! Now language could travel. But there was always a caveat:</p>
@@ -1012,7 +1067,7 @@ export default function FoundInTranslationPage() {
       </div>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 1rem' }}>
-        <h2 style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: '#000', margin: 0 }}>
+        <h2 style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: PALETTE.cream, margin: 0 }}>
           Language is the new interface
         </h2>
       </div>
@@ -1038,16 +1093,16 @@ export default function FoundInTranslationPage() {
 
       <div>
         <div style={{ ...WRAP, padding: '4rem 2rem 0' }}>
-          <h2 data-fade style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: '#000', marginBottom: '2rem' }}>
+          <h2 data-fade style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: PALETTE.cream, marginBottom: '2rem' }}>
             The emerging model of social coordination
           </h2>
 
           <div style={{ margin: '2rem 0' }}>
             {FLOW.map((step, i) => (
-              <div key={i} data-fade data-delay={String(i * 50)} style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', padding: '0.6rem 0', borderBottom: i < FLOW.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
-                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.6rem', color: '#aaa', letterSpacing: '0.05em', flexShrink: 0, paddingTop: '0.15rem' }}>{String(i + 1).padStart(2, '0')}</span>
-                <p style={{ fontFamily: SANS, fontSize: 'clamp(0.9rem,1.5vw,1rem)', color: '#000', lineHeight: 1.6, margin: 0 }}>
-                  {step.t}<span style={{ color: '#999' }}> — {step.d}</span>
+              <div key={i} data-fade data-delay={String(i * 50)} style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', padding: '0.6rem 0', borderBottom: i < FLOW.length - 1 ? `1px dashed ${PALETTE.rule}` : 'none' }}>
+                <span style={{ fontFamily: MONO, fontSize: '0.7rem', color: PALETTE.creamFaint, letterSpacing: '0.1em', flexShrink: 0, paddingTop: '0.15rem' }}>{String(i + 1).padStart(2, '0')}</span>
+                <p style={{ fontFamily: SANS, fontSize: 'clamp(0.95rem,1.5vw,1.05rem)', color: PALETTE.cream, lineHeight: 1.6, margin: 0 }}>
+                  {step.t}<span style={{ color: PALETTE.creamSoft }}> — {step.d}</span>
                 </p>
               </div>
             ))}
@@ -1071,11 +1126,9 @@ export default function FoundInTranslationPage() {
       </div>
 
       <div style={{ position: 'relative' }}>
-        <img src="/found-in-translation/ambient.png" alt="Ambient" style={{ display: 'block', width: '100%', height: 'auto' }} />
-        <div className="fit-footer" style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
-          <Footer />
-        </div>
+        <img src="/found-in-translation/ambient.png" alt="Ambient" style={{ display: 'block', width: '100%', height: 'auto', opacity: 0.92 }} />
       </div>
+      <Footer />
     </div>
   );
 }

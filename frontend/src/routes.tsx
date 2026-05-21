@@ -55,14 +55,6 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/about-v5/page"),
       },
       {
-        path: "/privacy-v5",
-        lazy: () => import("@/app/privacy-v5/page"),
-      },
-      {
-        path: "/terms-v5",
-        lazy: () => import("@/app/terms-v5/page"),
-      },
-      {
         path: "/about",
         lazy: () => import("@/app/about/page"),
       },

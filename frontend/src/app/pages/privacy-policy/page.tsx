@@ -1,184 +1,263 @@
-import ClientLayout from "@/components/ClientLayout";
-import Footer from "@/components/Footer";
+import { useEffect, type ReactNode } from "react";
+import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
+import Footer from "@/app/landing-v5/Footer";
+import "@/app/landing-v5/landing-v5.css";
+import "./legal-v5.css";
+
+type Section = {
+  id: string;
+  title: string;
+  body: ReactNode;
+};
+
+const EFFECTIVE_DATE = new Date(2025, 9, 20).toLocaleDateString("en-US", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
+
+const SECTIONS: Section[] = [
+  {
+    id: "overview",
+    title: "overview & scope",
+    body: (
+      <p>
+        This Privacy Policy explains how Index Network, Inc. (&ldquo;Index&rdquo;,
+        &ldquo;we&rdquo;, &ldquo;us&rdquo;) collects, uses, shares, and safeguards
+        personal information when you visit our website, use our services, or
+        otherwise interact with us. It applies to information we process as a
+        controller under the GDPR and as a business under the CCPA, as amended.
+        By using our services, you agree to the practices described here.
+      </p>
+    ),
+  },
+  {
+    id: "information-we-collect",
+    title: "information we collect",
+    body: (
+      <ul className="legal-list">
+        <li>
+          <strong>Information you provide</strong> — account details, content
+          you upload or submit (notes, files), preferences, and communications.
+        </li>
+        <li>
+          <strong>Usage information</strong> — interactions with our site and
+          services, such as page views, navigation flows, and feature usage.
+        </li>
+        <li>
+          <strong>Device and technical data</strong> — browser type, operating
+          system, device identifiers, IP address, and cookie identifiers.
+        </li>
+        <li>
+          <strong>Cookies and similar technologies</strong> — essential cookies
+          and privacy-respecting analytics to understand aggregate usage. See
+          sharing &amp; processors for details.
+        </li>
+      </ul>
+    ),
+  },
+  {
+    id: "how-we-use",
+    title: "how we use information",
+    body: (
+      <ul className="legal-list">
+        <li>Provide, maintain, and improve our services and features.</li>
+        <li>Personalize experiences, including content relevance and discovery.</li>
+        <li>Communicate with you about updates, security, and support.</li>
+        <li>Monitor performance, debug issues, and ensure reliability.</li>
+        <li>Comply with legal obligations and enforce our terms.</li>
+      </ul>
+    ),
+  },
+  {
+    id: "legal-bases",
+    title: "legal bases (gdpr)",
+    body: (
+      <p>
+        We process personal data under these legal bases:{" "}
+        <strong>contract</strong> to provide the services you request;{" "}
+        <strong>legitimate interests</strong> such as securing, improving, and
+        measuring our services; <strong>consent</strong> for optional features
+        where required; and <strong>legal obligations</strong>.
+      </p>
+    ),
+  },
+  {
+    id: "sharing",
+    title: "sharing & processors",
+    body: (
+      <>
+        <p>
+          We do not sell personal information. We share data with service
+          providers who act as processors and follow our instructions:
+        </p>
+        <ul className="legal-list">
+          <li>
+            <strong>Analytics</strong> — Plausible Analytics, a privacy-focused
+            platform that measures aggregate site usage without tracking cookies
+            for individual profiles.
+          </li>
+          <li>
+            <strong>Hosting</strong> — infrastructure providers to serve our
+            website and APIs.
+          </li>
+          <li>
+            <strong>Communications</strong> — email and support tools to contact
+            you upon request.
+          </li>
+        </ul>
+        <p>
+          We may disclose information if required by law, to protect rights and
+          safety, or in connection with a merger, acquisition, or asset transfer.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "transfers",
+    title: "international transfers",
+    body: (
+      <p>
+        If personal data is transferred internationally, we rely on appropriate
+        safeguards such as Standard Contractual Clauses or adequacy decisions, as
+        applicable, to protect your information.
+      </p>
+    ),
+  },
+  {
+    id: "retention",
+    title: "data retention",
+    body: (
+      <p>
+        We retain personal information only as long as necessary for the purposes
+        described in this Policy, to comply with legal obligations, resolve
+        disputes, and enforce agreements. Retention periods depend on the type
+        and context of the data.
+      </p>
+    ),
+  },
+  {
+    id: "your-rights",
+    title: "your rights (gdpr/ccpa)",
+    body: (
+      <>
+        <p>
+          Subject to applicable law, you may have rights to access, correct,
+          delete, port, or restrict processing of your personal information, as
+          well as to object to processing or withdraw consent where processing is
+          based on consent.
+        </p>
+        <p>
+          California residents may have additional rights, including to know
+          categories of personal information, sources, purposes, and recipients;
+          to request deletion or correction; to opt out of certain sharing; and
+          to not be discriminated against for exercising rights.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "security",
+    title: "security",
+    body: (
+      <p>
+        We use administrative, technical, and organizational measures designed to
+        protect personal information. No system is perfectly secure, and we
+        cannot guarantee absolute security; we regularly evaluate and improve our
+        safeguards.
+      </p>
+    ),
+  },
+  {
+    id: "children",
+    title: "children's privacy",
+    body: (
+      <p>
+        Our services are not directed to children under 13 (or as defined by
+        local law). We do not knowingly collect personal information from
+        children. If you believe a child has provided personal information,
+        please contact us and we will take appropriate steps to delete it.
+      </p>
+    ),
+  },
+  {
+    id: "changes",
+    title: "changes to this policy",
+    body: (
+      <p>
+        We may update this Policy to reflect changes in our practices or the law.
+        We will post the updated version with a new effective date, and if
+        changes are material, we will provide additional notice where required.
+      </p>
+    ),
+  },
+  {
+    id: "contact",
+    title: "contact",
+    body: (
+      <>
+        <p>
+          Questions or requests related to this Policy or your personal
+          information?{" "}
+          <a href="mailto:hello@index.network">hello@index.network</a>
+        </p>
+        <p>Index Network, Inc.</p>
+      </>
+    ),
+  },
+];
 
 export default function PrivacyPolicyPage() {
-  const effectiveDate = new Date(2025, 9, 20).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
+  useEffect(() => {
+    ensureLandingV5Fonts();
+  }, []);
 
   return (
-    <ClientLayout>
-      <div className="flex flex-col min-h-[calc(100vh-76px)]">
-        <main className="flex-1 flex flex-col px-6 lg:px-12 pt-[40px] pb-[80px] font-sans text-[15px] text-black">
-          <div className="max-w-[960px] w-full mx-auto">
-        <h1 className="font-garamond text-3xl font-medium text-black mb-2">Privacy Policy</h1>
-        <p className="text-sm text-gray-600 mb-8">Effective: {effectiveDate}</p>
-
-        <nav className="mb-10 text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-gray-700">
-            <li><a className="hover:underline" href="#overview">Overview & Scope</a></li>
-            <li><a className="hover:underline" href="#information-we-collect">Information We Collect</a></li>
-            <li><a className="hover:underline" href="#how-we-use">How We Use Information</a></li>
-            <li><a className="hover:underline" href="#legal-bases">Legal Bases (GDPR)</a></li>
-            <li><a className="hover:underline" href="#sharing">Sharing & Processors</a></li>
-            <li><a className="hover:underline" href="#transfers">International Transfers</a></li>
-            <li><a className="hover:underline" href="#retention">Data Retention</a></li>
-            <li><a className="hover:underline" href="#your-rights">Your Rights (GDPR/CCPA)</a></li>
-            <li><a className="hover:underline" href="#security">Security</a></li>
-            <li><a className="hover:underline" href="#children">Children's Privacy</a></li>
-            <li><a className="hover:underline" href="#changes">Changes to This Policy</a></li>
-            <li><a className="hover:underline" href="#contact">Contact</a></li>
-          </ul>
-        </nav>
-
-        <section id="overview" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Overview & Scope</h2>
-          <p>
-            This Privacy Policy explains how Index Network, Inc. ("Index", "we", "us") collects, uses, shares,
-            and safeguards personal information when you visit our website, use our services, or otherwise
-            interact with us. This Policy applies to information we process as a controller under the General
-            Data Protection Regulation (GDPR) and as a business under the California Consumer Privacy Act (CCPA),
-            as amended. By using our services, you agree to the practices described here.
-          </p>
-        </section>
-
-        <section id="information-we-collect" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Information We Collect</h2>
-          <div className="space-y-3">
-            <p>
-              <span className="font-medium">Information you provide</span>: account details, content you upload or
-              submit (e.g., notes, files), preferences, and communications.
-            </p>
-            <p>
-              <span className="font-medium">Usage information</span>: interactions with our site and services, such
-              as page views, navigation flows, and feature usage.
-            </p>
-            <p>
-              <span className="font-medium">Device and technical data</span>: browser type, operating system, device
-              identifiers, IP address, and cookie identifiers.
-            </p>
-            <p>
-              <span className="font-medium">Cookies and similar technologies</span>: we use essential cookies and
-              privacy-respecting analytics to understand aggregate usage. See Sharing & Processors for details.
-            </p>
+    <div className="landing-v5 legal-v5">
+      <div className="hero h1 page-hero">
+        <div className="canvas-area">
+          <Nav />
+          <div className="hero-split">
+            <div className="well">
+              <h1 className="display">Privacy Policy</h1>
+              <p className="body-italic">
+                How Index Network handles personal information — what we
+                collect, why, and what choices you have.
+              </p>
+              <p className="legal-effective">effective · {EFFECTIVE_DATE}</p>
+            </div>
           </div>
-        </section>
-
-        <section id="how-we-use" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">How We Use Information</h2>
-          <ul className="list-disc pl-5 space-y-2">
-            <li>Provide, maintain, and improve our services and features.</li>
-            <li>Personalize experiences, including content relevance and discovery.</li>
-            <li>Communicate with you about updates, security, and support.</li>
-            <li>Monitor performance, debug issues, and ensure reliability.</li>
-            <li>Comply with legal obligations and enforce our terms.</li>
-          </ul>
-        </section>
-
-        <section id="legal-bases" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Legal Bases (GDPR)</h2>
-          <p>
-            We process personal data under these legal bases: (i) <span className="font-medium">contract</span> to
-            provide the services you request; (ii) <span className="font-medium">legitimate interests</span> such as
-            securing, improving, and measuring our services; (iii) <span className="font-medium">consent</span> for
-            optional features where required; and (iv) <span className="font-medium">legal obligations</span>.
-          </p>
-        </section>
-
-        <section id="sharing" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Sharing & Processors</h2>
-          <p className="mb-3">
-            We do not sell personal information. We share data with service providers who act as processors and
-            follow our instructions:
-          </p>
-          <ul className="list-disc pl-5 space-y-2">
-            <li>
-              <span className="font-medium">Analytics</span>: We use Plausible Analytics, a privacy-focused platform,
-              to measure aggregate site usage without tracking cookies for individual profiles.
-            </li>
-            <li><span className="font-medium">Hosting</span>: Infrastructure providers to serve our website and APIs.</li>
-            <li><span className="font-medium">Communications</span>: Email and support tools to contact you upon request.</li>
-          </ul>
-          <p className="mt-3">
-            We may disclose information if required by law, to protect rights and safety, or in connection with a
-            merger, acquisition, or asset transfer.
-          </p>
-        </section>
-
-        <section id="transfers" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">International Transfers</h2>
-          <p>
-            If personal data is transferred internationally, we rely on appropriate safeguards such as Standard
-            Contractual Clauses or adequacy decisions, as applicable, to protect your information.
-          </p>
-        </section>
-
-        <section id="retention" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Data Retention</h2>
-          <p>
-            We retain personal information only as long as necessary for the purposes described in this Policy,
-            to comply with legal obligations, resolve disputes, and enforce agreements. Retention periods depend on
-            the type and context of the data.
-          </p>
-        </section>
-
-        <section id="your-rights" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Your Rights (GDPR/CCPA)</h2>
-          <p className="mb-3">
-            Subject to applicable law, you may have rights to access, correct, delete, port, or restrict processing of
-            your personal information, as well as to object to processing or withdraw consent where processing is
-            based on consent.
-          </p>
-          <p>
-            California residents may have additional rights, including to know categories of personal information,
-            sources, purposes, and recipients; to request deletion or correction; to opt out of certain sharing; and
-            to not be discriminated against for exercising rights.
-          </p>
-        </section>
-
-        <section id="security" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Security</h2>
-          <p>
-            We use administrative, technical, and organizational measures designed to protect personal information.
-            No system is perfectly secure, and we cannot guarantee absolute security; we regularly evaluate and
-            improve our safeguards.
-          </p>
-        </section>
-
-        <section id="children" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Children's Privacy</h2>
-          <p>
-            Our services are not directed to children under 13 (or as defined by local law). We do not knowingly
-            collect personal information from children. If you believe a child has provided personal information,
-            please contact us and we will take appropriate steps to delete it.
-          </p>
-        </section>
-
-        <section id="changes" className="mb-8">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Changes to This Policy</h2>
-          <p>
-            We may update this Policy to reflect changes in our practices or the law. We will post the updated
-            version with a new effective date, and if changes are material, we will provide additional notice where
-            required.
-          </p>
-        </section>
-
-        <section id="contact" className="mb-2">
-          <h2 className="font-garamond text-xl font-medium text-black mb-3">Contact</h2>
-          <p>
-            If you have questions or requests related to this Policy or your personal information, contact us at
-            <span className="whitespace-pre"> </span>
-            <a href="mailto:hello@index.network" className="underline">hello@index.network</a>.
-          </p>
-          <p className="mt-2">Index Network, Inc.</p>
-        </section>
-          </div>
-        </main>
-        <Footer />
+        </div>
       </div>
-    </ClientLayout>
+
+      <section className="how legal-toc">
+        <div className="how-inner">
+          <ol className="legal-toc-list">
+            {SECTIONS.map((s, i) => (
+              <li key={s.id}>
+                <a href={`#${s.id}`}>
+                  <span className="legal-toc-num">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="legal-toc-title">{s.title}</span>
+                </a>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {SECTIONS.map((s) => (
+        <section key={s.id} id={s.id} className="how legal-section">
+          <div className="how-inner">
+            <h2 className="legal-section-title">{s.title}</h2>
+            <div className="legal-body">{s.body}</div>
+          </div>
+        </section>
+      ))}
+
+      <Footer />
+    </div>
   );
 }
 
