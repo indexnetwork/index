@@ -166,11 +166,17 @@ Lightweight — no activation hooks, no negotiation poller, no cron installer. T
 - The `edge-esmeralda/` indexer infrastructure (`scripts/`, `tsconfig.json`).
 - SKILL.md frontmatter with custom fields (`name`, `version`, `author`, `tags`, `metadata.openclaw.requires`) — Claude Code ignores unknown keys; OpenClaw reads `metadata.openclaw.requires`.
 
-### Subtree implications
+### Subtree chain
 
-The subtree boundary is `packages/edgeclaw/skills/` → `Edge-City/edgeclaw-skills`. New files added at the skills root (`.claude-plugin/`, `.codex-plugin/`, `openclaw.plugin.json`, `mcp.json`, `README.md`) will be pushed to the `edgeclaw-skills` repo by the existing subtree sync workflow. No changes to the sync mechanism needed.
+The manifest files added to `packages/edgeclaw/skills/` flow through a three-hop chain to reach the publishable repo:
 
-The full `edgeclaw` package (`packages/edgeclaw/`) continues to sync to `indexnetwork/edgeclaw` (fork of `Edge-City/edgeclaw`). It already includes `skills/` in its `package.json#files` array, so the new manifests inside `skills/` are automatically included. The edgeclaw installer copies skills into `~/.openclaw/workspace/skills/` — the plugin manifests are inert files once copied there.
+1. **`indexnetwork/index`** (this monorepo) — `packages/edgeclaw/` is pushed to `indexnetwork/edgeclaw` on every push to `main` via the subtree sync workflow.
+2. **`indexnetwork/edgeclaw`** (fork of `Edge-City/edgeclaw`) — an open PR merges changes into the upstream `Edge-City/edgeclaw`.
+3. **`Edge-City/edgeclaw`** — the `skills/` folder inside this repo is a subtree that pushes to **`Edge-City/edgeclaw-skills`**.
+
+So new files at `packages/edgeclaw/skills/` (`.claude-plugin/`, `.codex-plugin/`, `openclaw.plugin.json`, `mcp.json`, `README.md`) land in `Edge-City/edgeclaw-skills` at the root — exactly where plugin runtimes expect them. No changes to any sync mechanism needed.
+
+The edgeclaw installer copies skills into `~/.openclaw/workspace/skills/` — the plugin manifests are inert files once copied there.
 
 ### Install paths
 
