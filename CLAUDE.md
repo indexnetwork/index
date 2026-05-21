@@ -178,9 +178,9 @@ gh repo sync indexnetwork/edgeclaw --source Edge-City/edgeclaw --branch main --f
 
 #### Note on `packages/edgeclaw/skills/`
 
-`skills/` is a regular subdirectory of `packages/edgeclaw/` from this monorepo's perspective — not a separate subtree. It travels through the standard `packages/edgeclaw/` sync along with `install/`, `workspace/`, and everything else. There is no `indexnetwork/edgeclaw-skills` fork.
+`skills/` is a regular subdirectory of `packages/edgeclaw/` from this monorepo. It travels through the `packages/edgeclaw/` sync above. There is no `indexnetwork/edgeclaw-skills` fork.
 
-On Edge-City's side, the skill bundles also live in a sibling repo (`Edge-City/edgeclaw-skills`); the relationship between `Edge-City/edgeclaw` and `Edge-City/edgeclaw-skills` (including the 15-minute auto-refresh that regenerates the EdgeOS skill's `references/`) is set up and maintained on Edge-City's side. We just hand over `packages/edgeclaw/` as one tree via the PR flow above.
+On Edge-City's side, `Edge-City/edgeclaw/skills/` is a subtree of `Edge-City/edgeclaw-skills`. That sync — including the 15-minute auto-refresh that regenerates the EdgeOS skill's `references/` — is set up and maintained on Edge-City's side.
 
 ### Root
 
