@@ -60,3 +60,8 @@ node_modules/
 # ===================
 /skills/**/SKILL.md
 .superpowers/
+
+# ===================
+# EdgeClaw auto-generated references (CI-refreshed upstream)
+# ===================
+packages/edgeclaw/skills/edge-esmeralda/references/
