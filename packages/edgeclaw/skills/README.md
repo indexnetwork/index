@@ -23,19 +23,19 @@ claude plugin install edgeclaw
 Or from GitHub directly:
 
 ```bash
-claude plugin install --from github Edge-City/edgeclaw-skills
+claude plugin install --from github indexnetwork/edgeclaw
 ```
 
 ### Codex
 
 ```bash
-codex plugin install Edge-City/edgeclaw-skills
+codex plugin install indexnetwork/edgeclaw
 ```
 
 ### OpenClaw
 
 ```bash
-openclaw plugins install Edge-City/edgeclaw-skills
+openclaw plugins install indexnetwork/edgeclaw
 ```
 
 For the batteries-included OpenClaw experience (workspace, installer, cron jobs, onboarding), use the full [EdgeClaw](https://github.com/Edge-City/edgeclaw) package instead.

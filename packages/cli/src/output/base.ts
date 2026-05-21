@@ -173,5 +173,6 @@ export function padTo(cellWidth: number, plainText: string): string {
 
 /** Strip ANSI escape sequences from a string. */
 export function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }

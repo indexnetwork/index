@@ -22,10 +22,6 @@ export function DebugCopyButton({
   title = "Copy debug JSON",
   iconSize = "w-4 h-4",
 }: DebugCopyButtonProps) {
-  // Show in local dev (build-time constant) or when explicitly enabled via env var
-  // (e.g. VITE_ENABLE_DEBUG=true on staging deployments).
-  if (!import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEBUG !== "true") return null;
-
   const [state, setState] = useState<"idle" | "loading" | "copied" | "error">("idle");
 
   const handleClick = useCallback(async () => {
@@ -41,6 +37,8 @@ export function DebugCopyButton({
       setTimeout(() => setState("idle"), 2000);
     }
   }, [fetchPath, state]);
+
+  if (!import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEBUG !== "true") return null;
 
   const icon = {
     idle: <Bug className={iconSize} />,

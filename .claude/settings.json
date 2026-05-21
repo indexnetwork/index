@@ -25,6 +25,34 @@
     ],
     "defaultMode": "acceptEdits"
   },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/hooks/claude-post-edit-lint.sh",
+            "statusMessage": "Auto-linting edited file"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/hooks/claude-pre-commit-gate.sh",
+            "if": "Bash(git commit*)",
+            "timeout": 60,
+            "statusMessage": "Running tsc + eslint on staged files"
+          }
+        ]
+      }
+    ]
+  },
   "enabledMcpjsonServers": [
     "index-network"
   ],
