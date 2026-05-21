@@ -13,14 +13,36 @@ process.env.RAILWAY_ENVIRONMENT = 'test';
 process.env.REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import Redis from 'ioredis';
 
 import { RateLimit, getRateLimitInfo } from '../src/guards/limiter.guard';
 import { RateLimiterError } from '../src/lib/limiter/error';
+
+// Probe Redis at module load — this test exercises the Redis-backed path
+// end-to-end, so skip cleanly when no Redis is reachable rather than failing
+// every assertion below on fail-open behavior.
+const redisUp = await (async () => {
+  const probe = new Redis(process.env.REDIS_URL!, { lazyConnect: true, maxRetriesPerRequest: 1 });
+  try {
+    await probe.connect();
+    await probe.ping();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try { await probe.quit(); } catch { /* ignore */ }
+  }
+})();
+
+if (!redisUp) {
+  console.log(`[limiter.e2e] SKIP — Redis not reachable at ${process.env.REDIS_URL}`);
+}
 
 let server: ReturnType<typeof Bun.serve>;
 let baseUrl: string;
 
 beforeAll(() => {
+  if (!redisUp) return;
   const readGuard = RateLimit('read');
   server = Bun.serve({
     port: 0,
@@ -49,14 +71,14 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  server.stop(true);
+  if (server) server.stop(true);
   for (const k of ENV_KEYS) {
     if (originalEnv[k] === undefined) delete process.env[k];
     else process.env[k] = originalEnv[k];
   }
 });
 
-describe('limiter e2e', () => {
+describe.if(redisUp)('limiter e2e', () => {
   test(
     'burst: first 5 allowed with descending remaining, 6th is 429 with retry-after',
     async () => {

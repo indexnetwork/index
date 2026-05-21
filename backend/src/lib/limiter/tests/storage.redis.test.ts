@@ -3,10 +3,31 @@ import Redis from 'ioredis';
 import { RedisStorage } from '../storage.redis';
 
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
+
+// Probe Redis at module load so we cleanly skip when no Redis is reachable,
+// rather than failing every test inside on connection error.
+const redisUp = await (async () => {
+  const probe = new Redis(REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1 });
+  try {
+    await probe.connect();
+    await probe.ping();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try { await probe.quit(); } catch { /* ignore */ }
+  }
+})();
+
+if (!redisUp) {
+  console.log(`[storage.redis.test] SKIP — Redis not reachable at ${REDIS_URL}`);
+}
+
 let redis: Redis;
 let s: RedisStorage;
 
 beforeAll(async () => {
+  if (!redisUp) return;
   redis = new Redis(REDIS_URL, { lazyConnect: true });
   await redis.connect();
   s = new RedisStorage(redis);
@@ -14,12 +35,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await redis.quit();
+  if (redis) await redis.quit();
 });
 
 const k = (suffix: string) => `limiter-test:${Date.now()}:${suffix}:${Math.random()}`;
 
-describe('RedisStorage', () => {
+describe.if(redisUp)('RedisStorage', () => {
   test('increments, denies past max', async () => {
     const key = k('increments');
     const r1 = await s.hit(key, 60, 2);
