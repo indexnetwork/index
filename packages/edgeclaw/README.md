@@ -142,8 +142,8 @@ Displays the returned `mcpServer` object to the attendee as a copyable config sn
 - An API key for the Index protocol. Generate one on your agents page at [index.network](https://index.network) (or your community-branded node).
 - [Bun](https://bun.sh) — the installer is a Bun script (Node 20+ also works if you swap the shebang).
 - *(Optional)* EdgeOS tokens, if you want live event/attendee recipes to work without per-query prompting:
-  - `EDGEOS_API_KEY` — your personal access token (`eos_live_…`), generated at `/portal/api-keys` in the EdgeOS portal. Unlocks the calendar/RSVPs/venues recipes in `skills/edgeos/SKILL.md`.
-  - `EDGEOS_BEARER_TOKEN` — your citizen-portal JWT. Unlocks the attendee-directory recipes.
+  - `EDGEOS_API_KEY` — long-lived `eos_live_…` automation key, minted via the EdgeCity onboarding flow (see the "EdgeOS tokens" section above). Unlocks the calendar/RSVPs/venues recipes in `skills/edgeos/SKILL.md`.
+  - `EDGEOS_BEARER_TOKEN` — human session JWT obtained via the same email-OTP flow. Unlocks the directory, own-profile, and OpenAPI-spec recipes.
 
   Both are optional from EdgeClaw's perspective. Without them the agent still runs; EdgeOS recipes will just ask the user for the missing token on first use per the SKILL.md instructions.
 

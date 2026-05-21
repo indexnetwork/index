@@ -1,26 +1,27 @@
 # Edge Esmeralda 2026 — Agent Skill
 
-A single-file skill that gives AI agents access to Edge Esmeralda 2026 data: event schedule, attendee directory, wiki, newsletters, and organization info.
+A skill that gives AI agents popup-specific knowledge for Edge Esmeralda 2026: popup constants (popup id, week dates, themes), attendee-directory field semantics, and the curated wiki / website / newsletter knowledge base.
+
+For backend-agnostic EdgeOS API recipes (events, RSVPs, venues, the directory endpoint itself, your own profile), pair this with the sibling `../edgeos/` skill. For Index Network discovery, pair with `../index-network/`.
 
 ## For Users (Attendees)
 
-**Download [`SKILL.md`](./SKILL.md)** and add it to your agent's skill/context:
+**Download [`SKILL.md`](./SKILL.md)** and add it to your agent's skill/context alongside `../edgeos/SKILL.md`:
 
-- **Claude Code**: Copy to `~/.claude/skills/edgeos/SKILL.md`
-- **OpenClaw / Hermes / NanoClaw**: Add to your agent's skill directory
+- **Claude Code**: copy both files to `~/.claude/skills/edge-esmeralda/SKILL.md` and `~/.claude/skills/edgeos/SKILL.md` respectively.
+- **OpenClaw / Hermes / NanoClaw**: add to your agent's skill directory.
 
-Set environment variables:
+Set environment variables (the `edgeos` skill needs both; this skill needs none):
 ```bash
-export EDGEOS_API_KEY="eos_live_..."      # Required for the calendar (events, RSVPs, venues)
-export EDGEOS_BEARER_TOKEN="your-token"   # Required for attendee directory search
-export INDEX_API_KEY="ix_..."             # Required for the Index Network discovery layer (§3)
+export EDGEOS_API_KEY="eos_live_..."      # Long-lived automation key for events, RSVPs, venues
+export EDGEOS_BEARER_TOKEN="..."          # Human session JWT for directory, own profile, OpenAPI
 ```
 
-Generate the calendar token from the EdgeOS portal under `/portal/api-keys`. Generate the Index Network key at `index.network/agents` (or a community-branded node).
+To obtain both tokens, follow the email-OTP flow at the EdgeCity onboarding page — see `SKILL.md` §2 for the URL placeholder (filled in once EdgeCity publishes it).
 
 ## For Maintainers
 
-This repo contains backend infrastructure that keeps the skill's reference content fresh.
+This repo contains the indexer that keeps the skill's reference content fresh.
 
 ### Setup
 ```bash
@@ -37,39 +38,20 @@ This fetches and preprocesses content from:
 - **Edge City website** (edgecity.live) → `references/website-content.md`
 - **Substack newsletter** (edgeesmeralda2026.substack.com) → `references/newsletter-digest.md`
 
-A GitHub Action runs the indexer every 15 minutes and commits any changes.
+A GitHub Action in `Edge-City/edgeclaw-skills` runs the indexer every 15 minutes and commits any changes; local runs are only needed when iterating on the indexer code itself.
 
 ### Data Sources
 
 | Source | Type | Auth | Status |
 |--------|------|------|--------|
-| EdgeOS Events (api.edgeos.world) | Live API | Bearer token (eos_live_...) | Live |
-| EdgeOS Attendees (api-citizen-portal.simplefi.tech) | Live API | Bearer token | Live |
 | Notion Wiki | Preprocessed | None (public) | Live |
 | Edge City Website | Preprocessed | None | Live |
 | Substack Newsletter | Preprocessed | None | Live |
-| Index Network (semantic search) | Live MCP | `x-api-key` (ix_...) | Live |
-| Geo Browser (spatial / map) | Live API | TBD | **Placeholder — awaiting PR** |
 
-## Contributing tooling (Geo Browser, others)
+For live EdgeOS API data sources (events, attendees, venues), see the `edgeos` skill's `SKILL.md` and its accompanying recipes.
 
-One section in `SKILL.md` is still reserved as a stub for an external team to PR concrete tooling into:
+## When updating `SKILL.md`
 
-- **§4 Spatial Browsing (Geo Browser)** — marker: `<!-- GEO_BROWSER_PLACEHOLDER ... END -->`
-
-(§3 Knowledge Discovery was previously a placeholder; it is now live — see SKILL.md.)
-
-To contribute a section:
-
-1. Open a PR replacing the placeholder block (everything between the marker comments) with:
-   - The endpoint(s) or SDK calls the agent should make
-   - Auth: env var name, scope, and how a user obtains a token
-   - 3–5 curl/SDK examples covering the common flows
-   - Expected response shape, including error codes
-   - When NOT to use the tool (overlap with EdgeOS or other sections)
-2. Remove the `<!-- ..._PLACEHOLDER ... END -->` marker comment.
-3. Update the row in the Data Sources table above (`Status: Live`, fill `Auth`).
-4. Bump the `version` field in `SKILL.md` frontmatter (e.g. 2.1.0 → 2.2.0).
-5. If your section needs env vars, add them to `.env.example`.
-
-Keep additions self-contained — the skill is a single file users download, so external imports / multi-file refactors aren't accepted.
+- Bump the `version` field in `SKILL.md` frontmatter (semver: patch for content tweaks, minor for new sections, major for breaking the cross-skill contract with `edgeos`/`index-network`).
+- Keep additions scoped to popup-specific content. EdgeOS API recipes belong in `../edgeos/`; semantic discovery belongs in `../index-network/`.
+- If your update touches an env var the user must set, update the Setup section in this README too.
