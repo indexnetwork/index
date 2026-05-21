@@ -6,7 +6,11 @@ const originalEnv: Record<string, string | undefined> = Object.fromEntries(
   ENV_KEYS.map((k) => [k, process.env[k]]),
 );
 
-// Load env BEFORE imports that capture config at module load.
+// ESM hoists static imports, so these assignments actually run AFTER imported
+// modules have been evaluated. That's fine here because all limiter env reads
+// (LIMITER_*, RAILWAY_ENVIRONMENT, REDIS_URL) happen per-call rather than at
+// module load — see resolveClassConfig, getIpHeaders, getStorage. The env is
+// set early so the *test code* below sees the intended values.
 process.env.LIMITER_READ_PER_MIN = '5';
 process.env.LIMITER_DISABLE = '';
 process.env.RAILWAY_ENVIRONMENT = 'test';

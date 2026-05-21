@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 
 import { BASE_URL, JWT_AUDIENCE } from '../betterauth/betterauth';
@@ -28,9 +30,10 @@ function getIpHeaders(): string[] {
 
 const isRailway = () => !!process.env.RAILWAY_ENVIRONMENT;
 
-const IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)$/;
-const IPV6 = /^[0-9a-fA-F:]+$/;
-const isValidIp = (s: string) => IPV4.test(s) || (IPV6.test(s) && s.includes(':'));
+// Use Node's RFC-compliant IP validator (available in Bun via node:net) so we
+// can't be fooled into bucketing on malformed strings like `::::` or random
+// hex from a spoofed forwarded header.
+const isValidIp = (s: string): boolean => isIP(s) !== 0;
 
 /**
  * Minimal subset of Bun.Server we use — captured to look up the socket peer

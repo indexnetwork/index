@@ -4,8 +4,13 @@ import type { HitResult, LimiterStorage } from './storage';
 
 const LUA = `
 local n = redis.call('INCR', KEYS[1])
-if n == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 local ttl = redis.call('TTL', KEYS[1])
+-- TTL is -1 when the key exists without expiry (e.g. leftover from a manual
+-- SET outside this script). Re-arm so the bucket isn't stuck forever.
+if ttl < 0 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+  ttl = tonumber(ARGV[1])
+end
 return {n, ttl}
 `;
 
