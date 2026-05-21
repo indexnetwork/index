@@ -1,10 +1,8 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 
 describe('limiter selector', () => {
-  beforeEach(() => {
-    // reset module cache
-    delete require.cache[require.resolve('../index')];
-  });
+  // Module-level `storagePromise` is reset per-test via the `?cb=` query-string
+  // cache buster on the dynamic import — each test gets a fresh module instance.
 
   test('returns MemoryStorage when REDIS_URL missing', async () => {
     const prev = process.env.REDIS_URL;

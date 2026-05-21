@@ -1,3 +1,11 @@
+// Capture env values we mutate so we can restore them in afterAll. Keeps the
+// test order-independent and prevents cross-test pollution when this file
+// runs before others that depend on these vars being unset.
+const ENV_KEYS = ['LIMITER_READ_PER_MIN', 'LIMITER_DISABLE', 'RAILWAY_ENVIRONMENT', 'REDIS_URL'] as const;
+const originalEnv: Record<string, string | undefined> = Object.fromEntries(
+  ENV_KEYS.map((k) => [k, process.env[k]]),
+);
+
 // Load env BEFORE imports that capture config at module load.
 process.env.LIMITER_READ_PER_MIN = '5';
 process.env.LIMITER_DISABLE = '';
@@ -42,6 +50,10 @@ beforeAll(() => {
 
 afterAll(() => {
   server.stop(true);
+  for (const k of ENV_KEYS) {
+    if (originalEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = originalEnv[k];
+  }
 });
 
 describe('limiter e2e', () => {

@@ -35,12 +35,14 @@ describe('RateLimit guard', () => {
     await expect(guard(r())).rejects.toBeInstanceOf(RateLimiterError);
   });
 
-  test('LIMITER_DISABLE skips everything', async () => {
+  test('LIMITER_DISABLE skips everything (no throw, no info stashed)', async () => {
     process.env.LIMITER_DISABLE = '1';
+    process.env.LIMITER_WRITE_PER_MIN = '1';  // would deny on 2nd call if enabled
     const guard = RateLimit('write');
-    for (let i = 0; i < 10_000; i++) await guard(req({}));
-    // no throw, no info attached
-    expect(getRateLimitInfo(req({}))).toBeUndefined();
+    const r = req({ 'x-forwarded-for': uniqueIp() });
+    for (let i = 0; i < 50; i++) await guard(r);
+    // Assertion is meaningful only against the SAME request the guard ran on.
+    expect(getRateLimitInfo(r)).toBeUndefined();
   });
 
   test('private IP bypasses', async () => {
