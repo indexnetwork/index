@@ -94,8 +94,8 @@ async function indexWebsite(): Promise<void> {
       md += `## ${page.title}\n\n`;
       md += `${cleaned}\n\n---\n\n`;
       console.log(`  Website: ${page.path} (${cleaned.length} chars)`);
-    } catch (err: any) {
-      console.error(`  Website: ${page.path} failed: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`  Website: ${page.path} failed: ${err instanceof Error ? err.message : String(err)}`);
       md += `## ${page.title}\n\n`;
       md += `*Failed to fetch this page. Try again later.*\n\n---\n\n`;
     }
@@ -108,14 +108,15 @@ async function indexWebsite(): Promise<void> {
 
 const WIKI_PAGE_ID = "317d45cdfc5981d2a571f52b024c5141";
 
-function extractNotionText(titleArr: any[]): string {
+function extractNotionText(titleArr: unknown[]): string {
   if (!titleArr) return "";
   return titleArr
-    .map((t: any) => {
+    .map((t: unknown) => {
       if (!Array.isArray(t)) return String(t);
-      let text = t[0];
-      if (t[1]) {
-        for (const ann of t[1]) {
+      let text = String(t[0]);
+      const annotations = t[1] as unknown[][] | undefined;
+      if (annotations) {
+        for (const ann of annotations) {
           if (ann[0] === "a") text = `${text} (${ann[1]})`;
         }
       }
@@ -136,8 +137,9 @@ async function indexWiki(): Promise<void> {
 
   let blockCount = 0;
 
-  for (const [bid, bdata] of Object.entries(blocks) as any[]) {
-    const v = bdata?.value?.value || bdata?.value;
+  for (const [_bid, bdata] of Object.entries(blocks)) {
+    const entry = bdata as { value?: { value?: Record<string, unknown>; type?: string; properties?: Record<string, unknown> } };
+    const v = entry?.value?.value || entry?.value;
     if (!v || !v.type) continue;
 
     const text = extractNotionText(v.properties?.title);

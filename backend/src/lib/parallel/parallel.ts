@@ -77,7 +77,7 @@ export async function searchUser(request: ParallelSearchRequest): Promise<Parall
     throw new Error('PARALLELS_API_KEY is not defined');
   }
 
-  let objective: string = '';
+  let objective: string;
   if ('objective' in request) {
     objective = request.objective;
   } else {

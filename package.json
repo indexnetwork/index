@@ -19,7 +19,7 @@
     "start": "bun run start:backend & bun run start:frontend",
     "start:frontend": "cd frontend && bun run start",
     "start:backend": "cd backend && bun run start",
-    "lint": "cd frontend && bun run lint && cd ../backend && bun run lint",
+    "lint": "eslint .",
     "test": "cd backend && bun test",
     "subtree:setup": "bash scripts/subtree-setup.sh",
     "worktree:setup": "bash scripts/worktree-setup.sh",
@@ -28,13 +28,19 @@
     "worktree:build": "bash scripts/worktree-build.sh"
   },
   "devDependencies": {
-    "lint-staged": "^16.4.0"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^9.39.1",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-boundaries": "^6.0.2",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "lint-staged": "^16.4.0",
+    "typescript-eslint": "^8.58.0"
   },
   "overrides": {
     "@better-auth/utils": "0.4.0"
   },
   "lint-staged": {
-    "backend/src/**/*.ts": "bash -c 'cd backend && bunx eslint --no-warn-ignored \"$@\"' --",
-    "frontend/src/**/*.{ts,tsx}": "bash -c 'cd frontend && bunx eslint --no-warn-ignored \"$@\"' --"
+    "**/*.{ts,tsx}": "eslint --no-warn-ignored"
   }
 }

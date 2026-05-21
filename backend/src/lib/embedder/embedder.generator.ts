@@ -60,7 +60,7 @@ export class OpenRouterGenerator implements EmbeddingGenerator {
       }
     } catch (error) {
       logger.error('Error generating embedding', { error: error instanceof Error ? error.message : String(error) });
-      throw new Error(`Failed to generate embedding: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Failed to generate embedding: ${error instanceof Error ? error.message : 'Unknown error'}`, { cause: error });
     }
   }
 }
