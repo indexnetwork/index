@@ -1,0 +1,23 @@
+{
+  "name": "edgeclaw",
+  "version": "1.0.0",
+  "description": "Edge Esmeralda 2026 — popup knowledge, EdgeOS calendar & directory, and Index Network discovery.",
+  "author": {
+    "name": "Edge City",
+    "url": "https://edgecity.live"
+  },
+  "homepage": "https://edgecity.live",
+  "repository": "https://github.com/Edge-City/edgeclaw-skills",
+  "license": "MIT",
+  "keywords": ["edge-city", "edge-esmeralda", "popup-village", "community", "discovery"],
+  "mcpServers": "./mcp.json",
+  "interface": {
+    "displayName": "EdgeClaw Skills",
+    "shortDescription": "Edge Esmeralda popup knowledge, calendar, directory, and discovery.",
+    "developerName": "Edge City",
+    "category": "Productivity",
+    "capabilities": ["MCP", "Skills"],
+    "websiteURL": "https://edgecity.live",
+    "brandColor": "#1a1a2e"
+  }
+}
