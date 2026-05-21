@@ -28,7 +28,8 @@ See the project hub for the full diagram and decisions.
 - `workspace/` — backend-agnostic agent core (identity, voice, community context, generic operating rules)
 - `skills/` — per-backend skill bundles registered with OpenClaw via per-bundle `SKILL.md`. Mirrors `Edge-City/edgeclaw-skills` as a subtree; today this hosts:
   - `skills/index-network/` — Index Network MCP procedural knowledge (onboarding ritual, voice exemplars, cron prompts, heartbeat tasks)
-  - `skills/edgeos/` — EdgeOS calendar + attendee directory + curated wiki/website/newsletter references (vendored from `Edge-City/edgeclaw-skills`; refreshed by upstream CI)
+  - `skills/edgeos/` — backend-generic EdgeOS API recipes (events, RSVPs, venues, attendee directory, own profile). Reads `EDGEOS_BEARER_TOKEN` and `EDGEOS_API_KEY` from env; popup id is supplied by the active operator skill.
+  - `skills/edge-esmeralda/` — Edge Esmeralda 2026 popup knowledge: popup constants (popup id, week dates, themes), attendee field semantics, the curated wiki/website/newsletter references (vendored from `Edge-City/edgeclaw-skills`; refreshed by upstream CI every 15 min), and the onboarding pointer for obtaining EdgeOS tokens.
 - `install/` — bootstrap scripts for plugging EdgeClaw into a runtime
 
 ## Getting an agent connected
@@ -38,6 +39,12 @@ Two paths:
 **1. I'm new to agents.** Sign up at `edgecity.live/agentvillage` and pick "Set one up for me." InstaClaw provisions a hosted agent with EdgeClaw preinstalled. ~5 minutes.
 
 **2. I'm self-hosting OpenClaw.** Set up a clean OpenClaw installation, then run the EdgeClaw installer from a clone of this repo.
+
+### EdgeOS tokens
+
+Both paths need EdgeOS tokens (`EDGEOS_BEARER_TOKEN` and `EDGEOS_API_KEY`) before the `edgeos` skill can talk to the calendar, directory, or your own profile. Obtain them by completing the email-OTP flow at `<EDGECITY-ONBOARDING-URL>`, then pass them to the installer (`--edgeos-bearer-token`, `--edgeos-api-key`) or, for non-OpenClaw hosts, set them in your host's env config per its conventions. EdgeClaw does not run OTP itself.
+
+> **TODO:** Replace `<EDGECITY-ONBOARDING-URL>` with the actual URL once EdgeCity publishes it. Bump `package.json` patch version when done.
 
 ## Integration API
 
