@@ -122,12 +122,12 @@ Every call with the same email returns the same user but a **fresh API key** —
 
 ### What InstaClaw does after signup
 
-1. Runs the EdgeClaw installer with the returned `apiKey`: `bun install/install.ts <apiKey>` (or equivalent in the hosted runtime).
+1. Runs the EdgeClaw installer with the returned `apiKey`: `bun install/install.ts --index-api-key <apiKey>` (or equivalent in the hosted runtime). If InstaClaw has also fetched an EdgeOS personal access token for the attendee, it passes that on the same line: `bun install/install.ts --index-api-key <apiKey> --edgeos-api-key <eos_live_…> --edgeos-bearer-token <jwt>`.
 2. In a follow-up step, captures the attendee's Telegram handle and binds it to their agent transport — this is entirely InstaClaw-owned and happens outside this endpoint.
 
 ### What EdgeOS does after signup
 
-Displays the returned `mcpServer` object to the attendee as a copyable config snippet. The attendee pastes it into their agent's MCP servers config (or runs `bun install/install.ts <apiKey>` from a clone of this repo).
+Displays the returned `mcpServer` object to the attendee as a copyable config snippet. The attendee pastes it into their agent's MCP servers config (or runs `bun install/install.ts --index-api-key <apiKey>` from a clone of this repo).
 
 ## Prerequisites
 
@@ -145,25 +145,24 @@ Displays the returned `mcpServer` object to the attendee as a copyable config sn
 From a clone of this repo:
 
 ```bash
-bun install/install.ts <YOUR_API_KEY>
-# or
-API_KEY=<YOUR_API_KEY> bun install/install.ts
+bun install/install.ts --index-api-key <YOUR_API_KEY>
 ```
 
 To target the dev environment (keys generated on `dev.index.network`), pass `--dev`:
 
 ```bash
-bun install/install.ts <YOUR_DEV_API_KEY> --dev
+bun install/install.ts --index-api-key <YOUR_DEV_API_KEY> --dev
 ```
 
 Or override the MCP URL explicitly via `INDEX_MCP_URL=…`. Without either, the installer points at `https://protocol.index.network/mcp` (production).
 
-To wire the optional EdgeOS tokens at the same time, supply them in env:
+To wire the optional EdgeOS tokens at the same time, pass them as flags:
 
 ```bash
-EDGEOS_API_KEY=eos_live_… \
-EDGEOS_BEARER_TOKEN=eyJ… \
-bun install/install.ts <YOUR_API_KEY>
+bun install/install.ts \
+  --index-api-key <YOUR_API_KEY> \
+  --edgeos-api-key eos_live_… \
+  --edgeos-bearer-token eyJ…
 ```
 
 The installer writes any tokens it finds into `env.vars.*` in `~/.openclaw/openclaw.json`; on the next gateway start they become process-env on the gateway and inherit into the agent's shell tool, so `curl -H "Authorization: Bearer $EDGEOS_API_KEY"` recipes work without further plumbing.
@@ -171,7 +170,7 @@ The installer writes any tokens it finds into `env.vars.*` in `~/.openclaw/openc
 The installer:
 
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at `https://protocol.index.network/mcp` with your API key in `x-api-key`.
-2. If `EDGEOS_API_KEY` and/or `EDGEOS_BEARER_TOKEN` are set in env, writes each to `env.vars.<NAME>` so the gateway exposes them to the agent's subprocesses on its next start.
+2. If `--edgeos-api-key` and/or `--edgeos-bearer-token` are passed, writes each to `env.vars.<NAME>` so the gateway exposes them to the agent's subprocesses on its next start.
 3. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
 4. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds the lived notes the active skill's bootstrap ritual populated for you); pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated `MEMORY.md`, OpenClaw's `workspace-state.json` first-run marker, and the local onboarding/welcome/cron-preference markers under `memory/` so the next session re-onboards from scratch.
 5. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/` so OpenClaw registers them as workspace skills.
@@ -196,7 +195,7 @@ bun install/reset.ts
 Then re-install:
 
 ```bash
-bun install/install.ts <YOUR_API_KEY>
+bun install/install.ts --index-api-key <YOUR_API_KEY>
 ```
 
 Pass `--wipe-user` to also remove `USER.md`, `MEMORY.md`, the `.openclaw/` first-run marker, the entire `memory/` directory (including `edgeclaw-state.json`, `welcome-state.json`, and daily notes), and all agent sessions under `~/.openclaw/agents/main/sessions/` — so the next message spawns a brand new session against a freshly-bootstrapped workspace:

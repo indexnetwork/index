@@ -10,31 +10,28 @@
  *     dispatch, gated on the same quality bar.
  *
  * Invoked only by the orchestrator (`install.ts`) — not a standalone
- * entrypoint. The orchestrator reads `<API_KEY>` and `--dev` from
- * `process.argv` and this module reads the same args.
+ * entrypoint. Reads `--index-api-key <value>` and `--dev` from
+ * `process.argv` and `INDEX_MCP_URL` from env for the MCP URL override.
  */
 
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 
+import { readFlag } from "./args";
+
 const PROD_MCP_URL = "https://protocol.index.network/mcp";
 const DEV_MCP_URL = "https://protocol.dev.index.network/mcp";
 
-const FLAGS = process.argv.slice(2).filter((a) => a.startsWith("--"));
-const POSITIONALS = process.argv.slice(2).filter((a) => !a.startsWith("--"));
-const IS_DEV = FLAGS.includes("--dev");
+const IS_DEV = process.argv.slice(2).includes("--dev");
 const PROTOCOL_MCP_URL =
   process.env.INDEX_MCP_URL?.trim() || (IS_DEV ? DEV_MCP_URL : PROD_MCP_URL);
 
 function readApiKey(): string {
-  const fromArg = POSITIONALS[0]?.trim();
-  const fromEnv = process.env.API_KEY?.trim() ?? process.env.INDEX_API_KEY?.trim();
-  const key = fromArg || fromEnv;
+  const key = readFlag("--index-api-key")?.trim();
   if (!key) {
-    console.error("error: API_KEY required");
-    console.error("usage: bun install.ts <API_KEY> [--dev]");
-    console.error("       API_KEY=<key> bun install.ts [--dev]");
+    console.error("error: --index-api-key required");
+    console.error("usage: bun install.ts --index-api-key <KEY> [--dev]");
     process.exit(1);
   }
   return key;
