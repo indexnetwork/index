@@ -25,7 +25,6 @@ index/
   packages/
     protocol/        @indexnetwork/protocol NPM package (agent graphs, interfaces, tools)
     cli/             CLI client (@indexnetwork/cli, Bun, TypeScript)
-    openclaw-plugin/ indexnetwork-openclaw-plugin (bootstrap skill + negotiation poller for OpenClaw hosts)
 ```
 
 **Protocol** is the backend: a native Bun HTTP server (`Bun.serve`) running on port 3001. It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
@@ -279,7 +278,7 @@ Negotiation turns that cannot be resolved synchronously by an in-process system 
 2. The agent deliberates and submits its decision via `POST /api/agents/:id/negotiations/:negotiationId/respond`. The backend persists the turn and either finalizes the negotiation (on `accept`, `reject`, or turn cap) or returns the task to `waiting_for_agent` for the counterparty.
 3. If no agent claims a parked turn within 24 hours, the in-process system `Index Negotiator` takes over.
 
-The openclaw-plugin is the reference implementation of a polling personal agent — it runs a background interval poller, and on a successful pickup launches a silent subagent tagged with an `index:negotiation:`-prefixed session key. The subagent reads the turn context, deliberates, and submits the response. See `docs/domain/negotiation.md` for the full turn protocol.
+Personal agents poll `POST /api/agents/:id/negotiations/pickup` with their API key. On a successful pickup the agent reads the turn context, deliberates, and submits the response via `POST /api/agents/:id/negotiations/:negotiationId/respond`. See `docs/domain/negotiation.md` for the full turn protocol.
 
 ### How They Compose
 

@@ -529,7 +529,7 @@ One section of `MCP_INSTRUCTIONS` ("Negotiation turn mode") switches the caller 
 - Read the user's profile and intents via `read_user_profiles` and `read_intents`.
 - Submit its response via `respond_to_negotiation` — never produce user-facing output, never ask clarifying questions, prefer conservative actions when ambiguous.
 
-This is how personal agents participate in bilateral negotiation. The openclaw-plugin's background poller pulls pending turns from `POST /api/agents/:id/negotiations/pickup` and launches subagents with an `index:negotiation:`-prefixed session key; the MCP_INSTRUCTIONS contract does the rest — the plugin itself has no negotiation-specific prompt of its own.
+This is how personal agents participate in bilateral negotiation. A polling agent pulls pending turns from `POST /api/agents/:id/negotiations/pickup` and launches subagents with an `index:negotiation:`-prefixed session key; the MCP_INSTRUCTIONS contract does the rest — the polling agent itself has no negotiation-specific prompt of its own.
 
 The key negotiation-facing MCP tools are:
 

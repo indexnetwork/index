@@ -45,10 +45,7 @@ linear-issue: IND-270
 - frontend/src/components/chat/ToolCallsDisplay.tsx
 
 ### Plugins + skill templates
-- packages/openclaw-plugin/skills/index-orchestrator/SKILL.md
-- packages/openclaw-plugin/src/polling/onboarding/onboarding.prompt.ts
 - packages/claude-plugin/skills/index-orchestrator/SKILL.md
-- packages/protocol/skills/openclaw/index-orchestrator.template.md
 - packages/protocol/skills/claude-plugin/index-orchestrator.template.md
 
 ### Edgeclaw workspace

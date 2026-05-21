@@ -48,8 +48,6 @@ skills/
 ├── claude-plugin/
 │   ├── index-orchestrator.template.md
 │   └── index-negotiator.template.md
-└── openclaw/
-    └── SKILL.md.template
 ```
 
 ## Testing

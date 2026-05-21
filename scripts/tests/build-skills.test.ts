@@ -21,7 +21,6 @@ import {
   injectPartials,
   resolveClaudePluginOutputs,
   build,
-  resolveOutputPaths,
 } from '../build-skills.js';
 
 describe('injectPartials', () => {
@@ -115,15 +114,6 @@ describe('build', () => {
     writeFileSync(templatePath, 'plain content');
     build(templatePath, [output1]);
     expect(readFileSync(output1, 'utf8')).toBe('plain content');
-  });
-});
-
-describe('resolveOutputPaths', () => {
-  test('returns the openclaw skill output paths', () => {
-    expect(resolveOutputPaths('/repo')).toEqual([
-      '/repo/skills/index-network/SKILL.md',
-      '/repo/packages/openclaw-plugin/skills/index-network/SKILL.md',
-    ]);
   });
 });
 

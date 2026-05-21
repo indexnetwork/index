@@ -12,13 +12,7 @@ function hasActiveSelection(): boolean {
   return !!sel && !sel.isCollapsed && sel.toString().length > 0;
 }
 import { useNotifications } from "@/contexts/NotificationContext";
-import {
-  buildMcpConfigs,
-  OPENCLAW_GATEWAY_RESTART_CMD,
-  OPENCLAW_INSTALL_CMD,
-  OPENCLAW_SETUP_CMD,
-  OPENCLAW_UPDATE_CMD,
-} from "@/lib/mcp-config";
+import { buildMcpConfigs } from "@/lib/mcp-config";
 import type { Agent, AgentTokenInfo } from "@/services/agents";
 
 function formatDate(dateStr: string | null): string {
@@ -34,55 +28,14 @@ function maskKey(start: string): string {
   return start ? `${start}${"*".repeat(24)}` : "Unavailable";
 }
 
-function WizardPromptRow({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopy() {
-    if (hasActiveSelection()) return;
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 800);
-    } catch {
-      /* silent */
-    }
-  }
-
-  return (
-    <div className="flex items-stretch border-b border-gray-200 last:border-b-0">
-      <div className="w-28 shrink-0 px-3 py-2 bg-gray-50 border-r border-gray-200 flex items-center">
-        <span className="text-xs font-medium text-gray-700 font-ibm-plex-mono">{label}</span>
-      </div>
-      <button
-        type="button"
-        onClick={handleCopy}
-        aria-label={`Copy ${label}`}
-        className={`flex-1 min-w-0 px-3 py-2 text-left text-xs text-gray-700 break-all transition-colors duration-300 flex items-center justify-between gap-2 group ${
-          copied ? "bg-green-100" : "hover:bg-green-50"
-        }`}
-      >
-        <span className="truncate select-text font-ibm-plex-mono">{value}</span>
-        {copied ? (
-          <Check className="w-3 h-3 text-green-600 shrink-0" />
-        ) : (
-          <Copy className="w-3 h-3 text-gray-400 shrink-0 group-hover:text-green-700" />
-        )}
-      </button>
-    </div>
-  );
-}
-
 function InlineSetupPanel({
-  agentId,
   apiKey,
   onDismiss,
 }: {
-  agentId: string;
   apiKey: string;
   onDismiss: () => void;
 }) {
   const { claudeConfig } = useMemo(() => buildMcpConfigs(apiKey), [apiKey]);
-  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const [keyCopied, setKeyCopied] = useState(false);
 
   async function copyKey() {
@@ -138,11 +91,8 @@ function InlineSetupPanel({
         </button>
       </div>
 
-      <Tabs.Root defaultValue="openclaw" className="w-full">
+      <Tabs.Root defaultValue="claude" className="w-full">
         <Tabs.List className="flex w-full gap-0 border-b border-amber-200 mb-4">
-          <Tabs.Trigger value="openclaw" className={tabTriggerClass}>
-            OpenClaw
-          </Tabs.Trigger>
           <Tabs.Trigger value="claude" className={tabTriggerClass}>
             MCP
           </Tabs.Trigger>
@@ -155,51 +105,6 @@ function InlineSetupPanel({
             </span>
           </Tabs.Trigger>
         </Tabs.List>
-
-        <Tabs.Content value="openclaw" className="space-y-4">
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider font-ibm-plex-mono mb-1.5">
-              1. Install or update
-            </p>
-            <div className="flex gap-3 items-stretch">
-              <div className="flex flex-col items-center shrink-0 py-3">
-                <div className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
-                <div className="w-px flex-1 bg-gray-200 my-1" />
-                <div className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
-              </div>
-              <div className="flex-1 min-w-0 space-y-3">
-                <div>
-                  <p className="text-xs text-gray-500 font-ibm-plex-mono mb-1">Install (first time)</p>
-                  <CopyableBox value={OPENCLAW_INSTALL_CMD} />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 font-ibm-plex-mono mb-1">Update (if already installed)</p>
-                  <CopyableBox value={OPENCLAW_UPDATE_CMD} />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider font-ibm-plex-mono mb-1.5">
-              2. Run setup wizard
-            </p>
-            <CopyableBox value={OPENCLAW_SETUP_CMD} />
-            <p className="text-xs text-gray-400 font-ibm-plex-mono mt-1.5">
-              The wizard will prompt for these values:
-            </p>
-          </div>
-          <div className="border border-gray-200 rounded-sm overflow-hidden bg-white">
-            <WizardPromptRow label="URL" value={baseUrl} />
-            <WizardPromptRow label="Agent ID" value={agentId} />
-            <WizardPromptRow label="API Key" value={apiKey} />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider font-ibm-plex-mono mb-1.5">
-              3. Restart the gateway
-            </p>
-            <CopyableBox value={OPENCLAW_GATEWAY_RESTART_CMD} />
-          </div>
-        </Tabs.Content>
 
         <Tabs.Content value="claude" className="space-y-3">
           <CopyableBox value={claudeConfig} />
@@ -397,7 +302,6 @@ export default function AgentApiKeysSection() {
           </div>
           {expandedSetup ? (
             <InlineSetupPanel
-              agentId={expandedSetup.agentId}
               apiKey={expandedSetup.apiKey}
               onDismiss={() => setExpandedSetup(null)}
             />
@@ -464,7 +368,6 @@ export default function AgentApiKeysSection() {
 
           {showSetup && expandedSetup ? (
             <InlineSetupPanel
-              agentId={primaryAgent.id}
               apiKey={expandedSetup.apiKey}
               onDismiss={() => setExpandedSetup(null)}
             />

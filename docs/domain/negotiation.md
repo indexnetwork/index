@@ -158,12 +158,6 @@ When a subagent sees a session key prefixed `index:negotiation:`, the MCP server
 
 Because this behavioral contract lives in `MCP_INSTRUCTIONS` on the protocol's MCP server, every MCP-connected runtime (OpenClaw, Claude Code, Codex, …) picks it up automatically and behaves consistently. Plugin skill files do not need to repeat it.
 
-### Configuration knobs
-
-The openclaw-plugin exposes one optional config key under `plugins.entries.indexnetwork-openclaw-plugin.config`:
-
-- `negotiationMode` — `"enabled"` (default) or `"disabled"`. When disabled, the plugin does not poll, so Index Network's server falls back to the system `Index Negotiator` after the 24-hour parked timeout.
-
 ---
 
 ## A2A Conversation Integration
