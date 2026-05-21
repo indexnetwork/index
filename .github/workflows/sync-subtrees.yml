@@ -38,10 +38,6 @@ jobs:
             repo: indexnetwork/edgeclaw
             source_branch: main
             target_branch: main
-          - prefix: packages/edgeclaw/skills
-            repo: indexnetwork/edgeclaw-skills
-            source_branch: main
-            target_branch: main
     steps:
       - uses: actions/checkout@v4
         with:
@@ -96,6 +92,20 @@ jobs:
           if [ -z "$TARGET_BRANCH" ]; then
             TARGET_BRANCH="$BRANCH"
           fi
+          # Make any squash-pull `git-subtree-split:` annotations reachable.
+          # A previous `git subtree pull --squash` from the subtree repo
+          # writes a footer pointing at a commit that lives only over there;
+          # `git subtree split` rev-parses those annotations to mark the
+          # already-pushed boundary and fails ("could not rev-parse split
+          # hash") if the SHA isn't in our local object db. Fetching the
+          # target branch first resolves it. Best-effort: a missing branch
+          # (first sync) or a missing repo just falls through and split
+          # walks the full history without an annotation shortcut.
+          echo "Fetching ${{ matrix.repo }}#${TARGET_BRANCH} for split-SHA reachability..."
+          git fetch --no-tags \
+            "https://x-access-token:${GH_PAT}@github.com/${{ matrix.repo }}.git" \
+            "$TARGET_BRANCH" 2>/dev/null \
+            || echo "note: fetch failed (subtree repo or branch may not exist yet); continuing"
           echo "Splitting ${{ matrix.prefix }} on $BRANCH..."
           SPLIT_SHA=$(git subtree split --prefix="${{ matrix.prefix }}" "$BRANCH")
           echo "Split SHA: $SPLIT_SHA"
