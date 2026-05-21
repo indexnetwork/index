@@ -43,8 +43,12 @@ export interface AuthDeps {
   authDb: AuthDbContract;
   getTrustedOrigins: (req?: Request) => Promise<string[]> | string[];
   sendMagicLinkEmail: (email: string, url: string) => Promise<void>;
-  /** Backing store for Better Auth's rate-limit counters. */
-  secondaryStorage: AuthSecondaryStorage;
+  /**
+   * Backing store for Better Auth's rate-limit counters. When omitted (no
+   * Redis configured), Better Auth falls back to its built-in in-memory
+   * rate limiter — suitable for local dev, not for multi-instance prod.
+   */
+  secondaryStorage?: AuthSecondaryStorage;
 }
 
 /**
@@ -60,6 +64,10 @@ export interface AuthDeps {
  */
 export function createAuth(deps: AuthDeps) {
   const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage } = deps;
+
+  // Snapshot auth_write config once so all customRules entries use a consistent
+  // value (resolveClassConfig reads env vars on every call).
+  const authWrite = resolveClassConfig("auth_write");
 
   return betterAuth({
     baseURL: BASE_URL,
@@ -112,14 +120,17 @@ export function createAuth(deps: AuthDeps) {
     },
     rateLimit: {
       enabled: true,
-      storage: "secondary-storage",
+      // Route through secondaryStorage only when one was injected; otherwise
+      // Better Auth uses its built-in in-memory limiter (fine for local dev,
+      // not multi-instance safe).
+      ...(secondaryStorage ? { storage: "secondary-storage" as const } : {}),
       customRules: {
-        "/sign-in/email":      { window: resolveClassConfig("auth_write").windowSec, max: resolveClassConfig("auth_write").perMinute },
-        "/sign-up/email":      { window: resolveClassConfig("auth_write").windowSec, max: resolveClassConfig("auth_write").perMinute },
-        "/sign-in/magic-link": { window: resolveClassConfig("auth_write").windowSec, max: resolveClassConfig("auth_write").perMinute },
-        "/forget-password":    { window: resolveClassConfig("auth_write").windowSec, max: resolveClassConfig("auth_write").perMinute },
-        "/reset-password":     { window: resolveClassConfig("auth_write").windowSec, max: resolveClassConfig("auth_write").perMinute },
-        "/verify-email":       { window: resolveClassConfig("auth_write").windowSec, max: resolveClassConfig("auth_write").perMinute },
+        "/sign-in/email":      { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/sign-up/email":      { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/sign-in/magic-link": { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/forget-password":    { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/reset-password":     { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/verify-email":       { window: authWrite.windowSec, max: authWrite.perMinute },
       },
     },
     emailAndPassword: { enabled: process.env.NODE_ENV !== 'production' },

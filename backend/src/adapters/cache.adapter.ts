@@ -73,6 +73,16 @@ export function getRedisClient(): Redis {
 }
 
 /**
+ * True when Redis is explicitly configured via env — either `REDIS_URL` or the
+ * host/port pair. Used by the rate limiter and Better Auth to decide whether
+ * Redis-backed storage is available, vs. silently defaulting to localhost and
+ * failing later when nothing is listening there.
+ */
+export function isRedisConfigured(): boolean {
+  return !!(process.env.REDIS_URL || process.env.REDIS_HOST);
+}
+
+/**
  * Creates a new, dedicated Redis client (e.g. for pub/sub subscribers).
  * Uses the same connection config as the shared client but without lazyConnect.
  */
