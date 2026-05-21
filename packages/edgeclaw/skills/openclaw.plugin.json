@@ -1,0 +1,16 @@
+{
+  "id": "edgeclaw-skills",
+  "name": "EdgeClaw Skills",
+  "description": "Edge Esmeralda 2026 skills — popup knowledge, EdgeOS calendar & directory, and Index Network discovery.",
+  "version": "1.0.0",
+  "skills": ["."],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "Index Network API key for MCP authentication."
+      }
+    }
+  }
+}
