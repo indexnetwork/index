@@ -59,7 +59,7 @@ Both are optional. Without them the agent still loads; EdgeOS recipes will promp
 
 Each skill lives in its own directory with a `SKILL.md` entry point. Edit the markdown directly. The `edge-esmeralda/references/` files are auto-refreshed by CI every 15 minutes — don't edit those by hand.
 
-Bump `version` in the relevant `SKILL.md` frontmatter on content changes (patch for tweaks, minor for new sections, major for breaking cross-skill contract changes). Bump the manifest versions in `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, and `openclaw.plugin.json` together when any skill changes.
+Bump `version` in the relevant `SKILL.md` frontmatter on content changes (patch for tweaks, minor for new sections, major for breaking cross-skill contract changes). Bump the manifest versions in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`, and `openclaw.plugin.json` together when any skill changes.
 
 ## License
 
