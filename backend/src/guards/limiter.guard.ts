@@ -89,11 +89,11 @@ export function RateLimit(cls: LimiterClass): Guard {
     if (id.kind === 'ip' && isPrivateOrLoopback(id.value)) return null;
 
     const { perMinute, windowSec } = resolveClassConfig(cls);
+    // `id.kind` is either 'user' (verified JWT) or 'ip' (everything else).
     // Hash the user UUID so the raw identity isn't written into the Redis
-    // keyspace (defense-in-depth — operators inspecting Redis won't see user
-    // IDs). `apikey` and `cookie` values are already SHA-256 truncated by
-    // resolveIdentifier; `ip` and the `unresolved`/`unknown` sentinels are
-    // operator-relevant and kept readable.
+    // keyspace — defense-in-depth so operators inspecting Redis don't see
+    // user IDs. The IP and its 'unresolved'/'unknown' sentinels are kept
+    // readable on purpose: they're operator-relevant for tracing abuse.
     const bucketValue = id.kind === 'user' ? await sha256Truncated(id.value) : id.value;
     const key = `limiter:${cls}:${id.kind}:${bucketValue}`;
 
@@ -115,7 +115,7 @@ export function RateLimit(cls: LimiterClass): Guard {
       logger.warn('rate_limited', {
         cls,
         identifier_kind: id.kind,
-        key_hash: bucketValue,   // already-hashed for user; raw for apikey/cookie/ip per the comment above
+        key_hash: bucketValue,   // hashed for kind=user; raw IP/sentinel for kind=ip
         count: result.count,
         limit: result.limit,
       });
