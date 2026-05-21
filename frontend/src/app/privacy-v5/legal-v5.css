@@ -54,7 +54,7 @@
 .landing-v5.legal-v5 .legal-section + .legal-section { padding-top: 64px; }
 
 .landing-v5.legal-v5 .legal-body {
-  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.7;
   color: var(--cream-soft);

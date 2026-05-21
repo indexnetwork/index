@@ -87,6 +87,13 @@ export default function Nav() {
           </svg>
           {stars !== null && <span className="gh-count">{formatStars(stars)}</span>}
         </a>
+        <button
+          type="button"
+          className="nav-subscribe"
+          onClick={() => window.dispatchEvent(new Event("openSubscribeModal"))}
+        >
+          Subscribe
+        </button>
       </div>
     </nav>
   );
@@ -95,7 +102,7 @@ export default function Nav() {
 export function ensureLandingV5Fonts() {
   if (typeof document === "undefined") return;
   const fontHref =
-    "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap";
+    "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Public+Sans:wght@300;400;500;600&display=swap";
   if (document.querySelector(`link[href="${fontHref}"]`)) return;
 
   const preconnect1 = document.createElement("link");

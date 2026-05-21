@@ -17,7 +17,7 @@
 
   background: var(--bg);
   color: var(--cream);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Public Sans', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
 }
@@ -82,13 +82,15 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px 6px 12px;
+  height: 30px;
+  padding: 0 14px 0 12px;
+  box-sizing: border-box;
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--ink);
-  background: var(--cream);
+  color: var(--cream);
+  background: transparent;
   text-decoration: none;
   border: 1px solid var(--cream);
   border-radius: 0;
@@ -96,11 +98,36 @@
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 .landing-v5 .nav .gh-star:hover {
-  background: transparent;
-  color: var(--cream);
+  background: var(--cream);
+  color: var(--ink);
 }
 .landing-v5 .nav .gh-star .gh-icon { display: block; }
 .landing-v5 .nav .gh-star .gh-count { color: inherit; }
+
+.landing-v5 .nav .nav-subscribe {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  background: var(--cream);
+  border: 1px solid var(--cream);
+  border-radius: 0;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.landing-v5 .nav .nav-subscribe:hover {
+  background: transparent;
+  color: var(--cream);
+}
 
 /* ============================================================
    Atoms
@@ -142,7 +169,7 @@
 }
 
 .landing-v5 .body-italic {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-style: italic;
   font-weight: 300;
   color: var(--cream-soft);
@@ -602,7 +629,7 @@
 .landing-v5 .ex-quote {
   margin: 0;
   color: var(--cream);
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-style: italic;
   font-size: 14px;
   line-height: 1.55;
@@ -714,7 +741,7 @@
 .landing-v5 .cli-list-name { color: #8ec3d8; }
 .landing-v5 .cli-list-why {
   color: var(--cream-soft);
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-style: italic;
   font-size: 13px;
   line-height: 1.5;
@@ -753,7 +780,7 @@
 .landing-v5 .ex-msg-in .ex-from { color: #8ec3d8; }
 .landing-v5 .ex-msg-out .ex-from { color: var(--cream); }
 .landing-v5 .ex-text {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-style: italic;
   font-size: 13px;
   color: var(--cream);
@@ -779,7 +806,7 @@
 .landing-v5 .ex-list-name { color: var(--cream); font-weight: 600; }
 .landing-v5 .ex-list-why {
   color: var(--cream-soft);
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-style: italic;
   font-size: 13px;
   line-height: 1.45;
@@ -894,7 +921,7 @@
 }
 .landing-v5 .hero-surf .surf-tab.is-active .surf-tab-kind { color: var(--ink-soft); }
 .landing-v5 .hero-surf .surf-blurb {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-size: 14px;
   font-weight: 500;
   line-height: 1.55;
@@ -939,7 +966,7 @@
 }
 .landing-v5 .blog-title {
   color: var(--cream);
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-size: 17px;
   font-weight: 500;
   letter-spacing: -0.005em;
@@ -995,7 +1022,6 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 22px;
-  border-top: 1px dashed var(--rule);
   border-bottom: 1px dashed var(--rule);
 }
 .landing-v5 .os .os-tag {
@@ -1012,7 +1038,7 @@
   margin: 0;
 }
 .landing-v5 .os .os-lede {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-size: 17px;
   font-weight: 500;
   line-height: 1.5;
@@ -1072,7 +1098,7 @@
   align-items: center;
 }
 .landing-v5 .lv5-footer-nav a {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-size: 14px;
   font-weight: 500;
   color: var(--cream);
@@ -1082,7 +1108,7 @@
 .landing-v5 .lv5-footer-nav a:hover { opacity: 0.7; }
 
 .landing-v5 .lv5-footer-copy {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-size: 13px;
   color: var(--cream-faint);
   margin: 0;
@@ -1100,7 +1126,7 @@
   gap: 0;
 }
 .landing-v5 .lv5-footer-input {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Public Sans', sans-serif;
   font-size: 13px;
   color: var(--cream);
   background: transparent;
@@ -1153,6 +1179,136 @@
 }
 .landing-v5 .lv5-footer-social a:hover { border-color: var(--cream); }
 .landing-v5 .lv5-footer-social svg { display: block; }
+
+/* ============================================================
+   SUBSCRIBE MODAL
+============================================================ */
+.landing-v5 .lv5-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.landing-v5 .lv5-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 14, 12, 0.65);
+  backdrop-filter: blur(4px);
+}
+.landing-v5 .lv5-modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-deep);
+  color: var(--cream);
+  padding: 40px 32px 32px;
+  border: 1px solid var(--rule-strong);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  font-family: 'Public Sans', sans-serif;
+}
+.landing-v5 .lv5-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--cream-faint);
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 120ms ease;
+}
+.landing-v5 .lv5-modal-close:hover { color: var(--cream); }
+.landing-v5 .lv5-modal-title {
+  margin: 0 0 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--rule);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cream);
+}
+.landing-v5 .lv5-modal-title::before {
+  content: "› ";
+  color: var(--cream-faint);
+  margin-right: 4px;
+}
+.landing-v5 .lv5-modal-lede {
+  margin: 0 0 22px;
+  font-family: 'Public Sans', sans-serif;
+  font-style: italic;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--cream-soft);
+}
+.landing-v5 .lv5-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.landing-v5 .lv5-modal-label {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cream-faint);
+}
+.landing-v5 .lv5-modal-req { color: var(--cream); margin-left: 4px; }
+.landing-v5 .lv5-modal-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  color: var(--cream);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.landing-v5 .lv5-modal-input::placeholder { color: var(--cream-faint); }
+.landing-v5 .lv5-modal-input:hover { border-color: var(--rule-strong); }
+.landing-v5 .lv5-modal-input:focus { border-color: var(--cream); }
+.landing-v5 .lv5-modal-error {
+  margin: 4px 0 0;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #e87a7a;
+}
+.landing-v5 .lv5-modal-submit {
+  margin-top: 14px;
+  width: 100%;
+  padding: 0 16px;
+  height: 44px;
+  box-sizing: border-box;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  background: var(--cream);
+  border: 1px solid var(--cream);
+  border-radius: 0;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.landing-v5 .lv5-modal-submit:hover {
+  background: transparent;
+  color: var(--cream);
+}
+.landing-v5 .lv5-modal-submit:disabled { opacity: 0.5; cursor: default; }
+.landing-v5 .lv5-modal-success {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
 
 /* ============================================================
    Responsive — keep the poster readable on smaller screens

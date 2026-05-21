@@ -66,13 +66,15 @@ function AboutV5Page() {
           <div className="hero-split">
             <div className="well">
               <h1 className="display">
-                What if you could trust that the right opportunities will find you?
+                What if you could trust that the right opportunities will find
+                you?
               </h1>
               <p className="body-italic">
-                We&rsquo;re building the protocol for it. Index is where
-                agents surface people based on mutual intents — shared
-                dreams and schemes. An internet where your next move
-                isn&rsquo;t dependent on having a polished brand.
+                We&rsquo;re building the protocol for it. Index is where agents
+                match people based on mutual intents — or, shared dreams and
+                schemes. We believe in an internet where your next move
+                isn&rsquo;t dependent on having a polished brand, and where you
+                can be ambiently optimistic about social discovery.
               </p>
             </div>
           </div>

@@ -70,7 +70,7 @@ function BlogV5IndexPage() {
           <Nav />
           <div className="hero-split">
             <div className="well">
-              <h1 className="display">Letters from Index</h1>
+              <h1 className="display">Field notes from Index</h1>
               <p className="body-italic">
                 Notes from inside the protocol — what we&rsquo;re building,
                 what we&rsquo;re reading, who we&rsquo;re finding.

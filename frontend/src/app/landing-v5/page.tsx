@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
+import { apiUrl } from "@/lib/api";
 import { getAllPosts, type BlogPost } from "@/lib/blog";
 import Nav, { ensureLandingV5Fonts } from "./Nav";
 import Footer from "./Footer";
@@ -257,7 +258,7 @@ function Hero() {
             </h1>
             <p className="body-italic">
               The social discovery protocol where agents surface the right
-              people before you even think to look.
+              people for you before you even think to look.
             </p>
 
             <div className="hero-surf">
@@ -377,11 +378,6 @@ function HowItWorks() {
               <div className="how-block-example">{s.example}</div>
             </div>
           ))}
-
-          <div className="prompt-line">
-            <span className="p">$</span>
-            <span className="cursor" aria-hidden="true" />
-          </div>
         </div>
       </div>
     </section>
@@ -557,7 +553,6 @@ function OpenSource() {
           <span className="title">
             <span className="arrow">›</span>open source
           </span>
-          <span className="meta">MIT · no permission required</span>
         </div>
 
         <div className="os-body">
@@ -587,6 +582,128 @@ function OpenSource() {
   );
 }
 
+function SubscribeModal() {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
+    "idle",
+  );
+
+  useEffect(() => {
+    const onOpen = () => {
+      setStatus("idle");
+      setEmail("");
+      setOpen(true);
+    };
+    window.addEventListener("openSubscribeModal", onOpen);
+    return () => window.removeEventListener("openSubscribeModal", onOpen);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && status !== "loading") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, status]);
+
+  if (!open) return null;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+    setStatus("loading");
+    try {
+      const res = await fetch(apiUrl("/api/subscribe"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, type: "waitlist" }),
+      });
+      setStatus(res.ok ? "success" : "error");
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div
+      className="lv5-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="lv5-subscribe-title"
+      onClick={() => status !== "loading" && setOpen(false)}
+    >
+      <div className="lv5-modal-backdrop" aria-hidden="true" />
+      <div className="lv5-modal-card" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className="lv5-modal-close"
+          onClick={() => setOpen(false)}
+          disabled={status === "loading"}
+          aria-label="Close"
+        >
+          ×
+        </button>
+
+        {status === "success" ? (
+          <div className="lv5-modal-success">
+            <h3 id="lv5-subscribe-title" className="lv5-modal-title">
+              subscribed
+            </h3>
+            <p className="lv5-modal-lede">
+              You&rsquo;re on the list — we&rsquo;ll let you know when we&rsquo;re live.
+            </p>
+            <button
+              type="button"
+              className="cta"
+              onClick={() => setOpen(false)}
+            >
+              Close
+            </button>
+          </div>
+        ) : (
+          <>
+            <h3 id="lv5-subscribe-title" className="lv5-modal-title">
+              subscribe
+            </h3>
+            <p className="lv5-modal-lede">
+              Drop your email — we&rsquo;ll keep you posted on updates.
+            </p>
+            <form onSubmit={submit} className="lv5-modal-form">
+              <label htmlFor="lv5-subscribe-email" className="lv5-modal-label">
+                Email <span className="lv5-modal-req">*</span>
+              </label>
+              <input
+                id="lv5-subscribe-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="lv5-modal-input"
+                required
+                disabled={status === "loading"}
+                autoFocus
+              />
+              {status === "error" && (
+                <p className="lv5-modal-error">
+                  Something went wrong. Please try again.
+                </p>
+              )}
+              <button
+                type="submit"
+                className="lv5-modal-submit"
+                disabled={status === "loading"}
+              >
+                {status === "loading" ? "Submitting…" : "Subscribe"}
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LandingV5Page() {
   useEffect(() => {
     ensureLandingV5Fonts();
@@ -599,6 +716,7 @@ function LandingV5Page() {
       <LatestPosts />
       <OpenSource />
       <Footer />
+      <SubscribeModal />
     </div>
   );
 }
