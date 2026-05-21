@@ -130,7 +130,7 @@
     },
     "packages/cli": {
       "name": "@indexnetwork/cli",
-      "version": "0.10.4",
+      "version": "0.10.5",
       "bin": {
         "index": "bin/index.cjs",
       },
@@ -138,10 +138,10 @@
         "@types/bun": "latest",
       },
       "optionalDependencies": {
-        "@indexnetwork/cli-darwin-arm64": "0.10.4",
-        "@indexnetwork/cli-darwin-x64": "0.10.4",
-        "@indexnetwork/cli-linux-arm64": "0.10.4",
-        "@indexnetwork/cli-linux-x64": "0.10.4",
+        "@indexnetwork/cli-darwin-arm64": "0.10.5",
+        "@indexnetwork/cli-darwin-x64": "0.10.5",
+        "@indexnetwork/cli-linux-arm64": "0.10.5",
+        "@indexnetwork/cli-linux-x64": "0.10.5",
       },
     },
     "packages/edgeclaw": {
@@ -465,14 +465,6 @@
     "@indexnetwork/claude-plugin": ["@indexnetwork/claude-plugin@workspace:packages/claude-plugin"],
 
     "@indexnetwork/cli": ["@indexnetwork/cli@workspace:packages/cli"],
-
-    "@indexnetwork/cli-darwin-arm64": ["@indexnetwork/cli-darwin-arm64@0.10.4", "", { "os": "darwin", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-c4FR5VaOP8hooVBU1fC3BzRhNjvBR2kwZzMlK/cHZ5Mbp3L6O7s454wqzal2ZTu7DrDLslYrsg2/2KDyNxBfiw=="],
-
-    "@indexnetwork/cli-darwin-x64": ["@indexnetwork/cli-darwin-x64@0.10.4", "", { "os": "darwin", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-KmV9cte8XKsOTZY128sOIurHtRyra5CcJWEKel81H4Ixb4gx8mBfK+64/hauxp96/NY7ZuwGdUkaQtO5R6Ajfg=="],
-
-    "@indexnetwork/cli-linux-arm64": ["@indexnetwork/cli-linux-arm64@0.10.4", "", { "os": "linux", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-6yfl3WqkAB9oRUc63FBiBgypHotlsNncNlDQLsdAjd7u8HBvWC/2fk+xvvgwa5m8k+leVSNldAeYK0Gn58aYyQ=="],
-
-    "@indexnetwork/cli-linux-x64": ["@indexnetwork/cli-linux-x64@0.10.4", "", { "os": "linux", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-SaGq9p7feHWoP3BN6Cstv2QEAkfYBWVEZBrXpjfNYEiFaE9PuG+8arngPxUUe+CNna7R4wKDsm3Cy0kPhVNbwg=="],
 
     "@indexnetwork/openclaw-plugin": ["@indexnetwork/openclaw-plugin@workspace:packages/openclaw-plugin"],
 
