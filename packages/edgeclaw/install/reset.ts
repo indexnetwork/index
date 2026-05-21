@@ -4,7 +4,7 @@
  *
  * Tears down everything EdgeClaw installed, leaving the underlying OpenClaw
  * setup (Telegram bot token, OpenRouter key, gateway config) untouched.
- * After this runs, re-install with `bun install.ts <API_KEY>`.
+ * After this runs, re-install with `bun install.ts --index-api-key <KEY>`.
  *
  * What gets removed:
  *   - All cron jobs whose name starts with "EdgeClaw"
@@ -206,7 +206,7 @@ function main(): void {
   console.log("✓ reset complete");
   console.log("");
   console.log("next:");
-  console.log("  re-install: bun install.ts <API_KEY>");
+  console.log("  re-install: bun install.ts --index-api-key <KEY>");
 }
 
 main();

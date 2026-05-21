@@ -15,18 +15,23 @@
  * just fail at first use and the SKILL.md instructs the agent to ask the
  * user for the missing token inline at that point.
  *
- * Invoked only by the orchestrator (`install.ts`). Reads from env:
+ * Invoked only by the orchestrator (`install.ts`). Reads two optional flags:
  *
- *   - `EDGEOS_API_KEY` (`eos_live_...`) — personal access token issued at
+ *   - `--edgeos-api-key <eos_live_...>` — personal access token issued at
  *     `/portal/api-keys` in the EdgeOS portal. Required for events, RSVPs,
- *     venues.
- *   - `EDGEOS_BEARER_TOKEN` — citizen-portal JWT. Required for the
- *     attendee directory.
+ *     venues. Lands in `env.vars.EDGEOS_API_KEY`.
+ *   - `--edgeos-bearer-token <jwt>` — citizen-portal JWT. Required for the
+ *     attendee directory. Lands in `env.vars.EDGEOS_BEARER_TOKEN`.
  */
 
 import { execFileSync } from "node:child_process";
 
-const ENV_KEYS = ["EDGEOS_API_KEY", "EDGEOS_BEARER_TOKEN"] as const;
+import { readFlag } from "./args";
+
+const FLAG_TO_ENV_VAR: ReadonlyArray<readonly [string, string]> = [
+  ["--edgeos-api-key", "EDGEOS_API_KEY"],
+  ["--edgeos-bearer-token", "EDGEOS_BEARER_TOKEN"],
+];
 
 function setEnvVar(name: string, value: string): void {
   // `openclaw config set env.vars.<NAME> <value>` — writes a literal into
@@ -46,19 +51,19 @@ export function installEdgeos(): void {
   const present: string[] = [];
   const missing: string[] = [];
 
-  for (const key of ENV_KEYS) {
-    const value = process.env[key]?.trim();
+  for (const [flag, envName] of FLAG_TO_ENV_VAR) {
+    const value = readFlag(flag)?.trim();
     if (value) {
-      setEnvVar(key, value);
-      present.push(key);
+      setEnvVar(envName, value);
+      present.push(envName);
     } else {
-      missing.push(key);
+      missing.push(envName);
     }
   }
 
   if (present.length === 0) {
     console.log(
-      "→ edgeos: no tokens provided in env; live EdgeOS recipes will prompt the user at first use",
+      "→ edgeos: no tokens provided; live EdgeOS recipes will prompt the user at first use",
     );
     return;
   }
