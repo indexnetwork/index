@@ -34,7 +34,14 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
   }, [onLeaveRequest, onLeaveRequestHandled]);
   
   // Intents state
-  const [intents, setIntents] = useState<Record<string, unknown>[]>([]);
+  const [intents, setIntents] = useState<{
+    id: string;
+    payload: string;
+    summary?: string | null;
+    createdAt: string;
+    userId: string;
+    userName: string;
+  }[]>([]);
   const [intentsLoading, setIntentsLoading] = useState(true);
 
   // Load intents when component mounts
