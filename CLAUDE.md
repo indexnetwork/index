@@ -176,12 +176,6 @@ git subtree pull --squash --prefix=packages/edgeclaw https://github.com/indexnet
 gh repo sync indexnetwork/edgeclaw --source Edge-City/edgeclaw --branch main --force
 ```
 
-#### Note on `packages/edgeclaw/skills/`
-
-`skills/` is a regular subdirectory of `packages/edgeclaw/` from this monorepo. It travels through the `packages/edgeclaw/` sync above. There is no `indexnetwork/edgeclaw-skills` fork.
-
-On Edge-City's side, `Edge-City/edgeclaw/skills/` is a subtree of `Edge-City/edgeclaw-skills`. That sync — including the 15-minute auto-refresh that regenerates the EdgeOS skill's `references/` — is set up and maintained on Edge-City's side.
-
 ### Root
 
 ```bash
