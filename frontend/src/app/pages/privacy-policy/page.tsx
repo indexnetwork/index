@@ -10,12 +10,6 @@ type Section = {
   body: ReactNode;
 };
 
-const EFFECTIVE_DATE = new Date(2025, 9, 20).toLocaleDateString("en-US", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-});
-
 const SECTIONS: Section[] = [
   {
     id: "overview",
@@ -224,7 +218,6 @@ export default function PrivacyPolicyPage() {
                 How Index Network handles personal information — what we
                 collect, why, and what choices you have.
               </p>
-              <p className="legal-effective">effective · {EFFECTIVE_DATE}</p>
             </div>
           </div>
         </div>

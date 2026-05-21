@@ -1079,8 +1079,6 @@
   padding: 40px 56px;
 }
 .landing-v5 .lv5-footer-inner {
-  max-width: 1280px;
-  margin: 0 auto;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;

@@ -35,8 +35,8 @@ export default function Footer() {
         <div className="lv5-footer-left">
           <nav className="lv5-footer-nav" aria-label="footer nav">
             <Link to="/">Home</Link>
-            <Link to="/blog-v5">Blog</Link>
-            <Link to="/about-v5">About</Link>
+            <Link to="/blog">Blog</Link>
+            <Link to="/about">About</Link>
             <Link to="/pages/privacy-policy">Privacy</Link>
             <Link to="/pages/terms-of-use">Terms</Link>
           </nav>

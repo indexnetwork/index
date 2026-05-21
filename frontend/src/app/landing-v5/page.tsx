@@ -522,7 +522,7 @@ function LatestPosts() {
             posts.map((p) => (
               <Link
                 className="blog-row"
-                to={`/blog-v5/${p.slug}`}
+                to={`/blog/${p.slug}`}
                 key={p.slug}
                 aria-label={p.title}
               >
@@ -536,7 +536,7 @@ function LatestPosts() {
         </div>
 
         <div className="blog-foot">
-          <Link className="cta ghost" to="/blog-v5">
+          <Link className="cta ghost" to="/blog">
             All posts
           </Link>
         </div>

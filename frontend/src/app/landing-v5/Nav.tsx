@@ -62,8 +62,8 @@ export default function Nav() {
         <img src="/landing-v5/index-wordmark.svg" alt="Index Network" />
       </Link>
       <div className="right">
-        <Link className="link" to="/blog-v5">Blog</Link>
-        <Link className="link" to="/about-v5">About</Link>
+        <Link className="link" to="/blog">Blog</Link>
+        <Link className="link" to="/about">About</Link>
         <a
           className="gh-star"
           href="https://github.com/indexnetwork/index"

@@ -6,13 +6,6 @@
 .landing-v5.legal-v5 .h1 .well { border-right: 0; }
 .landing-v5.legal-v5 .h1 .display { max-width: none; }
 
-.legal-effective {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  color: var(--cream-faint);
-  letter-spacing: 0.06em;
-}
-
 /* table of contents */
 .landing-v5.legal-v5 .legal-toc-list {
   list-style: none;

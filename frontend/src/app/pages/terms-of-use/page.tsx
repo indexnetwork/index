@@ -10,12 +10,6 @@ type Section = {
   body: ReactNode;
 };
 
-const EFFECTIVE_DATE = new Date(2025, 9, 20).toLocaleDateString("en-US", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-});
-
 const SECTIONS: Section[] = [
   {
     id: "acceptance",
@@ -208,7 +202,6 @@ export default function TermsOfUsePage() {
                 The agreement between you and Index — how the services may be
                 used and the limits that apply.
               </p>
-              <p className="legal-effective">effective · {EFFECTIVE_DATE}</p>
             </div>
           </div>
         </div>
