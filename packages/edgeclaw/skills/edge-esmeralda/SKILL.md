@@ -48,6 +48,9 @@ To use the `edgeos` skill you need `$EDGEOS_BEARER_TOKEN` and `$EDGEOS_API_KEY` 
 
 **Visit `<EDGECITY-ONBOARDING-URL>` and complete the email OTP flow.** The onboarding page will issue both tokens. Then set them in your agent's host:
 
+> If `<EDGECITY-ONBOARDING-URL>` is still the literal angle-bracket string when you read this, the onboarding page has not yet been published — do not attempt to fetch it. Instead tell the user the EdgeOS onboarding flow isn't live yet, point them at `https://edgecity.live` and `info@edgeesmeralda.com` to ask for an update, and stop.
+
+
 - **OpenClaw**: re-run the EdgeClaw installer with the tokens as flags —
   `bun install/install.ts --index-api-key <ix_...> --edgeos-api-key <eos_live_...> --edgeos-bearer-token <jwt>`
   Or set each individually:
