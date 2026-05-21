@@ -38,6 +38,7 @@ jobs:
             repo: indexnetwork/edgeclaw
             source_branch: main
             target_branch: main
+            ignore_joins: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -92,22 +93,30 @@ jobs:
           if [ -z "$TARGET_BRANCH" ]; then
             TARGET_BRANCH="$BRANCH"
           fi
-          # Make any squash-pull `git-subtree-split:` annotations reachable.
-          # A previous `git subtree pull --squash` from the subtree repo
-          # writes a footer pointing at a commit that lives only over there;
-          # `git subtree split` rev-parses those annotations to mark the
-          # already-pushed boundary and fails ("could not rev-parse split
-          # hash") if the SHA isn't in our local object db. Fetching the
-          # target branch first resolves it. Best-effort: a missing branch
-          # (first sync) or a missing repo just falls through and split
-          # walks the full history without an annotation shortcut.
-          echo "Fetching ${{ matrix.repo }}#${TARGET_BRANCH} for split-SHA reachability..."
-          git fetch --no-tags \
-            "https://x-access-token:${GH_PAT}@github.com/${{ matrix.repo }}.git" \
-            "$TARGET_BRANCH" 2>/dev/null \
-            || echo "note: fetch failed (subtree repo or branch may not exist yet); continuing"
+          SPLIT_FLAGS=""
+          IGNORE_JOINS="${{ matrix.ignore_joins || 'false' }}"
+          if [ "$IGNORE_JOINS" = "true" ]; then
+            # Edgeclaw receives `git subtree pull --squash` from an external
+            # upstream (Edge-City/edgeclaw). Those squash merges write
+            # `git-subtree-split:` annotations referencing commits that live
+            # only in the subtree repo. This workflow force-pushes the fork,
+            # so those commits become unreachable from the branch tip and
+            # `git subtree split` fails with "could not rev-parse split hash".
+            # --ignore-joins tells split to skip those stale annotations and
+            # walk the full history instead.
+            SPLIT_FLAGS="--ignore-joins"
+            echo "Using --ignore-joins (squash-pull annotations may reference unreachable commits)"
+          else
+            # For one-way subtrees, fetch the target branch so any prior
+            # split annotations are reachable as an optimization boundary.
+            echo "Fetching ${{ matrix.repo }}#${TARGET_BRANCH} for split-SHA reachability..."
+            git fetch --no-tags \
+              "https://x-access-token:${GH_PAT}@github.com/${{ matrix.repo }}.git" \
+              "$TARGET_BRANCH" 2>/dev/null \
+              || echo "note: fetch failed (subtree repo or branch may not exist yet); continuing"
+          fi
           echo "Splitting ${{ matrix.prefix }} on $BRANCH..."
-          SPLIT_SHA=$(git subtree split --prefix="${{ matrix.prefix }}" "$BRANCH")
+          SPLIT_SHA=$(git subtree split $SPLIT_FLAGS --prefix="${{ matrix.prefix }}" "$BRANCH")
           echo "Split SHA: $SPLIT_SHA"
           # Plain --force (not --force-with-lease): the subtree repo is a
           # derived artifact this workflow owns end-to-end, and we serialize
