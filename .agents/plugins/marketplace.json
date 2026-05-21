@@ -1,0 +1,20 @@
+{
+  "name": "index-project-plugins",
+  "interface": {
+    "displayName": "Index Project Plugins"
+  },
+  "plugins": [
+    {
+      "name": "index-network",
+      "source": {
+        "source": "local",
+        "path": "./packages/claude-plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -17,11 +17,12 @@
  *
  * Invoked only by the orchestrator (`install.ts`). Reads two optional flags:
  *
- *   - `--edgeos-api-key <eos_live_...>` — personal access token issued at
- *     `/portal/api-keys` in the EdgeOS portal. Required for events, RSVPs,
- *     venues. Lands in `env.vars.EDGEOS_API_KEY`.
- *   - `--edgeos-bearer-token <jwt>` — citizen-portal JWT. Required for the
- *     attendee directory. Lands in `env.vars.EDGEOS_BEARER_TOKEN`.
+ *   - `--edgeos-api-key <eos_live_...>` — long-lived automation key minted
+ *     via the EdgeCity onboarding email-OTP flow. Required for events,
+ *     RSVPs, venues. Lands in `env.vars.EDGEOS_API_KEY`.
+ *   - `--edgeos-bearer-token <jwt>` — human session JWT obtained via the
+ *     same email-OTP flow. Required for the attendee directory, own
+ *     profile, and OpenAPI spec recipes. Lands in `env.vars.EDGEOS_BEARER_TOKEN`.
  */
 
 import { execFileSync } from "node:child_process";
