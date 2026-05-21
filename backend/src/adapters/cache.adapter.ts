@@ -72,16 +72,10 @@ export function getRedisClient(): Redis {
   return redis;
 }
 
-/**
- * True when Redis is explicitly configured via env — either `REDIS_URL` or
- * `REDIS_HOST` (with `REDIS_PORT` optional, defaulting to 6379). Used by the
- * rate limiter and Better Auth to decide whether Redis-backed storage is
- * available, vs. silently defaulting to localhost and failing later when
- * nothing is listening there.
- */
-export function isRedisConfigured(): boolean {
-  return !!(process.env.REDIS_URL || process.env.REDIS_HOST);
-}
+// Re-export the canonical side-effect-free detector so existing callers of
+// `cache.adapter#isRedisConfigured` keep working without pulling the heavy
+// adapter side effects into modules that just want to ask "is Redis set?".
+export { isRedisConfigured } from '../lib/redis-env';
 
 /**
  * Creates a new, dedicated Redis client (e.g. for pub/sub subscribers).

@@ -1,7 +1,8 @@
 import { AuthDatabaseAdapter } from '../../adapters/auth.adapter';
-import { getRedisClient, isRedisConfigured } from '../../adapters/cache.adapter';
+import { getRedisClient } from '../../adapters/cache.adapter';
 import { getTrustedOrigins } from '../cors';
 import { sendMagicLinkEmail } from '../email/magic-link.handler';
+import { isRedisConfigured } from '../redis-env';
 
 import { createAuth, type AuthSecondaryStorage } from './betterauth';
 

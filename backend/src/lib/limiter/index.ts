@@ -17,11 +17,14 @@ export async function getStorage(): Promise<LimiterStorage> {
 }
 
 async function init(): Promise<LimiterStorage> {
-  const { isRedisConfigured, getRedisClient } = await import('../../adapters/cache.adapter');
+  // Check via the side-effect-free env detector BEFORE importing cache.adapter
+  // (which eagerly constructs Redis-backed cache singletons at module load).
+  const { isRedisConfigured } = await import('../redis-env');
   if (!isRedisConfigured()) {
     logger.warn('Limiter using in-memory storage (DEV ONLY — not multi-instance safe)');
     return new MemoryStorage();
   }
+  const { getRedisClient } = await import('../../adapters/cache.adapter');
   const { RedisStorage } = await import('./storage.redis');
   const s = new RedisStorage(getRedisClient());
   await s.bootstrap();
