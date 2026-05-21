@@ -11,6 +11,8 @@
         "type": "string",
         "description": "Index Network API key for MCP authentication."
       }
-    }
+    },
+    "required": [],
+    "additionalProperties": false
   }
 }
