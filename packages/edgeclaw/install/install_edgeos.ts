@@ -2,7 +2,7 @@
  * EdgeOS backend installer.
  *
  * EdgeOS supplies the live event schedule, RSVPs, venues, and attendee
- * directory used by `skills/edge-esmeralda/SKILL.md`. The skill teaches the
+ * directory used by `skills/edgeos/SKILL.md`. The skill teaches the
  * agent HTTP recipes against `api.edgeos.world` and the citizen portal —
  * recipes that reference `$EDGEOS_API_KEY` and `$EDGEOS_BEARER_TOKEN`. The
  * agent runs `curl` (or equivalent) via OpenClaw's shell tool, which
