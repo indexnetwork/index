@@ -40,14 +40,6 @@ export const router = createBrowserRouter([
     children: [
       {
         path: "/",
-        lazy: () => import("@/app/page"),
-      },
-      {
-        path: "/landing-v4",
-        lazy: () => import("@/app/landing-v4/page"),
-      },
-      {
-        path: "/landing-v5",
         lazy: () => import("@/app/landing-v5/page"),
       },
       {

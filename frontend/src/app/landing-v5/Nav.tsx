@@ -58,7 +58,7 @@ export default function Nav() {
   const stars = useGithubStars();
   return (
     <nav className="nav" aria-label="primary">
-      <Link className="logo" to="/landing-v5" aria-label="Index Network">
+      <Link className="logo" to="/" aria-label="Index Network">
         <img src="/landing-v5/index-wordmark.svg" alt="Index Network" />
       </Link>
       <div className="right">
