@@ -37,13 +37,16 @@
  * `reset.ts --wipe-user`.)
  *
  * Usage:
- *   bun install.ts <API_KEY>
- *   bun install.ts <API_KEY> --wipe-user
- *   API_KEY=... bun install.ts
+ *   bun install.ts --index-api-key <KEY>
+ *   bun install.ts --index-api-key <KEY> --dev
+ *   bun install.ts --index-api-key <KEY> --wipe-user
  *
  * Optional EdgeOS tokens (consumed by install_edgeos.ts and written into
  * `env.vars.*` so the agent's curl/HTTP recipes can read them):
- *   EDGEOS_API_KEY=eos_live_... EDGEOS_BEARER_TOKEN=... bun install.ts <API_KEY>
+ *   bun install.ts \
+ *     --index-api-key <KEY> \
+ *     --edgeos-api-key eos_live_... \
+ *     --edgeos-bearer-token <jwt>
  */
 
 import {
@@ -308,7 +311,7 @@ function main(): void {
   } else {
     console.log("next:");
     console.log("  1. send any message to your agent on Telegram");
-    console.log("  2. re-run `bun install.ts <key>` to bind cron deliveries to that chat");
+    console.log("  2. re-run `bun install.ts --index-api-key <key>` to bind cron deliveries to that chat");
   }
 }
 
