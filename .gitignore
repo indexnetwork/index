@@ -25,13 +25,11 @@ postgres/
 # Temporary Files & Uploads
 # ===================
 backend/temp-uploads/
-backend/.xmtp/
 txt/
 
 # ===================
 # Documentation & Reports
 # ===================
-AGENTS.md
 !packages/edgeclaw/workspace/AGENTS.md
 *.report.md
 packages/protocol/CLAUDE.md
@@ -50,7 +48,6 @@ node_modules/
 # ===================
 # Environment Files
 # ===================
-evaluator/.env
 .mcp.json
 
 # ===================
@@ -63,3 +60,8 @@ evaluator/.env
 # ===================
 /skills/**/SKILL.md
 .superpowers/
+
+# ===================
+# EdgeClaw auto-generated references (CI-refreshed upstream)
+# ===================
+packages/edgeclaw/skills/edge-esmeralda/references/

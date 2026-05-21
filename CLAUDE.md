@@ -195,7 +195,7 @@ For full architecture details see `docs/design/architecture-overview.md` and `do
 
 ```
 index/
-├── backend/           # Backend API & Agent Engine (Bun, Express, TypeScript)
+├── backend/           # Backend API & Agent Engine (Bun, TypeScript)
 ├── packages/
 │   ├── protocol/        # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
 │   ├── cli/             # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
@@ -215,7 +215,7 @@ index/
 
 ### Protocol Key Directories
 
-**Tech Stack**: Bun runtime, Express.js, Drizzle ORM, PostgreSQL with pgvector, BullMQ (Redis-backed queues), LangChain/LangGraph
+**Tech Stack**: Bun runtime (Bun.serve), Drizzle ORM, PostgreSQL with pgvector, BullMQ (Redis-backed queues), LangChain/LangGraph
 
 - `src/controllers/` - API controllers with decorator-based routing (`@Controller`, `@Get`, `@Post`)
 - `src/services/` - Business logic layer
