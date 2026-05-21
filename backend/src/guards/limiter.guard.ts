@@ -8,6 +8,7 @@ import {
   isLimiterDisabled,
   type LimiterClass,
 } from '../lib/limiter';
+import type { HitResult } from '../lib/limiter';
 import { RateLimiterError } from '../lib/limiter/error';
 import { log } from '../lib/log';
 
@@ -97,7 +98,7 @@ export function RateLimit(cls: LimiterClass): Guard {
     const bucketValue = id.kind === 'user' ? await sha256Truncated(id.value) : id.value;
     const key = `limiter:${cls}:${id.kind}:${bucketValue}`;
 
-    let result;
+    let result: HitResult;
     try {
       const storage = await getStorage();
       result = await storage.hit(key, windowSec, perMinute);
