@@ -4,11 +4,19 @@ import { jwtVerify, createRemoteJWKSet } from 'jose';
 
 import { BASE_URL, JWT_AUDIENCE } from '../betterauth/betterauth';
 
-export type IdentifierKind = 'user' | 'apikey' | 'cookie' | 'ip';
+/**
+ * Identifier kinds the limiter buckets against. Only two — `user` for
+ * cryptographically verified JWTs, and `ip` for everything else. Unverified
+ * credentials (API keys we haven't checked yet, session cookies, no auth at
+ * all) all fall through to the IP bucket. This prevents a credential-rotation
+ * bypass: a client can't escape IP throttling by sending a fresh random
+ * x-api-key or session_token cookie per request.
+ */
+export type IdentifierKind = 'user' | 'ip';
 
 export interface Identifier {
   kind: IdentifierKind;
-  /** Already-hashed or already-safe value used in the bucket key. */
+  /** Either the verified userId or the resolved client IP / sentinel. */
   value: string;
 }
 
@@ -85,6 +93,11 @@ export async function resolveIdentifier(
   req: Request,
   server?: ServerLike,
 ): Promise<Identifier> {
+  // Only the JWT path counts as "verified" — the signature check guarantees
+  // the userId is real and stable per user. API keys and session cookies are
+  // unverified at this point (the auth guard hasn't run yet) and would let a
+  // client trivially rotate credentials to create fresh buckets. Fall through
+  // to the IP bucket for those.
   const auth = req.headers.get('Authorization');
   if (auth?.startsWith('Bearer ')) {
     try {
@@ -104,28 +117,5 @@ export async function resolveIdentifier(
     } catch { /* fall through */ }
   }
 
-  const apiKey = req.headers.get('x-api-key');
-  if (apiKey) {
-    return { kind: 'apikey', value: await sha256Truncated(apiKey) };
-  }
-
-  const cookie = req.headers.get('cookie');
-  const sessionToken = readCookie(cookie, 'better-auth.session_token')
-    ?? readCookie(cookie, '__Secure-better-auth.session_token');
-  if (sessionToken) {
-    return { kind: 'cookie', value: await sha256Truncated(sessionToken) };
-  }
-
   return { kind: 'ip', value: resolveClientIp(req, server) };
-}
-
-function readCookie(header: string | null, name: string): string | null {
-  if (!header) return null;
-  for (const part of header.split(';')) {
-    const eq = part.indexOf('=');
-    if (eq < 0) continue;
-    const key = part.slice(0, eq).trim();
-    if (key === name) return part.slice(eq + 1).trim();
-  }
-  return null;
 }

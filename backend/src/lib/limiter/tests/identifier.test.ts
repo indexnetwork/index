@@ -58,24 +58,29 @@ describe('sha256Truncated', () => {
 });
 
 describe('resolveIdentifier (smoke)', () => {
-  test('x-api-key produces kind=apikey with hashed value', async () => {
+  test('x-api-key alone falls through to IP (unverified credentials never bucket separately)', async () => {
     const { resolveIdentifier } = await import('../identifier');
     const r = new Request('http://example.com/x', {
-      headers: { 'x-api-key': 'super-secret-key' },
+      headers: {
+        'x-api-key': 'super-secret-key',
+        'x-forwarded-for': '203.0.113.42',
+      },
     });
     const id = await resolveIdentifier(r);
-    expect(id.kind).toBe('apikey');
-    expect(id.value).toMatch(/^[a-f0-9]{16}$/);
-    expect(id.value).not.toBe('super-secret-key');
+    expect(id.kind).toBe('ip');
+    expect(id.value).toBe('203.0.113.42');
   });
 
-  test('session cookie produces kind=cookie with hashed value', async () => {
+  test('session cookie alone falls through to IP', async () => {
     const { resolveIdentifier } = await import('../identifier');
     const r = new Request('http://example.com/x', {
-      headers: { cookie: 'other=foo; better-auth.session_token=abc-123-def' },
+      headers: {
+        cookie: 'better-auth.session_token=abc-123-def',
+        'x-forwarded-for': '198.51.100.7',
+      },
     });
     const id = await resolveIdentifier(r);
-    expect(id.kind).toBe('cookie');
-    expect(id.value).toMatch(/^[a-f0-9]{16}$/);
+    expect(id.kind).toBe('ip');
+    expect(id.value).toBe('198.51.100.7');
   });
 });
