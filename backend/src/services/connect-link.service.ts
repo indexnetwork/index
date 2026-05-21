@@ -185,13 +185,3 @@ export async function resolveConnectLink(code: string): Promise<ResolvedLink | n
   };
 }
 
-/**
- * Build a public URL for a short connect link.
- *
- * @param apiBaseUrl - The backend API base URL (trailing slashes are stripped).
- * @param code - The 10-char short code.
- * @returns A URL of the form `<apiBaseUrl>/c/<code>`.
- */
-export function buildConnectLinkUrl(apiBaseUrl: string, code: string): string {
-  return `${apiBaseUrl.replace(/\/+$/, '')}/c/${code}`;
-}
