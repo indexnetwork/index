@@ -31,7 +31,6 @@ txt/
 # ===================
 # Documentation & Reports
 # ===================
-AGENTS.md
 !packages/edgeclaw/workspace/AGENTS.md
 *.report.md
 packages/protocol/CLAUDE.md
