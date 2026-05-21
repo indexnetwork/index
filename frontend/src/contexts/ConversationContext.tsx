@@ -304,9 +304,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       // Intentional synchronous reset on logout — not a cascading render issue
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsConnected(false);
-       
       setConversations([]);
-       
       setMessages(new Map());
       return;
     }
