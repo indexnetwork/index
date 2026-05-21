@@ -46,7 +46,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 22px 36px;
+  padding: 22px 56px;
   border-bottom: 1px solid var(--rule);
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -378,15 +378,47 @@
   color: var(--cream);
   overflow-x: auto;
 }
+.landing-v5 .hero-cli-line + .hero-cli-line {
+  margin-top: 6px;
+}
+.landing-v5 .hero-cli-cta {
+  align-self: flex-start;
+}
+.landing-v5 .hero-cli-soon {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--rule-strong);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cream-faint);
+}
 .landing-v5 .hero-cli-cmd {
   display: inline;
   background: #f3e7a8;
   color: var(--ink);
   padding: 2px 6px;
   font-weight: 500;
+  white-space: pre;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
+.landing-v5 .hero-cli-docs {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cream-faint);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule-strong);
+  padding-bottom: 4px;
+  align-self: flex-start;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.landing-v5 .hero-cli-docs:hover { color: var(--cream); border-color: var(--cream); }
 
 .landing-v5 .h1 .crosshair {
   position: absolute;
@@ -1126,6 +1158,7 @@
    Responsive — keep the poster readable on smaller screens
 ============================================================ */
 @media (max-width: 900px) {
+  .landing-v5 .nav { padding: 22px 24px; }
   .landing-v5 .h1 .hero-split { grid-template-columns: 1fr; }
   .landing-v5 .h1 .well { border-right: 0; border-bottom: 1px solid var(--rule); padding: 56px 24px; }
   .landing-v5 .h1 .hero-image { min-height: 60vh; }

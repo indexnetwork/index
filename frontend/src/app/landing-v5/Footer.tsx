@@ -37,8 +37,8 @@ export default function Footer() {
             <Link to="/landing-v5">Home</Link>
             <Link to="/blog-v5">Blog</Link>
             <Link to="/about-v5">About</Link>
-            <a href="#privacy">Privacy</a>
-            <a href="#terms">Terms</a>
+            <Link to="/privacy-v5">Privacy</Link>
+            <Link to="/terms-v5">Terms</Link>
           </nav>
           <p className="lv5-footer-copy">
             © Index Network Inc. {new Date().getFullYear()}

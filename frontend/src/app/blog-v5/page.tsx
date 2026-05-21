@@ -70,19 +70,11 @@ function BlogV5IndexPage() {
           <Nav />
           <div className="hero-split">
             <div className="well">
-              <div className="eyebrow">
-                <span className="dot-g" aria-hidden="true" />
-                <span>section · journal</span>
-              </div>
               <h1 className="display">Letters from Index</h1>
               <p className="body-italic">
                 Notes from inside the protocol — what we&rsquo;re building,
                 what we&rsquo;re reading, who we&rsquo;re finding.
               </p>
-            </div>
-            <div className="hero-image">
-              <img src="/landing-v5/hero-bridges.png" alt="" />
-              <span className="scan" aria-hidden="true" />
             </div>
           </div>
         </div>
@@ -93,11 +85,6 @@ function BlogV5IndexPage() {
           <div className="how-head">
             <span className="title">
               <span className="arrow">›</span>all posts
-            </span>
-            <span className="meta">
-              {posts === null
-                ? "loading…"
-                : `${posts.length + EXTERNAL_ENTRIES.length} entries`}
             </span>
           </div>
 
@@ -117,7 +104,6 @@ function BlogV5IndexPage() {
                   >
                     <span className="blog-date">{formatPostDate(entry.date)}</span>
                     <span className="blog-title">{entry.title}</span>
-                    <span className="blog-tag">experience</span>
                     <span className="spacer" aria-hidden="true" />
                     <span className="blog-arrow">→</span>
                   </Link>

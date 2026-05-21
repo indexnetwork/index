@@ -2,6 +2,11 @@
 
 .landing-v5.about-v5 { min-height: 100vh; background: var(--bg); }
 
+/* About hero — text only, text takes 2/3 width, no divider */
+.landing-v5.about-v5 .h1 .hero-split { grid-template-columns: 2fr 1fr; }
+.landing-v5.about-v5 .h1 .well { border-right: 0; }
+.landing-v5.about-v5 .h1 .display { max-width: none; }
+
 .about-link {
   color: var(--cream);
   text-decoration: none;

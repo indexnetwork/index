@@ -2,6 +2,11 @@
 
 .landing-v5.blog-v5 { min-height: 100vh; background: var(--bg); }
 
+/* Blog hero — text only, text takes 2/3 width, no divider */
+.landing-v5.blog-v5 .h1 .hero-split { grid-template-columns: 2fr 1fr; }
+.landing-v5.blog-v5 .h1 .well { border-right: 0; }
+.landing-v5.blog-v5 .h1 .display { max-width: none; }
+
 .blog-list-section { border-top: 0; padding-top: 80px; }
 
 .blog-cta-row {

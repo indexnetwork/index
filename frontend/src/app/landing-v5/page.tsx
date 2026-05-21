@@ -21,7 +21,6 @@ const STEPS: Step[] = [
       <div className="ex-card cli-card">
         <div className="ex-head">
           <span className="ex-tag">› intent</span>
-          <span className="ex-meta">ttl · 30d</span>
         </div>
         <div className="cli-body">
           <div className="cli-line">
@@ -32,10 +31,6 @@ const STEPS: Step[] = [
             <span className="cli-prompt">›</span>
             <span>“I&apos;m going to SF next month — who should I meet?”</span>
           </div>
-        </div>
-        <div className="ex-foot">
-          <span className="ex-ok">● posted</span>
-          <span className="ex-dim">#int_4f8c</span>
         </div>
       </div>
     ),
@@ -72,7 +67,6 @@ const STEPS: Step[] = [
         </div>
         <div className="ex-foot">
           <span className="ex-ok">✓ ready to negotiate</span>
-          <span className="ex-dim">never leaves your device</span>
         </div>
       </div>
     ),
@@ -122,10 +116,6 @@ const STEPS: Step[] = [
             </li>
           </ul>
         </div>
-        <div className="ex-foot">
-          <span className="ex-dim">open inbox</span>
-          <span className="ex-arrow">→</span>
-        </div>
       </div>
     ),
   },
@@ -153,7 +143,6 @@ const STEPS: Step[] = [
         </div>
         <div className="ex-foot">
           <span className="ex-ok">+1 surfaced</span>
-          <span className="ex-dim">no input from you</span>
         </div>
       </div>
     ),
@@ -165,39 +154,24 @@ type SurfaceTab = {
   kind: string;
   label: string;
   blurb: string;
-  steps: { num: string; title: string; cmd: string }[];
+  steps: { num: string; title: string; cmd?: string | string[]; soon?: boolean }[];
+  docs?: { href: string; label: string };
+  cta?: { href: string; label: string };
 };
 
 const SURFACE_TABS: SurfaceTab[] = [
-  {
-    id: "web",
-    kind: "WEB",
-    label: "web app",
-    blurb: "Sign in, write what you want, and let the network bring people to you.",
-    steps: [
-      { num: "1", title: "sign in", cmd: "open https://index.network" },
-      {
-        num: "2",
-        title: "write intent",
-        cmd: "looking for a cofounder",
-      },
-      { num: "3", title: "check inbox", cmd: "index.network/inbox" },
-    ],
-  },
   {
     id: "cli",
     kind: "CLI",
     label: "cli",
     blurb: "Terminal-native intents. Write what you want, get warm intros.",
     steps: [
-      { num: "1", title: "install", cmd: "npm i -g @indexnetwork/cli" },
-      {
-        num: "2",
-        title: "share intent",
-        cmd: "index intent \"looking for a cofounder\"",
-      },
-      { num: "3", title: "watch", cmd: "index watch --status pending" },
+      { num: "1", title: "install", cmd: "npm install -g @indexnetwork/cli" },
     ],
+    docs: {
+      href: "https://www.npmjs.com/package/@indexnetwork/cli",
+      label: "Read the documentation →",
+    },
   },
   {
     id: "skill",
@@ -207,20 +181,29 @@ const SURFACE_TABS: SurfaceTab[] = [
     steps: [
       {
         num: "1",
-        title: "install (hermes)",
-        cmd: "/plugin install indexnetwork/claude-plugin",
+        title: "install (openclaw)",
+        cmd: [
+          "openclaw plugins install @indexnetwork/openclaw-plugin",
+          "openclaw index connect",
+        ],
       },
       {
         num: "2",
-        title: "install (openclaw)",
-        cmd: "openclaw plugins install @indexnetwork/openclaw-plugin",
-      },
-      {
-        num: "3",
-        title: "share intent",
-        cmd: "share my intent: looking for a cofounder",
+        title: "install (hermes)",
+        soon: true,
       },
     ],
+  },
+  {
+    id: "web",
+    kind: "WEB",
+    label: "web app",
+    blurb: "Sign in, write what you want, and let the network bring people to you.",
+    steps: [],
+    cta: {
+      href: "https://index.network",
+      label: "Sign in",
+    },
   },
   {
     id: "mcp",
@@ -230,15 +213,17 @@ const SURFACE_TABS: SurfaceTab[] = [
     steps: [
       {
         num: "1",
-        title: "connect",
-        cmd: "claude mcp add indexnetwork --url https://mcp.index.network",
+        title: "add to mcp config",
+        cmd: [
+          "{",
+          "  \"mcpServers\": {",
+          "    \"index\": {",
+          "      \"url\": \"https://mcp.index.network\"",
+          "    }",
+          "  }",
+          "}",
+        ],
       },
-      {
-        num: "2",
-        title: "publish",
-        cmd: "intent.publish \"hiring sr eng — protocols\"",
-      },
-      { num: "3", title: "receive", cmd: "inbox.read --warm" },
     ],
   },
 ];
@@ -267,11 +252,11 @@ function Hero() {
             <h1 className="display">
               Wake up to your
               <br />
-              next opportunity
+              next idea partner.
             </h1>
             <p className="body-italic">
-              A social discovery protocol where agents surface the right
-              people and opportunities—before you even think to look for them.
+              The social discovery protocol where agents surface the right
+              people before you even think to look.
             </p>
 
             <div className="hero-surf">
@@ -298,26 +283,58 @@ function Hero() {
               <div className="hero-cli">
                 {active.steps.map((s) => {
                   const key = `${active.id}-${s.num}`;
+                  const lines = Array.isArray(s.cmd) ? s.cmd : s.cmd ? [s.cmd] : [];
                   return (
                     <div className="hero-cli-step" key={key}>
                       <div className="hero-cli-head">
                         <span className="hero-cli-title">
                           {s.num}. {s.title}
+                          {s.soon ? (
+                            <span className="hero-cli-soon">soon</span>
+                          ) : null}
                         </span>
-                        <button
-                          type="button"
-                          className="hero-cli-copy"
-                          onClick={() => copy(key, s.cmd)}
-                        >
-                          {copied === key ? "copied" : "copy"}
-                        </button>
+                        {s.soon ? null : (
+                          <button
+                            type="button"
+                            className="hero-cli-copy"
+                            onClick={() => copy(key, lines.join("\n"))}
+                          >
+                            {copied === key ? "copied" : "copy"}
+                          </button>
+                        )}
                       </div>
-                      <div className="hero-cli-box">
-                        <span className="hero-cli-cmd">{s.cmd}</span>
-                      </div>
+                      {s.soon ? null : (
+                        <div className="hero-cli-box">
+                          {lines.map((line, i) => (
+                            <div className="hero-cli-line" key={i}>
+                              <span className="hero-cli-cmd">{line}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
+                {active.cta ? (
+                  <a
+                    className="cta hero-cli-cta"
+                    href={active.cta.href}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {active.cta.label}
+                  </a>
+                ) : null}
+                {active.docs ? (
+                  <a
+                    className="hero-cli-docs"
+                    href={active.docs.href}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {active.docs.label}
+                  </a>
+                ) : null}
               </div>
             </div>
           </div>
@@ -539,7 +556,7 @@ function OpenSource() {
           <span className="title">
             <span className="arrow">›</span>open source
           </span>
-          <span className="meta">mit · no permission required</span>
+          <span className="meta">MIT · no permission required</span>
         </div>
 
         <div className="os-body">

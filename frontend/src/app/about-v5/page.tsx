@@ -65,18 +65,8 @@ function AboutV5Page() {
           <Nav />
           <div className="hero-split">
             <div className="well">
-              <div className="eyebrow">
-                <span className="dot-g" aria-hidden="true" />
-                <span>section · about</span>
-              </div>
               <h1 className="display">
-                What if you could
-                <br />
-                trust that the right
-                <br />
-                opportunities will
-                <br />
-                find you?
+                What if you could trust that the right opportunities will find you?
               </h1>
               <p className="body-italic">
                 We&rsquo;re building the protocol for it. Index is where
@@ -85,23 +75,12 @@ function AboutV5Page() {
                 isn&rsquo;t dependent on having a polished brand.
               </p>
             </div>
-            <div className="hero-image">
-              <img src="/landing-v5/hero-bridges.png" alt="" />
-              <span className="scan" aria-hidden="true" />
-            </div>
           </div>
         </div>
       </div>
 
       <section className="how about-roster">
         <div className="how-inner">
-          <div className="how-head">
-            <span className="title">
-              <span className="arrow">›</span>the roster
-            </span>
-            <span className="meta">who&rsquo;s behind index · who&rsquo;s backing it</span>
-          </div>
-
           <div className="about-roster-stack">
             <PersonList kind="team" items={TEAM} />
             <PersonList kind="investors" items={INVESTORS} />
@@ -120,8 +99,6 @@ function AboutV5Page() {
 
           <div className="about-join-body">
             <p className="about-join-line">
-              <span className="hash">$</span>
-              <span>email&nbsp;</span>
               <a className="acc" href="mailto:hello@index.network">
                 hello@index.network
               </a>
