@@ -1,9 +1,9 @@
 ---
-name: edge-esmeralda-2026
-description: Connect to Edge Esmeralda 2026 data — event schedule, attendee directory, wiki, newsletters, and organization info.
+name: edgeos
+description: Connect to EdgeOS APIs for Edge City popup villages — event schedule, attendee directory, wiki, newsletters, and organization info. Currently scoped to Edge Esmeralda 2026.
 version: 2.1.0
 author: Edge City
-tags: [edge-city, edge-esmeralda, events, community, popup-village]
+tags: [edge-city, edgeos, events, community, popup-village]
 ---
 
 # Edge Esmeralda 2026 — Agent Skill
@@ -257,101 +257,7 @@ If the user hasn't set `$EDGEOS_BEARER_TOKEN`, tell them they need to obtain an 
 
 ## 3. Knowledge Discovery (Index Network)
 
-[Index Network](https://index.network) is a private, intent-driven discovery protocol. Agents register the Index MCP server and call its tools to surface relevant people across Edge Esmeralda — connections based on what residents are looking for, beyond what keyword search of the attendee directory can find.
-
-### Setup
-
-Index Network is exposed as an **MCP server**, not an HTTP API. The user generates an API key at `index.network/agents` (or a community-branded node) and the agent's MCP config registers the server:
-
-```json
-{
-  "name": "index",
-  "url": "https://protocol.index.network/mcp",
-  "transport": "streamable-http",
-  "headers": {
-    "x-api-key": "ix_..."
-  }
-}
-```
-
-Required env var: `INDEX_API_KEY=ix_...`
-
-**If the user has not provided an Index API key, tell them they need to generate one at `index.network/agents` and stop.** Do not invent a key or silently fall back to the §2 directory — that misses the protocol's discovery layer.
-
-### Tool families
-
-Once registered, every capability is a tool call on the `index` MCP server. Tool descriptions are authoritative — read them before calling. Major families:
-
-- **Profile** — `create_user_profile`, `read_user_profiles`, `update_user_profile`. Identity, bio, skills, interests, embeddings.
-- **Signals (intents)** — `create_intent`, `read_intents`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index`. What a user is looking for; the discovery layer's primary unit. The `intent_index` tools tag a signal to a specific community.
-- **Discovery** — `discover_opportunities`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`. Surfaces connections between users based on signal overlap.
-- **Negotiations** — `list_negotiations`, `get_negotiation`. Read-only — negotiations are handled server-side; do not call `respond_to_negotiation` from the agent.
-- **Conversations** — `list_conversations`, `get_conversation`. Open and read conversation threads with other users.
-- **Networks (communities)** — `read_networks`, `create_network_membership`. Edge Esmeralda's community lives at a specific network ID; the server auto-assigns membership after `complete_onboarding`.
-- **Contacts** — `add_contact`, `import_contacts`, `import_gmail_contacts`, `list_contacts`, `search_contacts`, `remove_contact`. The user's personal index. `import_gmail_contacts` pulls from a connected Gmail account; `import_contacts` accepts a structured list.
-- **Reference** — `read_docs`, `scrape_url(url, objective)`. Read Index Network protocol documentation, or extract content from any URL when enriching a profile or composing a signal from a link.
-- **Onboarding** — `complete_onboarding`. Required after profile + first signal capture.
-
-### Typical flows
-
-**Look up the calling user's profile and onboarding status:**
-
-```
-read_user_profiles()
-```
-
-Returns the user's profile plus an `onboardingComplete` flag. For returning users (`onboardingComplete: true`), proceed directly to discovery — no ritual needed. For new users (`onboardingComplete: false`), run the onboarding ritual: `create_user_profile()` → confirm with the user → `create_intent(description="...")` for their first signal → `complete_onboarding()`.
-
-**Surface discovered opportunities:**
-
-```
-list_opportunities(status="pending", limit=10)
-```
-
-Each opportunity carries `profileUrl`, `acceptUrl` (an opaque backend redirect — never modify it), `mainText`, and a `feedCategory` (`connection` if the user is a party, `connector-flow` if the user is the introducer). Filter by quality before surfacing.
-
-**Search the protocol for relevant signals:**
-
-```
-search_intents(query="agent memory layer", limit=20)
-```
-
-Use this when the user asks "is anyone here interested in X?" — semantic search across all open signals on the protocol.
-
-**Enrich a profile from a URL the user shares:**
-
-```
-scrape_url(url="https://linkedin.com/in/alex", objective="Update user profile from LinkedIn page")
-```
-
-Always pass an `objective` describing why you're scraping — it guides extraction.
-
-### Output translation
-
-The MCP returns structured records. Translate before speaking:
-
-| Internal | What the user hears |
-|---|---|
-| `intent` | "signal" |
-| `index` / `network` | "community" |
-| status `draft` / `latent` | "draft" |
-| status `pending` | "sent" |
-| status `accepted` | "connected" |
-
-Never expose internal IDs unless the ID is actionable (e.g. a `conversationId` the user can open).
-
-### When NOT to use this
-
-- For Edge Esmeralda's published calendar, RSVPs, or venues, use §1 (EdgeOS Events API) — Index Network does not index events.
-- For looking up a specific attendee by name, organization, or role, use §2 (Citizen Portal directory) — it has the canonical registration fields. Index Network covers protocol-side signals (what people are looking for), not registration-side data.
-- For wiki, website, or newsletter content, use §5 — Index Network is not a content store.
-
-### Errors
-
-- `401` — missing or invalid API key.
-- `403` — key lacks scope for the operation (e.g. trying to read other users' raw intents).
-- `404` — record not visible to the caller (often a privacy boundary, not a missing record).
-- `429` — rate limited; back off and retry.
+Handled by the `index-network` skill — see `skills/index-network/SKILL.md` for the MCP setup, tool families, and onboarding ritual.
 
 ---
 
@@ -380,17 +286,17 @@ For questions about logistics, the organization, or announcements, fetch the lat
 
 **Edge Esmeralda Wiki** (tickets, accommodation, travel, venues, health, kids, transport, etc.):
 ```bash
-curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edge-esmeralda/references/wiki-content.md"
+curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edgeos/references/wiki-content.md"
 ```
 
 **Edge City Website** (mission, leadership, roadmap, ecosystem, media):
 ```bash
-curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edge-esmeralda/references/website-content.md"
+curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edgeos/references/website-content.md"
 ```
 
 **Edge Esmeralda Newsletter** (residencies, fellowships, housing, tickets, programming):
 ```bash
-curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edge-esmeralda/references/newsletter-digest.md"
+curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edgeos/references/newsletter-digest.md"
 ```
 
 These files are updated automatically every 15 minutes. Fetch them when the user asks about:

@@ -6,7 +6,7 @@ A single-file skill that gives AI agents access to Edge Esmeralda 2026 data: eve
 
 **Download [`SKILL.md`](./SKILL.md)** and add it to your agent's skill/context:
 
-- **Claude Code**: Copy to `~/.claude/skills/edge-esmeralda/SKILL.md`
+- **Claude Code**: Copy to `~/.claude/skills/edgeos/SKILL.md`
 - **OpenClaw / Hermes / NanoClaw**: Add to your agent's skill directory
 
 Set environment variables:

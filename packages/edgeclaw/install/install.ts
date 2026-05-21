@@ -36,14 +36,14 @@
  * `MEMORY.md` so the next session re-onboards from scratch. (Mirrors
  * `reset.ts --wipe-user`.)
  *
- * Usage:
- *   bun install.ts --index-api-key <KEY>
- *   bun install.ts --index-api-key <KEY> --dev
- *   bun install.ts --index-api-key <KEY> --wipe-user
+ * Usage (run from the repo root):
+ *   bun install/install.ts --index-api-key <KEY>
+ *   bun install/install.ts --index-api-key <KEY> --dev
+ *   bun install/install.ts --index-api-key <KEY> --wipe-user
  *
  * Optional EdgeOS tokens (consumed by install_edgeos.ts and written into
  * `env.vars.*` so the agent's curl/HTTP recipes can read them):
- *   bun install.ts \
+ *   bun install/install.ts \
  *     --index-api-key <KEY> \
  *     --edgeos-api-key eos_live_... \
  *     --edgeos-bearer-token <jwt>
@@ -311,7 +311,7 @@ function main(): void {
   } else {
     console.log("next:");
     console.log("  1. send any message to your agent on Telegram");
-    console.log("  2. re-run `bun install.ts --index-api-key <key>` to bind cron deliveries to that chat");
+    console.log("  2. re-run `bun install/install.ts --index-api-key <key>` to bind cron deliveries to that chat");
   }
 }
 
