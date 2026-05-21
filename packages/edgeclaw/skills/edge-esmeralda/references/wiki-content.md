@@ -1,7 +1,7 @@
 # Edge Esmeralda 2026 Wiki
 
 Source: https://www.notion.so/edgecity/Edge-Esmeralda-2026-Wiki-317d45cdfc5981d2a571f52b024c5141
-Last indexed: 2026-05-21T14:23:48.292Z
+Last indexed: 2026-05-21T19:15:41.852Z
 
 ---
 
@@ -35,6 +35,10 @@ Edge Esmeralda 2026 is a month-long popup village (May 30 – June 27) happening
 
 ---
 
+###  🥗 Food
+
+---
+
 ### 🗺 Venues
 
 ---
@@ -49,13 +53,13 @@ Edge Esmeralda 2026 is a month-long popup village (May 30 – June 27) happening
 
 ### 🗓 Shared Calendar
 
----
-
-### 💬 Community Chat Group on Telegram
-
 Welcome! We're so excited to have you with us ☀️
 
 This wiki has all the important information regarding Edge Esmeralda 2026. If you have further questions, please reach out to info@edgeesmeralda.com (mailto:info@edgeesmeralda.com).
+
+---
+
+### 💬 Community Chat Group on Telegram
 
 ---
 
@@ -96,12 +100,12 @@ This wiki has all the important information regarding Edge Esmeralda 2026. If yo
 ---
 
 - Apply here (https://edgecity.simplefi.tech/portal) if you haven’t already. ✨ We are reviewing applications on a rolling basis.
-- Housing: Once you have your ticket, make sure you book accommodation. You can book our discounted rates for Hotel Trio here (https://edgeevents.bed-booking.com/). Browse housing resources here (https://docs.google.com/spreadsheets/d/1U0iLx54TBN7tjhXvhnvnE893EllAfC-fMRxakObB4F0/edit?gid=1200229816#gid=1200229816). 
+- Housing: Once you have your ticket, make sure you book accommodation. You can book our discounted rates for Hotel Trio here (https://edgeevents.bed-booking.com/). Browse housing resources here (https://docs.google.com/spreadsheets/d/1U0iLx54TBN7tjhXvhnvnE893EllAfC-fMRxakObB4F0/edit?gid=1200229816#gid=1200229816).
 - Join our Housing Telegram group: https://t.me/+9XnxQWWwVvo4ZTUx (https://t.me/+9XnxQWWwVvo4ZTUx) to coordinate shared housing and meet other participants. Please read the 'Read This First' channel that is pinned at the top as soon as you enter.
 - Community Calendar: browse all events of Edge Esmeralda 2026 (coming soon). Once you have a ticket, you’ll be able to create and host your own sessions as well.
 - Edge Esmeralda 2026 Blog: (https://edgeesmeralda2026.substack.com/) Search through this if you have further questions!
 - Google Maps List (https://maps.app.goo.gl/Njy5vqkPutL9Ffcv5) of key places in town
-Step 1: Apply here (https://edgecity.simplefi.tech/portal).  (https://edgeesmeralda.com/)Once your application is approved, you can purchase a ticket for your desired timeframe. Currently you can choose between week-long and month-long passes. We launch day and weekend passes closer to the event. 
+Step 1: Apply here (https://edgecity.simplefi.tech/portal).  (https://edgeesmeralda.com/)Once your application is approved, you can purchase a ticket for your desired timeframe. Currently you can choose between week-long and month-long passes. We launch day and weekend passes closer to the event.
 
 You can also join Edge Esmeralda via a residency. Either way you need a ticket and we recommend buying your ticket as soon as possible to avoid raising prices.
 
@@ -119,9 +123,9 @@ Current Tickets (prices rise monthly until the event)
 - Standard Week Pass:  $1,300 (will eventually cost $1,350)
 - Partner/Spouse Month Pass: $2,175 (will eventually cost $2,250)
 - ‍Partner/Spouse Week Pass: $975 (will eventually cost $1,013)
-- Weekday Pass (single day): $230 
+- Weekday Pass (single day): $230
 - Weekend Day Pass (single day): $290
-- Weekend Pass (Saturday & Sunday): $495 
+- Weekend Pass (Saturday & Sunday): $495
 - Kid Week incl. Edge Tomorrow residency: (https://edgeesmeralda2026.substack.com/p/announcing-a-creative-residency-for) $685 (will eventually cost $710)
 - Kid Month incl. Edge Tomorrow residency: (https://edgeesmeralda2026.substack.com/p/announcing-a-creative-residency-for) $1,805 (will eventually cost $1,830)
 - Kid standard: free
@@ -186,7 +190,7 @@ Hotel Trio is the main gathering place for most attendees. Extended-stay rooms w
 
 🏨 Appellation Healdsburg (https://www.appellationhotels.com/hotels/california-healdsburg/)
 
-→ Book here (https://appellationhotels.com/hotels/california-healdsburg/offers/edge-esmerelda.html) for negotiated discounted rates. 
+→ Book here (https://appellationhotels.com/hotels/california-healdsburg/offers/edge-esmerelda.html) for negotiated discounted rates.
 
 🏨 Duchamp (https://www.duchamphotel.com/)
 
@@ -201,7 +205,7 @@ Shared houses are a great way to reduce costs and build community. Coordinate wi
 - Also check nearby towns: Windsor, Geyserville, Cloverdale
 🏕️ Camping / RV
 
-Unfortunately, we do not have any camping/RV parking spots closeby. 
+Unfortunately, we do not have any camping/RV parking spots closeby.
 
 🏩 Downtown Hotels & Inns
 
@@ -226,7 +230,23 @@ Getting to Healdsburg:
 - Rent a car (recommended for flexibility)
 - Rideshare (Uber/Lyft) from SFO/OAK
 - Use the Telegram group (https://t.me/+9XnxQWWwVvo4ZTUx) to coordinate carpools with other attendees
-Venue details for EE26 are being finalized — see a sneak peak below. 
+Lunch
+
+- We’ve partnered with Jimtown and Then Sum (https://jimtown.com/) to provide fresh and healthy lunches Monday - Friday at 405 Healdsburg from 11:30am - 1pm!
+- Participants must pay for a pre-purchased meal ticket here [TICKETS NOT LIVE YET].
+- You must buy a lunch ticket the Friday morning before the upcoming week.
+- We have a no refund policy once you’ve purchased a meal plan for a given week: this keeps waste down and lets Jimtown and Then Sum (https://jimtown.com/) team plan properly.
+- Here’s the full menu (https://www.toasttab.com/catering/jimtown-and-then-sum-6706-california-128/menu/edge%20ezmeralda/), along with an ingredient list.
+Dinners
+
+Dinners are pay-as-you-go and rotate across partner venues so you can explore the best of Healdsburg’s food scene.
+
+Join the Edge Esmeralda community at 7:00pm, Monday to Thursday, to unwind and connect over shared meals!
+
+- Mondays at Fogbelt Brewing Company for 15% off.
+- Tuesdays and Thursdays at The Burrow for 10% off.
+- Wednesdays is for a trip to Costeaux (French Bakery) for 10% off.
+Venue details for EE26 are being finalized — see a sneak peak below.
 
 We keep a shared Google Map (https://www.google.com/maps/d/edit?mid=1DrcId2ALOYZAJAhwcC8SphPAAVTTQU4&usp=sharing) of our favorite spots around town: cafes, restaurants, venues, and more.
 
@@ -275,9 +295,9 @@ Healdsburg is a small, walkable town — you won't need a car for your day-to-da
 - Hotel Trio is ~7 min bike ride to downtown via Serendipity Lane (car-free path)
 - Rideshare (Uber/Lyft) works well in the area
 - For excursions and regional adventures, carpooling / renting a car is recommended
-We secured discounts with local businesses for EE26 participants. 
+We secured discounts with local businesses for EE26 participants.
 
-Find all offers here: ‣ 
+Find all offers here: ‣
 
 Healdsburg and the surrounding Sonoma County offer incredible outdoor adventures.
 
@@ -312,6 +332,8 @@ Edge Esmeralda 2026 is organized by Edge City (https://www.edgecity.live/), a "s
 
 Email info@edgeesmeralda.com (mailto:info@edgeesmeralda.com) if you have any further questions.
 
+- $75/week - 5 lunches ($15 each).
+- $300 for the full month.
 - What: A hands-on creative residency where kids conceive, build, and present projects they design for the whole Edge community. Think: pop-up museums, cardboard worlds, short films, neighborhood festivals.
 - When: Monday–Friday, 9am–4pm
 - Format: Weekly cohorts, each anchored by a theme-question. Kids lead the projects. Each week ends with a Friday showcase.

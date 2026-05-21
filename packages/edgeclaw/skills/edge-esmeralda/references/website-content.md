@@ -1,7 +1,7 @@
 # Edge City Website Content
 
 Source: https://edgecity.live
-Last indexed: 2026-05-21T14:23:47.109Z
+Last indexed: 2026-05-21T19:15:41.193Z
 
 ---
 
@@ -1010,6 +1010,16 @@ Monthly Update
 Podcast
 Thank you! Your submission has been received!
 Oops! Something went wrong while submitting the form.
+
+INTRODUCING THE 2026 LONG JOURNEY RESIDENTS
+
+Meet this year's Long Journey Residency cohort, building the magically weird before it becomes consensus.
+
+Edge City Team
+
+Edge Esmeralda
+
+May 20, 2026
 
 EDGE CITY NEWSLETTER — APRIL 2026
 
