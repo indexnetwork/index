@@ -16,8 +16,8 @@ mock.module('../../lib/bullmq/bullmq', () => ({
     createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
 }));
-mock.module('../opportunity.queue', () => ({
-  opportunityQueue: { addJob: async () => ({ id: '1' }) },
+mock.module('../opportunity/from-intent.queue', () => ({
+  fromIntentQueue: { addJob: async () => ({ id: '1' }) },
 }));
 
 import {

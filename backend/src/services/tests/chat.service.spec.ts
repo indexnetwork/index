@@ -42,11 +42,6 @@ mock.module("@indexnetwork/protocol", () => {
   };
 });
 
-// ─── Mock protocol-init (lazy require inside factory getter) ──────────────────
-mock.module("../../protocol-init", () => ({
-  createDefaultProtocolDeps: () => ({}),
-}));
-
 // ─── Mock infrastructure adapters (instantiated in constructor) ───────────────
 mock.module("../../adapters/database.adapter", () => ({
   conversationDatabaseAdapter: {},
@@ -66,6 +61,7 @@ mock.module("../../adapters/checkpointer.adapter", () => ({
   getCheckpointer: mock(() => Promise.resolve(undefined)),
 }));
 
+import { ChatGraphFactory } from "@indexnetwork/protocol";
 import { ChatSessionService } from "../chat.service";
 import type { ConversationDatabaseAdapter } from "../../adapters/database.adapter";
 
@@ -399,6 +395,7 @@ describe("ChatSessionService.processMessage", () => {
   it("invokes the graph and returns responseText", async () => {
     const db = createMockDb();
     const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    svc.setFactory(new ChatGraphFactory(null as never, null as never, null as never, null as never, null as never));
 
     const result = await svc.processMessage(USER_ID, "What can you do?");
 

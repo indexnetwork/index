@@ -26,7 +26,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { intents, opportunities, users } from '../schemas/database.schema';
 import { tasks } from '../schemas/conversation.schema';
-import { opportunityQueue } from '../queues/opportunity.queue';
+import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
 
 async function main() {
   const userId = process.argv[2];
@@ -81,7 +81,7 @@ async function main() {
   const stamp = Date.now();
   let enqueued = 0;
   for (const { id: intentId } of activeIntents) {
-    await opportunityQueue.addJob(
+    await fromIntentQueue.addJob(
       { intentId, userId },
       { priority: 10, jobId: `manual-rediscovery-${userId}-${intentId}-${stamp}` },
     );
@@ -89,7 +89,7 @@ async function main() {
   }
   console.log(`[rediscover] Enqueued ${enqueued} discovery job(s).`);
 
-  await opportunityQueue.queue.close();
+  await fromIntentQueue.queue.close();
   await closeDb();
   process.exit(0);
 }

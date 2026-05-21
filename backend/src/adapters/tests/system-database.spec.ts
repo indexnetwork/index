@@ -15,6 +15,7 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test';
 // This prevents verifySharedIndex from hitting the real DB.
 const mockGetPersonalIndexId = mock(() => Promise.resolve(null));
 mock.module('../database.adapter', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- self-mock needs runtime require to preserve original exports
   const actual = require('../database.adapter');
   return {
     ...actual,
@@ -68,8 +69,7 @@ function createMockDb(): ChatDatabaseAdapter {
     getOpportunitiesForNetwork: mock(() => Promise.resolve([])),
     updateOpportunityStatus: mock(() => Promise.resolve(null)),
     opportunityExistsBetweenActors: mock(() => Promise.resolve(false)),
-    getOpportunityBetweenActors: mock(() => Promise.resolve(null)),
-    findOverlappingOpportunities: mock(() => Promise.resolve([])),
+    findOpportunitiesByActors: mock(() => Promise.resolve([])),
     expireOpportunitiesByIntent: mock(() => Promise.resolve(0)),
     expireOpportunitiesForRemovedMember: mock(() => Promise.resolve(0)),
     expireStaleOpportunities: mock(() => Promise.resolve(0)),
@@ -239,16 +239,6 @@ describe('createSystemDatabase', () => {
       ).toThrow('not in scope');
     });
 
-    it('getOpportunityBetweenActors allows scoped index', async () => {
-      await sysDb.getOpportunityBetweenActors([AUTH_USER, OTHER_USER], SCOPED_INDEX);
-      expect(mockDb.getOpportunityBetweenActors).toHaveBeenCalledWith([AUTH_USER, OTHER_USER], SCOPED_INDEX);
-    });
-
-    it('getOpportunityBetweenActors throws for out-of-scope index', () => {
-      expect(() =>
-        sysDb.getOpportunityBetweenActors([AUTH_USER], OUT_OF_SCOPE_INDEX)
-      ).toThrow('not in scope');
-    });
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -299,10 +289,10 @@ describe('createSystemDatabase', () => {
       expect(mockDb.getOpportunity).toHaveBeenCalledWith('opp-1');
     });
 
-    it('findOverlappingOpportunities delegates directly', async () => {
-      const actorIds = [AUTH_USER, OTHER_USER] as never;
-      await sysDb.findOverlappingOpportunities(actorIds);
-      expect(mockDb.findOverlappingOpportunities).toHaveBeenCalledWith(actorIds, undefined);
+    it('findOpportunitiesByActors delegates directly', async () => {
+      const actorIds = [AUTH_USER, OTHER_USER];
+      await sysDb.findOpportunitiesByActors(actorIds, { includeIntroducers: true });
+      expect(mockDb.findOpportunitiesByActors).toHaveBeenCalledWith(actorIds, { includeIntroducers: true });
     });
 
     it('createOpportunityAndExpireIds delegates directly (used by discovery pipeline)', async () => {

@@ -24,6 +24,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunities } from "@/contexts/APIContext";
 import { validateFiles } from "@/lib/file-validation";
 import InlineDiscoveryCard from "@/components/chat/InlineDiscoveryCard";
+import { DecisionQuestions } from "@/components/DecisionQuestions";
 import InviteMessageModal from "@/components/InviteMessageModal";
 import OpportunityCard, {
   type OpportunityCardData,
@@ -366,6 +367,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<PendingFile[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [decisionQuestionsSubmittedIds, setDecisionQuestionsSubmittedIds] = useState<
+    Set<string>
+  >(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1630,30 +1634,31 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     msg.role === "user" ? "justify-end" : "justify-start",
                   )}
                 >
-                  <div
-                    className={cn(
-                      msg.role === "user" ? "max-w-[75%]" : "max-w-[90%]",
-                      msg.role === "user"
-                        ? "bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-4xl px-4 py-1 text-sm leading-relaxed"
-                        : "text-gray-900",
-                    )}
-                  >
-                    {msg.role === "assistant" && (
+                  {msg.role === "user" ? (
+                    <div className="max-w-[75%] bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-4xl px-4 py-1 text-sm leading-relaxed">
+                      <article className="max-w-none">
+                        <div className="chat-markdown max-w-none">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {mentionsToMarkdownLinks(msg.content)}
+                          </ReactMarkdown>
+                        </div>
+                      </article>
+                    </div>
+                  ) : (
+                    <div className="w-full text-gray-900">
                       <span className="text-[10px] uppercase tracking-wider text-black font-bold mb-1 block">
                         Index
                       </span>
-                    )}
-                    <article className="max-w-none">
-                      {msg.role === "assistant" ? (
-                        <>
-                          {msg.traceEvents && msg.traceEvents.length > 0 && (
-                            <ToolCallsDisplay
-                              traceEvents={msg.traceEvents}
-                              isStreaming={msg.isStreaming}
-                              wasStoppedByUser={msg.wasStoppedByUser}
-                              stoppedAt={msg.stoppedAt}
-                            />
-                          )}
+                      {msg.traceEvents && msg.traceEvents.length > 0 && (
+                        <ToolCallsDisplay
+                          traceEvents={msg.traceEvents}
+                          isStreaming={msg.isStreaming}
+                          wasStoppedByUser={msg.wasStoppedByUser}
+                          stoppedAt={msg.stoppedAt}
+                        />
+                      )}
+                      <div className="max-w-[90%]">
+                        <article className="max-w-none">
                           <AssistantMessageContent
                             content={msg.content}
                             isStreaming={msg.isStreaming ?? false}
@@ -1699,16 +1704,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             onNetworkJoin={handleNetworkJoin}
                             networkPanelPendingJoinIds={networkPanelPendingJoinIds}
                           />
-                        </>
-                      ) : (
-                        <div className="chat-markdown max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {mentionsToMarkdownLinks(msg.content)}
-                          </ReactMarkdown>
-                        </div>
-                      )}
-                    </article>
-                  </div>
+                        </article>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {msg.role === "user" &&
                   msg.attachmentNames &&
@@ -1776,6 +1775,25 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         );
                       })}
                     </div>
+                  )}
+                {msg.role === "assistant" &&
+                  msg.decisionQuestions &&
+                  msg.decisionQuestions.length > 0 && (
+                    <DecisionQuestions
+                      questions={msg.decisionQuestions}
+                      submitted={
+                        msg.decisionQuestionsSubmitted ??
+                        decisionQuestionsSubmittedIds.has(msg.id)
+                      }
+                      onSubmit={(flattened) => {
+                        setDecisionQuestionsSubmittedIds((prev) => {
+                          const next = new Set(prev);
+                          next.add(msg.id);
+                          return next;
+                        });
+                        sendMessage(flattened);
+                      }}
+                    />
                   )}
               </div>
             ))}

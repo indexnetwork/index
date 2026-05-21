@@ -18,6 +18,7 @@ import { Member } from '@/services/networks';
 import { validateFiles, validateFile } from '@/lib/file-validation';
 import { parseCsvText, type ImportRow, type ParsedCsvResult } from '@/lib/csv-import';
 import CsvPreviewModal from '@/components/modals/CsvPreviewModal';
+import MasterKeyDialog from '@/components/MasterKeyDialog';
 
 /** Toolkits available for connection. Add entries here when enabling new Composio integrations. */
 const AVAILABLE_TOOLKITS = ['gmail', 'slack'] as const;
@@ -87,6 +88,11 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const [csvPreview, setCsvPreview] = useState<ParsedCsvResult | null>(null);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [showCsvModal, setShowCsvModal] = useState(false);
+
+  const [showRotateConfirm, setShowRotateConfirm] = useState(false);
+  const [rotateConfirmationText, setRotateConfirmationText] = useState('');
+  const [isRotating, setIsRotating] = useState(false);
+  const [rotatedMasterKey, setRotatedMasterKey] = useState<string | null>(null);
 
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local form state from prop changes */
   useEffect(() => {
@@ -336,6 +342,24 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     }
   };
 
+  const handleConfirmRotate = async () => {
+    if (isRotating) return;
+    if (rotateConfirmationText !== currentIndex.title) return;
+    setIsRotating(true);
+    try {
+      const result = await indexesService.rotateMasterKey(index.id);
+      setShowRotateConfirm(false);
+      setRotateConfirmationText('');
+      setRotatedMasterKey(result.masterKey);
+      success('Master key rotated — old key is now invalid');
+    } catch (err) {
+      console.error('Master key rotation failed', err);
+      error('Failed to rotate master key');
+    } finally {
+      setIsRotating(false);
+    }
+  };
+
   const [isAddingMember, setIsAddingMember] = useState(false);
   const CONTACTS_PAGE_SIZE = 10;
 
@@ -426,7 +450,10 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     try {
       const result = await indexesService.importMembers(index.id, rows);
       setCsvPreview(null);
-      success(`Imported ${result.imported} member${result.imported !== 1 ? 's' : ''}${result.skipped > 0 ? ` · ${result.skipped} skipped` : ''}`);
+      const suffix = result.ownersNotified > 0
+        ? ` · credentials emailed to ${result.ownersNotified} owner${result.ownersNotified !== 1 ? 's' : ''}`
+        : '';
+      success(`Imported ${result.imported} member${result.imported !== 1 ? 's' : ''}${result.skipped > 0 ? ` · ${result.skipped} skipped` : ''}${suffix}`);
       await loadMembers();
     } catch {
       error('Import failed');
@@ -934,6 +961,48 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
               );
             })}
           </div>
+
+          {currentIndex.isExperiment && (
+            <div className="pt-2">
+              <div className="flex items-start gap-3 p-3 border border-gray-200 rounded-sm">
+                <img
+                  src="/integrations/edgeclaw.png"
+                  width={24}
+                  height={24}
+                  alt="EdgeClaw"
+                  className="flex-shrink-0 mt-0.5"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+                <div className="flex-1 min-w-0 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-black">EdgeClaw</div>
+                      <div className="text-xs text-gray-500">Server-side signup for experiment attendees</div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowRotateConfirm(true)}
+                      disabled={isRotating}
+                    >
+                      <RotateCw className="h-3.5 w-3.5 mr-1.5" />
+                      Rotate key
+                    </Button>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-1.5">Signup endpoint</div>
+                    <CopyableBox value={typeof window !== 'undefined' ? `${window.location.origin}/api/networks/${currentIndex.id}/signup` : `/api/networks/${currentIndex.id}/signup`} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-1.5">Master key</div>
+                    <CopyableBox value={'•••••••• (shown once at creation — rotate for a new one)'} />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Used server-side by InstaClaw and EdgeOS. Never expose in user-facing apps.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -948,6 +1017,35 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
               <AlertDialog.Cancel asChild><Button variant="outline">Cancel</Button></AlertDialog.Cancel>
               <Button onClick={handleDeleteIndex} disabled={isDeletingIndex || !isDeleteConfirmationValid} className="bg-red-600 hover:bg-red-700 text-white">
                 {isDeletingIndex ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+
+      <AlertDialog.Root open={showRotateConfirm} onOpenChange={(open) => { if (!open) { setShowRotateConfirm(false); setRotateConfirmationText(''); } }}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
+            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Rotate master key</AlertDialog.Title>
+            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
+              Rotating issues a new master key and immediately revokes the current one. Any backend using the old key (InstaClaw, EdgeOS) will stop working until you redeploy it with the new key. We will also email the new key to every owner of this network. Type the network name to confirm.
+            </AlertDialog.Description>
+            <Input
+              value={rotateConfirmationText}
+              onChange={(e) => setRotateConfirmationText(e.target.value)}
+              placeholder={currentIndex.title}
+              className="mb-4"
+            />
+            <div className="flex justify-end gap-3">
+              <AlertDialog.Cancel asChild>
+                <Button variant="outline" disabled={isRotating}>Cancel</Button>
+              </AlertDialog.Cancel>
+              <Button
+                onClick={handleConfirmRotate}
+                disabled={isRotating || rotateConfirmationText !== currentIndex.title}
+              >
+                {isRotating ? 'Rotating...' : 'Rotate'}
               </Button>
             </div>
           </AlertDialog.Content>
@@ -1033,6 +1131,14 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
           columns={csvPreview.columns}
           hasEmailColumn={csvPreview.hasEmailColumn}
           onConfirm={handleCsvConfirm}
+        />
+      )}
+
+      {rotatedMasterKey && (
+        <MasterKeyDialog
+          open={!!rotatedMasterKey}
+          masterKey={rotatedMasterKey}
+          onClose={() => setRotatedMasterKey(null)}
         />
       )}
     </>

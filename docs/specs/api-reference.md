@@ -133,6 +133,19 @@ Refer to the [Better Auth documentation](https://www.better-auth.com/) for detai
 
 API keys created for personal agents include `metadata.agentId`. MCP auth resolves API keys into `{ userId, agentId? }` identities, so the same user can authorize multiple agents with separate keys.
 
+### MCP request header: `x-index-surface`
+
+MCP clients SHOULD declare the rendering surface for their user on every request via the `x-index-surface` header. Accepted values: `telegram | web` (case-insensitive, whitespace-trimmed). Absent or unknown values are coerced to `web` (the default).
+
+The value drives the click-time redirect on opportunity connect links (`/c/{code}/go`):
+
+- `telegram` — when the target user has a Telegram handle, redirects to `https://t.me/{handle}?text=...`; falls back to the web chat URL if the target has no handle.
+- `web` (or absent) — always redirects to `${FRONTEND_URL}/u/{counterpartUserId}/chat?msg=...`.
+
+The surface is snapshotted onto each minted `connect_links` row at MCP-call time (the auth resolver reads the header, the protocol threads it through `ResolvedToolContext.clientSurface`, and `mintConnectLink` writes it). First mint wins for the link's lifetime; rotation of an expired row re-stamps the surface.
+
+Today only EdgeClaw (the Telegram-bot MCP surface) sends `telegram`. Every other caller — Claude Desktop, the web app, Claude Code, the CLI — omits the header and gets the web fallback.
+
 ### Performance Stats (Dev Only)
 
 ```
@@ -1593,6 +1606,27 @@ Soft-delete an index. Owner only.
 { "success": true }
 ```
 
+### POST /api/networks/:id/rotate-master-key
+
+Rotate the master key on an experiment network. Owner only. The plaintext is returned exactly once; the previous key stops working immediately. Every owner of the network also receives the new key by email.
+
+**Auth**: `AuthOrApiKeyGuard` (session or API key)
+
+**Path params**:
+- `id` — Network ID
+
+**Request body**: none
+
+**Response**:
+```json
+{
+  "masterKey": "<plaintext-64-chars>"
+}
+```
+
+**Errors**:
+- `403` — Caller is not an owner of an experiment network (covers both "not an experiment" and "not an owner" — the controller's pre-check returns 403 for both).
+
 ### GET /api/networks/:id/members
 
 Get members of an index. Owner only.
@@ -1790,6 +1824,51 @@ Validation caps: `name` 200 chars, `bio` 2000 chars, `location` 200 chars, `soci
 
 ---
 
+### POST /api/networks/:id/signup/lookup
+
+Read-only sibling of `/signup`. Verifies, without side effects, that a given email is fully provisioned for this experiment network — user is live, member of the network, and has a network-scoped personal agent. Use this to check provisioning state without rotating the user's API key (which is what `/signup` does on every call).
+
+**Auth**: `ExperimentMasterKeyGuard` — `x-api-key` header containing the network's master key.
+
+**Path params**:
+- `id` — Network ID (must be an experiment network with a master key set).
+
+**Request body**:
+```json
+{ "email": "attendee@example.com" }
+```
+
+Only `email` is read; any other fields in the body are ignored. Email is normalized (lowercased + trimmed) before lookup.
+
+**Response 200** (fully provisioned):
+```json
+{ "user": { "id": "uuid", "email": "attendee@example.com" } }
+```
+
+The response does **not** include an API key or an MCP server config — the integrator is presumed to hold the key from its original `/signup` call. If the key has been lost, call `/signup` to mint a fresh one (this will rotate any deployed key, so prefer not to).
+
+**Response 409** — User is not in a fully-provisioned state. A single canned message is returned for every "no" path (email unknown, user soft-deleted, no membership, membership soft-deleted, no scoped agent, scoped agent soft-deleted). The integrator's recovery is the same in all cases: call `/signup` proper.
+```json
+{ "error": "User has not completed signup for this network" }
+```
+
+**Idempotency**: 100% read-only. Safe to call from retry loops, dashboards, or health probes. Calling 1× or N× has identical effect.
+
+**Errors**:
+- `400` — Missing or malformed email; unparseable body.
+- `401` — Missing `x-api-key` header.
+- `403` — Master key invalid; network not experiment type; network deleted.
+
+**Example (curl)**:
+```bash
+curl -X POST https://protocol.index.network/api/networks/<NETWORK_ID>/signup/lookup \
+  -H 'x-api-key: <MASTER_KEY>' \
+  -H 'content-type: application/json' \
+  -d '{ "email": "attendee@example.com" }'
+```
+
+---
+
 ### POST /api/networks/:id/members/import/parse
 
 Parse a CSV file and validate rows before committing an import. Owner-only, experiment networks only. Intended for large files (> 500 rows) where client-side parsing is skipped.
@@ -1831,11 +1910,12 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, exper
 
 **Response 200**:
 ```json
-{ "imported": 42, "skipped": 3 }
+{ "imported": 42, "skipped": 3, "ownersNotified": 1 }
 ```
 
 - `imported` — Number of new accounts provisioned and added as members.
-- `skipped` — Number of rows that were skipped (existing users already invited, or errors).
+- `skipped` — Number of rows that were skipped (errors).
+- `ownersNotified` — Number of network owners who received a credentials summary email. The email contains an inline CSV with every minted API key (`email,name,api_key`). Per-user invitation emails are not sent for bulk imports — the owner distributes keys out-of-band.
 
 **Errors**:
 - `400` — `members` array is missing or empty.
@@ -2388,6 +2468,11 @@ Update opportunity status.
 
 **Response**: JSON with updated opportunity.
 
+**Error responses**:
+- `403` — Caller is not an actor on the opportunity
+- `404` — Opportunity not found
+- `409` — Self-accept blocked. Caller's actor already has `actedAt` set (they advanced the opportunity earlier) and is attempting to accept it. The other party must accept. See `docs/domain/opportunities.md#bilateral-acceptance`.
+
 ---
 
 ### POST /api/opportunities/:id/start-chat
@@ -2416,6 +2501,7 @@ Runs the same side effects as `PATCH .../status` with `status=accepted` (sibling
 - `400` — Opportunity is not in `pending` or `draft` status
 - `403` — Caller is not an actor on the opportunity
 - `404` — Opportunity not found
+- `409` — Self-accept blocked. Caller's actor already has `actedAt` set. See `docs/domain/opportunities.md#bilateral-acceptance`.
 - `500` — Status update or DM resolution failed
 
 ---

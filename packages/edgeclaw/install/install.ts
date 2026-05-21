@@ -12,21 +12,38 @@
  *   - Disable Telegram progress-draft "tidepooling" so the streaming-off
  *     setting is loaded on the very first gateway start (not deferred until
  *     the first bootstrap turn drains).
- *   - Copy the workspace markdown bundle (BOOTSTRAP, AGENTS, SOUL, USER,
- *     IDENTITY, TOOLS, HEARTBEAT, COMMUNITY, prompts/*) into
+ *   - Copy every markdown file under `workspace/` into
  *     `~/.openclaw/workspace/`.
+ *   - Copy backend skill bundles from `skills/` into
+ *     `~/.openclaw/workspace/skills/` so OpenClaw registers them as
+ *     workspace skills.
  *   - Call each backend installer in `install_<backend>.ts`.
  *   - Bind any `EdgeClaw — *` cron jobs to the user's Telegram chat once a
  *     session exists, so digest / ambient deliveries route correctly.
  *   - Restart the gateway so all config changes and cron jobs take effect.
  *
  * Anything the agent should *do at runtime* (greet the user, create their
- * profile, send the welcome message body) stays in BOOTSTRAP.md /
- * prompts/welcome.md — the installer does not impersonate the agent.
+ * profile, send the welcome message body) stays in
+ * skills/index-network/bootstrap.md / skills/index-network/prompts/welcome.md —
+ * the installer does not impersonate the agent.
+ *
+ * Re-running the installer is the supported way to bind cron deliveries to
+ * the user's Telegram chat once they've sent their first message. By
+ * default, `USER.md` is preserved on re-install — it holds the user's
+ * lived notes populated by the active skill's bootstrap ritual, and
+ * overwriting it with the blank template would silently erase those notes.
+ * Pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated
+ * `MEMORY.md` so the next session re-onboards from scratch. (Mirrors
+ * `reset.ts --wipe-user`.)
  *
  * Usage:
  *   bun install.ts <API_KEY>
+ *   bun install.ts <API_KEY> --wipe-user
  *   API_KEY=... bun install.ts
+ *
+ * Optional EdgeOS tokens (consumed by install_edgeos.ts and written into
+ * `env.vars.*` so the agent's curl/HTTP recipes can read them):
+ *   EDGEOS_API_KEY=eos_live_... EDGEOS_BEARER_TOKEN=... bun install.ts <API_KEY>
  */
 
 import {
@@ -35,6 +52,7 @@ import {
   copyFileSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -48,7 +66,9 @@ import { installGeo } from "./install_geo";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const SOURCE_WORKSPACE = join(SCRIPT_DIR, "../workspace");
+const SOURCE_SKILLS = join(SCRIPT_DIR, "../skills");
 const TARGET_WORKSPACE = join(homedir(), ".openclaw", "workspace");
+const TARGET_SKILLS = join(TARGET_WORKSPACE, "skills");
 
 function ensureOpenclawAvailable(): void {
   try {
@@ -67,7 +87,7 @@ function disableTelegramTidepooling(): void {
   });
 }
 
-function copyWorkspaceFiles(): void {
+function copyWorkspaceFiles(wipeUser: boolean): void {
   if (!existsSync(SOURCE_WORKSPACE)) {
     console.error(`error: bundled workspace missing at ${SOURCE_WORKSPACE}`);
     process.exit(1);
@@ -78,6 +98,7 @@ function copyWorkspaceFiles(): void {
   }
 
   let copied = 0;
+  let preservedUserNotes = false;
   for (const entry of readdirSync(SOURCE_WORKSPACE)) {
     const sourcePath = join(SOURCE_WORKSPACE, entry);
     const targetPath = join(TARGET_WORKSPACE, entry);
@@ -91,12 +112,84 @@ function copyWorkspaceFiles(): void {
         copied++;
       }
     } else if (entry.endsWith(".md")) {
+      // USER.md holds the user's lived notes — populated by whichever
+      // active skill's bootstrap ritual ran during onboarding. Re-running
+      // the installer (to bind cron deliveries) must not erase those notes
+      // — preserve unless --wipe-user is set. Mirrors reset.ts.
+      if (entry === "USER.md" && !wipeUser && existsSync(targetPath)) {
+        preservedUserNotes = true;
+        continue;
+      }
       copyFileSync(sourcePath, targetPath);
       copied++;
     }
   }
 
   console.log(`→ staged ${copied} workspace files into ${TARGET_WORKSPACE}`);
+  if (preservedUserNotes) {
+    console.log("  (USER.md preserved — pass --wipe-user to overwrite it)");
+  }
+
+  // MEMORY.md is agent-curated at runtime (not shipped in source), so it can't
+  // be "reset to template" like USER.md — it's deleted instead. Without this,
+  // the agent's long-term memories survive `--wipe-user` and keep biasing the
+  // re-onboarding session toward the prior user identity.
+  //
+  // workspace-state.json holds OpenClaw's `bootstrapSeededAt` /
+  // `setupCompletedAt` markers — its presence is what OpenClaw uses to skip
+  // BOOTSTRAP.md injection on subsequent sessions. Deleting it makes OpenClaw
+  // treat the workspace as fresh on the next session, so BOOTSTRAP.md (which
+  // we re-staged above) is injected into the prompt and the onboarding ritual
+  // re-runs.
+  //
+  // memory/edgeclaw-state.json is EdgeClaw's own onboarding marker (separate
+  // from Index Network's server-side `onboardingComplete` flag). Wiping it
+  // makes the next session re-enter EdgeClaw onboarding from BOOTSTRAP.md.
+  // memory/welcome-state.json is the Index-side welcome-message dedup marker;
+  // re-onboarding should re-deliver the welcome, so it goes too. cron-prefs
+  // are reset because they are set as part of EdgeClaw onboarding.
+  if (wipeUser) {
+    const filesToWipe = [
+      join(TARGET_WORKSPACE, "MEMORY.md"),
+      join(TARGET_WORKSPACE, ".openclaw", "workspace-state.json"),
+      join(TARGET_WORKSPACE, "memory", "edgeclaw-state.json"),
+      join(TARGET_WORKSPACE, "memory", "welcome-state.json"),
+      join(TARGET_WORKSPACE, "memory", "cron-preferences.json"),
+    ];
+    for (const path of filesToWipe) {
+      if (existsSync(path)) {
+        rmSync(path, { force: true });
+        console.log(`→ removed ${path.replace(TARGET_WORKSPACE + "/", "")} (--wipe-user)`);
+      }
+    }
+  }
+}
+
+function copyMarkdownTree(sourceDir: string, targetDir: string): number {
+  if (!existsSync(sourceDir)) return 0;
+  if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
+
+  let copied = 0;
+  for (const entry of readdirSync(sourceDir)) {
+    const sourcePath = join(sourceDir, entry);
+    const targetPath = join(targetDir, entry);
+    const stat = statSync(sourcePath);
+
+    if (stat.isDirectory()) {
+      copied += copyMarkdownTree(sourcePath, targetPath);
+    } else if (entry.endsWith(".md")) {
+      copyFileSync(sourcePath, targetPath);
+      copied++;
+    }
+  }
+  return copied;
+}
+
+function copySkillFiles(): void {
+  const copied = copyMarkdownTree(SOURCE_SKILLS, TARGET_SKILLS);
+  if (copied > 0) {
+    console.log(`→ staged ${copied} skill files into ${TARGET_SKILLS}`);
+  }
 }
 
 /**
@@ -184,12 +277,15 @@ function restartGateway(): void {
 function main(): void {
   ensureOpenclawAvailable();
 
+  const wipeUser = process.argv.includes("--wipe-user");
+
   console.log("EdgeClaw installer");
   console.log("==================");
   console.log("");
 
   disableTelegramTidepooling();
-  copyWorkspaceFiles();
+  copyWorkspaceFiles(wipeUser);
+  copySkillFiles();
 
   installIndex();
   installEdgeos();

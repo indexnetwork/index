@@ -146,6 +146,23 @@ The key design principle: agents (helpers/providers) are shielded from noise. Th
 
 ---
 
+## Bilateral Acceptance
+
+A connection requires acceptance from two distinct actors. The system enforces this by stamping `actedAt` on the acting actor each time a user advances an opportunity's state, and refusing accept if the caller has already acted.
+
+- **Patient + agent:** the patient sends the draft (`actedAt` set on the patient); the agent then accepts (`actedAt` set on the agent). The patient cannot subsequently accept their own send — the API returns HTTP 409.
+- **Peer + peer:** the first peer "accepts" the draft, which maps to the same send mutation under the hood (`actedAt` set on them). The second peer then accepts on the resulting `pending` opportunity. Neither can self-accept.
+- **Introducer + others:** the introducer sends after approving the intro (`actedAt` set on the introducer). The downstream patient/agent acceptance follows the same rules as above.
+
+The `actedAt` stamp is written atomically with the status change inside a row-locked transaction, so concurrent attempts serialize through Postgres' row lock. The guard runs at both layers:
+
+- **Graph** (`updateNode` and `sendNode` in `opportunity.graph.ts`): used by `update_opportunity` and `send_opportunity` MCP tools, and by chat-driven flows.
+- **Service** (`OpportunityService.updateOpportunityStatus` and `OpportunityService.startChat`): used by REST `PATCH /api/opportunities/:id/status` and `POST /api/opportunities/:id/start-chat`.
+
+Reject and expire transitions are exempt from the guard — they are terminal flips, not commit signals, and may be invoked by either actor regardless of prior `actedAt`. Background system flips (negotiation finalize, timeout cleanup) also use the legacy `updateOpportunityStatus` path and do not stamp `actedAt` — only explicit user commits do.
+
+---
+
 ## Dual-Interpretation Model
 
 Each opportunity carries interpretations written from a third-party analytical perspective. The reasoning explains why the opportunity exists, mentioning both users by their roles ("the source user", "the candidate") rather than by name or with direct address.
@@ -187,6 +204,8 @@ The parties involved and their roles. Each actor has:
 - `indexId`: The index through which they were found
 - `intent`: The specific intent that drove the match (optional)
 - `role`: Their valency role (agent, patient, peer)
+- `approved`: Set only on `role === 'introducer'`. `false` until the introducer approves the intro; `true` after approval.
+- `actedAt`: ISO-8601 timestamp of this actor's first state-advancing mutation — set when the actor sends (`pending`) or accepts (`accepted`). Used to enforce the bilateral-acceptance guard described below. Absent until the actor has acted.
 
 ### Interpretation
 

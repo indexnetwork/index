@@ -162,7 +162,7 @@ mock.module("@indexnetwork/protocol", () => ({
 // Mock adapters that OpportunityService constructor tries to initialize
 mock.module("../../adapters/database.adapter", () => ({
   ChatDatabaseAdapter: class {
-    getAcceptedOpportunitiesBetweenActors: unknown;
+    findOpportunitiesByActors: unknown;
     getUser: unknown;
     getHydeDocument() { return null; }
   },
@@ -189,7 +189,7 @@ function createService(rows: Opportunity[]) {
   const service = new OpportunityService();
   // Override the db methods used by getChatContext
   (service as unknown as Record<string, unknown>).db = {
-    getAcceptedOpportunitiesBetweenActors: mock(() => Promise.resolve(rows)),
+    findOpportunitiesByActors: mock(() => Promise.resolve(rows)),
     getUser: mock(() => Promise.resolve(peerUser)),
   };
   return service;

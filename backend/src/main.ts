@@ -29,21 +29,28 @@ import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
+import { RateLimiterError } from './lib/limiter/error';
+import { getRateLimitInfo } from './guards/limiter.guard';
+import { bindLimiterServer } from './lib/limiter/identifier';
 import { log } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
-import { mcpHandler } from './controllers/mcp.handler';
+import { mcpHandler, chatFactory } from './controllers/mcp.controller';
+import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
 import { getStats } from './lib/performance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
-import { opportunityQueue } from './queues/opportunity.queue';
+import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
+import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
+import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
+import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
 import { profileQueue } from './queues/profile.queue';
-import { negotiationTimeoutQueue } from './queues/negotiation-timeout.queue';
-import { negotiationClaimTimeoutQueue } from './queues/negotiation-claim-timeout.queue';
+import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
+import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { NegotiationEvents } from './events/negotiation.event';
@@ -55,6 +62,9 @@ import { conversationDatabaseAdapter } from './adapters/database.adapter';
 import { agentService } from './services/agent.service';
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 
+// Wire ChatGraphFactory into chat service at startup
+chatSessionService.setFactory(chatFactory);
+
 // Wire negotiation into the background discovery queue so latent opportunities
 // from the IntentEvents.onCreated path are negotiated, matching the chat/MCP paths.
 // Without this, OpportunityGraph's negotiateNode short-circuits and every evaluated
@@ -65,14 +75,24 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   backgroundAgentDispatcher,
   negotiationTimeoutQueue,
 ).createGraph();
-opportunityQueue.setRuntimeDeps({
+fromIntentQueue.setRuntimeDeps({
+  negotiationGraph: backgroundNegotiationGraph,
+  agentDispatcher: backgroundAgentDispatcher,
+});
+fromIntroducerQueue.setRuntimeDeps({
+  negotiationGraph: backgroundNegotiationGraph,
+  agentDispatcher: backgroundAgentDispatcher,
+});
+negotiationRunExistingQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
 
 intentQueue.startWorker();
-opportunityQueue.startWorker();
-opportunityQueue.startCrons();
+fromIntentQueue.startWorker();
+fromIntroducerQueue.startWorker();
+negotiationRunExistingQueue.startWorker();
+opportunityExpirationCron.start();
 notificationQueue.startWorker();
 profileQueue.startWorker();
 hydeQueue.startCrons();
@@ -88,7 +108,7 @@ NetworkMembershipEvents.onMemberAdded = (userId: string) => {
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
-  opportunityQueue.addJob(
+  fromIntentQueue.addJob(
     { intentId, userId },
     { priority: 10, jobId: `rediscovery-${userId}-${intentId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
   ).catch((err) => log.job.from('IntentEvents').error('Failed to enqueue discovery on create', { intentId, userId, error: err }));
@@ -201,7 +221,7 @@ controllerInstances.set(ToolController, new ToolController(toolService));
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
 // Cron jobs (newsletter, opportunity finder, HyDE) are registered in index.ts (runs with queue workers).
-Bun.serve({
+const server = Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors
   async fetch(req) {
@@ -336,11 +356,24 @@ Bun.serve({
             const result = await handler.call(instance, req, guardResult, routeParams);
             logger.verbose('Handler invoked successfully');
 
+            // Attach ratelimit headers if available
+            const limiterInfo = getRateLimitInfo(req);
+            const limiterHeaders: Record<string, string> = limiterInfo
+              ? {
+                  'ratelimit-limit': String(limiterInfo.limit),
+                  'ratelimit-remaining': String(limiterInfo.remaining),
+                  'ratelimit-reset': String(Math.max(0, Math.ceil((limiterInfo.resetAt - Date.now()) / 1000))),
+                }
+              : {};
+
             // If result is a Response object, add CORS headers and return it.
             if (result instanceof Response) {
               // Clone the response with CORS headers added
               const newHeaders = new Headers(result.headers);
               Object.entries(corsHeaders).forEach(([key, value]) => {
+                newHeaders.set(key, value);
+              });
+              Object.entries(limiterHeaders).forEach(([key, value]) => {
                 newHeaders.set(key, value);
               });
               return new Response(result.body, {
@@ -350,7 +383,7 @@ Bun.serve({
               });
             }
             // Otherwise assume JSON
-            return Response.json(result, { headers: corsHeaders });
+            return Response.json(result, { headers: { ...corsHeaders, ...limiterHeaders } });
 
           } catch (error: unknown) {
             logger.error('Error handling request', {
@@ -363,6 +396,9 @@ Bun.serve({
             // a network they aren't bound to)
             if (error instanceof ScopeViolationError) {
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+            }
+            if (error instanceof RateLimiterError) {
+              return new Response(error.toBody(), error.toResponseInit(corsHeaders));
             }
             // Map common auth errors
             if (
@@ -391,6 +427,10 @@ Bun.serve({
   },
 });
 
+// Bind the live server to the limiter so resolveClientIp can fall back to
+// the socket peer in environments where RAILWAY_ENVIRONMENT isn't set.
+bindLimiterServer(server);
+
 logger.info('Server running', { port: PORT });
 
 
@@ -400,7 +440,9 @@ const shutdown = async () => {
   await Promise.allSettled([
     profileQueue.close(),
     intentQueue.close(),
-    opportunityQueue.close(),
+    fromIntentQueue.close(),
+    fromIntroducerQueue.close(),
+    negotiationRunExistingQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),
     negotiationTimeoutQueue.close(),

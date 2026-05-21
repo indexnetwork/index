@@ -29,7 +29,7 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, OpportunityGraphDatabase, Embedder, HydeCache } from '@indexnetwork/protocol';
-import { opportunityQueue } from '../queues/opportunity.queue';
+import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
 
 import { TESTER_PERSONAS } from './test-data';
 
@@ -118,7 +118,7 @@ async function main() {
   }
 
   // Run opportunity discovery (synchronous)
-  await opportunityQueue.processJob('discover_opportunities', {
+  await fromIntentQueue.processJob('discover_opportunities', {
     intentId: created.id,
     userId: userA.id,
   });

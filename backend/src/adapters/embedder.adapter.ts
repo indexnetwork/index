@@ -557,3 +557,8 @@ export class EmbedderAdapter {
     }));
   }
 }
+
+/**
+ * Singleton instance of EmbedderAdapter used throughout the protocol stack.
+ */
+export const embedderAdapter = new EmbedderAdapter();

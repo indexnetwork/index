@@ -273,6 +273,55 @@ describe("NetworkController Integration", () => {
     });
   });
 
+  describe("POST /:id/rotate-master-key", () => {
+    let rotateNetworkId: string;
+
+    beforeAll(async () => {
+      const req = new Request("http://localhost/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Rotate Master Key Test", isExperiment: true }),
+      });
+      const res = await controller.create(req, mockUser());
+      const data = (await res.json()) as { network?: { id: string } };
+      rotateNetworkId = data.network!.id;
+    });
+
+    afterAll(async () => {
+      if (rotateNetworkId) await indexAdapter.deleteNetworkAndMembers(rotateNetworkId);
+    });
+
+    test("returns 200 with a fresh masterKey for the owner", async () => {
+      const req = new Request(`http://localhost/networks/${rotateNetworkId}/rotate-master-key`, {
+        method: "POST",
+      });
+      const res = await controller.rotateMasterKey(req, mockUser(), { id: rotateNetworkId });
+      const data = (await res.json()) as { masterKey?: string };
+
+      expect(res.status).toBe(200);
+      expect(data.masterKey).toBeTruthy();
+      expect(data.masterKey!.length).toBe(64);
+    });
+
+    test("returns 403 when network is not an experiment", async () => {
+      const req = new Request(`http://localhost/networks/${createdIndexId}/rotate-master-key`, {
+        method: "POST",
+      });
+      const res = await controller.rotateMasterKey(req, mockUser(), { id: createdIndexId });
+      expect(res.status).toBe(403);
+    });
+
+    test("returns 404 when network does not exist", async () => {
+      const fakeId = "00000000-0000-0000-0000-000000000000";
+      const req = new Request(`http://localhost/networks/${fakeId}/rotate-master-key`, {
+        method: "POST",
+      });
+      const res = await controller.rotateMasterKey(req, mockUser(), { id: fakeId });
+      // assertExperimentOwner returns 404 for null networks but 403 for any other access failure → accept either
+      expect([403, 404]).toContain(res.status);
+    });
+  });
+
   describe("DELETE /:id", () => {
     test("should return 200 and success when owner", async () => {
       const req = new Request("http://localhost/networks/" + createdIndexId, { method: "DELETE" });

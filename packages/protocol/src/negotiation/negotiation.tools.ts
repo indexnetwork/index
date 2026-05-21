@@ -555,18 +555,49 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           // Dispatcher returned an agent turn directly
           aiTurn = dispatchResult.turn;
         } else {
-          // No agent or timeout — run the system AI agent inline
+          // No agent or timeout — run the system AI agent inline.
+          // The agent honors a per-turn LLM timeout (AbortSignal), so invoke
+          // can reject. Mirror the graph turnNode's reject-shaped fallback so
+          // a timed-out or failed call degrades gracefully instead of leaving
+          // the task pinned in `working` while the outer catch returns a bare
+          // error to the user.
           await negotiationDatabase.updateTaskState(task.id, 'working');
 
           const agent = new IndexNegotiator();
-          aiTurn = await agent.invoke({
-            ownUser: ownUserCtx,
-            otherUser: otherUserCtx,
-            indexContext: { networkId: '' },
-            seedAssessment,
-            history: historyForDispatch,
-            isFinalTurn,
-          });
+          try {
+            aiTurn = await agent.invoke({
+              ownUser: ownUserCtx,
+              otherUser: otherUserCtx,
+              indexContext: { networkId: '' },
+              seedAssessment,
+              history: historyForDispatch,
+              isFinalTurn,
+            });
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            const errName = (err as { name?: string })?.name ?? '';
+            const isTimeout = errName === 'TimeoutError' || /timeout|abort/i.test(errMsg);
+            // Log the raw error for ops, but keep the persisted/returned
+            // reasoning generic — this string round-trips back to the caller
+            // via counterpartyResponse.reasoning and ends up in the negotiation
+            // history visible through get_negotiation, so we don't want raw
+            // provider messages (URLs, request IDs, internal stack hints) on
+            // the wire.
+            logger.warn('System negotiator inline invoke failed; treating as reject', {
+              taskId: task.id,
+              isTimeout,
+              error: errMsg,
+            });
+            aiTurn = {
+              action: 'reject',
+              assessment: {
+                reasoning: isTimeout
+                  ? 'Negotiator response timed out.'
+                  : 'Negotiator failed to produce a response.',
+                suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
+              },
+            };
+          }
         }
 
         // Persist the counterparty's turn (from dispatcher or inline AI)

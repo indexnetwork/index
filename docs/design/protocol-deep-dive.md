@@ -370,7 +370,7 @@ Scoring bands:
 
 ### 4.9 Negotiation Insights Generator
 
-**File:** `negotiation/negotiation.insights.generator.ts`
+**File:** `negotiation/insight.generator.ts`
 **Role:** Post-negotiation generator that synthesizes the full transcript into a short, presenter-ready summary of what was agreed, what was objected to, and where the match landed. Used by the opportunity presenter for post-negotiation cards (accepted/rejected/stalled).
 **Model:** `createModel("negotiationInsights")`.
 
@@ -470,6 +470,17 @@ Tools that modify or delete data (update_intent, delete_intent, update_index, de
 ### Auto-discovery on intent creation
 
 When `create_intent` successfully creates an intent, it automatically triggers opportunity discovery by calling `discover_opportunities` with the new intent context. This ensures fresh intents immediately produce relevant matches.
+
+**MCP-only negotiate-phase budget.** When `discover_opportunities` is invoked from the MCP transport (external runtimes like OpenClaw, Claude Code, or a personal agent), the internal negotiate phase is wall-clock capped at 20 s (`OpportunityGraphOptions.negotiateTimeoutMs`). Candidates that finalize their assessment within the budget surface as draft opportunities; those still in negotiation remain in a `negotiating` state and the tool instructs the LLM to check `list_opportunities` in a moment. This is a temporary constraint removable when IND-274 (negotiation conversation continuation) ships and persistent bilateral state becomes feasible.
+
+**Per-turn negotiator timeout.** Independent of the phase budget, every `IndexNegotiator.invoke()` call wraps its underlying `model.invoke` in `AbortSignal.timeout(turnTimeoutMs)` (default 15 s, env-overridable via `NEGOTIATOR_TURN_TIMEOUT_MS`). When a single LLM round-trip exceeds the cap the call rejects with a `TimeoutError`; the graph's `turnNode` catch path and the `respond_to_negotiation` inline fallback both convert that rejection into a `reject`-shaped turn so one slow upstream tail can't monopolize the 20 s phase budget across 4 parallel candidates × up to 6 turns each. The resolver clamps to `(0, Number.MAX_SAFE_INTEGER]` — bad values fall back to the default.
+
+**MCP decision questions and elicitation.** When `ENABLE_DISCOVERY_QUESTIONS=true` and the MCP path has a session or runs from an agent, `discover_opportunities` may return up to 3 decision questions alongside its opportunities. The MCP server's post-result hook in `mcp.server.ts` does two things with them:
+
+1. Always appends a JSON content block to the tool result prefixed with `Decision questions (structured): {...}`. LLM-driven clients without elicitation support can parse this and resurface the questions in prose.
+2. If the client declared the `elicitation` capability, sequentially dispatches one `elicitation/create` per question (`dispatchElicitations` in `packages/protocol/src/mcp/elicitation.dispatcher.ts`). On `accept`, the flattened choice is posted as a user message into the user's most-recent index.network chat session via `ChatMessageWriter` (`packages/protocol/src/shared/interfaces/chat-message-writer.interface.ts`, implemented by `backend/src/adapters/chat-message-writer.adapter.ts`). `decline` is a no-op; `cancel` breaks the loop; transport errors break the loop with a warn; write errors log and continue. Users with no chat session are logged as `chat_message_write_skipped_no_session` and the answer is dropped on this path — the JSON envelope only carries the questions, not accepted choices.
+
+The relevant public exports from `@indexnetwork/protocol` for runtime authors building on top of this: `ChatMessageWriter`, `buildElicitationCreate`, `flattenChoice`, `dispatchElicitations`, `ElicitInputFn`, `ElicitResultLike`, `DispatchElicitationsParams`.
 
 ## 5a. MCP Server
 

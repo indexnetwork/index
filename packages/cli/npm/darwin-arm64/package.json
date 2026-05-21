@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/cli-darwin-arm64",
-  "version": "0.10.2",
+  "version": "0.10.5",
   "description": "Platform-specific binary for @indexnetwork/cli (macOS arm64)",
   "license": "MIT",
   "os": [

@@ -1,6 +1,7 @@
 import type { IntegrationService } from '../services/integration.service';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
 
 /** Server-side allowlist of supported Composio toolkits. */
@@ -29,7 +30,7 @@ export class IntegrationController {
    * GET /api/integrations
    */
   @Get('')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async list(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url);
     const networkId = url.searchParams.get('networkId')?.trim() || undefined;
@@ -52,7 +53,7 @@ export class IntegrationController {
    * POST /api/integrations/connect/:toolkit
    */
   @Post('/connect/:toolkit')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async connect(_req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
     if (!isAllowedToolkit(params.toolkit)) {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
@@ -73,7 +74,7 @@ export class IntegrationController {
    * Body: { networkId: string }
    */
   @Post('/:toolkit/link')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async link(req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
     if (!isAllowedToolkit(params.toolkit)) {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
@@ -99,7 +100,7 @@ export class IntegrationController {
    * DELETE /api/integrations/:toolkit/link?networkId=X
    */
   @Delete('/:toolkit/link')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async unlink(req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
     if (!isAllowedToolkit(params.toolkit)) {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
@@ -127,7 +128,7 @@ export class IntegrationController {
    * POST /api/integrations/:toolkit/import
    */
   @Post('/:toolkit/import')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async importContacts(req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
     if (!isAllowedToolkit(params.toolkit)) {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
@@ -151,7 +152,7 @@ export class IntegrationController {
    * DELETE /api/integrations/:id
    */
   @Delete('/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async disconnect(_req: Request, user: AuthenticatedUser, params: { id: string }) {
     if (params.id.startsWith('telegram:')) {
       await this.integrationService.disconnectTelegram(user.id);

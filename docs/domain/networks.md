@@ -117,6 +117,8 @@ Opportunities can be discovered within the scope of a single network. When disco
 
 This enables focused discovery within communities: a new member joining a network triggers discovery only against other members of that same network, and results are contextualized by the network's stated purpose.
 
+An opportunity's relationship to a network is recorded per-actor: each entry in the `opportunities.actors` JSONB array carries the `networkId` where that user was matched. Read-time scope filters (e.g. listing or acting on opportunities under a network-scoped agent) require the *requesting user's own* actor entry to be anchored on the bound network — a counterpart's presence on the network is not enough, because mixed-network introducer flows can place actors of a single opportunity on different networks. The `opportunity.context.networkId` field is a denormalization for legacy callers and is not consulted by scope checks.
+
 ---
 
 ## Network Integrations

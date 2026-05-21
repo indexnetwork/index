@@ -470,6 +470,27 @@
       "when": 1778257645788,
       "tag": "0066_add_connect_links",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1778787101013,
+      "tag": "0067_add_chat_session_summaries",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1778793654646,
+      "tag": "0068_replace_chat_session_summaries_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1778852025988,
+      "tag": "0069_add_connect_link_preferred_surface",
+      "breakpoints": true
     }
   ]
 }

@@ -21,6 +21,7 @@
     "start:backend": "cd backend && bun run start",
     "lint": "cd frontend && bun run lint && cd ../backend && bun run lint",
     "test": "cd backend && bun test",
+    "subtree:setup": "bash scripts/subtree-setup.sh",
     "worktree:setup": "bash scripts/worktree-setup.sh",
     "worktree:list": "bash scripts/worktree-list.sh",
     "worktree:dev": "bash scripts/worktree-dev.sh",

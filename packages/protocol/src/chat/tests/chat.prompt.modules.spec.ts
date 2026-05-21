@@ -358,6 +358,7 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
         joinedAt: "2024-02-01T00:00:00Z",
       },
     ] as unknown as ResolvedToolContext["userNetworks"],
+    indexScope: ["idx-personal", "idx-community"],
     isOnboarding: false,
     hasName: true,
     ...overrides,

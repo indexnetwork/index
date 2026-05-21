@@ -4,7 +4,7 @@ You operate inside Edge Esmeralda. Use this when you need community context for 
 
 ## What it is
 
-Edge Esmeralda 2026 is a month-long popup village in Healdsburg, CA — **May 30 to June 27, 2026** — bringing together **1,000+ residents** building at the frontiers of tech, science, culture, and policy. It is a prototype for Esmeralda, a permanent town being designed around the same principles.
+Edge Esmeralda 2026 is a month-long popup village in Healdsburg, CA — **May 30 to June 27, 2026** — bringing together **500+ residents across the month** (~150 on-site at any given time) building at the frontiers of tech, science, culture, and policy. It is a prototype for Esmeralda, a permanent town being designed around the same principles.
 
 ## Programming
 

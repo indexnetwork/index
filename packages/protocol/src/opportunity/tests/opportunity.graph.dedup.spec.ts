@@ -114,9 +114,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
       expiresAt: null,
     }),
     opportunityExistsBetweenActors: async () => false,
-    getAcceptedOpportunitiesBetweenActors: async () => [],
-    getOpportunityBetweenActors: async () => null,
-    findOverlappingOpportunities: async () => [],
+    findOpportunitiesByActors: async () => [],
     getUserIndexIds: async () => [NET_ID],
     getNetworkMemberships: async () => [
       {
@@ -184,7 +182,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
 
     let createCalled = false;
     const db = buildDb({
-      findOverlappingOpportunities: async () => [existingOpp],
+      findOpportunitiesByActors: async () => [existingOpp],
       createOpportunity: async (data) => {
         createCalled = true;
         return { ...data, id: 'opp-new', status: 'latent' as const, createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
@@ -206,7 +204,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
 
     let createCalled = false;
     const db = buildDb({
-      findOverlappingOpportunities: async () => [oldOpp],
+      findOpportunitiesByActors: async () => [oldOpp],
       createOpportunity: async (data) => {
         createCalled = true;
         return { ...data, id: 'opp-new', status: 'latent' as const, createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
@@ -227,7 +225,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     let createCalled = false;
 
     const db = buildDb({
-      findOverlappingOpportunities: async () => [stalledOpp],
+      findOpportunitiesByActors: async () => [stalledOpp],
       updateOpportunityStatus: async (id, status) => {
         updateCalledWith = [id, status];
         return reactivated;
@@ -258,7 +256,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     let createCalled = false;
 
     const db = buildDb({
-      findOverlappingOpportunities: async () => [latentOpp],
+      findOpportunitiesByActors: async () => [latentOpp],
       updateOpportunityStatus: async (id, status) => {
         updateCalledWith = [id, status];
         return upgraded;
@@ -287,7 +285,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
 
     let createCalled = false;
     const db = buildDb({
-      findOverlappingOpportunities: async () => [oldNegotiatingOpp],
+      findOpportunitiesByActors: async () => [oldNegotiatingOpp],
       createOpportunity: async (data) => {
         createCalled = true;
         return { ...data, id: 'opp-new', status: 'latent' as const, createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
@@ -307,7 +305,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
 
     let createCalled = false;
     const db = buildDb({
-      findOverlappingOpportunities: async () => [existingOpp],
+      findOpportunitiesByActors: async () => [existingOpp],
       createOpportunity: async (data) => {
         createCalled = true;
         return { ...data, id: 'opp-new', status: 'latent' as const, createdAt: new Date(), updatedAt: new Date(), expiresAt: null };

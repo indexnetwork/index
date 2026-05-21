@@ -142,3 +142,65 @@ describe("update_opportunity — actor guard", () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe("update_opportunity — network scope guard", () => {
+  const BOUND_NETWORK = "bound-network-id";
+  const OTHER_NETWORK = "other-network-id";
+
+  function scopedContext(networkId: string): ResolvedToolContext {
+    const ctx = makeContext(CALLER_ID);
+    (ctx as { networkId?: string }).networkId = networkId;
+    return ctx;
+  }
+
+  function mixedNetworkOpportunity(callerNetworkId: string, otherNetworkId: string): Opportunity {
+    return {
+      id: OPP_ID,
+      status: "pending",
+      actors: [
+        { userId: CALLER_ID, role: "party", networkId: callerNetworkId },
+        { userId: OTHER_ID,  role: "party", networkId: otherNetworkId },
+      ],
+    } as unknown as Opportunity;
+  }
+
+  test("blocks update when caller's actor is on a different network than the bound scope, even if a counterpart is on the bound network", async () => {
+    // Mirror the read-path leak: bound scope = BOUND_NETWORK, the caller is
+    // anchored on OTHER_NETWORK, only the counterpart is on BOUND_NETWORK.
+    // The old check (`actors.find((a) => a.networkId === context.networkId)`)
+    // matched the counterpart and let the update through.
+    const deps = {
+      systemDb: {
+        getOpportunity: async () => mixedNetworkOpportunity(OTHER_NETWORK, BOUND_NETWORK),
+      },
+      graphs: {
+        opportunity: { invoke: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }) },
+      },
+    } as unknown as ToolDeps;
+
+    const tool = captureTool(deps);
+    const result = JSON.parse(
+      await tool.handler({ context: scopedContext(BOUND_NETWORK), query: { opportunityId: OPP_ID, status: "accepted" } })
+    );
+    expect(result.success).toBe(false);
+    // Privacy: same opaque message as the actor guard so callers can't probe scope.
+    expect(result.error).toMatch(/not found/i);
+  });
+
+  test("allows update when caller's own actor is on the bound network", async () => {
+    const deps = {
+      systemDb: {
+        getOpportunity: async () => mixedNetworkOpportunity(BOUND_NETWORK, OTHER_NETWORK),
+      },
+      graphs: {
+        opportunity: { invoke: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }) },
+      },
+    } as unknown as ToolDeps;
+
+    const tool = captureTool(deps);
+    const result = JSON.parse(
+      await tool.handler({ context: scopedContext(BOUND_NETWORK), query: { opportunityId: OPP_ID, status: "accepted" } })
+    );
+    expect(result.success).toBe(true);
+  });
+});

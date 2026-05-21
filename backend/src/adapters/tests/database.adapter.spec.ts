@@ -660,6 +660,92 @@ describe('OpportunityDatabaseAdapter', () => {
     });
   });
 
+  describe('network-scope filter (getOpportunitiesForUser)', () => {
+    it('does not leak when a counterpart actor lives on the scoped network but the viewer\'s own actor is elsewhere', async () => {
+      // The viewer (userA) is anchored on otherNetworkId in this opportunity.
+      // A counterpart (userB) is anchored on fixture.networkId. The old filter
+      // (visibility @> [{userId}]  AND  EXISTS actor.networkId = X) treats those
+      // two facts independently and lets the opp through when querying with
+      // networkId = fixture.networkId. The strict per-actor filter must exclude it.
+      const otherNetworkId = uuidv4();
+      await db.insert(networks).values({
+        id: otherNetworkId,
+        title: TEST_PREFIX + 'Other Network',
+        prompt: 'Other network prompt',
+      });
+      await db.insert(networkMembers).values({
+        networkId: otherNetworkId,
+        userId: fixture.userAId,
+        permissions: ['member'],
+        autoAssign: false,
+      });
+
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: otherNetworkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Cross-network scope leak', confidence: 0.8 },
+        context: { networkId: otherNetworkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      try {
+        const scopedToFixture = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+        expect(scopedToFixture.some((o) => o.id === created.id)).toBe(false);
+
+        // Sanity: with the correct scope the opp is visible to userA.
+        const scopedToActual = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: otherNetworkId });
+        expect(scopedToActual.some((o) => o.id === created.id)).toBe(true);
+      } finally {
+        // Opp's context.networkId is otherNetworkId, so the afterAll cleanup
+        // (which filters by fixture.networkId) won't touch it — clean explicitly.
+        await db.delete(opportunities).where(eq(opportunities.id, created.id));
+        await db.delete(networkMembers).where(eq(networkMembers.networkId, otherNetworkId));
+        await db.delete(networks).where(eq(networks.id, otherNetworkId));
+      }
+    });
+
+    it('getOpportunitiesForNetwork keys on actor.networkId, not context.networkId', async () => {
+      // Opp's `context.networkId` points at fixture.networkId, but no actor is
+      // anchored there — both actors live on otherNetworkId. The old context-
+      // tagged check returned the opp; the actor-anchored check excludes it
+      // and instead returns the opp on the actors' actual network.
+      const otherNetworkId = uuidv4();
+      await db.insert(networks).values({
+        id: otherNetworkId,
+        title: TEST_PREFIX + 'Other Network 2',
+        prompt: 'Other network prompt',
+      });
+
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: otherNetworkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: otherNetworkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Context-vs-actor mismatch', confidence: 0.8 },
+        // Stale / drifted context tag — actors are the source of truth.
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      try {
+        const forFixture = await adapter.getOpportunitiesForNetwork(fixture.networkId);
+        expect(forFixture.some((o) => o.id === created.id)).toBe(false);
+
+        const forOther = await adapter.getOpportunitiesForNetwork(otherNetworkId);
+        expect(forOther.some((o) => o.id === created.id)).toBe(true);
+      } finally {
+        await db.delete(opportunities).where(eq(opportunities.id, created.id));
+        await db.delete(networks).where(eq(networks.id, otherNetworkId));
+      }
+    });
+  });
+
   describe('draft visibility (getOpportunitiesForUser)', () => {
     it('without conversationId excludes draft opportunities', async () => {
       const created = await adapter.createOpportunity({
@@ -708,6 +794,146 @@ describe('OpportunityDatabaseAdapter', () => {
       expect(forConv1.some((o) => o.id === draft2.id)).toBe(false);
       expect(forConv2.some((o) => o.id === draft2.id)).toBe(true);
       expect(forConv2.some((o) => o.id === draft1.id)).toBe(false);
+    });
+  });
+
+  describe('findOpportunitiesByActors', () => {
+    const introId = TEST_PREFIX + 'finder-intro';
+    const actorAId = TEST_PREFIX + 'finder-A';
+    const actorBId = TEST_PREFIX + 'finder-B';
+    const actorCId = TEST_PREFIX + 'finder-C';
+    const networkId = TEST_PREFIX + 'finder-net';
+    let oppPairId: string;
+    let oppPairAcceptedId: string;
+    let oppWithIntroducerId: string;
+    let oppThreeActorId: string;
+
+    beforeAll(async () => {
+      // Seed users
+      for (const id of [introId, actorAId, actorBId, actorCId]) {
+        await db.insert(users).values({ id, email: TEST_PREFIX + id + '@test.com', name: id }).onConflictDoNothing();
+      }
+
+      const baseInterpretation = { category: 'collaboration', reasoning: 'finder test', confidence: 0.8 };
+
+      // 1) Pair A+B, pending
+      const pair = await db.insert(opportunities).values({
+        actors: [{ userId: actorAId, role: 'patient' }, { userId: actorBId, role: 'peer' }],
+        context: { networkId },
+        status: 'pending',
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        interpretation: baseInterpretation,
+        confidence: '0.8',
+      }).returning({ id: opportunities.id });
+      oppPairId = pair[0].id;
+
+      // 2) Pair A+B, accepted
+      const accepted = await db.insert(opportunities).values({
+        actors: [{ userId: actorAId, role: 'patient' }, { userId: actorBId, role: 'peer' }],
+        context: { networkId },
+        status: 'accepted',
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        interpretation: baseInterpretation,
+        confidence: '0.8',
+      }).returning({ id: opportunities.id });
+      oppPairAcceptedId = accepted[0].id;
+
+      // 3) Trio with introducer: intro + A + B
+      const intro = await db.insert(opportunities).values({
+        actors: [
+          { userId: introId, role: 'introducer' },
+          { userId: actorAId, role: 'patient' },
+          { userId: actorBId, role: 'peer' },
+        ],
+        context: { networkId },
+        status: 'pending',
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        interpretation: baseInterpretation,
+        confidence: '0.8',
+      }).returning({ id: opportunities.id });
+      oppWithIntroducerId = intro[0].id;
+
+      // 4) Three non-introducer actors: A + B + C
+      const trio = await db.insert(opportunities).values({
+        actors: [
+          { userId: actorAId, role: 'patient' },
+          { userId: actorBId, role: 'peer' },
+          { userId: actorCId, role: 'peer' },
+        ],
+        context: { networkId },
+        status: 'pending',
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        interpretation: baseInterpretation,
+        confidence: '0.8',
+      }).returning({ id: opportunities.id });
+      oppThreeActorId = trio[0].id;
+    });
+
+    afterAll(async () => {
+      await db.delete(opportunities).where(
+        inArray(opportunities.id, [oppPairId, oppPairAcceptedId, oppWithIntroducerId, oppThreeActorId])
+      );
+      await db.delete(users).where(inArray(users.id, [introId, actorAId, actorBId, actorCId]));
+    });
+
+    it('default (includeIntroducers omitted) excludes introducer-role actors from match', async () => {
+      const rows = await adapter.findOpportunitiesByActors([introId, actorAId]);
+      // intro is introducer-role in opp #3 → that opp does NOT match for introId
+      const ids = rows.map((r) => r.id);
+      expect(ids).not.toContain(oppWithIntroducerId);
+    });
+
+    it('includeIntroducers=true matches actors regardless of role', async () => {
+      const rows = await adapter.findOpportunitiesByActors(
+        [introId, actorAId],
+        { includeIntroducers: true }
+      );
+      const ids = rows.map((r) => r.id);
+      expect(ids).toContain(oppWithIntroducerId);
+    });
+
+    it('matches opportunities containing all given actorIds (superset allowed)', async () => {
+      const rows = await adapter.findOpportunitiesByActors([actorAId, actorBId]);
+      const ids = new Set(rows.map((r) => r.id));
+      // Pair, accepted-pair, trio, AND intro-opp all contain both A and B in non-introducer
+      // roles. The introducer filter only excludes when the SEARCHED-FOR userId itself has
+      // the introducer role in that opp — A and B are not introducers in the intro-opp.
+      expect(ids.has(oppPairId)).toBe(true);
+      expect(ids.has(oppPairAcceptedId)).toBe(true);
+      expect(ids.has(oppThreeActorId)).toBe(true);
+      expect(ids.has(oppWithIntroducerId)).toBe(true);
+    });
+
+    it('statuses include-filter narrows results', async () => {
+      const rows = await adapter.findOpportunitiesByActors(
+        [actorAId, actorBId],
+        { statuses: ['accepted'] }
+      );
+      const ids = rows.map((r) => r.id);
+      expect(ids).toEqual([oppPairAcceptedId]);
+    });
+
+    it('excludeStatuses removes matching statuses', async () => {
+      const rows = await adapter.findOpportunitiesByActors(
+        [actorAId, actorBId],
+        { excludeStatuses: ['accepted'] }
+      );
+      const ids = rows.map((r) => r.id);
+      expect(ids).not.toContain(oppPairAcceptedId);
+      expect(ids).toContain(oppPairId);
+      expect(ids).toContain(oppThreeActorId);
+    });
+
+    it('empty actorIds returns []', async () => {
+      const rows = await adapter.findOpportunitiesByActors([]);
+      expect(rows).toEqual([]);
+    });
+
+    it('orders by updatedAt desc', async () => {
+      const rows = await adapter.findOpportunitiesByActors([actorAId, actorBId]);
+      for (let i = 1; i < rows.length; i++) {
+        expect(new Date(rows[i - 1].updatedAt).getTime()).toBeGreaterThanOrEqual(new Date(rows[i].updatedAt).getTime());
+      }
     });
   });
 

@@ -10,14 +10,20 @@ import type { OpportunityCache } from '@indexnetwork/protocol';
 // Module mocks — must be set up before importing OpportunityService
 // ─────────────────────────────────────────────────────────────────────────────
 
-mock.module("../../queues/opportunity.queue", () => ({
-  opportunityQueue: { addJob: mock(() => Promise.resolve({ id: "job-1" })) },
+mock.module("../../queues/opportunity/from-intent.queue", () => ({
+  fromIntentQueue: { addJob: mock(() => Promise.resolve({ id: "job-1" })) },
 }));
 
+mock.module("../../queues/opportunity/from-introducer.queue", () => ({
+  fromIntroducerQueue: { addJob: mock(() => Promise.resolve({ id: "job-2" })) },
+}));
+
+const MockChatDatabaseAdapter = class {
+  getHydeDocument() { return null; }
+};
 mock.module("../../adapters/database.adapter", () => ({
-  ChatDatabaseAdapter: class {
-    getHydeDocument() { return null; }
-  },
+  ChatDatabaseAdapter: MockChatDatabaseAdapter,
+  chatDatabaseAdapter: new MockChatDatabaseAdapter(),
 }));
 mock.module("../../adapters/embedder.adapter", () => ({
   EmbedderAdapter: class {},

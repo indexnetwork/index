@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Regenerates subtree Claude configs (.claude symlinks + CLAUDE.md files) after every pull.
+bash scripts/subtree-setup.sh

@@ -8,7 +8,8 @@ import { and, eq } from 'drizzle-orm';
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { opportunityQueue } from '../queues/opportunity.queue';
+import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
+import { fromIntroducerQueue } from '../queues/opportunity/from-introducer.queue';
 import db from '../lib/drizzle/drizzle';
 import { userSocials } from '../schemas/database.schema';
 import { normalizeTelegramHandle } from '@indexnetwork/protocol';
@@ -107,7 +108,23 @@ export class OpportunityService {
     this.maintenanceGraph = new MaintenanceGraphFactory(
       this.db as unknown as MaintenanceGraphDatabase,
       this.cache as unknown as MaintenanceGraphCache,
-      opportunityQueue as unknown as MaintenanceGraphQueue,
+      {
+        addJob: (
+          data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string },
+          options?: { priority?: number; jobId?: string },
+        ) => {
+          if (data.contactUserId) {
+            return fromIntroducerQueue.addJob(
+              { userId: data.userId, contactUserId: data.contactUserId, networkIds: data.indexIds },
+              options,
+            );
+          }
+          return fromIntentQueue.addJob(
+            { intentId: data.intentId, userId: data.userId },
+            options,
+          );
+        },
+      } satisfies MaintenanceGraphQueue,
     ).createGraph();
   }
 
@@ -367,9 +384,15 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
 
-    const isActor = opp.actors.some((a) => a.userId === userId);
-    if (!isActor) {
+    const callerActor = opp.actors.find((a) => a.userId === userId);
+    if (!callerActor) {
       return { error: 'Not authorized to update this opportunity', status: 403 };
+    }
+
+    // Self-accept guard: if the caller has already committed (actedAt is set)
+    // and they are trying to accept, block them — the other party must accept.
+    if (status === 'accepted' && callerActor.actedAt) {
+      return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
     }
 
     const counterpart = status === 'accepted'
@@ -391,11 +414,15 @@ export class OpportunityService {
       }
     }
 
-    const updated = await this.db.updateOpportunityStatus(
-      opportunityId,
-      status,
-      status === 'accepted' ? userId : undefined,
-    );
+    let updated: Awaited<ReturnType<typeof this.db.updateOpportunityStatus>>;
+    if (status === 'accepted') {
+      updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
+    } else if (status === 'pending') {
+      updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'pending');
+    } else {
+      // Terminal flips (rejected, expired) — no actor stamp needed
+      updated = await this.db.updateOpportunityStatus(opportunityId, status);
+    }
     if (!updated) {
       return { error: 'Opportunity not found', status: 404 };
     }
@@ -570,9 +597,15 @@ export class OpportunityService {
         status: 400,
       };
     }
-    const isActor = opp.actors.some((a) => a.userId === userId);
-    if (!isActor) {
+    const callerActor = opp.actors.find((a) => a.userId === userId);
+    if (!callerActor) {
       return { error: 'Not authorized to start chat for this opportunity', status: 403 };
+    }
+
+    // Self-accept guard: if the caller already committed (actedAt is set) they
+    // cannot accept again — the other party must be the one to accept.
+    if (callerActor.actedAt) {
+      return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
     }
 
     const counterpart =
@@ -609,7 +642,7 @@ export class OpportunityService {
     });
 
     // Only flip status once we know the chat destination exists.
-    const updated = await this.db.updateOpportunityStatus(opportunityId, 'accepted', userId);
+    const updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
     if (!updated) {
       return { error: 'Failed to accept opportunity', status: 500 };
     }
@@ -821,7 +854,7 @@ export class OpportunityService {
     logger.verbose('[OpportunityService] Getting chat context', { userId, peerUserId });
 
     const [allRows, peerUser] = await Promise.all([
-      this.db.getAcceptedOpportunitiesBetweenActors(userId, peerUserId),
+      this.db.findOpportunitiesByActors([userId, peerUserId], { includeIntroducers: true, statuses: ['accepted'] }),
       this.db.getUser(peerUserId),
     ]);
 
@@ -1042,6 +1075,7 @@ export class OpportunityService {
     if (!counterpart) return null;
     return this.getCounterpartTelegramHandle(counterpart.userId);
   }
+
 
   /**
    * Conversation id (DM) for the (opportunity, viewer) pair.

@@ -6,7 +6,7 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { HydeGraphFactory, HydeGenerator, LensInferrer, IntentIndexer } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, IntentGraphQueue } from '@indexnetwork/protocol';
-import { opportunityQueue } from './opportunity.queue';
+import { fromIntentQueue } from './opportunity/from-intent.queue';
 
 /** BullMQ queue name for intent HyDE generation and deletion jobs. */
 export const QUEUE_NAME = 'intent-hyde-queue';
@@ -154,7 +154,7 @@ export class IntentQueue implements IntentGraphQueue {
   ): Promise<void> {
     const addOpportunityJob = options?.skipOpportunity
       ? async () => {}
-      : (this.deps?.addOpportunityJob ?? ((d: { intentId: string; userId: string }) => opportunityQueue.addJob(d)));
+      : (this.deps?.addOpportunityJob ?? ((d: { intentId: string; userId: string }) => fromIntentQueue.addJob(d)));
     await this.handleGenerateHyde(data, { addOpportunityJob });
   }
 
@@ -332,7 +332,7 @@ export class IntentQueue implements IntentGraphQueue {
     const addJob =
       overrides?.addOpportunityJob ??
       this.deps?.addOpportunityJob ??
-      ((d: { intentId: string; userId: string }) => opportunityQueue.addJob(d));
+      ((d: { intentId: string; userId: string }) => fromIntentQueue.addJob(d));
     await addJob({ intentId, userId }).catch((err: unknown) =>
       this.logger.error('[IntentHyde] Failed to enqueue opportunity discovery', { intentId, error: err })
     );

@@ -11,7 +11,8 @@
 
 import type { Opportunity, ChatGraphCompositeDatabase, UserRecord } from "../shared/interfaces/database.interface.js";
 import type { Cache } from "../shared/interfaces/cache.interface.js";
-import type { OpportunityGraphOptions, CandidateMatch } from "./opportunity.state.js";
+import type { OpportunityGraphOptions, CandidateMatch, SourceProfileData } from "./opportunity.state.js";
+import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
 import {
   OpportunityPresenter,
   gatherPresenterContext,
@@ -23,8 +24,63 @@ import {
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportunity.presentation.js";
 import { protocolLogger, withCallLogging } from "../shared/observability/protocol.logger.js";
+import type { ChatSummaryReader } from "../shared/interfaces/chat-summary.interface.js";
+import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
+import type { QuestionGeneratorReader } from "../shared/interfaces/question-generator.interface.js";
+import type { NegotiationSummaryReader } from "../shared/interfaces/negotiation-summary.interface.js";
+import type { DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
+import { buildFallbackDigest } from "../negotiation/negotiation.summarizer.js";
+import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
+import { traceAgent, tracePhase } from "../shared/observability/trace.js";
+import { requestContext } from "../shared/observability/request-context.js";
+import { buildDiscoveryQuestionInput } from "./discovery-question.helper.js";
 
 const logger = protocolLogger("OpportunityDiscover");
+
+/**
+ * Per-negotiation summarizer budget. The summarizer fires one LLM call per
+ * partial-or-full negotiation (concurrently via Promise.all). Without a cap
+ * one slow OpenRouter route dominates the post-discovery tail and pushes the
+ * whole MCP response past Railway's ~60 s no-upstream-bytes timeout. Falls
+ * back to a deterministic digest when the deadline fires, so question
+ * generation still has structured input.
+ */
+const NEGOTIATION_SUMMARY_TIMEOUT_MS_DEFAULT = 5_000;
+/**
+ * Question-generator budget. Sized against Railway's ~60 s edge timeout:
+ * the discovery + evaluation + negotiate phases consume ~50 s on the slow
+ * path, leaving ~10 s of headroom for the tail. 12 s is the larger end of
+ * "fits"; the question step usually completes in 4-8 s, so most legitimate
+ * calls finish well inside. Aborted calls return `null` (no questions);
+ * the rest of the discovery payload still ships.
+ *
+ * Documented at opportunity.tools.ts:912-921 as historically uncapped —
+ * this is the cap.
+ */
+const DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT = 12_000;
+
+/**
+ * Parse a positive integer env var, clamped to the safe-integer range so a
+ * malformed env value cannot crash `AbortSignal.timeout` (which throws on
+ * values outside `[0, MAX_SAFE_INTEGER]`). Mirrors the precedent in
+ * `negotiation.agent.ts` (`isValidTimeoutMs`).
+ */
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0 || n > Number.MAX_SAFE_INTEGER) return fallback;
+  return n;
+}
+
+function combineWithDeadline(
+  callerSignal: AbortSignal | undefined,
+  deadlineMs: number,
+): AbortSignal {
+  const deadline = AbortSignal.timeout(deadlineMs);
+  if (!callerSignal) return deadline;
+  return AbortSignal.any([callerSignal, deadline]);
+}
 
 /** Compiled opportunity graph (from OpportunityGraphFactory.createGraph()). */
 export type CompiledOpportunityGraph = ReturnType<
@@ -70,6 +126,30 @@ export interface DiscoverInput {
    * accepted-pair lookup surfaces existing connections.
    */
   trigger?: 'ambient' | 'orchestrator';
+  /**
+   * MCP-only. When set, the opportunity graph's negotiate phase is capped at
+   * this many milliseconds; on timeout the caller gets whichever candidates
+   * finished, the rest stay in `negotiating` and finalize in the background.
+   * Chat, ambient queue, and all other callers omit this — existing behavior.
+   */
+  negotiateTimeoutMs?: number;
+  /** Optional read-through chat-session digest reader. Required for chatContext enrichment. */
+  chatSummary?: ChatSummaryReader;
+  /**
+   * Optional negotiation summarizer. When provided, each post-negotiation digest
+   * replaces the raw negotiation in the decision-question generator's input,
+   * keeping that prompt small and predictable regardless of candidate count.
+   * When omitted, a deterministic fallback digest is built per negotiation.
+   */
+  negotiationSummary?: NegotiationSummaryReader;
+  /** Optional decision-question generator. When omitted, no questions are produced. */
+  questionGenerator?: QuestionGeneratorReader;
+  /**
+   * Master switch for decision-question generation. When false, this code path
+   * is skipped entirely regardless of trigger. The composition root passes
+   * `process.env.ENABLE_DISCOVERY_QUESTIONS === "true"`.
+   */
+  enableQuestions?: boolean;
 }
 
 /** Context used by the minimal (no-LLM) path; only introducerName is needed for narrator chip. */
@@ -172,6 +252,15 @@ export interface DiscoverResult {
     discoveryId: string;
     evaluated: number;
     remaining: number;
+  };
+  /** 0–3 decision questions produced by the orchestrator path. Omitted when none. */
+  questions?: Question[];
+  /** Debug metadata for `debugMeta.discoveryQuestions` plumbing. */
+  discoveryQuestionsDebug?: {
+    inputMode: "transcripts" | "insights";
+    finalCount: number;
+    strategies: QuestionStrategy[];
+    durationMs: number;
   };
 }
 
@@ -561,6 +650,7 @@ export async function runDiscoverFromQuery(
     onBehalfOfUserId,
     chatSessionId,
     trigger,
+    negotiateTimeoutMs,
   } = input;
 
   if (indexScope.length === 0) {
@@ -587,6 +677,7 @@ export async function runDiscoverFromQuery(
     limit,
     ...(!isOrchestrator && { initialStatus: chatSessionId ? "draft" : "latent" }),
     ...(chatSessionId ? { conversationId: chatSessionId } : {}),
+    ...(negotiateTimeoutMs !== undefined && { negotiateTimeoutMs }),
   };
 
   return withCallLogging(
@@ -662,6 +753,35 @@ export async function runDiscoverFromQuery(
         }
       }
 
+      // Refine phase: a sibling of the opportunity graph in the trace tree.
+      // Holds the three post-discovery summarization steps. Each step is its
+      // own traced agent so it appears as a leaf in the trace UI.
+      //
+      // Negotiation summary: compress each raw negotiation into a fixed-size
+      // structured digest so the question generator's prompt stays small
+      // (a 10-candidate turn used to balloon past 60 KB and stall upstream).
+      // Decision questions: generate up to 3 clarifying questions from the
+      // digests + chat context.
+      const { questionPayload } = await tracePhase("Refine", async () => {
+        const negotiationDigests = await summarizeNegotiations({
+          negotiations: result.discoveryNegotiations ?? [],
+          summarizer: input.negotiationSummary,
+          enableQuestions: input.enableQuestions ?? false,
+          trigger,
+        });
+        const questionPayload = await maybeBuildQuestions({
+          trigger,
+          enableQuestions: input.enableQuestions ?? false,
+          chatSummary: input.chatSummary,
+          questionGenerator: input.questionGenerator,
+          chatSessionId,
+          graphResult: result,
+          negotiationDigests,
+          query: queryOrEmpty,
+        });
+        return { negotiationDigests, questionPayload };
+      });
+
       if (result.createIntentSuggested && result.suggestedIntentDescription) {
         if (chatSessionId) {
           return {
@@ -669,6 +789,8 @@ export async function runDiscoverFromQuery(
             count: 0,
             message: "No matching opportunities found. Try a different query.",
             pagination,
+            ...(questionPayload.questions !== undefined ? { questions: questionPayload.questions } : {}),
+            ...(questionPayload.debug !== undefined ? { discoveryQuestionsDebug: questionPayload.debug } : {}),
           };
         }
         return {
@@ -680,6 +802,8 @@ export async function runDiscoverFromQuery(
             "No matching opportunities; add an intent with the suggested description to improve discovery.",
           debugSteps,
           pagination,
+          ...(questionPayload.questions !== undefined ? { questions: questionPayload.questions } : {}),
+          ...(questionPayload.debug !== undefined ? { discoveryQuestionsDebug: questionPayload.debug } : {}),
         };
       }
 
@@ -756,6 +880,7 @@ export async function runDiscoverFromQuery(
         step: "opportunity_graph",
         detail: `${opportunities.length} opportunity(ies)${existingConnections.length > 0 ? `, ${existingConnections.length} existing` : ""}`,
       });
+
       if (opportunities.length === 0) {
         if (existingConnections.length > 0) {
           return {
@@ -770,6 +895,8 @@ export async function runDiscoverFromQuery(
             ...(alreadyAcceptedPairs.length > 0 && { alreadyAcceptedPairs }),
             debugSteps,
             pagination,
+            ...(questionPayload.questions !== undefined ? { questions: questionPayload.questions } : {}),
+            ...(questionPayload.debug !== undefined ? { discoveryQuestionsDebug: questionPayload.debug } : {}),
           };
         }
         return {
@@ -780,6 +907,8 @@ export async function runDiscoverFromQuery(
           ...(alreadyAcceptedPairs.length > 0 && { alreadyAcceptedPairs }),
           debugSteps,
           pagination,
+          ...(questionPayload.questions !== undefined ? { questions: questionPayload.questions } : {}),
+          ...(questionPayload.debug !== undefined ? { discoveryQuestionsDebug: questionPayload.debug } : {}),
         };
       }
 
@@ -805,6 +934,8 @@ export async function runDiscoverFromQuery(
         ...(alreadyAcceptedPairs.length > 0 ? { alreadyAcceptedPairs } : {}),
         debugSteps,
         pagination,
+        ...(questionPayload.questions !== undefined ? { questions: questionPayload.questions } : {}),
+        ...(questionPayload.debug !== undefined ? { discoveryQuestionsDebug: questionPayload.debug } : {}),
       };
     },
     { context: { userId }, logOutput: false },
@@ -815,6 +946,181 @@ export async function runDiscoverFromQuery(
       message: "Failed to find opportunities. Please try again.",
     };
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DECISION-QUESTION HELPER
+// ─────────────────────────────────────────────────────────────────────────────
+
+type GraphResultLike = {
+  sourceProfile?: SourceProfileData | null;
+  discoveryNegotiations?: DiscoveryNegotiation[];
+  discoverySummary?: DiscoverySummary | null;
+};
+
+interface MaybeBuildQuestionsInput {
+  trigger: 'ambient' | 'orchestrator' | undefined;
+  enableQuestions: boolean;
+  chatSummary: ChatSummaryReader | undefined;
+  questionGenerator: QuestionGeneratorReader | undefined;
+  chatSessionId: string | undefined;
+  graphResult: GraphResultLike;
+  /** Pre-built per-negotiation digests. Pass [] when summarization is unavailable or disabled. */
+  negotiationDigests: DiscoveryNegotiationDigest[];
+  query: string;
+}
+
+/**
+ * Run the negotiation summarizer over every negotiation in this discovery turn.
+ * Each summarization is independent — run them concurrently via Promise.all.
+ * When the summarizer is missing (no LLM available) or fails for an individual
+ * negotiation, fall back to a deterministic digest so the downstream generator
+ * still has structured input.
+ */
+async function summarizeNegotiations(args: {
+  negotiations: DiscoveryNegotiation[];
+  summarizer: NegotiationSummaryReader | undefined;
+  enableQuestions: boolean;
+  trigger: 'ambient' | 'orchestrator' | undefined;
+}): Promise<DiscoveryNegotiationDigest[]> {
+  // Skip the LLM round-trip entirely when questions won't be built.
+  if (!args.enableQuestions || args.trigger !== 'orchestrator') return [];
+  if (args.negotiations.length === 0) return [];
+
+  const perNegTimeoutMs = parsePositiveIntEnv(
+    "NEGOTIATION_SUMMARY_TIMEOUT_MS",
+    NEGOTIATION_SUMMARY_TIMEOUT_MS_DEFAULT,
+  );
+  const callerSignal = requestContext.getStore()?.abortSignal;
+
+  return traceAgent(
+    `Negotiation summary (${args.negotiations.length})`,
+    () =>
+      Promise.all(
+        args.negotiations.map(async (n) => {
+          if (!args.summarizer) return buildFallbackDigest(n);
+          // Per-negotiation deadline: one slow OpenRouter route used to
+          // dominate the post-discovery tail. With a cap, an aborted
+          // summarizer falls back to a deterministic digest so the
+          // question generator still has structured input.
+          const signal = combineWithDeadline(callerSignal, perNegTimeoutMs);
+          try {
+            const d = await args.summarizer.summarize(n, { signal });
+            return d ?? buildFallbackDigest(n);
+          } catch (err) {
+            // Attribute cause from err.name (AbortError), not from
+            // signal.aborted — the latter is read post-catch and can race a
+            // deadline-trip-after-unrelated-error, producing a misleading log.
+            const aborted = err instanceof Error && err.name === "AbortError";
+            logger.warn("negotiationSummary.summarize threw — using fallback digest", {
+              counterpartyHint: n.counterpartyHint,
+              aborted,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return buildFallbackDigest(n);
+          }
+        }),
+      ),
+    (digests) => `${digests.length} digest${digests.length === 1 ? "" : "s"}`,
+  );
+}
+
+async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
+  questions?: Question[];
+  debug?: DiscoverResult["discoveryQuestionsDebug"];
+}> {
+  if (!args.enableQuestions) return {};
+  if (args.trigger !== 'orchestrator') return {};
+  if (!args.questionGenerator) return {};
+
+  // Hardcoded — `insights` mode is planned for a later slice. Warn if the env
+  // var is set so operators aren't surprised when reporting still says
+  // "transcripts".
+  if (process.env.DISCOVERY_QUESTIONS_INPUT_MODE === "insights") {
+    logger.warn("DISCOVERY_QUESTIONS_INPUT_MODE=insights is not yet implemented; falling back to transcripts");
+  }
+  const inputMode: "transcripts" | "insights" = "transcripts";
+
+  let chatContext: ChatContextDigest | undefined;
+  if (args.chatSummary && args.chatSessionId) {
+    const sessionId = args.chatSessionId;
+    const summary = args.chatSummary;
+    chatContext = await traceAgent(
+      "Chat summary",
+      async () => {
+        try {
+          return (await summary.getDigest(sessionId)) ?? undefined;
+        } catch (err) {
+          logger.warn("chatSummary.getDigest threw — proceeding without digest", {
+            sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return undefined;
+        }
+      },
+      (digest) => (digest ? "loaded" : "empty"),
+    );
+  }
+
+  const negotiationDigests = args.negotiationDigests;
+  const summary = args.graphResult.discoverySummary ?? {
+    totalCandidates: 0,
+    opportunitiesFound: 0,
+    noOpportunityCount: 0,
+    timeoutCount: 0,
+    roleDistribution: {},
+  };
+
+  const input = buildDiscoveryQuestionInput({
+    query: args.query,
+    sourceProfile: args.graphResult.sourceProfile ?? null,
+    negotiationDigests,
+    summary,
+    chatContext,
+    now: new Date().toISOString(),
+  });
+
+  const questionGenerator = args.questionGenerator;
+  const generatorStart = Date.now();
+  const questionsTimeoutMs = parsePositiveIntEnv(
+    "DISCOVERY_QUESTIONS_TIMEOUT_MS",
+    DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT,
+  );
+  const questionsSignal = combineWithDeadline(
+    requestContext.getStore()?.abortSignal,
+    questionsTimeoutMs,
+  );
+  const genResult = await traceAgent(
+    "Decision questions",
+    async () => {
+      try {
+        return await questionGenerator.generate(input, { signal: questionsSignal });
+      } catch (err) {
+        logger.warn("questionGenerator.generate threw — suppressing questions", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+    },
+    (r) => {
+      const count = r?.questions?.length ?? 0;
+      return `${count} question${count === 1 ? "" : "s"}`;
+    },
+  );
+  const durationMs = Date.now() - generatorStart;
+
+  const finalCount = genResult?.questions?.length ?? 0;
+  const strategies: QuestionStrategy[] = genResult?.strategies ?? [];
+
+  return {
+    ...(genResult && genResult.questions.length > 0 ? { questions: genResult.questions } : {}),
+    debug: {
+      inputMode,
+      finalCount,
+      strategies,
+      durationMs,
+    },
+  };
 }
 
 /**

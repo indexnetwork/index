@@ -12,6 +12,9 @@ import type { ServerContext, JsonSchemaType } from '@modelcontextprotocol/server
 import type { McpAuthResolver } from '../shared/interfaces/auth.interface.js';
 import type { ToolDeps, ResolvedToolContext } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
+import type { Question } from '../shared/schemas/question.schema.js';
+import { QuestionSchema } from '../shared/schemas/question.schema.js';
+import { dispatchElicitations } from './elicitation.dispatcher.js';
 import { createToolRegistry } from '../shared/agent/tool.registry.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
@@ -121,6 +124,48 @@ export function sanitizeMcpResult(text: string): { text: string; isError: boolea
   }
 }
 
+/** Spec cap on the number of decision questions surfaced per turn. */
+const MAX_DECISION_QUESTIONS = 3;
+
+/**
+ * Extracts decision questions from a parsed tool-result text, if present.
+ * Validates each entry against `QuestionSchema` and drops malformed items;
+ * caps the array at `MAX_DECISION_QUESTIONS` (defense-in-depth — Slice 2's
+ * generator already caps at 3, but we don't trust the cast here).
+ *
+ * Returns null when the text isn't JSON, has no `data.questions`, or
+ * contains zero valid questions after validation.
+ */
+export function extractDecisionQuestions(text: string): Question[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+
+  const rawQs = (parsed as { data?: { questions?: unknown } } | null)?.data?.questions;
+  if (!Array.isArray(rawQs) || rawQs.length === 0) return null;
+
+  const valid: Question[] = [];
+  for (const raw of rawQs) {
+    const result = QuestionSchema.safeParse(raw);
+    if (result.success) valid.push(result.data);
+    if (valid.length === MAX_DECISION_QUESTIONS) break;
+  }
+  return valid.length > 0 ? valid : null;
+}
+
+/**
+ * Renders the JSON-envelope text block appended to the tool result content
+ * when decision questions are present. The leading sentinel string lets the
+ * LLM client recognize and surface the questions in prose for clients
+ * without elicitation support.
+ */
+export function renderQuestionsEnvelope(questions: Question[]): string {
+  return `Decision questions (structured): ${JSON.stringify({ questions })}`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MCP SERVER FACTORY
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -175,6 +220,14 @@ export const applyNetworkScopeToContext = (
   if (context.networkId) return;
 
   context.networkId = networkScopeId;
+  // Clamp indexScope to [boundNetwork, personalIndex] BEFORE the membership
+  // check below. If the bound network is not in userNetworks (defensive case),
+  // the filter still produces a safe scope (personal index only) rather than
+  // leaving the unclamped scope set by resolveChatContext.
+  context.indexScope = context.userNetworks
+    .filter((m) => m.networkId === networkScopeId || m.isPersonal === true)
+    .map((m) => m.networkId);
+
   const bound = context.userNetworks.find((m) => m.networkId === networkScopeId);
   if (!bound) return;
 
@@ -240,6 +293,18 @@ Opportunities move through: draft → pending → accepted (or rejected).
 - **accepted**: both sides are connected — a direct conversation exists. Surface the conversationId to the user if available.
 
 Never accept a received opportunity without explicit user approval in the current conversation.
+
+# Decision questions after discovery
+
+After \`discover_opportunities\`, the tool result may include a second text block starting with \`Decision questions (structured): ...\`. This means the discovery engine ran negotiations but needs human input to sharpen the next turn — e.g. clarify timing, role, stage, or location.
+
+**When this block is present:**
+1. Parse the \`questions\` array from the JSON after the sentinel.
+2. Each question has \`title\` (decision domain, ≤12 chars), \`prompt\` (ends in \`?\`), \`options\` (2–4 items, each with \`label\` and \`description\`), and \`multiSelect\`. The safest option is labeled \`... (Recommended)\`.
+3. Present each question in natural language: ask the \`prompt\`, list options as \`**{label}** — {description}\`. Never expose the JSON or technical field names.
+4. Wait for the user's answer, then fold it into the next \`discover_opportunities(searchQuery=...)\` call.
+
+**Elicitation-capable clients** (those that declared \`elicitation\` support in \`initialize\`): the server dispatches \`elicitation/create\` requests directly — answers are written back to the chat session automatically. You will not see the envelope as a follow-up task in that case.
 `.trim();
 
 export function createMcpServer(
@@ -280,14 +345,17 @@ export function createMcpServer(
             };
           }
 
-          // Resolve authenticated identity (userId + optional agentId + optional network scope)
-          const { userId, agentId, isSessionAuth, networkScopeId } = await authResolver.resolveIdentity(httpReq);
+          // Resolve authenticated identity (userId + optional agentId + optional network scope + optional surface)
+          const { userId, agentId, isSessionAuth, networkScopeId, clientSurface } = await authResolver.resolveIdentity(httpReq);
 
           // Resolve chat context for the user (mark as MCP — no interactive UI available)
           const context = await resolveChatContext({ database: deps.database, userId });
           context.isMcp = true;
           if (agentId) {
             context.agentId = agentId;
+          }
+          if (clientSurface) {
+            context.clientSurface = clientSurface;
           }
 
           // Network-scoped agents inherit their bound network as the implicit chat
@@ -321,8 +389,9 @@ export function createMcpServer(
           // personal index — they cannot reach other networks even when the user is
           // a member of them. The personal-index reachability is preserved so the
           // agent can still manage its owner's profile and contacts.
-          const indexScope = computeAgentIndexScope(context.userNetworks, networkScopeId ?? null);
-          const scopedDbs = scopedDepsFactory.create(userId, indexScope);
+          // context.indexScope is now the single source of truth: set by
+          // resolveChatContext (full set) and narrowed by applyNetworkScopeToContext.
+          const scopedDbs = scopedDepsFactory.create(userId, context.indexScope);
 
           // Override deps with per-request scoped databases
           const requestDeps: ToolDeps = { ...deps, ...scopedDbs };
@@ -353,6 +422,46 @@ export function createMcpServer(
           const result = await requestTool.handler({ context, query: validatedArgs });
 
           const { text: sanitizedText, isError: toolIsError } = sanitizeMcpResult(result);
+
+          // Slice 5: decision questions post-processing for discover_opportunities only.
+          if (toolName === "discover_opportunities" && !toolIsError) {
+            const questions = extractDecisionQuestions(sanitizedText);
+            if (questions) {
+              const envelopeBlock = {
+                type: "text" as const,
+                text: renderQuestionsEnvelope(questions),
+              };
+
+              const supportsElicitation =
+                !!server.server.getClientCapabilities()?.elicitation;
+
+              // Capture into a local const so TS preserves the narrowing
+              // inside the callback below. Optional chains don't survive
+              // across closure boundaries under strict mode.
+              const elicitInput = ctx.mcpReq?.elicitInput;
+
+              if (supportsElicitation && elicitInput) {
+                // Sequential — never parallel (day-one rule). We await the loop
+                // before returning the tool result so test harnesses can observe
+                // the dispatched calls deterministically.
+                await dispatchElicitations({
+                  userId,
+                  questions,
+                  elicitInput: (params) => elicitInput(params),
+                  chatMessageWriter: deps.chatMessageWriter,
+                });
+              }
+
+              return {
+                content: [
+                  { type: "text" as const, text: sanitizedText },
+                  envelopeBlock,
+                ],
+                ...(toolIsError ? { isError: true } : {}),
+              };
+            }
+          }
+
           return {
             content: [{ type: 'text' as const, text: sanitizedText }],
             ...(toolIsError ? { isError: true } : {}),

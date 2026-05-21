@@ -381,10 +381,18 @@ export interface NegotiationResult {
  * stream `opportunity_draft_ready` events as each candidate resolves, rather
  * than emitting all at once after the full fan-out completes. Awaited so the
  * caller can run async work (DB update, event emit) before the next settle.
+ *
+ * `turns` and `outcome` are passed through from the underlying negotiation
+ * graph so consumers can build per-candidate decision-question inputs without
+ * re-walking trace events or DB artifacts. Both are present on every
+ * resolution (accepted, rejected, stalled, error); error paths receive a
+ * synthesized `outcome` with `hasOpportunity: false`.
  */
 export type OnNegotiationResolved = (entry: {
   candidate: NegotiationCandidate;
   accepted: NegotiationResult | null;
+  turns: NegotiationTurn[];
+  outcome: NegotiationOutcome;
 }) => Promise<void>;
 
 /**
@@ -486,8 +494,27 @@ export async function negotiateCandidates(
           : null;
 
         if (onCandidateResolved) {
+          const turnHistory: NegotiationTurn[] = (result.messages ?? [])
+            .map((m) => {
+              const dataPart = (m.parts as Array<{ kind?: string; data?: unknown }>)?.find(
+                (p) => p.kind === "data",
+              );
+              return dataPart?.data as NegotiationTurn | undefined;
+            })
+            .filter((t): t is NegotiationTurn => !!t);
+          const resolvedOutcome: NegotiationOutcome = result.outcome ?? {
+            hasOpportunity: false,
+            agreedRoles: [],
+            reasoning: "no outcome returned by negotiation graph",
+            turnCount: turnHistory.length,
+          };
           try {
-            await onCandidateResolved({ candidate, accepted });
+            await onCandidateResolved({
+              candidate,
+              accepted,
+              turns: turnHistory,
+              outcome: resolvedOutcome,
+            });
           } catch (hookErr) {
             // Hook failures must not sink the candidate result — the aggregate
             // return is still useful, and the orchestrator branch logs its own
@@ -514,7 +541,17 @@ export async function negotiateCandidates(
         logger.error("[negotiateCandidates] Negotiation failed", { candidateUserId: candidate.userId, error: err });
         if (onCandidateResolved) {
           try {
-            await onCandidateResolved({ candidate, accepted: null });
+            await onCandidateResolved({
+              candidate,
+              accepted: null,
+              turns: [],
+              outcome: {
+                hasOpportunity: false,
+                agreedRoles: [],
+                reasoning: err instanceof Error ? err.message : String(err),
+                turnCount: 0,
+              },
+            });
           } catch {
             // ignore hook failure on error path
           }

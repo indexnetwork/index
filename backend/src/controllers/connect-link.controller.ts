@@ -1,4 +1,5 @@
-import { Controller, Get } from '../lib/router/router.decorators';
+import { RateLimit } from '../guards/limiter.guard';
+import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
 import { resolveConnectLink } from '../services/connect-link.service';
 import { opportunityService } from '../services/opportunity.service';
 
@@ -85,6 +86,7 @@ export class ConnectLinkController {
    *   for approve_introduction; expired HTML 404 if the code is unknown.
    */
   @Get('/:code')
+  @UseGuards(RateLimit('read'))
   async resolve(_req: Request, _user: unknown, params?: RouteParams) {
     const code = params?.code;
     if (!code) return new Response('Missing code', { status: 400 });
@@ -129,6 +131,7 @@ export class ConnectLinkController {
    *   approval and returns `{ kind: 'approve_introduction' }` for completeness.
    */
   @Get('/:code/go')
+  @UseGuards(RateLimit('read'))
   async go(_req: Request, _user: unknown, params?: RouteParams) {
     const code = params?.code;
     if (!code) return jsonError('Missing code', 400);
@@ -141,24 +144,44 @@ export class ConnectLinkController {
     const greeting = link.greeting
       ?? (await opportunityService.getGreetingForCard(link.opportunityId, link.userId));
 
-    if (link.kind === 'connect') {
+    // `connect` (receiver flipping pending → accepted) and `send_direct`
+    // (sender flipping draft/latent → accepted) both want the same thing
+    // once they land: the chat is open and the greeting is ready to send.
+    // opportunityService.startChat already handles both source statuses —
+    // see its docstring — so the two kinds share one handler body. The
+    // semantic difference (who's consenting first vs. second) lives in the
+    // matrix that picked the kind, not here.
+    if (link.kind === 'connect' || link.kind === 'send_direct') {
       const result = await opportunityService.startChat(link.opportunityId, link.userId);
       if ('error' in result) return jsonError(result.error, result.status);
 
-      const handle = await opportunityService.getCounterpartTelegramHandle(result.counterpartUserId);
-      const target = handle
-        ? (greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`)
-        : (greeting
-            ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
-            : `${frontendUrl}/u/${result.counterpartUserId}/chat`);
+      // Receiver surface determines redirect target. preferredSurface = 'telegram'
+      // means the click came from a Telegram-rendering MCP client (EdgeClaw) and
+      // we should attempt the t.me deep link. Anything else (including NULL on
+      // pre-rollout rows) goes to the web frontend.
+      if (link.preferredSurface === 'telegram') {
+        const handle = await opportunityService.getCounterpartTelegramHandle(result.counterpartUserId);
+        const target = handle
+          ? (greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`)
+          : (greeting
+              ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
+              : `${frontendUrl}/u/${result.counterpartUserId}/chat`);
+        return Response.json({ url: target });
+      }
+
+      const target = greeting
+        ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
+        : `${frontendUrl}/u/${result.counterpartUserId}/chat`;
       return Response.json({ url: target });
     }
 
     if (link.kind === 'outreach') {
-      const handle = await opportunityService.getCounterpartTelegramHandleForOpp(link.opportunityId, link.userId);
-      if (handle) {
-        const target = greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`;
-        return Response.json({ url: target });
+      if (link.preferredSurface === 'telegram') {
+        const handle = await opportunityService.getCounterpartTelegramHandleForOpp(link.opportunityId, link.userId);
+        if (handle) {
+          const target = greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`;
+          return Response.json({ url: target });
+        }
       }
       const conversationId = await opportunityService.getConversationIdForOpp(link.opportunityId, link.userId);
       const target = conversationId

@@ -218,7 +218,7 @@ describe('fetchAcceptedCandidates', () => {
     expect(first).toHaveLength(1);
 
     // Commit delivery with 'accepted' trigger
-    await service.commitDelivery(oppId, userB, agentB, 'accepted');
+    await service.confirmOpportunityDelivery({ opportunityId: oppId, userId: userB, agentId: agentB, trigger: 'accepted' });
 
     // Second poll should be empty
     const second = await service.fetchAcceptedCandidates(agentB, FRONTEND_URL);
@@ -241,7 +241,7 @@ describe('fetchAcceptedCandidates', () => {
       .returning({ id: opportunities.id });
 
     // Commit ambient delivery while status is pending → deliveredAtStatus='pending'
-    await service.commitDelivery(opp.id, userB, agentB, 'ambient');
+    await service.confirmOpportunityDelivery({ opportunityId: opp.id, userId: userB, agentId: agentB, trigger: 'ambient' });
 
     // Now flip to accepted
     await db.execute(
@@ -308,4 +308,4 @@ describe('fetchAcceptedCandidates', () => {
     const result = await service.fetchAcceptedCandidates(agentB, FRONTEND_URL, 0);
     expect(result).toHaveLength(1);
   });
-}, { timeout: 30_000 });
+});

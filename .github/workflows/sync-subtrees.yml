@@ -38,6 +38,10 @@ jobs:
             repo: indexnetwork/edgeclaw
             source_branch: main
             target_branch: main
+          - prefix: packages/edgeclaw/skills
+            repo: indexnetwork/edgeclaw-skills
+            source_branch: main
+            target_branch: main
     steps:
       - uses: actions/checkout@v4
         with:

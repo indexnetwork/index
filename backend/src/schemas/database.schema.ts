@@ -91,6 +91,7 @@ export const connectLinks = pgTable(
       .references(() => opportunities.id, { onDelete: 'cascade' }),
     kind: text('kind').notNull(),
     greeting: text('greeting'),
+    preferredSurface: text('preferred_surface'), // null = web; 'telegram' activates t.me redirect
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -298,6 +299,14 @@ export interface OpportunityActor {
   role: string;
   /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
   approved?: boolean;
+  /**
+   * ISO-8601 timestamp set the first time this actor advanced the opportunity's
+   * state (patient sending, agent accepting, peer "accepting" on draft = sending
+   * under the hood, peer accepting on pending, introducer sending). Once set,
+   * this actor has committed and cannot be the one to subsequently `accept` the
+   * same opportunity — enforced by the self-accept guard in `updateNode`.
+   */
+  actedAt?: string;
 }
 
 export interface OpportunitySignal {

@@ -3,13 +3,17 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
-  Play,
   Square,
-  X,
   Circle,
-  Cpu,
-  Zap,
   AlertTriangle,
+  Wrench,
+  Workflow,
+  Bot,
+  Sparkles,
+  MessagesSquare,
+  ArrowLeftRight,
+  RotateCw,
+  XCircle,
 } from "lucide-react";
 import type { TraceEvent } from "@/contexts/AIChatContext";
 import { cn } from "@/lib/utils";
@@ -196,11 +200,11 @@ function getAgentDisplayName(name: string): string {
 }
 
 const SPEECH_ACT_LABELS: Record<string, { label: string; color: string }> = {
-  COMMISSIVE: { label: "Commitment", color: "text-green-400" },
-  DIRECTIVE: { label: "Request", color: "text-blue-400" },
-  DECLARATION: { label: "Declaration", color: "text-purple-400" },
-  ASSERTIVE: { label: "Statement", color: "text-gray-400" },
-  EXPRESSIVE: { label: "Expression", color: "text-yellow-400" },
+  COMMISSIVE: { label: "Commitment", color: "text-emerald-700" },
+  DIRECTIVE: { label: "Request", color: "text-sky-700" },
+  DECLARATION: { label: "Declaration", color: "text-violet-700" },
+  ASSERTIVE: { label: "Statement", color: "text-gray-600" },
+  EXPRESSIVE: { label: "Expression", color: "text-amber-700" },
 };
 
 function ScoreBar({ value, label }: { value: number; label: string }) {
@@ -215,13 +219,13 @@ function ScoreBar({ value, label }: { value: number; label: string }) {
   return (
     <div className="flex items-center gap-2 text-[10px]">
       <span className="w-16 text-gray-500">{label}</span>
-      <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
         <div
           className={cn("h-full rounded-full", color)}
           style={{ width: `${percentage}%` }}
         />
       </div>
-      <span className="w-8 text-right tabular-nums text-gray-400">
+      <span className="w-8 text-right tabular-nums text-gray-500">
         {Math.round(value)}
       </span>
     </div>
@@ -259,25 +263,25 @@ function CandidateScore({ data }: { data: CandidateData }) {
 
   const scoreColor =
     displayScore >= 70
-      ? "text-green-400"
+      ? "text-emerald-600"
       : displayScore >= 50
-        ? "text-yellow-400"
-        : "text-red-400";
+        ? "text-amber-600"
+        : "text-red-600";
 
   return (
-    <div className="ml-5 mt-1 mb-1 p-2 bg-gray-800/50 rounded border border-gray-700/50 space-y-1">
+    <div className="ml-5 mt-1 mb-1 p-2 bg-[#FAFAFA] rounded-sm border border-[#E8E8E8] space-y-1">
       <div className="flex items-center gap-3 text-[11px]">
-        {name && <span className="text-gray-300 font-medium">{name}</span>}
+        {name && <span className="text-gray-700 font-medium">{name}</span>}
         <span className={cn("font-mono", scoreColor)}>
           {displayScore}/100
         </span>
         {passed !== undefined && (
-          <span className={passed ? "text-green-500" : "text-red-500"}>
+          <span className={passed ? "text-emerald-700" : "text-red-700"}>
             {passed ? "✓ passed" : "✗ below threshold"}
           </span>
         )}
         {strategy && (
-          <span className="text-gray-500">via {strategy}</span>
+          <span className="text-gray-400">via {strategy}</span>
         )}
       </div>
       {bio && (
@@ -286,7 +290,7 @@ function CandidateScore({ data }: { data: CandidateData }) {
         </div>
       )}
       {reasoning && (
-        <div className="text-[10px] text-gray-400 leading-relaxed">
+        <div className="text-[10px] text-gray-600 leading-relaxed">
           {reasoning}
         </div>
       )}
@@ -309,13 +313,13 @@ function SearchQueryDisplay({ data }: { data: SearchQueryData }) {
   if (!displayText) return null;
 
   return (
-    <div className="ml-5 mt-1 mb-1 p-2 bg-blue-900/20 rounded border border-blue-800/30">
+    <div className="ml-5 mt-1 mb-1 p-2 bg-[#FAFAFA] rounded-sm border border-[#E8E8E8]">
       {strategy && (
-        <div className="text-[10px] text-blue-400 font-medium mb-1">
+        <div className="text-[10px] text-gray-500 font-medium mb-1">
           Strategy: {strategy}
         </div>
       )}
-      <div className="text-[10px] text-blue-200 leading-relaxed whitespace-pre-wrap">
+      <div className="text-[10px] text-gray-700 leading-relaxed whitespace-pre-wrap">
         {displayText}
       </div>
     </div>
@@ -334,7 +338,7 @@ function FelicityScores({ data }: { data: FelicityData }) {
   if (!hasScores && !classification) return null;
 
   return (
-    <div className="ml-5 mt-1 mb-1 p-2 bg-gray-800/50 rounded border border-gray-700/50 space-y-1.5">
+    <div className="ml-5 mt-1 mb-1 p-2 bg-[#FAFAFA] rounded-sm border border-[#E8E8E8] space-y-1.5">
       {speechAct && (
         <div className="flex items-center gap-2 text-[10px]">
           <span className="text-gray-500">Speech Act:</span>
@@ -377,6 +381,8 @@ interface AgentNode {
 
 interface GraphNode {
   name: string;
+  /** "graph" = LangGraph state machine (Opportunity graph, etc). "phase" = logical grouping of inline work. */
+  kind: "graph" | "phase";
   startTimestamp?: number;
   durationMs?: number;
   isRunning: boolean;
@@ -533,9 +539,12 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
         break;
       }
 
-      case "graph_start": {
+      case "graph_start":
+      case "phase_start": {
+        const kind = event.type === "phase_start" ? "phase" : "graph";
         const graphNode: GraphNode = {
           name: event.name ?? "",
+          kind,
           startTimestamp: event.timestamp,
           isRunning: true,
           agents: [],
@@ -549,11 +558,13 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
         break;
       }
 
-      case "graph_end": {
-        // Find the most-recently opened graph with this name that is still running
+      case "graph_end":
+      case "phase_end": {
+        const kind = event.type === "phase_end" ? "phase" : "graph";
+        // Find the most-recently opened container of matching kind with this name that is still running
         const allGraphs = tools.flatMap((t) => t.graphs);
         const graphNode = [...allGraphs].reverse().find(
-          (g) => g.name === (event.name ?? "") && g.isRunning,
+          (g) => g.kind === kind && g.name === (event.name ?? "") && g.isRunning,
         );
         if (graphNode) {
           graphNode.durationMs = event.durationMs ?? (graphNode.startTimestamp && event.timestamp
@@ -735,13 +746,13 @@ function MatchGroupSummary({ steps }: { steps: ToolCallStep[] }) {
   const suffix = scores.length > 3 ? "..." : "";
 
   return (
-    <div className="px-3 py-0.5 text-gray-400">
+    <div className="px-3.5 py-0.5 text-gray-500">
       <div className="flex items-center gap-2">
-        <Circle className="w-1.5 h-1.5 text-gray-600 fill-gray-600 flex-shrink-0" />
+        <Circle className="w-1.5 h-1.5 text-gray-400 fill-gray-400 flex-shrink-0" />
         <span>
           {steps.length} matches
           {topScores.length > 0 && (
-            <span className="text-gray-500">
+            <span className="text-gray-400">
               {" "}(top: {topScores.join(", ")}{suffix})
             </span>
           )}
@@ -755,12 +766,12 @@ function CandidatePassedGroup({ steps }: { steps: ToolCallStep[] }) {
   return (
     <>
       {steps.map((step, stepIdx) => (
-        <div key={`cand-pass-${stepIdx}`} className="px-3 py-0.5 text-gray-400">
+        <div key={`cand-pass-${stepIdx}`} className="px-3.5 py-0.5 text-gray-500">
           <div className="flex items-center gap-2">
-            <Circle className="w-1.5 h-1.5 text-green-600 fill-green-600 flex-shrink-0" />
+            <Circle className="w-1.5 h-1.5 text-emerald-600 fill-emerald-600 flex-shrink-0" />
             <span>
               candidate
-              {step.detail && <span className="text-gray-500">: {step.detail}</span>}
+              {step.detail && <span className="text-gray-400">: {step.detail}</span>}
             </span>
           </div>
           {step.data && <CandidateScore data={step.data as CandidateData} />}
@@ -774,18 +785,18 @@ function CandidateFailedGroup({ steps }: { steps: ToolCallStep[] }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="px-3 py-0.5 text-gray-400">
+    <div className="px-3.5 py-0.5 text-gray-500">
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 hover:text-gray-300 transition-colors"
+        className="flex items-center gap-2 hover:text-gray-700 transition-colors"
       >
         {isExpanded ? (
-          <ChevronDown className="w-2.5 h-2.5 text-gray-600 flex-shrink-0" />
+          <ChevronDown className="w-2.5 h-2.5 text-gray-400 flex-shrink-0" />
         ) : (
-          <ChevronRight className="w-2.5 h-2.5 text-gray-600 flex-shrink-0" />
+          <ChevronRight className="w-2.5 h-2.5 text-gray-400 flex-shrink-0" />
         )}
-        <span className="text-red-400/70">
+        <span className="text-gray-500">
           {steps.length} below threshold
         </span>
       </button>
@@ -794,10 +805,10 @@ function CandidateFailedGroup({ steps }: { steps: ToolCallStep[] }) {
           {steps.map((step, stepIdx) => (
             <div key={`cand-fail-${stepIdx}`} className="py-0.5">
               <div className="flex items-center gap-2 ml-4">
-                <Circle className="w-1.5 h-1.5 text-gray-600 fill-gray-600 flex-shrink-0" />
+                <Circle className="w-1.5 h-1.5 text-gray-400 fill-gray-400 flex-shrink-0" />
                 <span>
                   candidate
-                  {step.detail && <span className="text-gray-500">: {step.detail}</span>}
+                  {step.detail && <span className="text-gray-400">: {step.detail}</span>}
                 </span>
               </div>
               {step.data && <CandidateScore data={step.data as CandidateData} />}
@@ -889,29 +900,29 @@ function AgentRow({ agent, wasStoppedByUser, stoppedAt }: AgentRowProps) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 pl-12 pr-3 py-0.5",
-        isRunning && "bg-orange-900/10",
-        isStopped && "bg-amber-900/10",
+        "flex items-center gap-2 pl-12 pr-3.5 py-0.5",
+        isRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+        isStopped && "bg-amber-50",
       )}
     >
-      <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
+      <span className="text-gray-300 flex-shrink-0 select-none">└─</span>
       {isRunning ? (
-        <Loader2 className="w-2.5 h-2.5 text-orange-400 animate-spin flex-shrink-0" />
+        <Loader2 className="w-2.5 h-2.5 text-gray-500 animate-spin flex-shrink-0" />
       ) : isStopped ? (
-        <Square className="w-2.5 h-2.5 text-amber-400 fill-amber-400 flex-shrink-0" />
+        <Square className="w-2.5 h-2.5 text-amber-600 fill-amber-600 flex-shrink-0" />
       ) : (
-        <Circle className="w-2.5 h-2.5 text-orange-400 fill-orange-400 flex-shrink-0" />
+        <Bot className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
       )}
       <span className={cn(
         "flex-1 truncate",
-        isStopped ? "text-amber-300" : "text-orange-300",
+        isStopped ? "text-amber-700" : "text-gray-600",
       )}>
         {isStopped ? "Stopped" : displayName}
         {!isRunning && !isStopped && agent.summary && (
-          <span className="text-gray-500"> — {agent.summary}</span>
+          <span className="text-gray-400"> — {agent.summary}</span>
         )}
       </span>
-      <span className="tabular-nums flex-shrink-0 text-gray-500">
+      <span className="tabular-nums flex-shrink-0 text-gray-400">
         {isRunning && agent.startTimestamp ? (
           <RunningTimer startedAt={agent.startTimestamp} />
         ) : isStopped && stoppedAt && agent.startTimestamp ? (
@@ -940,8 +951,6 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
   const anyRunning = runningCount > 0;
   const anyStopped = stoppedCount > 0 && !anyRunning;
 
-  // Total duration: sum of completed durations. If any are still running, show a live timer
-  // from the earliest start timestamp.
   const earliestStart = agents.reduce<number | undefined>(
     (min, a) => (a.startTimestamp !== undefined ? (min === undefined ? a.startTimestamp : Math.min(min, a.startTimestamp)) : min),
     undefined,
@@ -950,46 +959,45 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
 
   return (
     <div>
-      {/* Collapsed summary row */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          "flex items-center gap-2 pl-12 pr-3 py-0.5 w-full text-left hover:bg-gray-800/50 transition-colors",
-          anyRunning && "bg-orange-900/10",
-          anyStopped && "bg-amber-900/10",
+          "flex items-center gap-2 pl-12 pr-3.5 py-0.5 w-full text-left hover:bg-gray-50 transition-colors",
+          anyRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+          anyStopped && "bg-amber-50",
         )}
       >
-        <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
+        <span className="text-gray-300 flex-shrink-0 select-none">└─</span>
         {isExpanded ? (
           <ChevronDown className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
         ) : (
           <ChevronRight className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
         )}
         {anyRunning ? (
-          <Loader2 className="w-2.5 h-2.5 text-orange-400 animate-spin flex-shrink-0" />
+          <Loader2 className="w-2.5 h-2.5 text-gray-500 animate-spin flex-shrink-0" />
         ) : anyStopped ? (
-          <Square className="w-2.5 h-2.5 text-amber-400 fill-amber-400 flex-shrink-0" />
+          <Square className="w-2.5 h-2.5 text-amber-600 fill-amber-600 flex-shrink-0" />
         ) : (
-          <Circle className="w-2.5 h-2.5 text-orange-400 fill-orange-400 flex-shrink-0" />
+          <Bot className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
         )}
         <span className={cn(
           "flex-1 truncate",
-          anyStopped ? "text-amber-300" : "text-orange-300",
+          anyStopped ? "text-amber-700" : "text-gray-600",
         )}>
           {anyStopped ? "Stopped" : displayName}
-          <span className="text-gray-500"> ({agents.length})</span>
+          <span className="text-gray-400"> ({agents.length})</span>
           {anyRunning && runningCount < agents.length && (
-            <span className="text-gray-600"> — {agents.length - runningCount} done, {runningCount} running</span>
+            <span className="text-gray-400"> — {agents.length - runningCount} done, {runningCount} running</span>
           )}
           {!anyRunning && !anyStopped && (() => {
             const scored = agents.filter((a) => isAgentSummaryPassed(a.summary)).length;
             return scored > 0
-              ? <span className="text-gray-600"> — <span className="text-green-400">{scored} scored</span>, {agents.length - scored} no match</span>
-              : <span className="text-gray-600"> — no matches</span>;
+              ? <span className="text-gray-400"> — <span className="text-emerald-700">{scored} scored</span>, {agents.length - scored} no match</span>
+              : <span className="text-gray-500"> — no matches</span>;
           })()}
         </span>
-        <span className="tabular-nums flex-shrink-0 text-gray-500">
+        <span className="tabular-nums flex-shrink-0 text-gray-400">
           {anyRunning && earliestStart ? (
             <RunningTimer startedAt={earliestStart} />
           ) : anyStopped && stoppedAt && earliestStart ? (
@@ -1000,7 +1008,6 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
         </span>
       </button>
 
-      {/* Expanded: individual agent sub-rows */}
       {isExpanded && agents.map((agent, aIdx) => {
         const agentIsRunning = agent.isRunning && !wasStoppedByUser;
         const agentIsStopped = agent.isRunning && wasStoppedByUser && !!stoppedAt;
@@ -1010,24 +1017,24 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
           <div
             key={`${agent.name}-group-${aIdx}`}
             className={cn(
-              "flex items-center gap-2 pl-16 pr-3 py-0.5",
-              agentIsRunning && "bg-orange-900/5",
-              agentIsStopped && "bg-amber-900/5",
+              "flex items-center gap-2 pl-16 pr-3.5 py-0.5",
+              agentIsRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+              agentIsStopped && "bg-amber-50",
             )}
           >
-            <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
+            <span className="text-gray-300 flex-shrink-0 select-none">└─</span>
             {agentIsRunning ? (
-              <Loader2 className="w-2 h-2 text-orange-400 animate-spin flex-shrink-0" />
+              <Loader2 className="w-2 h-2 text-gray-500 animate-spin flex-shrink-0" />
             ) : agentIsStopped ? (
-              <Square className="w-2 h-2 text-amber-400 fill-amber-400 flex-shrink-0" />
+              <Square className="w-2 h-2 text-amber-600 fill-amber-600 flex-shrink-0" />
             ) : passed ? (
-              <Circle className="w-2 h-2 text-green-400 fill-green-400 flex-shrink-0" />
+              <Circle className="w-2 h-2 text-emerald-600 fill-emerald-600 flex-shrink-0" />
             ) : (
-              <Circle className="w-2 h-2 text-gray-500 fill-gray-500 flex-shrink-0" />
+              <Circle className="w-2 h-2 text-gray-400 fill-gray-400 flex-shrink-0" />
             )}
             <span className={cn(
               "flex-1 truncate",
-              agentIsStopped ? "text-amber-300" : agentIsRunning ? "text-orange-300" : "text-gray-400",
+              agentIsStopped ? "text-amber-700" : agentIsRunning ? "text-gray-700" : "text-gray-500",
             )}>
               {agentIsStopped
                 ? "Stopped"
@@ -1035,7 +1042,7 @@ function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroup
                   ? "Running..."
                   : agent.summary ?? getAgentDisplayName(agent.name)}
             </span>
-            <span className="tabular-nums flex-shrink-0 text-gray-600">
+            <span className="tabular-nums flex-shrink-0 text-gray-400">
               {agentIsRunning && agent.startTimestamp ? (
                 <RunningTimer startedAt={agent.startTimestamp} />
               ) : agentIsStopped && stoppedAt && agent.startTimestamp ? (
@@ -1060,32 +1067,35 @@ interface GraphRowProps {
 function GraphRow({ graph, wasStoppedByUser, stoppedAt }: GraphRowProps) {
   const isStopped = graph.isRunning && wasStoppedByUser && stoppedAt;
   const isRunning = graph.isRunning && !wasStoppedByUser;
+  const isPhase = graph.kind === "phase";
   const displayName = getGraphDisplayName(graph.name);
 
   return (
     <>
       <div
         className={cn(
-          "flex items-center gap-2 pl-8 pr-3 py-0.5",
-          isRunning && "bg-teal-900/10",
-          isStopped && "bg-amber-900/10",
+          "flex items-center gap-2 pl-8 pr-3.5 py-0.5",
+          isRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+          isStopped && "bg-amber-50",
         )}
       >
-        <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
+        <span className="text-gray-300 flex-shrink-0 select-none">└─</span>
         {isRunning ? (
-          <Loader2 className="w-2.5 h-2.5 text-teal-400 animate-spin flex-shrink-0" />
+          <Loader2 className="w-3 h-3 text-gray-500 animate-spin flex-shrink-0" />
         ) : isStopped ? (
-          <Square className="w-2.5 h-2.5 text-amber-400 fill-amber-400 flex-shrink-0" />
+          <Square className="w-3 h-3 text-amber-600 fill-amber-600 flex-shrink-0" />
+        ) : isPhase ? (
+          <Square className="w-3 h-3 text-slate-500 flex-shrink-0" />
         ) : (
-          <Square className="w-2.5 h-2.5 text-teal-500 fill-teal-500 flex-shrink-0" />
+          <Workflow className="w-3 h-3 text-gray-800 flex-shrink-0" />
         )}
         <span className={cn(
           "flex-1 truncate",
-          isStopped ? "text-amber-300" : "text-teal-300",
+          isStopped ? "text-amber-700" : isPhase ? "text-slate-600" : "text-gray-900",
         )}>
           {isStopped ? "Stopped" : displayName}
         </span>
-        <span className="tabular-nums flex-shrink-0 text-gray-500">
+        <span className="tabular-nums flex-shrink-0 text-gray-400">
           {isRunning && graph.startTimestamp ? (
             <RunningTimer startedAt={graph.startTimestamp} />
           ) : isStopped && stoppedAt && graph.startTimestamp ? (
@@ -1120,21 +1130,19 @@ function GraphRow({ graph, wasStoppedByUser, stoppedAt }: GraphRowProps) {
   );
 }
 
-function outcomeIcon(o: NegotiationNode["outcome"]): string {
-  if (!o) return "⚪";
-  if (o === "accepted") return "🟢";
-  if (o === "waiting_for_agent") return "⏳";
-  return "🔴";
-}
-
 function NegotiationTree({ negotiations }: { negotiations: NegotiationNode[] }) {
   const [openIdxs, setOpenIdxs] = useState<Set<number>>(new Set());
 
   if (negotiations.length === 0) return null;
 
   return (
-    <div className="mt-2 pl-3 border-l border-gray-200">
-      <div className="text-xs text-gray-500 mb-1">Negotiations ({negotiations.length})</div>
+    <div className="pl-8 pr-3.5 py-1 bg-white">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-gray-300 flex-shrink-0 select-none">└─</span>
+        <MessagesSquare className="w-3 h-3 text-gray-800 flex-shrink-0" />
+        <span className="text-gray-600">Negotiations</span>
+        <span className="text-gray-400">({negotiations.length})</span>
+      </div>
       {negotiations.map((n, i) => {
         const isOpen = openIdxs.has(i);
         const toggle = () => {
@@ -1142,35 +1150,55 @@ function NegotiationTree({ negotiations }: { negotiations: NegotiationNode[] }) 
           if (isOpen) next.delete(i); else next.add(i);
           setOpenIdxs(next);
         };
+        const outcomeColor =
+          n.outcome === "accepted"
+            ? "text-emerald-700"
+            : n.outcome === "waiting_for_agent" || n.isRunning
+              ? "text-gray-500"
+              : "text-gray-600";
         return (
-          <div key={`${n.opportunityId}-${i}`} className="mb-1">
+          <div key={`${n.opportunityId}-${i}`} className="ml-5 mb-0.5">
             <button
               type="button"
               onClick={toggle}
-              className="flex items-center gap-1 text-xs text-gray-700 hover:text-gray-900"
+              className="flex items-center gap-2 text-left hover:text-gray-900 transition-colors"
               title={n.outcomeReasoning ?? ""}
             >
-              <span>{isOpen ? "▾" : "▸"}</span>
-              <span>{outcomeIcon(n.outcome)}</span>
-              <span className="font-medium">{n.candidateName ?? n.candidateUserId}</span>
-              <span className="text-gray-500">
-                {" — "}{n.outcome ?? (n.isRunning ? "running" : "unknown")}
-                {" ("}{n.turns.length} turn{n.turns.length === 1 ? "" : "s"}
-                {n.durationMs != null ? `, ${n.durationMs}ms` : ""}
-                {")"}
+              {isOpen ? (
+                <ChevronDown className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
+              )}
+              {n.isRunning ? (
+                <Loader2 className="w-2.5 h-2.5 text-gray-500 animate-spin flex-shrink-0" />
+              ) : n.outcome === "timed_out" || n.outcome === "rejected_stalled" || n.outcome === "turn_cap" ? (
+                <Square className="w-2.5 h-2.5 text-amber-600 fill-amber-600 flex-shrink-0" />
+              ) : (
+                <MessagesSquare className="w-2.5 h-2.5 text-gray-800 flex-shrink-0" />
+              )}
+              <span className="font-medium text-gray-700">{n.candidateName ?? n.candidateUserId}</span>
+              <span className={outcomeColor}>
+                — {n.outcome ?? (n.isRunning ? "running" : "unknown")}
+              </span>
+              <span className="text-gray-400">
+                ({n.turns.length} turn{n.turns.length === 1 ? "" : "s"}
+                {n.durationMs != null ? `, ${formatDuration(n.durationMs)}` : ""})
               </span>
             </button>
             {isOpen && (
-              <ol className="ml-5 mt-1 space-y-0.5 text-xs text-gray-700">
+              <ol className="ml-5 mt-1 space-y-0.5">
                 {n.turns.map((t) => (
-                  <li key={t.turnIndex}>
-                    <span className="text-gray-500">{t.turnIndex + 1}.</span>{" "}
-                    <span className="font-mono text-[10px] text-gray-500">[{t.actor}]</span>{" "}
-                    <span className="font-medium">{t.action}</span>
-                    {t.message && <span> — {t.message}</span>}
-                    {t.reasoning && (
-                      <div className="ml-5 text-gray-400 italic">{t.reasoning}</div>
-                    )}
+                  <li key={t.turnIndex} className="flex items-start gap-2">
+                    <ArrowLeftRight className="w-2.5 h-2.5 text-gray-500 flex-shrink-0 mt-1" />
+                    <div className="flex-1">
+                      <span className="text-gray-400">{t.turnIndex + 1}.</span>{" "}
+                      <span className="text-gray-400 text-[10px]">[{t.actor}]</span>{" "}
+                      <span className="font-medium text-gray-700">{t.action}</span>
+                      {t.message && <span className="text-gray-600"> — {t.message}</span>}
+                      {t.reasoning && (
+                        <div className="ml-5 text-gray-400 italic">{t.reasoning}</div>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ol>
@@ -1210,10 +1238,10 @@ function ToolRow({
       {/* Tool header row */}
       <div
         className={cn(
-          "flex items-center gap-2 px-3 py-1.5",
-          isRunning && "bg-yellow-900/10",
-          isStopped && "bg-amber-900/10",
-          !isRunning && !isStopped && tool.status === "error" && "bg-red-900/10",
+          "flex items-center gap-2 px-3.5 py-1.5",
+          isRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+          isStopped && "bg-amber-50",
+          !isRunning && !isStopped && tool.status === "error" && "bg-red-50",
         )}
       >
         {hasSteps ? (
@@ -1223,7 +1251,7 @@ function ToolRow({
             aria-label={isToolExpanded ? `Collapse ${desc.action} details` : `Expand ${desc.action} details`}
             aria-expanded={isToolExpanded}
             aria-controls={`tool-steps-${toolIdx}`}
-            className="w-3 h-3 flex items-center justify-center text-gray-500 hover:text-gray-300"
+            className="w-3 h-3 flex items-center justify-center text-gray-500 hover:text-gray-700"
           >
             {isToolExpanded ? (
               <ChevronDown className="w-3 h-3" />
@@ -1232,20 +1260,18 @@ function ToolRow({
             )}
           </button>
         ) : isRunning ? (
-          <Loader2 className="w-3 h-3 text-yellow-400 animate-spin flex-shrink-0" />
+          <Loader2 className="w-3 h-3 text-gray-500 animate-spin flex-shrink-0" />
         ) : isStopped ? (
-          <Square className="w-3 h-3 text-amber-400 fill-amber-400 flex-shrink-0" />
-        ) : tool.status === "success" ? (
-          <Play className="w-3 h-3 text-cyan-400 fill-cyan-400 flex-shrink-0" />
+          <Square className="w-3 h-3 text-amber-600 fill-amber-600 flex-shrink-0" />
         ) : tool.status === "error" ? (
-          <X className="w-3 h-3 text-red-500 flex-shrink-0" />
+          <XCircle className="w-3 h-3 text-red-600 flex-shrink-0" />
         ) : (
-          <Play className="w-3 h-3 text-cyan-400 fill-cyan-400 flex-shrink-0" />
+          <Wrench className="w-3 h-3 text-gray-800 flex-shrink-0" />
         )}
 
         <span className={cn(
           "flex-1",
-          isStopped ? "text-amber-300" : tool.status === "error" ? "text-red-300" : "text-cyan-300",
+          isStopped ? "text-amber-700" : tool.status === "error" ? "text-red-700" : "text-gray-900",
         )}>
           {isRunning
             ? desc.running
@@ -1255,11 +1281,11 @@ function ToolRow({
                 ? `Failed: ${desc.action}`
                 : desc.action}
           {!isRunning && !isStopped && tool.summary && (
-            <span className="text-gray-500"> — {tool.summary}</span>
+            <span className="text-gray-400"> — {tool.summary}</span>
           )}
         </span>
 
-        <span className="tabular-nums flex-shrink-0 ml-auto text-gray-500">
+        <span className="tabular-nums flex-shrink-0 ml-auto text-gray-400">
           {isRunning && tool.startTimestamp ? (
             <RunningTimer startedAt={tool.startTimestamp} />
           ) : isStopped && stoppedAt && tool.startTimestamp ? (
@@ -1287,7 +1313,7 @@ function ToolRow({
 
       {/* Expandable steps detail */}
       {hasSteps && isToolExpanded && (
-        <div id={`tool-steps-${toolIdx}`} className="bg-gray-950 border-l-2 border-gray-700 ml-4 py-1">
+        <div id={`tool-steps-${toolIdx}`} className="bg-[#FAFAFA] border-l-2 border-[#E8E8E8] ml-4 py-1">
           {groupSteps(tool.steps!).map((group, groupIdx) => {
             if (group.kind === "match_group") {
               return <MatchGroupSummary key={`match-group-${groupIdx}`} steps={group.steps} />;
@@ -1308,14 +1334,14 @@ function ToolRow({
             return (
               <div
                 key={`${step.step}-${groupIdx}`}
-                className="px-3 py-0.5 text-gray-400"
+                className="px-3.5 py-0.5 text-gray-500"
               >
                 <div className="flex items-center gap-2">
-                  <Circle className="w-1.5 h-1.5 text-gray-600 fill-gray-600 flex-shrink-0" />
+                  <Circle className="w-1.5 h-1.5 text-gray-400 fill-gray-400 flex-shrink-0" />
                   <span>
                     {step.step}
                     {step.detail && (
-                      <span className="text-gray-500">
+                      <span className="text-gray-400">
                         : {step.detail}
                       </span>
                     )}
@@ -1331,8 +1357,8 @@ function ToolRow({
                   <div className="ml-4 mt-1 text-xs text-gray-500 space-y-0.5">
                     {Object.entries(step.data).map(([key, value]) => (
                       <div key={key} className="flex gap-2">
-                        <span className="text-gray-600 flex-shrink-0">{key}:</span>
-                        <span className="text-gray-400 break-all">
+                        <span className="text-gray-400 flex-shrink-0">{key}:</span>
+                        <span className="text-gray-500 break-all">
                           {typeof value === "string"
                             ? value.length > 200 ? value.slice(0, 200) + "..." : value
                             : (() => { const s = JSON.stringify(value); return s.length > 200 ? s.slice(0, 200) + "..." : s; })()}
@@ -1364,7 +1390,6 @@ export function ToolCallsDisplay({
   const parsed = parseTraceEvents(traceEvents);
 
   const runningTools = parsed.tools.filter((t) => t.isRunning).length;
-  const hasErrors = parsed.tools.some((t) => t.status === "error");
 
   const firstEvent = traceEvents[0];
   const lastEvent = traceEvents[traceEvents.length - 1];
@@ -1384,36 +1409,30 @@ export function ToolCallsDisplay({
   };
 
   return (
-    <div className="mb-3 font-mono text-[11px] leading-tight border border-gray-200 rounded-lg overflow-hidden bg-gray-900 text-gray-100">
+    <div className="mb-3 font-mono text-[11px] leading-tight border border-[#E8E8E8] rounded-sm overflow-hidden bg-white text-gray-700">
       {/* Header */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         aria-label={isExpanded ? "Collapse trace" : "Expand trace"}
         aria-expanded={isExpanded}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-gray-300 hover:bg-gray-800 transition-colors border-b border-gray-700"
+        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-gray-700 hover:bg-gray-50 transition-colors border-b border-[#E8E8E8] bg-[#FAFAFA]"
       >
         {isExpanded ? (
           <ChevronDown className="w-3 h-3 text-gray-500" />
         ) : (
           <ChevronRight className="w-3 h-3 text-gray-500" />
         )}
-        <span className="text-gray-500">TRACE</span>
-        <span className="text-gray-600">│</span>
-        <span>
-          {runningTools > 0 || (isStreaming && !wasStoppedByUser) ? (
-            <span className="text-yellow-400">{traceEvents.length} events</span>
-          ) : wasStoppedByUser ? (
-            <span className="text-amber-400">{traceEvents.length} events (stopped)</span>
-          ) : (
-            <span className={hasErrors ? "text-red-400" : "text-green-400"}>
-              {traceEvents.length} events
-            </span>
-          )}
+        <span className="font-['Public_Sans'] text-[10px] uppercase tracking-wider font-bold text-black">
+          Trace
         </span>
-        <span className="text-gray-600 ml-auto">
+        <span className="w-px h-2.5 bg-gray-300" />
+        <span className="text-gray-500 tabular-nums">
+          {traceEvents.length} events{wasStoppedByUser ? " (stopped)" : ""}
+        </span>
+        <span className="text-gray-400 ml-auto flex items-center gap-2">
           {runningTools > 0 || (isStreaming && !wasStoppedByUser) ? (
-            <Loader2 className="w-3 h-3 animate-spin text-yellow-400" />
+            <Loader2 className="w-3 h-3 animate-spin text-gray-500" />
           ) : wasStoppedByUser && stoppedAt && firstEvent ? (
             formatDuration(stoppedAt - firstEvent.timestamp)
           ) : (
@@ -1423,7 +1442,7 @@ export function ToolCallsDisplay({
       </button>
 
       {isExpanded && (
-        <div className="divide-y divide-gray-800">
+        <div className="divide-y divide-[#F4F4F4]">
           {parsed.timeline.map((entry, idx) => {
             if (entry.kind === "tool") {
               return (
@@ -1446,13 +1465,13 @@ export function ToolCallsDisplay({
               return (
                 <div
                   key={`iter-${idx}`}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-900/20"
+                  className="flex items-center gap-2 px-3.5 py-1.5 bg-[#FFF5F6] shadow-[inset_2px_0_0_#FAB8BD]"
                 >
-                  <Zap className="w-3 h-3 text-blue-400 flex-shrink-0" />
-                  <span className="text-blue-300 font-medium">
+                  <RotateCw className="w-3 h-3 text-[#FAB8BD] flex-shrink-0" />
+                  <span className="text-gray-900 font-medium">
                     Starting iteration {event.iteration}
                   </span>
-                  <span className="text-gray-600 text-[10px] ml-auto">
+                  <span className="text-gray-400 text-[10px] ml-auto">
                     {formatTime(event.timestamp)}
                   </span>
                 </div>
@@ -1463,13 +1482,13 @@ export function ToolCallsDisplay({
               return (
                 <div
                   key={`hallucination-${idx}`}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20"
+                  className="flex items-center gap-2 px-3.5 py-1.5 bg-amber-50"
                 >
-                  <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
-                  <span className="text-amber-300 font-medium">
+                  <AlertTriangle className="w-3 h-3 text-amber-600 flex-shrink-0" />
+                  <span className="text-amber-700 font-medium">
                     Hallucinated {event.summary} block — auto-invoking {event.name}
                   </span>
-                  <span className="text-gray-600 text-[10px] ml-auto">
+                  <span className="text-gray-400 text-[10px] ml-auto">
                     {formatTime(event.timestamp)}
                   </span>
                 </div>
@@ -1486,26 +1505,26 @@ export function ToolCallsDisplay({
                 <div
                   key={`llm-start-${idx}`}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-1.5",
-                    isRunning && "bg-purple-900/10",
-                    isStopped && "bg-amber-900/10",
+                    "flex items-center gap-2 px-3.5 py-1.5",
+                    isRunning && "bg-[#FFFAFB] shadow-[inset_2px_0_0_#FAB8BD]",
+                    isStopped && "bg-amber-50",
                   )}
                 >
                   {isRunning ? (
-                    <Loader2 className="w-3 h-3 text-purple-400 animate-spin flex-shrink-0" />
+                    <Loader2 className="w-3 h-3 text-gray-500 animate-spin flex-shrink-0" />
                   ) : isStopped ? (
-                    <Square className="w-3 h-3 text-amber-400 fill-amber-400 flex-shrink-0" />
+                    <Square className="w-3 h-3 text-amber-600 fill-amber-600 flex-shrink-0" />
                   ) : (
-                    <Cpu className="w-3 h-3 text-purple-400 flex-shrink-0" />
+                    <Sparkles className="w-3 h-3 text-gray-500 flex-shrink-0" />
                   )}
-                  <span className={isStopped ? "text-amber-300" : "text-purple-300"}>
+                  <span className={isStopped ? "text-amber-700" : "text-gray-800"}>
                     {isRunning
                       ? "Thinking about your request..."
                       : isStopped
                         ? "Stopped"
                         : "Analyzed your request"}
                   </span>
-                  <span className="tabular-nums flex-shrink-0 ml-auto text-gray-500">
+                  <span className="tabular-nums flex-shrink-0 ml-auto text-gray-400">
                     {isRunning ? (
                       <RunningTimer startedAt={event.timestamp} />
                     ) : isStopped && stoppedAt ? (
@@ -1520,9 +1539,9 @@ export function ToolCallsDisplay({
 
             if (item.kind === "llm_end") {
               return (
-                <div key={`llm-end-${idx}`} className="flex items-center gap-2 px-3 py-1.5">
-                  <Square className="w-3 h-3 text-purple-500 fill-purple-500 flex-shrink-0" />
-                  <span className="text-purple-300">
+                <div key={`llm-end-${idx}`} className="flex items-center gap-2 px-3.5 py-1.5">
+                  <Sparkles className="w-3 h-3 text-[#FAB8BD] fill-[#FAB8BD] flex-shrink-0" />
+                  <span className="text-gray-800">
                     {event.hasToolCalls && event.toolNames
                       ? `Decided to ${event.toolNames
                           .map((t) => getToolDescription(t).action.toLowerCase())

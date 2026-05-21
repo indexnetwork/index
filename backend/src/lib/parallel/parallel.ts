@@ -63,6 +63,7 @@ export interface ParallelSearchRequestStruct {
   linkedin?: string;
   twitter?: string;
   github?: string;
+  telegram?: string;
   websites?: string[];
 }
 

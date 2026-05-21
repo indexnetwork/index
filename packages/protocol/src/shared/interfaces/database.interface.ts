@@ -40,6 +40,14 @@ export interface OpportunityActor {
   role: string;
   /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
   approved?: boolean;
+  /**
+   * ISO-8601 timestamp set the first time this actor advanced the opportunity's
+   * state (patient sending, agent accepting, peer "accepting" on draft = sending
+   * under the hood, peer accepting on pending, introducer sending). Once set,
+   * this actor has committed and cannot be the one to subsequently `accept` the
+   * same opportunity — enforced by the self-accept guard in `updateNode`.
+   */
+  actedAt?: string;
 }
 
 /** Individual signal contributing to an opportunity score. */
@@ -917,6 +925,19 @@ export interface Database {
   ): Promise<IndexedIntentDetails[]>;
 
   /**
+   * Get the caller's own active intents across a set of indexes.
+   * Returns intents owned by `userId` that are linked (via intent_networks)
+   * to at least one of `indexIds`. Used by network-scoped agents to honor
+   * indexScope without falling back to global getActiveIntents (which would
+   * include intents in indexes outside scope).
+   *
+   * @param userId - The intent owner (always the caller).
+   * @param indexIds - The set of index IDs to filter on. Empty → empty result.
+   * @returns Active intents owned by userId in any of indexIds, deduped by intent id.
+   */
+  getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]): Promise<ActiveIntent[]>;
+
+  /**
    * Update index settings.
    * **OWNER ONLY** - throws if user is not an owner.
    *
@@ -1097,6 +1118,17 @@ export interface Database {
   getOpportunity(id: string): Promise<Opportunity | null>;
 
   /**
+   * Get multiple opportunities by ID in a single batched query.
+   *
+   * Returns rows in arbitrary order; callers should index by `id`.
+   * Missing IDs are silently dropped (no error).
+   *
+   * @param ids - Opportunity IDs (deduplicated by the caller is fine but not required)
+   * @returns Opportunities found
+   */
+  getOpportunitiesByIds(ids: string[]): Promise<Opportunity[]>;
+
+  /**
    * Resolve an opportunity identifier (full UUID or short prefix) to a full UUID.
    * @param idOrPrefix - Full UUID or short hex prefix
    * @param userId - The user ID (for visibility scoping)
@@ -1142,6 +1174,28 @@ export interface Database {
   ): Promise<Opportunity | null>;
 
   /**
+   * Stamp `actedAt` on the actor matching `actorUserId` and update the
+   * opportunity's status atomically (row-lock + JSONB merge in one txn).
+   *
+   * Used by `sendNode` (status → 'pending') and `updateNode` (status →
+   * 'accepted'). The self-accept guard is enforced in the caller, not here —
+   * this method blindly stamps. Callers must pre-check `actor.actedAt` before
+   * invocation when the semantics require it (i.e. accepting).
+   *
+   * @param id - Opportunity ID
+   * @param actorUserId - The user whose actor entry should be stamped
+   * @param status - New opportunity status
+   * @param acceptedBy - Required when `status === 'accepted'`
+   * @returns The updated opportunity, or null if not found
+   */
+  stampOpportunityActorAction(
+    id: string,
+    actorUserId: string,
+    status: OpportunityStatus,
+    acceptedBy?: string,
+  ): Promise<Opportunity | null>;
+
+  /**
    * Update the `approved` field on an opportunity's introducer actor.
    * Fetches the opportunity, patches the matching actor in JS, and writes
    * the updated actors JSONB back. Returns the updated opportunity or null.
@@ -1179,31 +1233,24 @@ export interface Database {
   ): Promise<boolean>;
 
   /**
-   * Return one non-expired opportunity between the given actors in the index, if any.
-   * Used to avoid creating a duplicate and to surface existing opportunity id/status.
+   * Find opportunities whose actors contain all the given user IDs.
    *
-   * @param actorIds - Array of user IDs that would be actors
-   * @param networkId - Index ID
-   * @returns The first matching opportunity's id and status, or null
+   * The `includeIntroducers` flag controls actor matching: when false (default), matching
+   * is restricted to non-introducer roles; when true, any role in `actors` counts.
+   *
+   * Index-agnostic. Ordered by updatedAt desc.
+   *
+   * @param actorIds - User IDs that must all appear in each returned opportunity's actors
+   * @param options - includeIntroducers (default false), statuses (include filter), excludeStatuses (exclude filter)
+   * @returns Matching opportunities, newest first
    */
-  getOpportunityBetweenActors(
+  findOpportunitiesByActors(
     actorIds: string[],
-    networkId: string
-  ): Promise<{ id: Id<'opportunities'>; status: OpportunityStatus } | null>;
-
-  /**
-   * Find opportunities whose non-introducer actor set exactly matches the given user IDs.
-   * Overlap semantics: exact actor-set equality — an opportunity is returned only if its set of
-   * non-introducer actor userIds (ignoring introducers) equals the set of actorUserIds. Index-agnostic;
-   * opportunities are not scoped to a single index.
-   *
-   * @param actorUserIds - Typed user IDs of non-introducer actors (order-independent; compared as sets)
-   * @param options - Optional excludeStatuses (no default). Uses OpportunityStatus.
-   * @returns Promise of opportunities matching the exact actor set, excluding specified statuses
-   */
-  findOverlappingOpportunities(
-    actorUserIds: Id<'users'>[],
-    options?: { excludeStatuses?: OpportunityStatus[] }
+    options?: {
+      includeIntroducers?: boolean;
+      statuses?: OpportunityStatus[];
+      excludeStatuses?: OpportunityStatus[];
+    }
   ): Promise<Opportunity[]>;
 
   /**
@@ -1232,19 +1279,6 @@ export interface Database {
    * @returns Number of opportunities updated to expired
    */
   expireStaleOpportunities(): Promise<number>;
-
-  /**
-   * Get accepted opportunities between two actors (same actor pair, status accepted).
-   * Used when building accepted-opportunities meta after accept (e.g. for chat channel).
-   *
-   * @param userId - First actor user ID
-   * @param counterpartUserId - Second actor user ID
-   * @returns Accepted opportunities between these two users, newest first
-   */
-  getAcceptedOpportunitiesBetweenActors(
-    userId: string,
-    counterpartUserId: string
-  ): Promise<Opportunity[]>;
 
   /**
    * Accept all sibling opportunities between the same actor pair in one transaction.
@@ -1489,9 +1523,6 @@ export interface UserDatabase {
   /** Update an opportunity's status (if user is an actor). acceptedBy is derived from the auth context. */
   updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<Opportunity | null>;
 
-  /** Get accepted opportunities between the authenticated user and another actor. */
-  getAcceptedOpportunitiesBetweenActors(counterpartUserId: string): Promise<Opportunity[]>;
-
   /** Accept sibling opportunities between the authenticated user and another actor. */
   acceptSiblingOpportunities(counterpartUserId: string, excludeOpportunityId: string): Promise<string[]>;
 
@@ -1551,6 +1582,19 @@ export interface SystemDatabase {
 
   /** Get a specific user's intents in an index (requires shared membership). */
   getUserIntentsInIndex(userId: string, networkId: string): Promise<ActiveIntent[]>;
+
+  /**
+   * Get the caller's own active intents across a set of indexes.
+   * Returns intents owned by `userId` that are linked (via intent_networks)
+   * to at least one of `indexIds`. Used by network-scoped agents to honor
+   * indexScope without falling back to global getActiveIntents (which would
+   * include intents in indexes outside scope).
+   *
+   * @param userId - The intent owner (always the caller).
+   * @param indexIds - The set of index IDs to filter on. Empty → empty result.
+   * @returns Active intents owned by userId in any of indexIds, deduped by intent id.
+   */
+  getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]): Promise<ActiveIntent[]>;
 
   /** Get a single intent by ID (if in scope). */
   getIntent(intentId: string): Promise<IntentRecord | null>;
@@ -1612,14 +1656,22 @@ export interface SystemDatabase {
   /** Update an opportunity's status (system-level). */
   updateOpportunityStatus(id: string, status: OpportunityStatus, acceptedBy?: string): Promise<Opportunity | null>;
 
+  /** Stamp actor `actedAt` + update status atomically (system-level). */
+  stampOpportunityActorAction(
+    id: string,
+    actorUserId: string,
+    status: OpportunityStatus,
+    acceptedBy?: string,
+  ): Promise<Opportunity | null>;
+
   /** Check if opportunity exists between actors in an index. */
   opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean>;
 
-  /** Return one opportunity between actors in the index (id + status), or null. */
-  getOpportunityBetweenActors(actorIds: string[], networkId: string): Promise<{ id: Id<'opportunities'>; status: OpportunityStatus } | null>;
-
-  /** Find overlapping opportunities by actor set. */
-  findOverlappingOpportunities(actorUserIds: Id<'users'>[], options?: { excludeStatuses?: OpportunityStatus[] }): Promise<Opportunity[]>;
+  /** Find opportunities by actor IDs with optional include/exclude status filters. */
+  findOpportunitiesByActors(
+    actorIds: string[],
+    options?: { includeIntroducers?: boolean; statuses?: OpportunityStatus[]; excludeStatuses?: OpportunityStatus[] }
+  ): Promise<Opportunity[]>;
 
   /** Expire opportunities referencing an intent. */
   expireOpportunitiesByIntent(intentId: string): Promise<number>;
@@ -1697,6 +1749,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // Direct ChatGraph operations
   | 'getProfile'
   | 'getActiveIntents'
+  | 'getActiveIntentsAcrossIndexes'
   | 'getIntentsInIndexForMember'
   // ProfileGraph subgraph requirements
   | 'getUser'
@@ -1712,13 +1765,13 @@ export type ChatGraphCompositeDatabase = Pick<
   // OpportunityGraph subgraph requirements (getProfile already included)
   | 'createOpportunity'
   | 'getOpportunity'
+  | 'getOpportunitiesByIds'
   | 'opportunityExistsBetweenActors'
-  | 'getOpportunityBetweenActors'
-  | 'findOverlappingOpportunities'
-  | 'getAcceptedOpportunitiesBetweenActors'
+  | 'findOpportunitiesByActors'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
   | 'updateOpportunityActorApproval'
+  | 'stampOpportunityActorAction'
   | 'getOrCreateDM'
   // HyDE graph (used by OpportunityGraph)
   | 'getHydeDocument'
@@ -1775,9 +1828,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'getProfile'
   | 'createOpportunity'
   | 'opportunityExistsBetweenActors'
-  | 'getOpportunityBetweenActors'
-  | 'findOverlappingOpportunities'
-  | 'getAcceptedOpportunitiesBetweenActors'
+  | 'findOpportunitiesByActors'
   | 'getUserIndexIds'
   | 'getNetworkMemberships'
   | 'getActiveIntents'
@@ -1790,6 +1841,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOpportunity'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
+  | 'stampOpportunityActorAction'
   | 'updateOpportunityActorApproval'
   | 'isNetworkMember'
   | 'isIndexOwner'
@@ -1958,6 +2010,7 @@ export interface NegotiationDatabase {
 export type OpportunityControllerDatabase = Pick<
   Database,
   | 'getOpportunity'
+  | 'getOpportunitiesByIds'
   | 'getOpportunitiesForUser'
   | 'getOpportunitiesForNetwork'
   | 'resolveOpportunityId'
@@ -1965,8 +2018,7 @@ export type OpportunityControllerDatabase = Pick<
   | 'createOpportunity'
   | 'createOpportunityAndExpireIds'
   | 'opportunityExistsBetweenActors'
-  | 'findOverlappingOpportunities'
-  | 'getAcceptedOpportunitiesBetweenActors'
+  | 'findOpportunitiesByActors'
   | 'acceptSiblingOpportunities'
   | 'isIndexOwner'
   | 'isNetworkMember'
@@ -1984,6 +2036,8 @@ export type OpportunityControllerDatabase = Pick<
   | 'unhideConversation'
   // Approve-introduction endpoint: flip introducer actor's approved flag.
   | 'updateOpportunityActorApproval'
+  // Self-accept guard + actedAt stamping on service-layer status flips.
+  | 'stampOpportunityActorAction'
 >;
 
 /**
@@ -1996,6 +2050,7 @@ export type OpportunityControllerDatabase = Pick<
 export type IntentGraphDatabase = Pick<
   Database,
   | 'getActiveIntents'
+  | 'getActiveIntentsAcrossIndexes'
   | 'getIntentsInIndexForMember'
   | 'createIntent'
   | 'updateIntent'

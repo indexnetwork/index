@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 
 import db from '../../lib/drizzle/drizzle';
 import { connectLinks, opportunities, users } from '../../schemas/database.schema';
-import { mintConnectLink, resolveConnectLink } from '../connect-link.service';
+import { mintConnectLink, resolveConnectLink, buildConnectShortUrl } from '../connect-link.service';
 
 const USER_ID = `cl-svc-user-${Date.now()}`;
 const OPP_ID = `cl-svc-opp-${Date.now()}`;
@@ -108,5 +108,21 @@ describe('connect-link service', () => {
     expect(resolved?.userId).toBe(USER_ID);
     expect(resolved?.greeting).toBe('second greeting');
     expect(await resolveConnectLink(a.code)).toBeNull();
+  });
+});
+
+describe('buildConnectShortUrl', () => {
+  test('appends ?link_preview=false to the short URL', () => {
+    expect(buildConnectShortUrl('https://protocol.example.com', 'AbCd123456')).toBe(
+      'https://protocol.example.com/c/AbCd123456?link_preview=false',
+    );
+  });
+
+  test('does not double-encode when apiBaseUrl has no trailing slash', () => {
+    // Caller already strips trailing slashes in protocol-init.ts before invoking
+    // this helper; verify the helper composes cleanly with the stripped form.
+    expect(buildConnectShortUrl('https://protocol.example.com', 'xyz')).toMatch(
+      /^https:\/\/protocol\.example\.com\/c\/xyz\?link_preview=false$/,
+    );
   });
 });

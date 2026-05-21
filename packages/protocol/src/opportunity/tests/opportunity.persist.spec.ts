@@ -48,7 +48,7 @@ describe('persistOpportunities', () => {
     const created = makeOpportunity({ id: 'opp-new', status: 'pending' });
 
     const database = {
-      findOverlappingOpportunities: async () => [],
+      findOpportunitiesByActors: async () => [],
       createOpportunity: async () => created,
       updateOpportunityStatus: async () => {},
     };
@@ -67,7 +67,7 @@ describe('persistOpportunities', () => {
 
   it('returns errors array when an item fails, without throwing', async () => {
     const database = {
-      findOverlappingOpportunities: async () => { throw new Error('DB error'); },
+      findOpportunitiesByActors: async () => { throw new Error('DB error'); },
       createOpportunity: async () => makeOpportunity(),
       updateOpportunityStatus: async () => {},
     };
@@ -88,7 +88,7 @@ describe('persistOpportunities', () => {
     const injectedIds: string[] = [];
 
     const database = {
-      findOverlappingOpportunities: async () => [],
+      findOpportunitiesByActors: async () => [],
       createOpportunity: async () => created,
       updateOpportunityStatus: async () => {},
     };
@@ -108,7 +108,7 @@ describe('persistOpportunities', () => {
     const injectedIds: string[] = [];
 
     const database = {
-      findOverlappingOpportunities: async () => [],
+      findOpportunitiesByActors: async () => [],
       createOpportunity: async () => created,
       updateOpportunityStatus: async () => {},
     };
@@ -127,7 +127,7 @@ describe('persistOpportunities', () => {
     let callCount = 0;
 
     const database = {
-      findOverlappingOpportunities: async () => [],
+      findOpportunitiesByActors: async () => [],
       createOpportunity: async () => {
         callCount++;
         return makeOpportunity({ id: `opp-${callCount}`, status: 'pending' });
@@ -161,7 +161,7 @@ describe('persistOpportunities', () => {
     let atomicCalled = false;
 
     const database = {
-      findOverlappingOpportunities: async () => [existingOpp],
+      findOpportunitiesByActors: async () => [existingOpp],
       createOpportunity: async () => newOpp,
       updateOpportunityStatus: async (_id: string, _status: OpportunityStatus) => {},
       createOpportunityAndExpireIds: async (_data: CreateOpportunityData, expireIds: string[]) => {

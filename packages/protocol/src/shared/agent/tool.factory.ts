@@ -21,7 +21,7 @@ import {
   type ToolDeps,
   resolveChatContext,
 } from "./tool.helpers.js";
-import { error } from "./tool.helpers.js";
+import { error, redactSensitiveFields } from "./tool.helpers.js";
 import { createProfileTools } from "../../profile/profile.tools.js";
 import { createIntentTools } from "../../intent/intent.tools.js";
 import { createNetworkTools } from "../../network/network.tools.js";
@@ -71,6 +71,14 @@ export async function createChatTools(
       sessionId: deps.sessionId,
     }));
 
+  // Allow callers (e.g. MCP server, tests) to override the computed indexScope
+  // without going through a full re-resolve. The MCP path sets this via
+  // applyNetworkScopeToContext; ToolContext.indexScope provides the same override
+  // when no preResolvedContext is given.
+  if (!preResolvedContext && deps.indexScope !== undefined) {
+    resolvedContext.indexScope = deps.indexScope;
+  }
+
   // ─── Tool wrapper ──────────────────────────────────────────────────────────
   /**
    * Standardized tool factory. Auto-injects resolved context and
@@ -84,9 +92,9 @@ export async function createChatTools(
   }) {
     return tool(
       async (query: z.infer<T>) => {
-        logger.verbose(`Tool: ${opts.name}`, {
+        logger.info(`Tool: ${opts.name}`, {
           context: { userId: resolvedContext.userId, networkId: resolvedContext.networkId },
-          query,
+          query: redactSensitiveFields(query),
         });
         try {
           return await opts.handler({ context: resolvedContext, query });
@@ -137,17 +145,18 @@ export async function createChatTools(
   const intentNetworkGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
 
   // ─── Create context-bound databases ────────────────────────────────────────
-  // Get the user's network scope (all networks they have access to)
-  const networkScope = [...new Set([
-    ...resolvedContext.userNetworks.map((m) => m.networkId),
-    ...(resolvedContext.scopedIndex?.id ? [resolvedContext.scopedIndex.id] : []),
-  ])];
-
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
   // database used for graphs so that scope checks (e.g. ensureScopedMembership, opportunity
   // update) use the same adapter as the rest of the tool pipeline.
+  //
+  // The systemDb's DB-level clamp uses `resolvedContext.indexScope` — the same
+  // set tools see — so the JSDoc claim that indexScope is "the same set used
+  // to clamp the DB-level systemDb" holds for both the MCP path (where the
+  // MCP server already populated indexScope via applyNetworkScopeToContext)
+  // and the web-chat path (where resolveChatContext clamps to [bound, personal]
+  // when networkId is set).
   const userDb = deps.userDb ?? deps.createUserDatabase(database, resolvedContext.userId);
-  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, networkScope, embedder);
+  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, resolvedContext.indexScope, embedder);
 
   // ─── Assemble dependencies ─────────────────────────────────────────────────
   const cache = deps.cache;
@@ -173,6 +182,9 @@ export async function createChatTools(
     mintConnectLink: deps.mintConnectLink,
     frontendUrl: deps.frontendUrl,
     apiBaseUrl: deps.apiBaseUrl,
+    ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
+    ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
+    ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
     graphs: {
       profile: profileGraph,
       intent: intentGraph,

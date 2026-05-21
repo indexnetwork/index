@@ -76,6 +76,22 @@ The underlying scoped agent is reused across calls — no orphan agents accumula
 | `403` | Master key invalid; network is not an experiment network; network deleted. |
 | `500` | Internal error — retry with backoff. |
 
+### Idempotent re-check (without rotating the key)
+
+Calling `/signup` for an email that has already been provisioned **rotates that user's API key** (the previously-deployed key stops authenticating). If you need to verify a user is provisioned without disturbing them — retry logic, status dashboards, health probes — call `/signup/lookup` instead:
+
+```bash
+curl -X POST https://protocol.index.network/api/networks/<NETWORK_ID>/signup/lookup \
+  -H 'x-api-key: <MASTER_KEY>' \
+  -H 'content-type: application/json' \
+  -d '{ "email": "attendee@example.com" }'
+```
+
+- **200** — user is fully provisioned for this network. Response body is `{ "user": { "id": "...", "email": "..." } }`. No key is returned.
+- **409** — user is not fully provisioned. Fall through to `/signup` to provision.
+
+See `docs/specs/api-reference.md` (`POST /api/networks/:id/signup/lookup`) for the full contract.
+
 ---
 
 ## InstaClaw flow

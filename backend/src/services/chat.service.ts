@@ -1,9 +1,7 @@
 import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ChatGraphFactory, ChatTitleGenerator } from '@indexnetwork/protocol';
-import type { ChatGraphCompositeDatabase, Embedder, Scraper } from '@indexnetwork/protocol';
+import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { HumanMessage } from '@langchain/core/messages';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
@@ -35,32 +33,26 @@ function generateSnowflakeId(): string {
  */
 export class ChatSessionService {
   private graphDb: ChatGraphCompositeDatabase;
-  private embedder: Embedder;
-  private scraper: Scraper;
   private _factory: ChatGraphFactory | null = null;
 
   constructor(private db: ConversationDatabaseAdapter = conversationDatabaseAdapter) {
     // Initialize protocol adapters for graph processing
     this.graphDb = new ChatDatabaseAdapter();
-    this.embedder = new EmbedderAdapter();
-    this.scraper = new ScraperAdapter();
-    // Factory created lazily to avoid circular dependency: chat.graph imports this service.
+  }
+
+  /**
+   * Inject the ChatGraphFactory after construction.
+   * Must be called before any method that uses the factory (processMessage, getGraphFactory, etc.).
+   * Called by the composition root (mcp.controller.ts) during module initialization.
+   *
+   * @param factory - The ChatGraphFactory instance to use
+   */
+  setFactory(factory: ChatGraphFactory): void {
+    this._factory = factory;
   }
 
   private get factory(): ChatGraphFactory {
-    if (!this._factory) {
-      // Lazy import to avoid circular dependency (protocol-init imports this service).
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { createDefaultProtocolDeps } = require('../protocol-init');
-      const protocolDeps = createDefaultProtocolDeps();
-      const chatSessionReader = {
-        getSessionMessages: (sessionId: string, limit?: number) => this.getSessionMessages(sessionId, limit),
-        listSessions: (userId: string, limit?: number) => this.db.listChatSessionSummaries(userId, limit),
-        getSession: (userId: string, sessionId: string, messageLimit?: number) =>
-          this.db.getChatSessionDetail(userId, sessionId, messageLimit),
-      };
-      this._factory = new ChatGraphFactory(this.graphDb, this.embedder, this.scraper, chatSessionReader, protocolDeps);
-    }
+    if (!this._factory) throw new Error('ChatGraphFactory not initialized — call setFactory() before use');
     return this._factory;
   }
   /**

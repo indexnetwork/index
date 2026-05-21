@@ -174,7 +174,7 @@ export class ToolService {
       new HydeGenerator(),
     ).createGraph();
     // No-op dispatcher: ToolService is used for non-chat tool invocations.
-    // External agent yield is handled via the ProtocolDeps flow in tool.factory.ts and mcp.handler.ts.
+    // External agent yield is handled via the ProtocolDeps flow in tool.factory.ts and mcp.controller.ts.
     const noOpDispatcher: AgentDispatcher = {
       dispatch: async () => ({ handled: false, reason: 'no_agent' as const }),
       hasPersonalAgent: async () => false,

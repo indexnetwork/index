@@ -1,4 +1,5 @@
-import { Controller, Get } from '../lib/router/router.decorators';
+import { RateLimit } from '../guards/limiter.guard';
+import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
 import { log } from '../lib/log';
 
 import { UnsubscribeService } from '../services/unsubscribe.service';
@@ -22,6 +23,7 @@ export class UnsubscribeController {
    * @returns HTML response confirming unsubscribe or indicating not found
    */
   @Get('/:token')
+  @UseGuards(RateLimit('read'))
   async unsubscribe(_req: Request, _user: unknown, params?: Record<string, string>) {
     const token = params?.token;
     if (!token) {

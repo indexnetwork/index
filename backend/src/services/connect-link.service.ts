@@ -3,7 +3,7 @@ import { and, eq, gt } from 'drizzle-orm';
 import db from '../lib/drizzle/drizzle';
 import { connectLinks } from '../schemas/database.schema';
 
-export type ConnectLinkKind = 'connect' | 'approve_introduction' | 'outreach';
+export type ConnectLinkKind = 'connect' | 'approve_introduction' | 'outreach' | 'send_direct';
 
 const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const CODE_LENGTH = 10;
@@ -17,11 +17,24 @@ function generateCode(): string {
   return out;
 }
 
+/**
+ * Compose the short connect-link URL surfaced to chat clients.
+ *
+ * `?link_preview=false` is the rendering hint chat-gateway runtimes (e.g.
+ * OpenClaw's Telegram delivery) use to suppress the link-preview card.
+ * Pinning the suffix here lets the URL shape evolve in one place and lets
+ * tests assert the contract directly.
+ */
+export function buildConnectShortUrl(apiBaseUrl: string, code: string): string {
+  return `${apiBaseUrl}/c/${code}?link_preview=false`;
+}
+
 export interface MintArgs {
   userId: string;
   opportunityId: string;
   kind: ConnectLinkKind;
   greeting?: string | null;
+  preferredSurface?: 'telegram' | 'web' | null;
 }
 
 /**
@@ -38,6 +51,7 @@ export async function mintConnectLink({
   opportunityId,
   kind,
   greeting,
+  preferredSurface,
 }: MintArgs): Promise<{ code: string; greeting: string | null }> {
   const now = new Date();
 
@@ -64,13 +78,18 @@ export async function mintConnectLink({
   const expiresAt = new Date(now.getTime() + TTL_DAYS * 24 * 60 * 60 * 1000);
 
   if (existing) {
-    // Expired row — rotate code + greeting + expiresAt in place.
+    // Expired row — rotate code + greeting + preferredSurface + expiresAt in place.
     for (let attempt = 0; attempt < 3; attempt++) {
       const code = generateCode();
       try {
         const [row] = await db
           .update(connectLinks)
-          .set({ code, greeting: greeting ?? null, expiresAt })
+          .set({
+            code,
+            greeting: greeting ?? null,
+            preferredSurface: preferredSurface ?? null,
+            expiresAt,
+          })
           .where(
             and(
               eq(connectLinks.opportunityId, opportunityId),
@@ -94,7 +113,15 @@ export async function mintConnectLink({
     try {
       const [row] = await db
         .insert(connectLinks)
-        .values({ code, userId, opportunityId, kind, greeting: greeting ?? null, expiresAt })
+        .values({
+          code,
+          userId,
+          opportunityId,
+          kind,
+          greeting: greeting ?? null,
+          preferredSurface: preferredSurface ?? null,
+          expiresAt,
+        })
         .returning();
       return { code: row.code, greeting: row.greeting };
     } catch (err) {
@@ -125,6 +152,7 @@ export interface ResolvedLink {
   opportunityId: string;
   kind: ConnectLinkKind;
   greeting: string | null;
+  preferredSurface: 'telegram' | 'web' | null;
 }
 
 /**
@@ -146,6 +174,14 @@ export async function resolveConnectLink(code: string): Promise<ResolvedLink | n
     opportunityId: row.opportunityId,
     kind: row.kind as ConnectLinkKind,
     greeting: row.greeting,
+    // The DB column is unconstrained text — narrow defensively so any non-
+    // canonical value (a new surface added without normalization, a hand-edited
+    // row, a typo) collapses to null rather than silently passing through the
+    // type-cast and being interpreted later as `'telegram' | 'web'`.
+    preferredSurface:
+      row.preferredSurface === 'telegram' || row.preferredSurface === 'web'
+        ? row.preferredSurface
+        : null,
   };
 }
 

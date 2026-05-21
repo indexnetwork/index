@@ -234,7 +234,7 @@ describe('fetchPendingCandidates', () => {
 
   it('excludes opportunity already committed in delivery ledger', async () => {
     const opportunityId = await seedOpportunity([userId], 'pending');
-    await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
+    await svc.confirmOpportunityDelivery({ opportunityId, userId, agentId, trigger: 'ambient' });
     const results = await svc.fetchPendingCandidates(agentId);
     expect(results.opportunities).toEqual([]);
     expect(results.totalPending).toBe(0);
@@ -312,7 +312,7 @@ describe('fetchPendingCandidates', () => {
   });
 });
 
-describe('commitDelivery', () => {
+describe('confirmOpportunityDelivery', () => {
   let userId: string;
   let agentId: string;
   let opportunityId: string;
@@ -330,7 +330,7 @@ describe('commitDelivery', () => {
   });
 
   it('returns confirmed and inserts delivery row on first call', async () => {
-    const result = await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
+    const result = await svc.confirmOpportunityDelivery({ opportunityId, userId, agentId, trigger: 'ambient' });
     expect(result).toBe('confirmed');
 
     const rows = await db
@@ -343,14 +343,14 @@ describe('commitDelivery', () => {
   });
 
   it('returns already_delivered on second call', async () => {
-    await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
-    const result = await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
+    await svc.confirmOpportunityDelivery({ opportunityId, userId, agentId, trigger: 'ambient' });
+    const result = await svc.confirmOpportunityDelivery({ opportunityId, userId, agentId, trigger: 'ambient' });
     expect(result).toBe('already_delivered');
   });
 
   it('throws not_authorized when user is not an actor', async () => {
     const otherId = await seedUser();
-    await expect(svc.commitDelivery(opportunityId, otherId, agentId, 'ambient')).rejects.toThrow('not_authorized');
+    await expect(svc.confirmOpportunityDelivery({ opportunityId, userId: otherId, agentId, trigger: 'ambient' })).rejects.toThrow('not_authorized');
   });
 
   it('writes the supplied trigger value to the ledger', async () => {
@@ -358,7 +358,7 @@ describe('commitDelivery', () => {
     const agentId = await seedAgent(userId);
     const opportunityId = await seedOpportunity([userId], 'pending');
 
-    const result = await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
+    const result = await svc.confirmOpportunityDelivery({ opportunityId, userId, agentId, trigger: 'ambient' });
     expect(result).toBe('confirmed');
 
     const [row] = await db
@@ -391,9 +391,9 @@ describe('countDeliveriesSince', () => {
     const opp2 = await seedOpportunity([userId], 'pending');
     const opp3 = await seedOpportunity([userId], 'pending');
 
-    await svc.commitDelivery(opp1, userId, agentId, 'ambient');
-    await svc.commitDelivery(opp2, userId, agentId, 'ambient');
-    await svc.commitDelivery(opp3, userId, agentId, 'digest');
+    await svc.confirmOpportunityDelivery({ opportunityId: opp1, userId, agentId, trigger: 'ambient' });
+    await svc.confirmOpportunityDelivery({ opportunityId: opp2, userId, agentId, trigger: 'ambient' });
+    await svc.confirmOpportunityDelivery({ opportunityId: opp3, userId, agentId, trigger: 'digest' });
 
     const result = await svc.countDeliveriesSince(agentId, new Date(Date.now() - 60_000));
     expect(result).toEqual({ ambient: 2, digest: 1 });
@@ -410,7 +410,7 @@ describe('countDeliveriesSince', () => {
     const userId = await seedUser();
     const agentId = await seedAgent(userId);
     const opp = await seedOpportunity([userId], 'pending');
-    await svc.commitDelivery(opp, userId, agentId, 'ambient');
+    await svc.confirmOpportunityDelivery({ opportunityId: opp, userId, agentId, trigger: 'ambient' });
 
     const future = new Date(Date.now() + 60_000);
     const result = await svc.countDeliveriesSince(agentId, future);

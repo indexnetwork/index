@@ -64,12 +64,6 @@ export default function OpportunityDivider({ opportunities, defaultExpanded = fa
               {opp.personalizedSummary && (
                 <p className="mt-1 text-gray-500">{opp.personalizedSummary}</p>
               )}
-              <Link
-                to={`/opportunities/${opp.opportunityId}`}
-                className="inline-block mt-1.5 text-gray-500 hover:text-gray-800 underline"
-              >
-                View opportunity
-              </Link>
             </div>
           ))}
         </div>

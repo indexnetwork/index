@@ -68,6 +68,11 @@ import { persistOpportunities } from './opportunity.persist.js';
 import { INTRODUCER_DISCOVERY_SOURCE } from './opportunity.introducer.js';
 import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from "../negotiation/negotiation.graph.js";
 import { AMBIENT_PARK_WINDOW_MS } from "../negotiation/negotiation.tools.js";
+import {
+  buildDiscoverySummary,
+  toDiscoveryNegotiation,
+  type NegotiationResolution,
+} from "./negotiation-summary.builder.js";
 import type { NegotiationGraphLike } from "../negotiation/negotiation.state.js";
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { protocolLogger, withCallLogging } from '../shared/observability/protocol.logger.js';
@@ -1647,6 +1652,7 @@ export class OpportunityGraphFactory {
      *   timeout/turn_cap → 'stalled'
      * Status updates land in the DB; in-memory state.opportunities is not mutated.
      */
+    const NEGOTIATE_TIMER_SENTINEL = Symbol('negotiate-timer-sentinel');
     const negotiateNode = async (state: typeof OpportunityGraphState.State) => {
       if (!this.negotiationGraph) return {};
       if (!state.opportunities || state.opportunities.length === 0) return {};
@@ -1833,59 +1839,144 @@ export class OpportunityGraphFactory {
           candidateCount: candidates.length,
         });
 
-        // Orchestrator-only: per-candidate streaming hook. Each accepted
-        // negotiation flips the opp from 'pending' (negotiation finalize's
-        // default) to 'draft' (chat-only surface) and pushes an
+        // Per-candidate hook — always-on. Accumulates negotiation resolutions
+        // for discovery question generation. Additionally, for the orchestrator
+        // trigger: flips the opp from 'pending' to 'draft' and pushes an
         // `opportunity_draft_ready` event so the frontend can render it
         // inline as soon as it resolves, rather than waiting for the full
         // fan-out. Abort (e.g. user closed the chat) suppresses both the
         // status flip and the event — the in-flight negotiation finishes
         // naturally but its card never reaches the user.
-        const onCandidateResolved: OnNegotiationResolved | undefined = isOrchestrator
-          ? async ({ candidate, accepted }) => {
-              const abortSignal = requestContext.getStore()?.abortSignal;
-              if (abortSignal?.aborted) return;
-              if (!accepted || !candidate.opportunityId) return;
+        // Build a stable order index so that resolutions accumulated via the
+        // per-candidate async hook can be re-sorted to candidate-list order
+        // before being handed to buildQuestionPrompt. Without this the LLM
+        // sees negotiations in completion-time order (non-deterministic).
+        const candidateOrderById = new Map<string, number>();
+        candidates.forEach((c, i) => candidateOrderById.set(c.userId, i));
 
-              // Only emit after a successful status flip — the frontend keys
-              // cards off `opportunity.status === 'draft'`, so emitting a row
-              // with its pre-flip status would render inconsistently. If the
-              // flip fails we log and drop the event; the negotiation result
-              // is still captured in acceptedResults for the final summary.
-              const updated = await this.database
-                .updateOpportunityStatus(candidate.opportunityId, 'draft')
-                .catch((err) => {
-                  logger.warn('[Graph:Negotiate] failed to flip opp to draft; suppressing draft-ready event', {
-                    opportunityId: candidate.opportunityId,
-                    error: err,
-                  });
-                  return null;
-                });
-              if (!updated || abortSignal?.aborted) return;
+        const resolutions: Array<NegotiationResolution & { __order: number }> = [];
 
-              traceEmitter?.({
-                type: 'opportunity_draft_ready',
+        const onCandidateResolved: OnNegotiationResolved = async ({ candidate, accepted, turns, outcome }) => {
+          resolutions.push({
+            __order: candidateOrderById.get(candidate.userId) ?? Number.MAX_SAFE_INTEGER,
+            candidateUserId: candidate.userId,
+            counterpartyHint: (() => {
+              const bio = candidate.candidateUser.profile?.bio?.trim();
+              if (bio) return bio;
+              return (candidate.candidateUser.profile?.interests ?? []).join(", ");
+            })(),
+            indexContext: candidate.networkId
+              ? indexContextMap.get(candidate.networkId) ?? ""
+              : "",
+            turns,
+            outcome,
+          });
+
+          if (state.trigger !== 'orchestrator') return;
+          // ─── orchestrator streaming body ───
+          const abortSignal = requestContext.getStore()?.abortSignal;
+          if (abortSignal?.aborted) return;
+          if (!accepted || !candidate.opportunityId) return;
+
+          // Only emit after a successful status flip — the frontend keys
+          // cards off `opportunity.status === 'draft'`, so emitting a row
+          // with its pre-flip status would render inconsistently. If the
+          // flip fails we log and drop the event; the negotiation result
+          // is still captured in acceptedResults for the final summary.
+          const updated = await this.database
+            .updateOpportunityStatus(candidate.opportunityId, 'draft')
+            .catch((err) => {
+              logger.warn('[Graph:Negotiate] failed to flip opp to draft; suppressing draft-ready event', {
                 opportunityId: candidate.opportunityId,
-                opportunity: updated,
-                counterparty: {
-                  userId: candidate.candidateUser.id,
-                  ...(candidate.candidateUser.profile?.name
-                    ? { name: candidate.candidateUser.profile.name }
-                    : {}),
-                },
+                error: err,
               });
-            }
-          : undefined;
+              return null;
+            });
+          if (!updated || abortSignal?.aborted) return;
 
-        const acceptedResults = await negotiateCandidates(
+          traceEmitter?.({
+            type: 'opportunity_draft_ready',
+            opportunityId: candidate.opportunityId,
+            opportunity: updated,
+            counterparty: {
+              userId: candidate.candidateUser.id,
+              ...(candidate.candidateUser.profile?.name
+                ? { name: candidate.candidateUser.profile.name }
+                : {}),
+            },
+          });
+        };
+
+        const negotiationWork = negotiateCandidates(
           this.negotiationGraph, sourceUser, candidates,
           { networkId: '', prompt: '' }, // base context, overridden per-candidate below
           { maxTurns, traceEmitter: traceEmitter ?? undefined,
             indexContextOverrides: indexContextMap,
             timeoutMs,
             trigger: state.trigger === 'orchestrator' ? 'orchestrator' : 'ambient',
-            ...(onCandidateResolved && { onCandidateResolved }) },
+            onCandidateResolved },
         );
+
+        // MCP-only: race the whole negotiate phase against a budget. When the
+        // timer wins we return early with a `timed_out` trace; the unresolved
+        // promise keeps running in the Bun event loop and each candidate's
+        // finalize node updates its opp status in the DB. We deliberately do
+        // NOT await it, NOT abort it, and NOT mutate state.opportunities —
+        // the MCP tool handler refreshes statuses from the DB before
+        // responding. Bounded blast radius: at most ~20 s of background work
+        // per request; orphans heal via maintenance scripts or IND-279 when
+        // it lands.
+        const budgetMs = state.options.negotiateTimeoutMs;
+        let acceptedResults: Awaited<typeof negotiationWork>;
+        if (budgetMs !== undefined) {
+          let timerId: ReturnType<typeof setTimeout> | undefined;
+          const timerWork = new Promise<typeof NEGOTIATE_TIMER_SENTINEL>((resolve) => {
+            timerId = setTimeout(() => resolve(NEGOTIATE_TIMER_SENTINEL), budgetMs);
+          });
+          // try/finally ensures the timer is cleared on every exit path —
+          // sentinel-win, work-win, AND `negotiationWork` rejection. Without
+          // this, a rejected negotiation would leave the timer pending and
+          // keep the event loop alive until `budgetMs` elapses.
+          let raced: typeof NEGOTIATE_TIMER_SENTINEL | Awaited<typeof negotiationWork>;
+          try {
+            raced = await Promise.race([negotiationWork, timerWork]);
+          } finally {
+            if (timerId !== undefined) clearTimeout(timerId);
+          }
+          if (raced === NEGOTIATE_TIMER_SENTINEL) {
+            // Floating promise is intentional — see comment above.
+            void negotiationWork.catch((err) => {
+              logger.warn('[Graph:Negotiate] background negotiation failed after timer fired', { error: err });
+            });
+            logger.warn('[Graph:Negotiate] timed out — returning partial results to caller', {
+              discoveryUserId,
+              candidateCount: candidates.length,
+              negotiateTimeoutMs: budgetMs,
+            });
+            traceEmitter?.({ type: "graph_end", name: "Negotiation graph", durationMs: Date.now() - graphStart });
+            const orderedResolutionsPartial = [...resolutions]
+              .sort((a, b) => a.__order - b.__order)
+              .map(({ __order: _o, ...r }) => r as NegotiationResolution);
+            const discoveryNegotiationsPartial = orderedResolutionsPartial.map(toDiscoveryNegotiation);
+            const discoverySummaryPartial = buildDiscoverySummary(orderedResolutionsPartial);
+            return {
+              trace: [{
+                node: 'negotiate',
+                detail: 'timed_out',
+                data: {
+                  negotiateTimeoutMs: budgetMs,
+                  candidateCount: candidates.length,
+                  durationMs: Date.now() - graphStart,
+                },
+              }],
+              discoveryNegotiations: discoveryNegotiationsPartial,
+              discoverySummary: discoverySummaryPartial,
+            };
+          }
+          acceptedResults = raced;
+        } else {
+          acceptedResults = await negotiationWork;
+        }
 
         // No filtering: every candidate's outcome (accept/reject/stalled) was applied to its
         // opportunity row by the negotiation graph's finalize node via the opportunityId we
@@ -1928,7 +2019,16 @@ export class OpportunityGraphFactory {
         ];
 
         traceEmitter?.({ type: "graph_end", name: "Negotiation graph", durationMs: Date.now() - graphStart });
-        return { trace: negotiateTrace };
+        const orderedResolutions = [...resolutions]
+          .sort((a, b) => a.__order - b.__order)
+          .map(({ __order: _o, ...r }) => r as NegotiationResolution);
+        const discoveryNegotiations = orderedResolutions.map(toDiscoveryNegotiation);
+        const discoverySummary = buildDiscoverySummary(orderedResolutions);
+        return {
+          trace: negotiateTrace,
+          discoveryNegotiations,
+          discoverySummary,
+        };
       } catch (err) {
         logger.error("[Graph:Negotiate] Negotiation stage failed", { error: err });
         traceEmitter?.({ type: "graph_end", name: "Negotiation graph", durationMs: Date.now() - graphStart });
@@ -1938,6 +2038,8 @@ export class OpportunityGraphFactory {
             detail: 'Negotiation failed',
             data: { durationMs: Date.now() - graphStart, error: true },
           }],
+          discoveryNegotiations: [],
+          discoverySummary: buildDiscoverySummary([]),
         };
       }
     };
@@ -2268,14 +2370,14 @@ export class OpportunityGraphFactory {
             const lookups = await Promise.all(
               [...uniqueCounterparts].map(async (counterpartyUserId) => {
                 const accepted = await this.database
-                  .getAcceptedOpportunitiesBetweenActors(dedupUserId, counterpartyUserId)
+                  .findOpportunitiesByActors([dedupUserId, counterpartyUserId], { includeIntroducers: true, statuses: ['accepted'] })
                   .catch((err: unknown) => {
-                    logger.warn('[Graph:Persist] getAcceptedOpportunitiesBetweenActors failed', {
+                    logger.warn('[Graph:Persist] findOpportunitiesByActors (sibling-accept) failed', {
                       userId: dedupUserId,
                       counterpartyUserId,
                       error: err,
                     });
-                    return [] as Awaited<ReturnType<typeof this.database.getAcceptedOpportunitiesBetweenActors>>;
+                    return [] as Awaited<ReturnType<typeof this.database.findOpportunitiesByActors>>;
                   });
                 return accepted.map((opp: { id: string }) => ({ opportunityId: opp.id, counterpartyUserId }));
               }),
@@ -2369,7 +2471,7 @@ export class OpportunityGraphFactory {
 
               const candidateUserId = evaluated.actors.find((a) => a.userId !== state.onBehalfOfUserId)?.userId;
               const overlapping = candidateUserId
-                ? await this.database.findOverlappingOpportunities(
+                ? await this.database.findOpportunitiesByActors(
                     [state.onBehalfOfUserId as Id<'users'>, candidateUserId as Id<'users'>],
                     { excludeStatuses: DEDUP_SKIP_STATUSES },
                   )
@@ -2496,12 +2598,12 @@ export class OpportunityGraphFactory {
                 evaluatedActors: evaluated.actors.map(a => ({ userId: a.userId, role: a.role })),
               });
               const overlapping = candidateUserId
-                ? await this.database.findOverlappingOpportunities(
+                ? await this.database.findOpportunitiesByActors(
                     [state.userId as Id<'users'>, candidateUserId as Id<'users'>],
                     { excludeStatuses: DEDUP_SKIP_STATUSES },
                   )
                 : [];
-              logger.verbose('[Graph:Persist:Dedup] findOverlappingOpportunities result', {
+              logger.verbose('[Graph:Persist:Dedup] findOpportunitiesByActors result', {
                 count: overlapping.length,
                 results: overlapping.map(o => ({ id: o.id, status: o.status, actors: o.actors?.map((a: OpportunityActor) => ({ userId: a.userId, role: a.role })) })),
               });
@@ -2801,6 +2903,10 @@ export class OpportunityGraphFactory {
 
     /**
      * Update Node: Change opportunity status (accept, reject, etc.).
+     * For 'accepted', enforces the self-accept guard: the caller's actor entry
+     * must not already have `actedAt` set — i.e. the caller has not yet been
+     * the one to advance this opportunity's state. Stamps `actedAt` on accept
+     * atomically with the status change via `stampOpportunityActorAction`.
      */
     const updateNode = async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.update", async () => {
@@ -2822,9 +2928,20 @@ export class OpportunityGraphFactory {
           if (!opp) {
             return { mutationResult: { success: false, error: 'Opportunity not found.' } };
           }
-          const isActor = opp.actors.some((a: OpportunityActor) => a.userId === state.userId);
-          if (!isActor) {
+          const callerActor = opp.actors.find((a: OpportunityActor) => a.userId === state.userId);
+          if (!callerActor) {
             return { mutationResult: { success: false, error: 'You are not part of this opportunity.' } };
+          }
+
+          // Self-accept guard: only applies to the 'accepted' transition. Reject/expire
+          // remain available to all actors regardless of prior actedAt.
+          if (state.newStatus === 'accepted' && callerActor.actedAt) {
+            return {
+              mutationResult: {
+                success: false,
+                error: 'You have already acted on this opportunity. The other party must accept.',
+              },
+            };
           }
 
           let conversationId: string | undefined;
@@ -2838,11 +2955,21 @@ export class OpportunityGraphFactory {
             }
           }
 
-          await this.database.updateOpportunityStatus(
-            state.opportunityId,
-            state.newStatus as 'accepted' | 'rejected' | 'expired',
-            state.newStatus === 'accepted' ? state.userId : undefined,
-          );
+          if (state.newStatus === 'accepted') {
+            await this.database.stampOpportunityActorAction(
+              state.opportunityId,
+              state.userId,
+              'accepted',
+              state.userId,
+            );
+          } else {
+            // Reject/expire do not stamp actedAt on the caller; they are
+            // terminal flips, not commit signals. Keep the legacy path.
+            await this.database.updateOpportunityStatus(
+              state.opportunityId,
+              state.newStatus as 'rejected' | 'expired',
+            );
+          }
 
           return {
             mutationResult: {
@@ -2941,7 +3068,11 @@ export class OpportunityGraphFactory {
             return { mutationResult: { success: false, error: 'You cannot send this opportunity.' } };
           }
 
-          await this.database.updateOpportunityStatus(state.opportunityId, 'pending');
+          await this.database.stampOpportunityActorAction(
+            state.opportunityId,
+            state.userId,
+            'pending',
+          );
 
           // Notify only the role that becomes visible at the next tier
           let recipients: OpportunityActor[];

@@ -17,6 +17,10 @@ import type { ContactServiceAdapter } from "../interfaces/contact.interface.js";
 import type { ProfileEnricher } from "../interfaces/enrichment.interface.js";
 import type { IntentGraphQueue } from "../interfaces/queue.interface.js";
 import type { ChatSessionReader } from "../interfaces/chat-session.interface.js";
+import type { ChatSummaryReader } from "../interfaces/chat-summary.interface.js";
+import type { ChatMessageWriter } from "../interfaces/chat-message-writer.interface.js";
+import type { QuestionGeneratorReader } from "../interfaces/question-generator.interface.js";
+import type { NegotiationSummaryReader } from "../interfaces/negotiation-summary.interface.js";
 import type { Embedder } from "../interfaces/embedder.interface.js";
 import type { AgentDatabase } from "../interfaces/agent.interface.js";
 import type { NegotiationTimeoutQueue } from "../interfaces/negotiation-events.interface.js";
@@ -53,11 +57,19 @@ export interface ResolvedToolContext {
   indexName?: string;
   /** True when chat is index-scoped and the user owns the index. */
   isOwner?: boolean;
-
   // Rich identity context for prompt/tool orchestration (profile omits embedding to keep context lean).
   user: UserRecord;
   userProfile: ProfileContext;
   userNetworks: NetworkMembership[];
+  /**
+   * The set of index IDs this caller can reach in the current request.
+   * For unscoped chats: every index the user is a member of.
+   * For network-scoped agents: `[boundNetwork, personalIndex]`.
+   * This is the same set used to clamp the DB-level systemDb.
+   * Tools that filter intents/profiles default to this set; `networkId` is
+   * the "primary focus" hint, not a read filter.
+   */
+  indexScope: string[];
   scopedIndex?: {
     id: string;
     title: string;
@@ -74,6 +86,14 @@ export interface ResolvedToolContext {
   isMcp?: boolean;
   /** Agent ID when the request originates from an API key linked to an agent. */
   agentId?: string;
+  /**
+   * Receiver's rendering surface declared by the MCP client via the
+   * `x-index-surface` request header. `'telegram'` means the MCP response is
+   * being rendered inside a Telegram chat (today, only EdgeClaw); anything
+   * else (including `undefined`) is treated as web. Forwarded into
+   * `mintConnectLink` so the click-time redirect can branch.
+   */
+  clientSurface?: 'telegram' | 'web';
 }
 
 /**
@@ -95,6 +115,18 @@ export interface ToolContext {
   scraper: Scraper;
   /** When set, chat is scoped to this index; tools use it as default for read_intents and create_intent. */
   networkId?: string;
+  /**
+   * Optional override of the resolved `indexScope`. `resolveChatContext` always
+   * computes `indexScope` from the user's memberships (clamped to [bound,
+   * personal] when `networkId` is set). When the caller has already computed
+   * a clamped scope — notably the MCP server, which clamps via
+   * `applyNetworkScopeToContext` for network-scoped agents — passing it on
+   * `ToolContext.indexScope` causes `createChatTools` (in tool.factory.ts) to
+   * override `resolvedContext.indexScope` with this value rather than the
+   * freshly computed one. See ResolvedToolContext.indexScope for the
+   * resolved-side semantics.
+   */
+  indexScope?: string[];
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
   sessionId?: string;
 
@@ -111,6 +143,14 @@ export interface ToolContext {
   contactService: ContactServiceAdapter;
   /** Chat session reader for loading conversation history. */
   chatSession: ChatSessionReader;
+  /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
+  chatSummary?: ChatSummaryReader;
+  /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
+  chatMessageWriter?: ChatMessageWriter;
+  /** Decision-question generator. Optional; consumers fall back to no `questions`. */
+  questionGenerator?: QuestionGeneratorReader;
+  /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
+  negotiationSummary?: NegotiationSummaryReader;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
   /** Database adapter for negotiation/conversation operations. */
@@ -257,6 +297,17 @@ export async function resolveChatContext(params: {
   const userEmail = user.email ?? "";
   const hasName = !!user.name?.trim();
 
+  // When scoped to an index, clamp the caller's reach to [scopedIndex, personalIndex]
+  // so the chat's data model matches its "focus" semantic: a chat scoped to a
+  // community sees that community plus the user's personal index, not their
+  // other unrelated memberships. Mirrors the MCP path's clamp for network-scoped
+  // agents (see applyNetworkScopeToContext / computeAgentIndexScope).
+  const indexScope = networkId
+    ? userNetworks
+        .filter((m) => m.networkId === networkId || m.isPersonal === true)
+        .map((m) => m.networkId)
+    : userNetworks.map((m) => m.networkId);
+
   return {
     userId,
     userName,
@@ -267,6 +318,7 @@ export async function resolveChatContext(params: {
     user,
     userProfile,
     userNetworks,
+    indexScope,
     scopedIndex,
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
@@ -341,6 +393,14 @@ export interface ToolDeps {
   negotiationDatabase: NegotiationDatabase;
   /** Chat session reader for exposing the caller's past conversations as MCP tools. */
   chatSession?: ChatSessionReader;
+  /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
+  chatSummary?: ChatSummaryReader;
+  /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
+  chatMessageWriter?: ChatMessageWriter;
+  /** Decision-question generator. Optional; consumers fall back to no `questions`. */
+  questionGenerator?: QuestionGeneratorReader;
+  /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
+  negotiationSummary?: NegotiationSummaryReader;
   /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
   negotiationTimeoutQueue?: NegotiationTimeoutQueue;
   /** Agent registry database adapter (optional — absent when host does not support agents). */

@@ -26,19 +26,18 @@ export default tseslint.config(
     plugins: { boundaries },
     settings: {
       "boundaries/elements": [
-        { type: "init", pattern: "src/controllers/mcp.handler.ts", mode: "file" },
+        { type: "init", pattern: "src/controllers/mcp.controller.ts", mode: "file" },
         { type: "controllers", pattern: "src/controllers/*", mode: "file" },
         { type: "services", pattern: "src/services/*", mode: "file" },
         { type: "adapters", pattern: "src/adapters/*", mode: "file" },
         { type: "protocol", pattern: "src/lib/protocol/**/*", mode: "file" },
-        { type: "queues", pattern: "src/queues/*", mode: "file" },
+        { type: "queues", pattern: "src/queues/**/*", mode: "file" },
         { type: "events", pattern: "src/events/*", mode: "file" },
         { type: "guards", pattern: "src/guards/*", mode: "file" },
         { type: "schemas", pattern: "src/schemas/*", mode: "file" },
         { type: "types", pattern: "src/types/*", mode: "file" },
         { type: "main", pattern: "src/main.ts", mode: "file" },
         { type: "cli", pattern: "src/cli/**/*", mode: "file" },
-        { type: "init", pattern: "src/protocol-init.ts", mode: "file" },
       ],
       "boundaries/ignore": [
         "src/**/*.spec.ts",
@@ -138,7 +137,7 @@ export default tseslint.config(
               from: { type: "types" },
               allow: { to: { type: ["types"] } },
             },
-            // protocol-init.ts and mcp.handler.ts (composition root / init layer) → everything
+            // mcp.controller.ts (composition root / init layer) → everything
             {
               from: { type: "init" },
               allow: {
@@ -198,6 +197,27 @@ export default tseslint.config(
                   ],
                 },
               },
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // ── Prevent adapters from importing @indexnetwork/protocol ──────────
+  // Test files in src/adapters/tests/ are exempt — they import protocol types
+  // intentionally to verify structural alignment of adapter local types.
+  {
+    files: ["src/adapters/**/*.ts"],
+    ignores: ["src/adapters/tests/**", "src/adapters/**/*.spec.ts", "src/adapters/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@indexnetwork/protocol", "@indexnetwork/protocol/*"],
+              message:
+                "Adapters must not import from @indexnetwork/protocol. Define aligned types locally — structural compatibility is verified at the composition root (mcp.controller.ts) via TypeScript duck typing.",
             },
           ],
         },

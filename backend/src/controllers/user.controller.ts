@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Controller, Delete, Get, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
+import { RateLimit } from '../guards/limiter.guard';
 import { userService } from '../services/user.service';
 import { contactService } from '../services/contact.service';
 import { TaskService } from '../services/task.service';
@@ -29,7 +30,7 @@ export class UserController {
   ) {}
 
   @Get('/batch')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getBatch(req: Request, _user: AuthenticatedUser) {
     const url = new URL(req.url);
     const idsParam = url.searchParams.get('ids') ?? '';
@@ -64,7 +65,7 @@ export class UserController {
    * @returns JSON `{ result }` with the import outcome, or 400 if email is invalid
    */
   @Post('/contacts')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async addContact(req: Request, user: AuthenticatedUser) {
     const parsed = AddContactBodySchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -83,7 +84,7 @@ export class UserController {
    * @returns JSON `{ success: true }` or 404 if not found
    */
   @Delete('/contacts/:contactId')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async removeContact(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await contactService.removeContact(user.id, params.contactId);
@@ -105,7 +106,7 @@ export class UserController {
    * @returns 201 with negotiation summary, or 409 if negotiations already exist
    */
   @Post('/:userId/negotiations')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async triggerNegotiation(_req: Request, viewer: AuthenticatedUser, params: { userId: string }) {
     if (viewer.id === params.userId) {
       return Response.json({ error: 'Cannot negotiate with yourself' }, { status: 400 });
@@ -210,7 +211,7 @@ export class UserController {
    * @returns JSON with negotiations array
    */
   @Get('/:userId/negotiations')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getNegotiations(req: Request, viewer: AuthenticatedUser, params: { userId: string }) {
     const url = new URL(req.url);
     const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 1), 50);
@@ -314,7 +315,7 @@ export class UserController {
    * @returns JSON with insights object containing a summary string
    */
   @Get('/:userId/negotiations/insights')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getNegotiationInsights(_req: Request, viewer: AuthenticatedUser, params: { userId: string }) {
     if (viewer.id !== params.userId) {
       return Response.json({ error: 'Insights are only available for your own negotiations' }, { status: 403 });
@@ -433,7 +434,7 @@ export class UserController {
    * @returns Updated user or validation error
    */
   @Put('/me/key')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async updateKey(req: Request, user: AuthenticatedUser) {
     let body: { key?: string };
     try {
@@ -455,8 +456,8 @@ export class UserController {
   }
 
   @Get('/:userId')
-  @UseGuards(AuthGuard)
-  async getUser(_req: Request, _user: AuthenticatedUser, params: { userId: string }) {
+  @UseGuards(RateLimit('read'))
+  async getUser(_req: Request, _user: unknown, params: { userId: string }) {
     logger.verbose('Get user requested', { userId: params.userId });
     const user = await userService.findByIdOrKey(params.userId);
     if (!user) {

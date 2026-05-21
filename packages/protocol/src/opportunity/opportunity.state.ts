@@ -4,6 +4,7 @@ import type { OpportunityStatus, Opportunity } from '../shared/interfaces/databa
 import type { Lens } from '../shared/interfaces/embedder.interface.js';
 import type { EvaluatorEntity } from './opportunity.evaluator.js';
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
+import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
@@ -156,6 +157,15 @@ export interface OpportunityGraphOptions {
   existingOpportunities?: string;
   /** Chat session ID for draft opportunities; stored as context.conversationId for visibility filtering. */
   conversationId?: string;
+  /**
+   * MCP-only: cap the negotiate-phase wall-clock at this many milliseconds.
+   * When set, `negotiateNode` races `negotiateCandidates(...)` against a timer;
+   * if the timer wins, the node returns early with a `timed_out` trace and the
+   * unawaited negotiation chains finalize each opp's DB status in the
+   * background. Set to 20_000 by the MCP `discover_opportunities` handler.
+   * Chat, ambient queue, and all other callers omit this — existing behavior.
+   */
+  negotiateTimeoutMs?: number;
 }
 
 /**
@@ -463,5 +473,25 @@ export const OpportunityGraphState = Annotation.Root({
   agentTimings: Annotation<DebugMetaAgent[]>({
     reducer: (acc, val) => [...acc, ...val],
     default: () => [],
+  }),
+
+  /**
+   * Per-candidate negotiation records captured by `negotiateNode`. Populated
+   * regardless of accept/reject so the question generator sees a complete
+   * picture. Populated for ALL triggers (ambient + orchestrator) since the
+   * negotiate node's `onCandidateResolved` hook is unconditional; only the
+   * orchestrator streaming side-effects (opportunity_draft_ready emission)
+   * are trigger-gated. Empty when the negotiate node was skipped (no
+   * opportunities to negotiate).
+   */
+  discoveryNegotiations: Annotation<DiscoveryNegotiation[]>({
+    reducer: (curr, next) => [...curr, ...(next || [])],
+    default: () => [],
+  }),
+
+  /** Aggregate counters across `discoveryNegotiations`. Built in the negotiate node. */
+  discoverySummary: Annotation<DiscoverySummary | null>({
+    reducer: (_curr, next) => next ?? null,
+    default: () => null,
   }),
 });

@@ -4,6 +4,7 @@ import { Readable } from 'stream';
 import { v4 as uuidv4 } from 'uuid';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { StorageService } from '../services/storage.service';
 import { fileService } from '../services/file.service';
@@ -101,7 +102,7 @@ export class StorageController {
    * POST /api/storage/files
    */
   @Post('/files')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async uploadFile(req: Request, user: AuthenticatedUser): Promise<Response | object> {
     let parsed: ParsedFile;
     try {
@@ -162,7 +163,7 @@ export class StorageController {
    * GET /api/storage/files
    */
   @Get('/files')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async listFiles(req: Request, user: AuthenticatedUser): Promise<object> {
     const url = new URL(req.url);
     const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
@@ -187,7 +188,7 @@ export class StorageController {
    * GET /api/storage/files/:id
    */
   @Get('/files/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async downloadFile(
     _req: Request,
     user: AuthenticatedUser,
@@ -228,7 +229,7 @@ export class StorageController {
    * DELETE /api/storage/files/:id
    */
   @Delete('/files/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async deleteFile(
     _req: Request,
     user: AuthenticatedUser,
@@ -250,7 +251,7 @@ export class StorageController {
    * POST /api/storage/avatars
    */
   @Post('/avatars')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async uploadAvatar(req: Request, user: AuthenticatedUser): Promise<Response | object> {
     let parsed: ParsedFile;
     try {
@@ -291,6 +292,7 @@ export class StorageController {
    * GET /api/storage/avatars/:userId/:filename
    */
   @Get('/avatars/:userId/:filename')
+  @UseGuards(RateLimit('read'))
   async serveAvatar(
     _req: Request,
     _user: unknown,
@@ -309,7 +311,7 @@ export class StorageController {
    * POST /api/storage/index-images
    */
   @Post('/index-images')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async uploadIndexImage(req: Request, user: AuthenticatedUser): Promise<Response | object> {
     let parsed: ParsedFile;
     try {
@@ -350,6 +352,7 @@ export class StorageController {
    * GET /api/storage/index-images/:userId/:filename
    */
   @Get('/index-images/:userId/:filename')
+  @UseGuards(RateLimit('read'))
   async serveIndexImage(
     _req: Request,
     _user: unknown,

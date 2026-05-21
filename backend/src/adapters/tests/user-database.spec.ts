@@ -154,7 +154,6 @@ function createMockDb(): ChatDatabaseAdapter {
     getOpportunitiesForUser: mock(() => Promise.resolve([])),
     getOpportunity: mock(() => Promise.resolve(null)),
     updateOpportunityStatus: mock(() => Promise.resolve(null)),
-    getAcceptedOpportunitiesBetweenActors: mock(() => Promise.resolve([])),
     acceptSiblingOpportunities: mock(() => Promise.resolve([])),
 
     // HyDE
@@ -517,11 +516,6 @@ describe('createUserDatabase', () => {
     it('updateOpportunityStatus throws for latent opportunity hidden by visibility rules', async () => {
       (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(latentWithIntroducer);
       await expect(userDb.updateOpportunityStatus('opp-3', 'accepted' as never)).rejects.toThrow('Access denied');
-    });
-
-    it('getAcceptedOpportunitiesBetweenActors delegates with authUserId', async () => {
-      await userDb.getAcceptedOpportunitiesBetweenActors(OTHER_USER);
-      expect(mockDb.getAcceptedOpportunitiesBetweenActors).toHaveBeenCalledWith(AUTH_USER, OTHER_USER);
     });
 
     it('acceptSiblingOpportunities delegates with authUserId', async () => {

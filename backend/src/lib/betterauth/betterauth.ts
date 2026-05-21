@@ -3,11 +3,14 @@ import { magicLink, bearer, jwt, mcp } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
 
 import { log } from "../log";
+import { resolveClassConfig } from "../limiter/config";
 
 const logger = log.server.from("betterauth");
 
 export const BASE_URL =
   process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+
+export const JWT_AUDIENCE = BASE_URL;
 
 export const APP_URL =
   process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
@@ -22,6 +25,17 @@ export interface AuthDbContract {
 }
 
 /**
+ * Better Auth's `secondaryStorage` contract — a generic KV used by the
+ * library for rate-limit counters (when `rateLimit.storage` is set to
+ * `'secondary-storage'`) and for any other secondary-storage needs.
+ */
+export interface AuthSecondaryStorage {
+  get(key: string): Promise<string | null | undefined>;
+  set(key: string, value: string, ttl?: number): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+/**
  * Dependencies injected into the Better Auth factory.
  * Keeps this lib module free of direct adapter/infrastructure imports.
  */
@@ -29,6 +43,12 @@ export interface AuthDeps {
   authDb: AuthDbContract;
   getTrustedOrigins: (req?: Request) => Promise<string[]> | string[];
   sendMagicLinkEmail: (email: string, url: string) => Promise<void>;
+  /**
+   * Backing store for Better Auth's rate-limit counters. When omitted (no
+   * Redis configured), Better Auth falls back to its built-in in-memory
+   * rate limiter — suitable for local dev, not for multi-instance prod.
+   */
+  secondaryStorage?: AuthSecondaryStorage;
 }
 
 /**
@@ -43,7 +63,11 @@ export interface AuthDeps {
  * as a dev-only fallback for email/password signups.
  */
 export function createAuth(deps: AuthDeps) {
-  const { authDb, getTrustedOrigins, sendMagicLinkEmail } = deps;
+  const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage } = deps;
+
+  // Snapshot auth_write config once so all customRules entries use a consistent
+  // value (resolveClassConfig reads env vars on every call).
+  const authWrite = resolveClassConfig("auth_write");
 
   return betterAuth({
     baseURL: BASE_URL,
@@ -78,6 +102,37 @@ export function createAuth(deps: AuthDeps) {
       },
     },
     basePath: "/api/auth",
+    /**
+     * Backing store for Better Auth's rate-limit counters. Injected via
+     * AuthDeps so this lib module stays free of direct adapter imports.
+     *
+     * Better Auth v1.6+ resolves `rateLimit.storage = 'secondary-storage'`
+     * against this top-level object (Pattern B in the rate-limiter plan).
+     */
+    secondaryStorage,
+    session: {
+      /**
+       * Keep sessions in Postgres even when secondaryStorage is configured.
+       * Without this, Better Auth silently migrates sessions to Redis on first
+       * restart, logging out every existing user.
+       */
+      storeSessionInDatabase: true,
+    },
+    rateLimit: {
+      enabled: true,
+      // Route through secondaryStorage only when one was injected; otherwise
+      // Better Auth uses its built-in in-memory limiter (fine for local dev,
+      // not multi-instance safe).
+      ...(secondaryStorage ? { storage: "secondary-storage" as const } : {}),
+      customRules: {
+        "/sign-in/email":      { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/sign-up/email":      { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/sign-in/magic-link": { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/forget-password":    { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/reset-password":     { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/verify-email":       { window: authWrite.windowSec, max: authWrite.perMinute },
+      },
+    },
     emailAndPassword: { enabled: process.env.NODE_ENV !== 'production' },
     user: {
       fields: {
@@ -106,6 +161,7 @@ export function createAuth(deps: AuthDeps) {
       jwt({
         jwt: {
           issuer: BASE_URL,
+          audience: JWT_AUDIENCE,
           expirationTime: "1h",
           definePayload: ({ user }) => ({
             id: user.id,

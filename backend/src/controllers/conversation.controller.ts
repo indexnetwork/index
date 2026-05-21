@@ -1,4 +1,5 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
 import { ConversationService } from '../services/conversation.service';
 import { TaskService } from '../services/task.service';
@@ -27,7 +28,7 @@ export class ConversationController {
    * @returns JSON with conversations array
    */
   @Get('')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async listConversations(_req: Request, user: AuthenticatedUser) {
     try {
       const conversations = await this.conversationService.getConversations(user.id);
@@ -43,7 +44,7 @@ export class ConversationController {
    * GET /conversations/negotiations — list A2A negotiation conversations for the authenticated user.
    */
   @Get('/negotiations')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async listNegotiations(_req: Request, user: AuthenticatedUser) {
     try {
       const conversations = await this.conversationService.getAgentConversations(user.id);
@@ -63,7 +64,7 @@ export class ConversationController {
    * @returns JSON with created conversation
    */
   @Post('')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async createConversation(req: Request, user: AuthenticatedUser) {
     let body: { participants?: { participantId: string; participantType: 'user' | 'agent' }[] };
     try {
@@ -106,7 +107,7 @@ export class ConversationController {
    * @returns JSON with messages array
    */
   @Get('/:id/messages')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getMessages(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -147,7 +148,7 @@ export class ConversationController {
    * @returns JSON with created message
    */
   @Post('/:id/messages')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async sendMessage(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -194,7 +195,7 @@ export class ConversationController {
    * @returns JSON with conversation
    */
   @Post('/dm')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async getOrCreateDM(req: Request, user: AuthenticatedUser) {
     let body: { peerUserId?: string };
     try {
@@ -227,7 +228,7 @@ export class ConversationController {
    * @returns JSON with success status
    */
   @Patch('/:id/metadata')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async updateMetadata(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -274,7 +275,7 @@ export class ConversationController {
    * @returns JSON with success status
    */
   @Delete('/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async hideConversation(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -310,7 +311,7 @@ export class ConversationController {
    * @returns JSON with tasks array
    */
   @Get('/:id/tasks')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async listTasks(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     if (!rawId) {
@@ -347,7 +348,7 @@ export class ConversationController {
    * @returns JSON with task, or 404 if not found
    */
   @Get('/:id/tasks/:taskId')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getTask(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     const taskId = params?.taskId;
@@ -388,7 +389,7 @@ export class ConversationController {
    * @returns JSON with artifacts array
    */
   @Get('/:id/tasks/:taskId/artifacts')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getArtifacts(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const rawId = params?.id;
     const taskId = params?.taskId;
@@ -425,7 +426,7 @@ export class ConversationController {
    * @returns SSE event stream
    */
   @Get('/stream')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async stream(_req: Request, user: AuthenticatedUser) {
     const encoder = new TextEncoder();
     const { onMessage, cleanup } = this.conversationService.subscribe(user.id);

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { apikeys, users } from '../schemas/database.schema';
+import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 
 export interface AuthenticatedUser {
   id: string;
@@ -11,7 +12,7 @@ export interface AuthenticatedUser {
 }
 
 const JWKS = createRemoteJWKSet(
-  new URL(`http://localhost:${process.env.PORT || 3001}/api/auth/jwks`)
+  new URL('/api/auth/jwks', BASE_URL)
 );
 
 /**
@@ -28,7 +29,7 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
     throw new Error('Access token required');
   }
   try {
-    const { payload } = await jwtVerify(token, JWKS);
+    const { payload } = await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
     return {
       id: payload.id as string,
       email: (payload.email as string) ?? null,

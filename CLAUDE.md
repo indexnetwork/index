@@ -176,6 +176,23 @@ git subtree pull --squash --prefix=packages/edgeclaw https://github.com/indexnet
 gh repo sync indexnetwork/edgeclaw --source Edge-City/edgeclaw --branch main --force
 ```
 
+#### packages/edgeclaw/skills/ → indexnetwork/edgeclaw-skills (fork of Edge-City/edgeclaw-skills)
+
+The `edgeclaw-skills` multi-skill registry — sibling repo to `edgeclaw`, mounted at `edgeclaw/skills/` as a nested subtree upstream-side. Each subfolder is one skill (`edge-esmeralda/`, `index-network/`, future `geo/`). In our monorepo this path is a nested subtree: `packages/edgeclaw/` mirrors `Edge-City/edgeclaw`, and inside that, `packages/edgeclaw/skills/` separately mirrors `Edge-City/edgeclaw-skills` via the `indexnetwork/edgeclaw-skills` fork (same fork pattern used for edgeclaw because `Edge-City` is a different organization).
+
+Auto-refresh: a CI workflow inside the upstream skills repo (`.github/workflows/index-references.yml`) re-runs the `edge-esmeralda` indexer every 15 minutes and commits the regenerated `edge-esmeralda/references/` content. Those commits propagate through the nested subtree chain — fork sync pulls them into `Edge-City/edgeclaw-skills`, the parent edgeclaw subtree-pull picks them up at `edgeclaw/skills/`, and our monorepo sync pulls them down at `packages/edgeclaw/skills/`.
+
+```bash
+# Manual push if the workflow failed (sync monorepo skills/ into the fork)
+git subtree push --prefix=packages/edgeclaw/skills https://github.com/indexnetwork/edgeclaw-skills.git <branch>
+
+# Manual pull from the fork (if it has changes the monorepo hasn't picked up)
+git subtree pull --squash --prefix=packages/edgeclaw/skills https://github.com/indexnetwork/edgeclaw-skills.git main
+
+# Force-sync the fork from Edge-City (e.g. after an upstream merge or a CI auto-commit)
+gh repo sync indexnetwork/edgeclaw-skills --source Edge-City/edgeclaw-skills --branch main --force
+```
+
 ### Root
 
 ```bash
@@ -249,7 +266,7 @@ Strict layering: **Controllers -> Services -> Adapters**. Dependencies always po
 
 1. **Controllers** import **services** (or protocol graph factories). Must not import adapters.
 2. **Services** import **adapters** for data access. Must not import other services -- use events, queues, or shared lib for cross-service orchestration.
-3. **Protocol layer** (`@indexnetwork/protocol`) is fully self-contained — zero imports from the app. Receives adapters via **constructor injection** through interfaces. The **composition root** (`src/protocol-init.ts`) wires concrete adapters via `createDefaultProtocolDeps()`.
+3. **Protocol layer** (`@indexnetwork/protocol`) is fully self-contained — zero imports from the app. Receives adapters via **constructor injection** through interfaces. The **composition root** (`src/controllers/mcp.controller.ts`) assembles `ProtocolDeps` inline and injects `ChatGraphFactory` into `ChatSessionService` at startup via `setFactory()`.
 4. **Adapters** must not import from `@indexnetwork/protocol` interfaces — they define their own aligned types.
 
 ### Template Files
@@ -306,6 +323,18 @@ Negotiation-specific events (`negotiation_session_start/end`, `negotiation_turn`
 ### OpenRouter Configuration
 
 Model settings centralized in `packages/protocol/src/shared/agent/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental). Use `configureProtocol({ apiKey, chatModel, ... })` to inject config programmatically.
+
+### Rate Limiting
+
+The protocol applies per-route-class limits via the `RateLimit(class)` guard from `src/guards/limiter.guard.ts`. Three classes:
+
+- `read` — all `GET` routes (default 120/min)
+- `write` — all `POST/PUT/PATCH/DELETE` routes (default 60/min)
+- `auth_write` — credential-mutation endpoints on `/api/auth/*` (default 10/min); enforced by Better Auth's own `rateLimit` block
+
+Buckets are keyed per identifier: verified JWT user (signature-checked) or client IP for everything else. Unverified credentials (raw API keys, session cookies) deliberately do NOT get their own buckets — that would let a client rotate values per request to evade IP throttling. Apply via `@UseGuards(RateLimit('read'), AuthOrApiKeyGuard)` — `RateLimit` must be FIRST so it short-circuits before any DB work. Agent-poller endpoints (`POST /agents/:id/negotiations/pickup`, `GET /agents/:id/opportunities/pending`, `GET /agents/:id/opportunities/accepted`) intentionally omit the guard. Storage is Redis (shared across Bun instances) when either `REDIS_URL` or `REDIS_HOST` is set; otherwise the limiter uses an in-memory fallback (single-process, dev only — not multi-instance safe). Set `LIMITER_DISABLE=1` to disable as an incident escape hatch.
+
+See `docs/superpowers/specs/2026-05-21-protocol-rate-limiting-design.md` for the full design.
 
 ## Environment Setup
 

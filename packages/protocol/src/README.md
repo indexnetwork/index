@@ -69,7 +69,7 @@ packages/protocol/src/
 | Contact Inviter | `contact/contact.inviter.ts` | Invite flow — generates personalized invite messages |
 | Negotiation Proposer | `negotiation/negotiation.proposer.ts` | Negotiation graph — drafts negotiation proposals |
 | Negotiation Responder | `negotiation/negotiation.responder.ts` | Negotiation graph — evaluates and responds to proposals |
-| Negotiation Insights Generator | `negotiation/negotiation.insights.generator.ts` | Negotiation graph — synthesizes negotiation session insights |
+| Negotiation Insights Generator | `negotiation/insight.generator.ts` | Negotiation graph — synthesizes negotiation session insights |
 
 ## Tools (Chat)
 

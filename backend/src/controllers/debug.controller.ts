@@ -23,6 +23,7 @@ import { debugService } from '../services/debug.service';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { DebugGuard } from '../guards/debug.guard';
+import { RateLimit } from '../guards/limiter.guard';
 
 type RouteParams = Record<string, string>;
 
@@ -49,7 +50,7 @@ export class DebugController {
    * @returns Diagnostic JSON payload
    */
   @Get('/intents/:id')
-  @UseGuards(DebugGuard, AuthGuard)
+  @UseGuards(RateLimit('read'), DebugGuard, AuthGuard)
   async getIntentDebug(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const intentId = params?.id;
     if (!intentId) {
@@ -223,7 +224,7 @@ export class DebugController {
    * @returns Diagnostic JSON payload for the user's home view
    */
   @Get('/home')
-  @UseGuards(DebugGuard, AuthGuard)
+  @UseGuards(RateLimit('read'), DebugGuard, AuthGuard)
   async getHomeDebug(_req: Request, user: AuthenticatedUser) {
     logger.verbose('Home debug request', { userId: user.id });
 
@@ -453,7 +454,7 @@ export class DebugController {
    * @returns Full discovery trace with candidates, evaluation, and persist results
    */
   @Post('/intents/:id/discover')
-  @UseGuards(DebugGuard, AuthGuard)
+  @UseGuards(RateLimit('write'), DebugGuard, AuthGuard)
   async runIntentDiscoveryDebug(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const intentId = params?.id;
     if (!intentId) {
@@ -518,7 +519,7 @@ export class DebugController {
    * @returns Diagnostic JSON payload for the chat session
    */
   @Get('/chat/:id')
-  @UseGuards(DebugGuard, AuthGuard)
+  @UseGuards(RateLimit('read'), DebugGuard, AuthGuard)
   async getChatDebug(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const sessionId = params?.id;
     if (!sessionId) {

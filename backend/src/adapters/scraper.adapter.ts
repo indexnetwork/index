@@ -116,3 +116,8 @@ export class ScraperAdapter {
     return extractUrlContent(url, options);
   }
 }
+
+/**
+ * Singleton instance of ScraperAdapter used throughout the protocol stack.
+ */
+export const scraperAdapter = new ScraperAdapter();

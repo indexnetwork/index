@@ -1,7 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
+import { experimentImportCredentialsTemplate } from '../lib/email/templates/experiment-import-credentials.template';
+import { executeSendEmail } from '../lib/email/transport.helper';
 import { buildMcpServerConfig } from '../lib/mcp/mcp-config';
 import * as schema from '../schemas/database.schema';
 
@@ -19,12 +21,29 @@ import { networkInvitationService } from './network-invitation.service';
 
 const logger = log.service.from('experiment');
 
+/**
+ * Thrown by {@link ExperimentService.lookupSignup} when the (network, email)
+ * pair is not in a fully-provisioned state. The controller maps it to HTTP 409.
+ */
+export class SignupNotCompleteError extends Error {
+  constructor() {
+    super('User has not completed signup for this network');
+    this.name = 'SignupNotCompleteError';
+  }
+}
+
 export interface ImportRow {
   email: string;
   name?: string;
   bio?: string;
   location?: string;
   socials: { label: string; value: string }[];
+}
+
+export interface ImportCredential {
+  email: string;
+  name?: string;
+  apiKey: string;
 }
 
 export interface SignupPayload {
@@ -85,15 +104,71 @@ class ExperimentService {
     };
   }
 
-  async importMembers(networkId: string, rows: ImportRow[]): Promise<{ imported: number; skipped: number }> {
+  /**
+   * Read-only check that `(networkId, email)` is fully provisioned. Does NOT
+   * create, update, or rotate anything. Used by the headless signup-lookup
+   * endpoint so integrators can verify state without invalidating a deployed key.
+   *
+   * @throws SignupNotCompleteError when the user is missing/soft-deleted, has
+   *         no live membership in the network, or has no live scoped agent for it.
+   */
+  async lookupSignup(
+    networkId: string,
+    email: string,
+  ): Promise<{ user: { id: string; email: string } }> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const [user] = await db
+      .select({ id: schema.users.id, email: schema.users.email })
+      .from(schema.users)
+      .where(and(sql`lower(${schema.users.email}) = ${normalizedEmail}`, isNull(schema.users.deletedAt)))
+      .limit(1);
+    if (!user) throw new SignupNotCompleteError();
+
+    const [membership] = await db
+      .select({ userId: schema.networkMembers.userId })
+      .from(schema.networkMembers)
+      .where(and(
+        eq(schema.networkMembers.networkId, networkId),
+        eq(schema.networkMembers.userId, user.id),
+        isNull(schema.networkMembers.deletedAt),
+      ))
+      .limit(1);
+    if (!membership) throw new SignupNotCompleteError();
+
+    const agentId = await networkInvitationService.findScopedAgentId(user.id, networkId);
+    if (!agentId) throw new SignupNotCompleteError();
+
+    return { user };
+  }
+
+  async importMembers(
+    networkId: string,
+    rows: ImportRow[],
+  ): Promise<{ imported: number; skipped: number; ownersNotified: number }> {
     let imported = 0;
     let skipped = 0;
+    const credentials: ImportCredential[] = [];
 
+    // Headless path: ensureMembership rotates the api key and emits no per-user
+    // email. After the loop, a single summary email is sent to the network's
+    // owner(s) with all minted keys as an inline CSV — the experimental-network
+    // policy bypasses per-user invitation emails entirely.
     for (const row of rows) {
       try {
         const email = row.email.toLowerCase().trim();
-        const result = await networkInvitationService.invite({ networkId, email, name: row.name });
+        const result = await networkInvitationService.ensureMembership({
+          networkId,
+          email,
+          name: row.name,
+          rotateKey: true,
+        });
         await this.applyProfilePatch(result.user.id, row);
+        credentials.push({
+          email: result.user.email,
+          name: row.name,
+          apiKey: result.apiKey!,
+        });
         imported++;
       } catch (err) {
         logger.warn('[ExperimentService] Import row failed', { email: row.email, error: err });
@@ -101,8 +176,72 @@ class ExperimentService {
       }
     }
 
-    logger.info('[ExperimentService] Import complete', { networkId, imported, skipped });
-    return { imported, skipped };
+    const ownersNotified = credentials.length > 0
+      ? await this.dispatchOwnerCredentialsEmail(networkId, credentials)
+      : 0;
+
+    logger.info('[ExperimentService] Import complete', { networkId, imported, skipped, ownersNotified });
+    return { imported, skipped, ownersNotified };
+  }
+
+  /**
+   * Looks up every owner of the network and sends them a single email
+   * containing every minted credential as an inline CSV. Returns the number
+   * of owners that received the message. Failures are logged and swallowed
+   * — provisioning has already succeeded and the import call must not roll
+   * back because the notification failed.
+   */
+  private async dispatchOwnerCredentialsEmail(
+    networkId: string,
+    credentials: ImportCredential[],
+  ): Promise<number> {
+    const [network] = await db
+      .select({ title: schema.networks.title })
+      .from(schema.networks)
+      .where(eq(schema.networks.id, networkId))
+      .limit(1);
+    if (!network) {
+      logger.warn('[ExperimentService] Owner email skipped: network not found', { networkId });
+      return 0;
+    }
+
+    const owners = await db
+      .select({ email: schema.users.email })
+      .from(schema.networkMembers)
+      .innerJoin(schema.users, eq(schema.users.id, schema.networkMembers.userId))
+      .where(and(
+        eq(schema.networkMembers.networkId, networkId),
+        sql`'owner' = ANY(${schema.networkMembers.permissions})`,
+        isNull(schema.users.deletedAt),
+      ));
+
+    const recipients = owners.map(o => o.email).filter(Boolean);
+    if (recipients.length === 0) {
+      logger.warn('[ExperimentService] Owner email skipped: no owners with email', { networkId });
+      return 0;
+    }
+
+    const rendered = experimentImportCredentialsTemplate({
+      networkName: network.title,
+      credentials,
+    });
+
+    try {
+      await executeSendEmail({
+        to: recipients,
+        subject: rendered.subject,
+        html: rendered.html,
+        text: rendered.text,
+      });
+      return recipients.length;
+    } catch (err) {
+      logger.error('[ExperimentService] Owner credentials email failed', {
+        networkId,
+        recipients: recipients.length,
+        error: err,
+      });
+      return 0;
+    }
   }
 
   /**

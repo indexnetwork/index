@@ -83,7 +83,7 @@ The protocol backend enforces strict layering to maintain separation of concerns
 +------------------------------------------------------------------+
 ```
 
-The **protocol layer** (`packages/protocol/src/`) sits alongside services. It contains LangGraph graphs, AI agents, tools, state definitions, and interfaces. It is fully self-contained — zero imports from parent directories (adapters, services, queues, schemas). All infrastructure dependencies are received via constructor injection through interfaces defined in `packages/protocol/src/interfaces/`. The **composition root** (`src/protocol-init.ts`) wires concrete adapters to these interfaces via `createDefaultProtocolDeps()`.
+The **protocol layer** (`packages/protocol/src/`) sits alongside services. It contains LangGraph graphs, AI agents, tools, state definitions, and interfaces. It is fully self-contained — zero imports from parent directories (adapters, services, queues, schemas). All infrastructure dependencies are received via constructor injection through interfaces defined in `packages/protocol/src/interfaces/`. The **composition root** (`src/controllers/mcp.controller.ts`) assembles `ProtocolDeps` inline and injects `ChatGraphFactory` into `ChatSessionService` at startup.
 
 ### Layer Responsibilities
 
@@ -265,7 +265,9 @@ Every tool and negotiation endpoint checks the caller's `agent_permissions` for 
 `agent_permissions.scope` accepts `'global' | 'node' | 'network'`. A network-scoped permission row — `scope='network', scopeId=<networkId>` — restricts the agent to a single network. Two enforcement layers:
 
 - **HTTP**: `backend/src/guards/agent-scope.guard.ts` exposes `resolveAgentNetworkScope(req)`, `assertAgentNetworkScope(req, networkId)`, and `withAgentScope(req, user)`. Network/intent/opportunity controllers assert on writes that take a path-param networkId, and filter list endpoints via `withAgentScope`. Mismatches throw `ScopeViolationError`, mapped to HTTP 403 in `main.ts`.
-- **MCP**: the auth resolver also returns `networkScopeId`. `computeAgentIndexScope` (in `packages/protocol/src/mcp/mcp.server.ts`) clamps `indexScope` to `[networkScopeId, personalIndex]` before constructing per-request scoped DBs, so every downstream tool call is bounded.
+- **MCP**: the auth resolver also returns `networkScopeId`. `applyNetworkScopeToContext` (in `packages/protocol/src/mcp/mcp.server.ts`) clamps `ResolvedToolContext.indexScope` to `[networkScopeId, personalIndex]`, and the per-request `systemDb` is constructed from that same set, so every downstream tool call is bounded at both the prompt-visible scope and the DB-level scope check.
+- **Chat tools (shared)**: the same `[scopedNetwork, personalIndex]` clamp applies on the web-chat path via `resolveChatContext({ networkId })` — so an MCP-scoped agent and a web-scoped chat see the same data perimeter. `createChatTools` constructs `systemDb` from `resolvedContext.indexScope`, keeping the prompt-advertised reach and the DB-level clamp consistent.
+- **DB (opportunity reads)**: `OpportunityDatabaseAdapter.getOpportunitiesForUser` requires the requesting user's *own* actor entry to be anchored on the bound network — `EXISTS actor WHERE userId=$1 AND networkId=$2`, not two independent `actors @>` checks. `update_opportunity` mirrors the rule. `actors[].networkId` is the source of truth for scope; the `opportunity.context.networkId` denormalization is no longer consulted by security-relevant filters.
 
 The primary use case is bulk experiment-network onboarding: `networkInvitationService.invite({ networkId, email })` provisions user + network-scoped agent + API key + invitation email. Possession of the email account *is* the user's verification — there is no separate `users.experimentNetworkId` column anymore.
 
@@ -396,9 +398,9 @@ These are assigned concrete handlers in `main.ts`. For example, `onCreated` enqu
 
 ```typescript
 IntentEvents.onCreated = (intentId: string, userId: string) => {
-  opportunityQueue.addJob(
+  fromIntentQueue.addJob(
     { intentId, userId },
-    { priority: 10, jobId: `rediscovery:${userId}:${intentId}:...` },
+    { priority: 10, jobId: `rediscovery-${userId}-${intentId}-...` },
   );
 };
 ```
@@ -433,13 +435,16 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | Queue | Purpose |
 |-------|---------|
 | `intent.queue` | Intent indexing and generation jobs |
-| `opportunity.queue` | Matching intents with opportunities, cron-based rediscovery |
+| `opportunity/from-intent` | BullMQ queue: intent-triggered opportunity discovery |
+| `opportunity/from-introducer` | BullMQ queue: introducer-triggered opportunity discovery |
+| `opportunity/expiration` | **node-cron task** (not a BullMQ queue — does not appear in Bull-Board): scans and expires stale opportunities on a schedule |
+| `negotiations/run-existing` | BullMQ queue: enqueue bilateral negotiation for an existing opportunity (e.g. after introducer approval) |
+| `negotiations/timeout` | BullMQ queue: AI fallback when personal agent lacks heartbeat |
+| `negotiations/claim-timeout` | BullMQ queue: expire stale claims stuck in `claimed` state |
 | `profile.queue` | User profile generation and HyDE document creation |
 | `hyde.queue` | HyDE document generation and cron-based refresh |
 | `email.queue` | Email delivery via Resend |
 | `notification.queue` | Notification delivery |
-| `negotiation-timeout` | Triggers the AI fallback agent when a personal agent does not respond to a parked negotiation turn within its timeout window |
-| `negotiation-claim-timeout` | Expires a stale claim (task stuck in `claimed`) and returns the turn to `waiting_for_agent` |
 
 ### Job Patterns
 
@@ -625,7 +630,7 @@ IntentEvents.onCreated(intentId, userId)
   |
   |  Enqueues job
   v
-opportunityQueue.addJob({intentId, userId})
+fromIntentQueue.addJob({intentId, userId})
   |
   |  Worker picks up job
   v

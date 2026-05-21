@@ -13,7 +13,6 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
 import { selectByComposition } from "./opportunity.utils.js";
-import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
@@ -33,10 +32,13 @@ const logger = protocolLogger("ChatTools:Opportunity");
  *   link is the only MCP path to approve.
  * - `outreach` — accepted opp where viewer is a non-introducer party.
  *   Clicking opens the existing chat (no state change).
- *
- * Callers that pass `viewerApproved: undefined` for a fresh draft (e.g.
- * `discover_opportunities` paths that just inserted the row with approved=false)
- * get `approve_introduction` — the default matches the just-created state.
+ * - `send_direct` — draft or latent opp where viewer is a non-introducer
+ *   party. Issued by `discover_opportunities` in direct (no-introducer)
+ *   mode: the match has already passed evaluation, the row exists in
+ *   draft state, and the sender just needs to release it. Clicking flips
+ *   the opp straight to accepted and opens the chat with a greeting —
+ *   same handler path as `connect`. The counterpart's side sees the new
+ *   accepted opp and can engage or ignore.
  */
 export function resolveActionableLinkKind(input: {
   status: string;
@@ -52,42 +54,34 @@ export function resolveActionableLinkKind(input: {
     return isIntroducer ? null : "connect";
   }
   if (status === "draft" || status === "latent") {
-    if (!isIntroducer) return null;
+    if (!isIntroducer) return "send_direct";
     return viewerApproved === true ? null : "approve_introduction";
   }
   return null;
 }
 
 /**
- * Build the agent-facing profile link for a counterpart. Telegram DM if a
- * public handle is on file, otherwise the web profile URL. Returns `undefined`
- * only if no fallback is possible (no Telegram AND no frontendUrl configured).
+ * Build the agent-facing profile link for a counterpart — always the Index web
+ * profile URL with `?link_preview=false`. Returns `undefined` only if
+ * `frontendUrl` is not configured.
  *
- * Telegram handles are validated via `normalizeTelegramHandle` — values that
- * look like URLs (e.g. `"t.me/alice?evil=1"`), contain special characters, or
- * are shorter than 5 chars are treated as invalid and fall through to the web
- * profile URL rather than producing a malformed `t.me` link.
+ * The `?link_preview=false` hint is honored by chat-gateway runtimes (e.g.
+ * OpenClaw's Telegram delivery) that strip link previews when present in the
+ * URL; consistent placement matters more than Telegram's own handling.
  *
  * Trailing slashes on frontendUrl are stripped before concatenation.
  */
 export function buildProfileUrl(
-  counterpartUser:
+  _counterpartUser:
     | { socials?: Array<{ label?: string | null; value?: string | null }> | null }
     | null
     | undefined,
   counterpartUserId: string,
   frontendUrl: string | undefined,
 ): string | undefined {
-  const telegramSocial = counterpartUser?.socials?.find(
-    (s) => s.label?.toLowerCase() === "telegram",
-  );
-  const telegramHandle = normalizeTelegramHandle(telegramSocial?.value);
-  if (telegramHandle) return `https://t.me/${telegramHandle}`;
-  if (frontendUrl) {
-    const base = frontendUrl.replace(/\/+$/, "");
-    return `${base}/u/${counterpartUserId}?link_preview=false`;
-  }
-  return undefined;
+  if (!frontendUrl) return undefined;
+  const base = frontendUrl.replace(/\/+$/, "");
+  return `${base}/u/${counterpartUserId}?link_preview=false`;
 }
 
 /**
@@ -114,12 +108,30 @@ export async function attachActionableLinks(
     counterpartUserId: string;
     mintConnectLink: NonNullable<ToolDeps["mintConnectLink"]>;
     frontendUrl: string | undefined;
+    preferredSurface?: 'telegram' | 'web';
   },
 ): Promise<void> {
+  // profileUrl is independent of whether the (status, viewerRole) combination
+  // is actionable — every counterpart has a profile page worth linking to,
+  // even on a fresh draft where there is no acceptUrl yet. Setting it before
+  // the early-return below means cards from non-actionable combinations
+  // (e.g. draft + party in `discover_opportunities` direct mode) still carry
+  // the profile link the agent needs to render. Without this, the agent gets
+  // a name with no URL attached and tends to fabricate one.
+  const profileUrl = buildProfileUrl(opts.counterpartUser, opts.counterpartUserId, opts.frontendUrl);
+  if (profileUrl) card.profileUrl = profileUrl;
+
   const kind = resolveActionableLinkKind({
     status: card.status,
     viewerRole: card.viewerRole,
     viewerApproved: opts.viewerApproved,
+  });
+  logger.info("Opportunity actionability decision", {
+    opportunityId: card.opportunityId,
+    status: card.status,
+    viewerRole: card.viewerRole,
+    viewerApproved: opts.viewerApproved,
+    kind: kind ?? "none",
   });
   if (kind === null) return;
 
@@ -129,14 +141,13 @@ export async function attachActionableLinks(
       opportunityId: card.opportunityId,
       kind,
       greeting: null,
+      preferredSurface: opts.preferredSurface,
     });
     card.acceptUrl = url;
     card.feedCategory = card.viewerRole === "introducer" ? "connector-flow" : "connection";
-    const profileUrl = buildProfileUrl(opts.counterpartUser, opts.counterpartUserId, opts.frontendUrl);
-    if (profileUrl) card.profileUrl = profileUrl;
   } catch (err) {
     logger.warn(
-      "Failed to mint MCP opportunity link — surfacing card without acceptUrl/profileUrl",
+      "Failed to mint MCP opportunity link — surfacing card without acceptUrl/feedCategory; profileUrl is still attached",
       {
         opportunityId: card.opportunityId,
         kind,
@@ -149,11 +160,14 @@ export async function attachActionableLinks(
 /**
  * Statuses for which `update_opportunity` must refuse mutations.
  * - `accepted` / `rejected` / `expired`: terminal outcomes.
+ * - `negotiating`: in-flight system-driven turn; user-driven mutations would
+ *   race the negotiation graph. The graph itself transitions out of this state.
  */
 const UPDATE_OPPORTUNITY_BLOCKED_STATUSES = new Set<OpportunityStatus>([
   "accepted",
   "rejected",
   "expired",
+  "negotiating",
 ]);
 
 /**
@@ -413,7 +427,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       continueFrom: z
         .string()
         .optional()
-        .describe("Pagination token: pass the discoveryId from a previous discover_opportunities result to evaluate the next batch of candidates. Do not combine with other mode parameters."),
+        .describe("Pagination token: pass the discoveryId from a previous discover_opportunities result to evaluate the next batch of candidates. Do not combine with searchQuery or other mode parameters — when a fresh searchQuery is also present, the server ignores continueFrom and runs a fresh discovery."),
       searchQuery: z
         .string()
         .optional()
@@ -421,7 +435,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       networkId: z
         .string()
         .optional()
-        .describe("Index UUID to scope discovery to a specific community. Get from read_networks. Defaults to the scoped index in index-scoped chats. Pass the personal index ID (from read_networks, isPersonal=true) to scope to the user's contacts only."),
+        .describe("Index UUID to scope discovery to a specific community. Get from read_networks. In an index-scoped chat, omitting this runs discovery across the full reachable scope (the bound community plus the user's personal index); pass an explicit networkId to force single-index discovery. Pass the personal index ID (from read_networks, isPersonal=true) to scope to the user's contacts only."),
       intentId: z
         .string()
         .optional()
@@ -498,11 +512,30 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
-      const effectiveIndexId =
-        (context.networkId || query.networkId?.trim()) ?? undefined;
+      // Distinguish an explicit `query.networkId` override (caller wants discovery
+      // scoped to one specific index) from an implicit scoped-chat context
+      // (caller is in a scoped chat with no explicit override — discovery should
+      // span the chat's reach, i.e. context.indexScope = [bound, personal]).
+      // Conflating them via `context.networkId || query.networkId` made the
+      // implicit branch unreachable.
+      const explicitIndexId = query.networkId?.trim() || undefined;
+      const effectiveIndexId = explicitIndexId;
 
-      // ── Continuation mode ── (must take strict precedence — it's a pagination token)
-      if (query.continueFrom) {
+      // ── Continuation mode ──
+      // `continueFrom` is a pagination token for resuming a prior discovery's
+      // cached candidates. When a caller (typically an MCP client's LLM) sends
+      // a fresh `searchQuery` alongside a stale `continueFrom`, treat it as a
+      // fresh search — the explicit search intent wins. Resuming against the
+      // stale session's exhausted cache silently produced the "No more
+      // matching opportunities found in the remaining candidates" response
+      // for users who expected fresh results (IND-305).
+      if (query.continueFrom && query.searchQuery?.trim()) {
+        logger.warn("discover_opportunities: dropping stale continueFrom in favor of fresh searchQuery", {
+          userId: context.userId,
+          continueFrom: query.continueFrom,
+        });
+      }
+      if (query.continueFrom && !query.searchQuery?.trim()) {
         const _continueTraceEmitter = requestContext.getStore()?.traceEmitter;
         const _graphStart = Date.now();
         _continueTraceEmitter?.({ type: "graph_start", name: "opportunity" });
@@ -759,6 +792,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             counterpartUserId: firstPartyId,
             mintConnectLink: deps.mintConnectLink,
             frontendUrl: deps.frontendUrl,
+            preferredSurface: context.clientSurface,
           });
         }
 
@@ -812,8 +846,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         }
         indexScope = [effectiveIndexId];
       } else if (context.networkId) {
-        // When scoped but no explicit networkId, use the scoped index
-        indexScope = [context.networkId];
+        // Scoped chat: use the agent's full reach so personal-index
+        // signals participate in opportunity discovery. See IND-306.
+        indexScope = context.indexScope.length > 0
+          ? [...context.indexScope]
+          : [context.networkId];
       } else {
         // No scope - use all indexes (only in unscoped chat)
         const _scopeGraphStart = Date.now();
@@ -853,7 +890,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // each accepted draft streams via traceEmitter, and the persist step
       // surfaces already-accepted pairs. Other callers (maintenance, queue
       // workers) still get the 'ambient' default.
-      const runDiscoveryOrchestrator = !!context.sessionId;
+      // Orchestrator trigger fires for both web chat (has sessionId) and MCP
+      // (isMcp=true, no sessionId). Both are user-initiated discovery that
+      // should persist as `negotiating` and flip to `draft` post-finalize via
+      // onCandidateResolved. Ambient/cron paths leave both falsy and use the
+      // `pending` default.
+      const runDiscoveryOrchestrator = !!context.sessionId || !!context.isMcp;
       const result = await runDiscoverFromQuery({
         opportunityGraph: graphs.opportunity,
         database,
@@ -867,8 +909,31 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         targetUserId: query.targetUserId?.trim() || undefined,
         onBehalfOfUserId: query.introTargetUserId?.trim() || undefined,
         cache,
+        // MCP-only: cap the negotiate phase at 20 s so Railway's edge proxy
+        // (which 502s the client at ~57 s) never beats the response. The
+        // remainder finalizes in the background and is fetched on the
+        // user's next list_opportunities call. Removable when IND-274
+        // (negotiation conversation continuation) lands.
+        ...(context.isMcp ? { negotiateTimeoutMs: 20_000 } : {}),
         ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
         ...(runDiscoveryOrchestrator && { trigger: 'orchestrator' as const }),
+        ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
+        ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
+        ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
+        // Decision questions add an LLM call after the negotiation phase.
+        // Capped at DISCOVERY_QUESTIONS_TIMEOUT_MS (12 s default,
+        // env-overridable; see opportunity.discover.ts). Aborted calls return
+        // no questions but the rest of the discovery payload still ships.
+        // For chat sessions, questions are rendered by the frontend via
+        // streamed events (Slice 4). For MCP, they drive a sequential
+        // elicitation/create flow (Slice 5) — the MCP tool handler awaits the
+        // elicitations before returning the tool result. The per-negotiation
+        // summarizer is similarly capped at NEGOTIATION_SUMMARY_TIMEOUT_MS
+        // (5 s default per negotiation). Master switch remains
+        // ENABLE_DISCOVERY_QUESTIONS.
+        enableQuestions:
+          process.env.ENABLE_DISCOVERY_QUESTIONS === "true" &&
+          (!!context.sessionId || !!context.isMcp),
       });
       const _discoverGraphMs = Date.now() - _discoverGraphStart;
       _discoverTraceEmitter?.({ type: "graph_end", name: "opportunity", durationMs: _discoverGraphMs });
@@ -907,6 +972,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           ...(result.pagination ? { pagination: result.pagination } : {}),
           debugSteps: allDebugSteps,
           _graphTimings: _allGraphTimings,
+          ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+          ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         });
       }
 
@@ -919,6 +986,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           ...(result.pagination ? { pagination: result.pagination } : {}),
           debugSteps: allDebugSteps,
           _graphTimings: _allGraphTimings,
+          ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+          ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         });
       }
 
@@ -937,11 +1006,69 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           summary: "No new matches (existing connections only)",
           debugSteps: allDebugSteps,
           _graphTimings: _allGraphTimings,
+          ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+          ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         });
       }
 
+      // MCP-only: refresh persisted opp statuses from the DB. The graph captures
+      // state.opportunities at persist time, but the negotiate phase mutates each
+      // opp's DB row independently. Without this refresh we'd render persist-time
+      // 'negotiating' as if it were 'draft'. Also drops rejected/stalled — they
+      // are not actionable post-negotiation. Existing-connection cards (cards
+      // whose opportunityId is in result.existingConnections) are preserved as-is
+      // per opportunity.discover.ts's EXISTING_CONNECTION_CARD_STATUSES contract.
+      const existingConnectionIds = new Set(
+        (result.existingConnections ?? [])
+          .map((c) => c.opportunityId)
+          .filter((id): id is string => typeof id === 'string'),
+      );
+      const candidatesArr = result.opportunities ?? [];
+      let negotiatingCount = 0;
+      let cards = candidatesArr;
+      if (context.isMcp && candidatesArr.length > 0) {
+        const newlyCreatedIds = candidatesArr
+          .filter((c) => !existingConnectionIds.has(c.opportunityId))
+          .map((c) => c.opportunityId);
+        const refreshed = newlyCreatedIds.length > 0
+          ? await database.getOpportunitiesByIds(newlyCreatedIds)
+          : [];
+        const statusById = new Map<string, OpportunityStatus>(
+          refreshed.map((o) => [o.id, o.status]),
+        );
+
+        const draftCards: typeof candidatesArr = [];
+        for (const card of candidatesArr) {
+          if (existingConnectionIds.has(card.opportunityId)) {
+            // Re-surfaced opp from a prior run — keep with its discover-time status.
+            draftCards.push(card);
+            continue;
+          }
+          const refreshedStatus = statusById.get(card.opportunityId);
+          if (refreshedStatus === 'draft') {
+            draftCards.push({ ...card, status: refreshedStatus });
+            continue;
+          }
+          if (refreshedStatus === 'negotiating') {
+            negotiatingCount += 1;
+            continue;
+          }
+          if (refreshedStatus === 'rejected' || refreshedStatus === 'stalled') {
+            continue; // drop
+          }
+          // 'pending' / 'latent' / unknown — not expected post-IND-287. Treat as
+          // negotiating (count only) and log so we can spot wiring regressions.
+          logger.warn('[discover_opportunities] unexpected refreshed status — counting as negotiating', {
+            opportunityId: card.opportunityId,
+            refreshedStatus,
+          });
+          negotiatingCount += 1;
+        }
+        cards = draftCards;
+      }
+
       // Build card data; cap at CHAT_DISPLAY_LIMIT (remaining feeds into pagination)
-      const allCardData = (result.opportunities ?? []).map((opp) => ({
+      const allCardData = cards.map((opp) => ({
         opportunityId: opp.opportunityId,
         userId: opp.userId,
         name: opp.name,
@@ -969,7 +1096,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const mintConnectLink = deps.mintConnectLink;
         await Promise.all(
           displayedCards.map(async (card, idx) => {
-            const source = result.opportunities?.[idx];
+            const source = cards[idx];
             await attachActionableLinks(card as Record<string, unknown> & {
               opportunityId: string;
               viewerRole: string;
@@ -981,6 +1108,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               counterpartUserId: source?.userId ?? card.userId,
               mintConnectLink,
               frontendUrl: deps.frontendUrl,
+              preferredSurface: context.clientSurface,
             });
           }),
         );
@@ -1015,6 +1143,33 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         message += `\n\nThese are all the connections I found. If the user wants to attract more connections, suggest they create a signal — e.g. "Would you like to create a signal so others looking for someone like you can find you?" If they agree, call create_intent with a description based on what they were searching for.`;
       }
 
+      // MCP-only: tell the LLM how many opps are still negotiating in the background
+      // and how to fetch them. This is the deferred-surfacing handshake — the user's
+      // next list_opportunities call will pick up the rest as they finalize.
+      if (context.isMcp && negotiatingCount > 0) {
+        if (displayedCards.length > 0) {
+          message += `\n\n${negotiatingCount} more opportunit${negotiatingCount === 1 ? 'y is' : 'ies are'} still being evaluated — check back via \`list_opportunities\` shortly.`;
+        } else {
+          // No cards shown. Rebuild the message without the misleading
+          // "Found 0 potential connection(s)" lead-in but preserve the
+          // existing-connections mention and already-accepted-pairs note
+          // appended earlier — those are standalone facts independent of
+          // any draft cards. Pagination/intro/closing trailers are dropped
+          // intentionally (they only make sense when cards are shown).
+          let rebuilt = `Found candidates, but they're still being evaluated. Try \`list_opportunities\` in a minute — ${negotiatingCount} pending.`;
+          if (existingForMention.length > 0) {
+            rebuilt +=
+              "\n\nYou already have a connection with: " +
+              existingForMention.map((c) => c.name + (c.status ? " (" + c.status + ")" : "")).join(", ") +
+              ". View on your home page.";
+          }
+          if (result.alreadyAcceptedPairs && result.alreadyAcceptedPairs.length > 0) {
+            rebuilt += `\n\nYou already have ${result.alreadyAcceptedPairs.length} accepted opportunity(ies) with some of these candidates — open the existing chat with them rather than creating a new draft.`;
+          }
+          message = rebuilt;
+        }
+      }
+
       return success({
         found: true,
         count: displayedCards.length,
@@ -1032,6 +1187,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               suggestedIntentDescription: searchQuery,
             }
           : {}),
+        ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+        ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         _graphTimings: _allGraphTimings,
       });
     },
@@ -1243,6 +1400,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               counterpartUserId,
               mintConnectLink: deps.mintConnectLink,
               frontendUrl: deps.frontendUrl,
+              preferredSurface: context.clientSurface,
             });
           }
 
@@ -1352,12 +1510,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return error(`This opportunity is already ${opportunity.status} and cannot be updated.`);
       }
 
-      // Strict scope enforcement: when chat is index-scoped, verify opportunity is in that index
+      // Strict scope enforcement: when chat is index-scoped, the caller's own
+      // actor entry on this opportunity must be anchored on the bound network.
+      // Mirrors the per-actor filter in getOpportunitiesForUser — relying on
+      // `context.networkId` or any-actor matches would let a counterpart's
+      // network presence shadow a viewer whose own actor is elsewhere.
       if (context.networkId) {
-        const opportunityIndexId =
-          opportunity.context?.networkId ??
-          opportunity.actors?.find((a) => a.networkId === context.networkId)?.networkId;
-        if (!opportunityIndexId || opportunityIndexId !== context.networkId) {
+        const callerOnBoundNetwork = opportunity.actors?.some(
+          (a) => a.userId === context.userId && a.networkId === context.networkId,
+        );
+        if (!callerOnBoundNetwork) {
           return error("Opportunity not found.");
         }
       }

@@ -245,22 +245,28 @@ export class OpportunityDeliveryService {
    * Idempotent: returns `'already_delivered'` when a committed row already exists
    * for the same (user, opportunity, channel, status) tuple.
    *
-   * @param opportunityId - The opportunity being confirmed as delivered.
-   * @param userId - The user the opportunity was delivered to.
-   * @param agentId - The agent performing the delivery.
-   * @param trigger - Which dispatch path produced this delivery: 'ambient' for
-   *                  real-time critical alerts, 'digest' for the daily sweep,
-   *                  'accepted' for accepted-opportunity notifications to the counterparty.
+   * @param params - Delivery parameters.
+   * @param params.opportunityId - The opportunity being confirmed as delivered.
+   * @param params.userId - The user the opportunity was delivered to.
+   * @param params.agentId - The agent performing the delivery.
+   * @param params.trigger - Which dispatch path produced this delivery: 'ambient' for
+   *                         real-time critical alerts, 'digest' for the daily sweep,
+   *                         'accepted' for accepted-opportunity notifications to the counterparty.
    * @returns `'confirmed'` on first delivery, `'already_delivered'` on duplicates.
    * @throws Error `'opportunity_not_found'` when the opportunity does not exist.
    * @throws Error `'not_authorized'` when userId is not an actor on the opportunity.
    */
-  async commitDelivery(
-    opportunityId: string,
-    userId: string,
-    agentId: string | null,
-    trigger: 'ambient' | 'digest' | 'accepted',
-  ): Promise<'confirmed' | 'already_delivered'> {
+  async confirmOpportunityDelivery({
+    opportunityId,
+    userId,
+    agentId,
+    trigger,
+  }: {
+    opportunityId: string;
+    userId: string;
+    agentId: string | null;
+    trigger: 'ambient' | 'digest' | 'accepted';
+  }): Promise<'confirmed' | 'already_delivered'> {
     const [opp] = await db
       .select({ id: opportunities.id, status: opportunities.status, actors: opportunities.actors })
       .from(opportunities)

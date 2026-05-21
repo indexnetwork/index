@@ -5,6 +5,7 @@
 
 import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm';
 
+
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
@@ -699,6 +700,35 @@ export class IntentDatabaseAdapter {
       createdAt: r.createdAt,
       relevancyScore: r.relevancyScore != null ? Number(r.relevancyScore) : null,
     }));
+  }
+
+  async getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]) {
+    try {
+      if (indexIds.length === 0) return [];
+
+      const rows = await db
+        .selectDistinctOn([schema.intents.id], {
+          id: schema.intents.id,
+          payload: schema.intents.payload,
+          summary: schema.intents.summary,
+          createdAt: schema.intents.createdAt,
+        })
+        .from(schema.intents)
+        .innerJoin(schema.intentNetworks, eq(schema.intentNetworks.intentId, schema.intents.id))
+        .where(
+          and(
+            eq(schema.intents.userId, userId),
+            isNull(schema.intents.archivedAt),
+            inArray(schema.intentNetworks.networkId, indexIds),
+          ),
+        )
+        .orderBy(schema.intents.id, desc(schema.intents.createdAt));
+
+      return rows;
+    } catch (error: unknown) {
+      logger.error('IntentDatabaseAdapter.getActiveIntentsAcrossIndexes error', { error: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
   }
 }
 
@@ -2021,6 +2051,35 @@ export class ChatDatabaseAdapter {
     }));
   }
 
+  async getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]) {
+    try {
+      if (indexIds.length === 0) return [];
+
+      const rows = await db
+        .selectDistinctOn([intents.id], {
+          id: intents.id,
+          payload: intents.payload,
+          summary: intents.summary,
+          createdAt: intents.createdAt,
+        })
+        .from(intents)
+        .innerJoin(intentNetworks, eq(intentNetworks.intentId, intents.id))
+        .where(
+          and(
+            eq(intents.userId, userId),
+            isNull(intents.archivedAt),
+            inArray(intentNetworks.networkId, indexIds),
+          ),
+        )
+        .orderBy(intents.id, desc(intents.createdAt));
+
+      return rows;
+    } catch (error: unknown) {
+      logger.error('ChatDatabaseAdapter.getActiveIntentsAcrossIndexes error', { error: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
+  }
+
   async updateIndexSettings(
     networkId: string,
     requestingUserId: string,
@@ -2785,6 +2844,9 @@ export class ChatDatabaseAdapter {
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.getOpportunity(id);
   }
+  async getOpportunitiesByIds(ids: string[]): Promise<OpportunityRow[]> {
+    return this.opportunityAdapter.getOpportunitiesByIds(ids);
+  }
   /**
    * Resolve an opportunity ID from a full UUID or short prefix.
    * Delegates to OpportunityDatabaseAdapter.
@@ -2821,20 +2883,22 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityActorApproval(id, introducerUserId, approved);
   }
+  async stampOpportunityActorAction(
+    id: string,
+    actorUserId: string,
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    acceptedBy?: string,
+  ): Promise<OpportunityRow | null> {
+    return this.opportunityAdapter.stampOpportunityActorAction(id, actorUserId, status, acceptedBy);
+  }
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
     return this.opportunityAdapter.opportunityExistsBetweenActors(actorIds, networkId);
   }
-  async getOpportunityBetweenActors(
+  async findOpportunitiesByActors(
     actorIds: string[],
-    networkId: string
-  ): Promise<{ id: Id<'opportunities'>; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
-    return this.opportunityAdapter.getOpportunityBetweenActors(actorIds, networkId);
-  }
-  async findOverlappingOpportunities(
-    actorUserIds: Id<'users'>[],
-    options?: { excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[] }
+    options?: Parameters<OpportunityDatabaseAdapter['findOpportunitiesByActors']>[1]
   ): Promise<OpportunityRow[]> {
-    return this.opportunityAdapter.findOverlappingOpportunities(actorUserIds, options);
+    return this.opportunityAdapter.findOpportunitiesByActors(actorIds, options);
   }
   async expireOpportunitiesByIntent(intentId: string): Promise<number> {
     return this.opportunityAdapter.expireOpportunitiesByIntent(intentId);
@@ -2844,12 +2908,6 @@ export class ChatDatabaseAdapter {
   }
   async expireStaleOpportunities(): Promise<number> {
     return this.opportunityAdapter.expireStaleOpportunities();
-  }
-  async getAcceptedOpportunitiesBetweenActors(
-    userId: string,
-    counterpartUserId: string
-  ): Promise<OpportunityRow[]> {
-    return this.opportunityAdapter.getAcceptedOpportunitiesBetweenActors(userId, counterpartUserId);
   }
   async acceptSiblingOpportunities(
     userId: string,
@@ -4073,6 +4131,12 @@ export class OpportunityDatabaseAdapter {
     return row ? toOpportunityRow(row) : null;
   }
 
+  async getOpportunitiesByIds(ids: string[]): Promise<OpportunityRow[]> {
+    if (ids.length === 0) return [];
+    const rows = await db.select().from(opportunities).where(inArray(opportunities.id, ids));
+    return rows.map(toOpportunityRow);
+  }
+
   /**
    * Resolve an opportunity ID from a full UUID or short prefix.
    * @param idOrPrefix - Full UUID or prefix (e.g. first 8 chars)
@@ -4136,12 +4200,14 @@ export class OpportunityDatabaseAdapter {
     }
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.networkId) {
-      conditions.push(sql`(
-        ${opportunities.context}->>'networkId' = ${options.networkId}
-        OR EXISTS (
-          SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
-          WHERE actor->>'networkId' = ${options.networkId}
-        )
+      // Strict per-actor scope: the requesting user's own actor entry must be
+      // anchored on the bound network. The looser pre-fix check (any actor or
+      // context.networkId matching) leaked cross-network opps to scoped readers
+      // when a counterpart was on the bound network but the viewer wasn't.
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+        WHERE actor->>'userId' = ${userId}
+          AND actor->>'networkId' = ${options.networkId}
       )`);
     }
     if (options?.statuses?.length) {
@@ -4162,7 +4228,14 @@ export class OpportunityDatabaseAdapter {
     networkId: string,
     options?: { status?: string; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
-    const conditions = [sql`${opportunities.context}->>'networkId' = ${networkId}`];
+    // Actor-anchored scope: an opportunity belongs to the network when at
+    // least one actor was matched there. Replaces an earlier `context.networkId`
+    // tag check — that field is a denormalization, not the source of truth, and
+    // can drift from `actors[].networkId` in mixed-network introducer flows.
+    const conditions = [sql`EXISTS (
+      SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+      WHERE actor->>'networkId' = ${networkId}
+    )`];
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     let q = db
       .select()
@@ -4223,6 +4296,47 @@ export class OpportunityDatabaseAdapter {
     });
   }
 
+  async stampOpportunityActorAction(
+    id: string,
+    actorUserId: string,
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    acceptedBy?: string,
+  ): Promise<OpportunityRow | null> {
+    if (status === 'accepted' && !acceptedBy) {
+      throw new Error('acceptedBy is required when status is accepted');
+    }
+    return db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ actors: opportunities.actors })
+        .from(opportunities)
+        .where(eq(opportunities.id, id))
+        .for('update');
+      if (!locked) return null;
+      const nowIso = new Date().toISOString();
+      const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
+        actor.userId === actorUserId
+          ? { ...actor, actedAt: actor.actedAt ?? nowIso }
+          : actor,
+      );
+      const updates: Record<string, unknown> = {
+        actors: updatedActors,
+        status,
+        updatedAt: new Date(),
+      };
+      if (status === 'accepted') {
+        updates.acceptedBy = acceptedBy;
+      } else {
+        updates.acceptedBy = null;
+      }
+      const [row] = await tx
+        .update(opportunities)
+        .set(updates)
+        .where(eq(opportunities.id, id))
+        .returning();
+      return row ? toOpportunityRow(row) : null;
+    });
+  }
+
   async createOpportunityAndExpireIds(
     data: CreateOpportunityInput,
     expireIds: string[]
@@ -4262,23 +4376,6 @@ export class OpportunityDatabaseAdapter {
       sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`,
       sql`${opportunities.actors} @> ${JSON.stringify([{ userId: counterpartUserId }])}::jsonb`
     );
-  }
-
-  async getAcceptedOpportunitiesBetweenActors(
-    userId: string,
-    counterpartUserId: string
-  ): Promise<OpportunityRow[]> {
-    const rows = await db
-      .select()
-      .from(opportunities)
-      .where(
-        and(
-          OpportunityDatabaseAdapter.actorPairCondition(userId, counterpartUserId),
-          eq(opportunities.status, 'accepted')
-        )
-      )
-      .orderBy(desc(opportunities.updatedAt));
-    return rows.map(toOpportunityRow);
   }
 
   async acceptSiblingOpportunities(
@@ -4329,54 +4426,41 @@ export class OpportunityDatabaseAdapter {
     return rows.length > 0;
   }
 
-  async getOpportunityBetweenActors(
+  async findOpportunitiesByActors(
     actorIds: string[],
-    networkId: string
-  ): Promise<{ id: Id<'opportunities'>; status: (typeof opportunities.$inferSelect)['status'] } | null> {
-    if (actorIds.length === 0) return null;
-    const expired = 'expired';
-    const conditions = [
-      sql`${opportunities.context}->>'networkId' = ${networkId}`,
-      ne(opportunities.status, expired),
-    ];
-    for (const actorId of actorIds) {
-      conditions.push(
-        sql`${opportunities.actors} @> ${JSON.stringify([{ userId: actorId }])}::jsonb`
-      );
+    options?: {
+      includeIntroducers?: boolean;
+      statuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
+      excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
     }
-    const rows = await db
-      .select({ id: opportunities.id, status: opportunities.status })
-      .from(opportunities)
-      .where(and(...conditions))
-      .limit(1);
-    const row = rows[0];
-    return row ? { id: row.id as Id<'opportunities'>, status: row.status } : null;
-  }
-
-  async findOverlappingOpportunities(
-    actorUserIds: Id<'users'>[],
-    options?: { excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[] }
   ): Promise<OpportunityRow[]> {
-    if (actorUserIds.length === 0) return [];
-    const mergedExcludeStatuses = [
-      ...new Set([...(options?.excludeStatuses ?? [])]),
-    ] as ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
-    const statusCondition =
-      mergedExcludeStatuses.length > 0
-        ? notInArray(opportunities.status, mergedExcludeStatuses)
-        : undefined;
-    const containmentConditions = actorUserIds.map(
-      (uid) => sql`EXISTS (
-        SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
-        WHERE elem->>'userId' = ${uid}
-          AND elem->>'role' IS DISTINCT FROM 'introducer'
-      )`
-    );
-    const overlapCondition = and(...containmentConditions)!;
+    if (actorIds.length === 0) return [];
+    const includeIntroducers = options?.includeIntroducers ?? false;
+
+    const containmentConditions = includeIntroducers
+      ? actorIds.map(
+          (uid) => sql`${opportunities.actors} @> ${JSON.stringify([{ userId: uid }])}::jsonb`
+        )
+      : actorIds.map(
+          (uid) => sql`EXISTS (
+            SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
+            WHERE elem->>'userId' = ${uid}
+              AND elem->>'role' IS DISTINCT FROM 'introducer'
+          )`
+        );
+
+    const conditions = [and(...containmentConditions)!];
+    if (options?.statuses && options.statuses.length > 0) {
+      conditions.push(inArray(opportunities.status, options.statuses));
+    }
+    if (options?.excludeStatuses && options.excludeStatuses.length > 0) {
+      conditions.push(notInArray(opportunities.status, options.excludeStatuses));
+    }
+
     const rows = await db
       .select()
       .from(opportunities)
-      .where(statusCondition ? and(statusCondition, overlapCondition) : overlapCondition)
+      .where(and(...conditions))
       .orderBy(desc(opportunities.updatedAt));
     return rows.map(toOpportunityRow);
   }
@@ -5594,8 +5678,6 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
         throw new Error('Access denied: opportunity not visible to user');
       return db.updateOpportunityStatus(id, status, status === 'accepted' ? authUserId : undefined);
     },
-    getAcceptedOpportunitiesBetweenActors: (counterpartUserId: string) =>
-      db.getAcceptedOpportunitiesBetweenActors(authUserId, counterpartUserId),
     acceptSiblingOpportunities: (counterpartUserId: string, excludeOpportunityId: string) =>
       db.acceptSiblingOpportunities(authUserId, counterpartUserId, excludeOpportunityId),
 
@@ -5689,6 +5771,17 @@ export function createSystemDatabase(
     getUserIntentsInIndex: async (userId: string, networkId: string) => {
       verifyScope(networkId);
       return db.getIntentsInIndexForMember(userId, networkId);
+    },
+    getActiveIntentsAcrossIndexes: async (userId: string, indexIds: string[]) => {
+      // Caller-only semantic: the method returns the *caller's own* intents.
+      // Reject cross-user lookups at the systemDb boundary as defense-in-depth,
+      // even though the tool layer always passes context.userId today.
+      if (userId !== authUserId) {
+        throw new Error('Access denied: getActiveIntentsAcrossIndexes is caller-only');
+      }
+      // Filter to only IDs within scope before delegating.
+      const scopedIds = indexIds.filter((id) => indexScope.includes(id));
+      return db.getActiveIntentsAcrossIndexes(userId, scopedIds);
     },
     /**
      * Retrieves an intent by ID without scope check.
@@ -5805,15 +5898,20 @@ export function createSystemDatabase(
       verifyScope(opportunityIndexId);
       return acceptedBy ? db.updateOpportunityStatus(id, status, acceptedBy) : db.updateOpportunityStatus(id, status);
     },
+    stampOpportunityActorAction: async (id: string, actorUserId: string, status: Parameters<ChatDatabaseAdapter['stampOpportunityActorAction']>[2], acceptedBy?: string) => {
+      const opportunity = await db.getOpportunity(id);
+      if (!opportunity) throw new Error('Opportunity not found');
+      const opportunityIndexId = opportunity.context?.networkId;
+      if (!opportunityIndexId) throw new Error('Opportunity not found');
+      verifyScope(opportunityIndexId);
+      return db.stampOpportunityActorAction(id, actorUserId, status, acceptedBy);
+    },
     opportunityExistsBetweenActors: (actorIds: string[], networkId: string) => {
       verifyScope(networkId);
       return db.opportunityExistsBetweenActors(actorIds, networkId);
     },
-    getOpportunityBetweenActors: (actorIds: string[], networkId: string) => {
-      verifyScope(networkId);
-      return db.getOpportunityBetweenActors(actorIds, networkId);
-    },
-    findOverlappingOpportunities: (actorUserIds: Parameters<ChatDatabaseAdapter['findOverlappingOpportunities']>[0], options?: Parameters<ChatDatabaseAdapter['findOverlappingOpportunities']>[1]) => db.findOverlappingOpportunities(actorUserIds, options),
+    findOpportunitiesByActors: (actorIds: string[], options?: Parameters<ChatDatabaseAdapter['findOpportunitiesByActors']>[1]) =>
+      db.findOpportunitiesByActors(actorIds, options),
     /**
      * Expires all opportunities linked to an intent without scope check.
      * @remarks Intentionally unscoped -- called by intent archival event handlers
@@ -6581,14 +6679,15 @@ export class ConversationDatabaseAdapter {
    * @param taskId - Task ID
    * @returns The task, or null if not found
    */
-  async getTask(taskId: string): Promise<Task | null> {
+  async getTask(taskId: string): Promise<(Omit<Task, 'metadata'> & { metadata: Record<string, unknown> | null }) | null> {
     const [task] = await db
       .select()
       .from(schema.tasks)
       .where(eq(schema.tasks.id, taskId))
       .limit(1);
 
-    return task ?? null;
+    if (!task) return null;
+    return { ...task, metadata: (task.metadata as Record<string, unknown> | null) ?? null };
   }
 
   /**

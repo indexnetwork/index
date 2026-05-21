@@ -213,9 +213,9 @@ describe("resolveActionableLinkKind — actionability matrix", () => {
     ).toBeNull();
   });
 
-  test("draft + non-introducer → null (sender needs update_opportunity)", () => {
-    expect(resolveActionableLinkKind({ status: "draft", viewerRole: "party" })).toBeNull();
-    expect(resolveActionableLinkKind({ status: "draft", viewerRole: "agent" })).toBeNull();
+  test("draft + non-introducer → send_direct (sender releases the draft)", () => {
+    expect(resolveActionableLinkKind({ status: "draft", viewerRole: "party" })).toBe("send_direct");
+    expect(resolveActionableLinkKind({ status: "draft", viewerRole: "agent" })).toBe("send_direct");
   });
 
   test("terminal / unknown statuses → null", () => {
@@ -239,10 +239,10 @@ describe("resolveActionableLinkKind — actionability matrix", () => {
     ).toBeNull();
   });
 
-  test("latent + non-introducer → null (chat surface filters this case out anyway)", () => {
-    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "party" })).toBeNull();
-    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "agent" })).toBeNull();
-    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "patient" })).toBeNull();
+  test("latent + non-introducer → send_direct (parallel to the draft case)", () => {
+    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "party" })).toBe("send_direct");
+    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "agent" })).toBe("send_direct");
+    expect(resolveActionableLinkKind({ status: "latent", viewerRole: "patient" })).toBe("send_direct");
   });
 });
 
@@ -285,7 +285,7 @@ describe("attachActionableLinks — mutation and resilience", () => {
     expect(calls.length).toBe(1);
     expect(calls[0]).toMatchObject({ userId: "user-1", opportunityId: "opp-1", kind: "connect", greeting: null });
     expect(card.acceptUrl).toBe("https://api.test/c/AAAAAAAAAA");
-    expect(card.profileUrl).toBe("https://t.me/alice");
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-1?link_preview=false");
     expect(card.feedCategory).toBe("connection");
   });
 
@@ -320,7 +320,7 @@ describe("attachActionableLinks — mutation and resilience", () => {
     expect(card.feedCategory).toBe("connector-flow");
   });
 
-  test("draft + introducer + viewerApproved=true → no mint, card unchanged", async () => {
+  test("draft + introducer + viewerApproved=true → no mint, profileUrl still attached", async () => {
     const card = makeCard({ opportunityId: "opp-4", viewerRole: "introducer", status: "draft" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -333,11 +333,11 @@ describe("attachActionableLinks — mutation and resilience", () => {
     });
     expect(calls.length).toBe(0);
     expect(card.acceptUrl).toBeUndefined();
-    expect(card.profileUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-4?link_preview=false");
     expect(card.feedCategory).toBeUndefined();
   });
 
-  test("draft + party (sender) → no mint, card unchanged", async () => {
+  test("draft + party (sender) → mints send_direct, feedCategory=connection, profileUrl attached", async () => {
     const card = makeCard({ opportunityId: "opp-5", viewerRole: "party", status: "draft" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -347,13 +347,14 @@ describe("attachActionableLinks — mutation and resilience", () => {
       mintConnectLink,
       frontendUrl: "https://app.test",
     });
-    expect(calls.length).toBe(0);
-    expect(card.acceptUrl).toBeUndefined();
-    expect(card.profileUrl).toBeUndefined();
-    expect(card.feedCategory).toBeUndefined();
+    expect(calls.length).toBe(1);
+    expect(calls[0].kind).toBe("send_direct");
+    expect(card.acceptUrl).toBe("https://api.test/c/AAAAAAAAAA");
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-5?link_preview=false");
+    expect(card.feedCategory).toBe("connection");
   });
 
-  test("pending + introducer → no mint, card unchanged", async () => {
+  test("pending + introducer → no mint, profileUrl still attached", async () => {
     const card = makeCard({ opportunityId: "opp-6", viewerRole: "introducer", status: "pending" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -365,9 +366,10 @@ describe("attachActionableLinks — mutation and resilience", () => {
     });
     expect(calls.length).toBe(0);
     expect(card.acceptUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-6?link_preview=false");
   });
 
-  test("accepted + introducer → no mint, card unchanged", async () => {
+  test("accepted + introducer → no mint, profileUrl still attached", async () => {
     const card = makeCard({ opportunityId: "opp-7", viewerRole: "introducer", status: "accepted" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -379,9 +381,10 @@ describe("attachActionableLinks — mutation and resilience", () => {
     });
     expect(calls.length).toBe(0);
     expect(card.acceptUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-7?link_preview=false");
   });
 
-  test("rejected (any role) → no mint, card unchanged", async () => {
+  test("rejected (any role) → no mint, profileUrl still attached", async () => {
     const card = makeCard({ opportunityId: "opp-8", viewerRole: "party", status: "rejected" });
     const { mintConnectLink, calls } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -393,9 +396,10 @@ describe("attachActionableLinks — mutation and resilience", () => {
     });
     expect(calls.length).toBe(0);
     expect(card.acceptUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-8?link_preview=false");
   });
 
-  test("profileUrl falls back to web URL when no Telegram social", async () => {
+  test("profileUrl uses the web URL when counterpart has no socials", async () => {
     const card = makeCard({ opportunityId: "opp-9", viewerRole: "party", status: "pending" });
     const { mintConnectLink } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -408,7 +412,7 @@ describe("attachActionableLinks — mutation and resilience", () => {
     expect(card.profileUrl).toBe(`https://app.test/u/counterpart-9?link_preview=false`);
   });
 
-  test("profileUrl is undefined when no Telegram AND no frontendUrl", async () => {
+  test("profileUrl is undefined when frontendUrl is missing", async () => {
     const card = makeCard({ opportunityId: "opp-10", viewerRole: "party", status: "pending" });
     const { mintConnectLink } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -423,7 +427,7 @@ describe("attachActionableLinks — mutation and resilience", () => {
     expect(card.feedCategory).toBe("connection");
   });
 
-  test("mint error is swallowed; card has no acceptUrl/profileUrl/feedCategory", async () => {
+  test("mint error is swallowed; card has no acceptUrl/feedCategory but profileUrl is preserved", async () => {
     const card = makeCard({ opportunityId: "opp-11", viewerRole: "party", status: "pending" });
     const mintConnectLink = async (_args: { userId: string; opportunityId: string; kind: string; greeting?: string | null }) => {
       throw new Error("DB down");
@@ -438,11 +442,11 @@ describe("attachActionableLinks — mutation and resilience", () => {
       }),
     ).resolves.toBeUndefined();
     expect(card.acceptUrl).toBeUndefined();
-    expect(card.profileUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-11?link_preview=false");
     expect(card.feedCategory).toBeUndefined();
   });
 
-  test("Telegram handle strips leading @", async () => {
+  test("profileUrl ignores Telegram socials and always points at the Index web profile (IND-289)", async () => {
     const card = makeCard({ opportunityId: "opp-12", viewerRole: "party", status: "pending" });
     const { mintConnectLink } = makeMintSpy();
     await attachActionableLinks(card, {
@@ -452,20 +456,7 @@ describe("attachActionableLinks — mutation and resilience", () => {
       mintConnectLink,
       frontendUrl: "https://app.test",
     });
-    expect(card.profileUrl).toBe("https://t.me/bobby");
-  });
-
-  test("Telegram label match is case-insensitive", async () => {
-    const card = makeCard({ opportunityId: "opp-13", viewerRole: "party", status: "pending" });
-    const { mintConnectLink } = makeMintSpy();
-    await attachActionableLinks(card, {
-      viewerId: "user-13",
-      counterpartUser: { socials: [{ label: "Telegram", value: "carol" }] },
-      counterpartUserId: "counterpart-13",
-      mintConnectLink,
-      frontendUrl: "https://app.test",
-    });
-    expect(card.profileUrl).toBe("https://t.me/carol");
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-12?link_preview=false");
   });
 });
 
@@ -473,94 +464,46 @@ describe("attachActionableLinks — mutation and resilience", () => {
 // buildProfileUrl — edge cases
 // ---------------------------------------------------------------------------
 
-describe("buildProfileUrl — edge cases", () => {
-  test("whitespace in Telegram value is trimmed", () => {
-    const result = buildProfileUrl(
-      { socials: [{ label: "telegram", value: "  danny  " }] },
-      "user-dan",
-      "https://app.test",
-    );
-    expect(result).toBe("https://t.me/danny");
+describe("buildProfileUrl — always the Index web URL (IND-289)", () => {
+  test("returns the web profile URL when frontendUrl is set", () => {
+    expect(
+      buildProfileUrl({ socials: [] }, "user-1", "https://app.test"),
+    ).toBe("https://app.test/u/user-1?link_preview=false");
   });
 
-  test("socials is null → falls through to frontendUrl", () => {
-    const result = buildProfileUrl(
-      { socials: null },
-      "user-null",
-      "https://app.test",
-    );
-    expect(result).toBe("https://app.test/u/user-null?link_preview=false");
-  });
-
-  test("counterpartUser itself is null → falls through to frontendUrl", () => {
-    const result = buildProfileUrl(null, "user-none", "https://app.test");
-    expect(result).toBe("https://app.test/u/user-none?link_preview=false");
-  });
-
-  test("no Telegram and no frontendUrl → returns undefined", () => {
-    const result = buildProfileUrl({ socials: [] }, "user-undef", undefined);
-    expect(result).toBeUndefined();
-  });
-
-  test("Telegram value is empty string → falls through to frontendUrl", () => {
-    const result = buildProfileUrl(
-      { socials: [{ label: "telegram", value: "" }] },
-      "user-empty",
-      "https://app.test",
-    );
-    expect(result).toBe("https://app.test/u/user-empty?link_preview=false");
-  });
-
-  test("URL-like Telegram value is safely normalized (strips URL prefix + query params)", () => {
-    // normalizeTelegramHandle strips the t.me/ prefix and query params, leaving
-    // the bare handle. This is safer than the old code that interpolated the raw value.
+  test("ignores Telegram socials — always uses the web URL", () => {
     expect(
       buildProfileUrl(
-        { socials: [{ label: "telegram", value: "t.me/alice?evil=1" }] },
-        "user-z",
+        { socials: [{ label: "telegram", value: "alice" }] },
+        "user-2",
         "https://app.test",
       ),
-    ).toBe("https://t.me/alice");
+    ).toBe("https://app.test/u/user-2?link_preview=false");
   });
 
-  test("invalid Telegram handle (newline injected) falls back to frontend URL", () => {
-    // Newlines break the regex validation — result is null, falls back to web URL.
+  test("socials is null → still returns the web URL", () => {
     expect(
-      buildProfileUrl(
-        { socials: [{ label: "telegram", value: "alice\nevil" }] },
-        "user-z",
-        "https://app.test",
-      ),
-    ).toBe("https://app.test/u/user-z?link_preview=false");
+      buildProfileUrl({ socials: null }, "user-3", "https://app.test"),
+    ).toBe("https://app.test/u/user-3?link_preview=false");
   });
 
-  test("Telegram handle below 5 chars falls back to frontend URL", () => {
+  test("counterpartUser itself is null → still returns the web URL", () => {
     expect(
-      buildProfileUrl(
-        { socials: [{ label: "telegram", value: "bob" }] },
-        "user-y",
-        "https://app.test",
-      ),
-    ).toBe("https://app.test/u/user-y?link_preview=false");
+      buildProfileUrl(null, "user-4", "https://app.test"),
+    ).toBe("https://app.test/u/user-4?link_preview=false");
+  });
+
+  test("returns undefined when frontendUrl is missing", () => {
+    expect(buildProfileUrl({ socials: [] }, "user-5", undefined)).toBeUndefined();
   });
 
   test("strips trailing slash(es) from frontendUrl before concatenation", () => {
     expect(
-      buildProfileUrl(
-        { socials: null },
-        "user-x",
-        "https://app.test/",
-      ),
-    ).toBe("https://app.test/u/user-x?link_preview=false");
-
-    // Multiple trailing slashes also collapse.
+      buildProfileUrl(null, "user-6", "https://app.test/"),
+    ).toBe("https://app.test/u/user-6?link_preview=false");
     expect(
-      buildProfileUrl(
-        { socials: null },
-        "user-x",
-        "https://app.test///",
-      ),
-    ).toBe("https://app.test/u/user-x?link_preview=false");
+      buildProfileUrl(null, "user-6", "https://app.test///"),
+    ).toBe("https://app.test/u/user-6?link_preview=false");
   });
 });
 
@@ -573,7 +516,7 @@ describe("buildOpportunityPresentation — MCP opportunityId omission", () => {
         mainText: "Both work on protocol design.",
         status: "pending",
         acceptUrl: "https://api.test/c/Abc1234567",
-        profileUrl: "https://t.me/alice",
+        profileUrl: "https://app.test/u/opp-actionable-1-counterpart?link_preview=false",
         feedCategory: "connection",
       }],
       { isMcp: true, leadIn: "Found 1 connection." },

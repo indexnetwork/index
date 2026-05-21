@@ -1,7 +1,7 @@
 // ─── Public API (recommended for external consumers) ──────────────────────────
 
 export { createChatTools } from "./shared/agent/tool.factory.js";
-export { configureProtocol } from "./shared/agent/model.config.js";
+export { configureProtocol, getModelName } from "./shared/agent/model.config.js";
 export type { ChatTools } from "./shared/agent/tool.factory.js";
 export type { ModelConfig, ModelSettings } from "./shared/agent/model.config.js";
 export type {
@@ -20,6 +20,12 @@ export { ChatContextAccessError, resolveChatContext } from "./shared/agent/tool.
 export type * from "./shared/interfaces/auth.interface.js";
 export type * from "./shared/interfaces/cache.interface.js";
 export type * from "./shared/interfaces/chat-session.interface.js";
+export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
+export type { ChatMessageWriter } from "./shared/interfaces/chat-message-writer.interface.js";
+export type { QuestionGeneratorReader } from "./shared/interfaces/question-generator.interface.js";
+export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
+export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
+export { NegotiationSummarizer, buildFallbackDigest } from "./negotiation/negotiation.summarizer.js";
 export type * from "./shared/interfaces/contact.interface.js";
 export type * from "./shared/interfaces/database.interface.js";
 export type * from "./shared/interfaces/embedder.interface.js";
@@ -44,6 +50,26 @@ export type {
 } from './shared/interfaces/agent.interface.js';
 export { SYSTEM_AGENT_IDS } from './shared/interfaces/agent.interface.js';
 
+// ─── Shared schemas ───────────────────────────────────────────────────────────
+
+export {
+  ChatContextDigestSchema,
+  type ChatContextDigest,
+} from "./shared/schemas/chat-context.schema.js";
+export {
+  QuestionOptionSchema,
+  QuestionSchema,
+  QuestionStrategySchema,
+  QuestionWithStrategySchema,
+  QuestionGeneratorResponseSchema,
+  type Question,
+  type QuestionOption,
+  type QuestionStrategy,
+  type QuestionWithStrategy,
+  type QuestionGeneratorResponse,
+  type QuestionGenerationResult,
+} from "./shared/schemas/question.schema.js";
+
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
 export { ChatGraphFactory } from "./chat/chat.graph.js";
@@ -66,6 +92,8 @@ export { ProfileGraphFactory } from "./profile/profile.graph.js";
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
 export { ChatTitleGenerator } from "./chat/chat.title.generator.js";
+export { ChatSummarizer } from "./chat/chat.summarizer.js";
+export type { ChatSummarizerInput, ChatSummarizerMessage } from "./chat/chat.summarizer.js";
 export { HydeGenerator } from "./shared/hyde/hyde.generator.js";
 export { SuggestionGenerator } from "./chat/chat.suggester.js";
 export type { SuggestionGeneratorInput } from "./chat/chat.suggester.js";
@@ -73,8 +101,8 @@ export { generateInviteMessage } from "./contact/contact.inviter.js";
 export type { InviteInput, InviteOutput } from "./contact/contact.inviter.js";
 export { IntentIndexer } from "./intent/intent.indexer.js";
 export { LensInferrer } from "./shared/hyde/lens.inferrer.js";
-export { NegotiationInsightsGenerator } from "./negotiation/negotiation.insights.generator.js";
-export type { NegotiationDigest } from "./negotiation/negotiation.insights.generator.js";
+export { NegotiationInsightsGenerator } from "./negotiation/insight.generator.js";
+export type { NegotiationDigest } from "./negotiation/insight.generator.js";
 export { IndexNegotiator } from "./negotiation/negotiation.agent.js";
 export type { NegotiationAgentInput } from "./negotiation/negotiation.agent.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
@@ -84,6 +112,16 @@ export type {
 } from "./opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/opportunity.presenter.js";
 export type { PresenterDatabase } from "./opportunity/opportunity.presenter.js";
+export { QuestionGenerator } from "./opportunity/question.generator.js";
+export type {
+  DiscoveryQuestionInput,
+  DiscoveryNegotiation,
+  DiscoveryOutcome,
+  DiscoveryTurn,
+  DiscoverySummary,
+  DiscoverySourceProfile,
+  NegotiationRole,
+} from "./opportunity/question.prompt.js";
 
 // ─── Support utilities ────────────────────────────────────────────────────────
 
@@ -133,6 +171,9 @@ export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 
 export { createMcpServer, computeAgentIndexScope } from "./mcp/mcp.server.js";
 export type { ScopedDepsFactory } from "./mcp/mcp.server.js";
+export { buildElicitationCreate, flattenChoice } from "./mcp/elicitation.builder.js";
+export { dispatchElicitations } from "./mcp/elicitation.dispatcher.js";
+export type { ElicitResultLike, ElicitInputFn, DispatchElicitationsParams } from "./mcp/elicitation.dispatcher.js";
 
 // ─── States (for advanced graph consumers) ────────────────────────────────────
 

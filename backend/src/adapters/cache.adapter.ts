@@ -72,6 +72,11 @@ export function getRedisClient(): Redis {
   return redis;
 }
 
+// Re-export the canonical side-effect-free detector so existing callers of
+// `cache.adapter#isRedisConfigured` keep working without pulling the heavy
+// adapter side effects into modules that just want to ask "is Redis set?".
+export { isRedisConfigured } from '../lib/redis-env';
+
 /**
  * Creates a new, dedicated Redis client (e.g. for pub/sub subscribers).
  * Uses the same connection config as the shared client but without lazyConnect.
@@ -185,3 +190,13 @@ export class RedisCacheAdapter implements Cache {
     return keys.length;
   }
 }
+
+/**
+ * Singleton instance of RedisCacheAdapter for general protocol caching.
+ */
+export const cacheAdapter = new RedisCacheAdapter();
+
+/**
+ * Singleton instance of RedisCacheAdapter for HyDE document caching.
+ */
+export const hydeCacheAdapter = new RedisCacheAdapter();

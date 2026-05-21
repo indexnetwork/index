@@ -1,7 +1,7 @@
 /**
  * Tests for opportunity enricher: enrichOrCreate, overlap detection, semantic relatedness, and merge.
  *
- * Overlap contract: findOverlappingOpportunities(actorUserIds) returns opportunities
+ * Overlap contract: findOpportunitiesByActors(actorUserIds) returns opportunities
  * whose non-introducer actors contain all given actorUserIds (containment match).
  * E.g. [A, B] matches an opportunity with actors [A, B, C].
  */
@@ -102,7 +102,7 @@ function existingOpportunity(
 describe('Opportunity enricher', () => {
   test('no overlap: returns original data unchanged', async () => {
     const db = {
-      findOverlappingOpportunities: async () => [] as Opportunity[],
+      findOpportunitiesByActors: async () => [] as Opportunity[],
     };
     const embedder = { generate: async () => [[0.1, 0.2], [0.3, 0.4]] } as unknown as Embedder;
     const newData = minimalNewData(
@@ -125,7 +125,7 @@ describe('Opportunity enricher', () => {
       MEANINGFUL.reasoning.hardwarePrototyping
     );
     const db = {
-      findOverlappingOpportunities: async () => [existing],
+      findOpportunitiesByActors: async () => [existing],
     };
     const embedder = {
       generate: async () => [[1, 0, 0], [0, 1, 0]] as number[][],
@@ -152,7 +152,7 @@ describe('Opportunity enricher', () => {
       MEANINGFUL.reasoning.aiMlResearch
     );
     const db = {
-      findOverlappingOpportunities: async () => [existing],
+      findOpportunitiesByActors: async () => [existing],
     };
     const sameVec = [0.5, 0.5, 0.5];
     const embedder = {
@@ -184,7 +184,7 @@ describe('Opportunity enricher', () => {
       MEANINGFUL.reasoning.aiMlResearch,
       'accepted'
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     const sameVec = [0.5, 0.5, 0.5];
     const embedder = { generate: async () => [sameVec, sameVec] as number[][] } as unknown as Embedder;
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlCofounder);
@@ -215,7 +215,7 @@ describe('Opportunity enricher', () => {
       MEANINGFUL.reasoning.aiMlResearch
     );
     const db = {
-      findOverlappingOpportunities: async () => [opp1, opp2],
+      findOpportunitiesByActors: async () => [opp1, opp2],
     };
     const sameVec = [0.6, 0.6, 0.6];
     const embedder = {
@@ -244,7 +244,7 @@ describe('Opportunity enricher', () => {
       ],
       MEANINGFUL.reasoning.aiMlResearch
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     const sameVec = [0.5, 0.5, 0.5];
     const embedder = { generate: async () => [sameVec, sameVec] as number[][] } as unknown as Embedder;
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlCofounder);
@@ -274,7 +274,7 @@ describe('Opportunity enricher', () => {
       ],
       MEANINGFUL.reasoning.aiMlResearch
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     const sameVec = [0.5, 0.5, 0.5];
     const embedder = { generate: async () => [sameVec, sameVec] as number[][] } as unknown as Embedder;
     const result = await enrichOrCreate(db, embedder, newDataWithIntroducer, { similarityThreshold: 0.7 });
@@ -295,7 +295,7 @@ describe('Opportunity enricher', () => {
       ],
       'Short.'
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     const embedder = { generate: async () => [] } as unknown as Embedder;
     const newData: CreateOpportunityData = {
       ...minimalNewData(['user-a', 'user-b'], 'idx-1', 'Hi'),
@@ -323,7 +323,7 @@ describe('Opportunity enricher', () => {
       'Short.',
       'latent'
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     const embedder = { generate: async () => [] } as unknown as Embedder;
     const newData: CreateOpportunityData = {
       ...minimalNewData(['user-a', 'user-b'], 'idx-1', 'Hi'),
@@ -352,7 +352,7 @@ describe('Opportunity enricher', () => {
       'Short.',
       'expired'
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     const embedder = { generate: async () => [] } as unknown as Embedder;
     const newData: CreateOpportunityData = {
       ...minimalNewData(['user-a', 'user-b'], 'idx-1', 'Hi'),
@@ -381,7 +381,7 @@ describe('Opportunity enricher', () => {
       'Short.',
       'draft'
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     const embedder = { generate: async () => [] } as unknown as Embedder;
     const newData: CreateOpportunityData = {
       ...minimalNewData(['user-a', 'user-b'], 'idx-1', 'Hi'),
@@ -404,7 +404,7 @@ describe('Opportunity enricher', () => {
       ...minimalNewData([], 'idx-1', MEANINGFUL.reasoning.fundraising),
       actors: [{ networkId: 'idx-1', userId: 'user-intro', role: 'introducer' }],
     };
-    const db = { findOverlappingOpportunities: async () => [] as Opportunity[] };
+    const db = { findOpportunitiesByActors: async () => [] as Opportunity[] };
     const embedder = { generate: async () => [] } as unknown as Embedder;
     const result = await enrichOrCreate(db, embedder, newDataOnlyIntroducers);
     expect(result.enriched).toBe(false);
@@ -471,7 +471,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
 
   test('graph detects AI match, then chat rediscovers the same match → merges into one', async () => {
     const graphOpp = existingOpportunity('opp-graph', actors(), MEANINGFUL.reasoning.aiMlCofounder);
-    const db = { findOverlappingOpportunities: async () => [graphOpp] };
+    const db = { findOpportunitiesByActors: async () => [graphOpp] };
 
     // Chat finds a similar AI angle for the same pair
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch);
@@ -487,7 +487,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
   test('three AI/ML matches for same pair consolidate into one', async () => {
     const opp1 = existingOpportunity('opp-1', actors(), MEANINGFUL.reasoning.aiMlCofounder);
     const opp2 = existingOpportunity('opp-2', actors(), MEANINGFUL.reasoning.aiMlResearch);
-    const db = { findOverlappingOpportunities: async () => [opp1, opp2] };
+    const db = { findOpportunitiesByActors: async () => [opp1, opp2] };
 
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlStartup);
     const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
@@ -507,7 +507,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
 
   test('AI collaboration and fundraising intro for same pair are different opportunities', async () => {
     const aiOpp = existingOpportunity('opp-ai', actors(), MEANINGFUL.reasoning.aiMlCofounder);
-    const db = { findOverlappingOpportunities: async () => [aiOpp] };
+    const db = { findOpportunitiesByActors: async () => [aiOpp] };
 
     // Fundraising is a different value proposition — should NOT merge
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.fundraising);
@@ -519,7 +519,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
 
   test('hardware match and design match for same pair are different opportunities', async () => {
     const hwOpp = existingOpportunity('opp-hw', actors(), MEANINGFUL.reasoning.hardwarePrototyping);
-    const db = { findOverlappingOpportunities: async () => [hwOpp] };
+    const db = { findOpportunitiesByActors: async () => [hwOpp] };
 
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.designUx);
     const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
@@ -533,7 +533,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
     const oppAI = existingOpportunity('opp-ai', actors(), MEANINGFUL.reasoning.aiMlResearch);
     const oppHW = existingOpportunity('opp-hw', actors(), MEANINGFUL.reasoning.hardwareFirmware);
     const oppFund = existingOpportunity('opp-fund', actors(), MEANINGFUL.reasoning.fundraisingAngel);
-    const db = { findOverlappingOpportunities: async () => [oppAI, oppHW, oppFund] };
+    const db = { findOpportunitiesByActors: async () => [oppAI, oppHW, oppFund] };
 
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlCofounder);
     const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
@@ -551,7 +551,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
     const oppHW = existingOpportunity('opp-hw', actors(), MEANINGFUL.reasoning.hardwareFirmware);
     const oppDesign = existingOpportunity('opp-design', actors(), MEANINGFUL.reasoning.designProduct);
     const oppFund = existingOpportunity('opp-fund', actors(), MEANINGFUL.reasoning.fundraisingAngel);
-    const db = { findOverlappingOpportunities: async () => [oppAI, oppHW, oppDesign, oppFund] };
+    const db = { findOpportunitiesByActors: async () => [oppAI, oppHW, oppDesign, oppFund] };
 
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.hardwarePrototyping);
     const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
@@ -570,7 +570,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
     const oppHW = existingOpportunity('opp-hw', actors(), MEANINGFUL.reasoning.hardwarePrototyping);
     const oppDesign = existingOpportunity('opp-design', actors(), MEANINGFUL.reasoning.designUx);
     const oppFund = existingOpportunity('opp-fund', actors(), MEANINGFUL.reasoning.fundraising);
-    const db = { findOverlappingOpportunities: async () => [oppAI, oppHW, oppDesign, oppFund] };
+    const db = { findOpportunitiesByActors: async () => [oppAI, oppHW, oppDesign, oppFund] };
 
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.fundraisingAngel);
     const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
@@ -596,7 +596,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
       ],
       MEANINGFUL.reasoning.aiMlCofounder
     );
-    const db = { findOverlappingOpportunities: async () => [intentOpp] };
+    const db = { findOpportunitiesByActors: async () => [intentOpp] };
 
     // New: profile-based AI match (no intents, same domain reasoning)
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch);
@@ -619,7 +619,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
       ],
       MEANINGFUL.reasoning.aiMlCofounder
     );
-    const db = { findOverlappingOpportunities: async () => [aiOpp] };
+    const db = { findOpportunitiesByActors: async () => [aiOpp] };
 
     const newData: CreateOpportunityData = {
       ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.designProduct),
@@ -637,7 +637,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
 
   test('accepted predecessor keeps accepted status through merge', async () => {
     const acceptedOpp = existingOpportunity('opp-old', actors(), MEANINGFUL.reasoning.aiMlResearch, 'accepted');
-    const db = { findOverlappingOpportunities: async () => [acceptedOpp] };
+    const db = { findOpportunitiesByActors: async () => [acceptedOpp] };
 
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlCofounder);
     const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
@@ -651,7 +651,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
   test('pending + rejected predecessors resolve to pending', async () => {
     const pendingOpp = existingOpportunity('opp-p', actors(), MEANINGFUL.reasoning.aiMlCofounder, 'pending');
     const rejectedOpp = existingOpportunity('opp-r', actors(), MEANINGFUL.reasoning.aiMlResearch, 'rejected');
-    const db = { findOverlappingOpportunities: async () => [pendingOpp, rejectedOpp] };
+    const db = { findOpportunitiesByActors: async () => [pendingOpp, rejectedOpp] };
 
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlStartup);
     const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
@@ -666,7 +666,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
   test('all latent predecessors + latent new yields latent', async () => {
     const opp1 = existingOpportunity('opp-1', actors(), MEANINGFUL.reasoning.hardwarePrototyping, 'latent');
     const opp2 = existingOpportunity('opp-2', actors(), MEANINGFUL.reasoning.hardwareFirmware, 'latent');
-    const db = { findOverlappingOpportunities: async () => [opp1, opp2] };
+    const db = { findOpportunitiesByActors: async () => [opp1, opp2] };
 
     const newData = {
       ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.hardwarePrototyping),
@@ -685,7 +685,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
     opp1.interpretation = { ...opp1.interpretation!, confidence: 0.7 };
     const opp2 = existingOpportunity('opp-2', actors(), MEANINGFUL.reasoning.aiMlResearch);
     opp2.interpretation = { ...opp2.interpretation!, confidence: 0.9 };
-    const db = { findOverlappingOpportunities: async () => [opp1, opp2] };
+    const db = { findOpportunitiesByActors: async () => [opp1, opp2] };
 
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlStartup);
     const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
@@ -727,7 +727,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
         ],
       },
     };
-    const db = { findOverlappingOpportunities: async () => [opp1s, opp2s] };
+    const db = { findOpportunitiesByActors: async () => [opp1s, opp2s] };
 
     const newData: CreateOpportunityData = {
       ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.designUx),
@@ -762,7 +762,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
       ],
       MEANINGFUL.reasoning.aiMlCofounder
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     // Embedder should never be called — Phase 1 catches the shared intent
     let embedderCalled = false;
     const embedder = {
@@ -795,7 +795,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
       ],
       MEANINGFUL.reasoning.aiMlCofounder
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
 
     // New data shares the intent but has fundraising reasoning (different domain embedding)
     const newData: CreateOpportunityData = {
@@ -826,7 +826,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
       ],
       MEANINGFUL.reasoning.aiMlCofounder
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     const embedder = {
       generate: async () => { throw new Error('Embedder unavailable'); },
     } as unknown as Embedder;
@@ -855,7 +855,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
       ],
       MEANINGFUL.reasoning.aiMlCofounder
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     const embedder = {
       generate: async () => { throw new Error('Embedder unavailable'); },
     } as unknown as Embedder;
@@ -875,7 +875,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
       ],
       'Short.' // below MIN_REASONING_LENGTH_FOR_EMBEDDING
     );
-    const db = { findOverlappingOpportunities: async () => [existing] };
+    const db = { findOpportunitiesByActors: async () => [existing] };
     const embedder = { generate: async () => [] } as unknown as Embedder;
 
     // With shared intent → merges (Phase 1 catches it)
@@ -920,7 +920,7 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
       ],
       MEANINGFUL.reasoning.aiMlResearch
     );
-    const db = { findOverlappingOpportunities: async () => [opp1, opp2] };
+    const db = { findOpportunitiesByActors: async () => [opp1, opp2] };
 
     const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlStartup);
     const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
@@ -941,10 +941,10 @@ describe('Opportunity enricher — default excludeStatuses', () => {
     expect(DEFAULT_ENRICHER_EXCLUDE_STATUSES).toEqual(['accepted', 'negotiating', 'expired']);
   });
 
-  test('passes the default excludeStatuses to findOverlappingOpportunities when caller omits it', async () => {
+  test('passes the default excludeStatuses to findOpportunitiesByActors when caller omits it', async () => {
     let receivedExcludeStatuses: readonly string[] | undefined;
     const db = {
-      findOverlappingOpportunities: async (
+      findOpportunitiesByActors: async (
         _ids: string[],
         opts?: { excludeStatuses?: readonly string[] },
       ) => {
@@ -963,7 +963,7 @@ describe('Opportunity enricher — default excludeStatuses', () => {
   test('caller-supplied excludeStatuses replaces the default', async () => {
     let receivedExcludeStatuses: readonly string[] | undefined;
     const db = {
-      findOverlappingOpportunities: async (
+      findOpportunitiesByActors: async (
         _ids: string[],
         opts?: { excludeStatuses?: readonly string[] },
       ) => {
@@ -982,7 +982,7 @@ describe('Opportunity enricher — default excludeStatuses', () => {
   test('an empty excludeStatuses array considers every status', async () => {
     let receivedExcludeStatuses: readonly string[] | undefined;
     const db = {
-      findOverlappingOpportunities: async (
+      findOpportunitiesByActors: async (
         _ids: string[],
         opts?: { excludeStatuses?: readonly string[] },
       ) => {

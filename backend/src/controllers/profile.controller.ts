@@ -1,4 +1,5 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { profileService } from '../services/profile.service';
 import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
@@ -12,7 +13,7 @@ export class ProfileController {
    * This is the main entry point to trigger the profile graph.
    */
   @Post('/sync')
-  @UseGuards(AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async sync(req: Request, user: AuthenticatedUser) {
     logger.verbose('Profile sync requested', { userId: user.id });
     

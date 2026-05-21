@@ -25,10 +25,38 @@ mock.module("../../graphs/intent.graph", () => ({
           networkId?: string;
           queryUserId?: string;
           allUserIntents?: boolean;
+          indexScope?: string[];
           targetIntentIds?: string[];
         }) => {
           // For read operations, replicate the real queryNode logic using the database
           if (input.operationMode === "read") {
+            // Scope-aware default: caller's intents across all reachable indexes.
+            // Triggered when the tool layer passed indexScope and did not pick a
+            // specific networkId or queryUserId.
+            if (
+              !input.queryUserId &&
+              !input.networkId &&
+              input.indexScope &&
+              input.indexScope.length > 0
+            ) {
+              const intents = await (db as unknown as { getActiveIntentsAcrossIndexes: (userId: string, indexIds: string[]) => Promise<{ id: string; payload: string; summary: string | null; createdAt: Date }[]> }).getActiveIntentsAcrossIndexes(
+                input.userId,
+                input.indexScope,
+              );
+              return {
+                readResult: {
+                  count: intents.length,
+                  intents: intents.map((i) => ({
+                    id: i.id,
+                    description: i.payload,
+                    summary: i.summary,
+                    createdAt: i.createdAt,
+                  })),
+                  ...(intents.length === 0 && { message: "You don't have any active intents yet. Share what you're looking for." }),
+                },
+              };
+            }
+
             const effectiveIndexId = input.allUserIntents ? undefined : input.networkId;
 
             if (effectiveIndexId) {
@@ -179,8 +207,11 @@ const testUserId = "test-user-id-for-tools";
 
 type MockOverrides = Partial<Pick<
   ChatGraphCompositeDatabase,
-  "getUser" | "getNetwork" | "getOwnedIndexes" | "isIndexOwner" | "isNetworkMember" | "getNetworkMembersForOwner" | "getNetworkMembersForMember" | "getNetworkIntentsForOwner" | "getNetworkMemberships" | "getNetworkMembership" | "getNetworkIntentsForMember" | "getNetworkWithPermissions" | "getOpportunity" | "updateOpportunityStatus" | "getActiveIntents" | "getIntentsInIndexForMember" | "getNetworkIdsForIntent" | "opportunityExistsBetweenActors" | "findOverlappingOpportunities" | "createOpportunity"
->>;
+  "getUser" | "getNetwork" | "getOwnedIndexes" | "isIndexOwner" | "isNetworkMember" | "getNetworkMembersForOwner" | "getNetworkMembersForMember" | "getNetworkIntentsForOwner" | "getNetworkMemberships" | "getNetworkMembership" | "getNetworkIntentsForMember" | "getNetworkWithPermissions" | "getOpportunity" | "updateOpportunityStatus" | "getActiveIntents" | "getIntentsInIndexForMember" | "getNetworkIdsForIntent" | "opportunityExistsBetweenActors" | "findOpportunitiesByActors" | "createOpportunity"
+>> & {
+  /** Optional stub for getActiveIntentsAcrossIndexes (used by indexScope read path). */
+  getActiveIntentsAcrossIndexes?: (userId: string, indexIds: string[]) => Promise<ActiveIntent[]>;
+};
 
 /**
  * Minimal mock database. getIntentsInIndexForMemberImpl is required for read_intents.
@@ -243,6 +274,7 @@ function createMockDatabase(
     getMembersFromUserIndexes: async () => [],
     getOpportunity: noopNull,
     updateOpportunityStatus: noopNull,
+    getActiveIntentsAcrossIndexes: noopArray,
   };
   return { ...base, ...overrides } as unknown as ChatGraphCompositeDatabase;
 }
@@ -304,7 +336,6 @@ const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | '
     unassignIntentFromIndex: db.unassignIntentFromIndex ?? (async () => {}),
     getNetworkIdsForIntent: db.getNetworkIdsForIntent ?? (async () => []),
     isIntentAssignedToIndex: db.isIntentAssignedToIndex ?? (async () => false),
-    getAcceptedOpportunitiesBetweenActors: db.getAcceptedOpportunitiesBetweenActors ?? (async () => []),
     acceptSiblingOpportunities: db.acceptSiblingOpportunities ?? (async () => {}),
     getHydeDocument: db.getHydeDocument ?? (async () => null),
     getHydeDocumentsForSource: db.getHydeDocumentsForSource ?? (async () => []),
@@ -333,11 +364,11 @@ const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | '
     getOpportunitiesForIndex: async () => [],
     updateOpportunityStatus: db.updateOpportunityStatus ?? (async () => null),
     opportunityExistsBetweenActors: db.opportunityExistsBetweenActors ?? (async () => false),
-    getOpportunityBetweenActors: db.getOpportunityBetweenActors ?? (async () => null),
-    findOverlappingOpportunities: db.findOverlappingOpportunities ?? (async () => []),
+    findOpportunitiesByActors: db.findOpportunitiesByActors ?? (async () => []),
     expireOpportunitiesByIntent: async () => {},
     expireOpportunitiesForRemovedMember: async () => {},
     expireStaleOpportunities: async () => {},
+    getActiveIntentsAcrossIndexes: db.getActiveIntentsAcrossIndexes ?? (async () => []),
     getHydeDocument: db.getHydeDocument ?? (async () => null),
     getHydeDocumentsForSource: db.getHydeDocumentsForSource ?? (async () => []),
     saveHydeDocument: db.saveHydeDocument ?? (async () => {}),
@@ -442,20 +473,33 @@ describe("read_intents tool", () => {
     expect(capturedRequestingUserId).toBe(testUserId);
   });
 
-  test("when context.networkId is set, omit networkId to use context index", async () => {
-    let capturedIndex = "";
+  test("when context.networkId is set with indexScope, omit networkId to get caller-own intents via indexScope", async () => {
+    const personalIndexId = "personal-test-scope-idx";
+    let getActiveIntentsAcrossIndexesCalled = false;
+    const callerIntents = [
+      { id: "i1", payload: "In index", summary: "X", createdAt: new Date() },
+    ];
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
-      getNetworkIntentsForMember: async (networkId) => {
-        capturedIndex = networkId;
-        return [{ id: "i1", payload: "In index", summary: "X", createdAt: new Date(), userId: testUserId, userName: "Test" }];
+      getActiveIntentsAcrossIndexes: async (_uid: string, ids: string[]) => {
+        getActiveIntentsAcrossIndexesCalled = true;
+        expect(ids.sort()).toEqual([testIndexId, personalIndexId].sort());
+        return callerIntents;
       },
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, networkId: testIndexId, ...mockProtocolDeps };
+    const context: ToolContext = {
+      userId: testUserId,
+      database: mockDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      networkId: testIndexId,
+      indexScope: [testIndexId, personalIndexId],
+      ...mockProtocolDeps,
+    };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { networkId?: string }) => Promise<string> };
     const result = await tool.invoke({});
-    expect(capturedIndex).toBe(testIndexId);
+    expect(getActiveIntentsAcrossIndexesCalled).toBe(true);
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.data.count).toBe(1);
@@ -629,48 +673,124 @@ describe("read_intents tool (no networkId)", () => {
     expect(parsed.data.intents[0]).toMatchObject({ id: "g1", description: "Global intent A" });
   });
 
-  test("with context.networkId and no networkId arg calls getNetworkIntentsForMember and returns index-scoped intents", async () => {
+  test("with context.networkId and no args, returns caller-only intents across indexScope (does not call getNetworkIntentsForMember)", async () => {
     const networkId = testIndexId;
-    const indexScopedWithUser: IndexedIntentDetails[] = indexScopedIntents.map((i) => ({ ...i, userId: testUserId, userName: "Test User" }));
+    const personalIndexId = "personal-test-idx";
+    let getActiveIntentsAcrossIndexesCalled = false;
     let getNetworkIntentsForMemberCalled = false;
+
+    const callerIntents = [
+      { id: "self-a", payload: "Caller intent A", summary: "A", createdAt: new Date("2026-01-01") },
+      { id: "self-b", payload: "Caller intent B", summary: "B", createdAt: new Date("2026-01-02") },
+    ];
+
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
-      getNetworkIntentsForMember: async (idxId, uid) => {
-        getNetworkIntentsForMemberCalled = true;
+      getActiveIntentsAcrossIndexes: async (uid: string, ids: string[]) => {
+        getActiveIntentsAcrossIndexesCalled = true;
         expect(uid).toBe(testUserId);
-        expect(idxId).toBe(networkId);
-        return indexScopedWithUser;
+        expect(ids.sort()).toEqual([networkId, personalIndexId].sort());
+        return callerIntents;
+      },
+      getNetworkIntentsForMember: async () => {
+        getNetworkIntentsForMemberCalled = true;
+        return [];
       },
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, networkId, ...mockProtocolDeps };
-    const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { networkId?: string }) => Promise<string> };
-    const result = await tool.invoke({});
-    expect(getNetworkIntentsForMemberCalled).toBe(true);
-    const parsed = JSON.parse(result);
-    expect(parsed.success).toBe(true);
-    expect(parsed.data.count).toBe(1);
-    expect(parsed.data.intents[0]).toMatchObject({ id: "i1", description: "Intent in index only" });
-  });
 
-  test("with context.networkId, omit networkId to get index-scoped intents (context index used)", async () => {
-    const networkId = testIndexId;
-    const indexIntents = [
-      { id: "ix-1", payload: "In index", summary: "X", createdAt: new Date(), userId: testUserId, userName: "Test User" },
-    ];
-    const mockDb = createMockDatabase(async () => [], {
-      isNetworkMember: async () => true,
-      getNetworkIntentsForMember: async () => indexIntents,
-    });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, networkId, ...mockProtocolDeps };
+    const context: ToolContext = {
+      userId: testUserId,
+      database: mockDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      networkId,
+      indexScope: [networkId, personalIndexId],
+      ...mockProtocolDeps,
+    };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: Record<string, unknown>) => Promise<string> };
     const result = await tool.invoke({});
+
+    expect(getActiveIntentsAcrossIndexesCalled).toBe(true);
+    expect(getNetworkIntentsForMemberCalled).toBe(false);
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.count).toBe(2);
+    expect(parsed.data.intents.map((i: { id: string }) => i.id).sort()).toEqual(["self-a", "self-b"]);
+  });
+
+  test("with context.networkId and explicit networkId arg, still browses all members in that network (existing behavior)", async () => {
+    const networkId = testIndexId;
+    let getNetworkIntentsForMemberCalled = false;
+    const allMembersIntents: IndexedIntentDetails[] = [
+      { id: "me-1", payload: "My intent", summary: "m", createdAt: new Date(), userId: testUserId, userName: "Me" },
+      { id: "other-1", payload: "Their intent", summary: "t", createdAt: new Date(), userId: "other-user", userName: "Them" },
+    ];
+    const mockDb = createMockDatabase(async () => [], {
+      isNetworkMember: async () => true,
+      getNetworkIntentsForMember: async (idxId: string, uid: string) => {
+        getNetworkIntentsForMemberCalled = true;
+        expect(idxId).toBe(networkId);
+        expect(uid).toBe(testUserId);
+        return allMembersIntents;
+      },
+    });
+    const context: ToolContext = {
+      userId: testUserId,
+      database: mockDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      networkId,
+      indexScope: [networkId, "personal-test-idx"],
+      ...mockProtocolDeps,
+    };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { networkId?: string }) => Promise<string> };
+    const result = await tool.invoke({ networkId });
+
+    expect(getNetworkIntentsForMemberCalled).toBe(true);
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.count).toBe(2);
+  });
+
+  test("with context.networkId and explicit userId of co-member, reads that member's intents in the bound network (not caller's globals)", async () => {
+    const networkId = testIndexId;
+    const otherUserId = "00000000-0000-0000-0000-000000000099";
+    let getIntentsInIndexForMemberCall: { userId: string; networkId: string } | null = null;
+
+    const mockDb = createMockDatabase(
+      async (uid: string, idx: string) => {
+        getIntentsInIndexForMemberCall = { userId: uid, networkId: idx };
+        return [{ id: "other-1", payload: "Their intent in bound", summary: "T", createdAt: new Date(), userId: uid, userName: "Other" }];
+      },
+      { isNetworkMember: async () => true }
+    );
+
+    const context: ToolContext = {
+      userId: testUserId,
+      database: mockDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      networkId,
+      indexScope: [networkId, "personal-test-idx"],
+      ...mockProtocolDeps,
+    };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { userId?: string }) => Promise<string> };
+    const result = await tool.invoke({ userId: otherUserId });
+
+    // The new branch routes scoped+userId reads through getIntentsInIndexForMember
+    // with the bound network. Before the fix this branch sent the read down the
+    // global getActiveIntents path with the caller's userId — leaking caller's
+    // intents instead of returning the queried member's intents in the network.
+    expect(getIntentsInIndexForMemberCall).toMatchObject({ userId: otherUserId, networkId });
+
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.data.count).toBe(1);
-    expect(parsed.data.intents).toHaveLength(1);
-    expect(parsed.data.intents[0]).toMatchObject({ id: "ix-1", userId: testUserId, userName: "Test User" });
+    expect(parsed.data.intents[0]).toMatchObject({ id: "other-1", userId: otherUserId });
   });
 
   test("without networkId, when userId arg is another user, returns error (no viewing other users' global intents)", async () => {
@@ -1083,7 +1203,7 @@ describe("discover_opportunities tool", () => {
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
       opportunityExistsBetweenActors: async () => false,
-      findOverlappingOpportunities: async () => [],
+      findOpportunitiesByActors: async () => [],
       createOpportunity: async (data) =>
         ({
           id: "opp-success-1",
@@ -1125,7 +1245,7 @@ describe("discover_opportunities tool", () => {
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
       opportunityExistsBetweenActors: async () => false,
-      findOverlappingOpportunities: async () => [],
+      findOpportunitiesByActors: async () => [],
       createOpportunity: async (data) =>
         ({
           id: "opp-intro-1",
@@ -1173,7 +1293,7 @@ describe("discover_opportunities tool", () => {
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
       opportunityExistsBetweenActors: async () => false,
-      findOverlappingOpportunities: async () => [],
+      findOpportunitiesByActors: async () => [],
       createOpportunity: async (data) =>
         ({
           id: "opp-party-1",
@@ -1219,7 +1339,7 @@ describe("discover_opportunities tool", () => {
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
       opportunityExistsBetweenActors: async () => false,
-      findOverlappingOpportunities: async () => [],
+      findOpportunitiesByActors: async () => [],
       createOpportunity: async (data) =>
         ({
           id: "opp-from-entities-only",
@@ -2002,9 +2122,27 @@ describe("createChatTools — MCP connect-link wiring", () => {
   }
 
   test("invokes deps.mintConnectLink and surfaces the returned URL as acceptUrl", async () => {
-    const mintCalls: Array<{ userId: string; opportunityId: string; kind: string; greeting: string | null | undefined }> = [];
-    const mintConnectLink = async (args: { userId: string; opportunityId: string; kind: string; greeting?: string | null }) => {
-      mintCalls.push({ userId: args.userId, opportunityId: args.opportunityId, kind: args.kind, greeting: args.greeting ?? null });
+    const mintCalls: Array<{
+      userId: string;
+      opportunityId: string;
+      kind: string;
+      greeting: string | null | undefined;
+      preferredSurface: 'telegram' | 'web' | undefined;
+    }> = [];
+    const mintConnectLink = async (args: {
+      userId: string;
+      opportunityId: string;
+      kind: string;
+      greeting?: string | null;
+      preferredSurface?: 'telegram' | 'web';
+    }) => {
+      mintCalls.push({
+        userId: args.userId,
+        opportunityId: args.opportunityId,
+        kind: args.kind,
+        greeting: args.greeting ?? null,
+        preferredSurface: args.preferredSurface,
+      });
       return { url: FAKE_URL };
     };
 
@@ -2041,9 +2179,66 @@ describe("createChatTools — MCP connect-link wiring", () => {
     // The MCP output (prose, not JSON) embeds the minted URL as acceptUrl.
     expect(parsed.data.message).toContain(`acceptUrl: ${FAKE_URL}`);
 
-    // profileUrl falls back to ${frontendUrl}/u/<id> when the counterpart has
-    // no Telegram handle. Catches frontendUrl-forwarding regressions.
-    expect(parsed.data.message).toContain(`profileUrl: ${FRONTEND_URL}/u/${COUNTERPART_ID}`);
+    // profileUrl is always ${frontendUrl}/u/<id>?link_preview=false (IND-289).
+    // Catches frontendUrl-forwarding regressions.
+    expect(parsed.data.message).toContain(`profileUrl: ${FRONTEND_URL}/u/${COUNTERPART_ID}?link_preview=false`);
+  });
+
+  test("forwards context.clientSurface as preferredSurface into deps.mintConnectLink", async () => {
+    const mintCalls: Array<{
+      userId: string;
+      opportunityId: string;
+      kind: string;
+      greeting: string | null | undefined;
+      preferredSurface: 'telegram' | 'web' | undefined;
+    }> = [];
+    const mintConnectLink = async (args: {
+      userId: string;
+      opportunityId: string;
+      kind: string;
+      greeting?: string | null;
+      preferredSurface?: 'telegram' | 'web';
+    }) => {
+      mintCalls.push({
+        userId: args.userId,
+        opportunityId: args.opportunityId,
+        kind: args.kind,
+        greeting: args.greeting ?? null,
+        preferredSurface: args.preferredSurface,
+      });
+      return { url: FAKE_URL };
+    };
+
+    const context: ToolContext = {
+      userId: VIEWER_ID,
+      database: buildMcpDb(),
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      ...mockProtocolDeps,
+      mintConnectLink,
+      apiBaseUrl: API_BASE_URL,
+      frontendUrl: FRONTEND_URL,
+    } as ToolContext;
+
+    // Reuse the standard MCP resolved context but stamp clientSurface on it.
+    const resolved = buildMcpResolvedContext();
+    resolved.clientSurface = 'telegram';
+
+    const tools = await createChatTools(context, resolved);
+    const listTool = tools.find((t: { name: string }) => t.name === "list_opportunities") as { invoke: (args: unknown) => Promise<string> };
+    expect(listTool).toBeDefined();
+
+    const raw = await listTool.invoke({});
+    const parsed = JSON.parse(raw);
+    expect(parsed.success).toBe(true);
+
+    expect(mintCalls.length).toBe(1);
+    expect(mintCalls[0]).toMatchObject({
+      userId: VIEWER_ID,
+      opportunityId: OPP_ID,
+      kind: "connect",
+      preferredSurface: 'telegram',
+    });
   });
 
   test("skips minting silently when deps.mintConnectLink is not provided", async () => {
@@ -2217,7 +2412,7 @@ describe("createChatTools — MCP connect-link wiring", () => {
     const introDb: ChatGraphCompositeDatabase = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
       opportunityExistsBetweenActors: async () => false,
-      findOverlappingOpportunities: async () => [],
+      findOpportunitiesByActors: async () => [],
       createOpportunity: async (data: { actors?: Array<{ userId: string; role: string; approved?: boolean }>; interpretation?: Record<string, unknown>; detection?: Record<string, unknown>; context?: Record<string, unknown>; confidence?: unknown; status?: string }) =>
         ({
           id: "opp-intro-1",

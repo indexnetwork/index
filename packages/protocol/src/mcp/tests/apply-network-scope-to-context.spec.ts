@@ -43,6 +43,7 @@ const baseContext = (): ResolvedToolContext => ({
   user: { id: 'user-1', name: 'Alice', email: 'alice@test' } as never,
   userProfile: null as never,
   userNetworks: memberships,
+  indexScope: ['personal-1', 'experiment-net', 'community-B'],
   isOnboarding: false,
   hasName: true,
   isMcp: true,
@@ -107,5 +108,18 @@ describe('applyNetworkScopeToContext', () => {
     expect(ctx.networkId).toBe('unknown-network');
     expect(ctx.indexName).toBeUndefined();
     expect(ctx.scopedIndex).toBeUndefined();
+  });
+
+  test('sets indexScope to [boundNetwork, personalIndex] when scoped', () => {
+    const ctx = baseContext();
+    applyNetworkScopeToContext(ctx, 'experiment-net');
+    expect(ctx.indexScope).toEqual(['personal-1', 'experiment-net']);
+  });
+
+  test('leaves indexScope unchanged when scope is null (already set by resolveChatContext)', () => {
+    const ctx = baseContext();
+    ctx.indexScope = ['personal-1', 'experiment-net', 'community-B'];
+    applyNetworkScopeToContext(ctx, null);
+    expect(ctx.indexScope).toEqual(['personal-1', 'experiment-net', 'community-B']);
   });
 });

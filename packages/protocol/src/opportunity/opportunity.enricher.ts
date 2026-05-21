@@ -39,9 +39,9 @@ const MIN_REASONING_LENGTH_FOR_EMBEDDING = 10;
 export const DEFAULT_ENRICHER_EXCLUDE_STATUSES: OpportunityStatus[] = ['accepted', 'negotiating', 'expired'];
 
 export type EnricherDatabase = {
-  findOverlappingOpportunities(
-    actorUserIds: Id<'users'>[],
-    options?: { excludeStatuses?: OpportunityStatus[] }
+  findOpportunitiesByActors(
+    actorIds: string[],
+    options?: { includeIntroducers?: boolean; statuses?: OpportunityStatus[]; excludeStatuses?: OpportunityStatus[] }
   ): Promise<Opportunity[]>;
 };
 
@@ -231,7 +231,7 @@ export async function enrichOrCreate(
   }
 
   const excludeStatuses = options?.excludeStatuses ?? DEFAULT_ENRICHER_EXCLUDE_STATUSES;
-  const overlapping = await database.findOverlappingOpportunities(actorUserIds, { excludeStatuses });
+  const overlapping = await database.findOpportunitiesByActors(actorUserIds, { excludeStatuses });
   if (overlapping.length === 0) {
     return { enriched: false, data: newData };
   }

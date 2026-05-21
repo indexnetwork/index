@@ -20,7 +20,8 @@ import {
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { createModel } from "../shared/agent/model.config.js";
 import { sanitizeForDebugMeta } from "../shared/observability/debug-meta.sanitizer.js";
-import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
+import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations, DebugMetaDiscoveryQuestions } from "./chat-streaming.types.js";
+import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
 import type { Opportunity } from "../shared/interfaces/database.interface.js";
 import { Timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
@@ -73,6 +74,8 @@ export type AgentStreamEvent =
   | { type: "hallucination_detected"; blockType: string; tool: string }
   | { type: "graph_start"; name: string }
   | { type: "graph_end"; name: string; durationMs: number }
+  | { type: "phase_start"; name: string }
+  | { type: "phase_end"; name: string; durationMs: number }
   | { type: "agent_start"; name: string }
   | { type: "agent_end"; name: string; durationMs: number; summary: string }
   | {
@@ -129,7 +132,12 @@ export type AgentStreamEvent =
       turnCount: number;
       reasoning?: string;
       agreedRoles?: { ownUser?: string; otherUser?: string };
-    };
+    }
+  | { type: "decision_questions"; questions: Question[] }
+  | { type: "chat_summarizer_start"; payload: { sessionId: string } }
+  | { type: "chat_summarizer_end"; payload: { durationMs: number } }
+  | { type: "question_generator_start"; payload: { inputMode: "transcripts" | "insights"; negotiationCount: number; hasChatContext: boolean; truncated?: { originalCount: number; keptCount: number } } }
+  | { type: "question_generator_end"; payload: { finalCount: number; strategies: QuestionStrategy[]; durationMs: number; inputMode: "transcripts" | "insights" } };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -606,6 +614,8 @@ export class ChatAgent {
     summary: string;
     debugSteps?: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
     graphTimings?: Array<{ name: string; durationMs: number; agents: Array<{ name: string; durationMs: number }> }>;
+    decisionQuestions?: Question[];
+    discoveryQuestionsDebug?: DebugMetaDiscoveryQuestions;
   }> {
     let normalized = resultStr;
 
@@ -624,6 +634,8 @@ export class ChatAgent {
     let summary = "Done";
     let debugSteps: DebugStep[] | undefined;
     let graphTimings: GraphTiming[] | undefined;
+    let decisionQuestions: Question[] | undefined;
+    let discoveryQuestionsDebug: DebugMetaDiscoveryQuestions | undefined;
 
     try {
       const parsed = JSON.parse(normalized) as {
@@ -665,11 +677,44 @@ export class ChatAgent {
           normalized = JSON.stringify(cleanedResult);
         } catch { /* keep original if can't clean */ }
       }
+
+      const rawQuestions = (payload as { questions?: unknown }).questions ?? (parsed as { questions?: unknown }).questions;
+      const rawQuestionDebug = (payload as { _discoveryQuestionsDebug?: unknown })._discoveryQuestionsDebug
+        ?? (parsed as { _discoveryQuestionsDebug?: unknown })._discoveryQuestionsDebug;
+      if (Array.isArray(rawQuestions)) {
+        decisionQuestions = rawQuestions as Question[];
+      }
+      if (rawQuestionDebug && typeof rawQuestionDebug === "object") {
+        discoveryQuestionsDebug = rawQuestionDebug as DebugMetaDiscoveryQuestions;
+      }
+      // `_discoveryQuestionsDebug` is internal trace data — strip from the LLM-facing
+      // tool result. `questions` is intentionally kept visible so the agent can
+      // follow the prompt addendum and reference the decision prompts in its reply.
+      if (discoveryQuestionsDebug !== undefined) {
+        try {
+          const cleaned = JSON.parse(normalized) as Record<string, unknown>;
+          const stripFrom = (obj: Record<string, unknown>) => {
+            delete obj._discoveryQuestionsDebug;
+          };
+          stripFrom(cleaned);
+          if (cleaned.data && typeof cleaned.data === "object") {
+            stripFrom(cleaned.data as Record<string, unknown>);
+          }
+          normalized = JSON.stringify(cleaned);
+        } catch { /* keep original */ }
+      }
     } catch {
       /* not JSON, keep default */
     }
 
-    return { resultStr: normalized, summary, debugSteps, graphTimings };
+    return {
+      resultStr: normalized,
+      summary,
+      debugSteps,
+      graphTimings,
+      ...(decisionQuestions !== undefined ? { decisionQuestions } : {}),
+      ...(discoveryQuestionsDebug !== undefined ? { discoveryQuestionsDebug } : {}),
+    };
   }
 
   /**
@@ -753,11 +798,12 @@ export class ChatAgent {
     responseText: string;
     messages: BaseMessage[];
     iterationCount: number;
-    debugMeta: { graph: string; iterations: number; tools: DebugMetaToolCall[]; llm: DebugMetaLlm; orchestratorNegotiations?: DebugMetaOrchestratorNegotiations };
+    debugMeta: { graph: string; iterations: number; tools: DebugMetaToolCall[]; llm: DebugMetaLlm; orchestratorNegotiations?: DebugMetaOrchestratorNegotiations; discoveryQuestions?: DebugMetaDiscoveryQuestions };
   }> {
     const llm: DebugMetaLlm = { calls: 0, totalDurationMs: 0, resets: [], hallucinations: [] };
     const orchestratorNegotiationIds = new Set<string>();
     let lastLlmStart = 0;
+    let latestDiscoveryQuestionsDebug: DebugMetaDiscoveryQuestions | undefined;
 
     const emit = (event: AgentStreamEvent) => {
       if (event.type === "llm_start") {
@@ -932,8 +978,13 @@ export class ChatAgent {
               typeof result === "string" ? result : JSON.stringify(result);
 
             const normalized = await this.normalizeToolResult(tc.name, resultStr, tc.args);
+            if (normalized.discoveryQuestionsDebug) latestDiscoveryQuestionsDebug = normalized.discoveryQuestionsDebug;
             resultStr = normalized.resultStr;
             result = resultStr;
+
+            if (normalized.decisionQuestions && normalized.decisionQuestions.length > 0) {
+              emit({ type: "decision_questions", questions: normalized.decisionQuestions });
+            }
 
             logger.verbose("Streaming: tool completed", {
               name: tc.name,
@@ -1072,6 +1123,15 @@ export class ChatAgent {
               ...(normalized.debugSteps?.length ? { steps: normalized.debugSteps } : {}),
               ...(normalized.graphTimings?.length ? { graphs: normalized.graphTimings } : {}),
             });
+            // Mirror the main tool loop's handling: forward decision questions
+            // and capture debug metadata even when the discovery tool was invoked
+            // via the hallucination-recovery path.
+            if (normalized.discoveryQuestionsDebug) {
+              latestDiscoveryQuestionsDebug = normalized.discoveryQuestionsDebug;
+            }
+            if (normalized.decisionQuestions && normalized.decisionQuestions.length > 0) {
+              emit({ type: "decision_questions", questions: normalized.decisionQuestions });
+            }
             emit({
               type: "tool_activity",
               phase: "end",
@@ -1186,6 +1246,7 @@ export class ChatAgent {
           ...(orchestratorNegotiationIds.size > 0 && {
             orchestratorNegotiations: { opportunityIds: [...orchestratorNegotiationIds] },
           }),
+          ...(latestDiscoveryQuestionsDebug && { discoveryQuestions: latestDiscoveryQuestionsDebug }),
         },
       };
     }
@@ -1204,6 +1265,7 @@ export class ChatAgent {
           ...(orchestratorNegotiationIds.size > 0 && {
             orchestratorNegotiations: { opportunityIds: [...orchestratorNegotiationIds] },
           }),
+          ...(latestDiscoveryQuestionsDebug && { discoveryQuestions: latestDiscoveryQuestionsDebug }),
         },
       };
     }
@@ -1247,6 +1309,7 @@ export class ChatAgent {
         ...(orchestratorNegotiationIds.size > 0 && {
           orchestratorNegotiations: { opportunityIds: [...orchestratorNegotiationIds] },
         }),
+        ...(latestDiscoveryQuestionsDebug && { discoveryQuestions: latestDiscoveryQuestionsDebug }),
       },
     };
   }

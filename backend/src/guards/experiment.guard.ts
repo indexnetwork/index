@@ -1,13 +1,8 @@
 import { and, eq, isNull } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
+import { hashMasterKey } from '../lib/experiment/master-key';
 import * as schema from '../schemas/database.schema';
-
-async function hashKey(key: string): Promise<string> {
-  const encoded = new TextEncoder().encode(key);
-  const hash = await crypto.subtle.digest('SHA-256', encoded);
-  return Buffer.from(hash).toString('base64url');
-}
 
 export interface ExperimentNetwork {
   id: string;
@@ -55,7 +50,7 @@ export async function ExperimentMasterKeyGuard(
     });
   }
 
-  const hashedKey = await hashKey(apiKey);
+  const hashedKey = await hashMasterKey(apiKey);
   if (hashedKey !== network.experimentMasterKeyHash) {
     throw new Response(JSON.stringify({ error: 'Forbidden' }), {
       status: 403,

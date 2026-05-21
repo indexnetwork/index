@@ -39,7 +39,6 @@ export interface NegotiationInsights {
 }
 
 export const createUsersService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
-  // Get user profile by ID
   getUserProfile: async (userId: string): Promise<User> => {
     const response = await api.get<APIResponse<User>>(`/users/${userId}`);
     if (!response.user) {
@@ -131,3 +130,13 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
     return response.negotiation;
   },
 });
+
+/** Fetch a user profile without authentication (public endpoint). */
+export async function getPublicUserProfile(userId: string): Promise<User> {
+  const { apiClient } = await import('../lib/api');
+  const response = await apiClient.getPublic<APIResponse<User>>(`/users/${userId}`);
+  if (!response.user) {
+    throw new Error('Failed to fetch user profile');
+  }
+  return response.user;
+}

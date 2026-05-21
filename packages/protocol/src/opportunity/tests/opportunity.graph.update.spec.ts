@@ -38,9 +38,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
       expiresAt: null,
     }),
     opportunityExistsBetweenActors: async () => false,
-    getAcceptedOpportunitiesBetweenActors: async () => [],
-    getOpportunityBetweenActors: async () => null,
-    findOverlappingOpportunities: async () => [],
+    findOpportunitiesByActors: async () => [],
     getUserIndexIds: async () => [] as Id<'networks'>[],
     getNetworkMemberships: async () => [],
     getActiveIntents: async () => [],
@@ -52,6 +50,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     getOpportunity: async () => null,
     getOpportunitiesForUser: async () => [],
     updateOpportunityStatus: async () => null,
+    stampOpportunityActorAction: async () => null,
     updateOpportunityActorApproval: async () => null,
     isNetworkMember: async () => true,
     isIndexOwner: async () => false,
@@ -90,7 +89,7 @@ describe('opportunity graph — update node (accepted)', () => {
 
     const db = buildDb({
       getOpportunity: async () => mockOpportunity,
-      updateOpportunityStatus: async () => null,
+      stampOpportunityActorAction: async () => null,
       getOrCreateDM: async (a, b) => {
         dmCalledWith = [a, b];
         return { id: CONV_ID };
@@ -136,15 +135,15 @@ describe('opportunity graph — update node (accepted)', () => {
   });
 
   test('does NOT flip status when getOrCreateDM throws', async () => {
-    let statusUpdateCalled = false;
+    let stampCalled = false;
 
     const db = buildDb({
       getOpportunity: async () => mockOpportunity,
       getOrCreateDM: async () => {
         throw new Error('DM creation failed');
       },
-      updateOpportunityStatus: async () => {
-        statusUpdateCalled = true;
+      stampOpportunityActorAction: async () => {
+        stampCalled = true;
         return null;
       },
     });
@@ -158,6 +157,6 @@ describe('opportunity graph — update node (accepted)', () => {
     });
 
     expect(result.mutationResult?.success).toBe(false);
-    expect(statusUpdateCalled).toBe(false);
+    expect(stampCalled).toBe(false);
   });
 });

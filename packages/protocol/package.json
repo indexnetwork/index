@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "0.30.3",
+  "version": "1.5.1",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,6 +15,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "bun test",
+    "test:isolated": "bun scripts/test.ts",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
