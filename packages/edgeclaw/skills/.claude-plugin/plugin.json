@@ -1,7 +1,8 @@
 {
   "name": "edgeclaw",
   "description": "Edge Esmeralda 2026 — popup knowledge, EdgeOS calendar & directory, and Index Network discovery skills for the Agent Village.",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "skills": "./",
   "author": {
     "name": "Edge City",
     "url": "https://edgecity.live"
