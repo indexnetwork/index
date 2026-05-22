@@ -6,6 +6,7 @@ import { experimentImportCredentialsTemplate } from '../lib/email/templates/expe
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { buildMcpServerConfig } from '../lib/mcp/mcp-config';
 import * as schema from '../schemas/database.schema';
+import { profileQueue } from '../queues/profile.queue';
 
 /**
  * Experiment is a thin facade over the network-invitation flow: signup uses
@@ -90,6 +91,22 @@ class ExperimentService {
       });
     }
 
+    // Mark as onboarded so the user is discoverable in vector search filters.
+    const currentOnboarding = (await db.select({ onboarding: schema.users.onboarding })
+      .from(schema.users).where(eq(schema.users.id, result.user.id)).limit(1))[0]?.onboarding ?? {};
+    if (!currentOnboarding.completedAt) {
+      await db.update(schema.users)
+        .set({ onboarding: { ...currentOnboarding, completedAt: new Date().toISOString() } })
+        .where(eq(schema.users.id, result.user.id));
+    }
+
+    // Enqueue profile enrichment so the user gets a profile embedding + HyDE.
+    try {
+      await profileQueue.addEnrichUserJob({ userId: result.user.id });
+    } catch (err) {
+      logger.warn('[ExperimentService] Failed to enqueue profile enrichment (non-fatal)', { error: err });
+    }
+
     logger.info('[ExperimentService] Signup complete', {
       userId: result.user.id,
       networkId,
@@ -154,6 +171,7 @@ class ExperimentService {
     // email. After the loop, a single summary email is sent to the network's
     // owner(s) with all minted keys as an inline CSV — the experimental-network
     // policy bypasses per-user invitation emails entirely.
+    const importedUserIds: string[] = [];
     for (const row of rows) {
       try {
         const email = row.email.toLowerCase().trim();
@@ -164,6 +182,7 @@ class ExperimentService {
           rotateKey: true,
         });
         await this.applyProfilePatch(result.user.id, row);
+        importedUserIds.push(result.user.id);
         credentials.push({
           email: result.user.email,
           name: row.name,
@@ -173,6 +192,31 @@ class ExperimentService {
       } catch (err) {
         logger.warn('[ExperimentService] Import row failed', { email: row.email, error: err });
         skipped++;
+      }
+    }
+
+    // Mark imported users as onboarded so they appear in vector search filters
+    // (embedder requires isGhost=true OR onboarding.completedAt IS NOT NULL).
+    if (importedUserIds.length > 0) {
+      const completedAt = new Date().toISOString();
+      await Promise.all(
+        importedUserIds.map(uid =>
+          db.update(schema.users)
+            .set({ onboarding: { completedAt } })
+            .where(eq(schema.users.id, uid)),
+        ),
+      );
+    }
+
+    // Enqueue profile enrichment: the profile graph reads name, intro, location,
+    // and socials from the users/user_socials tables (written by applyProfilePatch
+    // above), then generates a full profile with embedding + HyDE documents.
+    if (importedUserIds.length > 0) {
+      try {
+        await profileQueue.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id })));
+        logger.info('[ExperimentService] Enqueued profile enrichment', { count: importedUserIds.length });
+      } catch (err) {
+        logger.warn('[ExperimentService] Failed to enqueue profile enrichment (non-fatal)', { error: err });
       }
     }
 
@@ -252,11 +296,12 @@ class ExperimentService {
    * @param row - Import row carrying optional name/bio/location/socials.
    */
   private async applyProfilePatch(userId: string, row: ImportRow): Promise<void> {
-    if (row.name) {
-      await db
-        .update(schema.users)
-        .set({ name: row.name })
-        .where(eq(schema.users.id, userId));
+    const userPatch: { name?: string; intro?: string; location?: string } = {};
+    if (row.name) userPatch.name = row.name;
+    if (row.bio) userPatch.intro = row.bio;
+    if (row.location) userPatch.location = row.location;
+    if (Object.keys(userPatch).length > 0) {
+      await db.update(schema.users).set(userPatch).where(eq(schema.users.id, userId));
     }
 
     if (row.bio || row.location) {
