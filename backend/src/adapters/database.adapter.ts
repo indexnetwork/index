@@ -3444,7 +3444,8 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Return all network_integrations rows whose syncConfig.status is 'active'.
+   * Return all network_integrations rows whose syncConfig.status is 'active',
+   * joined with network_members to include the network owner's userId.
    * Used by the integration sync worker to find integrations due for a tick.
    */
   async getActiveIntegrationSyncs(): Promise<Array<{
@@ -3452,6 +3453,7 @@ export class ChatDatabaseAdapter {
     toolkit: string;
     connectedAccountId: string;
     syncConfig: Record<string, unknown>;
+    ownerUserId: string;
   }>> {
     return db
       .select({
@@ -3459,8 +3461,16 @@ export class ChatDatabaseAdapter {
         toolkit: schema.networkIntegrations.toolkit,
         connectedAccountId: schema.networkIntegrations.connectedAccountId,
         syncConfig: schema.networkIntegrations.syncConfig,
+        ownerUserId: schema.networkMembers.userId,
       })
       .from(schema.networkIntegrations)
+      .innerJoin(
+        schema.networkMembers,
+        and(
+          eq(schema.networkIntegrations.networkId, schema.networkMembers.networkId),
+          sql`'owner' = ANY(${schema.networkMembers.permissions})`,
+        ),
+      )
       .where(sql`${schema.networkIntegrations.syncConfig}->>'status' = 'active'`);
   }
 

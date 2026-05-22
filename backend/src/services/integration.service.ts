@@ -281,6 +281,7 @@ export class IntegrationService {
     toolkit: string;
     connectedAccountId: string;
     syncConfig: Record<string, unknown>;
+    ownerUserId: string;
   }>> {
     return this.db.getActiveIntegrationSyncs();
   }
