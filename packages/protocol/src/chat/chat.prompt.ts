@@ -1,5 +1,6 @@
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
 
+import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { resolveModules } from "./chat.prompt.modules.js";
 import type { IterationContext } from "./chat.prompt.modules.js";
 
@@ -194,15 +195,13 @@ function buildCoreBody(ctx: ResolvedToolContext): string {
     2,
   );
   const scopedIndexContext = ctx.scopedIndex
-    ? JSON.stringify(
-        {
-          ...ctx.scopedIndex,
-          membershipRole: ctx.scopedMembershipRole,
-        },
-        null,
-        2,
-      )
-    : "null";
+    ? renderNetworkContext({
+        type: ctx.scopedIndex.type ?? 'community',
+        title: ctx.scopedIndex.title,
+        prompt: ctx.scopedIndex.prompt,
+        metadata: ctx.scopedIndex.metadata ?? {},
+      }) + `\n- **Your Role:** ${ctx.scopedMembershipRole ?? 'member'}`
+    : null;
 
   return `
 ### Current User (preloaded context)
@@ -221,9 +220,7 @@ ${indexesContext}
 \`\`\`
 
 ### Scoped Index (preloaded context)
-\`\`\`json
-${scopedIndexContext}
-\`\`\`
+${scopedIndexContext ?? 'No scoped index — general chat.'}
 
 ### Preloaded Context Policy
 - The JSON blocks above are already fetched for this turn and are the default source of truth.

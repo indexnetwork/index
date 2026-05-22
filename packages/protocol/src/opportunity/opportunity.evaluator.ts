@@ -206,6 +206,8 @@ export interface EvaluatorInput {
   introductionHint?: string;
   /** Optional discovery query (e.g. from chat). When set, only suggest opportunities where candidates clearly match this request. */
   discoveryQuery?: string;
+  /** Pre-rendered network context markdown, keyed by networkId. */
+  networkContexts?: Record<string, string>;
 }
 
 const ActorSchema = z.object({
@@ -473,7 +475,10 @@ CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
   RAG SCORE: ${e.ragScore ?? '—'}
   MATCHED VIA: ${e.matchedVia ?? '—'}`;
     }).join('\n');
-    const humanContent = `DISCOVERER: ${input.discovererId}${introModePart}${discoveryQueryPart}\n\nENTITIES:\n${entitiesBlock}${existingPart}`;
+    const networkContextPart = input.networkContexts && Object.keys(input.networkContexts).length > 0
+      ? `\n\nNETWORK CONTEXTS:\n${Object.entries(input.networkContexts).map(([nid, ctx]) => `[INDEX: ${nid}]\n${ctx}`).join('\n\n')}`
+      : '';
+    const humanContent = `DISCOVERER: ${input.discovererId}${introModePart}${discoveryQueryPart}${networkContextPart}\n\nENTITIES:\n${entitiesBlock}${existingPart}`;
     const messages = [
       new SystemMessage(entityBundleSystemPrompt),
       new HumanMessage(humanContent),

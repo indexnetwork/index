@@ -1,12 +1,24 @@
 import { z } from "zod";
 
 import { requestContext } from "../shared/observability/request-context.js";
+import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 
 export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const { graphs, userDb, systemDb } = deps;
+
+  const enrichWithContext = (networks: Array<Record<string, unknown>>) =>
+    networks.map((n) => ({
+      ...n,
+      renderedContext: renderNetworkContext({
+        type: (n.type as string) ?? 'community',
+        title: (n.title as string) ?? '',
+        prompt: n.prompt as string | undefined,
+        metadata: (n.metadata as Record<string, unknown>) ?? {},
+      }),
+    }));
 
   const readIndexes = defineTool({
     name: "read_networks",
@@ -42,10 +54,18 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         return error(result.error);
       }
       if (result.readResult) {
+        const rr = result.readResult as Record<string, unknown>;
+        const enriched = {
+          ...rr,
+          ...(Array.isArray(rr.memberOf) ? { memberOf: enrichWithContext(rr.memberOf as Array<Record<string, unknown>>) } : {}),
+          ...(Array.isArray(rr.owns) ? { owns: enrichWithContext(rr.owns as Array<Record<string, unknown>>) } : {}),
+          ...(Array.isArray(rr.publicNetworks) ? { publicNetworks: enrichWithContext(rr.publicNetworks as Array<Record<string, unknown>>) } : {}),
+        };
+
         // When scoped, add clear metadata so model knows results are limited
         if (context.networkId) {
           return success({
-            ...result.readResult,
+            ...enriched,
             scopeRestriction: {
               isScoped: true,
               scopedToIndex: context.indexName ?? context.networkId,
@@ -54,7 +74,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
-        return success({ ...result.readResult, _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }] });
+        return success({ ...enriched, _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }] });
       }
       return error("Failed to fetch index information.");
     },

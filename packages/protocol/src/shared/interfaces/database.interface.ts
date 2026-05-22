@@ -695,9 +695,16 @@ export interface Database {
   getNetworkMembership(networkId: string, userId: string): Promise<NetworkMembership | null>;
 
   /**
-   * Get index by ID (id and title only). Used for opportunity presentation.
+   * Get index by ID with core fields. Used for opportunity presentation and context rendering.
    */
-  getNetwork(networkId: string): Promise<{ id: string; title: string } | null>;
+  getNetwork(networkId: string): Promise<{
+    id: string;
+    title: string;
+    prompt?: string | null;
+    type?: string;
+    metadata?: Record<string, unknown> | null;
+    permissions?: Record<string, unknown> | null;
+  } | null>;
 
   /**
    * Get index by ID with permissions (e.g. joinPolicy). Used by chat tools for create_index_membership.
@@ -1628,8 +1635,15 @@ export interface SystemDatabase {
   // Index Operations (any index in scope)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Get index info by ID (requires scope). */
-  getNetwork(networkId: string): Promise<{ id: string; title: string } | null>;
+  /** Get index info by ID with core fields (requires scope). */
+  getNetwork(networkId: string): Promise<{
+    id: string;
+    title: string;
+    prompt?: string | null;
+    type?: string;
+    metadata?: Record<string, unknown> | null;
+    permissions?: Record<string, unknown> | null;
+  } | null>;
 
   /** Get index with permissions (requires scope). */
   getNetworkWithPermissions(networkId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null>;
