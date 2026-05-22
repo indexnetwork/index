@@ -53,16 +53,12 @@
       }
     ]
   },
-  "enabledMcpjsonServers": [
-    "index-network"
-  ],
   "enabledPlugins": {
     "linear@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "railway@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
-    "index-network@indexnetwork-claude-plugin": true,
     "neon@claude-plugins-official": true
   }
 }
