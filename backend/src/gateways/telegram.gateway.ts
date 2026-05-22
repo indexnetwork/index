@@ -1,6 +1,12 @@
 import { log } from '../lib/log';
 import { onTelegramNotification, type TelegramNotificationPayload } from '../lib/notification-events';
 import type { TelegramPrefs } from '../schemas/database.schema';
+import {
+  parseResponseSegments,
+  hasStructuredBlocks,
+  formatOpportunityCardHtml,
+  formatOpportunityCardPlainText,
+} from '../lib/telegram/formatter';
 
 const logger = log.lib.from('telegram.gateway');
 
@@ -28,7 +34,7 @@ export interface GatewayDeps {
   createChatSession(data: { id: string; userId: string; title?: string }): Promise<void>;
   createChatMessage(data: { id: string; sessionId: string; role: 'user' | 'assistant' | 'system'; content: string }): Promise<void>;
   processMessage(userId: string, text: string): Promise<{ responseText: string; error?: string }>;
-  sendTelegramMessage(chatId: string, text: string, keyboard?: Array<Array<{ text: string; url: string }>>): Promise<void>;
+  sendTelegramMessage(chatId: string, text: string, keyboard?: Array<Array<{ text: string; url: string }>>, parseMode?: 'HTML' | 'MarkdownV2'): Promise<void>;
   sendChatAction(chatId: string): Promise<void>;
   streamMessage?(userId: string, text: string, sessionId: string): AsyncGenerator<GatewayStreamEvent>;
 }
@@ -180,6 +186,46 @@ const STATUS_THROTTLE_MS = 5_000;
 
 const PROCESS_TIMEOUT_MS = 120_000;
 
+// ── Structured-block formatting ────────────────────────────────────────────────
+
+/**
+ * Parse the LLM response for structured blocks (opportunity cards, intent
+ * proposals) and render them as individual HTML-formatted messages with inline
+ * keyboards. Plain-text responses pass through unchanged.
+ *
+ * Each opportunity card is sent as a separate message with:
+ * - HTML formatting: bold name, italic headline, body, metadata
+ * - An inline keyboard button linking to the web app
+ * - A plain-text fallback if Telegram rejects the HTML
+ */
+async function sendFormattedResponse(
+  chatId: string,
+  responseText: string,
+  deps: GatewayDeps,
+): Promise<void> {
+  const segments = parseResponseSegments(responseText);
+
+  if (!hasStructuredBlocks(segments)) {
+    await deps.sendTelegramMessage(chatId, responseText);
+    return;
+  }
+
+  for (const segment of segments) {
+    if (segment.type === 'text') {
+      await deps.sendTelegramMessage(chatId, segment.content);
+    } else if (segment.type === 'opportunity') {
+      const { text, keyboard } = formatOpportunityCardHtml(segment.card, appUrl());
+      try {
+        await deps.sendTelegramMessage(chatId, text, keyboard, 'HTML');
+      } catch {
+        // HTML rejected by Telegram — fall back to plain text without keyboard
+        const plain = formatOpportunityCardPlainText(segment.card);
+        await deps.sendTelegramMessage(chatId, plain).catch(() => {});
+      }
+    }
+  }
+}
+
 /**
  * Handle an update received from Telegram (text message or /start command).
  * Uses the streaming graph interface when available, falling back to
@@ -245,10 +291,10 @@ export async function handleInbound(
     content: responseText,
   }).catch((err) => logger.warn('Failed to write assistant message to conversation', { error: err }));
 
-  // Send final response. sendMessage defaults to plain text (no parse_mode)
-  // so LLM output containing <, >, & won't trigger Telegram's HTML parser.
+  // Format structured blocks (opportunity cards, etc.) as styled Telegram
+  // messages; plain-text responses are sent as-is.
   try {
-    await deps.sendTelegramMessage(chatId, responseText);
+    await sendFormattedResponse(chatId, responseText, deps);
   } catch (err) {
     logger.error('Failed to deliver final response via Telegram', { chatId, error: err });
     // Last-resort fallback
