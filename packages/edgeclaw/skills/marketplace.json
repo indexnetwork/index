@@ -12,7 +12,7 @@
       },
       "policy": {
         "installation": "AVAILABLE",
-        "authentication": "ENVIRONMENT"
+        "authentication": "USER_CONFIG"
       },
       "category": "Productivity"
     }

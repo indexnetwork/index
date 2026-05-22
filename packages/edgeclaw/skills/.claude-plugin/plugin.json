@@ -8,10 +8,22 @@
     "url": "https://edgecity.live"
   },
   "userConfig": {
-    "apiKey": {
+    "indexApiKey": {
       "type": "string",
       "title": "Index Network API Key",
       "description": "API key for Index Network. Obtain one at edgecity.live/agentvillage or from your community admin.",
+      "sensitive": true
+    },
+    "edgeosToken": {
+      "type": "string",
+      "title": "EdgeOS Bearer Token",
+      "description": "Human session JWT for EdgeOS directory and profile access.",
+      "sensitive": true
+    },
+    "edgeosApiKey": {
+      "type": "string",
+      "title": "EdgeOS API Key",
+      "description": "Long-lived eos_live_... key for EdgeOS events and RSVPs.",
       "sensitive": true
     }
   },
@@ -20,7 +32,7 @@
       "type": "http",
       "url": "https://protocol.index.network/mcp",
       "headers": {
-        "x-api-key": "${user_config.apiKey}"
+        "x-api-key": "${user_config.indexApiKey}"
       }
     }
   }
