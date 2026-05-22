@@ -245,7 +245,27 @@ export async function handleInbound(
     content: responseText,
   }).catch((err) => logger.warn('Failed to write assistant message to conversation', { error: err }));
 
-  await deps.sendTelegramMessage(chatId, responseText);
+  // Send final response. sendMessage defaults to plain text (no parse_mode)
+  // so LLM output containing <, >, & won't trigger Telegram's HTML parser.
+  try {
+    await deps.sendTelegramMessage(chatId, responseText);
+  } catch (err) {
+    logger.error('Failed to deliver final response via Telegram', { chatId, error: err });
+    // Last-resort fallback
+    await deps.sendTelegramMessage(chatId, 'I generated a response but couldn\'t deliver it. Please try again.').catch(() => {});
+  }
+}
+
+/**
+ * Send a status message during streaming — best-effort.
+ * Telegram API errors (rate limits, network) must not kill the stream.
+ */
+async function trySendStatus(chatId: string, text: string, deps: GatewayDeps): Promise<void> {
+  try {
+    await deps.sendTelegramMessage(chatId, text);
+  } catch (err) {
+    logger.warn('Failed to send Telegram status message', { chatId, text, error: err });
+  }
 }
 
 /**
@@ -262,6 +282,9 @@ async function handleInboundStreaming(
 ): Promise<string> {
   const stopTyping = startTypingIndicator(chatId, deps);
 
+  // Timeout timer — must be cleaned up to avoid unhandled rejections
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
   try {
     let responseText = '';
     let lastStatusSentAt = 0;
@@ -270,9 +293,9 @@ async function handleInboundStreaming(
     const stream = deps.streamMessage!(userId, text, sessionId);
 
     // Race the stream against a hard timeout
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('streamMessage timed out')), PROCESS_TIMEOUT_MS),
-    );
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error('streamMessage timed out')), PROCESS_TIMEOUT_MS);
+    });
 
     // Wrap the async iteration in a promise so we can race it
     const streamPromise = (async () => {
@@ -282,7 +305,7 @@ async function handleInboundStreaming(
           const status = toolStatusText(event.toolName);
           const now = Date.now();
           if (status && status !== lastStatusText && now - lastStatusSentAt >= STATUS_THROTTLE_MS) {
-            await deps.sendTelegramMessage(chatId, status);
+            await trySendStatus(chatId, status, deps);
             lastStatusText = status;
             lastStatusSentAt = now;
           }
@@ -293,7 +316,7 @@ async function handleInboundStreaming(
           const agentStatus = agentStatusText(event.name);
           const now = Date.now();
           if (agentStatus && agentStatus !== lastStatusText && now - lastStatusSentAt >= STATUS_THROTTLE_MS) {
-            await deps.sendTelegramMessage(chatId, agentStatus);
+            await trySendStatus(chatId, agentStatus, deps);
             lastStatusText = agentStatus;
             lastStatusSentAt = now;
           }
@@ -309,9 +332,20 @@ async function handleInboundStreaming(
     await Promise.race([streamPromise, timeoutPromise]);
     return responseText || 'Sorry, I could not process your message.';
   } catch (err) {
-    logger.error('Streaming processMessage failed for Telegram user', { userId, chatId, error: err });
-    return 'Sorry, something went wrong. Please try again.';
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const isTimeout = errorMsg.includes('timed out');
+    logger.error('Streaming processMessage failed for Telegram user', {
+      userId,
+      chatId,
+      errorType: isTimeout ? 'timeout' : 'stream_error',
+      errorMessage: errorMsg,
+      error: err,
+    });
+    return isTimeout
+      ? 'This is taking longer than expected. Please try a simpler question, or try again in a moment.'
+      : 'Sorry, something went wrong. Please try again.';
   } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
     stopTyping();
   }
 }

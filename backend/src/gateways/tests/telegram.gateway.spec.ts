@@ -350,4 +350,82 @@ describe('handleInbound (streaming)', () => {
     const statusMsg = deps.sent.find((m) => m.text.includes('connection'));
     expect(statusMsg).toBeDefined();
   });
+
+  it('sends LLM response with special chars as-is (no HTML parse mode)', async () => {
+    seedUser('user-html', 'chat-html', 'sess-html');
+
+    const stream = fakeStream(
+      { type: 'response_complete', response: 'Use <code>x & y</code> to compare' },
+    );
+
+    await callInbound('chat-html', 'test', stream);
+
+    // sendMessage defaults to plain text — no escaping, chars sent verbatim
+    const finalMsg = deps.sent[deps.sent.length - 1];
+    expect(finalMsg.text).toBe('Use <code>x & y</code> to compare');
+
+    // Conversation record matches
+    const assistantMsg = deps.messages.find((m) => m.role === 'assistant');
+    expect(assistantMsg?.content).toBe('Use <code>x & y</code> to compare');
+  });
+
+  it('continues streaming when a status send fails', async () => {
+    seedUser('user-sfail', 'chat-sfail', 'sess-sfail');
+
+    const deliveredMsgs: SentMessage[] = [];
+    const streamFn = fakeStream(
+      { type: 'tool_activity', toolName: 'search_intents', phase: 'start' },
+      { type: 'response_complete', response: 'Here are results.' },
+    );
+
+    const d = {
+      ...deps,
+      sendTelegramMessage: async (chatId: string, text: string, keyboard?: Array<Array<{ text: string; url: string }>>) => {
+        if (text.includes('signals')) throw new Error('Telegram 429');
+        deliveredMsgs.push({ chatId, text, keyboard });
+      },
+      streamMessage: streamFn,
+    };
+
+    const { handleInbound } = await import('../telegram.gateway');
+    await handleInbound('chat-sfail', 'test', d, {
+      get: async () => null,
+      del: async () => {},
+    });
+
+    // Final response delivered despite status send failure
+    expect(deliveredMsgs.some((m) => m.text === 'Here are results.')).toBe(true);
+  });
+
+  it('delivers fallback when final send throws', async () => {
+    seedUser('user-fallback', 'chat-fallback', 'sess-fallback');
+
+    const deliveredMsgs: SentMessage[] = [];
+    let finalSendAttempted = false;
+    const streamFn = fakeStream(
+      { type: 'response_complete', response: 'Normal response text' },
+    );
+
+    const d = {
+      ...deps,
+      sendTelegramMessage: async (chatId: string, text: string, keyboard?: Array<Array<{ text: string; url: string }>>) => {
+        // Simulate Telegram network error on the first final-send attempt
+        if (text === 'Normal response text' && !finalSendAttempted) {
+          finalSendAttempted = true;
+          throw new Error('Telegram network error');
+        }
+        deliveredMsgs.push({ chatId, text, keyboard });
+      },
+      streamMessage: streamFn,
+    };
+
+    const { handleInbound } = await import('../telegram.gateway');
+    await handleInbound('chat-fallback', 'test', d, {
+      get: async () => null,
+      del: async () => {},
+    });
+
+    // Fallback message was delivered
+    expect(deliveredMsgs.some((m) => m.text.includes('couldn\'t deliver'))).toBe(true);
+  });
 });
