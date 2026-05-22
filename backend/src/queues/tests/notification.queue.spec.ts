@@ -4,7 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test' });
 
-import { describe, expect, it, mock, beforeEach } from 'bun:test';
+import { describe, expect, it, mock, beforeEach, afterAll } from 'bun:test';
 import { EventEmitter } from 'events';
 
 const mockAdd = mock(async () => ({ id: 'job-1', name: 'process_opportunity_notification', data: {} }));
@@ -28,7 +28,7 @@ let mockGetUserForNewsletter: (id: string) => Promise<{
 } | null> = async () => null;
 let mockRedisSet: (key: string, value: string, ...args: unknown[]) => Promise<string | null> = async () => 'OK';
 let mockRedisRpush = mock(async () => 1);
-let mockRedisExpire = mock(async () => 'OK');
+const mockRedisExpire = mock(async () => 'OK');
 const mockEmitOpportunityNotification = mock(() => {});
 const mockAddEmailJob = mock(async () => {});
 
@@ -61,6 +61,10 @@ mock.module('../../lib/notification-events', () => ({
     return () => _telegramEmitter.off('telegram', handler);
   },
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 import {
   NotificationQueue,
@@ -175,7 +179,7 @@ describe('NotificationQueue', () => {
     });
 
     it('priority high: recipient no email skips email', async () => {
-      mockGetUserForNewsletter = async () => ({ name: 'Bob' } as any); // no email
+      mockGetUserForNewsletter = async () => ({ name: 'Bob' }); // no email
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
@@ -193,7 +197,7 @@ describe('NotificationQueue', () => {
         name: 'Bob',
         onboarding: {},
         prefs: {},
-      } as any);
+      });
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
@@ -211,7 +215,7 @@ describe('NotificationQueue', () => {
         name: 'Bob',
         onboarding: { completedAt: '2024-01-01' },
         prefs: { connectionUpdates: false },
-      } as any);
+      });
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
@@ -230,7 +234,7 @@ describe('NotificationQueue', () => {
         name: 'Bob',
         onboarding: { completedAt: '2024-01-01' },
         prefs: {},
-      } as any);
+      });
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
@@ -250,7 +254,7 @@ describe('NotificationQueue', () => {
         onboarding: { completedAt: '2024-01-01' },
         prefs: {},
         unsubscribeToken: 'token123',
-      } as any);
+      });
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
@@ -274,7 +278,7 @@ describe('NotificationQueue', () => {
         name: 'Bob',
         onboarding: { completedAt: '2024-01-01' },
         prefs: {},
-      } as any);
+      });
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });

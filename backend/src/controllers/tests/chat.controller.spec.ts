@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { ChatController } from "../chat.controller";
 import { ChatDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, IntentDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import { chatSessionService } from "../../services/chat.service";
+import { chatFactory } from "../mcp.controller";
 import db from "../../lib/drizzle/drizzle";
 import { networkMembers, personalNetworks } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
@@ -14,8 +15,8 @@ import type { AuthenticatedUser } from "../../guards/auth.guard";
 // Response type for chat controller
 interface ChatResponse {
   response?: string;
-  routingDecision?: any;
-  subgraphResults?: any;
+  routingDecision?: unknown;
+  subgraphResults?: unknown;
   error?: string;
 }
 
@@ -72,6 +73,7 @@ describe("ChatController Integration", () => {
     });
     console.log(`Created test user profile for: ${testUserId}`);
 
+    chatSessionService.setFactory(chatFactory);
     controller = new ChatController();
   });
 

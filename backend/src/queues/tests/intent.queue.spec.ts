@@ -4,7 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test' });
 
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, mock, afterAll } from 'bun:test';
 
 const mockAdd = mock(async () => ({ id: 'job-1', name: 'generate_hyde', data: {} }));
 const mockCreateWorker = mock(() => ({}));
@@ -19,6 +19,10 @@ mock.module('../../lib/bullmq/bullmq', () => ({
 mock.module('../opportunity/from-intent.queue', () => ({
   fromIntentQueue: { addJob: async () => ({ id: '1' }) },
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 import {
   IntentQueue,

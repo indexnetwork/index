@@ -8,6 +8,8 @@
     "build": "tsc",
     "start": "bun dist/main.js",
     "lint": "eslint src/",
+    "test:isolated": "bash scripts/test-isolated.sh",
+    "test:all": "bun test && bun run test:isolated",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:apply-schema": "bun ./src/cli/db-apply-schema.ts",
@@ -30,7 +32,8 @@
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
     "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
-    "test": "NODE_ENV=test bun test"
+    "test": "NODE_ENV=test bash scripts/test-safe.sh",
+    "test:raw": "NODE_ENV=test bun test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",

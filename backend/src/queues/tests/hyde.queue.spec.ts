@@ -4,7 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test' });
 
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, mock, afterAll } from 'bun:test';
 
 const cronCallbacks: Array<() => void | Promise<void>> = [];
 mock.module('node-cron', () => ({
@@ -15,6 +15,10 @@ mock.module('node-cron', () => ({
     },
   },
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 import type { HydeQueueDatabase } from '../hyde.queue';
 import { HydeQueue } from '../hyde.queue';
@@ -114,7 +118,7 @@ describe('HydeQueue', () => {
         getIntentForIndexing,
         deleteHydeDocumentsForSource,
       };
-      const queue = new HydeQueue({ database: asHydeDb(db) });
+      const _queue = new HydeQueue({ database: asHydeDb(db) });
       // Without mocking HyDE graph this will try to run real graph; we only need to cover
       // intent-not-found path. So use one doc with intent null -> deleteHydeDocumentsForSource.
       const getStaleHydeDocuments = mock(async () =>

@@ -9,6 +9,7 @@ import db from '../../lib/drizzle/drizzle';
 import {
   users,
   userProfiles,
+  userSocials,
   networks,
   networkMembers,
   intents,
@@ -93,6 +94,15 @@ beforeAll(async () => {
     },
   ]);
 
+  await db.insert(userSocials).values([
+    { userId: ids.realUserId, label: 'linkedin', value: 'serefyarar' },
+    { userId: ids.realUserId, label: 'github', value: 'serefyarar' },
+    { userId: ids.realUserId, label: 'twitter', value: 'hyperseref' },
+    { userId: ids.ghostAId, label: 'linkedin', value: 'serefyarar' },
+    { userId: ids.ghostBId, label: 'github', value: 'serefyarar' },
+    { userId: ids.differentPersonId, label: 'linkedin', value: 'serefozu-b5b87322a' },
+  ]);
+
   await db.insert(userProfiles).values([
     {
       userId: ids.mergeTargetId,
@@ -133,13 +143,13 @@ afterAll(async () => {
 
 describe('ProfileDatabaseAdapter.findDuplicateUser', () => {
   it('matches by LinkedIn handle and prefers real user over ghost', async () => {
-    const result = await adapter.findDuplicateUser(ids.ghostAId, { linkedin: 'serefyarar' });
+    const result = await adapter.findDuplicateUser(ids.ghostAId, [{ id: 'fake-id-1', userId: ids.ghostAId, label: 'linkedin', value: 'serefyarar' }]);
     expect(result).not.toBeNull();
     expect(result!.id).toBe(ids.realUserId);
   });
 
   it('matches by GitHub handle', async () => {
-    const result = await adapter.findDuplicateUser(ids.ghostBId, { github: 'serefyarar' });
+    const result = await adapter.findDuplicateUser(ids.ghostBId, [{ id: 'fake-id-2', userId: ids.ghostBId, label: 'github', value: 'serefyarar' }]);
     expect(result).not.toBeNull();
     expect(result!.id).toBe(ids.realUserId);
   });
@@ -153,7 +163,7 @@ describe('ProfileDatabaseAdapter.findDuplicateUser', () => {
       isGhost: true,
     });
     try {
-      const result = await adapter.findDuplicateUser(newGhostId, { x: 'hyperseref' });
+      const result = await adapter.findDuplicateUser(newGhostId, [{ id: 'fake-id-3', userId: newGhostId, label: 'twitter', value: 'hyperseref' }]);
       expect(result).not.toBeNull();
       expect(result!.id).toBe(ids.realUserId);
     } finally {
@@ -162,18 +172,18 @@ describe('ProfileDatabaseAdapter.findDuplicateUser', () => {
   });
 
   it('is case-insensitive', async () => {
-    const result = await adapter.findDuplicateUser(ids.ghostAId, { linkedin: 'SerefYarar' });
+    const result = await adapter.findDuplicateUser(ids.ghostAId, [{ id: 'fake-id-4', userId: ids.ghostAId, label: 'linkedin', value: 'SerefYarar' }]);
     expect(result).not.toBeNull();
     expect(result!.id).toBe(ids.realUserId);
   });
 
   it('does not match different social handles', async () => {
-    const result = await adapter.findDuplicateUser(ids.differentPersonId, { linkedin: 'serefozu-b5b87322a' });
+    const result = await adapter.findDuplicateUser(ids.differentPersonId, [{ id: 'fake-id-5', userId: ids.differentPersonId, label: 'linkedin', value: 'serefozu-b5b87322a' }]);
     expect(result).toBeNull();
   });
 
   it('returns null when no socials provided', async () => {
-    const result = await adapter.findDuplicateUser(ids.ghostNoSocialsId, {});
+    const result = await adapter.findDuplicateUser(ids.ghostNoSocialsId, []);
     expect(result).toBeNull();
   });
 
@@ -188,7 +198,7 @@ describe('ProfileDatabaseAdapter.findDuplicateUser', () => {
       deletedAt: new Date(),
     });
     try {
-      const result = await adapter.findDuplicateUser(ids.ghostAId, { linkedin: 'deleted-handle-unique' });
+      const result = await adapter.findDuplicateUser(ids.ghostAId, [{ id: 'fake-id-6', userId: ids.ghostAId, label: 'linkedin', value: 'deleted-handle-unique' }]);
       expect(result).toBeNull();
     } finally {
       await db.delete(users).where(eq(users.id, deletedId));

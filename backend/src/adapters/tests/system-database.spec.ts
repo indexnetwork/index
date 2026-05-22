@@ -9,7 +9,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test' });
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test';
 
 // Mock getPersonalIndexId before importing the module under test.
 // This prevents verifySharedIndex from hitting the real DB.
@@ -21,6 +21,10 @@ mock.module('../database.adapter', () => {
     ...actual,
     getPersonalIndexId: mockGetPersonalIndexId,
   };
+});
+
+afterAll(() => {
+  mock.restore();
 });
 
 import { createSystemDatabase } from '../database.adapter';

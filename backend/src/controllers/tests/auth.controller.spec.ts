@@ -3,8 +3,11 @@ import { config } from "dotenv";
 config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { eq } from "drizzle-orm";
 import { AuthController } from "../auth.controller";
 import { UserDatabaseAdapter } from "../../adapters/database.adapter";
+import db from "../../lib/drizzle/drizzle";
+import { userSocials } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 import { profileService } from "../../services/profile.service";
 import { userService } from "../../services/user.service";
@@ -29,7 +32,10 @@ describe("AuthController Integration", () => {
   });
 
   afterAll(async () => {
-    if (testUserId) await userAdapter.deleteById(testUserId);
+    if (testUserId) {
+      await db.delete(userSocials).where(eq(userSocials.userId, testUserId));
+      await userAdapter.deleteById(testUserId);
+    }
   });
 
   const mockUser = (): AuthenticatedUser => ({
@@ -66,9 +72,12 @@ describe("AuthController Integration", () => {
     });
 
     test("should trigger background profile sync when user has name and socials but no profile", async () => {
-      await userAdapter.update(testUserId, {
-        name: "Trigger User",
-        socials: { github: "https://github.com/trigger-user" } as any,
+      await userAdapter.update(testUserId, { name: "Trigger User" });
+      await db.delete(userSocials).where(eq(userSocials.userId, testUserId));
+      await db.insert(userSocials).values({
+        userId: testUserId,
+        label: "github",
+        value: "https://github.com/trigger-user",
       });
 
       const originalSyncProfile = profileService.syncProfile;
@@ -93,10 +102,8 @@ describe("AuthController Integration", () => {
     });
 
     test("should not trigger background profile sync when socials are missing", async () => {
-      await userAdapter.update(testUserId, {
-        name: "No Social User",
-        socials: null as any,
-      });
+      await userAdapter.update(testUserId, { name: "No Social User" });
+      await db.delete(userSocials).where(eq(userSocials.userId, testUserId));
 
       const originalSyncProfile = profileService.syncProfile;
       let syncCallCount = 0;
@@ -132,7 +139,7 @@ describe("AuthController Integration", () => {
         intro: "Already has profile",
         avatar: null,
         location: "Test City",
-        socials: { linkedin: "https://linkedin.com/in/existing-user" },
+        socials: [{ id: "s1", userId: testUserId, label: "linkedin", value: "https://linkedin.com/in/existing-user" }],
         timezone: "UTC",
         createdAt: new Date(),
         updatedAt: new Date(),

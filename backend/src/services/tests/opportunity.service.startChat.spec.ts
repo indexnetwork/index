@@ -49,6 +49,7 @@ function makeServiceWithDb(opp: Opportunity, overrides: DbStubOverrides = {}) {
   const db = {
     getOpportunity: mock(async () => opp),
     updateOpportunityStatus: mock(async () => updated),
+    stampOpportunityActorAction: mock(async () => updated),
     acceptSiblingOpportunities: mock(async () => [] as string[]),
     upsertContactMembership: mock(async () => {}),
     getOrCreateDM: mock(async () => ({ id: CONV_ID })),
@@ -70,7 +71,7 @@ describe('OpportunityService.startChat', () => {
     if ('error' in result) return;
     expect(result.conversationId).toBe(CONV_ID);
     expect(result.counterpartUserId).toBe(PEER_ID);
-    expect(db.updateOpportunityStatus).toHaveBeenCalledWith(OPP_ID, 'accepted');
+    expect(db.stampOpportunityActorAction).toHaveBeenCalledWith(OPP_ID, VIEWER_ID, 'accepted', VIEWER_ID);
     expect(db.getOrCreateDM).toHaveBeenCalledWith(VIEWER_ID, PEER_ID);
 
     // Both-way contact membership: accepter (restore:true) + counterpart (restore:false)
@@ -89,7 +90,7 @@ describe('OpportunityService.startChat', () => {
     const result = await service.startChat(OPP_ID, VIEWER_ID);
 
     expect('error' in result).toBe(false);
-    expect(db.updateOpportunityStatus).toHaveBeenCalledWith(OPP_ID, 'accepted');
+    expect(db.stampOpportunityActorAction).toHaveBeenCalledWith(OPP_ID, VIEWER_ID, 'accepted', VIEWER_ID);
   });
 
   it('returns conversation idempotently when opportunity is already accepted', async () => {
@@ -163,10 +164,10 @@ describe('OpportunityService.startChat', () => {
     expect(result.status).toBe(404);
   });
 
-  it('returns 500 when updateOpportunityStatus returns null (DM already created)', async () => {
+  it('returns 500 when stampOpportunityActorAction returns null (DM already created)', async () => {
     const opp = makeOpportunity({ status: 'pending' });
     const { service, db } = makeServiceWithDb(opp, {
-      updateOpportunityStatus: mock(async () => null),
+      stampOpportunityActorAction: mock(async () => null),
     });
 
     const result = await service.startChat(OPP_ID, VIEWER_ID);
