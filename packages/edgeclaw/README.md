@@ -132,9 +132,31 @@ Every call with the same email returns the same user but a **fresh API key** —
 1. Runs the EdgeClaw installer with the returned `apiKey`: `bun install/install.ts --index-api-key <apiKey>` (or equivalent in the hosted runtime). If InstaClaw has also fetched an EdgeOS personal access token for the attendee, it passes that on the same line: `bun install/install.ts --index-api-key <apiKey> --edgeos-api-key <eos_live_…> --edgeos-bearer-token <jwt>`.
 2. In a follow-up step, captures the attendee's Telegram handle and binds it to their agent transport — this is entirely InstaClaw-owned and happens outside this endpoint.
 
-### What EdgeOS does after signup
+### What EdgeOS does after signup (BYOA flow)
 
-Displays the returned `mcpServer` object to the attendee as a copyable config snippet. The attendee pastes it into their agent's MCP servers config (or runs `bun install/install.ts --index-api-key <apiKey>` from a clone of this repo).
+Displays per-host install commands with the attendee's credentials pre-filled. The attendee copies and runs them in their terminal. EdgeOS also completes the email-OTP flow to obtain `EDGEOS_BEARER_TOKEN` and `EDGEOS_API_KEY`, which are included in the install commands.
+
+**Claude Code:**
+```bash
+export INDEX_API_KEY=<apiKey>
+export EDGEOS_BEARER_TOKEN=<jwt>
+export EDGEOS_API_KEY=<eos_live_…>
+claude plugin marketplace add Edge-City/edgeclaw-skills
+claude plugin install edgeclaw@edgeclaw-skills
+```
+
+**OpenClaw:**
+```bash
+openclaw plugins install edgeclaw --marketplace Edge-City/edgeclaw-skills
+openclaw config set mcp.servers.index '{"url":"https://protocol.index.network/mcp","transport":"streamable-http","headers":{"x-api-key":"<apiKey>"}}'
+openclaw config set env.vars.EDGEOS_BEARER_TOKEN '<jwt>'
+openclaw config set env.vars.EDGEOS_API_KEY '<eos_live_…>'
+openclaw gateway restart
+```
+
+**Claude Desktop / other MCP clients:** displays the `mcpServer` JSON with the API key baked in.
+
+See `skills/README.md` for the full per-host reference.
 
 ## Prerequisites
 
