@@ -8,6 +8,7 @@ import { profileQueue } from '../queues/profile.queue';
 import type { ContactImporter, ImportResult } from '../types/integrations.types';
 import type { TelegramPrefs } from '../schemas/database.schema';
 import type { IntegrationConnection } from '../adapters/integration.adapter';
+import { SyncConfigSchema } from '../schemas/network.validation';
 
 const logger = log.service.from('IntegrationService');
 
@@ -242,6 +243,46 @@ export class IntegrationService {
   async cleanupConnectionLinks(connectedAccountId: string): Promise<void> {
     await this.db.deleteIndexIntegrationsByConnectedAccount(connectedAccountId);
     logger.info('Cleaned up index links for disconnected account', { connectedAccountId });
+  }
+
+  /**
+   * Configure sync settings (interval, calendarId, status) for an integration on an index.
+   * The integration must already be linked via linkToIndex.
+   *
+   * @param userId - Authenticated user (must be index owner)
+   * @param networkId - Target index
+   * @param toolkit - Toolkit slug (e.g. 'google_calendar')
+   * @param config - Partial sync configuration to merge
+   * @throws If the user is not an owner or the toolkit is not linked
+   */
+  async configureSyncConfig(
+    userId: string,
+    networkId: string,
+    toolkit: string,
+    config: { calendarId?: string; intervalMs?: number; status?: 'active' | 'paused' },
+  ): Promise<void> {
+    await this.assertNetworkOwner(networkId, userId);
+    const linked = await this.db.getNetworkIntegrations(networkId);
+    const integration = linked.find(i => i.toolkit === toolkit);
+    if (!integration) {
+      throw new Error(`No ${toolkit} integration linked to this network`);
+    }
+    const validated = SyncConfigSchema.parse(config);
+    await this.db.updateIntegrationSyncConfig(networkId, toolkit, validated);
+    logger.info('Sync config updated', { userId, networkId, toolkit });
+  }
+
+  /**
+   * Return all integrations with active sync enabled.
+   * Used by the integration sync worker.
+   */
+  async getActiveIntegrationSyncs(): Promise<Array<{
+    networkId: string;
+    toolkit: string;
+    connectedAccountId: string;
+    syncConfig: Record<string, unknown>;
+  }>> {
+    return this.db.getActiveIntegrationSyncs();
   }
 
   /**

@@ -3422,6 +3422,49 @@ export class ChatDatabaseAdapter {
   }
 
   /**
+   * Update the syncConfig JSONB column on a network_integrations row.
+   * @param networkId - Target index
+   * @param toolkit - Toolkit slug (e.g. 'google_calendar')
+   * @param syncConfig - New sync configuration to store
+   */
+  async updateIntegrationSyncConfig(
+    networkId: string,
+    toolkit: string,
+    syncConfig: Record<string, unknown>,
+  ): Promise<void> {
+    await db
+      .update(schema.networkIntegrations)
+      .set({ syncConfig })
+      .where(
+        and(
+          eq(schema.networkIntegrations.networkId, networkId),
+          eq(schema.networkIntegrations.toolkit, toolkit),
+        ),
+      );
+  }
+
+  /**
+   * Return all network_integrations rows whose syncConfig.status is 'active'.
+   * Used by the integration sync worker to find integrations due for a tick.
+   */
+  async getActiveIntegrationSyncs(): Promise<Array<{
+    networkId: string;
+    toolkit: string;
+    connectedAccountId: string;
+    syncConfig: Record<string, unknown>;
+  }>> {
+    return db
+      .select({
+        networkId: schema.networkIntegrations.networkId,
+        toolkit: schema.networkIntegrations.toolkit,
+        connectedAccountId: schema.networkIntegrations.connectedAccountId,
+        syncConfig: schema.networkIntegrations.syncConfig,
+      })
+      .from(schema.networkIntegrations)
+      .where(sql`${schema.networkIntegrations.syncConfig}->>'status' = 'active'`);
+  }
+
+  /**
    * Hard-delete a contact membership from the owner's personal index.
    * @param ownerId - The owner of the personal index
    * @param contactUserId - The contact user to remove
