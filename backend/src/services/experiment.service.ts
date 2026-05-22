@@ -92,13 +92,17 @@ class ExperimentService {
     }
 
     // Mark as onboarded so the user is discoverable in vector search filters.
-    const currentOnboarding = (await db.select({ onboarding: schema.users.onboarding })
-      .from(schema.users).where(eq(schema.users.id, result.user.id)).limit(1))[0]?.onboarding ?? {};
-    if (!currentOnboarding.completedAt) {
-      await db.update(schema.users)
-        .set({ onboarding: { ...currentOnboarding, completedAt: new Date().toISOString() } })
-        .where(eq(schema.users.id, result.user.id));
-    }
+    // Uses an atomic WHERE guard so concurrent signup() calls for the same user
+    // cannot both read completedAt as missing and race to overwrite each other.
+    const completedAt = new Date().toISOString();
+    await db.update(schema.users)
+      .set({
+        onboarding: sql`COALESCE(${schema.users.onboarding}::jsonb, '{}'::jsonb) || ${JSON.stringify({ completedAt })}::jsonb`,
+      })
+      .where(and(
+        eq(schema.users.id, result.user.id),
+        sql`(${schema.users.onboarding} IS NULL OR ${schema.users.onboarding}->>'completedAt' IS NULL)`,
+      ));
 
     // Enqueue profile enrichment so the user gets a profile embedding + HyDE.
     try {

@@ -285,4 +285,63 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(call).toHaveLength(1);
     expect(call[0].userId).toBe(user.id);
   });
+
+  test('signup sets onboarding.completedAt for new users', async () => {
+    enrichSingleSpy.mockClear();
+    const email = `signup-onboard-${Date.now()}@test.dev`;
+    const result = await experimentService.signup(networkId, {
+      email,
+      name: 'Signup Onboard',
+    });
+    cleanupUserIds.push(result.user.id);
+
+    const [user] = await db
+      .select({ onboarding: schema.users.onboarding })
+      .from(schema.users)
+      .where(eq(schema.users.id, result.user.id));
+
+    expect(user.onboarding).toBeTruthy();
+    expect(user.onboarding!.completedAt).toBeTruthy();
+    expect(new Date(user.onboarding!.completedAt!).getTime()).toBeGreaterThan(0);
+  });
+
+  test('signup does not overwrite existing completedAt on re-signup', async () => {
+    const email = `signup-keep-${Date.now()}@test.dev`;
+    const originalCompletedAt = '2025-06-01T00:00:00.000Z';
+
+    // First signup to provision the user
+    const first = await experimentService.signup(networkId, { email, name: 'Re-Signup' });
+    cleanupUserIds.push(first.user.id);
+
+    // Manually set a known completedAt
+    await db.update(schema.users)
+      .set({ onboarding: { completedAt: originalCompletedAt, flow: 3 } })
+      .where(eq(schema.users.id, first.user.id));
+
+    // Second signup for the same user
+    await experimentService.signup(networkId, { email, name: 'Re-Signup' });
+
+    const [user] = await db
+      .select({ onboarding: schema.users.onboarding })
+      .from(schema.users)
+      .where(eq(schema.users.id, first.user.id));
+
+    expect(user.onboarding!.completedAt).toBe(originalCompletedAt);
+    expect(user.onboarding!.flow).toBe(3);
+  });
+
+  test('signup enqueues profile enrichment', async () => {
+    enrichSingleSpy.mockClear();
+    const email = `signup-enrich-${Date.now()}@test.dev`;
+    const result = await experimentService.signup(networkId, {
+      email,
+      name: 'Signup Enrich',
+      bio: 'ML researcher',
+    });
+    cleanupUserIds.push(result.user.id);
+
+    expect(enrichSingleSpy).toHaveBeenCalledTimes(1);
+    const call = enrichSingleSpy.mock.calls[0][0];
+    expect(call).toEqual({ userId: result.user.id });
+  });
 });
