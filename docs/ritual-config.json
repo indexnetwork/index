@@ -31,7 +31,6 @@
     "Bump frontend/package.json version for changes under frontend/",
     "Bump packages/protocol/package.json version for changes under packages/protocol/",
     "Bump packages/cli/package.json version for changes under packages/cli/",
-    "Bump packages/openclaw-plugin/package.json AND packages/openclaw-plugin/openclaw.plugin.json version for changes under packages/openclaw-plugin/ (both files must match)",
     "Bump packages/claude-plugin/package.json version for changes under packages/claude-plugin/"
   ],
   "directives": {
@@ -69,7 +68,7 @@
       "On finish: merge to dev locally, push to both origin and upstream (gh pr auto-closes).",
       "Conventional commits: <type>[scope]: <description>.",
       "PR description as changelog: New Features, Bug Fixes, Refactors, Documentation, Tests.",
-      "Bump package versions before merging — never skip. openclaw-plugin needs both package.json AND openclaw.plugin.json.",
+      "Bump package versions before merging — never skip.",
       "Delete handoff artifacts from docs/handoffs/ before finishing."
     ],
     "triage": [

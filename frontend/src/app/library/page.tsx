@@ -102,11 +102,11 @@ export default function LibraryPage() {
       const res = await api.post<{ intents?: LibrarySourceIntent[] }>('/intents/list', { page: 1, limit: 100 });
       setIntents((res.intents ?? []).map(i => ({
         ...i,
-        sourceType: (i as any).sourceType ?? 'file',
-        sourceId: (i as any).sourceId ?? '',
-        sourceName: (i as any).sourceName ?? '',
-        sourceValue: (i as any).sourceValue ?? null,
-        sourceMeta: (i as any).sourceMeta ?? null,
+        sourceType: i.sourceType ?? 'file',
+        sourceId: i.sourceId ?? '',
+        sourceName: i.sourceName ?? '',
+        sourceValue: i.sourceValue ?? null,
+        sourceMeta: i.sourceMeta ?? null,
       })));
     } catch {
       setIntents([]);

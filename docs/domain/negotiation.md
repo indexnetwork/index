@@ -144,7 +144,7 @@ Polling decouples turn delivery from the backend's request path. The graph does 
 
 ### Personal agent reference implementation
 
-The canonical personal-agent runtime is the [`indexnetwork-openclaw-plugin`](../../packages/openclaw-plugin/README.md), which runs inside an OpenClaw workspace. It runs a background poller on a fixed interval against `POST /api/agents/:id/negotiations/pickup`; on a successful pickup it dispatches a silent subagent via `api.runtime.subagent.run` (`deliver: false`) with a session key prefixed `index:negotiation:`. The subagent connects to the Index Network MCP server using the same personal-agent API key, detects the `index:negotiation:` prefix, and follows the **Negotiation turn mode** instructions baked into `MCP_INSTRUCTIONS`. It reads profile and intent context, then submits its response via `POST /api/agents/:id/negotiations/:negotiationId/respond` (exposed through the `respond_to_negotiation` MCP tool).
+A personal agent polls `POST /api/agents/:id/negotiations/pickup` on a fixed interval. On a successful pickup it runs a subagent with a session key prefixed `index:negotiation:`. The subagent connects to the Index Network MCP server using the same personal-agent API key, detects the `index:negotiation:` prefix, and follows the **Negotiation turn mode** instructions baked into `MCP_INSTRUCTIONS`. It reads profile and intent context, then submits its response via `POST /api/agents/:id/negotiations/:negotiationId/respond` (exposed through the `respond_to_negotiation` MCP tool).
 
 Running the turn as a silent subagent (rather than inline in the poller) lets the personal agent use its full LLM loop and tool stack to deliberate — fetching negotiation history, reading profile and intent context, applying the user's voice — without tying up the polling HTTP request.
 
@@ -156,13 +156,7 @@ When a subagent sees a session key prefixed `index:negotiation:`, the MCP server
 - Not ask clarifying questions (there is no user in the loop).
 - If the decision is ambiguous, pick the most conservative action — usually `counter` with specific objections, or `reject` with clear reasoning.
 
-Because this behavioral contract lives in `MCP_INSTRUCTIONS` on the protocol's MCP server, every MCP-connected runtime (OpenClaw, Claude Code, Codex, …) picks it up automatically and behaves consistently. Plugin skill files do not need to repeat it.
-
-### Configuration knobs
-
-The openclaw-plugin exposes one optional config key under `plugins.entries.indexnetwork-openclaw-plugin.config`:
-
-- `negotiationMode` — `"enabled"` (default) or `"disabled"`. When disabled, the plugin does not poll, so Index Network's server falls back to the system `Index Negotiator` after the 24-hour parked timeout.
+Because this behavioral contract lives in `MCP_INSTRUCTIONS` on the protocol's MCP server, every MCP-connected runtime (Claude Code, Codex, …) picks it up automatically and behaves consistently. Plugin skill files do not need to repeat it.
 
 ---
 

@@ -65,7 +65,7 @@ function ensureOpenclawAvailable(): void {
 }
 
 function removeCronJobs(): void {
-  let jobs: Array<{ id: string; name: string }> = [];
+  let jobs: Array<{ id: string; name: string }>;
   try {
     const raw = execSync("openclaw cron list --json", { encoding: "utf8" });
     const parsed = JSON.parse(raw) as { jobs?: Array<{ id: string; name: string }> };

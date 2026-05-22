@@ -28,7 +28,7 @@ let mockGetUserForNewsletter: (id: string) => Promise<{
 } | null> = async () => null;
 let mockRedisSet: (key: string, value: string, ...args: unknown[]) => Promise<string | null> = async () => 'OK';
 let mockRedisRpush = mock(async () => 1);
-let mockRedisExpire = mock(async () => 'OK');
+const mockRedisExpire = mock(async () => 'OK');
 const mockEmitOpportunityNotification = mock(() => {});
 const mockAddEmailJob = mock(async () => {});
 

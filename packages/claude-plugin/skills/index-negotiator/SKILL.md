@@ -50,7 +50,7 @@ Other banned words: leverage, unlock, optimize, scale, disrupt, revolutionary, A
 
 ## Scope
 
-This skill covers **human review and action** on negotiations. Silent autonomous negotiation turns (background agent responses) are handled by the openclaw plugin, not this skill.
+This skill covers **human review and action** on negotiations. Silent autonomous negotiation turns (background agent responses) are handled by the user's personal agent, not this skill.
 
 ## Setup
 

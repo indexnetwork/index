@@ -356,43 +356,43 @@ export function opportunityCard(opp: Opportunity): void {
   // Status and category
   const st = opp.status ?? "unknown";
   const category = opp.interpretation?.category ?? "Uncategorized";
-  cardLine(`${BOLD}Status:${RESET}  ${statusColor(st)}${st}${RESET}`, innerWidth);
-  cardLine(`${BOLD}Category:${RESET}  ${category}`, innerWidth);
+  cardLine(`${BOLD}Status:${RESET}  ${statusColor(st)}${st}${RESET}`);
+  cardLine(`${BOLD}Category:${RESET}  ${category}`);
 
   // Confidence
   if (opp.interpretation?.confidence != null) {
     const bar = confidenceBar(opp.interpretation.confidence);
-    cardLine(`${BOLD}Confidence:${RESET}  ${bar}`, innerWidth);
+    cardLine(`${BOLD}Confidence:${RESET}  ${bar}`);
   }
 
   // Parties
   if (opp.actors && opp.actors.length > 0) {
     process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
-    cardLine(`${BOLD}Parties:${RESET}`, innerWidth);
+    cardLine(`${BOLD}Parties:${RESET}`);
     for (const actor of opp.actors) {
       const name = actor.name ?? actor.userId;
       const role = roleLabel(actor.role);
-      cardLine(`  ${name}  ${role}`, innerWidth);
+      cardLine(`  ${name}  ${role}`);
     }
   }
 
   // Reasoning
   if (opp.interpretation?.reasoning) {
     process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
-    cardLine(`${BOLD}Reasoning:${RESET}`, innerWidth);
+    cardLine(`${BOLD}Reasoning:${RESET}`);
     const wrapped = wordWrap(opp.interpretation.reasoning, innerWidth - 4);
     for (const line of wrapped) {
-      cardLine(`  ${AGENT_TEXT}${line}${RESET}`, innerWidth);
+      cardLine(`  ${AGENT_TEXT}${line}${RESET}`);
     }
   }
 
   // Presentation
   if (opp.presentation) {
     process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
-    cardLine(`${BOLD}Presentation:${RESET}`, innerWidth);
+    cardLine(`${BOLD}Presentation:${RESET}`);
     const wrapped = wordWrap(opp.presentation, innerWidth - 4);
     for (const line of wrapped) {
-      cardLine(`  ${AGENT_TEXT}${line}${RESET}`, innerWidth);
+      cardLine(`  ${AGENT_TEXT}${line}${RESET}`);
     }
   }
 
@@ -406,14 +406,14 @@ export function opportunityCard(opp: Opportunity): void {
       hour: "2-digit",
       minute: "2-digit",
     });
-    cardLine(`${GRAY}Created: ${created}${RESET}`, innerWidth);
+    cardLine(`${GRAY}Created: ${created}${RESET}`);
   }
 
   process.stdout.write(`  ${BLUE}+${"─".repeat(width)}+${RESET}\n\n`);
 }
 
 /** Print a line inside a card box. */
-function cardLine(content: string, _innerWidth: number): void {
+function cardLine(content: string): void {
   process.stdout.write(`  ${BLUE}|${RESET} ${content}\n`);
 }
 

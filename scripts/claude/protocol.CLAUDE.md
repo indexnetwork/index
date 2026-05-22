@@ -40,7 +40,7 @@ Graphs must not import from `backend/` or call `configureProtocol` — they call
 
 ## Skills templates
 
-`skills/` holds the source templates for the SKILL.md files shipped in `packages/claude-plugin/` and `packages/openclaw-plugin/`. **Edit the templates here**, then run `scripts/build-skills.ts` from the monorepo root to regenerate the output files. Never edit the generated SKILL.md files directly.
+`skills/` holds the source templates for the SKILL.md files shipped in `packages/claude-plugin/`. **Edit the templates here**, then run `scripts/build-skills.ts` from the monorepo root to regenerate the output files. Never edit the generated SKILL.md files directly.
 
 ```
 skills/
@@ -48,8 +48,6 @@ skills/
 ├── claude-plugin/
 │   ├── index-orchestrator.template.md
 │   └── index-negotiator.template.md
-└── openclaw/
-    └── SKILL.md.template
 ```
 
 ## Testing

@@ -894,32 +894,6 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
             )}
           </div>
 
-          {/* OpenClaw plugin config — experiment networks only */}
-          {currentIndex.isExperiment && (
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-                OpenClaw plugin config
-              </p>
-              <p className="text-xs text-gray-500 mb-3">
-                Hand to OpenClaw admins to merge into <code className="px-1 py-0.5 bg-gray-100 rounded text-[11px] font-ibm-plex-mono">openclaw.json</code> under <code className="px-1 py-0.5 bg-gray-100 rounded text-[11px] font-ibm-plex-mono">plugins.entries.indexnetwork-openclaw-plugin.config</code>.
-              </p>
-              <CopyableBox
-                value={JSON.stringify(
-                  {
-                    url: typeof window !== 'undefined' ? window.location.origin : 'https://index.network',
-                    digestEnabled: 'true',
-                    digestTime: '08:00',
-                    mainAgentToolUse: 'disabled',
-                    nodeName: currentIndex.title ?? '',
-                    nodeDescription: currentIndex.prompt ?? '',
-                    nodeContext: '',
-                  },
-                  null,
-                  2,
-                )}
-              />
-            </div>
-          )}
 
         </div>
       )}

@@ -26,8 +26,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - prefix: packages/openclaw-plugin
-            repo: indexnetwork/openclaw-plugin
           - prefix: packages/protocol
             repo: indexnetwork/protocol
           - prefix: packages/cli
@@ -36,6 +34,7 @@ jobs:
             repo: indexnetwork/claude-plugin
           - prefix: packages/edgeclaw
             repo: indexnetwork/edgeclaw
+            upstream_repo: Edge-City/edgeclaw
             source_branch: main
             target_branch: main
             ignore_joins: true
@@ -77,6 +76,19 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync fork from upstream
+        if: steps.gate.outputs.run == 'true' && matrix.upstream_repo != ''
+        env:
+          GH_TOKEN: ${{ secrets.SUBTREE_SYNC_PAT }}
+        run: |
+          set -euo pipefail
+          echo "Syncing ${{ matrix.repo }} from ${{ matrix.upstream_repo }}..."
+          gh repo sync "${{ matrix.repo }}" \
+            --source "${{ matrix.upstream_repo }}" \
+            --branch "${{ matrix.target_branch || github.ref_name }}" \
+            --force
+          echo "✓ fork synced"
 
       - name: Split and push
         if: steps.gate.outputs.run == 'true'

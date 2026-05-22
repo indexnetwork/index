@@ -23,12 +23,7 @@ import {
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents, useUsers } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import {
-  buildMcpConfigs,
-  OPENCLAW_INSTALL_CMD,
-  OPENCLAW_SETUP_CMD,
-  OPENCLAW_UPDATE_CMD,
-} from "@/lib/mcp-config";
+import { buildMcpConfigs } from "@/lib/mcp-config";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -141,7 +136,7 @@ function SendTestMessageDialog({
     setSending(true);
     try {
       await agentsService.sendTestMessage(agentId, content.trim());
-      success("Sent — should arrive in your OpenClaw gateway within ~30s");
+      success("Sent — should arrive in your agent within ~30s");
       onOpenChange(false);
     } catch (err) {
       error(
@@ -226,7 +221,7 @@ function NotificationsSection({
           <span>
             <span className="block text-sm font-medium text-gray-900">Notify me about new opportunities</span>
             <span className="block text-xs text-gray-400 mt-0.5">
-              Only applies when your agent is polling via OpenClaw.
+              Only applies when your personal agent is polling.
             </span>
           </span>
         </label>
@@ -242,7 +237,7 @@ function NotificationsSection({
           <span>
             <span className="block text-sm font-medium text-gray-900">Send a daily summary</span>
             <span className="block text-xs text-gray-400 mt-0.5">
-              Once per 24 hours, through the same OpenClaw channel.
+              Once per 24 hours, through the same channel.
             </span>
           </span>
         </label>
@@ -261,7 +256,7 @@ function NotificationsSection({
               <AlphaBadge />
             </span>
             <span className="block text-xs text-gray-400 mt-0.5">
-              Experimental — your personal agent will respond to negotiation turns through the OpenClaw pickup loop.
+              Experimental — your personal agent will respond to negotiation turns through the pickup loop.
             </span>
           </span>
         </label>
@@ -581,10 +576,8 @@ function WizardRow({
   );
 }
 
-// MIRROR: This grid previews the OpenClaw setup wizard prompts for users
-// who can't run an LLM-driven setup. Keep it in sync with `runSetup` in
-// `packages/openclaw-plugin/src/setup/setup.cli.ts` — any prompt added,
-// renamed, or removed there must be reflected here (and vice versa).
+// This grid previews the agent setup wizard prompts for users
+// who can't run an LLM-driven setup.
 function WizardPromptGrid({
   serverUrl,
   apiKey,
@@ -629,42 +622,6 @@ function WizardPromptGrid({
   );
 }
 
-function OpenClawSetup({
-  install,
-  update,
-  setup,
-}: {
-  install: string;
-  update: string;
-  setup: string;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-3 items-start">
-        <div className="flex flex-col items-center pt-1 shrink-0">
-          <div className="w-2 h-2 rounded-full bg-gray-300" />
-          <div className="w-px h-4 bg-gray-200 my-1" />
-          <div className="w-2 h-2 rounded-full bg-gray-300" />
-        </div>
-        <div className="flex-1 space-y-2">
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Install (first time)</p>
-            <ClickableCodeBlock code={install} />
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Update (if already installed)</p>
-            <ClickableCodeBlock code={update} />
-          </div>
-        </div>
-      </div>
-      <div>
-        <p className="text-xs text-gray-500 mb-1">Run setup wizard</p>
-        <ClickableCodeBlock code={setup} />
-      </div>
-    </div>
-  );
-}
-
 function SetupInstructions({ apiKey }: { apiKey?: string }) {
   const [expanded, setExpanded] = useState(false);
   const keyValue = apiKey || "YOUR_API_KEY";
@@ -691,15 +648,7 @@ function SetupInstructions({ apiKey }: { apiKey?: string }) {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Hermes Agent</p>
             <ClickableCodeBlock code={hermesConfig} />
           </div>
-          <div className="space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-            <OpenClawSetup
-              install={OPENCLAW_INSTALL_CMD}
-              update={OPENCLAW_UPDATE_CMD}
-              setup={OPENCLAW_SETUP_CMD}
-            />
-            <WizardPromptGrid serverUrl={baseUrl} apiKey={keyValue} />
-          </div>
+          <WizardPromptGrid serverUrl={baseUrl} apiKey={keyValue} />
         </div>
       )}
     </div>

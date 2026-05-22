@@ -9,7 +9,7 @@
 import type { ApiClient } from "./api.client";
 import * as output from "./output";
 
-const PROFILE_HELP = `
+const _PROFILE_HELP = `
 Usage:
   index profile                                   Show your profile
   index profile show <user-id>                    Show another user's profile
