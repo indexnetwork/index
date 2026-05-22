@@ -109,8 +109,11 @@ function productionRedis(): RedisReader {
   };
 }
 
-const UNKNOWN_CHAT_MSG = 'Please connect your Telegram account at index.network first.';
-const EXPIRED_TOKEN_MSG = 'This link has expired. Please reconnect from Index.';
+function appUrl(): string {
+  return process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
+}
+
+const EXPIRED_TOKEN_MSG = () => `This link has expired. Please reconnect at ${appUrl()}.`;
 const CONNECTED_MSG =
   'Your Telegram account is now connected to Index. You\'ll receive notifications here and can chat with me anytime.';
 
@@ -135,7 +138,12 @@ export async function handleInbound(
 
   const found = await deps.findByTelegramChatId(chatId);
   if (!found) {
-    await deps.sendTelegramMessage(chatId, UNKNOWN_CHAT_MSG);
+    const url = appUrl();
+    await deps.sendTelegramMessage(
+      chatId,
+      'To use this bot, connect your Telegram account from the Index website.',
+      [[{ text: 'Connect account', url: `${url}/settings` }]],
+    );
     return;
   }
 
@@ -151,9 +159,21 @@ export async function handleInbound(
     }).catch((err) => logger.warn('Failed to write user message to conversation', { error: err }));
   }
 
-  // Route to chat graph
-  const result = await deps.processMessage(userId, text);
-  const responseText = result.responseText || 'Sorry, I could not process your message.';
+  // Route to chat graph (with timeout — the LLM chain can hang indefinitely)
+  const PROCESS_TIMEOUT_MS = 120_000;
+  let responseText: string;
+  try {
+    const result = await Promise.race([
+      deps.processMessage(userId, text),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('processMessage timed out')), PROCESS_TIMEOUT_MS),
+      ),
+    ]);
+    responseText = result.responseText || 'Sorry, I could not process your message.';
+  } catch (err) {
+    logger.error('processMessage failed for Telegram user', { userId, chatId, error: err });
+    responseText = 'Sorry, something went wrong. Please try again.';
+  }
 
   // Write assistant response (best-effort)
   if (sessionId) {
@@ -176,7 +196,7 @@ async function handleConnectToken(
 ): Promise<void> {
   const userId = await redis.get(`${CONNECT_TOKEN_PREFIX}${token}`);
   if (!userId) {
-    await deps.sendTelegramMessage(chatId, EXPIRED_TOKEN_MSG);
+    await deps.sendTelegramMessage(chatId, EXPIRED_TOKEN_MSG());
     return;
   }
 

@@ -127,9 +127,10 @@ describe('handleInbound', () => {
     });
   }
 
-  it('replies with connect prompt for unknown chatId', async () => {
+  it('replies with connect prompt and button for unknown chatId', async () => {
     await callInbound('unknown-chat', 'hello');
-    expect(deps.sent[0].text).toContain('index.network');
+    expect(deps.sent[0].text).toContain('connect your Telegram account');
+    expect(deps.sent[0].keyboard).toBeDefined();
   });
 
   it('routes a known user message to the chat graph and writes to conversation', async () => {
