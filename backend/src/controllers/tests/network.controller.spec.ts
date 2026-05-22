@@ -11,6 +11,13 @@ mock.module('../../lib/email/transport.helper', () => ({
 
 import { inArray } from "drizzle-orm";
 
+// ---------------------------------------------------------------------------
+// Restore mocks after all tests
+// ---------------------------------------------------------------------------
+afterAll(() => {
+  mock.restore();
+});
+
 import { NetworkController } from "../network.controller";
 import db from "../../lib/drizzle/drizzle";
 import * as schema from "../../schemas/database.schema";

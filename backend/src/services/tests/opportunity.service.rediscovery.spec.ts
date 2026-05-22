@@ -2,7 +2,7 @@
 import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
-import { describe, it, expect, mock } from "bun:test";
+import { describe, it, expect, mock, afterAll } from "bun:test";
 
 import type { OpportunityCache } from '@indexnetwork/protocol';
 
@@ -35,6 +35,10 @@ mock.module("../../adapters/cache.adapter", () => ({
     mget = mock(() => Promise.resolve([]));
   },
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Import service AFTER mocks

@@ -4,7 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test' });
 
-import { describe, expect, it, mock, beforeEach } from 'bun:test';
+import { describe, expect, it, mock, beforeEach, afterAll } from 'bun:test';
 
 // ---------------------------------------------------------------------------
 // node-cron mock — captures scheduled callbacks so we can trigger them manually
@@ -45,6 +45,10 @@ mock.module('drizzle-orm', () => ({
   lte: (col: unknown, val: unknown) => ({ _type: 'lte', col, val }),
   notInArray: (col: unknown, vals: unknown) => ({ _type: 'notInArray', col, vals }),
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 import { OpportunityExpirationCron } from '../opportunity/expiration.queue';
 

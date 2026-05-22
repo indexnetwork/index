@@ -117,7 +117,7 @@ cd edgeclaw
 Run the installer with the `apiKey` from Step 1. **Pass `--dev` while we're on the dev environment** — it points the installed MCP config at `protocol.dev.index.network`:
 
 ```bash
-bun install/install.ts <API_KEY> --dev
+bun install/install.ts --index-api-key <API_KEY> --dev
 ```
 
 For prod, drop `--dev` (the installer then points at `protocol.index.network`). Note that the `<API_KEY>` must itself be a prod key from a prod `/signup` call — dev keys do not validate against prod.
@@ -127,13 +127,14 @@ The installer:
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at the MCP URL with the attendee's `apiKey` in `x-api-key`.
 2. Disables Telegram progress-draft streaming so OpenClaw doesn't spam per-tool status drafts.
 3. Copies the EdgeClaw workspace bundle (prompts, soul, heartbeat, community context) into `~/.openclaw/workspace/`.
-4. Installs three cron jobs: morning digest (08:00), ambient discoveries (14:00 and 20:00) — all host-local time.
-5. Binds those crons to the attendee's Telegram chat, if a session for them already exists.
-6. Restarts the OpenClaw gateway so config + crons take effect.
+4. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/`.
+5. Installs one cron job by default: the morning digest (08:00 host-local). The afternoon (14:00) and evening (20:00) ambient passes are opt-in — the attendee enables them through the schedule dialog at session start.
+6. Binds crons to the attendee's Telegram chat, if a session for them already exists.
+7. Restarts the OpenClaw gateway so config + crons take effect.
 
 ### Cron binding and Telegram sessions
 
-Step 5 above only succeeds if a Telegram chat session exists for the attendee at install time. That session is created automatically when the attendee sends their first message to the Telegram bot — there's no API to pre-create it.
+Step 6 above only succeeds if a Telegram chat session exists for the attendee at install time. That session is created automatically when the attendee sends their first message to the Telegram bot — there's no API to pre-create it.
 
 Two valid orderings:
 

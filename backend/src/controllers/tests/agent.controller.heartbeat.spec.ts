@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test';
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be registered BEFORE the controller is imported so that
@@ -100,6 +100,13 @@ mock.module('../../guards/auth.guard', () => ({
 // Import controller after mocks are in place
 // ---------------------------------------------------------------------------
 const { AgentController } = await import('../agent.controller');
+
+// ---------------------------------------------------------------------------
+// Restore mocks after all tests
+// ---------------------------------------------------------------------------
+afterAll(() => {
+  mock.restore();
+});
 
 // ---------------------------------------------------------------------------
 // Helpers

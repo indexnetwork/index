@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: 'backend/.env.test', override: true });
 config({ path: '.env.test', override: true });
 
-import { describe, it, expect, jest, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, jest, beforeEach, mock, afterAll } from 'bun:test';
 import { sendConnectionRequestEmail, sendConnectionAcceptedEmail } from '../notification.sender';
 import * as emailModule from '../transport.helper';
 import * as templatesModule from '../templates/connection-request.template'; // We need to mock specific templates now
@@ -43,6 +43,9 @@ mock.module('../../drizzle/drizzle', () => ({
   }
 }));
 
+afterAll(() => {
+  mock.restore();
+});
 
 describe('Email Handlers', () => {
   beforeEach(() => {

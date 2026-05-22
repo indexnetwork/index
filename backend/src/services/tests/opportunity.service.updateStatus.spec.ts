@@ -57,9 +57,13 @@ function createMockDb(opportunity: Opportunity | null) {
     updateOpportunityStatus: mock(() =>
       Promise.resolve(opportunity ? { ...opportunity, status: "accepted" } : null)
     ),
+    stampOpportunityActorAction: mock(() =>
+      Promise.resolve(opportunity ? { ...opportunity, status: "accepted" } : null)
+    ),
     acceptSiblingOpportunities: mock(() => Promise.resolve()),
     upsertContactMembership: mock(() => Promise.resolve()),
     getOrCreateDM: mock(() => Promise.resolve({ id: "conv-backfill-001" })),
+    unhideConversation: mock(() => Promise.resolve()),
   } as unknown as OpportunityControllerDatabase;
 }
 
@@ -149,9 +153,13 @@ describe("OpportunityService.updateOpportunityStatus", () => {
       updateOpportunityStatus: mock(() =>
         Promise.resolve({ ...twoActorOpportunity, status: "accepted" })
       ),
+      stampOpportunityActorAction: mock(() =>
+        Promise.resolve({ ...twoActorOpportunity, status: "accepted" })
+      ),
       acceptSiblingOpportunities: mock(() => Promise.resolve()),
       upsertContactMembership: mock(() => Promise.resolve()),
       getOrCreateDM: mock(() => Promise.reject(new Error("pg: connection error"))),
+      unhideConversation: mock(() => Promise.resolve()),
     } as unknown as OpportunityControllerDatabase;
     const service = new OpportunityService(db);
 

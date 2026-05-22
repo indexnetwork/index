@@ -21,7 +21,7 @@ process.env.DATABASE_URL = 'postgresql://unused:unused@localhost:5432/unused';
 // Prevent module-level createModel() from throwing when importing presenter.
 process.env.OPENROUTER_API_KEY = 'test-key-unused';
 
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, mock, beforeEach, afterAll } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
 import type { Cache } from '../../adapters/cache.adapter';
@@ -124,6 +124,10 @@ mock.module('@indexnetwork/protocol', () => {
     // Use the real implementation so cache.mget / cache.set are exercised
     getOrCreateDeliveryCardBatch: realGetOrCreate,
   };
+});
+
+afterAll(() => {
+  mock.restore();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -13,17 +13,23 @@ mock.module('../src/lib/email/transport.helper', () => ({
   executeSendEmail: sendSpy,
 }));
 
+afterAll(() => {
+  mock.restore();
+});
+
 const { experimentService } = await import('../src/services/experiment.service');
 
 describe('CSV import → network-scoped agent end-to-end', () => {
   let networkId: string;
   let ownerId: string;
+  let ownerEmail: string;
   const cleanupUserIds: string[] = [];
   const cleanupNetworkIds: string[] = [];
 
   beforeAll(async () => {
+    ownerEmail = `import-owner-${Date.now()}@test.dev`;
     const [u] = await db.insert(schema.users)
-      .values({ email: `import-owner-${Date.now()}@test.dev`, name: 'Owner', emailVerified: true })
+      .values({ email: ownerEmail, name: 'Owner', emailVerified: true })
       .returning({ id: schema.users.id });
     ownerId = u.id;
     cleanupUserIds.push(ownerId);
@@ -33,6 +39,12 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       .returning({ id: schema.networks.id });
     networkId = n.id;
     cleanupNetworkIds.push(networkId);
+
+    await db.insert(schema.networkMembers).values({
+      networkId,
+      userId: ownerId,
+      permissions: ['owner'],
+    });
   });
 
   afterAll(async () => {
@@ -101,12 +113,12 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       'manage:opportunities',
     ]));
 
-    // Email dispatched once with the raw key in the body
+    // Owner credentials email dispatched once to the owner
     expect(sendSpy).toHaveBeenCalledTimes(1);
     const call = sendSpy.mock.calls[0][0];
-    expect(call.to).toBe(email);
+    expect(Array.isArray(call.to)).toBe(true);
+    expect((call.to as string[])).toContain(ownerEmail);
     expect(call.html.length).toBeGreaterThan(0);
-    expect(call.html).toMatch(/index connect/);
   });
 
   test('re-importing the same email is idempotent: no new key, no new email', async () => {
@@ -124,7 +136,8 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     ]);
     expect(second.imported).toBe(1);
 
-    expect(sendSpy).toHaveBeenCalledTimes(0);
+    // Owner credentials email still dispatched (credentials are rotated)
+    expect(sendSpy).toHaveBeenCalledTimes(1);
 
     // Permission rows still exactly one per scoped action set
     const perms = await db

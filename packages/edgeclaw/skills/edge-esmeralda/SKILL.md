@@ -103,22 +103,13 @@ Tags are case-sensitive and may be combined: `?tags=AI&tags=Privacy` returns eve
 
 ## 5. Reference content (wiki, website, newsletter)
 
-For questions about logistics, the organization, or announcements, fetch the latest preprocessed content. These files are updated automatically every 15 minutes by upstream CI.
+For questions about logistics, the organization, or announcements, use the preprocessed reference files shipped alongside this skill. When the EdgeClaw installer copies skills into the workspace, these files land under `skills/edge-esmeralda/references/`. If the `references/` directory is present, read the relevant file directly:
 
-**Edge Esmeralda Wiki** (tickets, accommodation, travel, venues, health, kids, transport, etc.):
-```bash
-curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edge-esmeralda/references/wiki-content.md"
-```
+- **`references/wiki-content.md`** — Edge Esmeralda Wiki (tickets, accommodation, travel, venues, health, kids, transport, etc.)
+- **`references/website-content.md`** — Edge City Website (mission, leadership, roadmap, ecosystem, media)
+- **`references/newsletter-digest.md`** — Edge Esmeralda Newsletter (residencies, fellowships, housing, tickets, programming)
 
-**Edge City Website** (mission, leadership, roadmap, ecosystem, media):
-```bash
-curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edge-esmeralda/references/website-content.md"
-```
-
-**Edge Esmeralda Newsletter** (residencies, fellowships, housing, tickets, programming):
-```bash
-curl -s "https://raw.githubusercontent.com/Edge-City/edgeclaw-skills/main/edge-esmeralda/references/newsletter-digest.md"
-```
+If the `references/` directory is missing (the upstream CI workflow that generates it has not run yet, or the files were not committed), tell the user the reference content is not available yet and point them at the primary sources: the Edge Esmeralda wiki at https://www.notion.so/317d45cdfc5981d2a571f52b024c5141, the newsletter at https://edgeesmeralda2026.substack.com, and https://edgecity.live.
 
 ### When to fetch which
 

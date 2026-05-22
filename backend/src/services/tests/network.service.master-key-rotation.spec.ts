@@ -9,6 +9,10 @@ mock.module('../../lib/email/transport.helper', () => ({
   executeSendEmail: sendSpy,
 }));
 
+afterAll(() => {
+  mock.restore();
+});
+
 import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 import { hashMasterKey } from '../../lib/experiment/master-key';

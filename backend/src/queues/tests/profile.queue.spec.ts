@@ -4,7 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test' });
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, afterAll } from 'bun:test';
 import { mock } from 'bun:test';
 
 const mockAdd = mock(async (name: string, data: unknown) => ({ id: 'job-1', name, data }));
@@ -18,10 +18,13 @@ mock.module('../../lib/bullmq/bullmq', () => ({
   },
 }));
 
+afterAll(() => {
+  mock.restore();
+});
+
 import {
   ProfileQueue,
   QUEUE_NAME,
-  type ProfileJobPayload,
 } from '../profile.queue';
 
 describe('ProfileQueue', () => {
