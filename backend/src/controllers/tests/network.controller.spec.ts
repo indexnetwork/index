@@ -30,6 +30,7 @@ describe("NetworkController Integration", () => {
   const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;
   let createdIndexId: string;
+  const additionalNetworkIds: string[] = [];
   const testEmail = `test-index-controller-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -46,6 +47,7 @@ describe("NetworkController Integration", () => {
   });
 
   afterAll(async () => {
+    for (const id of additionalNetworkIds) await indexAdapter.deleteNetworkAndMembers(id);
     if (createdIndexId) await indexAdapter.deleteNetworkAndMembers(createdIndexId);
     if (testUserId) await userAdapter.deleteById(testUserId);
   });
@@ -94,6 +96,62 @@ describe("NetworkController Integration", () => {
       expect(data.network).toBeDefined();
       expect(data.network!.title).toBe("Test Index");
       createdIndexId = data.network!.id;
+    });
+
+    test("should return 200 and create event network with valid metadata", async () => {
+      const req = new Request("http://localhost/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Test Event",
+          type: "event",
+          metadata: {
+            startDate: "2026-06-01T00:00:00Z",
+            endDate: "2026-06-30T23:59:59Z",
+            timezone: "America/Los_Angeles",
+            location: "San Francisco",
+          },
+        }),
+      });
+      const res = await controller.create(req, mockUser());
+      const data = (await res.json()) as { network?: { id: string; type: string; metadata: Record<string, unknown> } };
+
+      expect(res.status).toBe(200);
+      expect(data.network).toBeDefined();
+      expect(data.network!.type).toBe("event");
+      expect(data.network!.metadata.startDate).toBe("2026-06-01T00:00:00Z");
+      additionalNetworkIds.push(data.network!.id);
+    });
+
+    test("should return 400 when event network missing required dates", async () => {
+      const req = new Request("http://localhost/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Bad Event", type: "event", metadata: {} }),
+      });
+      const res = await controller.create(req, mockUser());
+      const data = (await res.json()) as { error?: string; details?: unknown[] };
+
+      expect(res.status).toBe(400);
+      expect(data.error).toBe("Validation failed");
+      expect(Array.isArray(data.details)).toBe(true);
+    });
+
+    test("should return 400 when endDate is before startDate", async () => {
+      const req = new Request("http://localhost/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Bad Dates",
+          type: "event",
+          metadata: { startDate: "2026-06-30T00:00:00Z", endDate: "2026-06-01T00:00:00Z" },
+        }),
+      });
+      const res = await controller.create(req, mockUser());
+      const data = (await res.json()) as { error?: string; details?: unknown[] };
+
+      expect(res.status).toBe(400);
+      expect(data.error).toBe("Validation failed");
     });
   });
 
@@ -155,6 +213,32 @@ describe("NetworkController Integration", () => {
       expect(res.status).toBe(200);
       expect(data.network).toBeDefined();
       expect(data.network!.title).toBe("Updated Test Index");
+    });
+
+    test("should return 400 when updating with invalid event metadata", async () => {
+      const req = new Request("http://localhost/networks/" + createdIndexId, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "event", metadata: {} }),
+      });
+      const res = await controller.update(req, mockUser(), { id: createdIndexId });
+      const data = (await res.json()) as { error?: string; details?: unknown[] };
+
+      expect(res.status).toBe(400);
+      expect(data.error).toBe("Validation failed");
+    });
+
+    test("should return 200 when updating with valid contextInjection", async () => {
+      const req = new Request("http://localhost/networks/" + createdIndexId, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contextInjection: { discovery: false } }),
+      });
+      const res = await controller.update(req, mockUser(), { id: createdIndexId });
+      const data = (await res.json()) as { network?: { permissions: { contextInjection?: { discovery: boolean } } } };
+
+      expect(res.status).toBe(200);
+      expect(data.network!.permissions.contextInjection?.discovery).toBe(false);
     });
   });
 
