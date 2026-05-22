@@ -52,6 +52,7 @@ import { emailQueue } from './queues/email.queue';
 import { profileQueue } from './queues/profile.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
+import { integrationSyncQueue } from './queues/integration.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { NegotiationEvents } from './events/negotiation.event';
@@ -119,6 +120,7 @@ hydeQueue.startCrons();
 emailQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
+integrationSyncQueue.startWorker();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
