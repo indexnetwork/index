@@ -1,7 +1,7 @@
 ---
 name: edgeos
 description: Talk to the EdgeOS popup-village platform — read the event schedule, manage RSVPs and venues, look up the calling user's own profile, and browse the attendee directory for a popup. Backend-generic; the popup id is supplied by whichever popup-specific skill is active (e.g. `edge-esmeralda` for Edge Esmeralda 2026).
-version: 1.0.0
+version: 1.1.0
 author: Edge City
 tags: [edgeos, events, directory, popup-village]
 metadata:
@@ -197,14 +197,24 @@ curl -s -H "Authorization: Bearer $EDGEOS_BEARER_TOKEN" \
   "https://api.edgeos.world/api/v1/humans/me"
 ```
 
-Returns the human record for the bearer's owner — your own application content, registered participation, profile fields, and platform handles. **There is no edit endpoint** — see §13.
+Returns the human record for the bearer's owner — your own application content, registered participation, profile fields, and platform handles.
+
+**Update basic profile fields** (uses the human bearer):
+```bash
+curl -s -X PATCH -H "Authorization: Bearer $EDGEOS_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://api.edgeos.world/api/v1/humans/me" \
+  -d '{"first_name":"...","last_name":"...","telegram":"@handle","residence":"...","picture_url":"https://..."}'
+```
+
+Patchable fields: `first_name`, `last_name`, `telegram`, `gender`, `age`, `residence`, `picture_url`. All are optional — include only what you want to change. Application-specific fields (dietary preferences, "what I'm building", application answers) are **not** patchable through this endpoint — those live on the popup application form and must be edited in the EdgeOS portal UI.
 
 ## 9. Attendee directory (`portal:directory_read`)
 
 **Search attendees in a popup** (uses the human bearer):
 ```bash
 curl -s -H "Authorization: Bearer $EDGEOS_BEARER_TOKEN" \
-  "https://api.edgeos.world/api/v1/applications/my/directory/{popup_id}?skip=0&limit=20&search=QUERY"
+  "https://api.edgeos.world/api/v1/applications/my/directory/{popup_id}?skip=0&limit=20&q=QUERY"
 ```
 
 `{popup_id}` is the popup UUID supplied by the active operator skill (e.g. `edge-esmeralda` carries Edge Esmeralda's constant). Replace `QUERY` with a name, organization, or role.
@@ -253,6 +263,6 @@ Be honest about these gaps — do not hallucinate answers.
 - **Session transcripts / summaries.** EdgeOS does not record talks. Tell the user: "Session recordings and transcripts aren't available through EdgeOS — check the popup's Telegram group for recaps."
 - **Governance / deliberation.** There is no governance layer on EdgeOS itself. Community discussion happens in the popup's external channels.
 - **Real-time venue availability.** The calendar shows scheduled events, but there is no live venue booking system. To check if a venue is free, list events for that date/time and see whether the venue is already taken.
-- **Profile editing (own or others).** EdgeOS exposes `GET /humans/me` (read-only). There is no `PATCH` for your own profile, dietary preferences, application answers, or "what I'm building" fields through this skill. Tell the user: "I can't edit profiles through this skill. Update yours at the EdgeOS portal under `/portal/profile`. I can't edit anyone else's regardless." You *can* still help the user draft prose for them to paste into the portal themselves.
+- **Application-specific profile fields.** Basic profile fields (`first_name`, `last_name`, `telegram`, `gender`, `age`, `residence`, `picture_url`) are editable via `PATCH /api/v1/humans/me` (see §8). But dietary preferences, application answers, "what I'm building", and popup-specific form fields are **not** patchable through this API — those must be edited in the EdgeOS portal UI under `/portal/profile`. You cannot edit anyone else's profile regardless.
 - **Scheduled tasks / recurring summaries / reminders.** The skill itself cannot schedule anything. In OpenClaw, `openclaw cron` is the scheduler. In Claude Code, `/loop` or `/schedule`. Do not pretend to set up cron jobs from inside the skill.
 - **Outbound messaging / DMs / introductions on behalf of the user.** EdgeOS has no messaging endpoint. Surface contact info (Telegram, X handles) from the directory (§9) and let the user reach out themselves. Do not claim to have sent a message.

@@ -13,7 +13,7 @@ For backend-agnostic EdgeOS API recipes, see the sibling `../edgeos/SKILL.md`. F
 - `bun install` — Install indexer dependencies.
 - `bun run scripts/index.ts` — Regenerate `references/` markdown.
 
-The indexer is run automatically every 15 minutes by upstream CI (`.github/workflows/index-references.yml` in `indexnetwork/edgeclaw`); local runs are only needed when iterating on the indexer itself.
+The upstream CI workflow (`.github/workflows/index-references.yml`) that regenerates these files automatically has not been set up yet — the `references/` directory does not exist in the repo. Run the indexer locally to generate the files, or wait for the workflow to be created. Local runs are also useful when iterating on the indexer itself.
 
 ## Key Data
 - **Popup id**: `43746fd0-bce2-472b-93e4-a438177b2dff` (UUID; the agent passes this to `edgeos`-skill recipes that need a `popup_id`).

@@ -101,13 +101,14 @@ InstaClaw owns the runtime, so it should run the EdgeClaw installer end-to-end:
 1. Call `POST /api/networks/:id/signup` with the attendee's email (and any profile fields you have).
 2. Run the EdgeClaw installer with the returned `apiKey`:
    ```bash
-   bun packages/edgeclaw/install/install.ts <apiKey>
+   bun install/install.ts --index-api-key <apiKey>
    ```
    Or the equivalent in the hosted runtime — the script:
    - Writes the `mcpServer` config (the production `https://protocol.index.network/mcp` URL plus the API key) into the OpenClaw MCP servers config.
    - Disables Telegram progress-draft "tidepooling" so streaming-off is honored from the first gateway start.
    - Copies the EdgeClaw workspace bundle into `~/.openclaw/workspace/`.
-   - Installs three crons: morning digest (08:00 host-local), ambient discoveries (14:00 and 20:00).
+   - Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/`.
+   - Installs one cron job by default: the morning digest (08:00 host-local). The afternoon (14:00) and evening (20:00) ambient passes are opt-in via the schedule dialog at session start.
    - Restarts the gateway so the config and crons take effect.
 3. As a separate step (outside this endpoint), capture the attendee's Telegram handle and bind it to their agent transport. That binding is entirely InstaClaw-owned.
 
