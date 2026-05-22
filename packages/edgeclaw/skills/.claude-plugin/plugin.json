@@ -1,18 +1,26 @@
 {
   "name": "edgeclaw",
   "description": "Edge Esmeralda 2026 — popup knowledge, EdgeOS calendar & directory, and Index Network discovery skills for the Agent Village.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "skills": "./",
   "author": {
     "name": "Edge City",
     "url": "https://edgecity.live"
+  },
+  "userConfig": {
+    "apiKey": {
+      "type": "string",
+      "title": "Index Network API Key",
+      "description": "API key for Index Network. Obtain one at edgecity.live/agentvillage or from your community admin.",
+      "sensitive": true
+    }
   },
   "mcpServers": {
     "index": {
       "type": "http",
       "url": "https://protocol.index.network/mcp",
       "headers": {
-        "x-api-key": "${INDEX_API_KEY}"
+        "x-api-key": "${user_config.apiKey}"
       }
     }
   }
