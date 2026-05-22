@@ -13,6 +13,7 @@ export const agentTypeEnum = pgEnum('agent_type', ['personal', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
+export const networkTypeEnum = pgEnum('network_type', ['community', 'event']);
 
 export interface OnboardingState {
   completedAt?: string;
@@ -376,14 +377,17 @@ export const networks = pgTable('networks', {
   isPersonal: boolean('is_personal').default(false).notNull(),
   isExperiment: boolean('is_experiment').default(false).notNull(),
   experimentMasterKeyHash: text('experiment_master_key_hash'),
+  type: networkTypeEnum('type').default('community').notNull(),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
   permissions: json('permissions').$type<{
     joinPolicy: 'anyone' | 'invite_only';
     invitationLink: { code: string } | null;
     allowGuestVibeCheck: boolean;
+    contextInjection?: { discovery: boolean };
   }>().default({
     joinPolicy: 'invite_only',
     invitationLink: null,
-    allowGuestVibeCheck: false
+    allowGuestVibeCheck: false,
   }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -398,7 +402,7 @@ export const networkMembers = pgTable('network_members', {
   permissions: text('permissions').array().notNull().default([]),
   prompt: text('prompt'),
   autoAssign: boolean('auto_assign').notNull().default(false),
-  metadata: json('metadata').$type<Record<string, string | string[]>>(),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
@@ -418,6 +422,12 @@ export const networkIntegrations = pgTable('network_integrations', {
   networkId: text('network_id').notNull().references(() => networks.id),
   toolkit: text('toolkit').notNull(),
   connectedAccountId: text('connected_account_id').notNull(),
+  syncConfig: jsonb('sync_config').$type<{
+    intervalMs?: number;
+    lastSyncAt?: string;
+    calendarId?: string;
+    status?: 'active' | 'paused' | 'error';
+  }>().default({}).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
   pk: primaryKey({ columns: [table.networkId, table.toolkit] }),
