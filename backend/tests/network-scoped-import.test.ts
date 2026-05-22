@@ -221,6 +221,33 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(user.onboarding!.currentStep).toBe('connections');
   });
 
+  test('importMembers does not overwrite existing completedAt', async () => {
+    const email = `csv-keep-completed-${Date.now()}@test.dev`;
+    const originalCompletedAt = '2025-01-15T00:00:00.000Z';
+
+    const [preUser] = await db.insert(schema.users)
+      .values({
+        email,
+        name: 'Already Onboarded',
+        emailVerified: true,
+        onboarding: { completedAt: originalCompletedAt, flow: 1 },
+      })
+      .returning({ id: schema.users.id });
+    cleanupUserIds.push(preUser.id);
+
+    await experimentService.importMembers(networkId, [
+      { email, name: 'Already Onboarded', socials: [] },
+    ]);
+
+    const [user] = await db
+      .select({ onboarding: schema.users.onboarding })
+      .from(schema.users)
+      .where(eq(schema.users.id, preUser.id));
+
+    expect(user.onboarding!.completedAt).toBe(originalCompletedAt);
+    expect(user.onboarding!.flow).toBe(1);
+  });
+
   test('importMembers enqueues profile enrichment for imported users', async () => {
     enrichBulkSpy.mockClear();
     const email = `csv-enrich-${Date.now()}@test.dev`;

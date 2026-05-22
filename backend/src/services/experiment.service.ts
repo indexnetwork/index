@@ -206,7 +206,10 @@ class ExperimentService {
         .set({
           onboarding: sql`COALESCE(${schema.users.onboarding}::jsonb, '{}'::jsonb) || ${JSON.stringify({ completedAt })}::jsonb`,
         })
-        .where(inArray(schema.users.id, importedUserIds));
+        .where(and(
+          inArray(schema.users.id, importedUserIds),
+          sql`(${schema.users.onboarding} IS NULL OR ${schema.users.onboarding}->>'completedAt' IS NULL)`,
+        ));
     }
 
     // Enqueue profile enrichment: the profile graph reads name, intro, location,
