@@ -43,6 +43,7 @@ import { getStats } from './lib/performance';
 import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
 import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
+import { fromProfileQueue } from './queues/opportunity/from-profile.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { notificationQueue } from './queues/notification.queue';
@@ -83,6 +84,10 @@ fromIntroducerQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
+fromProfileQueue.setRuntimeDeps({
+  negotiationGraph: backgroundNegotiationGraph,
+  agentDispatcher: backgroundAgentDispatcher,
+});
 negotiationRunExistingQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
@@ -91,6 +96,7 @@ negotiationRunExistingQueue.setRuntimeDeps({
 intentQueue.startWorker();
 fromIntentQueue.startWorker();
 fromIntroducerQueue.startWorker();
+fromProfileQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 opportunityExpirationCron.start();
 notificationQueue.startWorker();
@@ -104,6 +110,13 @@ NetworkMembershipEvents.onMemberAdded = (userId: string) => {
   profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
     log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, error: err });
   });
+};
+
+profileQueue.onEnrichmentComplete = (userId: string) => {
+  fromProfileQueue.addJob(
+    { userId },
+    { priority: 20, jobId: `profile-discovery-${userId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
+  ).catch((err) => log.job.from('ProfileEnrichment').error('Failed to enqueue profile-based discovery', { userId, error: err }));
 };
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
@@ -442,6 +455,7 @@ const shutdown = async () => {
     intentQueue.close(),
     fromIntentQueue.close(),
     fromIntroducerQueue.close(),
+    fromProfileQueue.close(),
     negotiationRunExistingQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),

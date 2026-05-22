@@ -80,6 +80,47 @@ describe('ProfileQueue', () => {
     });
   });
 
+  describe('onEnrichmentComplete callback', () => {
+    it('fires with userId after successful enrichment', async () => {
+      const onComplete = mock((_userId: string) => {});
+      const invokeEnrichUser = mock(async (_userId: string) => {});
+      const queue = new ProfileQueue({ invokeEnrichUser });
+      queue.onEnrichmentComplete = onComplete;
+      await queue.processJob('profile.enrich', { userId: 'u1' });
+      expect(onComplete).toHaveBeenCalledWith('u1');
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire when enrichment fails', async () => {
+      const onComplete = mock((_userId: string) => {});
+      const invokeEnrichUser = mock(async () => { throw new Error('enrichment failed'); });
+      const queue = new ProfileQueue({ invokeEnrichUser });
+      queue.onEnrichmentComplete = onComplete;
+      try {
+        await queue.processJob('profile.enrich', { userId: 'u1' });
+      } catch {
+        // expected
+      }
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('does not fire for ensure_profile_hyde jobs', async () => {
+      const onComplete = mock((_userId: string) => {});
+      const invokeProfileWrite = mock(async (_userId: string) => {});
+      const queue = new ProfileQueue({ invokeProfileWrite });
+      queue.onEnrichmentComplete = onComplete;
+      await queue.processJob('ensure_profile_hyde', { userId: 'u1' });
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('is null by default (no-op)', async () => {
+      const invokeEnrichUser = mock(async (_userId: string) => {});
+      const queue = new ProfileQueue({ invokeEnrichUser });
+      expect(queue.onEnrichmentComplete).toBeNull();
+      await queue.processJob('profile.enrich', { userId: 'u1' });
+    });
+  });
+
   describe('static', () => {
     it('exposes QUEUE_NAME on class', () => {
       expect(ProfileQueue.QUEUE_NAME).toBe(QUEUE_NAME);

@@ -53,6 +53,9 @@ export class ProfileQueue {
   private readonly deps: ProfileQueueDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<ProfileJobPayload>> | null = null;
 
+  /** Set by main.ts to trigger opportunity discovery after enrichment completes. */
+  onEnrichmentComplete: ((userId: string) => void) | null = null;
+
   constructor(deps?: ProfileQueueDeps) {
     this.deps = deps;
   }
@@ -190,11 +193,13 @@ export class ProfileQueue {
     const { userId } = data;
     if (this.deps?.invokeEnrichUser) {
       await this.deps.invokeEnrichUser(userId);
+      this.onEnrichmentComplete?.(userId);
       return;
     }
     try {
       await this.invokeProfileGraph(userId, 'generate');
       this.queueLogger.info('[EnrichUser] Profile enrichment completed', { userId });
+      this.onEnrichmentComplete?.(userId);
     } catch (err) {
       this.queueLogger.error('[EnrichUser] Failed to enrich user', {
         userId,
