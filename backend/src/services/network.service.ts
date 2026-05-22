@@ -8,7 +8,7 @@ import { executeSendEmail } from '../lib/email/transport.helper';
 import { networkMasterKeyRotatedTemplate } from '../lib/email/templates/network-master-key-rotated.template';
 import { validateKey } from '../lib/keys';
 import * as schema from '../schemas/database.schema';
-import { validateNetworkMetadata } from '../schemas/network.validation';
+import { ContextInjectionSchema, validateNetworkMetadata } from '../schemas/network.validation';
 
 const logger = log.service.from("NetworkService");
 
@@ -126,12 +126,16 @@ export class NetworkService {
       await this.assertJoinPolicyNotLockedByExperiment(networkId);
     }
     let validatedMetadata = data.metadata;
-    if (data.metadata !== undefined) {
+    if (data.type !== undefined || data.metadata !== undefined) {
       const currentNetwork = await this.adapter.getNetworkDetail(networkId, userId);
       const effectiveType = data.type ?? currentNetwork?.type ?? 'community';
-      validatedMetadata = validateNetworkMetadata(effectiveType, data.metadata);
+      const effectiveMetadata = data.metadata ?? (currentNetwork?.metadata as Record<string, unknown>) ?? {};
+      validatedMetadata = validateNetworkMetadata(effectiveType, effectiveMetadata);
     }
-    return this.adapter.updateIndexSettings(networkId, userId, { ...data, metadata: validatedMetadata });
+    const validatedContextInjection = data.contextInjection !== undefined
+      ? ContextInjectionSchema.parse(data.contextInjection)
+      : undefined;
+    return this.adapter.updateIndexSettings(networkId, userId, { ...data, metadata: validatedMetadata, contextInjection: validatedContextInjection });
   }
 
   /**
