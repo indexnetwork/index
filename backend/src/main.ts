@@ -145,7 +145,7 @@ NegotiationEvents.onTurnReceived = (data) => {
 
 // ── Telegram bot startup ────────────────────────────────────────────────────
 if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET) {
-  const webhookBase = process.env.BASE_URL ?? process.env.APP_URL ?? '';
+  const webhookBase = process.env.TELEGRAM_WEBHOOK_URL ?? process.env.BASE_URL ?? process.env.APP_URL ?? '';
   const webhookUrl = `${webhookBase.replace(/\/$/, '')}/api/webhooks/telegram`;
   setWebhook(webhookUrl, process.env.TELEGRAM_WEBHOOK_SECRET).catch((err) => {
     logger.error('Failed to register Telegram webhook on startup', { error: err });

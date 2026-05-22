@@ -1,3 +1,5 @@
+import { ZodError } from 'zod';
+
 import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
 import { AuthGuard, AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { ExperimentMasterKeyGuard, type ExperimentNetwork } from '../guards/experiment.guard';
@@ -62,6 +64,8 @@ export class NetworkController {
       joinPolicy?: 'anyone' | 'invite_only';
       allowGuestVibeCheck?: boolean;
       isExperiment?: boolean;
+      type?: 'community' | 'event';
+      metadata?: Record<string, unknown>;
     };
 
     if (!body.title) {
@@ -81,15 +85,24 @@ export class NetworkController {
       return Response.json({ network, masterKey }, { status: 201 });
     }
 
-    const result = await networkService.createNetwork(user.id, {
-      title: body.title,
-      prompt: body.prompt,
-      imageUrl: body.imageUrl,
-      joinPolicy: body.joinPolicy,
-      allowGuestVibeCheck: body.allowGuestVibeCheck,
-    });
-    logger.verbose('Network created', { networkId: result.id, userId: user.id });
-    return Response.json({ network: result });
+    try {
+      const result = await networkService.createNetwork(user.id, {
+        title: body.title,
+        prompt: body.prompt,
+        imageUrl: body.imageUrl,
+        joinPolicy: body.joinPolicy,
+        allowGuestVibeCheck: body.allowGuestVibeCheck,
+        type: body.type,
+        metadata: body.metadata,
+      });
+      logger.verbose('Network created', { networkId: result.id, userId: user.id });
+      return Response.json({ network: result });
+    } catch (err: unknown) {
+      if (err instanceof ZodError) {
+        return Response.json({ error: 'Validation failed', details: err.issues }, { status: 400 });
+      }
+      throw err;
+    }
   }
 
   /**
@@ -689,6 +702,9 @@ export class NetworkController {
         imageUrl?: string | null;
         joinPolicy?: 'anyone' | 'invite_only';
         allowGuestVibeCheck?: boolean;
+        type?: 'community' | 'event';
+        metadata?: Record<string, unknown>;
+        contextInjection?: { discovery: boolean };
       };
 
       if ('isExperiment' in body || 'experimentMasterKeyHash' in body) {
@@ -714,6 +730,9 @@ export class NetworkController {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
+      }
+      if (err instanceof ZodError) {
+        return Response.json({ error: 'Validation failed', details: err.issues }, { status: 400 });
       }
       throw err;
     }

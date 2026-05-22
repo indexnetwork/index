@@ -125,6 +125,7 @@ export type {
 
 // ─── Support utilities ────────────────────────────────────────────────────────
 
+export { renderNetworkContext } from './shared/network/metadata.renderer.js';
 export {
   canUserSeeOpportunity,
   isActionableForViewer,

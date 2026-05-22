@@ -13,6 +13,15 @@ mock.module('../src/lib/email/transport.helper', () => ({
   executeSendEmail: sendSpy,
 }));
 
+const enrichBulkSpy = mock<(items: Array<{ userId: string }>) => Promise<unknown[]>>(async () => []);
+const enrichSingleSpy = mock<(data: { userId: string }) => Promise<unknown>>(async () => ({}));
+mock.module('../src/queues/profile.queue', () => ({
+  profileQueue: {
+    addEnrichUserJobBulk: enrichBulkSpy,
+    addEnrichUserJob: enrichSingleSpy,
+  },
+}));
+
 afterAll(() => {
   mock.restore();
 });
@@ -149,5 +158,190 @@ describe('CSV import → network-scoped agent end-to-end', () => {
         eq(schema.agentPermissions.scopeId, networkId),
       ));
     expect(perms.length).toBe(1);
+  });
+
+  test('importMembers writes CSV bio and location to users table columns', async () => {
+    const email = `csv-profile-${Date.now()}@test.dev`;
+    await experimentService.importMembers(networkId, [
+      { email, name: 'Profile Test', bio: 'AI researcher at MIT', location: 'Cambridge, MA', socials: [] },
+    ]);
+
+    const [user] = await db
+      .select({ id: schema.users.id, intro: schema.users.intro, location: schema.users.location })
+      .from(schema.users)
+      .where(eq(schema.users.email, email));
+    cleanupUserIds.push(user.id);
+
+    expect(user.intro).toBe('AI researcher at MIT');
+    expect(user.location).toBe('Cambridge, MA');
+  });
+
+  test('importMembers sets onboarding.completedAt on imported users', async () => {
+    const email = `csv-onboard-${Date.now()}@test.dev`;
+    await experimentService.importMembers(networkId, [
+      { email, name: 'Onboard Test', socials: [] },
+    ]);
+
+    const [user] = await db
+      .select({ id: schema.users.id, onboarding: schema.users.onboarding })
+      .from(schema.users)
+      .where(eq(schema.users.email, email));
+    cleanupUserIds.push(user.id);
+
+    expect(user.onboarding).toBeTruthy();
+    expect(user.onboarding!.completedAt).toBeTruthy();
+    expect(new Date(user.onboarding!.completedAt!).getTime()).toBeGreaterThan(0);
+  });
+
+  test('importMembers preserves existing onboarding fields when setting completedAt', async () => {
+    const email = `csv-onboard-preserve-${Date.now()}@test.dev`;
+
+    // Pre-create user with existing onboarding state
+    const [preUser] = await db.insert(schema.users)
+      .values({
+        email,
+        name: 'Pre-existing',
+        emailVerified: true,
+        onboarding: { flow: 2, currentStep: 'connections' },
+      })
+      .returning({ id: schema.users.id });
+    cleanupUserIds.push(preUser.id);
+
+    await experimentService.importMembers(networkId, [
+      { email, name: 'Pre-existing', socials: [] },
+    ]);
+
+    const [user] = await db
+      .select({ onboarding: schema.users.onboarding })
+      .from(schema.users)
+      .where(eq(schema.users.id, preUser.id));
+
+    expect(user.onboarding!.completedAt).toBeTruthy();
+    expect(user.onboarding!.flow).toBe(2);
+    expect(user.onboarding!.currentStep).toBe('connections');
+  });
+
+  test('importMembers does not overwrite existing completedAt', async () => {
+    const email = `csv-keep-completed-${Date.now()}@test.dev`;
+    const originalCompletedAt = '2025-01-15T00:00:00.000Z';
+
+    const [preUser] = await db.insert(schema.users)
+      .values({
+        email,
+        name: 'Already Onboarded',
+        emailVerified: true,
+        onboarding: { completedAt: originalCompletedAt, flow: 1 },
+      })
+      .returning({ id: schema.users.id });
+    cleanupUserIds.push(preUser.id);
+
+    await experimentService.importMembers(networkId, [
+      { email, name: 'Already Onboarded', socials: [] },
+    ]);
+
+    const [user] = await db
+      .select({ onboarding: schema.users.onboarding })
+      .from(schema.users)
+      .where(eq(schema.users.id, preUser.id));
+
+    expect(user.onboarding!.completedAt).toBe(originalCompletedAt);
+    expect(user.onboarding!.flow).toBe(1);
+  });
+
+  test('importMembers enqueues profile enrichment for imported users', async () => {
+    enrichBulkSpy.mockClear();
+    const email = `csv-enrich-${Date.now()}@test.dev`;
+    await experimentService.importMembers(networkId, [
+      { email, name: 'Enrich Test', bio: 'Engineer', socials: [] },
+    ]);
+
+    const [user] = await db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, email));
+    cleanupUserIds.push(user.id);
+
+    expect(enrichBulkSpy).toHaveBeenCalledTimes(1);
+    const call = enrichBulkSpy.mock.calls[0][0];
+    expect(call).toEqual([{ userId: user.id }]);
+  });
+
+  test('importMembers deduplicates enrichment jobs for repeated emails', async () => {
+    enrichBulkSpy.mockClear();
+    const email = `csv-dedup-${Date.now()}@test.dev`;
+    await experimentService.importMembers(networkId, [
+      { email, name: 'Dedup A', socials: [] },
+      { email, name: 'Dedup B', socials: [] },
+    ]);
+
+    const [user] = await db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, email));
+    cleanupUserIds.push(user.id);
+
+    expect(enrichBulkSpy).toHaveBeenCalledTimes(1);
+    const call = enrichBulkSpy.mock.calls[0][0];
+    expect(call).toHaveLength(1);
+    expect(call[0].userId).toBe(user.id);
+  });
+
+  test('signup sets onboarding.completedAt for new users', async () => {
+    enrichSingleSpy.mockClear();
+    const email = `signup-onboard-${Date.now()}@test.dev`;
+    const result = await experimentService.signup(networkId, {
+      email,
+      name: 'Signup Onboard',
+    });
+    cleanupUserIds.push(result.user.id);
+
+    const [user] = await db
+      .select({ onboarding: schema.users.onboarding })
+      .from(schema.users)
+      .where(eq(schema.users.id, result.user.id));
+
+    expect(user.onboarding).toBeTruthy();
+    expect(user.onboarding!.completedAt).toBeTruthy();
+    expect(new Date(user.onboarding!.completedAt!).getTime()).toBeGreaterThan(0);
+  });
+
+  test('signup does not overwrite existing completedAt on re-signup', async () => {
+    const email = `signup-keep-${Date.now()}@test.dev`;
+    const originalCompletedAt = '2025-06-01T00:00:00.000Z';
+
+    // First signup to provision the user
+    const first = await experimentService.signup(networkId, { email, name: 'Re-Signup' });
+    cleanupUserIds.push(first.user.id);
+
+    // Manually set a known completedAt
+    await db.update(schema.users)
+      .set({ onboarding: { completedAt: originalCompletedAt, flow: 3 } })
+      .where(eq(schema.users.id, first.user.id));
+
+    // Second signup for the same user
+    await experimentService.signup(networkId, { email, name: 'Re-Signup' });
+
+    const [user] = await db
+      .select({ onboarding: schema.users.onboarding })
+      .from(schema.users)
+      .where(eq(schema.users.id, first.user.id));
+
+    expect(user.onboarding!.completedAt).toBe(originalCompletedAt);
+    expect(user.onboarding!.flow).toBe(3);
+  });
+
+  test('signup enqueues profile enrichment', async () => {
+    enrichSingleSpy.mockClear();
+    const email = `signup-enrich-${Date.now()}@test.dev`;
+    const result = await experimentService.signup(networkId, {
+      email,
+      name: 'Signup Enrich',
+      bio: 'ML researcher',
+    });
+    cleanupUserIds.push(result.user.id);
+
+    expect(enrichSingleSpy).toHaveBeenCalledTimes(1);
+    const call = enrichSingleSpy.mock.calls[0][0];
+    expect(call).toEqual({ userId: result.user.id });
   });
 });
