@@ -31,6 +31,24 @@ export async function sendMessage(
 }
 
 /**
+ * Signal that the bot is "typing" (or performing another action).
+ * The indicator auto-expires after 5 seconds; call repeatedly for longer operations.
+ * Best-effort — failures are silently ignored.
+ * @param chatId - Telegram chat ID
+ * @param action - Chat action (default: 'typing')
+ */
+export async function sendChatAction(
+  chatId: string,
+  action: 'typing' | 'upload_document' = 'typing',
+): Promise<void> {
+  await fetch(botUrl('sendChatAction'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, action }),
+  }).catch(() => {});
+}
+
+/**
  * Register a webhook URL with Telegram so the bot receives updates via HTTP POST.
  * @param url - The full HTTPS webhook URL
  * @param secretToken - Sent as X-Telegram-Bot-Api-Secret-Token header with each update
