@@ -697,7 +697,14 @@ export interface Database {
   /**
    * Get index by ID (id and title only). Used for opportunity presentation.
    */
-  getNetwork(networkId: string): Promise<{ id: string; title: string } | null>;
+  getNetwork(networkId: string): Promise<{
+    id: string;
+    title: string;
+    prompt?: string | null;
+    type?: string;
+    metadata?: Record<string, unknown> | null;
+    permissions?: Record<string, unknown> | null;
+  } | null>;
 
   /**
    * Get index by ID with permissions (e.g. joinPolicy). Used by chat tools for create_index_membership.
@@ -1629,7 +1636,14 @@ export interface SystemDatabase {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /** Get index info by ID (requires scope). */
-  getNetwork(networkId: string): Promise<{ id: string; title: string } | null>;
+  getNetwork(networkId: string): Promise<{
+    id: string;
+    title: string;
+    prompt?: string | null;
+    type?: string;
+    metadata?: Record<string, unknown> | null;
+    permissions?: Record<string, unknown> | null;
+  } | null>;
 
   /** Get index with permissions (requires scope). */
   getNetworkWithPermissions(networkId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null>;

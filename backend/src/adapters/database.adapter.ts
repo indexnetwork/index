@@ -1233,14 +1233,28 @@ export class ChatDatabaseAdapter {
     }
   }
 
-  async getNetwork(networkId: string): Promise<{ id: string; title: string } | null> {
+  async getNetwork(networkId: string): Promise<{
+    id: string;
+    title: string;
+    prompt?: string | null;
+    type?: string;
+    metadata?: Record<string, unknown> | null;
+    permissions?: Record<string, unknown> | null;
+  } | null> {
     const rows = await db
-      .select({ id: schema.networks.id, title: schema.networks.title })
+      .select({
+        id: schema.networks.id,
+        title: schema.networks.title,
+        prompt: schema.networks.prompt,
+        type: schema.networks.type,
+        metadata: schema.networks.metadata,
+        permissions: schema.networks.permissions,
+      })
       .from(schema.networks)
       .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
       .limit(1);
     const row = rows[0];
-    return row ? { id: row.id, title: row.title } : null;
+    return row ?? null;
   }
 
   /**
