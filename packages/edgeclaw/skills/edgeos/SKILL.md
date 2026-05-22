@@ -4,6 +4,15 @@ description: Talk to the EdgeOS popup-village platform — read the event schedu
 version: 1.1.0
 author: Edge City
 tags: [edgeos, events, directory, popup-village]
+required_environment_variables:
+  - name: EDGEOS_BEARER_TOKEN
+    prompt: EdgeOS bearer token (JWT from email-OTP flow)
+    help: Obtain from the EdgeOS onboarding flow at edgecity.live/agentvillage
+    required_for: directory, own profile, OpenAPI spec
+  - name: EDGEOS_API_KEY
+    prompt: EdgeOS API key (eos_live_...)
+    help: Obtain from the EdgeOS onboarding flow at edgecity.live/agentvillage
+    required_for: events, RSVPs, venues
 metadata:
   openclaw:
     requires:

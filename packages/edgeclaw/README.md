@@ -154,6 +154,17 @@ openclaw config set env.vars.EDGEOS_API_KEY '<eos_live_…>'
 openclaw gateway restart
 ```
 
+**Hermes:**
+```bash
+hermes skills install Edge-City/edgeclaw/skills/edge-esmeralda --force
+hermes skills install Edge-City/edgeclaw/skills/edgeos --force
+hermes skills install Edge-City/edgeclaw/skills/index-network --force
+hermes config set mcp_servers.index.url 'https://protocol.index.network/mcp'
+hermes config set mcp_servers.index.headers.x-api-key '<apiKey>'
+hermes config set EDGEOS_BEARER_TOKEN '<jwt>'
+hermes config set EDGEOS_API_KEY '<eos_live_…>'
+```
+
 **Claude Desktop / other MCP clients:** displays the `mcpServer` JSON with the API key baked in.
 
 See `skills/README.md` for the full per-host reference.

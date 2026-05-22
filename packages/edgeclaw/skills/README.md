@@ -1,6 +1,6 @@
 # EdgeClaw Skills
 
-Agent skills for **Edge Esmeralda 2026** (May 30 – Jun 27, Healdsburg, CA). Installable as a standalone plugin on Claude Code, Codex, and OpenClaw.
+Agent skills for **Edge Esmeralda 2026** (May 30 – Jun 27, Healdsburg, CA). Installable as a standalone plugin on Claude Code, Hermes, OpenClaw, and other MCP-compatible agents.
 
 ## What you get
 
@@ -53,6 +53,20 @@ openclaw gateway restart
 ```
 
 OpenClaw persists credentials in `~/.openclaw/openclaw.json` — no shell profile changes needed.
+
+### Hermes
+
+```bash
+hermes skills install Edge-City/edgeclaw/skills/edge-esmeralda --force
+hermes skills install Edge-City/edgeclaw/skills/edgeos --force
+hermes skills install Edge-City/edgeclaw/skills/index-network --force
+hermes config set mcp_servers.index.url 'https://protocol.index.network/mcp'
+hermes config set mcp_servers.index.headers.x-api-key '<YOUR_API_KEY>'
+hermes config set EDGEOS_BEARER_TOKEN '<YOUR_TOKEN>'
+hermes config set EDGEOS_API_KEY '<YOUR_KEY>'
+```
+
+`hermes config set` routes UPPERCASE keys to `~/.hermes/.env` and dot-notation keys to `~/.hermes/config.yaml`. The `--force` flag is required because the security scanner flags community-sourced skills.
 
 ### Claude Desktop
 
