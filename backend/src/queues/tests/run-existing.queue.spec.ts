@@ -4,7 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test' });
 
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, mock, afterAll } from 'bun:test';
 
 const mockAdd = mock(async () => ({ id: 'job-1', name: 'negotiate_existing', data: {} }));
 const mockCreateWorker = mock(() => ({}));
@@ -16,6 +16,10 @@ mock.module('../../lib/bullmq/bullmq', () => ({
     createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 import {
   NegotiationRunExistingQueue,

@@ -6,9 +6,9 @@
 import { config } from "dotenv";
 config({ path: '.env.test' });
 
-import { describe, expect, it, beforeAll, beforeEach, mock } from 'bun:test';
+import { describe, expect, it, beforeAll, beforeEach, afterAll, mock } from 'bun:test';
 
-const mockSearchUser = mock(async (request: { objective: string }) => ({
+const mockSearchUser = mock(async (_request: { objective: string }) => ({
   search_id: 'mock-search-id',
   results: [
     { url: 'https://example.com/page', title: 'Example Page', publish_date: null, excerpts: ['Excerpt one.', 'Excerpt two.'] },
@@ -27,6 +27,10 @@ mock.module('../../lib/parallel/parallel', () => ({
   crawlLinksForIndex: mock(async () => ({ files: [] })),
   parallelClient: null,
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 let ScraperAdapter: typeof import('../scraper.adapter').ScraperAdapter;
 beforeAll(async () => {

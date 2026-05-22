@@ -25,6 +25,7 @@ import {
 const cleanup: Array<() => Promise<void>> = [];
 
 afterAll(async () => {
+  mock.restore();
   for (const f of [...cleanup].reverse()) await f();
 });
 

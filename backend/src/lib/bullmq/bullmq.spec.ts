@@ -2,7 +2,7 @@
 import { config } from "dotenv";
 config({ path: '.env.test' });
 
-import { describe, it, expect, jest, mock } from 'bun:test';
+import { describe, it, expect, jest, mock, afterAll } from 'bun:test';
 import { QueueFactory } from './bullmq';
 import { Queue, Worker, QueueEvents } from 'bullmq';
 
@@ -13,9 +13,13 @@ mock.module('bullmq', () => ({
   QueueEvents: jest.fn(),
 }));
 
+afterAll(() => {
+  mock.restore();
+});
+
 describe('QueueFactory', () => {
   it('should create a queue with default options', () => {
-    const queue = QueueFactory.createQueue('test-queue');
+    const _queue = QueueFactory.createQueue('test-queue');
     expect(Queue).toHaveBeenCalledWith('test-queue', expect.objectContaining({
       connection: expect.any(Object),
       defaultJobOptions: expect.any(Object),

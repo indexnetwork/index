@@ -2,7 +2,7 @@
 import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
-import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { describe, it, expect, mock, beforeEach, afterAll } from "bun:test";
 
 import type { Opportunity } from '@indexnetwork/protocol';
 
@@ -160,12 +160,14 @@ mock.module("@indexnetwork/protocol", () => ({
 }));
 
 // Mock adapters that OpportunityService constructor tries to initialize
+const MockChatDatabaseAdapter = class {
+  findOpportunitiesByActors: unknown;
+  getUser: unknown;
+  getHydeDocument() { return null; }
+};
 mock.module("../../adapters/database.adapter", () => ({
-  ChatDatabaseAdapter: class {
-    findOpportunitiesByActors: unknown;
-    getUser: unknown;
-    getHydeDocument() { return null; }
-  },
+  ChatDatabaseAdapter: MockChatDatabaseAdapter,
+  chatDatabaseAdapter: new MockChatDatabaseAdapter(),
 }));
 mock.module("../../adapters/embedder.adapter", () => ({
   EmbedderAdapter: class {},
@@ -178,6 +180,10 @@ mock.module("../../adapters/cache.adapter", () => ({
     del() { return Promise.resolve(); }
   },
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Import service AFTER mocks

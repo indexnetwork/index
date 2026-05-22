@@ -1,7 +1,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.development', override: true });
 
-import { describe, expect, it, mock, beforeEach } from 'bun:test';
+import { describe, expect, it, mock, beforeEach, afterAll } from 'bun:test';
 import { S3StorageAdapter } from '../storage.adapter';
 
 // Mock S3Client.send to avoid real S3 calls
@@ -14,6 +14,10 @@ mock.module('@aws-sdk/client-s3', () => ({
     constructor(public input: unknown) {}
   },
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 function createAdapter() {
   return new S3StorageAdapter({

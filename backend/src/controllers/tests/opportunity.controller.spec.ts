@@ -6,9 +6,16 @@ import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
 import { OpportunityDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
+// ---------------------------------------------------------------------------
+// Restore mocks after all tests
+// ---------------------------------------------------------------------------
+afterAll(() => {
+  mock.restore();
+});
+
 // Mock notification queue so loading OpportunityController does not connect to Redis
 mock.module("../../queues/notification.queue", () => ({
-  queueOpportunityNotification: async () => ({ id: "mock-job" } as any),
+  queueOpportunityNotification: async () => ({ id: "mock-job" }),
 }));
 
 // Load controllers after mock is registered so createManual path never touches Redis in tests
@@ -421,7 +428,7 @@ describe("OpportunityController Integration", () => {
 
     expect(response.status).toBe(400);
     const result = await response.json();
-    expect((result as any).error).toContain("query");
+    expect((result as { error?: string }).error).toContain("query");
   });
 
   test("discover should return 400 if query is not a string", async () => {
@@ -441,7 +448,7 @@ describe("OpportunityController Integration", () => {
 
     expect(response.status).toBe(400);
     const result = await response.json();
-    expect((result as any).error).toContain("query");
+    expect((result as { error?: string }).error).toContain("query");
   });
 
   test("discover should find opportunities based on query", async () => {
@@ -492,7 +499,7 @@ describe("OpportunityController Integration", () => {
     };
 
     const response = await controller.discover(mockRequest, mockUser);
-    const result = await response.json() as any;
+    const result = await response.json() as { candidates?: { userId?: string; id?: string }[] };
 
     console.log("Limited discovery result:", JSON.stringify(result, null, 2));
 
@@ -523,7 +530,7 @@ describe("OpportunityController Integration", () => {
     };
 
     const response = await controller.discover(mockRequest, mockUser);
-    const result = await response.json() as any;
+    const result = await response.json() as { candidates?: { userId?: string; id?: string }[] };
 
     console.log("Self-exclusion result:", JSON.stringify(result, null, 2));
 
@@ -531,7 +538,7 @@ describe("OpportunityController Integration", () => {
     // If candidates are returned, none should be the requesting user
     if (result.candidates && Array.isArray(result.candidates)) {
       const selfIncluded = result.candidates.some(
-        (c: any) => c.userId === testUserId || c.id === testUserId
+        (c) => c.userId === testUserId || c.id === testUserId
       );
       expect(selfIncluded).toBe(false);
     }

@@ -1,7 +1,9 @@
 [test]
 
-# Exclude dist/ from test discovery to avoid running stale compiled files
-ignore = ["dist/"]
+# NOTE: pathIgnorePatterns is NOT supported in Bun 1.2.20 (it's documented in
+# Bun's main branch but not yet released). Test isolation is handled by
+# scripts/test-safe.sh which reads .test-isolated to exclude contaminating files.
+# Use `bun run test` (which calls test-safe.sh) instead of bare `bun test`.
 
 # Preload .env.development before any test module runs so integration tests
 # that touch the live database get the correct DATABASE_URL. Bun auto-loads

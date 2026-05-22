@@ -11,7 +11,7 @@
 process.env.OPENROUTER_API_KEY = "test-key";
 process.env.NODE_ENV = "test";
 
-import { mock, describe, it, expect } from "bun:test";
+import { mock, describe, it, expect, afterAll } from "bun:test";
 
 // ─── Mock @indexnetwork/protocol ──────────────────────────────────────────────
 // Intercepts `import { ChatGraphFactory, ChatTitleGenerator } from …`
@@ -60,6 +60,10 @@ mock.module("../../adapters/scraper.adapter", () => ({
 mock.module("../../adapters/checkpointer.adapter", () => ({
   getCheckpointer: mock(() => Promise.resolve(undefined)),
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 import { ChatGraphFactory } from "@indexnetwork/protocol";
 import { ChatSessionService } from "../chat.service";
