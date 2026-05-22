@@ -1318,6 +1318,8 @@ export class ChatDatabaseAdapter {
         updatedAt: schema.networks.updatedAt,
         ownerName: schema.users.name,
         ownerAvatar: schema.users.avatar,
+        type: schema.networks.type,
+        metadata: schema.networks.metadata,
       })
       .from(schema.networks)
       .leftJoin(ownerMembers, eq(schema.networks.id, ownerMembers.networkId))
@@ -1348,6 +1350,8 @@ export class ChatDatabaseAdapter {
           key: row.key,
           prompt: row.prompt,
           imageUrl: row.imageUrl,
+          type: row.type ?? 'community',
+          metadata: (row.metadata ?? {}) as Record<string, unknown>,
           permissions: row.permissions,
           isPersonal: row.isPersonal,
           isExperiment: row.isExperiment,
@@ -2083,7 +2087,7 @@ export class ChatDatabaseAdapter {
   async updateIndexSettings(
     networkId: string,
     requestingUserId: string,
-    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }
+    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; type?: 'community' | 'event'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
   ) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
@@ -2107,6 +2111,15 @@ export class ChatDatabaseAdapter {
         allowGuestVibeCheck: data.allowGuestVibeCheck ?? currentPerms.allowGuestVibeCheck ?? false,
       };
     }
+    if (data.type !== undefined) updateData.type = data.type;
+    if (data.metadata !== undefined) updateData.metadata = data.metadata;
+    if (data.contextInjection !== undefined) {
+      const currentPerms = (existing.permissions as Record<string, unknown>) ?? {};
+      updateData.permissions = {
+        ...((updateData.permissions as Record<string, unknown>) ?? currentPerms),
+        contextInjection: data.contextInjection,
+      };
+    }
 
     await db.update(networks).set(updateData).where(eq(networks.id, networkId));
 
@@ -2123,6 +2136,8 @@ export class ChatDatabaseAdapter {
         ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
+        type: networks.type,
+        metadata: networks.metadata,
       })
       .from(networks)
       .innerJoin(
@@ -2150,6 +2165,8 @@ export class ChatDatabaseAdapter {
       title: updatedRow.title,
       prompt: updatedRow.prompt,
       imageUrl: updatedRow.imageUrl,
+      type: updatedRow.type ?? 'community',
+      metadata: (updatedRow.metadata ?? {}) as Record<string, unknown>,
       permissions: {
         joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
         allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
@@ -2330,12 +2347,16 @@ export class ChatDatabaseAdapter {
     prompt?: string | null;
     imageUrl?: string | null;
     joinPolicy?: 'anyone' | 'invite_only';
+    type?: 'community' | 'event';
+    metadata?: Record<string, unknown>;
   }): Promise<{
     id: string;
     title: string;
     prompt: string | null;
     imageUrl: string | null;
     permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
+    type: 'community' | 'event';
+    metadata: Record<string, unknown>;
   }> {
     const finalJoinPolicy = data.joinPolicy ?? 'invite_only';
     const permissions = {
@@ -2350,6 +2371,8 @@ export class ChatDatabaseAdapter {
         prompt: data.prompt ?? null,
         imageUrl: data.imageUrl ?? null,
         permissions,
+        type: data.type ?? 'community',
+        metadata: data.metadata ?? {},
       })
       .returning({
         id: networks.id,
@@ -2357,6 +2380,8 @@ export class ChatDatabaseAdapter {
         prompt: networks.prompt,
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
+        type: networks.type,
+        metadata: networks.metadata,
       });
     if (!row) throw new Error('Failed to create index');
     const perms = (row.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
@@ -2370,6 +2395,8 @@ export class ChatDatabaseAdapter {
         invitationLink: perms.invitationLink ?? null,
         allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
       },
+      type: row.type ?? 'community',
+      metadata: (row.metadata ?? {}) as Record<string, unknown>,
     };
   }
 
@@ -2637,6 +2664,8 @@ export class ChatDatabaseAdapter {
         ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
+        type: networks.type,
+        metadata: networks.metadata,
       })
       .from(networks)
       .innerJoin(
@@ -2666,6 +2695,8 @@ export class ChatDatabaseAdapter {
       key: row.key,
       prompt: row.prompt,
       imageUrl: row.imageUrl,
+      type: row.type ?? 'community',
+      metadata: (row.metadata ?? {}) as Record<string, unknown>,
       permissions: row.permissions,
       isPersonal: row.isPersonal,
       isExperiment: row.isExperiment,

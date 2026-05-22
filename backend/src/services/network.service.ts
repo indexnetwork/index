@@ -8,6 +8,7 @@ import { executeSendEmail } from '../lib/email/transport.helper';
 import { networkMasterKeyRotatedTemplate } from '../lib/email/templates/network-master-key-rotated.template';
 import { validateKey } from '../lib/keys';
 import * as schema from '../schemas/database.schema';
+import { validateNetworkMetadata } from '../schemas/network.validation';
 
 const logger = log.service.from("NetworkService");
 
@@ -36,9 +37,15 @@ export class NetworkService {
   /**
    * Create a new index with the requesting user as owner.
    */
-  async createNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
-    logger.verbose('[NetworkService] Creating index', { userId, title: data.title });
-    const index = await this.adapter.createNetwork(data);
+  async createNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; type?: 'community' | 'event'; metadata?: Record<string, unknown> }) {
+    const networkType = data.type ?? 'community';
+    const validatedMetadata = validateNetworkMetadata(networkType, data.metadata ?? {});
+    logger.verbose('[NetworkService] Creating index', { userId, title: data.title, type: networkType });
+    const index = await this.adapter.createNetwork({
+      ...data,
+      type: networkType,
+      metadata: validatedMetadata,
+    });
     // Add the creating user as the owner
     await this.adapter.addMemberToNetwork(index.id, userId, 'owner');
     // Fetch the full index details with user and member count
@@ -112,13 +119,19 @@ export class NetworkService {
    * @throws Error if the index is a personal index.
    * @throws Error if attempting to change join policy on an experiment network.
    */
-  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; type?: 'community' | 'event'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
     logger.verbose('[NetworkService] Updating index', { networkId, userId });
     await this.assertNotPersonal(networkId);
     if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
       await this.assertJoinPolicyNotLockedByExperiment(networkId);
     }
-    return this.adapter.updateIndexSettings(networkId, userId, data);
+    let validatedMetadata = data.metadata;
+    if (data.metadata !== undefined) {
+      const currentNetwork = await this.adapter.getNetworkDetail(networkId, userId);
+      const effectiveType = data.type ?? currentNetwork?.type ?? 'community';
+      validatedMetadata = validateNetworkMetadata(effectiveType, data.metadata);
+    }
+    return this.adapter.updateIndexSettings(networkId, userId, { ...data, metadata: validatedMetadata });
   }
 
   /**
