@@ -695,7 +695,7 @@ export interface Database {
   getNetworkMembership(networkId: string, userId: string): Promise<NetworkMembership | null>;
 
   /**
-   * Get index by ID (id and title only). Used for opportunity presentation.
+   * Get index by ID with core fields. Used for opportunity presentation and context rendering.
    */
   getNetwork(networkId: string): Promise<{
     id: string;
@@ -1635,7 +1635,7 @@ export interface SystemDatabase {
   // Index Operations (any index in scope)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Get index info by ID (requires scope). */
+  /** Get index info by ID with core fields (requires scope). */
   getNetwork(networkId: string): Promise<{
     id: string;
     title: string;

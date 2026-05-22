@@ -154,9 +154,9 @@ async function buildNetworkContexts(
   database: Pick<OpportunityGraphDatabase, 'getNetwork'>,
 ): Promise<Record<string, string>> {
   const networkIds = [...new Set(entities.map((e) => e.networkId))];
+  const networks = await Promise.all(networkIds.map((nid) => database.getNetwork(nid).then((n) => ({ nid, n }))));
   const contexts: Record<string, string> = {};
-  for (const nid of networkIds) {
-    const network = await database.getNetwork(nid);
+  for (const { nid, n: network } of networks) {
     if (!network) continue;
     const perms = (network.permissions ?? {}) as Record<string, unknown>;
     const injection = perms.contextInjection as { discovery?: boolean } | undefined;

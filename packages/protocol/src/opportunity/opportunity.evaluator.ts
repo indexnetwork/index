@@ -476,7 +476,7 @@ CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
   MATCHED VIA: ${e.matchedVia ?? '—'}`;
     }).join('\n');
     const networkContextPart = input.networkContexts && Object.keys(input.networkContexts).length > 0
-      ? `\n\nNETWORK CONTEXTS:\n${Object.values(input.networkContexts).join('\n\n')}`
+      ? `\n\nNETWORK CONTEXTS:\n${Object.entries(input.networkContexts).map(([nid, ctx]) => `[INDEX: ${nid}]\n${ctx}`).join('\n\n')}`
       : '';
     const humanContent = `DISCOVERER: ${input.discovererId}${introModePart}${discoveryQueryPart}${networkContextPart}\n\nENTITIES:\n${entitiesBlock}${existingPart}`;
     const messages = [
