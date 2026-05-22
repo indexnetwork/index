@@ -194,13 +194,18 @@ describe('ProfileDatabaseAdapter.findDuplicateUser', () => {
       email: TEST_PREFIX + 'deleted@test.com',
       name: 'Deleted User',
       isGhost: true,
-      socials: { linkedin: 'deleted-handle-unique' },
       deletedAt: new Date(),
+    });
+    await db.insert(userSocials).values({
+      userId: deletedId,
+      label: 'linkedin',
+      value: 'deleted-handle-unique',
     });
     try {
       const result = await adapter.findDuplicateUser(ids.ghostAId, [{ id: 'fake-id-6', userId: ids.ghostAId, label: 'linkedin', value: 'deleted-handle-unique' }]);
       expect(result).toBeNull();
     } finally {
+      await db.delete(userSocials).where(eq(userSocials.userId, deletedId));
       await db.delete(users).where(eq(users.id, deletedId));
     }
   });

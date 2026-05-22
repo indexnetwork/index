@@ -22,12 +22,14 @@ const { experimentService } = await import('../src/services/experiment.service')
 describe('CSV import → network-scoped agent end-to-end', () => {
   let networkId: string;
   let ownerId: string;
+  let ownerEmail: string;
   const cleanupUserIds: string[] = [];
   const cleanupNetworkIds: string[] = [];
 
   beforeAll(async () => {
+    ownerEmail = `import-owner-${Date.now()}@test.dev`;
     const [u] = await db.insert(schema.users)
-      .values({ email: `import-owner-${Date.now()}@test.dev`, name: 'Owner', emailVerified: true })
+      .values({ email: ownerEmail, name: 'Owner', emailVerified: true })
       .returning({ id: schema.users.id });
     ownerId = u.id;
     cleanupUserIds.push(ownerId);
@@ -111,11 +113,11 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       'manage:opportunities',
     ]));
 
-    // Owner credentials email dispatched once
+    // Owner credentials email dispatched once to the owner
     expect(sendSpy).toHaveBeenCalledTimes(1);
     const call = sendSpy.mock.calls[0][0];
     expect(Array.isArray(call.to)).toBe(true);
-    expect((call.to as string[]).length).toBe(1);
+    expect((call.to as string[])).toContain(ownerEmail);
     expect(call.html.length).toBeGreaterThan(0);
   });
 
