@@ -39,7 +39,7 @@ interface SlackMember {
   profile?: { real_name?: string; email?: string };
 }
 
-type Toolkit = 'gmail' | 'slack';
+type Toolkit = 'gmail' | 'slack' | 'google_calendar';
 
 /**
  * Fetches contacts from external integration platforms and imports them
