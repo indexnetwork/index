@@ -2158,7 +2158,7 @@ export class ChatDatabaseAdapter {
       db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt))),
       db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, networkId)),
     ]);
-    const perms = (updatedRow.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
+    const perms = (updatedRow.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean; contextInjection?: { discovery: boolean } }) ?? {};
     const memberCount = Number(memberCountResult[0]?.count ?? 0);
     return {
       id: updatedRow.id,
@@ -2171,6 +2171,7 @@ export class ChatDatabaseAdapter {
         joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
         allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
         invitationLink: perms.invitationLink ?? null,
+        ...(perms.contextInjection !== undefined && { contextInjection: perms.contextInjection }),
       },
       isPersonal: updatedRow.isPersonal,
       createdAt: updatedRow.createdAt,
