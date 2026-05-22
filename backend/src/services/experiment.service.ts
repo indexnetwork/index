@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
@@ -171,7 +171,7 @@ class ExperimentService {
     // email. After the loop, a single summary email is sent to the network's
     // owner(s) with all minted keys as an inline CSV — the experimental-network
     // policy bypasses per-user invitation emails entirely.
-    const importedUserIds: string[] = [];
+    const importedUserIdSet = new Set<string>();
     for (const row of rows) {
       try {
         const email = row.email.toLowerCase().trim();
@@ -182,7 +182,7 @@ class ExperimentService {
           rotateKey: true,
         });
         await this.applyProfilePatch(result.user.id, row);
-        importedUserIds.push(result.user.id);
+        importedUserIdSet.add(result.user.id);
         credentials.push({
           email: result.user.email,
           name: row.name,
@@ -195,17 +195,18 @@ class ExperimentService {
       }
     }
 
+    const importedUserIds = [...importedUserIdSet];
+
     // Mark imported users as onboarded so they appear in vector search filters
     // (embedder requires isGhost=true OR onboarding.completedAt IS NOT NULL).
+    // Merges into existing onboarding JSON to preserve other fields (flow, currentStep, etc.).
     if (importedUserIds.length > 0) {
       const completedAt = new Date().toISOString();
-      await Promise.all(
-        importedUserIds.map(uid =>
-          db.update(schema.users)
-            .set({ onboarding: { completedAt } })
-            .where(eq(schema.users.id, uid)),
-        ),
-      );
+      await db.update(schema.users)
+        .set({
+          onboarding: sql`COALESCE(${schema.users.onboarding}::jsonb, '{}'::jsonb) || ${JSON.stringify({ completedAt })}::jsonb`,
+        })
+        .where(inArray(schema.users.id, importedUserIds));
     }
 
     // Enqueue profile enrichment: the profile graph reads name, intro, location,
