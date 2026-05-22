@@ -2,10 +2,10 @@ import type { IntegrationService } from '../services/integration.service';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
-import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 
 /** Server-side allowlist of supported Composio toolkits. */
-const ALLOWED_TOOLKITS = ['gmail', 'slack', 'telegram'] as const;
+const ALLOWED_TOOLKITS = ['gmail', 'slack', 'telegram', 'google_calendar'] as const;
 
 type AllowedToolkit = typeof ALLOWED_TOOLKITS[number];
 
@@ -143,6 +143,31 @@ export class IntegrationController {
       return result;
     } catch (err) {
       return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Import failed' }), { status: 400 });
+    }
+  }
+
+  /**
+   * Configure sync settings for an integration linked to an index.
+   * PATCH /api/integrations/:toolkit/sync
+   * Body: { networkId: string, calendarId?: string, intervalMs?: number, status?: 'active' | 'paused' }
+   */
+  @Patch('/:toolkit/sync')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async configureSyncConfig(req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const networkId = typeof body.networkId === 'string' ? body.networkId.trim() || undefined : undefined;
+    if (!networkId) {
+      return new Response(JSON.stringify({ error: 'networkId is required' }), { status: 400 });
+    }
+    try {
+      await this.integrationService.configureSyncConfig(user.id, networkId, params.toolkit, {
+        calendarId: typeof body.calendarId === 'string' ? body.calendarId : undefined,
+        intervalMs: typeof body.intervalMs === 'number' ? body.intervalMs : undefined,
+        status: body.status === 'active' || body.status === 'paused' ? body.status : undefined,
+      });
+      return { success: true };
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Sync config update failed' }), { status: 400 });
     }
   }
 
