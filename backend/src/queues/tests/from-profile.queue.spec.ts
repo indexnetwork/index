@@ -152,12 +152,9 @@ describe('FromProfileQueue', () => {
     it('merges negotiationGraph and agentDispatcher into deps', async () => {
       const invokeOpportunityGraph = mock(async () => {});
       const queue = new FromProfileQueue({ invokeOpportunityGraph });
-      const negotiationGraph = {} as unknown;
+      const negotiationGraph = {} as Parameters<InstanceType<typeof FromProfileQueue>['setRuntimeDeps']>[0]['negotiationGraph'];
       const agentDispatcher = { hasPersonalAgent: async () => false };
-      queue.setRuntimeDeps({
-        negotiationGraph: negotiationGraph as FromProfileQueue extends { setRuntimeDeps(d: infer D): void } ? D extends { negotiationGraph?: infer N } ? N : never : never,
-        agentDispatcher,
-      });
+      queue.setRuntimeDeps({ negotiationGraph, agentDispatcher });
       await queue.processJob('discover_opportunities', { userId: 'u1' });
       expect(invokeOpportunityGraph).toHaveBeenCalled();
     });
