@@ -3520,11 +3520,14 @@ export class ChatDatabaseAdapter {
         ni.sync_config,
         owner.user_id AS owner_user_id
       FROM network_integrations ni
+      JOIN networks n ON n.id = ni.network_id AND n.deleted_at IS NULL
       CROSS JOIN LATERAL (
         SELECT nm.user_id
         FROM network_members nm
         WHERE nm.network_id = ni.network_id
           AND 'owner' = ANY(nm.permissions)
+          AND nm.deleted_at IS NULL
+        ORDER BY nm.created_at ASC
         LIMIT 1
       ) owner
       WHERE ni.sync_config->>'status' = 'active'

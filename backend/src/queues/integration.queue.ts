@@ -232,7 +232,6 @@ export class IntegrationSyncQueue {
         ...existingSyncConfig,
         lastSyncAt: new Date().toISOString(),
         calendarId,
-        status: 'active',
       },
     );
 

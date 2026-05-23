@@ -154,8 +154,8 @@ export class IntegrationController {
   @Patch('/:toolkit/sync')
   @UseGuards(RateLimit('write'), AuthGuard)
   async configureSyncConfig(req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
-    if (!isAllowedToolkit(params.toolkit)) {
-      return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
+    if (params.toolkit !== 'google_calendar') {
+      return new Response(JSON.stringify({ error: 'Sync configuration is only supported for google_calendar' }), { status: 400 });
     }
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const networkId = typeof body.networkId === 'string' ? body.networkId.trim() || undefined : undefined;
