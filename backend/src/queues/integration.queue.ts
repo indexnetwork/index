@@ -201,7 +201,8 @@ export class IntegrationSyncQueue {
         throw new Error(`Google Calendar API error: ${result.error}`);
       }
 
-      const data = typeof result.data === 'string' ? JSON.parse(result.data as string) : result.data;
+      const raw: unknown = result.data;
+      const data = typeof raw === 'string' ? JSON.parse(raw) : (raw as Record<string, unknown> | undefined);
       const items = (data?.response_data?.items ?? data?.items ?? []) as Array<Record<string, unknown>>;
       allEvents.push(...items);
       pageToken = (data?.response_data?.nextPageToken ?? data?.nextPageToken) as string | undefined;
