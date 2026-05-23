@@ -3422,6 +3422,55 @@ export class ChatDatabaseAdapter {
   }
 
   /**
+   * Read the current syncConfig for a specific integration row.
+   * @param networkId - Target index
+   * @param toolkit - Toolkit slug
+   * @returns The syncConfig object or null if no row exists
+   */
+  async getIntegrationSyncConfig(
+    networkId: string,
+    toolkit: string,
+  ): Promise<Record<string, unknown> | null> {
+    const [row] = await db
+      .select({ syncConfig: schema.networkIntegrations.syncConfig })
+      .from(schema.networkIntegrations)
+      .where(
+        and(
+          eq(schema.networkIntegrations.networkId, networkId),
+          eq(schema.networkIntegrations.toolkit, toolkit),
+        ),
+      )
+      .limit(1);
+    return row?.syncConfig ?? null;
+  }
+
+  /**
+   * Read the metadata JSONB for a network.
+   * @param networkId - Target network
+   * @returns The metadata object or null if not found
+   */
+  async getNetworkMetadata(networkId: string): Promise<Record<string, unknown> | null> {
+    const [row] = await db
+      .select({ metadata: schema.networks.metadata })
+      .from(schema.networks)
+      .where(eq(schema.networks.id, networkId))
+      .limit(1);
+    return (row?.metadata as Record<string, unknown>) ?? null;
+  }
+
+  /**
+   * Replace the metadata JSONB for a network.
+   * @param networkId - Target network
+   * @param metadata - New metadata object
+   */
+  async updateNetworkMetadata(networkId: string, metadata: Record<string, unknown>): Promise<void> {
+    await db
+      .update(schema.networks)
+      .set({ metadata, updatedAt: new Date() })
+      .where(eq(schema.networks.id, networkId));
+  }
+
+  /**
    * Update the syncConfig JSONB column on a network_integrations row.
    * @param networkId - Target index
    * @param toolkit - Toolkit slug (e.g. 'google_calendar')
@@ -3455,23 +3504,39 @@ export class ChatDatabaseAdapter {
     syncConfig: Record<string, unknown>;
     ownerUserId: string;
   }>> {
-    return db
-      .select({
-        networkId: schema.networkIntegrations.networkId,
-        toolkit: schema.networkIntegrations.toolkit,
-        connectedAccountId: schema.networkIntegrations.connectedAccountId,
-        syncConfig: schema.networkIntegrations.syncConfig,
-        ownerUserId: schema.networkMembers.userId,
-      })
-      .from(schema.networkIntegrations)
-      .innerJoin(
-        schema.networkMembers,
-        and(
-          eq(schema.networkIntegrations.networkId, schema.networkMembers.networkId),
-          sql`'owner' = ANY(${schema.networkMembers.permissions})`,
-        ),
-      )
-      .where(sql`${schema.networkIntegrations.syncConfig}->>'status' = 'active'`);
+    // Use a lateral subquery to pick exactly one owner per network,
+    // avoiding duplicate rows when a network has multiple owners.
+    const rows = await db.execute<{
+      network_id: string;
+      toolkit: string;
+      connected_account_id: string;
+      sync_config: Record<string, unknown>;
+      owner_user_id: string;
+    }>(sql`
+      SELECT
+        ni.network_id,
+        ni.toolkit,
+        ni.connected_account_id,
+        ni.sync_config,
+        owner.user_id AS owner_user_id
+      FROM network_integrations ni
+      CROSS JOIN LATERAL (
+        SELECT nm.user_id
+        FROM network_members nm
+        WHERE nm.network_id = ni.network_id
+          AND 'owner' = ANY(nm.permissions)
+        LIMIT 1
+      ) owner
+      WHERE ni.sync_config->>'status' = 'active'
+    `);
+
+    return rows.map((r) => ({
+      networkId: r.network_id,
+      toolkit: r.toolkit,
+      connectedAccountId: r.connected_account_id,
+      syncConfig: r.sync_config as Record<string, unknown>,
+      ownerUserId: r.owner_user_id,
+    }));
   }
 
   /**

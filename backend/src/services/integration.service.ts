@@ -100,9 +100,14 @@ export class IntegrationService {
     }
     const isPersonal = !networkId || await this.db.isPersonalNetwork(networkId);
 
-    const contacts = toolkit === 'gmail'
-      ? await this.fetchGmailContacts(userId)
-      : await this.fetchSlackMembers(userId);
+    let contacts: Array<{ name: string; email: string }>;
+    if (toolkit === 'gmail') {
+      contacts = await this.fetchGmailContacts(userId);
+    } else if (toolkit === 'slack') {
+      contacts = await this.fetchSlackMembers(userId);
+    } else {
+      throw new Error(`Toolkit '${toolkit}' does not support contact import`);
+    }
 
     logger.info('Fetched contacts from provider', { userId, toolkit, count: contacts.length });
 
@@ -267,7 +272,21 @@ export class IntegrationService {
     if (!integration) {
       throw new Error(`No ${toolkit} integration linked to this network`);
     }
-    const validated = SyncConfigSchema.parse(config);
+
+    // Strip undefined keys so we only merge fields the caller actually provided
+    const patch: Record<string, unknown> = {};
+    if (config.calendarId !== undefined) patch.calendarId = config.calendarId;
+    if (config.intervalMs !== undefined) patch.intervalMs = config.intervalMs;
+    if (config.status !== undefined) patch.status = config.status;
+
+    if (Object.keys(patch).length === 0) {
+      throw new Error('No sync config fields provided');
+    }
+
+    // Read existing config, merge patch, then validate the result
+    const existing = await this.db.getIntegrationSyncConfig(networkId, toolkit) ?? {};
+    const merged = { ...existing, ...patch };
+    const validated = SyncConfigSchema.parse(merged);
     await this.db.updateIntegrationSyncConfig(networkId, toolkit, validated);
     logger.info('Sync config updated', { userId, networkId, toolkit });
   }

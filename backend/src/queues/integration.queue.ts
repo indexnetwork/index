@@ -1,12 +1,9 @@
 import { Job } from 'bullmq';
-import { eq } from 'drizzle-orm';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { ComposioIntegrationAdapter } from '../adapters/integration.adapter';
 import type { ToolActionResponse } from '../adapters/integration.adapter';
-import db from '../lib/drizzle/drizzle';
-import * as schema from '../schemas/database.schema';
 
 /** BullMQ queue name for periodic integration sync jobs. */
 export const QUEUE_NAME = 'integration-sync-queue';
@@ -31,6 +28,8 @@ interface SyncDatabaseAdapter {
     ownerUserId: string;
   }>>;
   updateIntegrationSyncConfig(networkId: string, toolkit: string, syncConfig: Record<string, unknown>): Promise<void>;
+  getNetworkMetadata(networkId: string): Promise<Record<string, unknown> | null>;
+  updateNetworkMetadata(networkId: string, metadata: Record<string, unknown>): Promise<void>;
 }
 
 /** Optional dependencies for testing. */
@@ -74,6 +73,10 @@ export class IntegrationSyncQueue {
       jobId: 'integration-sync-tick',
       removeOnComplete: { count: 10 },
       removeOnFail: { count: 50 },
+    }).catch((err) => {
+      this.queueLogger.error('Failed to register repeatable sync tick', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
 
     const processor = async (job: Job<IntegrationSyncPayload>) => {
@@ -130,7 +133,8 @@ export class IntegrationSyncQueue {
         status?: string;
       };
       const interval = config.intervalMs ?? 900_000;
-      const lastSync = config.lastSyncAt ? new Date(config.lastSyncAt).getTime() : 0;
+      const parsed = config.lastSyncAt ? new Date(config.lastSyncAt).getTime() : 0;
+      const lastSync = Number.isNaN(parsed) ? 0 : parsed;
 
       if (now - lastSync < interval) continue;
 
@@ -140,6 +144,7 @@ export class IntegrationSyncQueue {
             sync.networkId,
             sync.ownerUserId,
             config.calendarId ?? 'primary',
+            config,
             dbAdapter,
           );
         }
@@ -162,19 +167,15 @@ export class IntegrationSyncQueue {
     networkId: string,
     ownerUserId: string,
     calendarId: string,
+    existingSyncConfig: Record<string, unknown>,
     dbAdapter: SyncDatabaseAdapter,
   ): Promise<void> {
     this.logger.verbose('Syncing Google Calendar', { networkId, calendarId });
 
-    const [network] = await db
-      .select({ metadata: schema.networks.metadata })
-      .from(schema.networks)
-      .where(eq(schema.networks.id, networkId))
-      .limit(1);
+    const rawMeta = await dbAdapter.getNetworkMetadata(networkId);
+    if (rawMeta === null) return; // network doesn't exist
 
-    if (!network) return;
-
-    const meta = network.metadata as { startDate?: string; endDate?: string; events?: unknown[] } | null;
+    const meta = rawMeta as { startDate?: string; endDate?: string; events?: unknown[] };
     const timeMin = meta?.startDate ?? new Date().toISOString();
     const timeMax = meta?.endDate ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -222,16 +223,13 @@ export class IntegrationSyncQueue {
       events: mappedEvents,
     };
 
-    await db
-      .update(schema.networks)
-      .set({ metadata: updatedMetadata, updatedAt: new Date() })
-      .where(eq(schema.networks.id, networkId));
+    await dbAdapter.updateNetworkMetadata(networkId, updatedMetadata);
 
     await dbAdapter.updateIntegrationSyncConfig(
       networkId,
       'google_calendar',
       {
-        intervalMs: 900_000,
+        ...existingSyncConfig,
         lastSyncAt: new Date().toISOString(),
         calendarId,
         status: 'active',
