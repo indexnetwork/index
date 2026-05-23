@@ -46,6 +46,13 @@ INPUTS:
 2. Index Prompt: The purpose/scope of the target community (Index).
 3. Member Prompt: The specific sharing preferences of the user in that community (optional).
 4. Source: Origin of the intent (file, link, etc.) (optional).
+5. Network Context: Rendered context about the network including type, dates, location, and events (optional).
+
+NETWORK TYPE AWARENESS:
+- When Network Context is provided, use it to inform your scoring.
+- For EVENT networks: consider temporal relevance. An intent about "meeting at the venue" is highly relevant to an upcoming event but irrelevant after it ends. Intents about topics aligned with the event's themes should score higher.
+- For COMMUNITY networks: score based on the index prompt and member preferences as usual.
+- If the network context includes dates and the intent is time-sensitive, factor temporal proximity into the score.
 
 SCORING RUBRIC:
 - 0.9-1.0: Highly appropriate, perfect match.
@@ -104,6 +111,7 @@ export class IntentIndexer {
    * @param indexPrompt - The purpose of the index (community).
    * @param memberPrompt - The member's sharing preferences (optional).
    * @param sourceName - Optional source name for context (e.g. file, link).
+   * @param networkContext - Optional rendered network context (type, dates, metadata).
    * @returns Structured output with indexScore, memberScore, and reasoning, or null on error.
    */
   @Timed()
@@ -111,7 +119,8 @@ export class IntentIndexer {
     intent: string,
     indexPrompt: string | null,
     memberPrompt: string | null,
-    sourceName?: string | null
+    sourceName?: string | null,
+    networkContext?: string | null
   ): Promise<IntentIndexerOutput | null> {
     logger.verbose("[IntentIndexer.invoke] Evaluating intent");
 
@@ -119,6 +128,7 @@ export class IntentIndexer {
     if (sourceName) contextParts.push(`Source: ${sourceName}`);
     contextParts.push(indexPrompt ? `Index Purpose: ${indexPrompt}` : "Index Purpose: (Not provided)");
     contextParts.push(memberPrompt ? `Member Preferences: ${memberPrompt}` : "Member Preferences: (Not provided)");
+    if (networkContext) contextParts.push(`Network Context:\n${networkContext}`);
 
     const prompt = `
       # Context
@@ -159,9 +169,10 @@ export class IntentIndexer {
     intent: string,
     indexPrompt: string | null,
     memberPrompt: string | null,
-    sourceName?: string | null
+    sourceName?: string | null,
+    networkContext?: string | null
   ): Promise<IntentIndexerOutput | null> {
-    return this.invoke(intent, indexPrompt, memberPrompt, sourceName);
+    return this.invoke(intent, indexPrompt, memberPrompt, sourceName, networkContext);
   }
 
   /**
@@ -175,24 +186,27 @@ export class IntentIndexer {
         indexPrompt: string | null;
         memberPrompt: string | null;
         sourceName?: string | null;
+        networkContext?: string | null;
       }) => {
         const agent = new IntentIndexer();
         return await agent.invoke(
           args.intent,
           args.indexPrompt,
           args.memberPrompt,
-          args.sourceName
+          args.sourceName,
+          args.networkContext
         );
       },
       {
         name: "intent_indexer",
         description:
-          "Evaluates whether an intent is appropriate for a specific index (community) and matches member sharing preferences.",
+          "Evaluates whether an intent is appropriate for a specific index (community or event) and matches member sharing preferences.",
         schema: z.object({
           intent: z.string().describe("The intent payload to evaluate"),
           indexPrompt: z.string().nullable().describe("The purpose of the index (community)"),
           memberPrompt: z.string().nullable().describe("The member's sharing preferences"),
           sourceName: z.string().nullable().optional().describe("Optional source name for context"),
+          networkContext: z.string().nullable().optional().describe("Optional rendered network context (type, dates, metadata)"),
         }),
       }
     );

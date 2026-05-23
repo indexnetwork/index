@@ -151,6 +151,11 @@ Rules:
    b. If a candidate's profile.location is UNKNOWN, EMPTY, or AMBIGUOUS, do NOT penalize — allow them through and score based on other factors. Note in reasoning that their location is unverified.
    c. If a candidate's profile.location matches or is reasonably close (e.g., "Bay Area" matches "San Francisco", "Remote" matches any location), score normally.
    d. "Remote" or "Global" locations are compatible with any requested location.
+10. EVENT NETWORK AWARENESS: When NETWORK CONTEXTS includes an event-type network (identified by dates, location, schedule, or themes):
+   a. TEMPORAL RELEVANCE: If the event has start/end dates, factor time into scoring. Intents about meeting at the event, sharing logistics, or collaborating during the event are highly relevant when the event is upcoming or in progress. After the event ends, such intents lose relevance — score lower unless the connection has lasting value beyond the event.
+   b. THEME ALIGNMENT: Event networks may list themes or tracks. Candidates whose expertise or intents align with event themes should score higher for that network's entities.
+   c. CO-ATTENDANCE SIGNAL: Two entities found through the same event network share a co-attendance signal — they will likely be in the same place at the same time. This is a positive signal for in-person collaboration opportunities.
+   d. SCHEDULE CONTEXT: If the event network includes upcoming events or sessions, use them as additional matching context. Two people attending the same session or interested in the same topic track are stronger matches.
 `;
 
 // ──────────────────────────────────────────────────────────────

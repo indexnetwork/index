@@ -2112,6 +2112,7 @@ export type IntentNetworkGraphDatabase = Pick<
   Database,
   | 'getIntentForIndexing'
   | 'getNetworkMemberContext'
+  | 'getNetwork'
   | 'isIntentAssignedToIndex'
   | 'assignIntentToNetwork'
   | 'unassignIntentFromIndex'
