@@ -45,7 +45,7 @@ export interface IntegrationSyncQueueDeps {
  *
  * @remarks
  * Workers are started only by the protocol server via {@link IntegrationSyncQueue.startWorker}.
- * Handlers orchestrate by calling adapters — no business logic here.
+ * Contains sync orchestration: interval gating, Composio pagination, and event mapping.
  */
 export class IntegrationSyncQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
