@@ -193,19 +193,31 @@ export class ProfileQueue {
     const { userId } = data;
     if (this.deps?.invokeEnrichUser) {
       await this.deps.invokeEnrichUser(userId);
-      this.onEnrichmentComplete?.(userId);
+      this.fireEnrichmentComplete(userId);
       return;
     }
     try {
       await this.invokeProfileGraph(userId, 'generate');
       this.queueLogger.info('[EnrichUser] Profile enrichment completed', { userId });
-      this.onEnrichmentComplete?.(userId);
+      this.fireEnrichmentComplete(userId);
     } catch (err) {
       this.queueLogger.error('[EnrichUser] Failed to enrich user', {
         userId,
         error: err instanceof Error ? err.message : String(err),
       });
       throw err;
+    }
+  }
+
+  /** Best-effort callback invocation — never fails the enrichment job. */
+  private fireEnrichmentComplete(userId: string): void {
+    try {
+      this.onEnrichmentComplete?.(userId);
+    } catch (err) {
+      this.queueLogger.error('[EnrichUser] onEnrichmentComplete callback failed', {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

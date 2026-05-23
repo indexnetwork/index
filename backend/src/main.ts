@@ -93,19 +93,7 @@ negotiationRunExistingQueue.setRuntimeDeps({
   agentDispatcher: backgroundAgentDispatcher,
 });
 
-intentQueue.startWorker();
-fromIntentQueue.startWorker();
-fromIntroducerQueue.startWorker();
-fromProfileQueue.startWorker();
-negotiationRunExistingQueue.startWorker();
-opportunityExpirationCron.start();
-notificationQueue.startWorker();
-profileQueue.startWorker();
-hydeQueue.startCrons();
-emailQueue.startWorker();
-negotiationTimeoutQueue.startWorker();
-negotiationClaimTimeoutQueue.startWorker();
-
+// Assign callbacks before starting workers to avoid a race with jobs already in Redis.
 NetworkMembershipEvents.onMemberAdded = (userId: string) => {
   profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
     log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, error: err });
@@ -118,6 +106,19 @@ profileQueue.onEnrichmentComplete = (userId: string) => {
     { priority: 20, jobId: `profile-discovery-${userId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
   ).catch((err) => log.job.from('ProfileEnrichment').error('Failed to enqueue profile-based discovery', { userId, error: err }));
 };
+
+intentQueue.startWorker();
+fromIntentQueue.startWorker();
+fromIntroducerQueue.startWorker();
+fromProfileQueue.startWorker();
+negotiationRunExistingQueue.startWorker();
+opportunityExpirationCron.start();
+notificationQueue.startWorker();
+profileQueue.startWorker();
+hydeQueue.startCrons();
+emailQueue.startWorker();
+negotiationTimeoutQueue.startWorker();
+negotiationClaimTimeoutQueue.startWorker();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
