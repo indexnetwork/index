@@ -1,4 +1,4 @@
-import { Job } from 'bullmq';
+import type { Job } from 'bullmq';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
