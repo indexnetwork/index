@@ -31,6 +31,8 @@ export interface Network {
   imageUrl?: string | null;
   isPersonal?: boolean;
   isExperiment?: boolean;
+  type?: 'community' | 'event';
+  metadata?: Record<string, unknown>;
   permissions?: NetworkPermissions | null;
   createdAt: ISODateString;
   updatedAt: ISODateString;
@@ -52,6 +54,15 @@ export interface CreateNetworkRequest {
   imageUrl?: string | null;
   joinPolicy?: NetworkJoinPolicy;
   isExperiment?: boolean;
+  type?: 'community' | 'event';
+  metadata?: {
+    startDate?: string;
+    endDate?: string;
+    location?: string;
+    timezone?: string;
+    themes?: string[];
+    description?: string;
+  };
 }
 
 export interface UpdateNetworkRequest {
@@ -61,6 +72,14 @@ export interface UpdateNetworkRequest {
   permissions?: {
     joinPolicy?: NetworkJoinPolicy;
     allowGuestVibeCheck?: boolean;
+  };
+  metadata?: {
+    startDate?: string;
+    endDate?: string;
+    location?: string;
+    timezone?: string;
+    themes?: string[];
+    description?: string;
   };
 }
 
