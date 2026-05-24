@@ -1,4 +1,6 @@
 /**
+ * @deprecated Use QuestionerAgent instead. Will be removed in a future version.
+ *
  * Protocol-level read contract for decision-question generation. Implementations
  * live in the backend (see `QuestionGeneratorService`) and are injected into the
  * protocol via `ProtocolDeps`/`ToolContext`. The protocol module never constructs
