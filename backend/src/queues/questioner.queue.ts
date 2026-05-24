@@ -7,6 +7,7 @@ import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import db from '../lib/drizzle/drizzle';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
+import { QuestionEvents } from '../events/question.event';
 
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
@@ -159,13 +160,23 @@ export class QuestionerQueue {
       strategy: result.strategies[i],
     }));
 
-    await this.adapter.persist(batch);
+    const ids = await this.adapter.persist(batch);
 
     this.logger.info('[QuestionerJob] Persisted questions', {
       mode: data.mode,
       sourceId: data.sourceId,
       count: batch.length,
     });
+
+    for (let i = 0; i < ids.length; i++) {
+      QuestionEvents.onCreated({
+        questionId: ids[i],
+        userId: data.userId,
+        mode: data.mode,
+        sourceType: data.sourceType,
+        sourceId: data.sourceId,
+      });
+    }
   }
 }
 

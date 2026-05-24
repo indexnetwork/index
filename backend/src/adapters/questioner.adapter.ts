@@ -16,6 +16,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { questions } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
+import { QuestionEvents } from '../events/question.event';
 
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
 
@@ -94,9 +95,10 @@ export class QuestionerAdapter {
    * Persist a batch of generated questions.
    *
    * @param batch - Questions to insert (up to 3 per generation).
+   * @returns The IDs of the inserted rows.
    */
-  async persist(batch: AdapterPersistableQuestion[]): Promise<void> {
-    if (batch.length === 0) return;
+  async persist(batch: AdapterPersistableQuestion[]): Promise<string[]> {
+    if (batch.length === 0) return [];
     const rows = batch.map((q) => ({
       detection: { ...q.detection, strategy: q.strategy } satisfies QuestionDetection,
       actors: q.actors as QuestionActor[],
@@ -104,7 +106,8 @@ export class QuestionerAdapter {
       status: 'pending' as const,
     }));
 
-    await this.db.insert(questions).values(rows);
+    const inserted = await this.db.insert(questions).values(rows).returning({ id: questions.id });
+    return inserted.map((r) => r.id);
   }
 
   /**
@@ -148,15 +151,37 @@ export class QuestionerAdapter {
 
   /**
    * Record an answer for a question, setting its status to `answered`.
+   * Emits `QuestionEvents.onAnswered` after persisting the answer.
    *
    * @param questionId - ID of the question to answer.
    * @param answer     - The user's response data.
    */
   async answer(questionId: string, answer: AdapterQuestionAnswer): Promise<void> {
+    const [existing] = await this.db
+      .select()
+      .from(questions)
+      .where(eq(questions.id, questionId));
+
     await this.db
       .update(questions)
       .set({ status: 'answered', answer })
       .where(eq(questions.id, questionId));
+
+    if (existing) {
+      const detection = existing.detection as AdapterQuestionDetection;
+      const actors = existing.actors as AdapterQuestionActor[];
+      const firstActor = actors[0];
+      if (firstActor) {
+        QuestionEvents.onAnswered({
+          questionId,
+          userId: firstActor.userId,
+          mode: detection.mode,
+          sourceType: detection.sourceType,
+          sourceId: detection.sourceId,
+          answer,
+        });
+      }
+    }
   }
 
   /**
