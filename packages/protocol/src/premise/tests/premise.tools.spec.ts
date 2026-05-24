@@ -376,6 +376,46 @@ describe('createPremiseTools - update_premise', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe('Premise graph not available.');
   });
+
+  it('bypasses graph for metadata-only updates (no text change)', async () => {
+    let dbUpdateCalled = false;
+    const { defineTool, call } = makeDefineTool();
+    createPremiseTools(defineTool, makeDeps({
+      getPremise: async () => existingPremise,
+      updatePremise: async () => {
+        dbUpdateCalled = true;
+        return {
+          id: premiseId,
+          assertion: existingPremise.assertion,
+          status: 'ACTIVE',
+        };
+      },
+      premiseGraph: {
+        invoke: async () => { throw new Error('graph should not be called'); },
+      },
+    }));
+
+    const result = await call('update_premise', {
+      premiseId,
+      validUntil: '2026-12-31T23:59:59Z',
+    }) as { success: boolean; data: { id: string; message: string } };
+
+    expect(result.success).toBe(true);
+    expect(dbUpdateCalled).toBe(true);
+    expect(result.data.message).toContain('metadata only');
+  });
+
+  it('returns error when no fields are provided for update', async () => {
+    const { defineTool, call } = makeDefineTool();
+    createPremiseTools(defineTool, makeDeps({
+      getPremise: async () => existingPremise,
+    }));
+
+    const result = await call('update_premise', { premiseId }) as { success: boolean; error: string };
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('No fields to update');
+  });
 });
 
 // ─── retract_premise ──────────────────────────────────────────────────────────

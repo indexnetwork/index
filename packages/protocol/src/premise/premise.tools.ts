@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { PremiseGraphDatabase, PremiseRecord } from "../shared/interfaces/database.interface.js";
+import type { PremiseGraphDatabase, PremiseRecord, PremiseValidity } from "../shared/interfaces/database.interface.js";
 
 const logger = protocolLogger("ChatTools:Premise");
 
@@ -171,9 +171,40 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
 
       logger.verbose(`[updatePremise] Updating premise ${query.premiseId} for user ${context.userId}`);
 
+      // When text is unchanged, skip the graph (avoids unnecessary LLM
+      // re-analysis and non-deterministic re-embedding). Only route through
+      // the graph when the assertion text actually changes.
+      if (!query.text) {
+        const hasValidityChange =
+          query.validFrom !== undefined ||
+          query.validUntil !== undefined ||
+          query.volatile !== undefined;
+
+        if (!hasValidityChange) {
+          return error("No fields to update. Provide text, validFrom, validUntil, or volatile.");
+        }
+
+        const mergedValidity: PremiseValidity = {
+          ...existing.validity,
+          ...(query.validFrom !== undefined && { validFrom: query.validFrom }),
+          ...(query.validUntil !== undefined && { validUntil: query.validUntil }),
+          ...(query.volatile !== undefined && { volatile: query.volatile }),
+        };
+
+        const updated = await database.updatePremise(query.premiseId, { validity: mergedValidity });
+
+        return success({
+          id: updated.id,
+          assertion: updated.assertion.text,
+          tier: updated.assertion.tier,
+          status: updated.status,
+          message: "Premise updated successfully (metadata only, no re-analysis).",
+        });
+      }
+
       const result = await premiseGraph.invoke({
         userId: context.userId,
-        assertionText: query.text ?? existing.assertion.text,
+        assertionText: query.text,
         tier: existing.assertion.tier,
         validFrom: query.validFrom ?? existing.validity.validFrom ?? undefined,
         validUntil: query.validUntil ?? existing.validity.validUntil ?? undefined,
