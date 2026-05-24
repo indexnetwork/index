@@ -87,8 +87,8 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
       if (networkType === 'event') {
         submitData.type = 'event';
         submitData.metadata = {
-          startDate,
-          endDate,
+          startDate: `${startDate}T00:00:00.000Z`,
+          endDate: `${endDate}T23:59:59.999Z`,
           ...(eventLocation && { location: eventLocation }),
           ...(eventTimezone && { timezone: eventTimezone }),
           ...(eventThemes.trim() && { themes: eventThemes.split(',').map(t => t.trim()).filter(Boolean) }),

@@ -53,8 +53,9 @@ export default function SettingsTab({
   // Event metadata state
   const isEvent = network.type === 'event';
   const meta = (network.metadata ?? {}) as Record<string, unknown>;
-  const [startDate, setStartDate] = useState((meta.startDate as string) || '');
-  const [endDate, setEndDate] = useState((meta.endDate as string) || '');
+  const toDateInput = (iso: unknown) => typeof iso === 'string' && iso ? iso.slice(0, 10) : '';
+  const [startDate, setStartDate] = useState(toDateInput(meta.startDate));
+  const [endDate, setEndDate] = useState(toDateInput(meta.endDate));
   const [location, setLocation] = useState((meta.location as string) || '');
   const [timezone, setTimezone] = useState((meta.timezone as string) || '');
   const [themes, setThemes] = useState(
@@ -89,8 +90,8 @@ export default function SettingsTab({
     setIsDangerZoneExpanded(false);
 
     const m = (network.metadata ?? {}) as Record<string, unknown>;
-    const sd = (m.startDate as string) || '';
-    const ed = (m.endDate as string) || '';
+    const sd = toDateInput(m.startDate);
+    const ed = toDateInput(m.endDate);
     const loc = (m.location as string) || '';
     const tz = (m.timezone as string) || '';
     const th = Array.isArray(m.themes) ? (m.themes as string[]).join(', ') : '';
@@ -171,17 +172,23 @@ export default function SettingsTab({
       error('Start date and end date are required');
       return;
     }
+    if (endDate <= startDate) {
+      error('End date must be after start date');
+      return;
+    }
     try {
       setIsSavingMeta(true);
       const parsedThemes = themes
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean);
+      const isoStart = `${startDate}T00:00:00.000Z`;
+      const isoEnd = `${endDate}T23:59:59.999Z`;
       const updatedNetwork = await updateNetwork(networkId, {
         metadata: {
           ...(network.metadata ?? {}),
-          startDate,
-          endDate,
+          startDate: isoStart,
+          endDate: isoEnd,
           location: location || undefined,
           timezone: timezone || undefined,
           themes: parsedThemes.length > 0 ? parsedThemes : undefined,

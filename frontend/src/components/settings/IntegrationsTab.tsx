@@ -281,17 +281,17 @@ export default function IntegrationsTab({
               <div>
                 <span className="text-gray-500">Status</span>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className={`inline-block h-2 w-2 rounded-full ${syncConfig.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}`} />
-                  <span className="text-black capitalize">{syncConfig.status}</span>
+                  <span className={`inline-block h-2 w-2 rounded-full ${syncConfig.status === 'active' ? 'bg-green-500' : syncConfig.status === 'error' ? 'bg-red-500' : 'bg-gray-400'}`} />
+                  <span className={`capitalize ${syncConfig.status === 'error' ? 'text-red-600' : 'text-black'}`}>{syncConfig.status}</span>
                 </div>
               </div>
               <div>
                 <span className="text-gray-500">Calendar ID</span>
-                <p className="text-black truncate mt-0.5">{syncConfig.calendarId}</p>
+                <p className="text-black truncate mt-0.5">{syncConfig.calendarId || 'primary'}</p>
               </div>
               <div>
                 <span className="text-gray-500">Sync interval</span>
-                <p className="text-black mt-0.5">{formatInterval(syncConfig.intervalMs)}</p>
+                <p className="text-black mt-0.5">{syncConfig.intervalMs ? formatInterval(syncConfig.intervalMs) : '15 min'}</p>
               </div>
               <div>
                 <span className="text-gray-500">Last synced</span>

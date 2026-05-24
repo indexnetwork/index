@@ -7,10 +7,10 @@ export interface ComposioConnection {
   status: string;
   createdAt: string;
   syncConfig?: {
-    status: 'active' | 'paused';
-    intervalMs: number;
-    lastSyncAt: string | null;
-    calendarId: string;
+    status: 'active' | 'paused' | 'error';
+    intervalMs?: number;
+    lastSyncAt?: string | null;
+    calendarId?: string;
   };
 }
 
