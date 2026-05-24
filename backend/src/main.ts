@@ -24,6 +24,7 @@ import { ConversationService } from './services/conversation.service';
 import { TaskService } from './services/task.service';
 import { IntegrationController } from './controllers/integration.controller';
 import { WebhooksController } from './controllers/webhooks.controller';
+import { QuestionController } from './controllers/question.controller';
 import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
 import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
@@ -237,6 +238,7 @@ controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
 const toolService = new ToolService(contactService, integrationService, integrationAdapter);
 controllerInstances.set(ToolController, new ToolController(toolService));
+controllerInstances.set(QuestionController, new QuestionController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
