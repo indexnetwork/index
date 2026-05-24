@@ -2111,6 +2111,27 @@ Import contacts from a connected toolkit into an index.
 
 **Response**: Import result with counts.
 
+### PATCH /api/integrations/:toolkit/sync
+
+Configure sync settings for an integration linked to a network. Currently only `google_calendar` is supported.
+
+**Auth**: AuthGuard
+
+**Path params**:
+- `toolkit` — Must be `google_calendar`.
+
+**Body**:
+- `networkId` (string, required) — Target network.
+- `calendarId` (string, optional) — Google Calendar ID (default: `primary`).
+- `intervalMs` (number, optional) — Sync interval in milliseconds (min 60000, default: 900000).
+- `status` (`active` | `paused`, optional) — Enable or pause sync.
+
+**Behavior**: Reads the existing syncConfig, merges the provided fields, validates via `SyncConfigSchema`, and writes back. The caller must be a network owner with the toolkit already linked.
+
+**Response**: `{ success: true }`
+
+---
+
 ### DELETE /api/integrations/:id
 
 Disconnect (delete) a connected account.
@@ -2121,7 +2142,7 @@ Disconnect (delete) a connected account.
 - `id` — Connection ID (or `telegram:<userId>` for Telegram)
 
 **Behavior**:
-- Composio connections (`gmail`/`slack`): disconnects the OAuth account and removes all index integration links.
+- Composio connections (`gmail`/`slack`/`google_calendar`): disconnects the OAuth account and removes all index integration links.
 - Telegram (`telegram:<userId>`): clears the stored chatId and notification prefs. The deep-link token is unchanged; reconnect via `POST /connect/telegram`.
 
 **Response**: Disconnect result.
