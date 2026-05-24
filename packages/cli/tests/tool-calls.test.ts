@@ -337,7 +337,7 @@ describe("CLI tool call contracts", () => {
         json: true,
       });
 
-      // Should have called: read_index_memberships x2, read_user_profiles x2, read_intents x2, discover_opportunities x1
+      // Should have called: read_network_memberships x2, read_user_profiles x2, read_intents x2, discover_opportunities x1
       const toolNames = mock.toolCalls.map((c) => c.toolName);
       expect(toolNames.filter((n) => n === "read_network_memberships")).toHaveLength(2);
       expect(toolNames.filter((n) => n === "read_user_profiles")).toHaveLength(2);
