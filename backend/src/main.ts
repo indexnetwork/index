@@ -470,6 +470,7 @@ const shutdown = async () => {
     emailQueue.close(),
     negotiationTimeoutQueue.close(),
     negotiationClaimTimeoutQueue.close(),
+    questionerQueue.close(),
   ]);
   logger.info('Workers closed');
   process.exit(0);

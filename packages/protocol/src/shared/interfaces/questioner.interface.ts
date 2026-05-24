@@ -46,9 +46,13 @@ export interface QuestionerDatabase {
   /** Find pending questions for a user, optionally filtered by mode/source. */
   findPending(userId: string, filters?: QuestionFilters): Promise<PersistedQuestion[]>;
 
-  /** Record an answer for a question. Sets status to "answered". */
-  answer(questionId: string, answer: QuestionAnswer): Promise<void>;
+  /** Record an answer for a question. Sets status to "answered".
+   *  Only succeeds if the user is an actor on the question.
+   *  @returns `true` if updated, `false` if not found or unauthorized. */
+  answer(questionId: string, userId: string, answer: QuestionAnswer): Promise<boolean>;
 
-  /** Dismiss a question. Sets status to "dismissed". */
-  dismiss(questionId: string): Promise<void>;
+  /** Dismiss a question. Sets status to "dismissed".
+   *  Only succeeds if the user is an actor on the question.
+   *  @returns `true` if updated, `false` if not found or unauthorized. */
+  dismiss(questionId: string, userId: string): Promise<boolean>;
 }

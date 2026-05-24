@@ -418,6 +418,7 @@ function getOrCreateMcpServer(): McpServer {
     mintConnectLink: protocolDeps.mintConnectLink,
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
+    ...(protocolDeps.questionerEnqueue && { questionerEnqueue: protocolDeps.questionerEnqueue }),
     graphs,
   };
 

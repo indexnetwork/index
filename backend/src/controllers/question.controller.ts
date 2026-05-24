@@ -116,11 +116,15 @@ export class QuestionController {
       );
     }
 
-    await questionService.answer(questionId, {
+    const updated = await questionService.answer(questionId, user.id, {
       ...parsed.data,
       answeredBy: user.id,
       answeredAt: new Date().toISOString(),
     });
+
+    if (!updated) {
+      return Response.json({ error: 'Question not found' }, { status: 404 });
+    }
 
     logger.info('Question answered', { questionId, userId: user.id });
     return Response.json({ success: true });
@@ -142,7 +146,11 @@ export class QuestionController {
       return Response.json({ error: 'Question ID is required' }, { status: 400 });
     }
 
-    await questionService.dismiss(questionId);
+    const updated = await questionService.dismiss(questionId, user.id);
+
+    if (!updated) {
+      return Response.json({ error: 'Question not found' }, { status: 404 });
+    }
 
     logger.info('Question dismissed', { questionId, userId: user.id });
     return Response.json({ success: true });

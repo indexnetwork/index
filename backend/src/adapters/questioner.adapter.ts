@@ -152,48 +152,75 @@ export class QuestionerAdapter {
   /**
    * Record an answer for a question, setting its status to `answered`.
    * Emits `QuestionEvents.onAnswered` after persisting the answer.
+   * Only updates the question if the user is listed as an actor.
    *
    * @param questionId - ID of the question to answer.
+   * @param userId     - Authenticated user; must be an actor on the question.
    * @param answer     - The user's response data.
+   * @returns `true` if a row was updated, `false` if no matching question found.
    */
-  async answer(questionId: string, answer: AdapterQuestionAnswer): Promise<void> {
+  async answer(questionId: string, userId: string, answer: AdapterQuestionAnswer): Promise<boolean> {
+    const ownershipCheck = and(
+      eq(questions.id, questionId),
+      sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+    );
+
     const [existing] = await this.db
       .select()
       .from(questions)
-      .where(eq(questions.id, questionId));
+      .where(ownershipCheck);
+
+    if (!existing) return false;
 
     await this.db
       .update(questions)
       .set({ status: 'answered', answer })
-      .where(eq(questions.id, questionId));
+      .where(ownershipCheck);
 
-    if (existing) {
-      const detection = existing.detection as AdapterQuestionDetection;
-      const actors = existing.actors as AdapterQuestionActor[];
-      const firstActor = actors[0];
-      if (firstActor) {
-        QuestionEvents.onAnswered({
-          questionId,
-          userId: firstActor.userId,
-          mode: detection.mode,
-          sourceType: detection.sourceType,
-          sourceId: detection.sourceId,
-          answer,
-        });
-      }
+    const detection = existing.detection as AdapterQuestionDetection;
+    const actors = existing.actors as AdapterQuestionActor[];
+    const firstActor = actors[0];
+    if (firstActor) {
+      QuestionEvents.onAnswered({
+        questionId,
+        userId: firstActor.userId,
+        mode: detection.mode,
+        sourceType: detection.sourceType,
+        sourceId: detection.sourceId,
+        answer,
+      });
     }
+
+    return true;
   }
 
   /**
    * Dismiss a question, setting its status to `dismissed`.
+   * Only updates the question if the user is listed as an actor.
    *
    * @param questionId - ID of the question to dismiss.
+   * @param userId     - Authenticated user; must be an actor on the question.
+   * @returns `true` if a row was updated, `false` if no matching question found.
    */
-  async dismiss(questionId: string): Promise<void> {
+  async dismiss(questionId: string, userId: string): Promise<boolean> {
+    const ownershipCheck = and(
+      eq(questions.id, questionId),
+      sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+    );
+
+    const [existing] = await this.db
+      .select({ id: questions.id })
+      .from(questions)
+      .where(ownershipCheck);
+
+    if (!existing) return false;
+
     await this.db
       .update(questions)
       .set({ status: 'dismissed' })
-      .where(eq(questions.id, questionId));
+      .where(ownershipCheck);
+
+    return true;
   }
 }
 

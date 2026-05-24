@@ -46,23 +46,29 @@ export class QuestionService {
 
   /**
    * Record an answer for a question, setting its status to `answered`.
+   * Only succeeds if the user is an actor on the question.
    *
    * @param questionId - ID of the question to answer.
+   * @param userId     - Authenticated user; must be an actor on the question.
    * @param answer     - The user's response data.
+   * @returns `true` if the question was answered, `false` if not found or unauthorized.
    */
-  async answer(questionId: string, answer: AdapterQuestionAnswer): Promise<void> {
+  async answer(questionId: string, userId: string, answer: AdapterQuestionAnswer): Promise<boolean> {
     logger.verbose('Answering question', { questionId, answeredBy: answer.answeredBy });
-    return this.adapter.answer(questionId, answer);
+    return this.adapter.answer(questionId, userId, answer);
   }
 
   /**
    * Dismiss a question, setting its status to `dismissed`.
+   * Only succeeds if the user is an actor on the question.
    *
    * @param questionId - ID of the question to dismiss.
+   * @param userId     - Authenticated user; must be an actor on the question.
+   * @returns `true` if the question was dismissed, `false` if not found or unauthorized.
    */
-  async dismiss(questionId: string): Promise<void> {
-    logger.verbose('Dismissing question', { questionId });
-    return this.adapter.dismiss(questionId);
+  async dismiss(questionId: string, userId: string): Promise<boolean> {
+    logger.verbose('Dismissing question', { questionId, userId });
+    return this.adapter.dismiss(questionId, userId);
   }
 }
 

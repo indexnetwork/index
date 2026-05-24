@@ -24,7 +24,8 @@ interface QuestionAnsweredPayload {
 
 /**
  * Hooks called on question lifecycle events.
- * Set by main.ts to trigger downstream processing via queues or services.
+ * No-ops by default — assign handlers in main.ts when downstream processing
+ * is needed (e.g. feeding answered questions back into intent refinement).
  */
 export const QuestionEvents = {
   onCreated: (_payload: QuestionCreatedPayload): void => {},
