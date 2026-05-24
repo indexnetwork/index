@@ -3,7 +3,7 @@ title: "Profiles"
 type: domain
 tags: [profiles, identity, embeddings, profile-generation, implicit-intents, discovery]
 created: 2026-03-26
-updated: 2026-03-26
+updated: 2026-05-24
 ---
 
 # Profiles
@@ -70,6 +70,8 @@ The profile generator is explicitly instructed to never include email addresses,
 
 ## Implicit Intents
 
+> **Deprecated.** The `implicitIntents` column is being replaced by the **premises** entity (IND-320). Premises provide a composable, first-class representation of the same information with richer semantics (speech-act classification, felicity scoring, validity windows). The column will be dropped in a future migration.
+
 The `user_profiles` table has an `implicitIntents` field that stores intents inferred from the profile itself, rather than from explicit user declarations. These are goals or needs that can be deduced from someone's background, skills, and narrative without the person explicitly stating them.
 
 For example, a profile describing a startup founder in the early stages might have implicit intents around fundraising, hiring, and finding advisors -- even if the user never explicitly declared those goals.
@@ -105,3 +107,4 @@ The profile graph manages the full lifecycle:
 - **Intents** depend on profiles: felicity conditions (authority, sincerity) are scored against the user's profile. A profile claiming "Senior ML Engineer" gives authority to an intent about seeking ML collaborators.
 - **Opportunities** reference profiles: the evaluator receives profile data for both the source and candidate to assess fit.
 - **HyDE** uses profiles as a target corpus: when searching for people (as opposed to searching for intents), the HyDE system generates hypothetical profile documents and searches the profile embedding space.
+- **Premises** (IND-320, in progress) will decompose profiles into composable self-descriptions. Rather than one monolithic profile, a user will have many premises ("I am a climate-tech founder", "I'm raising Series A") that can be individually created, retracted, and expired. The profile will become a materialized view aggregated from active premises.
