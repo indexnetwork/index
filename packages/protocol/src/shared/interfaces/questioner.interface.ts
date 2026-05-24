@@ -39,8 +39,9 @@ export interface QuestionFilters {
 }
 
 export interface QuestionerDatabase {
-  /** Persist a batch of generated questions (up to 3 per generation). */
-  persist(questions: PersistableQuestion[]): Promise<void>;
+  /** Persist a batch of generated questions (up to 3 per generation).
+   *  @returns The IDs of the inserted rows. */
+  persist(questions: PersistableQuestion[]): Promise<string[]>;
 
   /** Find pending questions for a user, optionally filtered by mode/source. */
   findPending(userId: string, filters?: QuestionFilters): Promise<PersistedQuestion[]>;
