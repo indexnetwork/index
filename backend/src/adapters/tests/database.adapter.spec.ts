@@ -342,6 +342,43 @@ describe('ChatDatabaseAdapter', () => {
     expect(await adapter.isNetworkMember(fixture.networkId, uuidv4())).toBe(false);
   });
 
+  describe('updateMemberRole', () => {
+    it('should promote a member to owner', async () => {
+      // userB starts as a member
+      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
+      const result = await adapter.updateMemberRole(fixture.networkId, fixture.userBId, fixture.userAId, 'owner');
+      expect(result.member).toBeDefined();
+      expect(result.member!.permissions).toEqual(['owner']);
+      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(true);
+    });
+
+    it('should demote an owner to member when multiple owners exist', async () => {
+      // userB is now an owner from the previous test; demote them
+      const result = await adapter.updateMemberRole(fixture.networkId, fixture.userBId, fixture.userAId, 'member');
+      expect(result.member!.permissions).toEqual(['member']);
+      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
+    });
+
+    it('should reject demoting the last owner', async () => {
+      // userA is the sole owner
+      await expect(
+        adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userAId, 'member')
+      ).rejects.toThrow('Cannot change your own role');
+    });
+
+    it('should reject self role change', async () => {
+      await expect(
+        adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userAId, 'owner')
+      ).rejects.toThrow('Cannot change your own role');
+    });
+
+    it('should reject role change by non-owner', async () => {
+      await expect(
+        adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userBId, 'member')
+      ).rejects.toThrow('Access denied');
+    });
+  });
+
   describe('getUserByEmail (IND-166)', () => {
     const caseTestUserId = uuidv4();
     const caseTestEmail = TEST_PREFIX + 'CaseSensitive@Test.COM';

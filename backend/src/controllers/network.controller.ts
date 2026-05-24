@@ -423,7 +423,7 @@ export class NetworkController {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      if (msg === 'Cannot demote the last owner' || msg === 'Cannot change role of a contact') {
+      if (msg === 'Cannot demote the last owner' || msg === 'Cannot change role of a contact' || msg === 'Cannot change your own role') {
         return new Response(JSON.stringify({ error: msg }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' },

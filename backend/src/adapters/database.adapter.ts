@@ -2767,8 +2767,8 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Add a member to an index. Checks that the requesting user has owner or admin permissions.
-   * Throws "Access denied" if not authorized.
+   * Add a member to an index. Owner-only.
+   * Throws "Access denied" if the requesting user is not an owner.
    */
   async addMemberForOwner(
     networkId: string,
@@ -2813,11 +2813,20 @@ export class ChatDatabaseAdapter {
       throw new Error('Access denied: Only owners can change member roles');
     }
 
-    // Get existing membership
+    // Cannot change your own role
+    if (targetUserId === requestingUserId) {
+      throw new Error('Cannot change your own role');
+    }
+
+    // Get existing membership (exclude soft-deleted)
     const [existing] = await db
       .select({ permissions: networkMembers.permissions })
       .from(networkMembers)
-      .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, targetUserId)))
+      .where(and(
+        eq(networkMembers.networkId, networkId),
+        eq(networkMembers.userId, targetUserId),
+        isNull(networkMembers.deletedAt)
+      ))
       .limit(1);
 
     if (!existing) {
@@ -2829,27 +2838,35 @@ export class ChatDatabaseAdapter {
       throw new Error('Cannot change role of a contact');
     }
 
-    // If demoting from owner, ensure they're not the last owner
-    if (role === 'member' && existing.permissions?.includes('owner')) {
-      const ownerCount = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(networkMembers)
-        .where(and(
-          eq(networkMembers.networkId, networkId),
-          sql`'owner' = ANY(${networkMembers.permissions})`,
-          isNull(networkMembers.deletedAt)
-        ));
-      if (Number(ownerCount[0]?.count ?? 0) <= 1) {
-        throw new Error('Cannot demote the last owner');
-      }
-    }
-
     const newPermissions = role === 'owner' ? ['owner'] : ['member'];
 
-    await db
-      .update(networkMembers)
-      .set({ permissions: newPermissions, updatedAt: new Date() })
-      .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, targetUserId)));
+    // Atomic demotion guard: only demote if more than one owner remains.
+    // Uses a conditional UPDATE to avoid TOCTOU races.
+    if (role === 'member' && existing.permissions?.includes('owner')) {
+      const result = await db
+        .update(networkMembers)
+        .set({ permissions: newPermissions, updatedAt: new Date() })
+        .where(and(
+          eq(networkMembers.networkId, networkId),
+          eq(networkMembers.userId, targetUserId),
+          isNull(networkMembers.deletedAt),
+          sql`(SELECT count(*) FROM ${networkMembers} WHERE ${networkMembers.networkId} = ${networkId} AND 'owner' = ANY(${networkMembers.permissions}) AND ${networkMembers.deletedAt} IS NULL) > 1`
+        ))
+        .returning({ userId: networkMembers.userId });
+
+      if (result.length === 0) {
+        throw new Error('Cannot demote the last owner');
+      }
+    } else {
+      await db
+        .update(networkMembers)
+        .set({ permissions: newPermissions, updatedAt: new Date() })
+        .where(and(
+          eq(networkMembers.networkId, networkId),
+          eq(networkMembers.userId, targetUserId),
+          isNull(networkMembers.deletedAt)
+        ));
+    }
 
     const user = await this.getUser(targetUserId);
     return {
