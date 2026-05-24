@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Plus, Users, Loader2 } from 'lucide-react';
+import { Plus, Users, Loader2, Calendar } from 'lucide-react';
 import NetworkAvatar from '@/components/IndexAvatar';
 import ClientLayout from '@/components/ClientLayout';
 import CreateNetworkModal from '@/components/modals/CreateIndexModal';
@@ -159,6 +159,12 @@ export default function NetworksPage() {
                               {network._count?.members || 0} members
                             </p>
                           </div>
+                          {network.type === 'event' && (
+                            <span className="flex items-center gap-1 text-xs text-gray-500 flex-shrink-0">
+                              <Calendar className="w-3 h-3" />
+                              Event
+                            </span>
+                          )}
                           <span className={`text-xs px-1.5 py-0.5 rounded-sm font-medium flex-shrink-0 ml-3 ${
                             isOwner ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'
                           }`}>
@@ -196,6 +202,12 @@ export default function NetworksPage() {
                             {network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} members
                           </p>
                         </div>
+                        {network.type === 'event' && (
+                          <span className="flex items-center gap-1 text-xs text-gray-500 flex-shrink-0">
+                            <Calendar className="w-3 h-3" />
+                            Event
+                          </span>
+                        )}
                         {network.isMember ? (
                           <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-sm font-medium flex-shrink-0 ml-3">
                             Joined
