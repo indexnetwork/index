@@ -234,7 +234,7 @@ describe("buildMcpOnboardingMessage", () => {
   });
 
   test("uses name-ask step when user has no name", () => {
-    const msg = buildMcpOnboardingMessage(minimalContext({ hasName: false }));
+    const msg = buildMcpOnboardingMessage(minimalContext({ hasName: false, userName: "Unknown" }));
     expect(msg).toContain("Ask the user for their name");
     expect(msg).toContain('create_user_profile(name="..."');
   });
