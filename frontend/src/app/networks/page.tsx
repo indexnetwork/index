@@ -65,7 +65,7 @@ export default function NetworksPage() {
     }
   };
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean }) => {
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean; type?: 'community' | 'event'; metadata?: Record<string, unknown> }) => {
     try {
       const newIndex = await indexesService.createNetwork({
         title: indexData.name,
@@ -73,6 +73,8 @@ export default function NetworksPage() {
         imageUrl: indexData.imageUrl,
         joinPolicy: indexData.joinPolicy,
         isExperiment: indexData.isExperiment,
+        type: indexData.type,
+        metadata: indexData.metadata,
       });
       const { masterKey, ...network } = newIndex;
       addIndex(network);
