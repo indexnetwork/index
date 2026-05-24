@@ -8,6 +8,7 @@ import { profileQueue } from '../queues/profile.queue';
 import type { ContactImporter, ImportResult } from '../types/integrations.types';
 import type { TelegramPrefs } from '../schemas/database.schema';
 import type { IntegrationConnection } from '../adapters/integration.adapter';
+import { SyncConfigSchema } from '../schemas/network.validation';
 
 const logger = log.service.from('IntegrationService');
 
@@ -39,7 +40,7 @@ interface SlackMember {
   profile?: { real_name?: string; email?: string };
 }
 
-type Toolkit = 'gmail' | 'slack';
+type Toolkit = 'gmail' | 'slack' | 'google_calendar';
 
 /**
  * Fetches contacts from external integration platforms and imports them
@@ -99,9 +100,14 @@ export class IntegrationService {
     }
     const isPersonal = !networkId || await this.db.isPersonalNetwork(networkId);
 
-    const contacts = toolkit === 'gmail'
-      ? await this.fetchGmailContacts(userId)
-      : await this.fetchSlackMembers(userId);
+    let contacts: Array<{ name: string; email: string }>;
+    if (toolkit === 'gmail') {
+      contacts = await this.fetchGmailContacts(userId);
+    } else if (toolkit === 'slack') {
+      contacts = await this.fetchSlackMembers(userId);
+    } else {
+      throw new Error(`Toolkit '${toolkit}' does not support contact import`);
+    }
 
     logger.info('Fetched contacts from provider', { userId, toolkit, count: contacts.length });
 
@@ -242,6 +248,61 @@ export class IntegrationService {
   async cleanupConnectionLinks(connectedAccountId: string): Promise<void> {
     await this.db.deleteIndexIntegrationsByConnectedAccount(connectedAccountId);
     logger.info('Cleaned up index links for disconnected account', { connectedAccountId });
+  }
+
+  /**
+   * Configure sync settings (interval, calendarId, status) for an integration on an index.
+   * The integration must already be linked via linkToIndex.
+   *
+   * @param userId - Authenticated user (must be index owner)
+   * @param networkId - Target index
+   * @param toolkit - Toolkit slug (e.g. 'google_calendar')
+   * @param config - Partial sync configuration to merge
+   * @throws If the user is not an owner or the toolkit is not linked
+   */
+  async configureSyncConfig(
+    userId: string,
+    networkId: string,
+    toolkit: string,
+    config: { calendarId?: string; intervalMs?: number; status?: 'active' | 'paused' },
+  ): Promise<void> {
+    await this.assertNetworkOwner(networkId, userId);
+    const linked = await this.db.getNetworkIntegrations(networkId);
+    const integration = linked.find(i => i.toolkit === toolkit);
+    if (!integration) {
+      throw new Error(`No ${toolkit} integration linked to this network`);
+    }
+
+    // Strip undefined keys so we only merge fields the caller actually provided
+    const patch: Record<string, unknown> = {};
+    if (config.calendarId !== undefined) patch.calendarId = config.calendarId;
+    if (config.intervalMs !== undefined) patch.intervalMs = config.intervalMs;
+    if (config.status !== undefined) patch.status = config.status;
+
+    if (Object.keys(patch).length === 0) {
+      throw new Error('No sync config fields provided');
+    }
+
+    // Read existing config, merge patch, then validate the result
+    const existing = await this.db.getIntegrationSyncConfig(networkId, toolkit) ?? {};
+    const merged = { ...existing, ...patch };
+    const validated = SyncConfigSchema.parse(merged);
+    await this.db.updateIntegrationSyncConfig(networkId, toolkit, validated);
+    logger.info('Sync config updated', { userId, networkId, toolkit });
+  }
+
+  /**
+   * Return all integrations with active sync enabled.
+   * Used by the integration sync worker.
+   */
+  async getActiveIntegrationSyncs(): Promise<Array<{
+    networkId: string;
+    toolkit: string;
+    connectedAccountId: string;
+    syncConfig: Record<string, unknown>;
+    ownerUserId: string;
+  }>> {
+    return this.db.getActiveIntegrationSyncs();
   }
 
   /**

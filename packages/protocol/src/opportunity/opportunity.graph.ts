@@ -77,6 +77,7 @@ import type { NegotiationGraphLike } from "../negotiation/negotiation.state.js";
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { protocolLogger, withCallLogging } from '../shared/observability/protocol.logger.js';
 import { timed } from '../shared/observability/performance.js';
+import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { requestContext } from "../shared/observability/request-context.js";
 
 const logger = protocolLogger('OpportunityGraph');
@@ -141,6 +142,33 @@ export function buildDiscovererContext(
   }
 
   return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
+/**
+ * Build a networkContexts map for the evaluator from a set of entities.
+ * Fetches network data, checks permissions.contextInjection.discovery,
+ * and renders context for eligible networks.
+ */
+async function buildNetworkContexts(
+  entities: EvaluatorEntity[],
+  database: Pick<OpportunityGraphDatabase, 'getNetwork'>,
+): Promise<Record<string, string>> {
+  const networkIds = [...new Set(entities.map((e) => e.networkId))];
+  const networks = await Promise.all(networkIds.map((nid) => database.getNetwork(nid).then((n) => ({ nid, n }))));
+  const contexts: Record<string, string> = {};
+  for (const { nid, n: network } of networks) {
+    if (!network) continue;
+    const perms = (network.permissions ?? {}) as Record<string, unknown>;
+    const injection = perms.contextInjection as { discovery?: boolean } | undefined;
+    if (injection?.discovery === false) continue;
+    contexts[nid] = renderNetworkContext({
+      type: network.type ?? 'community',
+      title: network.title,
+      prompt: network.prompt,
+      metadata: network.metadata ?? {},
+    });
+  }
+  return contexts;
 }
 
 /**
@@ -1349,6 +1377,7 @@ export class OpportunityGraphFactory {
             : new OpportunityEvaluator();
 
           const runParallel = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL === 'true';
+          const networkContexts = await buildNetworkContexts([sourceEntity, ...candidateEntities], this.database);
 
           // Declare trace entries early so both parallel and serial paths can push error entries
           const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
@@ -1366,6 +1395,7 @@ export class OpportunityGraphFactory {
                   entities: [sourceEntity, candidateEntity],
                   existingOpportunities: state.options.existingOpportunities,
                   ...(state.searchQuery?.trim() ? { discoveryQuery: state.searchQuery.trim() } : {}),
+                  networkContexts,
                 };
                 const _evalStart = Date.now();
                 const _traceEmitter = requestContext.getStore()?.traceEmitter;
@@ -1427,6 +1457,7 @@ export class OpportunityGraphFactory {
               entities,
               existingOpportunities: state.options.existingOpportunities,
               ...(state.searchQuery?.trim() ? { discoveryQuery: state.searchQuery.trim() } : {}),
+              networkContexts,
             };
             // Get ALL scored results for tracing (returnAll: true), filter for persistence later
             const _evalStart = Date.now();
@@ -2235,12 +2266,14 @@ export class OpportunityGraphFactory {
         try {
           const introducerUser = await this.database.getUser(state.userId);
           introducerName = introducerUser?.name ?? undefined;
+          const networkContexts = await buildNetworkContexts(entities, this.database);
           const input: EvaluatorInput = {
             discovererId: state.userId,
             entities,
             introductionMode: true,
             introducerName,
             introductionHint: state.introductionHint ?? undefined,
+            networkContexts,
           };
 
           _evalStart = Date.now();

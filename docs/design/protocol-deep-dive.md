@@ -285,6 +285,20 @@ The graph creates an A2A conversation, alternates between proposer and responder
 
 **Dependencies:** `NegotiationDatabase`, proposer agent, responder agent
 
+### 3.12 Premise Graph
+
+**File:** `premise/premise.graph.ts`
+**Purpose:** Lifecycle graph for premises (composable self-descriptions). Supports create, update, and query modes.
+**Nodes:** `query`, `analyze`, `embed`, `persist`, `index`
+**State:** `PremiseGraphState` (userId, assertionText, tier, validFrom, validUntil, volatile, operationMode, targetPremiseId, analysis, embedding, premise, networkAssignments, error, readResult, agentTimings)
+**Conditional edges:**
+- From START: routes to `query` (read-only), `analyze` (create/update), or END (error)
+- Create/update path: `analyze` → `embed` → `persist` → `index` → END
+
+The analyze node classifies the premise using speech act theory and scores felicity conditions. The embed node generates a vector embedding. The persist node creates or updates the database record. The index node scores the premise against the user's networks and assigns it where relevant (score ≥ 0.5). Each node guards against upstream errors.
+
+**Dependencies:** `PremiseGraphDatabase`, `Embedder`
+
 ## 4. Agent Catalog
 
 All agents live in `packages/protocol/src/agents/`. They are pure (no direct DB access) and use `createModel()` from `model.config.ts` for LLM configuration.
@@ -433,6 +447,24 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **File:** `invite.generator.ts`
 **Role:** Generates contextual invite messages for ghost user outreach.
 **Model:** `google/gemini-2.5-flash`, temperature 0.3, maxTokens 512
+
+### 4.18 Premise Analyzer
+
+**File:** `premise/premise.analyzer.ts`
+**Role:** Classifies a premise using adapted speech act theory (DECLARATIVE vs ASSERTIVE) and scores felicity conditions (authority, sincerity, clarity) plus semantic entropy.
+**Model:** `google/gemini-2.5-flash`
+**Input:** Premise text (string), optional profile context
+**Output:** speechActType, felicityAuthority (0-100), felicitySincerity (0-100), felicityClarity (0-100), semanticEntropy (0.0-1.0)
+**Used by:** Premise Graph (analyze node)
+
+### 4.19 Premise Indexer
+
+**File:** `premise/premise.indexer.ts`
+**Role:** Scores a premise's relevancy to a network based on the index prompt and member preferences.
+**Model:** `google/gemini-2.5-flash`
+**Input:** premiseText, indexPrompt, optional memberPrompt and networkContext
+**Output:** indexScore (0.0-1.0), memberScore (0.0-1.0), reasoning
+**Used by:** Premise Graph (index node)
 
 ## 5. Chat Tool System
 

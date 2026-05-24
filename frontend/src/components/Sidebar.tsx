@@ -60,7 +60,7 @@ export default function Sidebar() {
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean }) => {
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean; type?: 'community' | 'event'; metadata?: Record<string, unknown> }) => {
     try {
       const createRequest = {
         title: indexData.name,
@@ -68,6 +68,8 @@ export default function Sidebar() {
         imageUrl: indexData.imageUrl,
         joinPolicy: indexData.joinPolicy,
         isExperiment: indexData.isExperiment,
+        type: indexData.type,
+        metadata: indexData.metadata,
       };
       const newIndex = await indexesService.createNetwork(createRequest);
       const { masterKey, ...network } = newIndex;

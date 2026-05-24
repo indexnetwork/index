@@ -6,6 +6,10 @@ import {
   QuestionStrategySchema,
   QuestionWithStrategySchema,
   QuestionGeneratorResponseSchema,
+  QuestionModeSchema,
+  QuestionDetectionSchema,
+  QuestionActorSchema,
+  QuestionAnswerSchema,
 } from "../question.schema.js";
 
 const okOption = { label: "Stay focused", description: "Higher risk but cleaner narrative" };
@@ -128,5 +132,103 @@ describe("QuestionGeneratorResponseSchema", () => {
       strategy: "refine_intent" as const,
     }));
     expect(() => QuestionGeneratorResponseSchema.parse({ questions: four })).toThrow();
+  });
+});
+
+describe("QuestionDetection", () => {
+  it("accepts a valid detection object", () => {
+    const result = QuestionDetectionSchema.safeParse({
+      mode: "discovery",
+      sourceType: "opportunity",
+      sourceId: "abc-123",
+      timestamp: "2026-05-24T12:00:00.000Z",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts optional triggeredBy", () => {
+    const result = QuestionDetectionSchema.safeParse({
+      mode: "intent",
+      sourceType: "intent",
+      sourceId: "abc-123",
+      triggeredBy: "intent-456",
+      timestamp: "2026-05-24T12:00:00.000Z",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.triggeredBy).toBe("intent-456");
+  });
+
+  it("rejects an invalid mode", () => {
+    const result = QuestionDetectionSchema.safeParse({
+      mode: "invalid",
+      sourceType: "opportunity",
+      sourceId: "abc-123",
+      timestamp: "2026-05-24T12:00:00.000Z",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("QuestionActor", () => {
+  it("accepts a minimal actor (userId + role only)", () => {
+    const result = QuestionActorSchema.safeParse({
+      userId: "user-1",
+      role: "subject",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.networkId).toBeUndefined();
+  });
+
+  it("accepts an actor with networkId", () => {
+    const result = QuestionActorSchema.safeParse({
+      userId: "user-1",
+      networkId: "net-1",
+      role: "subject",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.networkId).toBe("net-1");
+  });
+});
+
+describe("QuestionAnswer", () => {
+  it("accepts a valid answer with selected options", () => {
+    const result = QuestionAnswerSchema.safeParse({
+      selectedOptions: ["Berlin"],
+      answeredBy: "user-1",
+      answeredAt: "2026-05-24T12:00:00.000Z",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.freeText).toBeUndefined();
+  });
+
+  it("accepts an answer with freeText", () => {
+    const result = QuestionAnswerSchema.safeParse({
+      selectedOptions: [],
+      freeText: "Custom answer",
+      answeredBy: "user-1",
+      answeredAt: "2026-05-24T12:00:00.000Z",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.freeText).toBe("Custom answer");
+  });
+
+  it("requires answeredBy", () => {
+    const result = QuestionAnswerSchema.safeParse({
+      selectedOptions: ["Berlin"],
+      answeredAt: "2026-05-24T12:00:00.000Z",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("QuestionMode", () => {
+  it.each(["discovery", "intent", "profile", "negotiation"])("accepts '%s'", (mode) => {
+    const result = QuestionModeSchema.safeParse(mode);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an unknown mode", () => {
+    const result = QuestionModeSchema.safeParse("unknown");
+    expect(result.success).toBe(false);
   });
 });

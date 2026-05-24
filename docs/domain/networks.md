@@ -3,7 +3,7 @@ title: "Networks"
 type: domain
 tags: [networks, communities, permissions, personal-networks, ghost-users, contacts, auto-assign]
 created: 2026-03-26
-updated: 2026-05-07
+updated: 2026-05-24
 ---
 
 # Networks
@@ -21,13 +21,44 @@ A network can represent:
 - A company workspace ("Acme Corp Internal")
 - A project team ("DeFi Protocol Builders")
 - A topical interest group ("Climate Tech")
+- A time-bound event ("Edge Esmeralda 2026")
 - A personal space (see Personal Networks below)
 
 Each network has:
 - **Title**: Human-readable name
+- **Type**: `community` (default) or `event`. Determines which metadata fields are required and how AI agents evaluate intents.
 - **Prompt**: A natural-language description of the network's purpose. This is used by AI agents to evaluate whether intents belong in this network.
+- **Metadata**: Type-specific JSONB properties (see Network Types below).
 - **Image URL**: Optional visual identifier
 - **Permissions**: Access and join policy configuration
+
+---
+
+## Network Types
+
+Networks have a polymorphic `type` field that drives validation, context rendering, and agent behavior.
+
+### Community (default)
+
+Standard networks for ongoing communities. Metadata is freeform — no required fields.
+
+### Event
+
+Time-bound networks for conferences, popup villages, and gatherings. Required metadata:
+- **startDate** / **endDate**: ISO 8601 date strings defining the event window.
+
+Optional metadata:
+- **location**: Venue or city.
+- **venue**: Specific venue name.
+- **themes**: Array of topic tags.
+- **events**: Array of schedule items (synced from external calendars or manually added). Each event has `externalId`, `title`, `startTime`, `endTime`, `location`, `description`, `tags`, `syncedAt`.
+
+Event-type networks receive special treatment in AI agents: the `IntentIndexer` factors temporal relevance when scoring intents, and the `OpportunityEvaluator` considers co-attendance signals and theme alignment.
+
+### Integrations
+
+Networks can be linked to external services via `network_integrations`. Currently supported:
+- **google_calendar**: A BullMQ repeatable worker syncs calendar events into `metadata.events[]` on a configurable interval. Sync configuration (calendarId, intervalMs, status) is stored in `network_integrations.syncConfig`.
 
 ---
 

@@ -444,6 +444,7 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | `hyde.queue` | HyDE document generation and cron-based refresh |
 | `email.queue` | Email delivery via Resend |
 | `notification.queue` | Notification delivery |
+| `integration-sync-queue` | Periodic Google Calendar sync for event networks |
 
 ### Job Patterns
 

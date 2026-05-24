@@ -43,6 +43,7 @@ import { getStats } from './lib/performance';
 import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
 import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
+import { fromProfileQueue } from './queues/opportunity/from-profile.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { notificationQueue } from './queues/notification.queue';
@@ -51,6 +52,7 @@ import { emailQueue } from './queues/email.queue';
 import { profileQueue } from './queues/profile.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
+import { integrationSyncQueue } from './queues/integration.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { NegotiationEvents } from './events/negotiation.event';
@@ -83,14 +85,33 @@ fromIntroducerQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
+fromProfileQueue.setRuntimeDeps({
+  negotiationGraph: backgroundNegotiationGraph,
+  agentDispatcher: backgroundAgentDispatcher,
+});
 negotiationRunExistingQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
 
+// Assign callbacks before starting workers to avoid a race with jobs already in Redis.
+NetworkMembershipEvents.onMemberAdded = (userId: string) => {
+  profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
+    log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, error: err });
+  });
+};
+
+profileQueue.onEnrichmentComplete = (userId: string) => {
+  fromProfileQueue.addJob(
+    { userId },
+    { priority: 20, jobId: `profile-discovery-${userId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
+  ).catch((err) => log.job.from('ProfileEnrichment').error('Failed to enqueue profile-based discovery', { userId, error: err }));
+};
+
 intentQueue.startWorker();
 fromIntentQueue.startWorker();
 fromIntroducerQueue.startWorker();
+fromProfileQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 opportunityExpirationCron.start();
 notificationQueue.startWorker();
@@ -99,12 +120,7 @@ hydeQueue.startCrons();
 emailQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
-
-NetworkMembershipEvents.onMemberAdded = (userId: string) => {
-  profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, error: err });
-  });
-};
+integrationSyncQueue.startWorker();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
@@ -442,6 +458,7 @@ const shutdown = async () => {
     intentQueue.close(),
     fromIntentQueue.close(),
     fromIntroducerQueue.close(),
+    fromProfileQueue.close(),
     negotiationRunExistingQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),

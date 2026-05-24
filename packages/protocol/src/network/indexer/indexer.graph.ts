@@ -6,6 +6,7 @@ import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../chat/chat-streaming.types.js";
+import { renderNetworkContext } from "../../shared/network/metadata.renderer.js";
 
 import {
   IntentNetworkGraphState,
@@ -121,6 +122,17 @@ export class IntentNetworkGraphFactory {
             ? `${intentForIndexing.sourceType}:${intentForIndexing.sourceId ?? ""}`
             : undefined;
 
+          // Render network context (type, metadata) for the evaluator
+          const network = await this.database.getNetwork(networkId);
+          const renderedContext = network
+            ? renderNetworkContext({
+                type: network.type ?? 'community',
+                title: network.title,
+                prompt: network.prompt,
+                metadata: network.metadata ?? {},
+              })
+            : null;
+
           const _traceEmitterIndexer = requestContext.getStore()?.traceEmitter;
           const _indexerStart = Date.now();
           _traceEmitterIndexer?.({ type: "agent_start", name: "intent-indexer" });
@@ -130,7 +142,8 @@ export class IntentNetworkGraphFactory {
               intentForIndexing.payload,
               indexContext.indexPrompt,
               indexContext.memberPrompt,
-              sourceName
+              sourceName,
+              renderedContext
             );
           } finally {
             const _indexerMs = Date.now() - _indexerStart;

@@ -23,6 +23,12 @@ export type * from "./shared/interfaces/chat-session.interface.js";
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
 export type { ChatMessageWriter } from "./shared/interfaces/chat-message-writer.interface.js";
 export type { QuestionGeneratorReader } from "./shared/interfaces/question-generator.interface.js";
+export type {
+  QuestionerDatabase,
+  PersistableQuestion,
+  PersistedQuestion,
+  QuestionFilters,
+} from "./shared/interfaces/questioner.interface.js";
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer, buildFallbackDigest } from "./negotiation/negotiation.summarizer.js";
@@ -62,12 +68,20 @@ export {
   QuestionStrategySchema,
   QuestionWithStrategySchema,
   QuestionGeneratorResponseSchema,
+  QuestionModeSchema,
+  QuestionDetectionSchema,
+  QuestionActorSchema,
+  QuestionAnswerSchema,
   type Question,
   type QuestionOption,
   type QuestionStrategy,
   type QuestionWithStrategy,
   type QuestionGeneratorResponse,
   type QuestionGenerationResult,
+  type QuestionMode,
+  type QuestionDetection,
+  type QuestionActor,
+  type QuestionAnswer,
 } from "./shared/schemas/question.schema.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
@@ -88,6 +102,7 @@ export type {
 export { NegotiationGraphFactory, createDefaultNegotiationGraph, negotiateCandidates } from "./negotiation/negotiation.graph.js";
 export { OpportunityGraphFactory } from "./opportunity/opportunity.graph.js";
 export { ProfileGraphFactory } from "./profile/profile.graph.js";
+export { PremiseGraphFactory } from "./premise/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
@@ -100,11 +115,27 @@ export type { SuggestionGeneratorInput } from "./chat/chat.suggester.js";
 export { generateInviteMessage } from "./contact/contact.inviter.js";
 export type { InviteInput, InviteOutput } from "./contact/contact.inviter.js";
 export { IntentIndexer } from "./intent/intent.indexer.js";
+export { PremiseAnalyzer } from "./premise/premise.analyzer.js";
+export type { PremiseAnalyzerOutput } from "./premise/premise.analyzer.js";
+export { PremiseIndexer } from "./premise/premise.indexer.js";
+export type { PremiseIndexerOutput } from "./premise/premise.indexer.js";
 export { LensInferrer } from "./shared/hyde/lens.inferrer.js";
 export { NegotiationInsightsGenerator } from "./negotiation/insight.generator.js";
 export type { NegotiationDigest } from "./negotiation/insight.generator.js";
 export { IndexNegotiator } from "./negotiation/negotiation.agent.js";
 export type { NegotiationAgentInput } from "./negotiation/negotiation.agent.js";
+export { QuestionerAgent } from "./questioner/questioner.agent.js";
+export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";
+export type {
+  QuestionerInput,
+  QuestionerContext,
+  DiscoveryContext,
+  IntentContext,
+  ProfileContext,
+  NegotiationContext,
+} from "./questioner/questioner.types.js";
+export { getPreset } from "./questioner/questioner.presets.js";
+export type { QuestionerPreset } from "./questioner/questioner.presets.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type {
   EvaluatorInput,
@@ -170,7 +201,7 @@ export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 
 // ─── MCP ──────────────────────────────────────────────────────────────────────
 
-export { createMcpServer, computeAgentIndexScope } from "./mcp/mcp.server.js";
+export { createMcpServer, computeAgentIndexScope, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./mcp/mcp.server.js";
 export type { ScopedDepsFactory } from "./mcp/mcp.server.js";
 export { buildElicitationCreate, flattenChoice } from "./mcp/elicitation.builder.js";
 export { dispatchElicitations } from "./mcp/elicitation.dispatcher.js";
