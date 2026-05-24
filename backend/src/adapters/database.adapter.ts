@@ -3753,6 +3753,201 @@ export class ChatDatabaseAdapter {
     return conversationAdapter.unhideConversation(userId, conversationId);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Premises Methods (premise CRUD and network assignment)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a new premise record for a user.
+   * @param input - The premise fields to persist
+   * @returns The created premise record
+   */
+  async createPremise(input: {
+    userId: string;
+    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
+    analysis?: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number };
+    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding?: number[];
+  }): Promise<{
+    id: string; userId: string;
+    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
+    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
+    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding: number[] | null;
+    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
+  }> {
+    const [row] = await db
+      .insert(schema.premises)
+      .values({
+        userId: input.userId,
+        assertion: input.assertion,
+        provenance: input.provenance,
+        analysis: input.analysis ?? null,
+        validity: input.validity,
+        embedding: input.embedding ?? null,
+        status: 'ACTIVE',
+      })
+      .returning();
+    if (!row) throw new Error('createPremise: no row returned');
+    return {
+      id: row.id,
+      userId: row.userId,
+      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
+      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
+      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
+      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
+      embedding: row.embedding,
+      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      retractedAt: row.retractedAt ?? null,
+    };
+  }
+
+  async getPremise(premiseId: string): Promise<{
+    id: string; userId: string;
+    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
+    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
+    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding: number[] | null;
+    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
+  } | null> {
+    const [row] = await db
+      .select()
+      .from(schema.premises)
+      .where(eq(schema.premises.id, premiseId))
+      .limit(1);
+    if (!row) return null;
+    return {
+      id: row.id,
+      userId: row.userId,
+      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
+      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
+      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
+      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
+      embedding: row.embedding,
+      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      retractedAt: row.retractedAt ?? null,
+    };
+  }
+
+  async getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
+    id: string; userId: string;
+    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
+    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
+    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding: number[] | null;
+    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
+  }>> {
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(schema.premises.userId, userId),
+    ];
+    if (status) {
+      conditions.push(eq(schema.premises.status, status));
+    }
+    const rows = await db
+      .select()
+      .from(schema.premises)
+      .where(and(...conditions))
+      .orderBy(desc(schema.premises.createdAt));
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
+      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
+      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
+      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
+      embedding: row.embedding,
+      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      retractedAt: row.retractedAt ?? null,
+    }));
+  }
+
+  async updatePremise(premiseId: string, updates: {
+    assertion?: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    analysis?: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number };
+    validity?: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding?: number[];
+    status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    retractedAt?: Date;
+  }): Promise<{
+    id: string; userId: string;
+    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
+    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
+    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding: number[] | null;
+    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
+  }> {
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (updates.assertion !== undefined) patch.assertion = updates.assertion;
+    if (updates.analysis !== undefined) patch.analysis = updates.analysis;
+    if (updates.validity !== undefined) patch.validity = updates.validity;
+    if (updates.embedding !== undefined) patch.embedding = updates.embedding;
+    if (updates.status !== undefined) patch.status = updates.status;
+    if (updates.retractedAt !== undefined) patch.retractedAt = updates.retractedAt;
+
+    const [row] = await db
+      .update(schema.premises)
+      .set(patch)
+      .where(eq(schema.premises.id, premiseId))
+      .returning();
+    if (!row) throw new Error(`updatePremise: premise ${premiseId} not found`);
+    return {
+      id: row.id,
+      userId: row.userId,
+      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
+      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
+      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
+      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
+      embedding: row.embedding,
+      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      retractedAt: row.retractedAt ?? null,
+    };
+  }
+
+  async assignPremiseToNetwork(premiseId: string, networkId: string, relevancyScore: number): Promise<void> {
+    await db
+      .insert(schema.premiseNetworks)
+      .values({
+        premiseId,
+        networkId,
+        relevancyScore: String(relevancyScore),
+      })
+      .onConflictDoUpdate({
+        target: [schema.premiseNetworks.premiseId, schema.premiseNetworks.networkId],
+        set: { relevancyScore: String(relevancyScore) },
+      });
+  }
+
+  async getPremiseNetworks(premiseId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>> {
+    const rows = await db
+      .select({
+        networkId: schema.premiseNetworks.networkId,
+        relevancyScore: schema.premiseNetworks.relevancyScore,
+      })
+      .from(schema.premiseNetworks)
+      .where(eq(schema.premiseNetworks.premiseId, premiseId));
+    return rows.map((r) => ({
+      networkId: r.networkId,
+      relevancyScore: r.relevancyScore !== null ? Number(r.relevancyScore) : null,
+    }));
+  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5628,230 +5823,6 @@ export class LinkDatabaseAdapter {
       .where(and(eq(links.id, linkId), eq(links.userId, userId)))
       .limit(1);
     return rows[0] ?? null;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Premises Methods (premise CRUD and network assignment)
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Create a new premise record for a user.
-   * @param input - The premise fields to persist
-   * @returns The created premise record
-   */
-  async createPremise(input: {
-    userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis?: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number };
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding?: number[];
-  }): Promise<{
-    id: string; userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding: number[] | null;
-    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
-  }> {
-    const [row] = await db
-      .insert(schema.premises)
-      .values({
-        userId: input.userId,
-        assertion: input.assertion,
-        provenance: input.provenance,
-        analysis: input.analysis ?? null,
-        validity: input.validity,
-        embedding: input.embedding ?? null,
-        status: 'ACTIVE',
-      })
-      .returning();
-    if (!row) throw new Error('createPremise: no row returned');
-    return {
-      id: row.id,
-      userId: row.userId,
-      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
-      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
-      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
-      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
-      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      retractedAt: row.retractedAt ?? null,
-    };
-  }
-
-  /**
-   * Fetch a single premise by ID, or null if not found.
-   * @param premiseId - The premise UUID to look up
-   * @returns The premise record or null
-   */
-  async getPremise(premiseId: string): Promise<{
-    id: string; userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding: number[] | null;
-    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
-  } | null> {
-    const [row] = await db
-      .select()
-      .from(schema.premises)
-      .where(eq(schema.premises.id, premiseId))
-      .limit(1);
-    if (!row) return null;
-    return {
-      id: row.id,
-      userId: row.userId,
-      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
-      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
-      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
-      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
-      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      retractedAt: row.retractedAt ?? null,
-    };
-  }
-
-  /**
-   * List all premises for a user, optionally filtered by status.
-   * @param userId - The user whose premises to fetch
-   * @param status - Optional status filter ('ACTIVE' | 'RETRACTED' | 'EXPIRED')
-   * @returns Array of premise records
-   */
-  async getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
-    id: string; userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding: number[] | null;
-    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
-  }>> {
-    const conditions: ReturnType<typeof eq>[] = [
-      eq(schema.premises.userId, userId),
-    ];
-    if (status) {
-      conditions.push(eq(schema.premises.status, status));
-    }
-    const rows = await db
-      .select()
-      .from(schema.premises)
-      .where(and(...conditions))
-      .orderBy(desc(schema.premises.createdAt));
-    return rows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
-      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
-      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
-      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
-      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      retractedAt: row.retractedAt ?? null,
-    }));
-  }
-
-  /**
-   * Update fields on an existing premise.
-   * @param premiseId - The premise UUID to update
-   * @param updates - Partial fields to apply
-   * @returns The updated premise record
-   * @throws Error if the premise is not found
-   */
-  async updatePremise(premiseId: string, updates: {
-    assertion?: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    analysis?: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number };
-    validity?: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding?: number[];
-    status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    retractedAt?: Date;
-  }): Promise<{
-    id: string; userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding: number[] | null;
-    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
-  }> {
-    const patch: Record<string, unknown> = { updatedAt: new Date() };
-    if (updates.assertion !== undefined) patch.assertion = updates.assertion;
-    if (updates.analysis !== undefined) patch.analysis = updates.analysis;
-    if (updates.validity !== undefined) patch.validity = updates.validity;
-    if (updates.embedding !== undefined) patch.embedding = updates.embedding;
-    if (updates.status !== undefined) patch.status = updates.status;
-    if (updates.retractedAt !== undefined) patch.retractedAt = updates.retractedAt;
-
-    const [row] = await db
-      .update(schema.premises)
-      .set(patch)
-      .where(eq(schema.premises.id, premiseId))
-      .returning();
-    if (!row) throw new Error(`updatePremise: premise ${premiseId} not found`);
-    return {
-      id: row.id,
-      userId: row.userId,
-      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
-      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
-      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
-      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
-      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      retractedAt: row.retractedAt ?? null,
-    };
-  }
-
-  /**
-   * Assign (or upsert) a premise to a network with a relevancy score.
-   * @param premiseId - The premise to assign
-   * @param networkId - The network to assign it to
-   * @param relevancyScore - The float score (0.0-1.0) stored as numeric
-   */
-  async assignPremiseToNetwork(premiseId: string, networkId: string, relevancyScore: number): Promise<void> {
-    await db
-      .insert(schema.premiseNetworks)
-      .values({
-        premiseId,
-        networkId,
-        relevancyScore: String(relevancyScore),
-      })
-      .onConflictDoUpdate({
-        target: [schema.premiseNetworks.premiseId, schema.premiseNetworks.networkId],
-        set: { relevancyScore: String(relevancyScore) },
-      });
-  }
-
-  /**
-   * Get all networks a premise is assigned to, with their relevancy scores.
-   * @param premiseId - The premise UUID to look up
-   * @returns Array of networkId + relevancyScore pairs
-   */
-  async getPremiseNetworks(premiseId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>> {
-    const rows = await db
-      .select({
-        networkId: schema.premiseNetworks.networkId,
-        relevancyScore: schema.premiseNetworks.relevancyScore,
-      })
-      .from(schema.premiseNetworks)
-      .where(eq(schema.premiseNetworks.premiseId, premiseId));
-    return rows.map((r) => ({
-      networkId: r.networkId,
-      relevancyScore: r.relevancyScore !== null ? Number(r.relevancyScore) : null,
-    }));
   }
 }
 
