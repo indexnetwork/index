@@ -162,6 +162,7 @@ export class QuestionerAdapter {
   async answer(questionId: string, userId: string, answer: AdapterQuestionAnswer): Promise<boolean> {
     const ownershipCheck = and(
       eq(questions.id, questionId),
+      eq(questions.status, 'pending'),
       sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
     );
 
@@ -201,6 +202,7 @@ export class QuestionerAdapter {
   async dismiss(questionId: string, userId: string): Promise<boolean> {
     const ownershipCheck = and(
       eq(questions.id, questionId),
+      eq(questions.status, 'pending'),
       sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
     );
 

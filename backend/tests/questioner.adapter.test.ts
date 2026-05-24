@@ -105,4 +105,43 @@ describe('QuestionerAdapter', () => {
     const dismissed = after.find((q) => q.id === questionId);
     expect(dismissed).toBeUndefined();
   });
+
+  it('answer returns false for wrong userId', async () => {
+    // Persist a fresh question for this test
+    const ids = await adapter.persist([makePersistable()]);
+    const result = await adapter.answer(ids[0], 'wrong-user', {
+      selectedOptions: ['Early'],
+      answeredBy: 'wrong-user',
+      answeredAt: new Date().toISOString(),
+    });
+    expect(result).toBe(false);
+  });
+
+  it('dismiss returns false for wrong userId', async () => {
+    const ids = await adapter.persist([makePersistable()]);
+    const result = await adapter.dismiss(ids[0], 'wrong-user');
+    expect(result).toBe(false);
+  });
+
+  it('answer returns false for already-answered question', async () => {
+    const ids = await adapter.persist([makePersistable()]);
+    const answer = {
+      selectedOptions: ['Early'],
+      answeredBy: 'test-user-1',
+      answeredAt: new Date().toISOString(),
+    };
+    const first = await adapter.answer(ids[0], 'test-user-1', answer);
+    expect(first).toBe(true);
+    // Second answer attempt should fail (status is no longer pending)
+    const second = await adapter.answer(ids[0], 'test-user-1', answer);
+    expect(second).toBe(false);
+  });
+
+  it('dismiss returns false for already-dismissed question', async () => {
+    const ids = await adapter.persist([makePersistable()]);
+    const first = await adapter.dismiss(ids[0], 'test-user-1');
+    expect(first).toBe(true);
+    const second = await adapter.dismiss(ids[0], 'test-user-1');
+    expect(second).toBe(false);
+  });
 });
