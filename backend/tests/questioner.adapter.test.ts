@@ -4,7 +4,7 @@ config({ path: '.env.test' });
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 import { questions } from '../src/schemas/database.schema';
 import { QuestionerAdapter } from '../src/adapters/questioner.adapter';
@@ -21,8 +21,10 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
-  // Clean up test data
-  await db.delete(questions).where(eq(questions.status, 'pending'));
+  // Clean up all test rows (regardless of status) by deterministic marker
+  await db.delete(questions).where(
+    sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: 'test-user-1' }])}::jsonb`,
+  );
   await client.end({ timeout: 5 });
 });
 

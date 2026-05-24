@@ -56,7 +56,12 @@ export interface AdapterPersistableQuestion {
   detection: AdapterQuestionDetection;
   actors: AdapterQuestionActor[];
   payload: AdapterQuestionPayload;
-  strategy: string;
+  strategy:
+    | 'refine_intent'
+    | 'surface_missing_detail'
+    | 'open_adjacent_thread'
+    | 'reflective_summary'
+    | 'surface_emergent_knowledge';
 }
 
 /** A question row returned from the database. */
@@ -93,7 +98,7 @@ export class QuestionerAdapter {
   async persist(batch: AdapterPersistableQuestion[]): Promise<void> {
     if (batch.length === 0) return;
     const rows = batch.map((q) => ({
-      detection: q.detection as QuestionDetection,
+      detection: { ...q.detection, strategy: q.strategy } as QuestionDetection,
       actors: q.actors as QuestionActor[],
       payload: q.payload,
       status: 'pending' as const,

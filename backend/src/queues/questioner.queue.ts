@@ -41,7 +41,7 @@ export class QuestionerQueue {
   private readonly logger = log.job.from('QuestionerJob');
   private readonly queueLogger = log.queue.from('QuestionerQueue');
   private readonly adapter: Pick<QuestionerAdapter, 'persist'>;
-  private readonly agent: Pick<QuestionerAgent, 'invoke'>;
+  private agent: Pick<QuestionerAgent, 'invoke'> | null;
   private worker: ReturnType<typeof QueueFactory.createWorker<QuestionerJobData>> | null = null;
 
   /**
@@ -49,7 +49,14 @@ export class QuestionerQueue {
    */
   constructor(deps?: QuestionerQueueDeps) {
     this.adapter = deps?.adapter ?? new QuestionerAdapter(db);
-    this.agent = deps?.agent ?? new QuestionerAgent();
+    this.agent = deps?.agent ?? null; // lazy — created on first job
+  }
+
+  /** Return the agent, creating it on first access (deferred so the module can
+   *  be imported without requiring OPENROUTER_API_KEY at load time). */
+  private getAgent(): Pick<QuestionerAgent, 'invoke'> {
+    if (!this.agent) this.agent = new QuestionerAgent();
+    return this.agent;
   }
 
   /**
@@ -134,7 +141,7 @@ export class QuestionerQueue {
       sourceId: data.sourceId,
     });
 
-    const result: QuestionGenerationResult | null = await this.agent.invoke(data);
+    const result: QuestionGenerationResult | null = await this.getAgent().invoke(data);
 
     if (!result) {
       this.logger.info('[QuestionerJob] Agent returned null, skipping persist', {
