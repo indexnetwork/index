@@ -72,6 +72,8 @@ export class PremiseGraphFactory {
 
     const embedNode = async (state: typeof PremiseGraphState.State) => {
       return timed("PremiseGraph.embed", async () => {
+        if (state.error) return {};
+
         if (!state.assertionText) {
           return { error: "assertionText is required for embedding" };
         }
@@ -86,6 +88,12 @@ export class PremiseGraphFactory {
 
     const persistNode = async (state: typeof PremiseGraphState.State) => {
       return timed("PremiseGraph.persist", async () => {
+        if (state.error) return {};
+
+        if (state.operationMode === 'update' && !state.targetPremiseId) {
+          return { error: "targetPremiseId is required for update mode" };
+        }
+
         if (state.operationMode === 'update' && state.targetPremiseId) {
           logger.verbose(`[PremiseGraph.persist] Updating premise ${state.targetPremiseId}`);
 
@@ -140,26 +148,30 @@ export class PremiseGraphFactory {
         const assignments: Array<{ networkId: string; relevancyScore: number }> = [];
 
         for (const networkId of indexIds) {
-          const network = await this.database.getNetwork(networkId);
-          if (!network || !network.prompt) continue;
+          try {
+            const network = await this.database.getNetwork(networkId);
+            if (!network || !network.prompt) continue;
 
-          const memberContext = await this.database.getNetworkMemberContext(networkId, state.userId);
+            const memberContext = await this.database.getNetworkMemberContext(networkId, state.userId);
 
-          const start = Date.now();
-          const result = await indexer.invoke({
-            premiseText: state.assertionText!,
-            indexPrompt: network.prompt,
-            memberPrompt: memberContext?.memberPrompt ?? undefined,
-          });
-          const timing: DebugMetaAgent = {
-            name: "premise-indexer",
-            durationMs: Date.now() - start,
-          };
+            const start = Date.now();
+            const result = await indexer.invoke({
+              premiseText: state.assertionText!,
+              indexPrompt: network.prompt,
+              memberPrompt: memberContext?.memberPrompt ?? undefined,
+            });
+            const timing: DebugMetaAgent = {
+              name: "premise-indexer",
+              durationMs: Date.now() - start,
+            };
 
-          const score = Math.max(result.indexScore, result.memberScore);
-          if (score >= 0.5) {
-            await this.database.assignPremiseToNetwork(state.premise.id, networkId, score);
-            assignments.push({ networkId, relevancyScore: score });
+            const score = Math.max(result.indexScore, result.memberScore);
+            if (score >= 0.5) {
+              await this.database.assignPremiseToNetwork(state.premise.id, networkId, score);
+              assignments.push({ networkId, relevancyScore: score });
+            }
+          } catch (err) {
+            logger.verbose(`[PremiseGraph.index] Failed to score network ${networkId}, skipping: ${err}`);
           }
         }
 
