@@ -77,7 +77,7 @@ export interface AdapterPersistedQuestion {
 
 /** Optional filters for the `findPending` query. */
 export interface AdapterQuestionFilters {
-  mode?: string;
+  mode?: 'discovery' | 'intent' | 'profile' | 'negotiation';
   sourceType?: string;
   sourceId?: string;
 }
@@ -98,7 +98,7 @@ export class QuestionerAdapter {
   async persist(batch: AdapterPersistableQuestion[]): Promise<void> {
     if (batch.length === 0) return;
     const rows = batch.map((q) => ({
-      detection: { ...q.detection, strategy: q.strategy } as QuestionDetection,
+      detection: { ...q.detection, strategy: q.strategy } satisfies QuestionDetection,
       actors: q.actors as QuestionActor[],
       payload: q.payload,
       status: 'pending' as const,

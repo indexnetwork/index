@@ -408,6 +408,8 @@ export interface QuestionDetection {
   sourceId: string;
   triggeredBy?: string;
   timestamp: string;
+  /** Generation strategy — persisted as metadata, not exposed on read. */
+  strategy?: string;
 }
 
 export interface QuestionActor {
