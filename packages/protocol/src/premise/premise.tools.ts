@@ -33,8 +33,8 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
     querySchema: z.object({
       text: z.string().describe("The premise text — a self-descriptive proposition in first person, e.g. 'I am a machine learning researcher at MIT'."),
       tier: z.enum(["assertive", "contextual"]).default("assertive").describe("Tier of the premise. 'assertive' = stable identity fact. 'contextual' = temporal/situational. Defaults to 'assertive'."),
-      validFrom: z.string().optional().describe("ISO 8601 date-time string for when this premise becomes valid. Omit for immediate."),
-      validUntil: z.string().optional().describe("ISO 8601 date-time string for when this premise expires. Required for time-bounded contextual premises."),
+      validFrom: z.string().datetime().optional().describe("ISO 8601 date-time string for when this premise becomes valid. Omit for immediate."),
+      validUntil: z.string().datetime().optional().describe("ISO 8601 date-time string for when this premise expires. Required for time-bounded contextual premises."),
       volatile: z.boolean().optional().describe("Whether this premise should be automatically retracted when it expires. Defaults to true for contextual tier, false for assertive."),
     }),
     handler: async ({ context, query }) => {
@@ -98,10 +98,6 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
       includeRetracted: z.boolean().default(false).describe("When true, includes retracted premises alongside active ones. Defaults to false (active only)."),
     }),
     handler: async ({ context, query }) => {
-      if (!premiseGraph) {
-        return error("Premise graph not available.");
-      }
-
       const targetUserId = query.userId?.trim() || context.userId;
 
       if (query.userId?.trim() && !UUID_REGEX.test(query.userId.trim())) {
@@ -110,20 +106,11 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
 
       logger.verbose(`[readPremises] Fetching premises for user ${targetUserId}`);
 
-      const result = await premiseGraph.invoke({
-        userId: targetUserId,
-        operationMode: "query",
-      });
-
-      if (result.error) {
-        return error(result.error);
-      }
-
-      let premises = result.readResult?.premises ?? [];
-
-      if (!query.includeRetracted) {
-        premises = premises.filter((p: { status: string }) => p.status === "ACTIVE");
-      }
+      // Query DB directly (bypassing graph) to support status filtering.
+      // The graph's query node hardcodes ACTIVE status, so includeRetracted
+      // would be dead code if we routed through it.
+      const statusFilter = query.includeRetracted ? undefined : "ACTIVE" as const;
+      const premises = await database.getPremisesForUser(targetUserId, statusFilter);
 
       const mapped = premises.map((p: {
         id: string;
@@ -164,8 +151,8 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
     querySchema: z.object({
       premiseId: z.string().describe("UUID of the premise to update. Get from read_premises."),
       text: z.string().optional().describe("New assertion text. Triggers re-analysis and re-embedding when provided."),
-      validFrom: z.string().optional().describe("New ISO 8601 valid-from date-time."),
-      validUntil: z.string().optional().describe("New ISO 8601 valid-until date-time."),
+      validFrom: z.string().datetime().optional().describe("New ISO 8601 valid-from date-time."),
+      validUntil: z.string().datetime().optional().describe("New ISO 8601 valid-until date-time."),
       volatile: z.boolean().optional().describe("Update the volatile flag."),
     }),
     handler: async ({ context, query }) => {

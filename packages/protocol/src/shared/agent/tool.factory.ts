@@ -32,6 +32,7 @@ import { createIntegrationTools } from "../../integration/integration.tools.js";
 import { createContactTools } from "../../contact/contact.tools.js";
 import { createAgentTools } from "../../agent/agent.tools.js";
 import { createNegotiationTools } from "../../negotiation/negotiation.tools.js";
+import { createPremiseTools } from "../../premise/premise.tools.js";
 
 // Re-export types for consumers
 export type { ToolContext, ResolvedToolContext, ProtocolDeps } from "./tool.helpers.js";
@@ -210,6 +211,7 @@ export async function createChatTools(
   const negotiationTools = deps.agentDispatcher
     ? createNegotiationTools(defineTool, toolDeps)
     : [];
+  const premiseTools = createPremiseTools(defineTool, toolDeps);
 
   // confirm_opportunity_delivery is an OpenClaw-delivery ledger write and must not be
   // callable from regular chat sessions.
@@ -230,6 +232,7 @@ export async function createChatTools(
     ...contactTools,
     ...agentTools,
     ...negotiationTools,
+    ...premiseTools,
   ];
 }
 

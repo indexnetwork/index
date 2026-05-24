@@ -3820,7 +3820,7 @@ export class ChatDatabaseAdapter {
     const [row] = await db
       .select()
       .from(schema.premises)
-      .where(eq(schema.premises.id, premiseId))
+      .where(and(eq(schema.premises.id, premiseId), isNull(schema.premises.deletedAt)))
       .limit(1);
     if (!row) return null;
     return {
@@ -3850,6 +3850,7 @@ export class ChatDatabaseAdapter {
   }>> {
     const conditions: ReturnType<typeof eq>[] = [
       eq(schema.premises.userId, userId),
+      isNull(schema.premises.deletedAt),
     ];
     if (status) {
       conditions.push(eq(schema.premises.status, status));

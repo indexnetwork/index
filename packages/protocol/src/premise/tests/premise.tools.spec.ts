@@ -30,6 +30,7 @@ const premiseId = '00000000-0000-4000-8000-000000000099';
 function makeDeps(overrides?: {
   premiseGraph?: { invoke: (...args: unknown[]) => Promise<unknown> } | undefined;
   getPremise?: (id: string) => Promise<unknown>;
+  getPremisesForUser?: (userId: string, status?: string) => Promise<unknown[]>;
   updatePremise?: (id: string, data: unknown) => Promise<void>;
 }) {
   // Use `in` to distinguish "not provided" from "explicitly undefined"
@@ -41,6 +42,7 @@ function makeDeps(overrides?: {
   return {
     database: {
       getPremise: overrides?.getPremise ?? (async () => null),
+      getPremisesForUser: overrides?.getPremisesForUser ?? (async () => []),
       updatePremise: overrides?.updatePremise ?? (async () => {}),
     } as unknown as PremiseGraphDatabase,
     graphs: {
@@ -201,11 +203,7 @@ describe('createPremiseTools - read_premises', () => {
   it('returns mapped premises with count', async () => {
     const { defineTool, call } = makeDefineTool();
     createPremiseTools(defineTool, makeDeps({
-      premiseGraph: {
-        invoke: async () => ({
-          readResult: { premises: [activePremise] },
-        }),
-      },
+      getPremisesForUser: async () => [activePremise],
     }));
 
     const result = await call('read_premises', {}) as {
@@ -221,13 +219,13 @@ describe('createPremiseTools - read_premises', () => {
     expect(result.data.premises[0].status).toBe('ACTIVE');
   });
 
-  it('filters out retracted premises by default (includeRetracted: false)', async () => {
+  it('passes ACTIVE status filter by default (includeRetracted: false)', async () => {
+    let capturedStatus: string | undefined;
     const { defineTool, call } = makeDefineTool();
     createPremiseTools(defineTool, makeDeps({
-      premiseGraph: {
-        invoke: async () => ({
-          readResult: { premises: [activePremise, retractedPremise] },
-        }),
+      getPremisesForUser: async (_uid: string, status?: string) => {
+        capturedStatus = status;
+        return [activePremise];
       },
     }));
 
@@ -237,16 +235,17 @@ describe('createPremiseTools - read_premises', () => {
     };
 
     expect(result.success).toBe(true);
+    expect(capturedStatus).toBe('ACTIVE');
     expect(result.data.count).toBe(1);
   });
 
-  it('includes retracted premises when includeRetracted is true', async () => {
+  it('passes no status filter when includeRetracted is true', async () => {
+    let capturedStatus: string | undefined = 'sentinel';
     const { defineTool, call } = makeDefineTool();
     createPremiseTools(defineTool, makeDeps({
-      premiseGraph: {
-        invoke: async () => ({
-          readResult: { premises: [activePremise, retractedPremise] },
-        }),
+      getPremisesForUser: async (_uid: string, status?: string) => {
+        capturedStatus = status;
+        return [activePremise, retractedPremise];
       },
     }));
 
@@ -256,40 +255,13 @@ describe('createPremiseTools - read_premises', () => {
     };
 
     expect(result.success).toBe(true);
+    expect(capturedStatus).toBeUndefined();
     expect(result.data.count).toBe(2);
-  });
-
-  it('returns error when graph returns an error', async () => {
-    const { defineTool, call } = makeDefineTool();
-    createPremiseTools(defineTool, makeDeps({
-      premiseGraph: {
-        invoke: async () => ({ error: 'query failed' }),
-      },
-    }));
-
-    const result = await call('read_premises', {}) as { success: boolean; error: string };
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('query failed');
-  });
-
-  it('returns error when premise graph is not available', async () => {
-    const { defineTool, call } = makeDefineTool();
-    createPremiseTools(defineTool, makeDeps({ premiseGraph: undefined }));
-
-    const result = await call('read_premises', {}) as { success: boolean; error: string };
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('Premise graph not available.');
   });
 
   it('returns error for invalid userId format', async () => {
     const { defineTool, call } = makeDefineTool();
-    createPremiseTools(defineTool, makeDeps({
-      premiseGraph: {
-        invoke: async () => ({ readResult: { premises: [] } }),
-      },
-    }));
+    createPremiseTools(defineTool, makeDeps());
 
     const result = await call('read_premises', { userId: 'not-a-uuid' }) as { success: boolean; error: string };
 
