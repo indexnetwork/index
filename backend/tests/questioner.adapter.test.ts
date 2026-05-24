@@ -4,7 +4,7 @@ config({ path: '.env.test' });
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 import { questions } from '../src/schemas/database.schema';
 import { QuestionerAdapter } from '../src/adapters/questioner.adapter';
