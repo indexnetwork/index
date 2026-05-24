@@ -498,6 +498,13 @@
       "when": 1779472341802,
       "tag": "0070_add_network_type_and_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1779646980252,
+      "tag": "0071_add_premises_and_premise_networks",
+      "breakpoints": true
     }
   ]
 }

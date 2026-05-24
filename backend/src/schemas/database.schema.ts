@@ -14,6 +14,7 @@ export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
 export const networkTypeEnum = pgEnum('network_type', ['community', 'event']);
+export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 
 export interface OnboardingState {
   completedAt?: string;
@@ -262,6 +263,34 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export const premises = pgTable('premises', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  assertion: jsonb('assertion').$type<PremiseAssertion>().notNull(),
+  provenance: jsonb('provenance').$type<PremiseProvenance>().notNull(),
+  analysis: jsonb('analysis').$type<PremiseAnalysis>(),
+  validity: jsonb('validity').$type<PremiseValidity>().notNull(),
+  embedding: vector('embedding', { dimensions: 2000 }),
+  status: premiseStatusEnum('status').notNull().default('ACTIVE'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  retractedAt: timestamp('retracted_at', { withTimezone: true }),
+}, (table) => ({
+  embeddingIdx: index('premises_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
+  userIdIdx: index('premises_user_id_idx').on(table.userId),
+  statusIdx: index('premises_status_idx').on(table.status),
+}));
+
+export const premiseNetworks = pgTable('premise_networks', {
+  premiseId: text('premise_id').notNull().references(() => premises.id, { onDelete: 'cascade' }),
+  networkId: text('network_id').notNull().references(() => networks.id),
+  relevancyScore: numeric('relevancy_score'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.premiseId, t.networkId] }),
+  networkIdIdx: index('premise_networks_network_id_idx').on(t.networkId),
+}));
+
 export type HydeSourceType = 'intent' | 'profile' | 'query';
 
 export const hydeDocuments = pgTable('hyde_documents', {
@@ -283,6 +312,33 @@ export const hydeDocuments = pgTable('hyde_documents', {
   expiresIdx: index('hyde_expires_idx').on(table.expiresAt),
   sourceStrategyUnique: uniqueIndex('hyde_source_strategy_unique').on(table.sourceType, table.sourceId, table.strategy, table.targetCorpus),
 }));
+
+export interface PremiseAssertion {
+  text: string;
+  tier: 'assertive' | 'contextual';
+  summary?: string;
+}
+
+export interface PremiseProvenance {
+  source: 'explicit' | 'enrichment' | 'integration' | 'onboarding';
+  sourceId?: string;
+  confidence: number;
+  timestamp: string;
+}
+
+export interface PremiseAnalysis {
+  speechActType: 'DECLARATIVE' | 'ASSERTIVE';
+  felicityAuthority: number;
+  felicitySincerity: number;
+  felicityClarity: number;
+  semanticEntropy: number;
+}
+
+export interface PremiseValidity {
+  validFrom?: string;
+  validUntil?: string;
+  volatile: boolean;
+}
 
 export interface OpportunityDetection {
   source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
@@ -599,6 +655,7 @@ export type NewOpportunityDelivery = typeof opportunityDeliveries.$inferInsert;
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
+  premises: many(premises),
   memberOf: many(networkMembers),
   socials: many(userSocials),
   notificationSettings: one(userNotificationSettings, {
@@ -622,6 +679,25 @@ export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
   user: one(users, {
     fields: [userProfiles.userId],
     references: [users.id],
+  }),
+}));
+
+export const premisesRelations = relations(premises, ({ one, many }) => ({
+  user: one(users, {
+    fields: [premises.userId],
+    references: [users.id],
+  }),
+  networks: many(premiseNetworks),
+}));
+
+export const premiseNetworksRelations = relations(premiseNetworks, ({ one }) => ({
+  premise: one(premises, {
+    fields: [premiseNetworks.premiseId],
+    references: [premises.id],
+  }),
+  network: one(networks, {
+    fields: [premiseNetworks.networkId],
+    references: [networks.id],
   }),
 }));
 
@@ -653,6 +729,7 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
 export const networksRelations = relations(networks, ({ many }) => ({
   members: many(networkMembers),
   intents: many(intentNetworks),
+  premises: many(premiseNetworks),
   integrations: many(networkIntegrations),
 }));
 
@@ -755,5 +832,9 @@ export type AgentTransport = typeof agentTransports.$inferSelect;
 export type NewAgentTransport = typeof agentTransports.$inferInsert;
 export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
+export type Premise = typeof premises.$inferSelect;
+export type NewPremise = typeof premises.$inferInsert;
+export type PremiseNetwork = typeof premiseNetworks.$inferSelect;
+export type NewPremiseNetwork = typeof premiseNetworks.$inferInsert;
 
 export * from './conversation.schema';
