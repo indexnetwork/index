@@ -84,7 +84,7 @@ function BlogIndexPage() {
         <div className="how-inner">
           <div className="how-head">
             <span className="title">
-              <span className="arrow">›</span>all posts
+              <span className="arrow">›</span>notes
             </span>
           </div>
 

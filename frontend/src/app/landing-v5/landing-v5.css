@@ -280,7 +280,6 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   min-height: 0;
-  border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
 }
 .landing-v5 .h1 .well {
@@ -331,6 +330,7 @@
 }
 .landing-v5 .page-hero .well { padding: 56px 56px; }
 .landing-v5 .page-hero .display { font-size: 44px; }
+.landing-v5 .page-hero .hero-split { border-bottom: none; }
 
 .landing-v5 .post-nav-only .hero-split { display: none; }
 .landing-v5 .post-nav-only .canvas-area { display: block; }
