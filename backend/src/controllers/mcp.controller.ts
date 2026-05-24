@@ -28,6 +28,7 @@ import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.ad
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
+import { questionerQueue } from '../queues/questioner.queue';
 import db from '../lib/drizzle/drizzle';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
@@ -118,6 +119,24 @@ const protocolDeps = {
   frontendUrl: process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'https://index.network',
   apiBaseUrl,
   questionerDatabase: questionerAdapter,
+  ...(process.env.QUESTIONER_ENABLED === 'true' && {
+    questionerEnqueue: async (input: {
+      mode: 'discovery';
+      userId: string;
+      sourceType: string;
+      sourceId: string;
+      context: {
+        query: string;
+        sourceProfile: unknown;
+        negotiationDigests: unknown[];
+        summary: unknown;
+        chatContext?: unknown;
+        now: string;
+      };
+    }) => {
+      await questionerQueue.addGenerateJob(input as Parameters<typeof questionerQueue.addGenerateJob>[0]);
+    },
+  }),
 };
 
 const chatSessionReader = {

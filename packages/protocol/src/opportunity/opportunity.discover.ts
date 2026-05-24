@@ -150,6 +150,27 @@ export interface DiscoverInput {
    * `process.env.ENABLE_DISCOVERY_QUESTIONS === "true"`.
    */
   enableQuestions?: boolean;
+  /**
+   * Optional async question enqueue callback. When provided, question generation
+   * is dispatched asynchronously to the QuestionerQueue instead of running inline
+   * via the `questionGenerator`. The callback receives an enqueue payload and
+   * returns a promise that resolves when the job is enqueued (not when generation
+   * completes).
+   */
+  questionerEnqueue?: (input: {
+    mode: 'discovery';
+    userId: string;
+    sourceType: string;
+    sourceId: string;
+    context: {
+      query: string;
+      sourceProfile: unknown;
+      negotiationDigests: unknown[];
+      summary: unknown;
+      chatContext?: unknown;
+      now: string;
+    };
+  }) => Promise<void>;
 }
 
 /** Context used by the minimal (no-LLM) path; only introducerName is needed for narrator chip. */
@@ -776,6 +797,8 @@ export async function runDiscoverFromQuery(
           graphResult: result,
           negotiationDigests,
           query: queryOrEmpty,
+          questionerEnqueue: input.questionerEnqueue,
+          userId: input.userId,
         });
         return { negotiationDigests, questionPayload };
       });
@@ -966,6 +989,10 @@ interface MaybeBuildQuestionsInput {
   /** Pre-built per-negotiation digests. Pass [] when summarization is unavailable or disabled. */
   negotiationDigests: DiscoveryNegotiationDigest[];
   query: string;
+  /** Optional async enqueue callback for background question generation. */
+  questionerEnqueue?: DiscoverInput['questionerEnqueue'];
+  /** User ID needed for the enqueue payload. */
+  userId?: string;
 }
 
 /**
@@ -1029,7 +1056,6 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
 }> {
   if (!args.enableQuestions) return {};
   if (args.trigger !== 'orchestrator') return {};
-  if (!args.questionGenerator) return {};
 
   // Hardcoded — `insights` mode is planned for a later slice. Warn if the env
   // var is set so operators aren't surprised when reporting still says
@@ -1059,6 +1085,52 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
       (digest) => (digest ? "loaded" : "empty"),
     );
   }
+
+  // ── Async enqueue path ──────────────────────────────────────────────────
+  // When questionerEnqueue is provided, dispatch question generation
+  // asynchronously to the background QuestionerQueue. This replaces the
+  // inline generator path. Questions will be persisted to DB by the queue
+  // worker and served via GET /api/questions.
+  if (args.questionerEnqueue && args.userId) {
+    const summary = args.graphResult.discoverySummary ?? {
+      totalCandidates: 0,
+      opportunitiesFound: 0,
+      noOpportunityCount: 0,
+      timeoutCount: 0,
+      roleDistribution: {},
+    };
+
+    const enqueueInput = buildDiscoveryQuestionInput({
+      query: args.query,
+      sourceProfile: args.graphResult.sourceProfile ?? null,
+      negotiationDigests: args.negotiationDigests,
+      summary,
+      chatContext,
+      now: new Date().toISOString(),
+    });
+
+    try {
+      await args.questionerEnqueue({
+        mode: 'discovery',
+        userId: args.userId,
+        sourceType: 'discovery',
+        sourceId: args.chatSessionId ?? 'unknown',
+        context: enqueueInput,
+      });
+      logger.info("Question generation enqueued to QuestionerQueue", {
+        userId: args.userId,
+        trigger: args.trigger,
+      });
+    } catch (err) {
+      logger.warn("Failed to enqueue question generation", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return {};
+  }
+
+  // ── Inline generator path (backward compat) ────────────────────────────
+  if (!args.questionGenerator) return {};
 
   const negotiationDigests = args.negotiationDigests;
   const summary = args.graphResult.discoverySummary ?? {

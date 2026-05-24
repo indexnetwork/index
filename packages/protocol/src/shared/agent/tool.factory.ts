@@ -187,6 +187,7 @@ export async function createChatTools(
     apiBaseUrl: deps.apiBaseUrl,
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
     ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
+    ...(deps.questionerEnqueue && { questionerEnqueue: deps.questionerEnqueue }),
     ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
     graphs: {
       profile: profileGraph,

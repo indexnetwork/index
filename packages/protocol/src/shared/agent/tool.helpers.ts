@@ -153,6 +153,25 @@ export interface ToolContext {
   chatMessageWriter?: ChatMessageWriter;
   /** Decision-question generator. Optional; consumers fall back to no `questions`. */
   questionGenerator?: QuestionGeneratorReader;
+  /**
+   * Optional async question enqueue callback. When provided, question generation
+   * is dispatched asynchronously to the QuestionerQueue instead of running inline.
+   * Injected by the composition root when QUESTIONER_ENABLED=true.
+   */
+  questionerEnqueue?: (input: {
+    mode: 'discovery';
+    userId: string;
+    sourceType: string;
+    sourceId: string;
+    context: {
+      query: string;
+      sourceProfile: unknown;
+      negotiationDigests: unknown[];
+      summary: unknown;
+      chatContext?: unknown;
+      now: string;
+    };
+  }) => Promise<void>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /** Profile enrichment from external data sources. */
@@ -408,6 +427,26 @@ export interface ToolDeps {
   chatMessageWriter?: ChatMessageWriter;
   /** Decision-question generator. Optional; consumers fall back to no `questions`. */
   questionGenerator?: QuestionGeneratorReader;
+  /**
+   * Optional async question enqueue callback. When provided, question generation
+   * is dispatched asynchronously to the QuestionerQueue instead of running inline
+   * via the `questionGenerator`. Injected by the composition root when
+   * QUESTIONER_ENABLED=true.
+   */
+  questionerEnqueue?: (input: {
+    mode: 'discovery';
+    userId: string;
+    sourceType: string;
+    sourceId: string;
+    context: {
+      query: string;
+      sourceProfile: unknown;
+      negotiationDigests: unknown[];
+      summary: unknown;
+      chatContext?: unknown;
+      now: string;
+    };
+  }) => Promise<void>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
