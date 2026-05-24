@@ -14,7 +14,6 @@ import { Member } from '@/services/networks';
 import { validateFile } from '@/lib/file-validation';
 import { parseCsvText, type ImportRow, type ParsedCsvResult } from '@/lib/csv-import';
 import CsvPreviewModal from '@/components/modals/CsvPreviewModal';
-import MasterKeyDialog from '@/components/MasterKeyDialog';
 import UserAvatar from '@/components/UserAvatar';
 import GhostBadge from '@/components/GhostBadge';
 import { useNavigate } from 'react-router';
@@ -63,11 +62,6 @@ export default function AccessTab({
   const [csvPreview, setCsvPreview] = useState<ParsedCsvResult | null>(null);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [showCsvModal, setShowCsvModal] = useState(false);
-
-  const [showRotateConfirm, setShowRotateConfirm] = useState(false);
-  const [rotateConfirmationText, setRotateConfirmationText] = useState('');
-  const [isRotating, setIsRotating] = useState(false);
-  const [rotatedMasterKey, setRotatedMasterKey] = useState<string | null>(null);
 
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [contactsPage, setContactsPage] = useState(1);
@@ -253,24 +247,6 @@ export default function AccessTab({
       error('Failed to resend invitation');
     } finally {
       setIsResendInFlight(false);
-    }
-  };
-
-  const handleConfirmRotate = async () => {
-    if (isRotating) return;
-    if (rotateConfirmationText !== network.title) return;
-    setIsRotating(true);
-    try {
-      const result = await networkService.rotateMasterKey(networkId);
-      setShowRotateConfirm(false);
-      setRotateConfirmationText('');
-      setRotatedMasterKey(result.masterKey);
-      success('Master key rotated — old key is now invalid');
-    } catch (err) {
-      console.error('Master key rotation failed', err);
-      error('Failed to rotate master key');
-    } finally {
-      setIsRotating(false);
     }
   };
 
@@ -645,15 +621,6 @@ export default function AccessTab({
           columns={csvPreview.columns}
           hasEmailColumn={csvPreview.hasEmailColumn}
           onConfirm={handleCsvConfirm}
-        />
-      )}
-
-      {/* Rotated master key display */}
-      {rotatedMasterKey && (
-        <MasterKeyDialog
-          open={!!rotatedMasterKey}
-          masterKey={rotatedMasterKey}
-          onClose={() => setRotatedMasterKey(null)}
         />
       )}
     </>

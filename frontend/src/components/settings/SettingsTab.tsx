@@ -172,8 +172,8 @@ export default function SettingsTab({
       error('Start date and end date are required');
       return;
     }
-    if (endDate <= startDate) {
-      error('End date must be after start date');
+    if (endDate < startDate) {
+      error('End date must be on or after start date');
       return;
     }
     try {
