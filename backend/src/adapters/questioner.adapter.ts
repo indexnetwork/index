@@ -21,7 +21,7 @@ import type { DrizzleDB } from '../lib/drizzle/drizzle';
 
 /** Detection context describing how/where a question was generated. */
 export interface AdapterQuestionDetection {
-  mode: string;
+  mode: 'discovery' | 'intent' | 'profile' | 'negotiation';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
