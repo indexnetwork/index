@@ -53,6 +53,7 @@ import { profileQueue } from './queues/profile.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { integrationSyncQueue } from './queues/integration.queue';
+import { questionerQueue } from './queues/questioner.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { NegotiationEvents } from './events/negotiation.event';
@@ -121,6 +122,9 @@ emailQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
 integrationSyncQueue.startWorker();
+if (process.env.QUESTIONER_ENABLED === 'true') {
+  questionerQueue.startWorker();
+}
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
