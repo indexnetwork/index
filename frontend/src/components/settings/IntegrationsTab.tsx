@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { RotateCw } from 'lucide-react';
 
@@ -73,6 +73,9 @@ export default function IntegrationsTab({
   const [connections, setConnections] = useState<ComposioConnection[]>([]);
   const [connectionsLoaded, setConnectionsLoaded] = useState(false);
   const [pendingToolkit, setPendingToolkit] = useState<string | null>(null);
+  const oauthCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => { oauthCleanupRef.current?.(); }, []);
 
   const [showRotateConfirm, setShowRotateConfirm] = useState(false);
   const [rotateConfirmationText, setRotateConfirmationText] = useState('');
@@ -182,12 +185,19 @@ export default function IntegrationsTab({
         if (popup?.closed) {
           clearInterval(checkClosed);
           window.removeEventListener('message', onMessage);
+          oauthCleanupRef.current = null;
           if (!oauthSucceeded) {
             loadConnections();
             setPendingToolkit(null);
           }
         }
       }, 1000);
+
+      oauthCleanupRef.current = () => {
+        window.removeEventListener('message', onMessage);
+        clearInterval(checkClosed);
+        popup?.close();
+      };
     } catch {
       error(`Failed to connect ${toolkitLabel(toolkit)}`);
       setPendingToolkit(null);

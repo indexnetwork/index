@@ -149,9 +149,10 @@ export default function AccessTab({
   };
 
   const handleCopyLink = async () => {
+    if (!anyoneCanJoin && !invitationLink?.code) return;
     const url = anyoneCanJoin
       ? `${window.location.origin}/index/${networkId}`
-      : `${window.location.origin}/l/${invitationLink?.code}`;
+      : `${window.location.origin}/l/${invitationLink!.code}`;
     try {
       await navigator.clipboard.writeText(url);
       setIsCopied(true);
