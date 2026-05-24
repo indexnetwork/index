@@ -32,6 +32,7 @@ const toolkitLabel = (t: string) => TOOLKIT_LABELS[t] ?? t;
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
+  if (!Number.isFinite(then)) return 'Unknown';
   const diffMs = now - then;
   if (diffMs < 0) return 'just now';
   const seconds = Math.floor(diffMs / 1000);
