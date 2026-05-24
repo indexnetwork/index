@@ -31,7 +31,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
       "('I am', 'I work at', 'I just joined', 'I am currently'). Do not infer premises from vague " +
       "statements — only create them when the user is clearly asserting something about themselves.",
     querySchema: z.object({
-      text: z.string().min(1).describe("The premise text — a self-descriptive proposition in first person, e.g. 'I am a machine learning researcher at MIT'."),
+      text: z.string().trim().min(1).describe("The premise text — a self-descriptive proposition in first person, e.g. 'I am a machine learning researcher at MIT'."),
       tier: z.enum(["assertive", "contextual"]).default("assertive").describe("Tier of the premise. 'assertive' = stable identity fact. 'contextual' = temporal/situational. Defaults to 'assertive'."),
       validFrom: z.string().datetime().optional().describe("ISO 8601 date-time string for when this premise becomes valid. Omit for immediate."),
       validUntil: z.string().datetime().optional().describe("ISO 8601 date-time string for when this premise expires. Recommended for contextual premises with a known end date; omit if open-ended."),
@@ -144,7 +144,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
       "Requires the premise ID — call read_premises first if you don't have it.",
     querySchema: z.object({
       premiseId: z.string().describe("UUID of the premise to update. Get from read_premises."),
-      text: z.string().optional().describe("New assertion text. Triggers re-analysis and re-embedding when provided."),
+      text: z.string().trim().min(1).optional().describe("New assertion text. Triggers re-analysis and re-embedding when provided."),
       validFrom: z.string().datetime().optional().describe("New ISO 8601 valid-from date-time."),
       validUntil: z.string().datetime().optional().describe("New ISO 8601 valid-until date-time."),
       volatile: z.boolean().optional().describe("Update the volatile flag."),
@@ -152,11 +152,6 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
     handler: async ({ context, query }) => {
       if (!UUID_REGEX.test(query.premiseId)) {
         return error("Invalid premiseId format.");
-      }
-
-      // Reject blank text when explicitly provided
-      if (query.text !== undefined && !query.text.trim()) {
-        return error("Premise text cannot be empty.");
       }
 
       const existing = await database.getPremise(query.premiseId);
