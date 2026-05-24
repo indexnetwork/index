@@ -374,7 +374,18 @@ export class NetworkController {
     }
     try {
       await assertAgentNetworkScope(req, params.id);
-      const role = body.permissions?.includes('owner') ? 'owner' as const : 'member' as const;
+      let role: 'owner' | 'member' = 'member';
+      if (body.permissions) {
+        const isOwnerRole = body.permissions.length === 1 && body.permissions[0] === 'owner';
+        const isMemberRole = body.permissions.length === 1 && body.permissions[0] === 'member';
+        if (!isOwnerRole && !isMemberRole) {
+          return new Response(JSON.stringify({ error: "permissions must be exactly ['owner'] or ['member']" }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        role = isOwnerRole ? 'owner' : 'member';
+      }
       const result = await networkService.addMember(params.id, body.userId, user.id, role);
       return Response.json({ member: result.member, message: result.alreadyMember ? 'Already a member' : 'Member added' });
     } catch (err: unknown) {
