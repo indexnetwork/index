@@ -160,13 +160,23 @@ export class NetworkService {
   }
 
   /**
-   * Add a member to an index. Only owners/admins can add members.
+   * Add a member to an index. Owner-only.
    * @throws Error if the index is a personal index.
    */
-  async addMember(networkId: string, userId: string, requestingUserId: string, role: 'admin' | 'member' = 'member') {
+  async addMember(networkId: string, userId: string, requestingUserId: string, role: 'owner' | 'member' = 'member') {
     logger.verbose('[NetworkService] Adding member', { networkId, userId, role });
     await this.assertNotPersonal(networkId);
-    return this.adapter.addMemberForOwnerOrAdmin(networkId, userId, requestingUserId, role);
+    return this.adapter.addMemberForOwner(networkId, userId, requestingUserId, role);
+  }
+
+  /**
+   * Update a member's role (owner ↔ member). Owner-only.
+   * @throws Error if the index is personal, member not found, or last owner.
+   */
+  async updateMemberRole(networkId: string, targetUserId: string, requestingUserId: string, role: 'owner' | 'member') {
+    logger.verbose('[NetworkService] Updating member role', { networkId, targetUserId, role });
+    await this.assertNotPersonal(networkId);
+    return this.adapter.updateMemberRole(networkId, targetUserId, requestingUserId, role);
   }
 
   /**

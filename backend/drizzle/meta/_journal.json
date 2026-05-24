@@ -519,6 +519,13 @@
       "when": 1779648000000,
       "tag": "0073_add_questions_table",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1779820800000,
+      "tag": "0074_promote_admins_to_owners",
+      "breakpoints": true
     }
   ]
 }

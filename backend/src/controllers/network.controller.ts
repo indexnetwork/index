@@ -360,7 +360,7 @@ export class NetworkController {
   }
 
   /**
-   * Add a member to a network. Owner/admin-only.
+   * Add a member to a network. Owner-only.
    */
   @Post('/:id/members')
   @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
@@ -374,7 +374,7 @@ export class NetworkController {
     }
     try {
       await assertAgentNetworkScope(req, params.id);
-      const role = body.permissions?.includes('admin') ? 'admin' as const : 'member' as const;
+      const role = body.permissions?.includes('owner') ? 'owner' as const : 'member' as const;
       const result = await networkService.addMember(params.id, body.userId, user.id, role);
       return Response.json({ member: result.member, message: result.alreadyMember ? 'Already a member' : 'Member added' });
     } catch (err: unknown) {
@@ -382,6 +382,50 @@ export class NetworkController {
       if (msg.includes('Access denied')) {
         return new Response(JSON.stringify({ error: msg }), {
           status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Update a member's role. Owner-only.
+   * Accepts { permissions: ['owner'] } or { permissions: ['member'] }.
+   */
+  @Patch('/:id/members/:memberId')
+  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  async updateMemberRole(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    const body = await req.json().catch(() => ({})) as { permissions?: string[] };
+    if (!body.permissions || !Array.isArray(body.permissions)) {
+      return new Response(JSON.stringify({ error: 'permissions array is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const role = body.permissions.includes('owner') ? 'owner' as const : 'member' as const;
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      const result = await networkService.updateMemberRole(params.id, params.memberId, user.id, role);
+      logger.verbose('Member role updated', { networkId: params.id, memberId: params.memberId, role });
+      return Response.json({ member: result.member, message: 'Role updated' });
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (msg === 'Member not found') {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (msg === 'Cannot demote the last owner' || msg === 'Cannot change role of a contact') {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
       }
