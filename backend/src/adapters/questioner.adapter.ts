@@ -178,18 +178,14 @@ export class QuestionerAdapter {
       .where(ownershipCheck);
 
     const detection = existing.detection as AdapterQuestionDetection;
-    const actors = existing.actors as AdapterQuestionActor[];
-    const firstActor = actors[0];
-    if (firstActor) {
-      QuestionEvents.onAnswered({
-        questionId,
-        userId: firstActor.userId,
-        mode: detection.mode,
-        sourceType: detection.sourceType,
-        sourceId: detection.sourceId,
-        answer,
-      });
-    }
+    QuestionEvents.onAnswered({
+      questionId,
+      userId,
+      mode: detection.mode,
+      sourceType: detection.sourceType,
+      sourceId: detection.sourceId,
+      answer,
+    });
 
     return true;
   }

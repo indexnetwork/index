@@ -85,7 +85,7 @@ describe('QuestionerAdapter', () => {
     const pending = await adapter.findPending('test-user-1');
     expect(pending.length).toBeGreaterThan(0);
     const questionId = pending[0].id;
-    await adapter.answer(questionId, {
+    await adapter.answer(questionId, 'test-user-1', {
       selectedOptions: ['Early'],
       answeredBy: 'test-user-1',
       answeredAt: new Date().toISOString(),
@@ -100,7 +100,7 @@ describe('QuestionerAdapter', () => {
     const pending = await adapter.findPending('test-user-1');
     expect(pending.length).toBeGreaterThan(0);
     const questionId = pending[0].id;
-    await adapter.dismiss(questionId);
+    await adapter.dismiss(questionId, 'test-user-1');
     const after = await adapter.findPending('test-user-1');
     const dismissed = after.find((q) => q.id === questionId);
     expect(dismissed).toBeUndefined();

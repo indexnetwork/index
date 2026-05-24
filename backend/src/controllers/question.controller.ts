@@ -58,9 +58,11 @@ export class QuestionController {
     }
     const status = statusResult.data;
 
-    // Currently only pending queries are supported via the adapter
     if (status !== 'pending') {
-      return Response.json({ questions: [] });
+      return Response.json(
+        { error: 'Only status=pending is currently supported' },
+        { status: 400 },
+      );
     }
 
     const filters: AdapterQuestionFilters = {};
