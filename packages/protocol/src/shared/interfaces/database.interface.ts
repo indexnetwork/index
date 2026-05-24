@@ -265,6 +265,51 @@ export interface NetworkMembership {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PREMISE TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface PremiseAssertion {
+  text: string;
+  tier: 'assertive' | 'contextual';
+  summary?: string;
+}
+
+export interface PremiseProvenance {
+  source: 'explicit' | 'enrichment' | 'integration' | 'onboarding';
+  sourceId?: string;
+  confidence: number;
+  timestamp: string;
+}
+
+export interface PremiseAnalysis {
+  speechActType: 'DECLARATIVE' | 'ASSERTIVE';
+  felicityAuthority: number;
+  felicitySincerity: number;
+  felicityClarity: number;
+  semanticEntropy: number;
+}
+
+export interface PremiseValidity {
+  validFrom?: string;
+  validUntil?: string;
+  volatile: boolean;
+}
+
+export interface PremiseRecord {
+  id: string;
+  userId: string;
+  assertion: PremiseAssertion;
+  provenance: PremiseProvenance;
+  analysis: PremiseAnalysis | null;
+  validity: PremiseValidity;
+  embedding: number[] | null;
+  status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+  createdAt: Date;
+  updatedAt: Date;
+  retractedAt: Date | null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // INDEX OWNERSHIP TYPES
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1353,6 +1398,34 @@ export interface Database {
 
   /** Find a user by email. */
   getUserByEmail(email: string): Promise<{ id: string; name: string; email: string; isGhost: boolean } | null>;
+
+  // ─── Premise operations ──────────────────────────────────────────────────────
+
+  createPremise(input: {
+    userId: string;
+    assertion: PremiseAssertion;
+    provenance: PremiseProvenance;
+    analysis?: PremiseAnalysis;
+    validity: PremiseValidity;
+    embedding?: number[];
+  }): Promise<PremiseRecord>;
+
+  getPremise(premiseId: string): Promise<PremiseRecord | null>;
+
+  getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<PremiseRecord[]>;
+
+  updatePremise(premiseId: string, updates: {
+    assertion?: PremiseAssertion;
+    analysis?: PremiseAnalysis;
+    validity?: PremiseValidity;
+    embedding?: number[];
+    status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    retractedAt?: Date;
+  }): Promise<PremiseRecord>;
+
+  assignPremiseToNetwork(premiseId: string, networkId: string, relevancyScore: number): Promise<void>;
+
+  getPremiseNetworks(premiseId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1747,6 +1820,17 @@ export interface SystemDatabase {
 export type ProfileGraphDatabase = Pick<
   Database,
   'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getHydeDocument' | 'saveHydeDocument' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials'
+>;
+
+/**
+ * Database interface narrowed for Premise Graph operations.
+ * Provides premise lifecycle: create, read, update, and network assignment.
+ *
+ * Access layer: UserDatabase (user's own premises)
+ */
+export type PremiseGraphDatabase = Pick<
+  Database,
+  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext'
 >;
 
 /**

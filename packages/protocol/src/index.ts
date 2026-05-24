@@ -102,6 +102,7 @@ export type {
 export { NegotiationGraphFactory, createDefaultNegotiationGraph, negotiateCandidates } from "./negotiation/negotiation.graph.js";
 export { OpportunityGraphFactory } from "./opportunity/opportunity.graph.js";
 export { ProfileGraphFactory } from "./profile/profile.graph.js";
+export { PremiseGraphFactory } from "./premise/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
@@ -114,6 +115,10 @@ export type { SuggestionGeneratorInput } from "./chat/chat.suggester.js";
 export { generateInviteMessage } from "./contact/contact.inviter.js";
 export type { InviteInput, InviteOutput } from "./contact/contact.inviter.js";
 export { IntentIndexer } from "./intent/intent.indexer.js";
+export { PremiseAnalyzer } from "./premise/premise.analyzer.js";
+export type { PremiseAnalyzerOutput } from "./premise/premise.analyzer.js";
+export { PremiseIndexer } from "./premise/premise.indexer.js";
+export type { PremiseIndexerOutput } from "./premise/premise.indexer.js";
 export { LensInferrer } from "./shared/hyde/lens.inferrer.js";
 export { NegotiationInsightsGenerator } from "./negotiation/insight.generator.js";
 export type { NegotiationDigest } from "./negotiation/insight.generator.js";
