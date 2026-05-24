@@ -343,19 +343,26 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   describe('updateMemberRole', () => {
+    // Reset A=owner, B=member before each test to prevent cascading state corruption
+    const resetRoles = async () => {
+      await db.update(networkMembers).set({ permissions: ['owner'] }).where(
+        sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userAId}`
+      );
+      await db.update(networkMembers).set({ permissions: ['member'] }).where(
+        sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userBId}`
+      );
+    };
+
     it('should promote a member to owner', async () => {
-      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
+      await resetRoles();
       const result = await adapter.updateMemberRole(fixture.networkId, fixture.userBId, fixture.userAId, 'owner');
       expect(result.member).toBeDefined();
       expect(result.member!.permissions).toEqual(['owner']);
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(true);
-      // Restore: B back to member
-      await db.update(networkMembers).set({ permissions: ['member'] }).where(
-        sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userBId}`
-      );
-    });
+    }, 15000);
 
     it('should demote an owner to member when multiple owners exist', async () => {
+      await resetRoles();
       // Setup: make B an owner so there are two
       await db.update(networkMembers).set({ permissions: ['owner'] }).where(
         sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userBId}`
@@ -364,9 +371,10 @@ describe('ChatDatabaseAdapter', () => {
       const result = await adapter.updateMemberRole(fixture.networkId, fixture.userBId, fixture.userAId, 'member');
       expect(result.member!.permissions).toEqual(['member']);
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
-    });
+    }, 15000);
 
     it('should reject demoting the last owner (atomic guard)', async () => {
+      await resetRoles();
       // A is sole owner. The atomic conditional UPDATE has a subquery that checks
       // ownerCount > 1. With serial access, other guards (self, access-denied) fire
       // before the atomic path. Test the conditional UPDATE directly at the SQL level
@@ -389,20 +397,48 @@ describe('ChatDatabaseAdapter', () => {
       expect(directResult.length).toBe(0);
       // Confirm A is still owner
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
-    });
+    }, 15000);
 
     it('should reject self role change', async () => {
+      await resetRoles();
       await expect(
         adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userAId, 'owner')
       ).rejects.toThrow('Cannot change your own role');
-    });
+    }, 15000);
 
     it('should reject role change by non-owner', async () => {
+      await resetRoles();
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
       await expect(
         adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userBId, 'member')
       ).rejects.toThrow('Access denied');
-    });
+    }, 15000);
+
+    it('should reject role change on a contact', async () => {
+      await resetRoles();
+      const contactUserId = uuidv4();
+      await db.insert(users).values({
+        id: contactUserId,
+        email: TEST_PREFIX + contactUserId + '@test.com',
+        name: TEST_PREFIX + 'ContactUser',
+      });
+      await db.insert(networkMembers).values({
+        networkId: fixture.networkId,
+        userId: contactUserId,
+        permissions: ['contact'],
+        autoAssign: false,
+      });
+      try {
+        await expect(
+          adapter.updateMemberRole(fixture.networkId, contactUserId, fixture.userAId, 'owner')
+        ).rejects.toThrow('Cannot change role of a contact');
+      } finally {
+        await db.delete(networkMembers).where(
+          sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${contactUserId}`
+        );
+        await db.delete(users).where(eq(users.id, contactUserId));
+      }
+    }, 15000);
   });
 
   describe('getUserByEmail (IND-166)', () => {

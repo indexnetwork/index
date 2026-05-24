@@ -1061,7 +1061,7 @@ export interface Database {
    *
    * @param networkId - The network to add to
    * @param userId - The user to add
-   * @param role - owner | admin | member
+   * @param role - owner | member
    * @returns success and optionally alreadyMember if they were already in the network
    */
   addMemberToNetwork(

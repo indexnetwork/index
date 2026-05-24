@@ -498,6 +498,8 @@ export default function AccessTab({
                 {!member.permissions.includes('owner') && member.permissions.includes('member') && member.id !== currentUser?.id && (
                   <Tooltip content="Promote to owner">
                     <button
+                      type="button"
+                      aria-label="Promote to owner"
                       onClick={() => setRoleChangeTarget({ member, newRole: 'owner' })}
                       className="hidden group-hover:block p-1 text-gray-300 hover:text-gray-900 transition-colors flex-shrink-0"
                     >
@@ -509,6 +511,8 @@ export default function AccessTab({
                 {member.permissions.includes('owner') && member.id !== currentUser?.id && (
                   <Tooltip content="Demote to member">
                     <button
+                      type="button"
+                      aria-label="Demote to member"
                       onClick={() => setRoleChangeTarget({ member, newRole: 'member' })}
                       className="hidden group-hover:block p-1 text-gray-300 hover:text-gray-900 transition-colors flex-shrink-0"
                     >
