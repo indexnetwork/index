@@ -20,9 +20,6 @@ const STEPS: Step[] = [
     line: "In natural language — the raw stuff, not a polished pitch",
     example: (
       <div className="ex-card cli-card">
-        <div className="ex-head">
-          <span className="ex-tag">› intent</span>
-        </div>
         <div className="cli-body">
           <div className="cli-line">
             <span className="cli-prompt">$</span>
@@ -42,15 +39,7 @@ const STEPS: Step[] = [
     line: "Expands your shorthand into the kind of people worth meeting — privately, on-device",
     example: (
       <div className="ex-card cli-card">
-        <div className="ex-head">
-          <span className="ex-tag">› agent.understand</span>
-          <span className="ex-meta">local · private</span>
-        </div>
         <div className="cli-body">
-          <div className="cli-line">
-            <span className="cli-prompt">$</span>
-            <span className="cli-cmd">agent.understand --local</span>
-          </div>
           <div className="cli-output">
             <div className="cli-comment">
               <span className="cli-hash">#</span> user is heading to SF for a week.
@@ -84,14 +73,11 @@ const STEPS: Step[] = [
     line: "Wake up and decide who's worth a conversation",
     example: (
       <div className="ex-card cli-card">
-        <div className="ex-head">
-          <span className="ex-tag">› opportunities</span>
-          <span className="ex-meta">3 surfaced</span>
-        </div>
         <div className="cli-body">
-          <div className="cli-line">
-            <span className="cli-prompt">$</span>
-            <span className="cli-cmd">index opportunities --inbox</span>
+          <div className="cli-output">
+            <div className="cli-comment">
+              <span className="cli-hash">#</span> I found 3 opportunities based on your active signals:
+            </div>
           </div>
           <ul className="cli-list">
             <li>
@@ -126,16 +112,11 @@ const STEPS: Step[] = [
     line: "For once, you're excited about Mondays again",
     example: (
       <div className="ex-card cli-card">
-        <div className="ex-head">
-          <span className="ex-tag">› ambient · 2 days later</span>
-          <span className="ex-meta">digest · 06:00</span>
-        </div>
         <div className="cli-body">
-          <div className="cli-line">
-            <span className="cli-prompt">$</span>
-            <span className="cli-cmd">digest --ambient</span>
-          </div>
           <div className="cli-output">
+            <div className="cli-comment">
+              <span className="cli-hash">#</span> 2 days later — a new signal surfaced from the ambient stream:
+            </div>
             <div className="cli-narrative">
               <span className="cli-plus">+</span> sarah just joined the network. her intent overlaps yours —
               she&apos;s looking for an infra cofounder, ex-anthropic, nyc.
@@ -165,7 +146,7 @@ const SURFACE_TABS: SurfaceTab[] = [
     id: "cli",
     kind: "CLI",
     label: "cli",
-    blurb: "Terminal-native intents. Write what you want, get warm intros.",
+    blurb: "Command-line interface for Index Network. Chat with the AI agent, manage signals, and discover opportunities — all from your terminal.",
     steps: [
       { num: "1", title: "install", cmd: "npm install -g @indexnetwork/cli" },
     ],
@@ -444,12 +425,6 @@ function NegotiationStream() {
 
   return (
     <div className="ex-card ex-nego">
-      <div className="ex-head">
-        <span className="ex-tag">› negotiation_stream</span>
-        <span className="ex-meta">
-          <span className="ex-pulse" /> live · last 24h
-        </span>
-      </div>
       <div className="ex-log ex-log-stream">
         {items.map((item) => (
           <div className="ex-log-row" key={item.id}>
