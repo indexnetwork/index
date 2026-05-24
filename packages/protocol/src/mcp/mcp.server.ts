@@ -248,7 +248,7 @@ export const applyNetworkScopeToContext = (
  * (register_agent, read_docs, scrape_url) because they are informational /
  * registration primitives needed at every lifecycle stage.
  */
-export const ONBOARDING_ALLOWED = new Set([
+export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
   'register_agent',
   'read_docs',
   'scrape_url',
@@ -278,12 +278,12 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     ? `5. (Skipped — user is already in "${ctx.indexName ?? 'their community'}".)`
     : `5. Call read_networks() and let the user pick communities to join via create_network_membership(networkId=...).`;
 
+  const allowedList = Array.from(ONBOARDING_ALLOWED).join(', ');
+
   return (
     `This user has not completed onboarding. You must guide them through setup before they can use other tools. ` +
     `Only the following tools are available until onboarding is complete: ` +
-    `create_user_profile, complete_onboarding, import_gmail_contacts, read_networks, ` +
-    `create_network_membership, create_intent, discover_opportunities, read_user_profiles, ` +
-    `register_agent, read_docs, scrape_url.\n\n` +
+    `${allowedList}.\n\n` +
     `Onboarding flow:\n` +
     `${nameStep}\n` +
     `2. Present the profile summary and ask "Does that sound right?"\n` +
