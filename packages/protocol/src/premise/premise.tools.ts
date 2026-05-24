@@ -31,7 +31,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
       "('I am', 'I work at', 'I just joined', 'I am currently'). Do not infer premises from vague " +
       "statements — only create them when the user is clearly asserting something about themselves.",
     querySchema: z.object({
-      text: z.string().describe("The premise text — a self-descriptive proposition in first person, e.g. 'I am a machine learning researcher at MIT'."),
+      text: z.string().min(1).describe("The premise text — a self-descriptive proposition in first person, e.g. 'I am a machine learning researcher at MIT'."),
       tier: z.enum(["assertive", "contextual"]).default("assertive").describe("Tier of the premise. 'assertive' = stable identity fact. 'contextual' = temporal/situational. Defaults to 'assertive'."),
       validFrom: z.string().datetime().optional().describe("ISO 8601 date-time string for when this premise becomes valid. Omit for immediate."),
       validUntil: z.string().datetime().optional().describe("ISO 8601 date-time string for when this premise expires. Recommended for contextual premises with a known end date; omit if open-ended."),
@@ -89,13 +89,13 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Usage modes:**\n" +
       "- No parameters: returns the caller's own active premises.\n" +
       "- With `userId`: returns that user's premises (use when reviewing another member's context).\n" +
-      "- With `includeRetracted: true`: includes retracted (soft-deleted) premises for history review.\n\n" +
+      "- With `includeRetracted: true`: returns all premises regardless of status (active, retracted, expired) for history review.\n\n" +
       "**When to use:** Call before creating a premise to check if it already exists. " +
       "Call when the user asks what they have shared about themselves, or to review their current context. " +
       "Each premise includes: id, text, tier, status, analysis summary, and validity range.",
     querySchema: z.object({
       userId: z.string().optional().describe("User ID to fetch premises for. Omit to fetch the current user's own premises."),
-      includeRetracted: z.boolean().default(false).describe("When true, includes retracted premises alongside active ones. Defaults to false (active only)."),
+      includeRetracted: z.boolean().default(false).describe("When true, returns all premises regardless of status (active, retracted, expired). Defaults to false (active only)."),
     }),
     handler: async ({ context, query }) => {
       const targetUserId = query.userId?.trim() || context.userId;
@@ -150,12 +150,13 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
       volatile: z.boolean().optional().describe("Update the volatile flag."),
     }),
     handler: async ({ context, query }) => {
-      if (!premiseGraph) {
-        return error("Premise graph not available.");
-      }
-
       if (!UUID_REGEX.test(query.premiseId)) {
         return error("Invalid premiseId format.");
+      }
+
+      // Reject blank text when explicitly provided
+      if (query.text !== undefined && !query.text.trim()) {
+        return error("Premise text cannot be empty.");
       }
 
       const existing = await database.getPremise(query.premiseId);
@@ -174,7 +175,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
       // When text is unchanged, skip the graph (avoids unnecessary LLM
       // re-analysis and non-deterministic re-embedding). Only route through
       // the graph when the assertion text actually changes.
-      if (!query.text) {
+      if (query.text === undefined) {
         const hasValidityChange =
           query.validFrom !== undefined ||
           query.validUntil !== undefined ||
@@ -200,6 +201,11 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
           status: updated.status,
           message: "Premise updated successfully (metadata only, no re-analysis).",
         });
+      }
+
+      // Text change requires the graph for re-analysis and re-embedding
+      if (!premiseGraph) {
+        return error("Premise graph not available.");
       }
 
       const result = await premiseGraph.invoke({

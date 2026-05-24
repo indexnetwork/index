@@ -31,7 +31,7 @@ function makeDeps(overrides?: {
   premiseGraph?: { invoke: (...args: unknown[]) => Promise<unknown> } | undefined;
   getPremise?: (id: string) => Promise<unknown>;
   getPremisesForUser?: (userId: string, status?: string) => Promise<unknown[]>;
-  updatePremise?: (id: string, data: unknown) => Promise<void>;
+  updatePremise?: (id: string, data: unknown) => Promise<unknown>;
 }) {
   // Use `in` to distinguish "not provided" from "explicitly undefined"
   const hasPremiseGraph = overrides != null && 'premiseGraph' in overrides;
@@ -367,9 +367,12 @@ describe('createPremiseTools - update_premise', () => {
     expect(result.error).toContain('update graph failed');
   });
 
-  it('returns error when premise graph is not available', async () => {
+  it('returns error when premise graph is not available for text updates', async () => {
     const { defineTool, call } = makeDefineTool();
-    createPremiseTools(defineTool, makeDeps({ premiseGraph: undefined }));
+    createPremiseTools(defineTool, makeDeps({
+      getPremise: async () => existingPremise,
+      premiseGraph: undefined,
+    }));
 
     const result = await call('update_premise', { premiseId, text: 'new text' }) as { success: boolean; error: string };
 
@@ -415,6 +418,27 @@ describe('createPremiseTools - update_premise', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('No fields to update');
+  });
+
+  it('metadata-only update succeeds even without a graph', async () => {
+    const { defineTool, call } = makeDefineTool();
+    createPremiseTools(defineTool, makeDeps({
+      getPremise: async () => existingPremise,
+      updatePremise: async () => ({
+        id: premiseId,
+        assertion: existingPremise.assertion,
+        status: 'ACTIVE',
+      }),
+      premiseGraph: undefined,
+    }));
+
+    const result = await call('update_premise', {
+      premiseId,
+      volatile: true,
+    }) as { success: boolean; data: { id: string; message: string } };
+
+    expect(result.success).toBe(true);
+    expect(result.data.message).toContain('metadata only');
   });
 });
 
