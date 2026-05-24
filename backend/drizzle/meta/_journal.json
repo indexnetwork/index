@@ -512,6 +512,13 @@
       "when": 1779647527717,
       "tag": "0072_add_premises_deleted_at",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1779648000000,
+      "tag": "0073_add_questions_table",
+      "breakpoints": true
     }
   ]
 }

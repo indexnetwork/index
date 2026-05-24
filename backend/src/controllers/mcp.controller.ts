@@ -27,6 +27,8 @@ import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
+import { QuestionerAdapter } from '../adapters/questioner.adapter';
+import db from '../lib/drizzle/drizzle';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
@@ -58,6 +60,7 @@ const integration = new ComposioIntegrationAdapter();
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
 const questionGeneratorService = new QuestionGeneratorService();
+const questionerAdapter = new QuestionerAdapter(db);
 const negotiationSummaryService = new NegotiationSummaryService();
 const integrationImporter = new IntegrationService(integration, contactService);
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
@@ -114,6 +117,7 @@ const protocolDeps = {
   mintConnectLink,
   frontendUrl: process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'https://index.network',
   apiBaseUrl,
+  questionerDatabase: questionerAdapter,
 };
 
 const chatSessionReader = {
