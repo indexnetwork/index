@@ -196,7 +196,7 @@ export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 
 // ─── MCP ──────────────────────────────────────────────────────────────────────
 
-export { createMcpServer, computeAgentIndexScope } from "./mcp/mcp.server.js";
+export { createMcpServer, computeAgentIndexScope, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./mcp/mcp.server.js";
 export type { ScopedDepsFactory } from "./mcp/mcp.server.js";
 export { buildElicitationCreate, flattenChoice } from "./mcp/elicitation.builder.js";
 export { dispatchElicitations } from "./mcp/elicitation.dispatcher.js";

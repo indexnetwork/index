@@ -243,6 +243,59 @@ export const applyNetworkScopeToContext = (
 };
 
 /**
+ * Tools allowed during onboarding — everything else is gated until
+ * complete_onboarding is called.  Includes the agent-gate-exempt tools
+ * (register_agent, read_docs, scrape_url) because they are informational /
+ * registration primitives needed at every lifecycle stage.
+ */
+export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
+  'register_agent',
+  'read_docs',
+  'scrape_url',
+  'create_user_profile',
+  'complete_onboarding',
+  'import_gmail_contacts',
+  'read_networks',
+  'create_network_membership',
+  'create_intent',
+  'discover_opportunities',
+  'read_user_profiles',
+]);
+
+/**
+ * Builds the onboarding gate message for MCP callers.  Condensed from the
+ * chat orchestrator's 8-step flow (chat.prompt.ts buildOnboarding) into a
+ * 7-step tool-error guide suited for non-interactive MCP clients.
+ */
+export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
+  const nameStep = ctx.hasName
+    ? `1. Greet the user and confirm their name ("You're ${ctx.userName}, right?"). ` +
+      `Then call create_user_profile() with no arguments to look them up.`
+    : `1. Ask the user for their name (and optionally LinkedIn/Twitter/GitHub). ` +
+      `Call create_user_profile(name="...", linkedinUrl="...", ...) with whatever they provide.`;
+
+  const communityStep = ctx.networkId
+    ? `5. (Skipped — user is already in "${ctx.indexName ?? 'their community'}".)`
+    : `5. Call read_networks() and let the user pick communities to join via create_network_membership(networkId=...).`;
+
+  const allowedList = Array.from(ONBOARDING_ALLOWED).join(', ');
+
+  return (
+    `This user has not completed onboarding. You must guide them through setup before they can use other tools. ` +
+    `Only the following tools are available until onboarding is complete: ` +
+    `${allowedList}.\n\n` +
+    `Onboarding flow:\n` +
+    `${nameStep}\n` +
+    `2. Present the profile summary and ask "Does that sound right?"\n` +
+    `3. On confirmation, call create_user_profile(confirm=true) to save.\n` +
+    `4. Call import_gmail_contacts() for Gmail connect (user may skip).\n` +
+    `${communityStep}\n` +
+    `6. Ask what the user is looking for and call create_intent(description="...").\n` +
+    `7. Call discover_opportunities(searchQuery="...") then call complete_onboarding() to finish setup.`
+  );
+}
+
+/**
  * Creates an MCP server with all protocol tools registered.
  * Tools resolve auth per-request via the HTTP request available in ServerContext.
  *
@@ -378,6 +431,24 @@ export function createMcpServer(
                     'You must register as an agent before using Index tools. ' +
                     'Call register_agent with your agent name to establish an identity. ' +
                     'The tools register_agent, read_docs, and scrape_url are available without registration.',
+                }),
+              }],
+              isError: true,
+            };
+          }
+
+          // Gate: non-onboarded users can only use onboarding-related tools.
+          // Mirrors the chat orchestrator's ONBOARDING MODE — the MCP client must
+          // walk the user through profile creation, Gmail connect, intent capture,
+          // and complete_onboarding() before full tool access is granted.
+          if (context.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
+            const onboardingSteps = buildMcpOnboardingMessage(context);
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                  error: 'Onboarding required',
+                  message: onboardingSteps,
                 }),
               }],
               isError: true,
