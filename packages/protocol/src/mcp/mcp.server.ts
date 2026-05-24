@@ -243,11 +243,31 @@ export const applyNetworkScopeToContext = (
 };
 
 /**
- * Builds the onboarding gate message for MCP callers. Mirrors the chat
- * orchestrator's ONBOARDING MODE prompt (chat.prompt.ts buildOnboarding)
- * adapted for tool-call error context.
+ * Tools allowed during onboarding — everything else is gated until
+ * complete_onboarding is called.  Includes the agent-gate-exempt tools
+ * (register_agent, read_docs, scrape_url) because they are informational /
+ * registration primitives needed at every lifecycle stage.
  */
-function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
+export const ONBOARDING_ALLOWED = new Set([
+  'register_agent',
+  'read_docs',
+  'scrape_url',
+  'create_user_profile',
+  'complete_onboarding',
+  'import_gmail_contacts',
+  'read_networks',
+  'create_network_membership',
+  'create_intent',
+  'discover_opportunities',
+  'read_user_profiles',
+]);
+
+/**
+ * Builds the onboarding gate message for MCP callers.  Condensed from the
+ * chat orchestrator's 8-step flow (chat.prompt.ts buildOnboarding) into a
+ * 7-step tool-error guide suited for non-interactive MCP clients.
+ */
+export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
   const nameStep = ctx.hasName
     ? `1. Greet the user and confirm their name ("You're ${ctx.userName}, right?"). ` +
       `Then call create_user_profile() with no arguments to look them up.`
@@ -347,20 +367,6 @@ export function createMcpServer(
 ): McpServer {
   // Tools exempt from the agent-registration gate — available before registration is complete.
   const AGENT_GATE_EXEMPT = new Set(['register_agent', 'read_docs', 'scrape_url']);
-
-  // Tools allowed during onboarding — everything else is gated until complete_onboarding is called.
-  // Mirrors the chat orchestrator's onboarding flow (steps 1–8 in chat.prompt.ts buildOnboarding).
-  const ONBOARDING_ALLOWED = new Set([
-    ...AGENT_GATE_EXEMPT,
-    'create_user_profile',     // steps 1–4: profile creation + confirmation
-    'complete_onboarding',     // step 8: finalize onboarding
-    'import_gmail_contacts',   // step 5: Gmail connect
-    'read_networks',           // step 6: community discovery
-    'create_network_membership', // step 6: join communities
-    'create_intent',           // step 7: intent capture
-    'discover_opportunities',  // step 8: initial discovery
-    'read_user_profiles',      // read own profile during flow
-  ]);
 
   const server = new McpServer(
     { name: 'index-network', version: '1.0.0' },

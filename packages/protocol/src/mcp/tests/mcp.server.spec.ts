@@ -10,7 +10,8 @@ import { config } from "dotenv";
 config({ path: ".env.test" });
 
 import { describe, test, expect } from "bun:test";
-import { MCP_INSTRUCTIONS, sanitizeMcpResult } from "../mcp.server.js";
+import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "../mcp.server.js";
+import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 describe("MCP_INSTRUCTIONS", () => {
   test("fits within the 2500 character context budget", () => {
@@ -171,5 +172,91 @@ describe("sanitizeMcpResult — debugSteps", () => {
     const parsed = JSON.parse(text);
     expect(parsed.data.count).toBe(5);
     expect(parsed.data.message).toBe("found");
+  });
+});
+
+function minimalContext(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolContext {
+  return {
+    userId: "user-1",
+    userName: "Alice",
+    userEmail: "alice@example.com",
+    user: {} as ResolvedToolContext["user"],
+    userProfile: {} as ResolvedToolContext["userProfile"],
+    userNetworks: [],
+    indexScope: [],
+    isOnboarding: true,
+    hasName: true,
+    ...overrides,
+  };
+}
+
+describe("ONBOARDING_ALLOWED", () => {
+  test("contains all onboarding-flow tools", () => {
+    const expected = [
+      "create_user_profile",
+      "complete_onboarding",
+      "import_gmail_contacts",
+      "read_networks",
+      "create_network_membership",
+      "create_intent",
+      "discover_opportunities",
+      "read_user_profiles",
+    ];
+    for (const tool of expected) {
+      expect(ONBOARDING_ALLOWED.has(tool)).toBe(true);
+    }
+  });
+
+  test("contains agent-gate exempt tools", () => {
+    for (const tool of ["register_agent", "read_docs", "scrape_url"]) {
+      expect(ONBOARDING_ALLOWED.has(tool)).toBe(true);
+    }
+  });
+
+  test("does not contain non-onboarding tools", () => {
+    for (const tool of ["list_contacts", "update_intent", "delete_network"]) {
+      expect(ONBOARDING_ALLOWED.has(tool)).toBe(false);
+    }
+  });
+});
+
+describe("buildMcpOnboardingMessage", () => {
+  test("mentions onboarding requirement", () => {
+    const msg = buildMcpOnboardingMessage(minimalContext());
+    expect(msg).toContain("not completed onboarding");
+    expect(msg).toContain("complete_onboarding");
+  });
+
+  test("uses name-confirmation step when user has a name", () => {
+    const msg = buildMcpOnboardingMessage(minimalContext({ hasName: true, userName: "Alice" }));
+    expect(msg).toContain("You're Alice, right?");
+    expect(msg).toContain("create_user_profile() with no arguments");
+  });
+
+  test("uses name-ask step when user has no name", () => {
+    const msg = buildMcpOnboardingMessage(minimalContext({ hasName: false }));
+    expect(msg).toContain("Ask the user for their name");
+    expect(msg).toContain('create_user_profile(name="..."');
+  });
+
+  test("skips community step for network-scoped contexts", () => {
+    const msg = buildMcpOnboardingMessage(
+      minimalContext({ networkId: "net-1", indexName: "Edge City" }),
+    );
+    expect(msg).toContain("Skipped");
+    expect(msg).toContain("Edge City");
+  });
+
+  test("includes community discovery for unscoped contexts", () => {
+    const msg = buildMcpOnboardingMessage(minimalContext({ networkId: undefined }));
+    expect(msg).toContain("read_networks()");
+    expect(msg).toContain("create_network_membership");
+  });
+
+  test("lists all allowed tool names", () => {
+    const msg = buildMcpOnboardingMessage(minimalContext());
+    for (const tool of ONBOARDING_ALLOWED) {
+      expect(msg).toContain(tool);
+    }
   });
 });
