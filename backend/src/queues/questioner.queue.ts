@@ -85,10 +85,6 @@ export class QuestionerQueue {
     return this.queue.add(name, data, {
       jobId: options?.jobId,
       priority: options?.priority,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: { age: 24 * 60 * 60 },
-      removeOnFail: { age: 7 * 24 * 60 * 60 },
     });
   }
 
