@@ -435,6 +435,7 @@ export interface ToolDeps {
     networkMembership: CompiledGraph;
     intentIndex: CompiledGraph;
     opportunity: CompiledOpportunityGraph;
+    premise: CompiledGraph;
   };
 }
 

@@ -14,9 +14,9 @@ import {
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry } from '@indexnetwork/protocol';
+import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 
@@ -195,6 +195,7 @@ export class ToolService {
     const indexGraph = new NetworkGraphFactory(database).createGraph();
     const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
     const intentIndexGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
+    const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, this.embedder).createGraph();
 
     this.compiledGraphs = {
       profile: profileGraph,
@@ -203,6 +204,7 @@ export class ToolService {
       networkMembership: networkMembershipGraph,
       intentIndex: intentIndexGraph,
       opportunity: opportunityGraph,
+      premise: premiseGraph,
     };
 
     return this.compiledGraphs;

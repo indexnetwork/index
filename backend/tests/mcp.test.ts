@@ -62,6 +62,7 @@ const mockDeps = {
     networkMembership: { invoke: async () => ({}) },
     intentIndex: { invoke: async () => ({}) },
     opportunity: { invoke: async () => ({}) } as ToolDeps['graphs']['opportunity'],
+    premise: { invoke: async () => ({}) } as ToolDeps['graphs']['premise'],
   },
 } satisfies ToolDeps;
 

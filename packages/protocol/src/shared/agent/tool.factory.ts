@@ -1,6 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import type { HydeGraphDatabase } from "../interfaces/database.interface.js";
+import type { HydeGraphDatabase, PremiseGraphDatabase } from "../interfaces/database.interface.js";
 import { IntentGraphFactory } from "../../intent/intent.graph.js";
 import { ProfileGraphFactory } from "../../profile/profile.graph.js";
 import { OpportunityGraphFactory } from "../../opportunity/opportunity.graph.js";
@@ -12,6 +12,7 @@ import { NetworkMembershipGraphFactory } from "../../network/membership/membersh
 import { IntentNetworkGraphFactory } from "../../network/indexer/indexer.graph.js";
 import { IntentIndexer } from "../../intent/intent.indexer.js";
 import { NegotiationGraphFactory } from "../../negotiation/negotiation.graph.js";
+import { PremiseGraphFactory } from "../../premise/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 import { configureProtocol } from "./model.config.js";
 
@@ -31,6 +32,7 @@ import { createIntegrationTools } from "../../integration/integration.tools.js";
 import { createContactTools } from "../../contact/contact.tools.js";
 import { createAgentTools } from "../../agent/agent.tools.js";
 import { createNegotiationTools } from "../../negotiation/negotiation.tools.js";
+import { createPremiseTools } from "../../premise/premise.tools.js";
 
 // Re-export types for consumers
 export type { ToolContext, ResolvedToolContext, ProtocolDeps } from "./tool.helpers.js";
@@ -143,6 +145,7 @@ export async function createChatTools(
   const networkGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
   const intentNetworkGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
+  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
 
   // ─── Create context-bound databases ────────────────────────────────────────
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
@@ -192,6 +195,7 @@ export async function createChatTools(
       networkMembership: networkMembershipGraph,
       intentIndex: intentNetworkGraph,
       opportunity: opportunityGraph,
+      premise: premiseGraph,
     },
   };
 
@@ -207,6 +211,7 @@ export async function createChatTools(
   const negotiationTools = deps.agentDispatcher
     ? createNegotiationTools(defineTool, toolDeps)
     : [];
+  const premiseTools = createPremiseTools(defineTool, toolDeps);
 
   // confirm_opportunity_delivery is an OpenClaw-delivery ledger write and must not be
   // callable from regular chat sessions.
@@ -227,6 +232,7 @@ export async function createChatTools(
     ...contactTools,
     ...agentTools,
     ...negotiationTools,
+    ...premiseTools,
   ];
 }
 
