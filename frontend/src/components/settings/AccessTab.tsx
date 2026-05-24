@@ -266,10 +266,6 @@ export default function AccessTab({
     try {
       const text = await file.text();
       const result = parseCsvText(text);
-      if (!result.hasEmailColumn) {
-        setCsvPreview(result);
-        return;
-      }
       setCsvPreview(result);
     } catch {
       error('Failed to read CSV file');

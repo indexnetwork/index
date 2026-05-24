@@ -189,8 +189,8 @@ export default function SettingsTab({
           ...(network.metadata ?? {}),
           startDate: isoStart,
           endDate: isoEnd,
-          location: location || undefined,
-          timezone: timezone || undefined,
+          location: location.trim() || undefined,
+          timezone: timezone.trim() || undefined,
           themes: parsedThemes.length > 0 ? parsedThemes : undefined,
         },
       });
