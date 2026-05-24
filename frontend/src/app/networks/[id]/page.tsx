@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ChevronLeft, Loader2, Globe, Lock, Users, LogOut } from 'lucide-react';
+import { ChevronLeft, Loader2, Globe, Lock, Users, LogOut, Calendar } from 'lucide-react';
 import * as Tabs from '@radix-ui/react-tabs';
 
 import NetworkAvatar from '@/components/IndexAvatar';
@@ -185,6 +185,12 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
                         : <Lock className="w-3.5 h-3.5" />}
                       {isPublic ? 'Public' : network.isExperiment ? 'Experiment' : 'Private'}
                     </span>
+                    {network.type === 'event' && (
+                      <span className="flex items-center gap-1 text-xs text-gray-500">
+                        <Calendar className="w-3.5 h-3.5" />
+                        Event
+                      </span>
+                    )}
                     {network._count?.members !== undefined && (
                       <span className="flex items-center gap-1.5 text-xs text-gray-500">
                         <Users className="w-3.5 h-3.5" />

@@ -6,6 +6,12 @@ export interface ComposioConnection {
   toolkit: string;
   status: string;
   createdAt: string;
+  syncConfig?: {
+    status: 'active' | 'paused' | 'error';
+    intervalMs?: number;
+    lastSyncAt?: string | null;
+    calendarId?: string;
+  };
 }
 
 export interface ImportContactsResult {
