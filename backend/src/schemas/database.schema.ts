@@ -403,23 +403,24 @@ export const opportunities = pgTable('opportunities', {
 }));
 
 export interface QuestionDetection {
-  source: 'questioner_graph' | 'chat' | 'manual';
-  createdBy?: Id<'users'> | string;
-  triggeredBy?: Id<'intents'>;
-  opportunityId?: Id<'opportunities'>;
+  mode: 'discovery' | 'intent' | 'profile' | 'negotiation';
+  sourceType: string;
+  sourceId: string;
+  triggeredBy?: string;
   timestamp: string;
 }
 
 export interface QuestionActor {
-  userId: Id<'users'>;
-  role: 'asker' | 'respondent';
+  userId: string;
+  networkId?: string;
+  role: 'subject';
 }
 
 export interface QuestionAnswer {
   selectedOptions: string[];
   freeText?: string;
+  answeredBy: string;
   answeredAt: string;
-  answeredBy: Id<'users'>;
 }
 
 export const questions = pgTable('questions', {

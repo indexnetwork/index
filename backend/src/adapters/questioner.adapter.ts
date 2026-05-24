@@ -14,7 +14,7 @@
 import { eq, and, sql } from 'drizzle-orm';
 
 import { questions } from '../schemas/database.schema';
-import type { NewQuestionRow } from '../schemas/database.schema';
+import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
@@ -92,16 +92,12 @@ export class QuestionerAdapter {
    */
   async persist(batch: AdapterPersistableQuestion[]): Promise<void> {
     if (batch.length === 0) return;
-    // The DB schema's jsonb $type annotations differ from the protocol-aligned
-    // adapter types (e.g. detection has `mode` here vs `source` in the schema
-    // annotation). At runtime jsonb stores whatever shape we provide; the cast
-    // bridges the compile-time gap.
     const rows = batch.map((q) => ({
-      detection: q.detection,
-      actors: q.actors,
+      detection: q.detection as QuestionDetection,
+      actors: q.actors as QuestionActor[],
       payload: q.payload,
       status: 'pending' as const,
-    })) as unknown as NewQuestionRow[];
+    }));
 
     await this.db.insert(questions).values(rows);
   }
@@ -179,11 +175,11 @@ function toPersistedQuestion(
 ): AdapterPersistedQuestion {
   return {
     id: row.id,
-    detection: row.detection as unknown as AdapterQuestionDetection,
-    actors: row.actors as unknown as AdapterQuestionActor[],
-    payload: row.payload as unknown as AdapterQuestionPayload,
+    detection: row.detection as AdapterQuestionDetection,
+    actors: row.actors as AdapterQuestionActor[],
+    payload: row.payload as AdapterQuestionPayload,
     status: row.status,
-    answer: (row.answer as unknown as AdapterQuestionAnswer) ?? null,
+    answer: (row.answer as AdapterQuestionAnswer) ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
