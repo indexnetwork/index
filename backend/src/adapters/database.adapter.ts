@@ -3903,9 +3903,9 @@ export class ChatDatabaseAdapter {
     const [row] = await db
       .update(schema.premises)
       .set(patch)
-      .where(eq(schema.premises.id, premiseId))
+      .where(and(eq(schema.premises.id, premiseId), isNull(schema.premises.deletedAt)))
       .returning();
-    if (!row) throw new Error(`updatePremise: premise ${premiseId} not found`);
+    if (!row) throw new Error(`updatePremise: premise ${premiseId} not found or soft-deleted`);
     return {
       id: row.id,
       userId: row.userId,
