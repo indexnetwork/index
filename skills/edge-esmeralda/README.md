@@ -38,7 +38,7 @@ This fetches and preprocesses content from:
 - **Edge City website** (edgecity.live) → `references/website-content.md`
 - **Substack newsletter** (edgeesmeralda2026.substack.com) → `references/newsletter-digest.md`
 
-A GitHub Action in `Edge-City/edgeclaw-skills` runs the indexer every 15 minutes and commits any changes; local runs are only needed when iterating on the indexer code itself.
+A GitHub Action in `indexnetwork/edgeclaw` runs the indexer every 15 minutes and commits any changes; local runs are only needed when iterating on the indexer code itself.
 
 ### Data Sources
 
