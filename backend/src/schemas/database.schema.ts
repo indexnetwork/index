@@ -15,6 +15,7 @@ export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
 export const networkTypeEnum = pgEnum('network_type', ['community', 'event']);
 export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
+export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 
 export interface OnboardingState {
   completedAt?: string;
@@ -400,6 +401,41 @@ export const opportunities = pgTable('opportunities', {
 }, (table) => ({
   statusIdx: index('opportunities_status_idx').on(table.status),
 }));
+
+export interface QuestionDetection {
+  source: 'questioner_graph' | 'chat' | 'manual';
+  createdBy?: Id<'users'> | string;
+  triggeredBy?: Id<'intents'>;
+  opportunityId?: Id<'opportunities'>;
+  timestamp: string;
+}
+
+export interface QuestionActor {
+  userId: Id<'users'>;
+  role: 'asker' | 'respondent';
+}
+
+export interface QuestionAnswer {
+  selectedOptions: string[];
+  freeText?: string;
+  answeredAt: string;
+  answeredBy: Id<'users'>;
+}
+
+export const questions = pgTable('questions', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  detection: jsonb('detection').$type<QuestionDetection>().notNull(),
+  actors: jsonb('actors').$type<QuestionActor[]>().notNull(),
+  payload: jsonb('payload').$type<import('@indexnetwork/protocol').Question>().notNull(),
+  status: questionStatusEnum('status').notNull().default('pending'),
+  answer: jsonb('answer').$type<QuestionAnswer>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  statusIdx: index('questions_status_idx').on(table.status),
+}));
+
+export type QuestionRow = typeof questions.$inferSelect;
+export type NewQuestionRow = typeof questions.$inferInsert;
 
 export const intents = pgTable('intents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),

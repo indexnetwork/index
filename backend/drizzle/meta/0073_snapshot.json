@@ -1,6 +1,6 @@
 {
-  "id": "5c006b12-4e8c-44c1-8f03-84f0fd0a8403",
-  "prevId": "8c4e2318-317f-415e-bbf7-cedebd89ac29",
+  "id": "598dc829-01eb-4136-9dde-1630e560f444",
+  "prevId": "0305cc70-111e-48c7-af9b-810cdd33e5cb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2646,45 +2646,25 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.questions": {
-      "name": "questions",
+    "public.premise_networks": {
+      "name": "premise_networks",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
+        "premise_id": {
+          "name": "premise_id",
           "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "detection": {
-          "name": "detection",
-          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
-        "actors": {
-          "name": "actors",
-          "type": "jsonb",
+        "network_id": {
+          "name": "network_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "question_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "answer": {
-          "name": "answer",
-          "type": "jsonb",
+        "relevancy_score": {
+          "name": "relevancy_score",
+          "type": "numeric",
           "primaryKey": false,
           "notNull": false
         },
@@ -2697,8 +2677,179 @@
         }
       },
       "indexes": {
-        "questions_status_idx": {
-          "name": "questions_status_idx",
+        "premise_networks_network_id_idx": {
+          "name": "premise_networks_network_id_idx",
+          "columns": [
+            {
+              "expression": "network_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "premise_networks_premise_id_premises_id_fk": {
+          "name": "premise_networks_premise_id_premises_id_fk",
+          "tableFrom": "premise_networks",
+          "tableTo": "premises",
+          "columnsFrom": [
+            "premise_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "premise_networks_network_id_networks_id_fk": {
+          "name": "premise_networks_network_id_networks_id_fk",
+          "tableFrom": "premise_networks",
+          "tableTo": "networks",
+          "columnsFrom": [
+            "network_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "premise_networks_premise_id_network_id_pk": {
+          "name": "premise_networks_premise_id_network_id_pk",
+          "columns": [
+            "premise_id",
+            "network_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.premises": {
+      "name": "premises",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assertion": {
+          "name": "assertion",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "analysis": {
+          "name": "analysis",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "validity": {
+          "name": "validity",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(2000)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "premise_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "retracted_at": {
+          "name": "retracted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "premises_embedding_idx": {
+          "name": "premises_embedding_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        },
+        "premises_user_id_idx": {
+          "name": "premises_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "premises_status_idx": {
+          "name": "premises_status_idx",
           "columns": [
             {
               "expression": "status",
@@ -2713,7 +2864,21 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "premises_user_id_users_id_fk": {
+          "name": "premises_user_id_users_id_fk",
+          "tableFrom": "premises",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -3998,6 +4163,80 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
+    },
+    "public.questions": {
+      "name": "questions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "detection": {
+          "name": "detection",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actors": {
+          "name": "actors",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "question_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "answer": {
+          "name": "answer",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "questions_status_idx": {
+          "name": "questions_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -4066,13 +4305,13 @@
         "network"
       ]
     },
-    "public.question_status": {
-      "name": "question_status",
+    "public.premise_status": {
+      "name": "premise_status",
       "schema": "public",
       "values": [
-        "pending",
-        "answered",
-        "dismissed"
+        "ACTIVE",
+        "RETRACTED",
+        "EXPIRED"
       ]
     },
     "public.source_type": {
@@ -4131,6 +4370,15 @@
         "auth_required",
         "waiting_for_agent",
         "claimed"
+      ]
+    },
+    "public.question_status": {
+      "name": "question_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "answered",
+        "dismissed"
       ]
     }
   },
