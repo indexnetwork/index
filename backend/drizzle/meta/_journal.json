@@ -505,6 +505,13 @@
       "when": 1779646980252,
       "tag": "0071_add_premises_and_premise_networks",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1779647527717,
+      "tag": "0072_add_premises_deleted_at",
+      "breakpoints": true
     }
   ]
 }

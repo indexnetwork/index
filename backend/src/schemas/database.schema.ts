@@ -263,6 +263,33 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export interface PremiseAssertion {
+  text: string;
+  tier: 'assertive' | 'contextual';
+  summary?: string;
+}
+
+export interface PremiseProvenance {
+  source: 'explicit' | 'enrichment' | 'integration' | 'onboarding';
+  sourceId?: string;
+  confidence: number;
+  timestamp: string;
+}
+
+export interface PremiseAnalysis {
+  speechActType: 'DECLARATIVE' | 'ASSERTIVE';
+  felicityAuthority: number;
+  felicitySincerity: number;
+  felicityClarity: number;
+  semanticEntropy: number;
+}
+
+export interface PremiseValidity {
+  validFrom?: string;
+  validUntil?: string;
+  volatile: boolean;
+}
+
 export const premises = pgTable('premises', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -275,6 +302,7 @@ export const premises = pgTable('premises', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   retractedAt: timestamp('retracted_at', { withTimezone: true }),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (table) => ({
   embeddingIdx: index('premises_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
   userIdIdx: index('premises_user_id_idx').on(table.userId),
@@ -312,33 +340,6 @@ export const hydeDocuments = pgTable('hyde_documents', {
   expiresIdx: index('hyde_expires_idx').on(table.expiresAt),
   sourceStrategyUnique: uniqueIndex('hyde_source_strategy_unique').on(table.sourceType, table.sourceId, table.strategy, table.targetCorpus),
 }));
-
-export interface PremiseAssertion {
-  text: string;
-  tier: 'assertive' | 'contextual';
-  summary?: string;
-}
-
-export interface PremiseProvenance {
-  source: 'explicit' | 'enrichment' | 'integration' | 'onboarding';
-  sourceId?: string;
-  confidence: number;
-  timestamp: string;
-}
-
-export interface PremiseAnalysis {
-  speechActType: 'DECLARATIVE' | 'ASSERTIVE';
-  felicityAuthority: number;
-  felicitySincerity: number;
-  felicityClarity: number;
-  semanticEntropy: number;
-}
-
-export interface PremiseValidity {
-  validFrom?: string;
-  validUntil?: string;
-  volatile: boolean;
-}
 
 export interface OpportunityDetection {
   source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
