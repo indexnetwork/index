@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { DefineTool, ToolDeps, CompiledGraph } from "../shared/agent/tool.helpers.js";
+import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { PremiseGraphDatabase } from "../shared/interfaces/database.interface.js";
@@ -8,14 +8,8 @@ import type { PremiseGraphDatabase } from "../shared/interfaces/database.interfa
 const logger = protocolLogger("ChatTools:Premise");
 
 export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
-  // Cast to PremiseGraphDatabase to access premise-specific methods.
-  // At runtime, deps.database is the full Database adapter; the ToolDeps type
-  // only declares the ChatGraphCompositeDatabase subset.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const database = deps.database as unknown as PremiseGraphDatabase;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const premiseGraph = (deps.graphs as Record<string, CompiledGraph>).premise;
+  const premiseGraph = deps.graphs.premise;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // PREMISE CRUD

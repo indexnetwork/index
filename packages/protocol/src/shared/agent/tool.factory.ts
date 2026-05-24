@@ -1,6 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import type { HydeGraphDatabase } from "../interfaces/database.interface.js";
+import type { HydeGraphDatabase, PremiseGraphDatabase } from "../interfaces/database.interface.js";
 import { IntentGraphFactory } from "../../intent/intent.graph.js";
 import { ProfileGraphFactory } from "../../profile/profile.graph.js";
 import { OpportunityGraphFactory } from "../../opportunity/opportunity.graph.js";
@@ -12,6 +12,7 @@ import { NetworkMembershipGraphFactory } from "../../network/membership/membersh
 import { IntentNetworkGraphFactory } from "../../network/indexer/indexer.graph.js";
 import { IntentIndexer } from "../../intent/intent.indexer.js";
 import { NegotiationGraphFactory } from "../../negotiation/negotiation.graph.js";
+import { PremiseGraphFactory } from "../../premise/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 import { configureProtocol } from "./model.config.js";
 
@@ -143,6 +144,7 @@ export async function createChatTools(
   const networkGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
   const intentNetworkGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
+  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
 
   // ─── Create context-bound databases ────────────────────────────────────────
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
@@ -192,6 +194,7 @@ export async function createChatTools(
       networkMembership: networkMembershipGraph,
       intentIndex: intentNetworkGraph,
       opportunity: opportunityGraph,
+      premise: premiseGraph,
     },
   };
 
