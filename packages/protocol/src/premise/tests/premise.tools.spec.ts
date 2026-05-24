@@ -87,7 +87,7 @@ describe('createPremiseTools - create_premise', () => {
           premise: {
             id: premiseId,
             assertion: { text: 'I am a software engineer', tier: 'assertive' },
-            analysis: { speechActType: 'assertion', felicityClarity: 0.95 },
+            analysis: { speechActType: 'ASSERTIVE', felicityClarity: 0.95 },
             status: 'ACTIVE',
           },
           networkAssignments: ['net-1', 'net-2'],
@@ -105,7 +105,7 @@ describe('createPremiseTools - create_premise', () => {
     expect(result.data.assertion).toBe('I am a software engineer');
     expect(result.data.tier).toBe('assertive');
     expect(result.data.indexesAssigned).toBe(2);
-    expect(result.data.analysisSummary).toContain('assertion');
+    expect(result.data.analysisSummary).toContain('ASSERTIVE');
   });
 
   it('returns error when graph invoke returns an error', async () => {
@@ -188,7 +188,7 @@ describe('createPremiseTools - read_premises', () => {
     id: premiseId,
     assertion: { text: 'I am a software engineer', tier: 'assertive' },
     status: 'ACTIVE',
-    analysis: { speechActType: 'assertion', felicityClarity: 0.9 },
+    analysis: { speechActType: 'ASSERTIVE', felicityClarity: 0.9 },
     validity: { validFrom: null, validUntil: null, volatile: false },
   };
 
