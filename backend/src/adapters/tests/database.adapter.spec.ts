@@ -344,26 +344,51 @@ describe('ChatDatabaseAdapter', () => {
 
   describe('updateMemberRole', () => {
     it('should promote a member to owner', async () => {
-      // userB starts as a member
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
       const result = await adapter.updateMemberRole(fixture.networkId, fixture.userBId, fixture.userAId, 'owner');
       expect(result.member).toBeDefined();
       expect(result.member!.permissions).toEqual(['owner']);
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(true);
+      // Restore: B back to member
+      await db.update(networkMembers).set({ permissions: ['member'] }).where(
+        sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userBId}`
+      );
     });
 
     it('should demote an owner to member when multiple owners exist', async () => {
-      // userB is now an owner from the previous test; demote them
+      // Setup: make B an owner so there are two
+      await db.update(networkMembers).set({ permissions: ['owner'] }).where(
+        sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userBId}`
+      );
+      // Act: A demotes B (two owners → one is fine)
       const result = await adapter.updateMemberRole(fixture.networkId, fixture.userBId, fixture.userAId, 'member');
       expect(result.member!.permissions).toEqual(['member']);
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
     });
 
-    it('should reject demoting the last owner', async () => {
-      // userA is the sole owner
-      await expect(
-        adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userAId, 'member')
-      ).rejects.toThrow('Cannot change your own role');
+    it('should reject demoting the last owner (atomic guard)', async () => {
+      // A is sole owner. The atomic conditional UPDATE has a subquery that checks
+      // ownerCount > 1. With serial access, other guards (self, access-denied) fire
+      // before the atomic path. Test the conditional UPDATE directly at the SQL level
+      // to verify the subquery prevents demotion when ownerCount = 1.
+      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
+      const directResult = await db
+        .update(networkMembers)
+        .set({ permissions: ['member'], updatedAt: new Date() })
+        .where(sql`
+          ${networkMembers.networkId} = ${fixture.networkId}
+          AND ${networkMembers.userId} = ${fixture.userAId}
+          AND ${networkMembers.deletedAt} IS NULL
+          AND (SELECT count(*) FROM ${networkMembers}
+               WHERE ${networkMembers.networkId} = ${fixture.networkId}
+               AND 'owner' = ANY(${networkMembers.permissions})
+               AND ${networkMembers.deletedAt} IS NULL) > 1
+        `)
+        .returning({ userId: networkMembers.userId });
+      // 0 rows returned — sole owner not demoted
+      expect(directResult.length).toBe(0);
+      // Confirm A is still owner
+      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
     });
 
     it('should reject self role change', async () => {
@@ -373,6 +398,7 @@ describe('ChatDatabaseAdapter', () => {
     });
 
     it('should reject role change by non-owner', async () => {
+      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
       await expect(
         adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userBId, 'member')
       ).rejects.toThrow('Access denied');

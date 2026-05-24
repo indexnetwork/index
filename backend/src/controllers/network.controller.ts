@@ -403,7 +403,16 @@ export class NetworkController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    const role = body.permissions.includes('owner') ? 'owner' as const : 'member' as const;
+    // Strict validation: only ['owner'] or ['member'] are accepted
+    const isOwnerRole = body.permissions.length === 1 && body.permissions[0] === 'owner';
+    const isMemberRole = body.permissions.length === 1 && body.permissions[0] === 'member';
+    if (!isOwnerRole && !isMemberRole) {
+      return new Response(JSON.stringify({ error: "permissions must be exactly ['owner'] or ['member']" }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const role = isOwnerRole ? 'owner' as const : 'member' as const;
     try {
       await assertAgentNetworkScope(req, params.id);
       const result = await networkService.updateMemberRole(params.id, params.memberId, user.id, role);
