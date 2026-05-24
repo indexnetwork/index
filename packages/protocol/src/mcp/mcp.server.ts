@@ -243,6 +243,39 @@ export const applyNetworkScopeToContext = (
 };
 
 /**
+ * Builds the onboarding gate message for MCP callers. Mirrors the chat
+ * orchestrator's ONBOARDING MODE prompt (chat.prompt.ts buildOnboarding)
+ * adapted for tool-call error context.
+ */
+function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
+  const nameStep = ctx.hasName
+    ? `1. Greet the user and confirm their name ("You're ${ctx.userName}, right?"). ` +
+      `Then call create_user_profile() with no arguments to look them up.`
+    : `1. Ask the user for their name (and optionally LinkedIn/Twitter/GitHub). ` +
+      `Call create_user_profile(name="...", linkedinUrl="...", ...) with whatever they provide.`;
+
+  const communityStep = ctx.networkId
+    ? `5. (Skipped — user is already in "${ctx.indexName ?? 'their community'}".)`
+    : `5. Call read_networks() and let the user pick communities to join via create_network_membership(networkId=...).`;
+
+  return (
+    `This user has not completed onboarding. You must guide them through setup before they can use other tools. ` +
+    `Only the following tools are available until onboarding is complete: ` +
+    `create_user_profile, complete_onboarding, import_gmail_contacts, read_networks, ` +
+    `create_network_membership, create_intent, discover_opportunities, read_user_profiles, ` +
+    `register_agent, read_docs, scrape_url.\n\n` +
+    `Onboarding flow:\n` +
+    `${nameStep}\n` +
+    `2. Present the profile summary and ask "Does that sound right?"\n` +
+    `3. On confirmation, call create_user_profile(confirm=true) to save.\n` +
+    `4. Call import_gmail_contacts() for Gmail connect (user may skip).\n` +
+    `${communityStep}\n` +
+    `6. Ask what the user is looking for and call create_intent(description="...").\n` +
+    `7. Call discover_opportunities(searchQuery="...") then call complete_onboarding() to finish setup.`
+  );
+}
+
+/**
  * Creates an MCP server with all protocol tools registered.
  * Tools resolve auth per-request via the HTTP request available in ServerContext.
  *
@@ -315,6 +348,20 @@ export function createMcpServer(
   // Tools exempt from the agent-registration gate — available before registration is complete.
   const AGENT_GATE_EXEMPT = new Set(['register_agent', 'read_docs', 'scrape_url']);
 
+  // Tools allowed during onboarding — everything else is gated until complete_onboarding is called.
+  // Mirrors the chat orchestrator's onboarding flow (steps 1–8 in chat.prompt.ts buildOnboarding).
+  const ONBOARDING_ALLOWED = new Set([
+    ...AGENT_GATE_EXEMPT,
+    'create_user_profile',     // steps 1–4: profile creation + confirmation
+    'complete_onboarding',     // step 8: finalize onboarding
+    'import_gmail_contacts',   // step 5: Gmail connect
+    'read_networks',           // step 6: community discovery
+    'create_network_membership', // step 6: join communities
+    'create_intent',           // step 7: intent capture
+    'discover_opportunities',  // step 8: initial discovery
+    'read_user_profiles',      // read own profile during flow
+  ]);
+
   const server = new McpServer(
     { name: 'index-network', version: '1.0.0' },
     { instructions: MCP_INSTRUCTIONS },
@@ -378,6 +425,24 @@ export function createMcpServer(
                     'You must register as an agent before using Index tools. ' +
                     'Call register_agent with your agent name to establish an identity. ' +
                     'The tools register_agent, read_docs, and scrape_url are available without registration.',
+                }),
+              }],
+              isError: true,
+            };
+          }
+
+          // Gate: non-onboarded users can only use onboarding-related tools.
+          // Mirrors the chat orchestrator's ONBOARDING MODE — the MCP client must
+          // walk the user through profile creation, Gmail connect, intent capture,
+          // and complete_onboarding() before full tool access is granted.
+          if (context.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
+            const onboardingSteps = buildMcpOnboardingMessage(context);
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                  error: 'Onboarding required',
+                  message: onboardingSteps,
                 }),
               }],
               isError: true,
