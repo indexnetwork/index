@@ -59,3 +59,50 @@ export interface QuestionGenerationResult {
   questions: Question[];
   strategies: QuestionStrategy[];
 }
+
+// ─── Persistence types (opportunity-style composable jsonb) ──────────────────
+
+export const QuestionModeSchema = z.enum([
+  "discovery",
+  "intent",
+  "profile",
+  "negotiation",
+]);
+
+export const QuestionDetectionSchema = z.object({
+  /** Which preset mode generated this question. */
+  mode: QuestionModeSchema,
+  /** Entity type that triggered generation (e.g. "opportunity", "intent", "profile"). */
+  sourceType: z.string().min(1),
+  /** ID of the triggering entity. */
+  sourceId: z.string().min(1),
+  /** Optional intent ID that was the root cause. */
+  triggeredBy: z.string().optional(),
+  /** ISO-8601 timestamp of generation. */
+  timestamp: z.string().min(1),
+});
+
+export const QuestionActorSchema = z.object({
+  /** The user this question is for. */
+  userId: z.string().min(1),
+  /** Optional network context. */
+  networkId: z.string().optional(),
+  /** Actor's role in the question — currently always "subject". */
+  role: z.literal("subject"),
+});
+
+export const QuestionAnswerSchema = z.object({
+  /** Option labels the user selected. */
+  selectedOptions: z.array(z.string()),
+  /** Free-text input when the user chose "Other" or elaborated. */
+  freeText: z.string().optional(),
+  /** User ID of the answerer. */
+  answeredBy: z.string().min(1),
+  /** ISO-8601 timestamp of when the answer was submitted. */
+  answeredAt: z.string().min(1),
+});
+
+export type QuestionMode = z.infer<typeof QuestionModeSchema>;
+export type QuestionDetection = z.infer<typeof QuestionDetectionSchema>;
+export type QuestionActor = z.infer<typeof QuestionActorSchema>;
+export type QuestionAnswer = z.infer<typeof QuestionAnswerSchema>;

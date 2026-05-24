@@ -23,6 +23,12 @@ export type * from "./shared/interfaces/chat-session.interface.js";
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
 export type { ChatMessageWriter } from "./shared/interfaces/chat-message-writer.interface.js";
 export type { QuestionGeneratorReader } from "./shared/interfaces/question-generator.interface.js";
+export type {
+  QuestionerDatabase,
+  PersistableQuestion,
+  PersistedQuestion,
+  QuestionFilters,
+} from "./shared/interfaces/questioner.interface.js";
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer, buildFallbackDigest } from "./negotiation/negotiation.summarizer.js";
@@ -62,12 +68,20 @@ export {
   QuestionStrategySchema,
   QuestionWithStrategySchema,
   QuestionGeneratorResponseSchema,
+  QuestionModeSchema,
+  QuestionDetectionSchema,
+  QuestionActorSchema,
+  QuestionAnswerSchema,
   type Question,
   type QuestionOption,
   type QuestionStrategy,
   type QuestionWithStrategy,
   type QuestionGeneratorResponse,
   type QuestionGenerationResult,
+  type QuestionMode,
+  type QuestionDetection,
+  type QuestionActor,
+  type QuestionAnswer,
 } from "./shared/schemas/question.schema.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
@@ -105,6 +119,18 @@ export { NegotiationInsightsGenerator } from "./negotiation/insight.generator.js
 export type { NegotiationDigest } from "./negotiation/insight.generator.js";
 export { IndexNegotiator } from "./negotiation/negotiation.agent.js";
 export type { NegotiationAgentInput } from "./negotiation/negotiation.agent.js";
+export { QuestionerAgent } from "./questioner/questioner.agent.js";
+export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";
+export type {
+  QuestionerInput,
+  QuestionerContext,
+  DiscoveryContext,
+  IntentContext,
+  ProfileContext,
+  NegotiationContext,
+} from "./questioner/questioner.types.js";
+export { getPreset } from "./questioner/questioner.presets.js";
+export type { QuestionerPreset } from "./questioner/questioner.presets.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type {
   EvaluatorInput,

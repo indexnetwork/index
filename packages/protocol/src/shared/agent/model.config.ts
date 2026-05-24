@@ -59,6 +59,7 @@ function getModelConfig(config?: ModelConfig) {
     negotiationInsights:  { model: "google/gemini-2.5-flash", temperature: 0.4, maxTokens: 512 },
     chatContextSummarizer: { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 512 },
     discoveryQuestionGenerator: { model: "google/gemini-2.5-flash", temperature: 0.5, maxTokens: 1024 },
+    questioner: { model: "google/gemini-2.5-flash", temperature: 0.5, maxTokens: 1024 },
     negotiationSummarizer:      { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 256 },
     inviteGenerator:      { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 512 },
     chat: {
