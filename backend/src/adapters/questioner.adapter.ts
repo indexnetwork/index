@@ -160,25 +160,21 @@ export class QuestionerAdapter {
    * @returns `true` if a row was updated, `false` if no matching question found.
    */
   async answer(questionId: string, userId: string, answer: AdapterQuestionAnswer): Promise<boolean> {
-    const ownershipCheck = and(
-      eq(questions.id, questionId),
-      eq(questions.status, 'pending'),
-      sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
-    );
-
-    const [existing] = await this.db
-      .select()
-      .from(questions)
-      .where(ownershipCheck);
-
-    if (!existing) return false;
-
-    await this.db
+    const [updated] = await this.db
       .update(questions)
       .set({ status: 'answered', answer })
-      .where(ownershipCheck);
+      .where(
+        and(
+          eq(questions.id, questionId),
+          eq(questions.status, 'pending'),
+          sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        ),
+      )
+      .returning({ id: questions.id, detection: questions.detection });
 
-    const detection = existing.detection as AdapterQuestionDetection;
+    if (!updated) return false;
+
+    const detection = updated.detection as AdapterQuestionDetection;
     QuestionEvents.onAnswered({
       questionId,
       userId,
@@ -200,25 +196,19 @@ export class QuestionerAdapter {
    * @returns `true` if a row was updated, `false` if no matching question found.
    */
   async dismiss(questionId: string, userId: string): Promise<boolean> {
-    const ownershipCheck = and(
-      eq(questions.id, questionId),
-      eq(questions.status, 'pending'),
-      sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
-    );
-
-    const [existing] = await this.db
-      .select({ id: questions.id })
-      .from(questions)
-      .where(ownershipCheck);
-
-    if (!existing) return false;
-
-    await this.db
+    const [updated] = await this.db
       .update(questions)
       .set({ status: 'dismissed' })
-      .where(ownershipCheck);
+      .where(
+        and(
+          eq(questions.id, questionId),
+          eq(questions.status, 'pending'),
+          sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        ),
+      )
+      .returning({ id: questions.id });
 
-    return true;
+    return !!updated;
   }
 }
 
