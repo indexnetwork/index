@@ -41,7 +41,7 @@ export interface IntegrationSyncQueueDeps {
 /**
  * Integration sync queue: BullMQ repeatable job that ticks every 5 minutes,
  * finds active integrations past their per-row interval, pulls events via
- * Composio, and upserts into the network's metadata JSONB.
+ * Composio, and replaces the network's metadata.events array.
  *
  * @remarks
  * Workers are started only by the protocol server via {@link IntegrationSyncQueue.startWorker}.

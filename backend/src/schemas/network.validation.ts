@@ -28,7 +28,7 @@ export const NetworkMemberMetadataSchema = z.record(z.string(), z.unknown());
 export const SyncConfigSchema = z.object({
   intervalMs: z.number().min(60_000).optional().default(900_000),
   lastSyncAt: z.string().datetime().optional(),
-  calendarId: z.string().min(1).optional().default('primary'),
+  calendarId: z.string().trim().min(1).optional().default('primary'),
   status: z.enum(['active', 'paused', 'error']).optional().default('paused'),
 });
 
