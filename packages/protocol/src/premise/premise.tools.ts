@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { PremiseGraphDatabase } from "../shared/interfaces/database.interface.js";
+import type { PremiseGraphDatabase, PremiseRecord } from "../shared/interfaces/database.interface.js";
 
 const logger = protocolLogger("ChatTools:Premise");
 
@@ -34,7 +34,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
       text: z.string().describe("The premise text — a self-descriptive proposition in first person, e.g. 'I am a machine learning researcher at MIT'."),
       tier: z.enum(["assertive", "contextual"]).default("assertive").describe("Tier of the premise. 'assertive' = stable identity fact. 'contextual' = temporal/situational. Defaults to 'assertive'."),
       validFrom: z.string().datetime().optional().describe("ISO 8601 date-time string for when this premise becomes valid. Omit for immediate."),
-      validUntil: z.string().datetime().optional().describe("ISO 8601 date-time string for when this premise expires. Required for time-bounded contextual premises."),
+      validUntil: z.string().datetime().optional().describe("ISO 8601 date-time string for when this premise expires. Recommended for contextual premises with a known end date; omit if open-ended."),
       volatile: z.boolean().optional().describe("Whether this premise should be automatically retracted when it expires. Defaults to true for contextual tier, false for assertive."),
     }),
     handler: async ({ context, query }) => {
@@ -112,13 +112,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
       const statusFilter = query.includeRetracted ? undefined : "ACTIVE" as const;
       const premises = await database.getPremisesForUser(targetUserId, statusFilter);
 
-      const mapped = premises.map((p: {
-        id: string;
-        assertion: { text: string; tier: string };
-        status: string;
-        analysis: { speechActType?: string; felicityClarity?: number } | null;
-        validity: { validFrom?: string | null; validUntil?: string | null; volatile?: boolean };
-      }) => ({
+      const mapped = premises.map((p: PremiseRecord) => ({
         id: p.id,
         text: p.assertion.text,
         tier: p.assertion.tier,
