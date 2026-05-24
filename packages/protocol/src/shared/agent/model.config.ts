@@ -62,6 +62,7 @@ function getModelConfig(config?: ModelConfig) {
     questioner: { model: "google/gemini-2.5-flash", temperature: 0.5, maxTokens: 1024 },
     negotiationSummarizer:      { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 256 },
     inviteGenerator:      { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 512 },
+    premiseAnalyzer:      { model: "google/gemini-2.5-flash" },
     chat: {
       model: merged.chatModel ?? process.env.CHAT_MODEL ?? "google/gemini-3-pro-preview",
       maxTokens: 8192,
