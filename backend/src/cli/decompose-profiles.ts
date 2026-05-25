@@ -14,16 +14,19 @@ const envFile = process.env.NODE_ENV === 'development' ? '.env.development' : '.
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import { and, eq, isNull } from 'drizzle-orm';
-
-import db, { closeDb } from '../lib/drizzle/drizzle';
-import { premises, userProfiles } from '../schemas/database.schema';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { PremiseDecomposer, PremiseGraphFactory } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
+
+import db, { closeDb } from '../lib/drizzle/drizzle';
+import { premises, userProfiles, users } from '../schemas/database.schema';
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { premiseQueue } from '../queues/premise.queue';
 
 const DEFAULT_LIMIT = 100;
+
+/** Enrichment-path confidence — lower than explicit (1.0) since these are derived from profile text. */
+const ENRICHMENT_CONFIDENCE = 0.85;
 
 // ---------------------------------------------------------------------------
 // Arg parsing
@@ -57,6 +60,10 @@ interface ProfileAttributes { interests: string[]; skills: string[] }
 
 /**
  * Assembles a text blob from profile fields, skipping empty values.
+ * @param identity - The user's identity data (name, bio, location).
+ * @param narrative - The user's narrative context.
+ * @param attributes - The user's skills and interests.
+ * @returns A newline-joined text suitable for premise decomposition.
  */
 function buildProfileText(
   identity: ProfileIdentity | null,
@@ -82,7 +89,7 @@ async function main(): Promise<void> {
 
   console.log(`decompose-profiles: limit=${limit} dry-run=${dryRun}`);
 
-  // Users with profiles but zero active premises
+  // Users with profiles but zero active premises (exclude ghost + soft-deleted)
   const rows = await db
     .select({
       userId: userProfiles.userId,
@@ -91,11 +98,16 @@ async function main(): Promise<void> {
       attributes: userProfiles.attributes,
     })
     .from(userProfiles)
+    .innerJoin(users, eq(users.id, userProfiles.userId))
     .leftJoin(
       premises,
       and(eq(premises.userId, userProfiles.userId), eq(premises.status, 'ACTIVE')),
     )
-    .where(isNull(premises.id))
+    .where(and(
+      isNull(premises.id),
+      isNull(users.deletedAt),
+      eq(users.isGhost, false),
+    ))
     .limit(limit);
 
   if (rows.length === 0) {
@@ -143,15 +155,13 @@ async function main(): Promise<void> {
     let created = 0;
     for (const p of result.premises) {
       try {
-        const invokeInput = {
+        const premiseResult = await premiseGraph.invoke({
           userId: row.userId,
           assertionText: p.text,
-          tier: p.tier,
-          operationMode: 'create',
-          provenanceSource: 'enrichment',
-          provenanceConfidence: 0.85,
-        } as Parameters<typeof premiseGraph.invoke>[0];
-        const premiseResult = await premiseGraph.invoke(invokeInput);
+          tier: p.tier as 'assertive' | 'contextual',
+          provenanceSource: 'enrichment' as const,
+          provenanceConfidence: ENRICHMENT_CONFIDENCE,
+        });
         if (premiseResult.premise) created++;
         else if (premiseResult.error) {
           console.warn(`    Failed: ${p.text.substring(0, 60)} — ${premiseResult.error}`);
