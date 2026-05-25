@@ -27,7 +27,7 @@ import { stripUuids, stripIntroducerMentions } from "./opportunity.presentation.
  */
 export type PresenterDatabase = Pick<
   ChatGraphCompositeDatabase,
-  "getProfile" | "getActiveIntents" | "getNetwork"
+  "getProfile" | "getActiveIntents" | "getNetwork" | "getPremisesForUser"
 >;
 
 const logger = protocolLogger("OpportunityPresenter");
@@ -633,6 +633,40 @@ export async function gatherPresenterContext(
     viewerIntents = await database.getActiveIntents(viewerId);
   }
 
+  // Fetch premises when any actor is premise-grounded
+  const premiseGroundedActors = opportunity.actors.filter((a) => a.premise);
+  let viewerPremiseContext = '';
+  let otherPremiseContext = '';
+
+  if (premiseGroundedActors.length > 0) {
+    const [viewerPremises, ...otherPartiesPremises] = await Promise.all([
+      database.getPremisesForUser(viewerId, 'ACTIVE'),
+      ...otherPartyIds.map((uid) => database.getPremisesForUser(uid, 'ACTIVE')),
+    ]);
+
+    if (viewerPremises?.length) {
+      viewerPremiseContext =
+        '\nPremises (self-descriptions):\n' +
+        viewerPremises
+          .slice(0, 5)
+          .map((p) => `- ${p.assertion.text}`)
+          .join('\n');
+    }
+
+    const otherPremiseLines: string[] = [];
+    for (let i = 0; i < otherPartyIds.length; i++) {
+      const premises = otherPartiesPremises[i];
+      if (premises?.length) {
+        for (const p of premises.slice(0, 3)) {
+          otherPremiseLines.push(`- ${p.assertion.text}`);
+        }
+      }
+    }
+    if (otherPremiseLines.length > 0) {
+      otherPremiseContext = '\nPremises (self-descriptions):\n' + otherPremiseLines.join('\n');
+    }
+  }
+
   let viewerContext: string;
   let otherPartyContext: string;
 
@@ -749,6 +783,13 @@ export async function gatherPresenterContext(
           introducerName,
         )
       : stripUuids(interp.reasoning);
+
+  if (viewerPremiseContext) {
+    viewerContext += viewerPremiseContext;
+  }
+  if (otherPremiseContext) {
+    otherPartyContext += otherPremiseContext;
+  }
 
   const result: PresenterInput = {
     viewerContext,
