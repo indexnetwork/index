@@ -47,7 +47,6 @@ function getModelConfig(config?: ModelConfig) {
     intentReconciler:     { model: "google/gemini-2.5-flash" },
     intentClarifier:      { model: "google/gemini-2.5-flash" },
     profileGenerator:     { model: "google/gemini-2.5-flash" },
-    profileHydeGenerator: { model: "google/gemini-2.5-flash" },
     hydeGenerator:        { model: "google/gemini-2.5-flash" },
     lensInferrer:         { model: "google/gemini-2.5-flash" },
     opportunityEvaluator: { model: "google/gemini-2.5-flash" },
