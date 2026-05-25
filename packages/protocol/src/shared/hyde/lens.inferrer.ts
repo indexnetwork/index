@@ -38,7 +38,7 @@ const SYSTEM_PROMPT = `You analyze goals and search queries to identify the most
 
 For each perspective you identify, specify:
 1. A clear, specific description of who or what to search for
-2. Whether to search "profiles" (user bios, expertise, backgrounds) or "intents" (stated goals, needs, aspirations)
+2. Whether to search "profiles" (user bios, expertise, backgrounds), "intents" (stated goals, needs, aspirations), or "premises" (identity assertions, values, worldview)
 3. A brief reason why this perspective is relevant
 
 Guidelines:

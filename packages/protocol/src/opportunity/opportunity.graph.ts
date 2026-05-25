@@ -1079,7 +1079,8 @@ export class OpportunityGraphFactory {
             for (const c of all) {
               // Dedup by candidateUserId + entity (intent, premise, or profile), NOT by indexId.
               // Including indexId caused the same user to appear once per index they belong to.
-              const key = `${c.candidateUserId}:${c.candidateIntentId ?? c.candidatePremiseId ?? 'profile'}`;
+              const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : c.candidatePremiseId ? `premise:${c.candidatePremiseId}` : 'profile';
+              const key = `${c.candidateUserId}:${entityKey}`;
               if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);
               }
@@ -1260,7 +1261,8 @@ export class OpportunityGraphFactory {
           );
           const byUserAndIndex = new Map<string, CandidateMatch>();
           for (const c of allCandidates) {
-            const key = `${c.candidateUserId}:${c.networkId}:${c.candidateIntentId ?? c.candidatePremiseId ?? 'profile'}`;
+            const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : c.candidatePremiseId ? `premise:${c.candidatePremiseId}` : 'profile';
+            const key = `${c.candidateUserId}:${c.networkId}:${entityKey}`;
             if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
               byUserAndIndex.set(key, c);
             }
