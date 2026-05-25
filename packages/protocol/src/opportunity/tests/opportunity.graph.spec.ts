@@ -563,15 +563,17 @@ describe('Opportunity Graph', () => {
       // Simulate: evaluator bundles Alice and Bob into one opportunity with Alice's reasoning
       const profilesByUserId: Record<string, ProfileDocument> = {
         'c0000000-0000-4000-8000-000000000003': {
+          userId: 'c0000000-0000-4000-8000-000000000003',
           identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs' },
           attributes: { interests: ['crypto', 'DeFi'], skills: ['blockchain'] },
           narrative: {},
-        } as ProfileDocument,
+        },
         'f0000000-0000-4000-8000-000000000006': {
+          userId: 'f0000000-0000-4000-8000-000000000006',
           identity: { name: 'Charlie Voss', bio: 'Angel investor in AI startups' },
           attributes: { interests: ['AI', 'machine learning'], skills: ['investing'] },
           narrative: {},
-        } as ProfileDocument,
+        },
       };
       const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
         evaluatorResult: [
@@ -624,15 +626,17 @@ describe('Opportunity Graph', () => {
     test('when bundled reasoning mentions both candidates, neither split reuses the shared text', async () => {
       const profilesByUserId: Record<string, ProfileDocument> = {
         'c0000000-0000-4000-8000-000000000003': {
+          userId: 'c0000000-0000-4000-8000-000000000003',
           identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs' },
           attributes: { interests: ['crypto'], skills: ['blockchain'] },
           narrative: {},
-        } as ProfileDocument,
+        },
         'f0000000-0000-4000-8000-000000000006': {
+          userId: 'f0000000-0000-4000-8000-000000000006',
           identity: { name: 'Charlie Voss', bio: 'Angel investor in AI startups' },
           attributes: { interests: ['AI'], skills: ['investing'] },
           narrative: {},
-        } as ProfileDocument,
+        },
       };
       const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
         evaluatorResult: [
@@ -1665,10 +1669,11 @@ describe('Opportunity Graph', () => {
     test('passes profileContext with profile and intents to HyDE generator', async () => {
       const { compiledGraph, mockHydeGenerator, mockEmbedder } = createMockGraph({
         getProfile: {
+          userId: 'user-alice' as Id<'users'>,
           identity: { name: 'Alice Chen', bio: 'Full-stack engineer building AI tools', location: 'Remote' },
           narrative: { context: 'Alice is a software engineer' },
           attributes: { interests: ['machine learning', 'startups'], skills: ['TypeScript', 'Python'] },
-        } as ProfileDocument,
+        } satisfies ProfileDocument,
         getActiveIntents: () =>
           Promise.resolve([
             {
