@@ -1647,7 +1647,7 @@ Get members of an index. Owner only.
 
 ### POST /api/networks/:id/members
 
-Add a member to an index. Owner/admin only.
+Add a member to an index. Owner only.
 
 **Auth**: AuthGuard
 
@@ -1658,7 +1658,7 @@ Add a member to an index. Owner/admin only.
 ```json
 {
   "userId": "string (required)",
-  "permissions": ["string (optional — include 'admin' for admin role)"]
+  "permissions": ["owner"] | ["member"] (optional, defaults to ["member"])
 }
 ```
 
@@ -1669,6 +1669,35 @@ Add a member to an index. Owner/admin only.
   "message": "Member added | Already a member"
 }
 ```
+
+**Errors**: `400` — permissions provided but not exactly `['owner']` or `['member']`, or not an array. `403` — requester is not an owner.
+
+### PATCH /api/networks/:id/members/:memberId
+
+Change a member's role (promote to owner or demote to member). Owner only. Cannot change your own role. Cannot change contacts.
+
+**Auth**: AuthGuard
+
+**Path params**:
+- `id` — Network ID
+- `memberId` — User ID of the member to update
+
+**Request body**:
+```json
+{
+  "permissions": ["owner"] | ["member"]
+}
+```
+
+**Response**:
+```json
+{
+  "member": { ... },
+  "message": "Role updated"
+}
+```
+
+**Errors**: `400` — permissions not exactly `['owner']` or `['member']`. `403` — requester is not an owner, or attempting to demote the last owner. `404` — target user is not a member.
 
 ### DELETE /api/networks/:id/members/:memberId
 
