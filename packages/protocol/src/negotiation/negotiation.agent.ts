@@ -159,6 +159,7 @@ Policy: You are continuing a prior dialogue. If this signal is materially the sa
           const opts = Array.isArray(a.selectedOptions) ? a.selectedOptions : [];
           const parts = opts.length > 0 ? opts.join(', ') : '';
           const free = a.freeText ? (parts ? ` — ${a.freeText}` : a.freeText) : '';
+          if (!parts && !free) return '';
           return `- ${parts}${free}`;
         }).filter(Boolean).join("\n")}\n`
       : '';
