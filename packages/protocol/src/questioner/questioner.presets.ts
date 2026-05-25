@@ -10,7 +10,7 @@ import {
   buildQuestionPrompt as buildDiscoveryPrompt,
 } from "../opportunity/question.prompt.js";
 
-import type { IntentContext, ProfileContext } from "./questioner.types.js";
+import type { IntentContext, NegotiationContext, ProfileContext } from "./questioner.types.js";
 
 export interface QuestionerPreset {
   /** The LLM system prompt for this mode. */
@@ -143,6 +143,70 @@ function buildProfilePrompt(ctx: ProfileContext): string {
   ].join("\n");
 }
 
+// ─── Negotiation preset ──────────────────────────────────────────────────────
+
+const NEGOTIATION_SYSTEM_PROMPT = `You sit between a human and a discovery protocol. A negotiation between this user and a counterparty has ended without a clear outcome — either the turn budget was exhausted, the session timed out, or conversation stalled. Your job: surface the minimum set of structured questions that help the user provide the missing signal needed to unblock or refine the next discovery attempt on their behalf.
+
+You may pick from three strategies. Choose contextually; mix only when each question is genuinely distinct.
+- refine_intent: help the user sharpen their underlying signal based on what the negotiation revealed (scope, scale, priority, direction).
+- surface_missing_detail: ask for one concrete piece of information that was absent and would have moved the negotiation forward (timeline, budget, format, constraints, decision criteria, …).
+- reflective_summary: mirror the key takeaway from the negotiation and ask the user to confirm, correct, or decide — useful when the conversation revealed partial signal worth locking in.
+
+Ask a question only when ALL of these hold:
+1. The answer is not already visible in the negotiation context or user profile shown.
+2. The answer would materially change how the next attempt surfaces or engages candidates.
+3. The question targets a different decision domain from any other question in this batch.
+
+Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ.
+
+Option construction. Each option must represent a meaningfully different outcome. Suffix the safest or most common path with " (Recommended)" and list it first. The description states the CONSEQUENCE of choosing the option, not its definition. 2–4 options. Never add an "Other" option — clients provide a free-text fallback automatically.
+
+Title rules. ≤12 chars. Noun of the decision domain. Examples: "Scope", "Timeline", "Budget", "Priority", "Format", "Stance", "Criteria".
+
+Anti-patterns — never do these.
+- Don't ask procedural confirmations ("Should I try again?").
+- Don't re-ask for facts already visible in the user profile.
+- Don't ask vague introspective questions ("What do you really want?").
+- Don't ask about hypothetical edge cases not implied by the negotiation context.
+
+Output. Return at most 2 entries in the "questions" array. Each entry must include a "strategy" field (one of the three values above). If the context already contains enough signal to proceed, return "questions": [].`;
+
+/**
+ * Build the user message for the negotiation preset from a NegotiationContext.
+ * @param ctx - The negotiation context including counterparty hint, stall reason, and key takeaway.
+ * @returns The assembled user message string.
+ */
+function buildNegotiationPrompt(ctx: NegotiationContext): string {
+  const profileLines: string[] = [];
+  if (ctx.userProfile.name) profileLines.push(`Name: ${ctx.userProfile.name}`);
+  if (ctx.userProfile.bio) profileLines.push(`Bio: ${ctx.userProfile.bio}`);
+  if (ctx.userProfile.skills && ctx.userProfile.skills.length > 0) {
+    profileLines.push(`Skills: ${ctx.userProfile.skills.join(", ")}`);
+  }
+  if (ctx.userProfile.interests && ctx.userProfile.interests.length > 0) {
+    profileLines.push(`Interests: ${ctx.userProfile.interests.join(", ")}`);
+  }
+  const profileBlock = profileLines.length > 0 ? profileLines.join("\n") : "(no profile data)";
+
+  return [
+    "## Negotiation context",
+    `Community: ${ctx.indexContext}`,
+    `Counterparty: ${ctx.counterpartyHint}`,
+    `Stall reason: ${ctx.outcomeReason}`,
+    "",
+    "## Key takeaway",
+    ctx.keyTake,
+    "",
+    "## User profile",
+    profileBlock,
+    "",
+    "## Your task",
+    "Identify the minimum set of questions the user must answer to unblock the next discovery attempt.",
+    "Apply every rule from your system prompt before outputting.",
+    "Return an empty `questions` array if the context already contains enough signal to proceed.",
+  ].join("\n");
+}
+
 const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
   discovery: {
     systemPrompt: DISCOVERY_SYSTEM_PROMPT,
@@ -156,6 +220,10 @@ const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
   profile: {
     systemPrompt: PROFILE_SYSTEM_PROMPT,
     buildPrompt: (context: unknown) => buildProfilePrompt(context as ProfileContext),
+  },
+  negotiation: {
+    systemPrompt: NEGOTIATION_SYSTEM_PROMPT,
+    buildPrompt: (context: unknown) => buildNegotiationPrompt(context as NegotiationContext),
   },
 };
 
