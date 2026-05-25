@@ -81,6 +81,27 @@ describe("PremiseGraphFactory", () => {
     expect(result.error).toBeUndefined();
   }, 60_000);
 
+  it("respects custom provenanceSource and provenanceConfidence overrides", async () => {
+    const db = createMockDatabase();
+    const embedder = createMockEmbedder();
+    const factory = new PremiseGraphFactory(db, embedder);
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({
+      userId: "user-2",
+      assertionText: "I have 10 years of experience in machine learning",
+      tier: "assertive" as const,
+      volatile: false,
+      provenanceSource: "enrichment" as const,
+      provenanceConfidence: 0.85,
+    });
+
+    expect(result.premise).toBeDefined();
+    expect(result.premise!.provenance.source).toBe("enrichment");
+    expect(result.premise!.provenance.confidence).toBe(0.85);
+    expect(result.error).toBeUndefined();
+  }, 60_000);
+
   it("returns premises in query mode without LLM calls", async () => {
     const db = createMockDatabase();
     const embedder = createMockEmbedder();
