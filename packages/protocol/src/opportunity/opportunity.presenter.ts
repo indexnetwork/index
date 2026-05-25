@@ -639,23 +639,33 @@ export async function gatherPresenterContext(
   let otherPremiseContext = '';
 
   if (premiseGroundedActors.length > 0) {
-    const [viewerPremises, ...otherPartiesPremises] = await Promise.all([
-      database.getPremisesForUser(viewerId, 'ACTIVE'),
-      ...otherPartyIds.map((uid) => database.getPremisesForUser(uid, 'ACTIVE')),
+    // Only fetch premises for actors that are actually premise-grounded, not all parties
+    const groundedOtherIds = premiseGroundedActors
+      .filter((a) => a.userId !== viewerId)
+      .map((a) => a.userId);
+    const viewerIsGrounded = premiseGroundedActors.some((a) => a.userId === viewerId);
+
+    const results = await Promise.all([
+      ...(viewerIsGrounded ? [database.getPremisesForUser(viewerId, 'ACTIVE')] : []),
+      ...groundedOtherIds.map((uid) => database.getPremisesForUser(uid, 'ACTIVE')),
     ]);
 
-    if (viewerPremises?.length) {
-      viewerPremiseContext =
-        '\nPremises (self-descriptions):\n' +
-        viewerPremises
-          .slice(0, 5)
-          .map((p) => `- ${p.assertion.text}`)
-          .join('\n');
+    let idx = 0;
+    if (viewerIsGrounded) {
+      const viewerPremises = results[idx++];
+      if (viewerPremises?.length) {
+        viewerPremiseContext =
+          '\nPremises (self-descriptions):\n' +
+          viewerPremises
+            .slice(0, 5)
+            .map((p) => `- ${p.assertion.text}`)
+            .join('\n');
+      }
     }
 
     const otherPremiseLines: string[] = [];
-    for (let i = 0; i < otherPartyIds.length; i++) {
-      const premises = otherPartiesPremises[i];
+    for (let i = 0; i < groundedOtherIds.length; i++) {
+      const premises = results[idx++];
       if (premises?.length) {
         for (const p of premises.slice(0, 3)) {
           otherPremiseLines.push(`- ${p.assertion.text}`);

@@ -78,7 +78,8 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
         indexesAssigned,
         message: `Premise created and assigned to ${indexesAssigned} index${indexesAssigned === 1 ? "" : "es"}.`,
       });
-      deps.premiseEvents?.onCreated?.(premise.id, context.userId);
+      try { deps.premiseEvents?.onCreated?.(premise.id, context.userId); }
+      catch (e) { logger.error('[createPremise] premiseEvents.onCreated failed', { error: e }); }
       return createResult;
     },
   });
@@ -198,7 +199,8 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
           status: updated.status,
           message: "Premise updated successfully (metadata only, no re-analysis).",
         });
-        deps.premiseEvents?.onUpdated?.(query.premiseId, context.userId);
+        try { deps.premiseEvents?.onUpdated?.(query.premiseId, context.userId); }
+        catch (e) { logger.error('[updatePremise] premiseEvents.onUpdated failed', { error: e }); }
         return metadataResult;
       }
 
@@ -235,7 +237,8 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
         status: updated.status,
         message: "Premise updated successfully.",
       });
-      deps.premiseEvents?.onUpdated?.(query.premiseId, context.userId);
+      try { deps.premiseEvents?.onUpdated?.(query.premiseId, context.userId); }
+      catch (e) { logger.error('[updatePremise] premiseEvents.onUpdated failed', { error: e }); }
       return updateResult;
     },
   });
@@ -279,7 +282,8 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
         id: query.premiseId,
         message: "Premise retracted successfully.",
       });
-      deps.premiseEvents?.onRetracted?.(query.premiseId, context.userId);
+      try { deps.premiseEvents?.onRetracted?.(query.premiseId, context.userId); }
+      catch (e) { logger.error('[retractPremise] premiseEvents.onRetracted failed', { error: e }); }
       return retractResult;
     },
   });

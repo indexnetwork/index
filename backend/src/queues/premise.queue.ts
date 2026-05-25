@@ -118,6 +118,7 @@ export class PremiseQueue {
   private readonly queueLogger = log.queue.from('PremiseQueue');
   private readonly deps: PremiseQueueDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<PremiseJobPayload>> | null = null;
+  private cronTask: ReturnType<typeof cron.schedule> | null = null;
 
   constructor(deps?: PremiseQueueDeps) {
     this.deps = deps;
@@ -216,7 +217,8 @@ export class PremiseQueue {
    * Schedule expiry detection to run every hour. Call from the protocol server only.
    */
   startCrons(): void {
-    cron.schedule('0 * * * *', () => {
+    if (this.cronTask) return; // idempotent
+    this.cronTask = cron.schedule('0 * * * *', () => {
       this.checkExpiredPremises()
         .catch((err) => this.logger.error('[ExpiryCheck] Cron failed', { error: err }));
     });
@@ -255,6 +257,10 @@ export class PremiseQueue {
    * Gracefully close the worker and queue connections.
    */
   async close(): Promise<void> {
+    if (this.cronTask) {
+      this.cronTask.stop();
+      this.cronTask = null;
+    }
     if (this.worker) {
       await this.worker.close();
       this.worker = null;
@@ -263,7 +269,7 @@ export class PremiseQueue {
   }
 
   // -------------------------------------------------------------------------
-  // Job handlers (stubs — logic implemented in later tasks)
+  // Default production implementations (injected via deps or used as fallbacks)
   // -------------------------------------------------------------------------
 
   /**
