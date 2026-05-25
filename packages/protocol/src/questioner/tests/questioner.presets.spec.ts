@@ -31,8 +31,29 @@ describe("getPreset", () => {
   });
 
   it("throws for an unimplemented mode", () => {
-    expect(() => getPreset("intent")).toThrow("not implemented");
     expect(() => getPreset("profile")).toThrow("not implemented");
     expect(() => getPreset("negotiation")).toThrow("not implemented");
+  });
+});
+
+describe("intent preset", () => {
+  it("returns the intent preset with systemPrompt and buildPrompt", () => {
+    const preset = getPreset("intent");
+    expect(preset).toBeDefined();
+    expect(typeof preset.systemPrompt).toBe("string");
+    expect(preset.systemPrompt.length).toBeGreaterThan(0);
+    expect(typeof preset.buildPrompt).toBe("function");
+  });
+
+  it("intent buildPrompt produces a string containing the intent payload", () => {
+    const preset = getPreset("intent");
+    const result = preset.buildPrompt({
+      intentId: "intent-1",
+      payload: "I want to find a cofounder for my AI startup",
+      userProfile: { name: "Alice", bio: "AI researcher" },
+    });
+    expect(typeof result).toBe("string");
+    expect(result).toContain("cofounder");
+    expect(result).toContain("Alice");
   });
 });
