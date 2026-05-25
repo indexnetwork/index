@@ -42,6 +42,7 @@ export function QuestionsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user?.id) {
       setQuestions([]);
+      setLoading(false);
       return;
     }
 
