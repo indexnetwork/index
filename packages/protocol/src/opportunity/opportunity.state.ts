@@ -45,7 +45,6 @@ export interface TargetNetwork {
 
 /**
  * Candidate match from discovery (semantic search).
- * candidateIntentId is set for intent matches; omitted for profile-only matches.
  */
 export interface CandidateMatch {
   candidateUserId: Id<'users'>;
@@ -58,8 +57,8 @@ export interface CandidateMatch {
   lens: string;
   candidatePayload: string;
   candidateSummary?: string;
-  /** How this candidate was found: 'query' (HyDE from search text), 'profile-similarity', or 'premise-similarity'. */
-  discoverySource?: 'query' | 'profile-similarity' | 'premise-similarity';
+  /** How this candidate was found: 'query' (HyDE from search text) or 'premise-similarity'. */
+  discoverySource?: 'query' | 'premise-similarity';
 }
 
 /**
