@@ -27,6 +27,9 @@ import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
+import { QuestionerAdapter } from '../adapters/questioner.adapter';
+import { questionerQueue } from '../queues/questioner.queue';
+import db from '../lib/drizzle/drizzle';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
@@ -41,8 +44,8 @@ import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
 
-import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
+import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload } from '@indexnetwork/protocol';
 
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -58,6 +61,7 @@ const integration = new ComposioIntegrationAdapter();
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
 const questionGeneratorService = new QuestionGeneratorService();
+const questionerAdapter = new QuestionerAdapter(db);
 const negotiationSummaryService = new NegotiationSummaryService();
 const integrationImporter = new IntegrationService(integration, contactService);
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
@@ -114,6 +118,12 @@ const protocolDeps = {
   mintConnectLink,
   frontendUrl: process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'https://index.network',
   apiBaseUrl,
+  questionerDatabase: questionerAdapter,
+  ...(process.env.QUESTIONER_ENABLED === 'true' && {
+    questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
+      await questionerQueue.addGenerateJob(input as Parameters<typeof questionerQueue.addGenerateJob>[0]);
+    },
+  }),
 };
 
 const chatSessionReader = {
@@ -160,6 +170,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
   const intentIndexGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
+  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
 
   compiledGraphs = {
     profile: profileGraph,
@@ -168,6 +179,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     networkMembership: networkMembershipGraph,
     intentIndex: intentIndexGraph,
     opportunity: opportunityGraph,
+    premise: premiseGraph,
   };
 
   return compiledGraphs;
@@ -393,6 +405,7 @@ function getOrCreateMcpServer(): McpServer {
     mintConnectLink: protocolDeps.mintConnectLink,
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
+    ...(protocolDeps.questionerEnqueue && { questionerEnqueue: protocolDeps.questionerEnqueue }),
     graphs,
   };
 

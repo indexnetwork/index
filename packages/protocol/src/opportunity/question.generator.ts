@@ -1,4 +1,6 @@
 /**
+ * @deprecated Use QuestionerAgent instead. Will be removed in a future version.
+ *
  * QuestionGenerator — pure LLM pass that turns a structured DiscoveryQuestionInput
  * into 0–3 decision questions. No DB, no events, no caller wired here; Slice 3
  * (opportunity.discover.ts) is the first consumer.
@@ -35,6 +37,7 @@ const logger = protocolLogger("QuestionGenerator");
 /** Maximum same-strategy questions allowed in a single emission. */
 const MAX_SAME_STRATEGY = 2;
 
+/** @deprecated Use QuestionerAgent instead. Will be removed in a future version. */
 export class QuestionGenerator {
   private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
 

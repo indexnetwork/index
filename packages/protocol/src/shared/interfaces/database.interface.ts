@@ -1061,13 +1061,13 @@ export interface Database {
    *
    * @param networkId - The network to add to
    * @param userId - The user to add
-   * @param role - owner | admin | member
+   * @param role - owner | member
    * @returns success and optionally alreadyMember if they were already in the network
    */
   addMemberToNetwork(
     networkId: string,
     userId: string,
-    role: 'owner' | 'admin' | 'member'
+    role: 'owner' | 'member'
   ): Promise<{ success: boolean; alreadyMember?: boolean }>;
 
   /**
@@ -1699,7 +1699,7 @@ export interface SystemDatabase {
   getMembersFromScope(): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]>;
 
   /** Add a user to an index (requires ownership or 'anyone' policy). */
-  addMemberToNetwork(networkId: string, userId: string, role: 'owner' | 'admin' | 'member'): Promise<{ success: boolean; alreadyMember?: boolean }>;
+  addMemberToNetwork(networkId: string, userId: string, role: 'owner' | 'member'): Promise<{ success: boolean; alreadyMember?: boolean }>;
 
   /** Remove a user from an index (requires ownership). Cannot remove the owner. */
   removeMemberFromIndex(networkId: string, userId: string): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }>;

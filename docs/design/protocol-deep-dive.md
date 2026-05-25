@@ -466,6 +466,16 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Output:** indexScore (0.0-1.0), memberScore (0.0-1.0), reasoning
 **Used by:** Premise Graph (index node)
 
+### 4.20 QuestionerAgent
+
+**File:** `questioner/questioner.agent.ts`
+**Role:** Generates structured questions to elicit missing information from users. Uses mode-specific presets (system prompt + builder) to produce up to 3 questions per invocation.
+**Model:** `google/gemini-2.5-flash`
+**Input:** `QuestionerInput` envelope with mode (`discovery` | `intent` | `profile` | `negotiation`), userId, sourceType/sourceId, and mode-specific context
+**Output:** Array of `QuestionWithStrategy` (title, prompt, options, multiSelect, strategy)
+**Used by:** QuestionerQueue worker (async, behind `QUESTIONER_ENABLED` flag)
+**Presets:** Currently only `discovery` is implemented; `intent`, `profile`, `negotiation` are planned for Slice 4.
+
 ## 5. Chat Tool System
 
 Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool functions that the LLM can invoke during the ReAct loop. Tools handle input validation, call the appropriate subgraph, and return a formatted string result.

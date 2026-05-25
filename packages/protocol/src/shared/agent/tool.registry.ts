@@ -12,6 +12,7 @@ import { createContactTools } from '../../contact/contact.tools.js';
 import { createAgentTools } from '../../agent/agent.tools.js';
 import { createNegotiationTools } from '../../negotiation/negotiation.tools.js';
 import { createChatTools } from '../../chat/chat.tools.js';
+import { createPremiseTools } from '../../premise/premise.tools.js';
 import { protocolLogger } from '../observability/protocol.logger.js';
 
 const logger = protocolLogger('ToolRegistry');
@@ -74,6 +75,7 @@ export function createToolRegistry(deps: ToolDeps): ToolRegistry {
   createContactTools(dt, deps);
   createAgentTools(dt, deps);
   createNegotiationTools(dt, deps);
+  createPremiseTools(dt, deps);
   if (deps.chatSession) {
     createChatTools(dt, deps);
   }

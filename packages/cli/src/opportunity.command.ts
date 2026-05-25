@@ -185,8 +185,8 @@ async function discoverIntroduction(
 
   // Step 1: Find shared indexes between the two users
   const [membershipsA, membershipsB] = await Promise.all([
-    client.callTool("read_index_memberships", { userId: userA }),
-    client.callTool("read_index_memberships", { userId: userB }),
+    client.callTool("read_network_memberships", { userId: userA }),
+    client.callTool("read_network_memberships", { userId: userB }),
   ]);
 
   if (!membershipsA.success || !membershipsB.success) {

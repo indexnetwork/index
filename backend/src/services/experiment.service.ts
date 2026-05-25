@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
@@ -90,19 +90,6 @@ class ExperimentService {
         socials: payload.socials ?? [],
       });
     }
-
-    // Mark as onboarded so the user is discoverable in vector search filters.
-    // Uses an atomic WHERE guard so concurrent signup() calls for the same user
-    // cannot both read completedAt as missing and race to overwrite each other.
-    const completedAt = new Date().toISOString();
-    await db.update(schema.users)
-      .set({
-        onboarding: sql`COALESCE(${schema.users.onboarding}::jsonb, '{}'::jsonb) || ${JSON.stringify({ completedAt })}::jsonb`,
-      })
-      .where(and(
-        eq(schema.users.id, result.user.id),
-        sql`(${schema.users.onboarding} IS NULL OR ${schema.users.onboarding}->>'completedAt' IS NULL)`,
-      ));
 
     // Enqueue profile enrichment so the user gets a profile embedding + HyDE.
     try {
@@ -200,21 +187,6 @@ class ExperimentService {
     }
 
     const importedUserIds = [...importedUserIdSet];
-
-    // Mark imported users as onboarded so they appear in vector search filters
-    // (embedder requires isGhost=true OR onboarding.completedAt IS NOT NULL).
-    // Merges into existing onboarding JSON to preserve other fields (flow, currentStep, etc.).
-    if (importedUserIds.length > 0) {
-      const completedAt = new Date().toISOString();
-      await db.update(schema.users)
-        .set({
-          onboarding: sql`COALESCE(${schema.users.onboarding}::jsonb, '{}'::jsonb) || ${JSON.stringify({ completedAt })}::jsonb`,
-        })
-        .where(and(
-          inArray(schema.users.id, importedUserIds),
-          sql`(${schema.users.onboarding} IS NULL OR ${schema.users.onboarding}->>'completedAt' IS NULL)`,
-        ));
-    }
 
     // Enqueue profile enrichment: the profile graph reads name, intro, location,
     // and socials from the users/user_socials tables (written by applyProfilePatch

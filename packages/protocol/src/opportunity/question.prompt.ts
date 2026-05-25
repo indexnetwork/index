@@ -1,4 +1,6 @@
 /**
+ * @deprecated Use QuestionerAgent and questioner presets instead. Will be removed in a future version.
+ *
  * Prompt module for the decision-question generator: the system prompt
  * constant, the `DiscoveryQuestionInput` contract, and a pure string-building
  * `buildQuestionPrompt` that assembles the user message.
@@ -86,6 +88,7 @@ export interface DiscoveryQuestionInput {
   now: string;
 }
 
+/** @deprecated Use QuestionerAgent and questioner presets instead. Will be removed in a future version. */
 export const SYSTEM_PROMPT = `You sit between a human and a discovery protocol that just ran negotiations on their behalf. Your job: surface the minimum set of structured decision questions the human must answer to make the next discovery turn sharper, or improve their outlook on the intent.
 
 You may pick from five strategies. Choose contextually; mix when multiple questions genuinely complement.
@@ -118,7 +121,11 @@ Anti-patterns — never do these.
 
 Output. Return at most 3 entries in the "questions" array. Each entry must include a "strategy" field (one of the five values). If nothing is worth asking, return "questions": [].`;
 
-/** Pure builder: assembles the user message string from a structured input. */
+/**
+ * @deprecated Use QuestionerAgent and questioner presets instead. Will be removed in a future version.
+ *
+ * Pure builder: assembles the user message string from a structured input.
+ */
 export function buildQuestionPrompt(input: DiscoveryQuestionInput): string {
   const profileSummary = renderProfile(input.sourceProfile);
   const negotiationBlocks = renderDiscoveryNegotiationDigests(input.negotiationDigests);

@@ -236,7 +236,7 @@ describe("opportunity command behavior", () => {
       async callTool(toolName: string) {
         calls.push(toolName);
 
-        if (toolName === "read_index_memberships") {
+        if (toolName === "read_network_memberships") {
           return {
             success: true,
             data: { memberships: [{ networkId: "shared-network" }] },
@@ -296,7 +296,7 @@ describe("opportunity command behavior", () => {
   it("keeps --json output clean during introduction discovery", async () => {
     const client = {
       async callTool(toolName: string) {
-        if (toolName === "read_index_memberships") {
+        if (toolName === "read_network_memberships") {
           return {
             success: true,
             data: { memberships: [{ networkId: "shared-network" }] },

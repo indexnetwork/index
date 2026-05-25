@@ -39,15 +39,20 @@ export interface QuestionFilters {
 }
 
 export interface QuestionerDatabase {
-  /** Persist a batch of generated questions (up to 3 per generation). */
-  persist(questions: PersistableQuestion[]): Promise<void>;
+  /** Persist a batch of generated questions (up to 3 per generation).
+   *  @returns The IDs of the inserted rows. */
+  persist(questions: PersistableQuestion[]): Promise<string[]>;
 
   /** Find pending questions for a user, optionally filtered by mode/source. */
   findPending(userId: string, filters?: QuestionFilters): Promise<PersistedQuestion[]>;
 
-  /** Record an answer for a question. Sets status to "answered". */
-  answer(questionId: string, answer: QuestionAnswer): Promise<void>;
+  /** Record an answer for a question. Sets status to "answered".
+   *  Only succeeds if the user is an actor on a pending question.
+   *  @returns `true` if updated, `false` if not found, not pending, or unauthorized. */
+  answer(questionId: string, userId: string, answer: QuestionAnswer): Promise<boolean>;
 
-  /** Dismiss a question. Sets status to "dismissed". */
-  dismiss(questionId: string): Promise<void>;
+  /** Dismiss a question. Sets status to "dismissed".
+   *  Only succeeds if the user is an actor on a pending question.
+   *  @returns `true` if updated, `false` if not found, not pending, or unauthorized. */
+  dismiss(questionId: string, userId: string): Promise<boolean>;
 }

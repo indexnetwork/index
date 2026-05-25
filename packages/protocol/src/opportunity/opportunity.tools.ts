@@ -919,6 +919,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ...(runDiscoveryOrchestrator && { trigger: 'orchestrator' as const }),
         ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
         ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
+        ...(deps.questionerEnqueue && { questionerEnqueue: deps.questionerEnqueue }),
         ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
         // Decision questions add an LLM call after the negotiation phase.
         // Capped at DISCOVERY_QUESTIONS_TIMEOUT_MS (12 s default,

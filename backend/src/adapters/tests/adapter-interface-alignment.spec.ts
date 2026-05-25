@@ -44,6 +44,13 @@ import type {
   SystemDatabase as ProtocolSystemDatabase,
 } from '@indexnetwork/protocol';
 
+import type {
+  QuestionerDatabase as ProtocolQuestionerDatabase,
+  PersistableQuestion as ProtocolPersistableQuestion,
+  PersistedQuestion as ProtocolPersistedQuestion,
+  QuestionFilters as ProtocolQuestionFilters,
+} from '@indexnetwork/protocol';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Adapter local types (the structurally-aligned copies)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +80,13 @@ import {
   createUserDatabase,
   createSystemDatabase,
 } from '../database.adapter';
+
+import type {
+  AdapterPersistableQuestion,
+  AdapterPersistedQuestion,
+  AdapterQuestionFilters,
+} from '../questioner.adapter';
+import { QuestionerAdapter } from '../questioner.adapter';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CACHE ADAPTER ALIGNMENT
@@ -236,6 +250,47 @@ describe('Database adapter ↔ protocol interface alignment', () => {
   it('createSystemDatabase return type is assignable to protocol SystemDatabase', () => {
     type SystemDbReturn = ReturnType<typeof createSystemDatabase>;
     const check: (_: SystemDbReturn) => ProtocolSystemDatabase = (v) => v;
+    expect(check).toBeDefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// QUESTIONER ADAPTER ALIGNMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('Questioner adapter ↔ protocol interface alignment', () => {
+  it('PersistableQuestion: adapter → protocol', () => {
+    const check: (_: AdapterPersistableQuestion) => ProtocolPersistableQuestion = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('PersistableQuestion: protocol → adapter', () => {
+    const check: (_: ProtocolPersistableQuestion) => AdapterPersistableQuestion = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('PersistedQuestion: adapter → protocol', () => {
+    const check: (_: AdapterPersistedQuestion) => ProtocolPersistedQuestion = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('PersistedQuestion: protocol → adapter', () => {
+    const check: (_: ProtocolPersistedQuestion) => AdapterPersistedQuestion = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('QuestionFilters: adapter → protocol', () => {
+    const check: (_: AdapterQuestionFilters) => ProtocolQuestionFilters = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('QuestionFilters: protocol → adapter', () => {
+    const check: (_: ProtocolQuestionFilters) => AdapterQuestionFilters = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('QuestionerAdapter is assignable to protocol QuestionerDatabase', () => {
+    const check: (_: QuestionerAdapter) => ProtocolQuestionerDatabase = (v) => v;
     expect(check).toBeDefined();
   });
 });

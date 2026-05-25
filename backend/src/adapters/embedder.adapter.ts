@@ -234,7 +234,6 @@ export class EmbedderAdapter {
       inArray(networkMembers.networkId, filter.indexScope),
       isNotNull(userProfiles.embedding),
       isNull(schema.users.deletedAt),
-      sql`(${schema.users.isGhost} = true OR ${schema.users.onboarding}->>'completedAt' IS NOT NULL)`,
       sql`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
       ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
     ];
@@ -284,7 +283,6 @@ export class EmbedderAdapter {
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
       isNull(intents.archivedAt),
       isNull(schema.users.deletedAt),
-      sql`(${schema.users.isGhost} = true OR ${schema.users.onboarding}->>'completedAt' IS NOT NULL)`,
       isNotNull(intents.embedding),
       sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
     ];
@@ -326,7 +324,6 @@ export class EmbedderAdapter {
       inArray(networkMembers.networkId, filter.indexScope),
       isNotNull(userProfiles.embedding),
       isNull(schema.users.deletedAt),
-      sql`(${schema.users.isGhost} = true OR ${schema.users.onboarding}->>'completedAt' IS NOT NULL)`,
       sql`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
       ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
     ];
@@ -373,7 +370,6 @@ export class EmbedderAdapter {
       inArray(intentNetworks.networkId, filter.indexScope),
       isNull(intents.archivedAt),
       isNull(schema.users.deletedAt),
-      sql`(${schema.users.isGhost} = true OR ${schema.users.onboarding}->>'completedAt' IS NOT NULL)`,
       isNotNull(intents.embedding),
       sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
