@@ -10,6 +10,7 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
+import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 
 const logger = protocolLogger("IntentGraphFactory");
 const MAX_PERMISSIBLE_ENTROPY = 0.75;
@@ -118,6 +119,7 @@ export class IntentGraphFactory {
     private database: IntentGraphDatabase,
     private embedder?: EmbeddingGenerator,
     private intentQueue?: IntentGraphQueue,
+    private questionerEnqueue?: QuestionerEnqueueFn,
   ) { }
 
   public createGraph() {
@@ -565,6 +567,20 @@ export class IntentGraphFactory {
                 ...(state.networkId ? { networkScopeId: state.networkId } : {}),
               }).catch((err) =>
                 logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
+              );
+
+              this.questionerEnqueue?.({
+                mode: 'intent',
+                userId: state.userId,
+                sourceType: 'intent',
+                sourceId: created.id,
+                context: {
+                  intentId: created.id,
+                  payload: sanitizedPayload,
+                  userProfile: {},
+                },
+              }).catch((err) =>
+                logger.error('Failed to enqueue intent question generation', { intentId: created.id, error: err })
               );
 
             } else if (actionType === 'update') {

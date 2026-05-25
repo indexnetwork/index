@@ -9,6 +9,7 @@ import type { ProfileEnricher } from "../shared/interfaces/enrichment.interface.
 import { shouldEnrichGhostDisplayNameFromParallel, isEnrichedNameMeaningful } from "./profile.enricher.js";
 import { socialsToEnrichmentRequest } from "../shared/utils/social-label.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
@@ -95,6 +96,7 @@ export class ProfileGraphFactory {
     private embedder: Embedder,
     private scraper: Scraper,
     private enricher?: ProfileEnricher,
+    private questionerEnqueue?: QuestionerEnqueueFn,
   ) { }
 
   public createGraph() {
@@ -677,6 +679,34 @@ export class ProfileGraphFactory {
           await this.database.saveProfile(state.userId, profile);
 
           logger.verbose("✅ Profile saved successfully");
+
+          // Compute profile gaps from missing fields
+          const gaps: string[] = [];
+          if (!profile.identity?.location) gaps.push('location');
+          if (!profile.attributes?.skills?.length) gaps.push('skills');
+          if (!profile.attributes?.interests?.length) gaps.push('interests');
+          if (!profile.narrative?.context) gaps.push('current work');
+
+          if (gaps.length > 0) {
+            this.questionerEnqueue?.({
+              mode: 'profile',
+              userId: state.userId,
+              sourceType: 'profile',
+              sourceId: state.userId,
+              context: {
+                userProfile: {
+                  name: profile.identity?.name,
+                  bio: profile.identity?.bio,
+                  location: profile.identity?.location,
+                  skills: profile.attributes?.skills,
+                  interests: profile.attributes?.interests,
+                },
+                gaps,
+              },
+            }).catch((err) =>
+              logger.error('Failed to enqueue profile question generation', { userId: state.userId, error: err })
+            );
+          }
 
           return {
             profile,

@@ -7,6 +7,7 @@ import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfac
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 
 const logger = protocolLogger("NegotiationGraph");
 
@@ -19,10 +20,11 @@ export class NegotiationGraphFactory {
     private database: NegotiationDatabase,
     private dispatcher: AgentDispatcher,
     private timeoutQueue?: NegotiationTimeoutQueue,
+    private questionerEnqueue?: QuestionerEnqueueFn,
   ) {}
 
   createGraph() {
-    const { database, dispatcher, timeoutQueue } = this;
+    const { database, dispatcher, timeoutQueue, questionerEnqueue } = this;
     const systemAgent = new IndexNegotiator();
 
     const initNode = async (state: typeof NegotiationGraphState.State) => {
@@ -329,6 +331,35 @@ export class NegotiationGraphFactory {
             },
           }),
         });
+      }
+
+      // Enqueue question generation for stalled/capped negotiations (not accepted)
+      if (!hasOpportunity && state.opportunityId && questionerEnqueue) {
+        const stallReason: 'turn_cap' | 'timeout' | 'stalled' = atCap
+          ? 'turn_cap'
+          : (state.error && /timeout/i.test(state.error))
+            ? 'timeout'
+            : 'stalled';
+
+        questionerEnqueue({
+          mode: 'negotiation',
+          userId: state.sourceUser.id,
+          sourceType: 'opportunity',
+          sourceId: state.opportunityId,
+          context: {
+            negotiationId: state.taskId,
+            counterpartyHint: `${state.candidateUser.profile.name ?? 'Unknown'}${state.candidateUser.profile.bio ? ', ' + state.candidateUser.profile.bio : ''}`,
+            indexContext: state.indexContext.prompt,
+            outcomeReason: stallReason,
+            keyTake: outcome.reasoning,
+            userProfile: state.sourceUser.profile,
+          },
+        }).catch((err) =>
+          logger.error('[Graph:Finalize] Failed to enqueue negotiation question generation', {
+            opportunityId: state.opportunityId,
+            error: err,
+          })
+        );
       }
 
       return { outcome, status: 'completed' as const };
