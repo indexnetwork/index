@@ -31,6 +31,7 @@
     "maintenance:seed-experiment-network": "bun ./src/cli/seed-experiment-network.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
     "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
+    "maintenance:decompose-profiles": "bun ./src/cli/decompose-profiles.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",
     "test:raw": "NODE_ENV=test bun test"
