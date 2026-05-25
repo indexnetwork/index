@@ -2,6 +2,7 @@ import { Job } from 'bullmq';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
+import { OpportunityDatabaseAdapter } from '../adapters/database.adapter';
 
 /** BullMQ queue name for premise cascade and profile regeneration jobs. */
 export const QUEUE_NAME = 'premise-queue';
@@ -211,23 +212,70 @@ export class PremiseQueue {
   // Job handlers (stubs — logic implemented in later tasks)
   // -------------------------------------------------------------------------
 
+  /**
+   * Default production implementation: fetch all non-terminal opportunities for
+   * a user from the database using a single filtered query.
+   */
+  private async defaultGetUserOpportunities(
+    userId: string
+  ): Promise<Array<{ id: string; status: NonTerminalStatus }>> {
+    const adapter = new OpportunityDatabaseAdapter();
+    const nonTerminalStatuses: NonTerminalStatus[] = [
+      ...EARLY_STATUSES,
+      ...IN_PROGRESS_STATUSES,
+    ];
+    const rows = await adapter.getOpportunitiesForUser(userId, {
+      statuses: nonTerminalStatuses,
+    });
+    return rows.map((row) => ({ id: row.id, status: row.status as NonTerminalStatus }));
+  }
+
+  /**
+   * Default production implementation: update an opportunity's status in the
+   * database.
+   */
+  private async defaultUpdateOpportunityStatus(
+    opportunityId: string,
+    status: 'expired' | 'stalled'
+  ): Promise<void> {
+    const adapter = new OpportunityDatabaseAdapter();
+    await adapter.updateOpportunityStatus(opportunityId, status);
+  }
+
   private async handlePremiseCascade(data: PremiseCascadeData): Promise<void> {
     const { premiseId, userId, event } = data;
     this.logger.info('[PremiseCascade] Starting cascade', { premiseId, userId, event });
 
-    // TODO(Task N): Implement cascade logic.
-    // 1. Fetch all non-terminal opportunities where userId is an actor.
-    //    Use: this.deps?.getUserOpportunities ?? defaultGetUserOpportunities
-    // 2. For each opportunity:
-    //    - draft | latent  → transition to 'expired'
-    //    - pending | negotiating | accepted  → transition to 'stalled'
-    //    Use: this.deps?.updateOpportunityStatus ?? defaultUpdateOpportunityStatus
-    // 3. Log summary (n expired, m stalled).
+    const getUserOpportunities =
+      this.deps?.getUserOpportunities ??
+      ((uid: string) => this.defaultGetUserOpportunities(uid));
 
-    this.logger.info('[PremiseCascade] Cascade stub complete (not yet implemented)', {
+    const updateOpportunityStatus =
+      this.deps?.updateOpportunityStatus ??
+      ((oppId: string, status: 'expired' | 'stalled') =>
+        this.defaultUpdateOpportunityStatus(oppId, status));
+
+    const opportunities = await getUserOpportunities(userId);
+
+    let expiredCount = 0;
+    let stalledCount = 0;
+
+    for (const opp of opportunities) {
+      const newStatus = (EARLY_STATUSES as readonly string[]).includes(opp.status)
+        ? 'expired'
+        : 'stalled';
+      await updateOpportunityStatus(opp.id, newStatus);
+      if (newStatus === 'expired') expiredCount++;
+      else stalledCount++;
+    }
+
+    this.logger.info('[PremiseCascade] Cascade complete', {
       premiseId,
       userId,
       event,
+      total: opportunities.length,
+      expired: expiredCount,
+      stalled: stalledCount,
     });
   }
 
