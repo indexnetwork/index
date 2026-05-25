@@ -928,8 +928,9 @@ export class ProfileGraphFactory {
 
           if (result.premises.length === 0) {
             logger.verbose("No premises extracted — skipping decomposition");
-            // No premises found; fall through to aggregate which will use
-            // whatever premises already exist (or end if none)
+            // No premises found; fall through to aggregate which will
+            // synthesize from any existing premises, or to generate_profile
+            // if needsProfileGeneration is still set from check_state
             return {
               operationMode: 'aggregate' as const,
               agentTimings: agentTimingsAccum,
