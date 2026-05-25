@@ -5,7 +5,7 @@
  * Installs into Hermes defaults (flat under `$HERMES_HOME`):
  *
  *   - `SOUL.md` → `$HERMES_HOME/SOUL.md` (identity; overwrites generic Hermes soul)
- *   - `AGENTS.md`, `SCHEDULE.md`, `USER.md` → `$HERMES_HOME/`
+ *   - `AGENTS.md`, `IDENTITY.md`, `SCHEDULE.md`, `USER.md` → `$HERMES_HOME/`
  *   - Edge skill bundles → `$HERMES_HOME/skills/{index-network,edgeos,edge-esmeralda}/`
  *   - `terminal.cwd` in config.yaml → `$HERMES_HOME`
  *   - Index MCP + morning digest cron (`install_index.ts`)
@@ -81,7 +81,7 @@ function copyWorkspaceFiles(wipeUser: boolean): void {
   }
 
   let copied = 0;
-  let preservedUserNotes = false;
+  const preserved: string[] = [];
   for (const entry of readdirSync(SOURCE_WORKSPACE)) {
     if (entry === "SOUL.md") continue;
 
@@ -94,7 +94,7 @@ function copyWorkspaceFiles(wipeUser: boolean): void {
     if (!entry.endsWith(".md")) continue;
 
     if ((entry === "USER.md" || entry === "IDENTITY.md") && !wipeUser && existsSync(targetPath)) {
-      preservedUserNotes = true;
+      preserved.push(entry);
       continue;
     }
     copyFileSync(sourcePath, targetPath);
@@ -102,8 +102,8 @@ function copyWorkspaceFiles(wipeUser: boolean): void {
   }
 
   console.log(`→ staged ${copied} project files into ${TARGET_HOME}`);
-  if (preservedUserNotes) {
-    console.log("  (USER.md and IDENTITY.md preserved — pass --wipe-user to overwrite)");
+  if (preserved.length > 0) {
+    console.log(`  (${preserved.join(" and ")} preserved — pass --wipe-user to overwrite)`);
   }
 
   if (wipeUser) {
