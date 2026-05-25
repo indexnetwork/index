@@ -140,7 +140,6 @@ export class DebugService {
           and(
             sql`${networkMembers.networkId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
             ne(userProfiles.userId, userId),
-            isNotNull(userProfiles.embedding),
           ),
         );
       otherMembersWithProfiles = profileCount?.count ?? 0;
