@@ -2011,8 +2011,16 @@ export interface NegotiationQueries {
 export type NegotiationGraphDatabase = Pick<
   Database,
   | 'getOrCreateDM'
-  | 'updateOpportunityStatus'
 > & NegotiationQueries & {
+  /**
+   * Update the status of an opportunity. Called from the negotiation graph to
+   * advance the opportunity lifecycle (negotiating -> pending/rejected/stalled).
+   * Returns only the narrow { id, status } needed by the graph, not the full Opportunity.
+   */
+  updateOpportunityStatus(
+    id: string,
+    status: OpportunityStatus,
+  ): Promise<{ id: string; status: OpportunityStatus } | null>;
   /** Persists a negotiation turn message within a conversation. */
   createMessage(data: {
     conversationId: string;
