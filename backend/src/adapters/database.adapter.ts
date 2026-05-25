@@ -7384,7 +7384,7 @@ export class ConversationDatabaseAdapter {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // NegotiationDatabase query methods (used by negotiation MCP tools)
+  // NegotiationGraphDatabase query methods (used by negotiation MCP tools)
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
@@ -7503,7 +7503,7 @@ export class ConversationDatabaseAdapter {
 
   /**
    * Gets artifacts for a task (e.g. negotiation outcome).
-   * Alias for getArtifacts with the interface name expected by NegotiationDatabase.
+   * Alias for getArtifacts with the interface name expected by NegotiationGraphDatabase.
    * @param taskId - The task to fetch artifacts for
    * @returns Array of artifact records
    */
