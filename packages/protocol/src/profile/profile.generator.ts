@@ -35,7 +35,7 @@ const responseFormat = z.object({
 });
 
 type Profile = z.infer<typeof responseFormat>;
-export type ProfileDocument = Profile & { userId: string, embedding: number[] | number[][] | null };
+export type ProfileDocument = Profile & { userId: string, embedding?: number[] | number[][] | null };
 
 export class ProfileGenerator {
   private model: any;
