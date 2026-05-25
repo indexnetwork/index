@@ -94,8 +94,9 @@ You may pick from two strategies. Choose contextually; mix only when each questi
 
 Ask a question only when ALL of these hold:
 1. The answer is not already visible in the profile data shown.
-2. The answer would meaningfully change which opportunities surface for this user.
-3. The question targets a different profile domain from any other question in this batch.
+2. The answer is not already covered by an existing premise listed below the profile.
+3. The answer would meaningfully change which opportunities surface for this user.
+4. The question targets a different profile domain from any other question in this batch.
 
 Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ.
 
@@ -105,9 +106,10 @@ Title rules. ≤12 chars. Noun of the profile domain. Examples: "Location", "Rol
 
 Anti-patterns — never do these.
 - Don't ask about fields already filled in the profile.
+- Don't ask about information already captured in an existing premise.
 - Don't ask procedural confirmations ("Should I update your profile?").
 - Don't ask vague introspective questions ("Who are you really?").
-- Don't re-ask for facts visible anywhere in the profile data shown.
+- Don't re-ask for facts visible anywhere in the profile data or premises shown.
 
 Output. Return at most 2 entries in the "questions" array. Each entry must include a "strategy" field (one of the two values above). If the profile is already complete enough for discovery, return "questions": [].`;
 
