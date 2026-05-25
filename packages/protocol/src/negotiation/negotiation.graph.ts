@@ -1,7 +1,7 @@
 import { StateGraph } from "@langchain/langgraph";
 
 import { requestContext, type TraceEmitter } from "../shared/observability/request-context.js";
-import type { NegotiationDatabase } from "../shared/interfaces/database.interface.js";
+import type { NegotiationGraphDatabase } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-events.interface.js";
 import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "./negotiation.state.js";
@@ -17,7 +17,7 @@ const logger = protocolLogger("NegotiationGraph");
  */
 export class NegotiationGraphFactory {
   constructor(
-    private database: NegotiationDatabase,
+    private database: NegotiationGraphDatabase,
     private dispatcher: AgentDispatcher,
     private timeoutQueue?: NegotiationTimeoutQueue,
     private questionerEnqueue?: QuestionerEnqueueFn,
@@ -29,7 +29,8 @@ export class NegotiationGraphFactory {
 
     const initNode = async (state: typeof NegotiationGraphState.State) => {
       try {
-        const conversation = await database.createConversation([
+        // TODO(slice-2): replace with getOrCreateDM
+        const conversation = await (database as any).createConversation([
           { participantId: `agent:${state.sourceUser.id}`, participantType: "agent" },
           { participantId: `agent:${state.candidateUser.id}`, participantType: "agent" },
         ]);
@@ -600,7 +601,7 @@ export async function negotiateCandidates(
  * Creates a negotiation graph with the provided dependencies.
  */
 export function createDefaultNegotiationGraph(deps: {
-  database: NegotiationDatabase;
+  database: NegotiationGraphDatabase;
   dispatcher: AgentDispatcher;
   timeoutQueue?: NegotiationTimeoutQueue;
 }) {

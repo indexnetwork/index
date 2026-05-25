@@ -7,7 +7,7 @@ import type {
   UserRecord,
   UserDatabase,
   SystemDatabase,
-  NegotiationDatabase,
+  NegotiationGraphDatabase,
 } from "../interfaces/database.interface.js";
 import type { Scraper } from "../interfaces/scraper.interface.js";
 import type { Cache, HydeCache } from "../interfaces/cache.interface.js";
@@ -165,7 +165,7 @@ export interface ToolContext {
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
   /** Database adapter for negotiation/conversation operations. */
-  negotiationDatabase: NegotiationDatabase;
+  negotiationDatabase: NegotiationGraphDatabase;
   /** Integration importer for bulk contact import from toolkits. */
   integrationImporter: {
     importContacts(userId: string, toolkit: string): Promise<{
@@ -412,7 +412,7 @@ export interface ToolDeps {
   };
   enricher: ProfileEnricher;
   /** Database adapter for negotiation/conversation operations. */
-  negotiationDatabase: NegotiationDatabase;
+  negotiationDatabase: NegotiationGraphDatabase;
   /** Chat session reader for exposing the caller's past conversations as MCP tools. */
   chatSession?: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */

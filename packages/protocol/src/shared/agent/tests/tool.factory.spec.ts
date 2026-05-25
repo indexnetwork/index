@@ -302,7 +302,7 @@ const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | '
   contactService: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0, details: [] }), listContacts: async () => [], addContact: async () => ({ userId: "", isNew: false, isGhost: false }), removeContact: async () => {} },
   chatSession: { getSessionMessages: async () => [] },
   enricher: { enrichUserProfile: async () => null },
-  negotiationDatabase: {} as unknown as import("../../interfaces/database.interface").NegotiationDatabase,
+  negotiationDatabase: {} as unknown as import("../../interfaces/database.interface").NegotiationGraphDatabase,
   integrationImporter: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0 }) },
   createUserDatabase: (db: any, _userId: string) => ({
     getActiveIntents: db.getActiveIntents ?? (async () => []),
