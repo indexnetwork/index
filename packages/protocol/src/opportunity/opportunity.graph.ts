@@ -1274,7 +1274,7 @@ export class OpportunityGraphFactory {
           logger.info(
             "[Graph:Evaluation] Early termination: no query-sourced candidates remain",
             {
-              droppedProfileCandidates: remaining.length,
+              droppedCandidates: remaining.length,
             },
           );
         }
