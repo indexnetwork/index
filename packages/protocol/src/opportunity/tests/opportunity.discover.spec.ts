@@ -91,6 +91,7 @@ describe("opportunity.discover", () => {
                 identity: { name: "Jane Mentor", bio: "Experienced advisor." },
                 attributes: {},
                 narrative: {},
+                embedding: [0.1, 0.2, 0.3],
               }
             : null,
       } as unknown as ChatGraphCompositeDatabase;
@@ -221,11 +222,11 @@ describe("opportunity.discover", () => {
         ...mockDatabase,
         getProfile: async (userId: string) =>
           userId === candidateId
-            ? { identity: { bio: "Visual artist and illustrator." }, attributes: {}, narrative: {} }
+            ? { identity: { bio: "Visual artist and illustrator." }, attributes: {}, narrative: {}, embedding: [0.1, 0.2, 0.3] }
             : null,
         getUser: async (userId: string) =>
           userId === candidateId
-            ? { name: "Yuki Tanaka", avatar: "https://example.com/yuki.jpg", onboarding: { completedAt: new Date() } }
+            ? { name: "Yuki Tanaka", avatar: "https://example.com/yuki.jpg" }
             : null,
       } as unknown as ChatGraphCompositeDatabase;
 
@@ -292,15 +293,15 @@ describe("opportunity.discover", () => {
         ...mockDatabase,
         getProfile: async (userId: string) => {
           if (userId === targetId)
-            return { identity: { name: "Alice Target", bio: "Product designer." }, attributes: {}, narrative: {} };
+            return { identity: { name: "Alice Target", bio: "Product designer." }, attributes: {}, narrative: {}, embedding: [0.1, 0.2, 0.3] };
           if (userId === candidateId)
-            return { identity: { name: "Bob Candidate", bio: "UX researcher." }, attributes: {}, narrative: {} };
+            return { identity: { name: "Bob Candidate", bio: "UX researcher." }, attributes: {}, narrative: {}, embedding: [0.1, 0.2, 0.3] };
           return null;
         },
         getUser: async (userId: string) => {
-          if (userId === introducerId) return { name: "Carol Introducer", avatar: null, onboarding: { completedAt: new Date() } };
-          if (userId === targetId) return { name: "Alice Target", avatar: null, onboarding: { completedAt: new Date() } };
-          if (userId === candidateId) return { name: "Bob Candidate", avatar: null, onboarding: { completedAt: new Date() } };
+          if (userId === introducerId) return { name: "Carol Introducer", avatar: null };
+          if (userId === targetId) return { name: "Alice Target", avatar: null };
+          if (userId === candidateId) return { name: "Bob Candidate", avatar: null };
           return null;
         },
       } as unknown as ChatGraphCompositeDatabase;
@@ -362,13 +363,13 @@ describe("opportunity.discover", () => {
         ...mockDatabase,
         getProfile: async (userId: string) => {
           if (userId === candidateId)
-            return { identity: { name: "Eve Match", bio: "Engineer." }, attributes: {}, narrative: {} };
+            return { identity: { name: "Eve Match", bio: "Engineer." }, attributes: {}, narrative: {}, embedding: [0.1, 0.2, 0.3] };
           return null;
         },
         getUser: async (userId: string) => {
-          if (userId === viewerId) return { name: "Viewer User", avatar: null, onboarding: { completedAt: new Date() } };
-          if (userId === introducerThirdPartyId) return { name: "Dan Introducer", avatar: "https://example.com/dan.jpg", onboarding: { completedAt: new Date() } };
-          if (userId === candidateId) return { name: "Eve Match", avatar: null, onboarding: { completedAt: new Date() } };
+          if (userId === viewerId) return { name: "Viewer User", avatar: null };
+          if (userId === introducerThirdPartyId) return { name: "Dan Introducer", avatar: "https://example.com/dan.jpg" };
+          if (userId === candidateId) return { name: "Eve Match", avatar: null };
           return null;
         },
       } as unknown as ChatGraphCompositeDatabase;
@@ -419,13 +420,13 @@ describe("opportunity.discover", () => {
         ...mockDatabase,
         getProfile: async (userId: string) =>
           userId === candidateId
-            ? { identity: { name: "Frank Mentor", bio: "Senior dev." }, attributes: {}, narrative: {} }
+            ? { identity: { name: "Frank Mentor", bio: "Senior dev." }, attributes: {}, narrative: {}, embedding: [0.1, 0.2, 0.3] }
             : null,
         getUser: async (userId: string) =>
           userId === candidateId
-            ? { name: "Frank Mentor", avatar: null, onboarding: { completedAt: new Date() } }
+            ? { name: "Frank Mentor", avatar: null }
             : userId === "u1"
-              ? { name: "User One", avatar: null, onboarding: { completedAt: new Date() } }
+              ? { name: "User One", avatar: null }
               : null,
       } as unknown as ChatGraphCompositeDatabase;
 
@@ -479,18 +480,18 @@ describe("opportunity.discover", () => {
         ...mockDatabase,
         getProfile: async (userId: string) => {
           if (userId === deletedUserId)
-            return { identity: { name: "Deleted Person", bio: "Gone." }, attributes: {}, narrative: {} };
+            return { identity: { name: "Deleted Person", bio: "Gone." }, attributes: {}, narrative: {}, embedding: [0.1, 0.2, 0.3] };
           if (userId === activeUserId)
-            return { identity: { name: "Active Person", bio: "Here." }, attributes: {}, narrative: {} };
+            return { identity: { name: "Active Person", bio: "Here." }, attributes: {}, narrative: {}, embedding: [0.1, 0.2, 0.3] };
           return null;
         },
         getUser: async (userId: string) => {
           if (userId === deletedUserId)
-            return { id: deletedUserId, name: "Deleted Person", avatar: null, deletedAt: new Date("2026-01-01"), onboarding: { completedAt: new Date() } };
+            return { id: deletedUserId, name: "Deleted Person", avatar: null, deletedAt: new Date("2026-01-01") };
           if (userId === activeUserId)
-            return { id: activeUserId, name: "Active Person", avatar: null, deletedAt: null, onboarding: { completedAt: new Date() } };
+            return { id: activeUserId, name: "Active Person", avatar: null, deletedAt: null };
           if (userId === "u1")
-            return { id: "u1", name: "Viewer", avatar: null, deletedAt: null, onboarding: { completedAt: new Date() } };
+            return { id: "u1", name: "Viewer", avatar: null, deletedAt: null };
           return null;
         },
       } as unknown as ChatGraphCompositeDatabase;
