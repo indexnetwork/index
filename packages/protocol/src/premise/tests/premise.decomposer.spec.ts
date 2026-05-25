@@ -6,7 +6,9 @@ config({ path: ".env.test" });
 import { describe, it, expect, beforeAll } from 'bun:test';
 import { PremiseDecomposer } from '../premise.decomposer.js';
 
-describe('PremiseDecomposer', () => {
+const HAS_OPENROUTER_KEY = !!process.env.OPENROUTER_API_KEY;
+
+describe.skipIf(!HAS_OPENROUTER_KEY)('PremiseDecomposer', () => {
   let decomposer: PremiseDecomposer;
 
   beforeAll(() => {

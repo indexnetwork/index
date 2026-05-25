@@ -120,6 +120,7 @@ export class ProfileGraphFactory {
   public createGraph() {
     const profileGenerator = new ProfileGenerator();
     const hydeGenerator = new HydeGenerator();
+    const premiseDecomposer = new PremiseDecomposer();
 
     // ─────────────────────────────────────────────────────────
     // NODE: Check State
@@ -911,12 +912,11 @@ export class ProfileGraphFactory {
         const agentTimingsAccum: DebugMetaAgent[] = [];
 
         try {
-          const decomposer = new PremiseDecomposer();
           const _traceEmitter = requestContext.getStore()?.traceEmitter;
 
           const decomposeStart = Date.now();
           _traceEmitter?.({ type: "agent_start", name: "premise-decomposer" });
-          const result = await decomposer.invoke(state.input);
+          const result = await premiseDecomposer.invoke(state.input);
           const decomposeMs = Date.now() - decomposeStart;
           agentTimingsAccum.push({ name: "premise.decomposer", durationMs: decomposeMs });
           _traceEmitter?.({
