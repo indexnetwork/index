@@ -704,6 +704,22 @@ export class ProfileGraphFactory {
 
           logger.verbose("✅ Profile saved successfully");
 
+          // Fetch active premises so the questioner can see what's already covered
+          let existingPremises: string[] = [];
+          try {
+            const activePremises = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
+            existingPremises = activePremises.map(p => p.assertion.text);
+            logger.verbose("Fetched active premises for questioner context", {
+              userId: state.userId,
+              count: existingPremises.length,
+            });
+          } catch (premiseErr) {
+            logger.error("Failed to fetch premises for questioner context — continuing with empty list", {
+              userId: state.userId,
+              error: premiseErr instanceof Error ? premiseErr.message : String(premiseErr),
+            });
+          }
+
           // Compute profile gaps from missing fields
           const gaps: string[] = [];
           if (!profile.identity?.location) gaps.push('location');
@@ -726,6 +742,7 @@ export class ProfileGraphFactory {
                   interests: profile.attributes?.interests,
                 },
                 gaps,
+                existingPremises,
               },
             }).catch((err) =>
               logger.error('Failed to enqueue profile question generation', { userId: state.userId, error: err })

@@ -74,6 +74,44 @@ describe("profile preset", () => {
     expect(result).toContain("current work");
     expect(result).toContain("Bob");
   });
+
+  it("profile buildPrompt includes existing premises when provided", () => {
+    const preset = getPreset("profile");
+    const result = preset.buildPrompt({
+      userProfile: { name: "Bob", bio: "Engineer" },
+      gaps: ["goals"],
+      existingPremises: ["I live in Berlin", "I am a CTO at Acme Corp"],
+    });
+    expect(result).toContain("## Existing premises");
+    expect(result).toContain("1. I live in Berlin");
+    expect(result).toContain("2. I am a CTO at Acme Corp");
+  });
+
+  it("profile buildPrompt shows (none) when existingPremises is empty", () => {
+    const preset = getPreset("profile");
+    const result = preset.buildPrompt({
+      userProfile: { name: "Bob" },
+      gaps: ["location"],
+      existingPremises: [],
+    });
+    expect(result).toContain("## Existing premises");
+    expect(result).toContain("(none)");
+  });
+
+  it("profile buildPrompt shows (none) when existingPremises is absent", () => {
+    const preset = getPreset("profile");
+    const result = preset.buildPrompt({
+      userProfile: { name: "Bob" },
+      gaps: ["location"],
+    });
+    expect(result).toContain("## Existing premises");
+    expect(result).toContain("(none)");
+  });
+
+  it("profile system prompt mentions premises", () => {
+    const preset = getPreset("profile");
+    expect(preset.systemPrompt).toContain("premises");
+  });
 });
 
 describe("negotiation preset", () => {

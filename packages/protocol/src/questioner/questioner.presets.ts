@@ -86,6 +86,8 @@ function buildIntentPrompt(ctx: IntentContext): string {
 
 const PROFILE_SYSTEM_PROMPT = `You sit between a human and a discovery protocol. The user has a profile that is incomplete. Your job: surface the minimum set of structured questions that fill the identified gaps — asking about location, skills, interests, current work, or goals — so the protocol can run better discovery on their behalf.
 
+The user may already have premises — atomic self-descriptions they have stated. These cover specific profile domains. Do not ask about domains already addressed by existing premises. Focus only on gaps not covered by any premise.
+
 You may pick from two strategies. Choose contextually; mix only when each question is genuinely distinct.
 - surface_missing_detail: ask for one concrete missing piece of profile data (location, current role, skills, interests, goals, availability, …).
 - refine_intent: ask the user to clarify or sharpen an existing profile signal so candidates can be ranked more accurately.
@@ -127,11 +129,19 @@ function buildProfilePrompt(ctx: ProfileContext): string {
   }
   const profileBlock = profileLines.length > 0 ? profileLines.join("\n") : "(no profile data)";
 
+  const premisesBlock =
+    ctx.existingPremises && ctx.existingPremises.length > 0
+      ? ctx.existingPremises.map((p, i) => `${i + 1}. ${p}`).join("\n")
+      : "(none)";
+
   const gapsBlock = ctx.gaps.length > 0 ? ctx.gaps.join(", ") : "(none identified)";
 
   return [
     "## Current profile",
     profileBlock,
+    "",
+    "## Existing premises",
+    premisesBlock,
     "",
     "## Identified gaps",
     gapsBlock,
