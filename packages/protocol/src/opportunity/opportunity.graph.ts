@@ -1052,20 +1052,34 @@ export class OpportunityGraphFactory {
                     discoverySource: 'query' as const,
                   });
                 }
+                for (const r of results.filter((x) => x.type === 'premise')) {
+                  all.push({
+                    candidateUserId: r.userId as Id<'users'>,
+                    candidatePremiseId: r.id as Id<'premises'>,
+                    networkId: targetIndex.networkId,
+                    similarity: r.score,
+                    lens: r.matchedVia,
+                    candidatePayload: '',
+                    candidateSummary: undefined,
+                    discoverySource: 'query' as const,
+                  });
+                }
               })
             );
-            const profileCount = all.filter((c) => !c.candidateIntentId).length;
+            const profileCount = all.filter((c) => !c.candidateIntentId && !c.candidatePremiseId).length;
             const intentCount = all.filter((c) => c.candidateIntentId).length;
+            const premiseCount = all.filter((c) => c.candidatePremiseId).length;
             logger.verbose('[Graph:Discovery] searchWithHydeEmbeddings raw results', {
               total: all.length,
               fromProfile: profileCount,
               fromIntent: intentCount,
+              fromPremise: premiseCount,
             });
             const byKey = new Map<string, CandidateMatch>();
             for (const c of all) {
-              // Dedup by candidateUserId + intent (or profile), NOT by indexId.
+              // Dedup by candidateUserId + entity (intent, premise, or profile), NOT by indexId.
               // Including indexId caused the same user to appear once per index they belong to.
-              const key = `${c.candidateUserId}:${c.candidateIntentId ?? 'profile'}`;
+              const key = `${c.candidateUserId}:${c.candidateIntentId ?? c.candidatePremiseId ?? 'profile'}`;
               if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);
               }
@@ -1230,11 +1244,23 @@ export class OpportunityGraphFactory {
                   discoverySource: 'query' as const,
                 });
               }
+              for (const result of results.filter((r) => r.type === 'premise')) {
+                allCandidates.push({
+                  candidateUserId: result.userId as Id<'users'>,
+                  candidatePremiseId: result.id as Id<'premises'>,
+                  networkId: targetIndex.networkId,
+                  similarity: result.score,
+                  lens: result.matchedVia,
+                  candidatePayload: '',
+                  candidateSummary: undefined,
+                  discoverySource: 'query' as const,
+                });
+              }
             })
           );
           const byUserAndIndex = new Map<string, CandidateMatch>();
           for (const c of allCandidates) {
-            const key = `${c.candidateUserId}:${c.networkId}:${c.candidateIntentId ?? 'profile'}`;
+            const key = `${c.candidateUserId}:${c.networkId}:${c.candidateIntentId ?? c.candidatePremiseId ?? 'profile'}`;
             if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
               byUserAndIndex.set(key, c);
             }

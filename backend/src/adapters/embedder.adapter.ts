@@ -46,7 +46,7 @@ export interface HydeSearchOptions {
 }
 
 export interface HydeCandidate {
-  type: 'profile' | 'intent';
+  type: 'profile' | 'intent' | 'premise';
   id: string;
   userId: string;
   score: number;
@@ -164,25 +164,33 @@ export class EmbedderAdapter {
 
     const filter = { indexScope, excludeUserId };
 
-    // Always search BOTH profiles and intents for each lens.
+    // Always search ALL corpora (profiles, intents, premises) for each lens.
     // The corpus hint from the lens inferrer is used only for limit allocation:
-    // the preferred corpus gets the full limitPerStrategy while the other gets half.
+    // the preferred corpus gets the full limitPerStrategy while others get half.
+    const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
 
-      const isProfilePreferred = le.corpus === 'profiles';
+      const preferred = le.corpus;
       return [
         this.searchProfilesForHyde(
           le.embedding,
           filter,
-          isProfilePreferred ? limitPerStrategy : Math.ceil(limitPerStrategy / 2),
+          preferred === 'profiles' ? limitPerStrategy : halfLimit,
           profileMinScore,
           le.lens
         ),
         this.searchIntentsForHyde(
           le.embedding,
           filter,
-          isProfilePreferred ? Math.ceil(limitPerStrategy / 2) : limitPerStrategy,
+          preferred === 'intents' ? limitPerStrategy : halfLimit,
+          minScore,
+          le.lens
+        ),
+        this.searchPremisesForHyde(
+          le.embedding,
+          filter,
+          preferred === 'premises' ? limitPerStrategy : halfLimit,
           minScore,
           le.lens
         ),
@@ -303,6 +311,51 @@ export class EmbedderAdapter {
 
     return results.map((r) => ({
       type: 'intent' as const,
+      id: r.id,
+      userId: r.userId,
+      score: r.similarity,
+      matchedVia: lens,
+      networkId: r.networkId,
+    }));
+  }
+
+  private async searchPremisesForHyde(
+    embedding: number[],
+    filter: { indexScope: string[]; excludeUserId?: string },
+    limit: number,
+    minScore: number,
+    lens: string
+  ): Promise<HydeCandidate[]> {
+    if (filter.indexScope?.length === 0) return [];
+    const vectorStr = `[${embedding.join(',')}]`;
+    const { premises, premiseNetworks } = schema;
+
+    const conditions = [
+      inArray(premiseNetworks.networkId, filter.indexScope),
+      ...(filter.excludeUserId ? [ne(premises.userId, filter.excludeUserId)] : []),
+      eq(premises.status, 'ACTIVE'),
+      isNull(premises.deletedAt),
+      isNull(schema.users.deletedAt),
+      isNotNull(premises.embedding),
+      sql`1 - (${premises.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+    ];
+
+    const results = await db
+      .select({
+        id: premises.id,
+        userId: premises.userId,
+        similarity: sql<number>`1 - (${premises.embedding} <=> ${vectorStr}::vector)`,
+        networkId: premiseNetworks.networkId,
+      })
+      .from(premises)
+      .innerJoin(premiseNetworks, eq(premises.id, premiseNetworks.premiseId))
+      .innerJoin(schema.users, eq(premises.userId, schema.users.id))
+      .where(and(...conditions))
+      .orderBy(sql`${premises.embedding} <=> ${vectorStr}::vector`)
+      .limit(limit);
+
+    return results.map((r) => ({
+      type: 'premise' as const,
       id: r.id,
       userId: r.userId,
       score: r.similarity,

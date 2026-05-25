@@ -33,9 +33,9 @@ export interface HydeSearchOptions {
 /** Options for searchWithProfileEmbedding (no lenses; direct profile similarity). */
 export type ProfileEmbeddingSearchOptions = HydeSearchOptions;
 
-/** A single candidate from HyDE search (profile or intent), with score and which lens matched. */
+/** A single candidate from HyDE search (profile, intent, or premise), with score and which lens matched. */
 export interface HydeCandidate {
-  type: 'profile' | 'intent';
+  type: 'profile' | 'intent' | 'premise';
   id: string;
   userId: string;
   score: number;
