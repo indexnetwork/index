@@ -122,8 +122,8 @@ export class PremiseGraphFactory {
             tier: state.tier,
           },
           provenance: {
-            source: 'explicit',
-            confidence: 1.0,
+            source: state.provenanceSource ?? 'explicit',
+            confidence: state.provenanceConfidence ?? 1.0,
             timestamp: new Date().toISOString(),
           },
           analysis: state.analysis ?? undefined,

@@ -30,6 +30,16 @@ export const PremiseGraphState = Annotation.Root({
     default: () => false,
   }),
 
+  provenanceSource: Annotation<'explicit' | 'enrichment' | 'integration' | 'onboarding' | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  provenanceConfidence: Annotation<number | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   operationMode: Annotation<'create' | 'update' | 'query'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'create',
