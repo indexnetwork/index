@@ -4185,11 +4185,15 @@ export class ProfileDatabaseAdapter {
       if (socials.length > 0) {
         const classified = socials
           .filter(s => s.value.trim() !== '')
-          .map(s => ({
-            userId,
-            label: detectSocialLabel(s.value) === 'custom' ? s.label : detectSocialLabel(s.value),
-            value: s.value.trim(),
-          }));
+          .map(s => {
+            const value = s.value.trim();
+            const detected = detectSocialLabel(value);
+            return {
+              userId,
+              label: detected === 'custom' ? s.label : detected,
+              value,
+            };
+          });
 
         // Dedup: for non-custom labels the unique index allows only one row per label.
         // Keep the first occurrence (explicit field) and drop later duplicates.
