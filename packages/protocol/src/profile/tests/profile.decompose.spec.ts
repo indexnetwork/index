@@ -1,15 +1,11 @@
 /**
  * Unit tests for the decompose_premises node in ProfileGraph.
  *
- * Run with: OPENROUTER_API_KEY=test bun test profile.decompose.spec.ts
- * The env var must be set BEFORE Bun loads this file because ESM static imports
- * are resolved before the module body runs, and ProfileGenerator calls
- * createModel() at module load time.
+ * All LLM calls are mocked — no real API key needed. The dummy key
+ * prevents createModel() from throwing at module load time.
  */
 import { config } from "dotenv";
-import { resolve } from "path";
-config({ path: resolve(import.meta.dir, "../../../../../backend/.env.test") });
-config({ path: resolve(import.meta.dir, "../../../../../backend/.env") });
+config({ path: ".env.test", override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
 import { describe, it, expect, beforeEach, mock } from 'bun:test';

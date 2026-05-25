@@ -1,7 +1,6 @@
 // Env must be set before any imports that transitively call createModel
 import { config } from "dotenv";
-config({ path: "backend/.env.test" });
-config({ path: ".env.test" });
+config({ path: ".env.test", override: true });
 
 import { describe, it, expect, beforeAll } from 'bun:test';
 import { PremiseDecomposer } from '../premise.decomposer.js';
