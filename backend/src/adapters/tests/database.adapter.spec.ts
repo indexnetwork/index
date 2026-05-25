@@ -7,7 +7,7 @@ import { config } from "dotenv";
 config({ path: '.env.test' });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
 import {
@@ -373,29 +373,45 @@ describe('ChatDatabaseAdapter', () => {
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
     }, 15000);
 
-    it('should reject demoting the last owner (atomic guard)', async () => {
+    it('should reject demoting the last owner (transactional guard)', async () => {
       await resetRoles();
-      // A is sole owner. The atomic conditional UPDATE has a subquery that checks
-      // ownerCount > 1. With serial access, other guards (self, access-denied) fire
-      // before the atomic path. Test the conditional UPDATE directly at the SQL level
-      // to verify the subquery prevents demotion when ownerCount = 1.
+      // A is sole owner. The transactional guard locks owner rows with FOR UPDATE,
+      // counts them, and throws if <= 1. In serial access, application guards (self,
+      // access-denied) fire before this path, so test the guard directly via transaction.
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
-      const directResult = await db
-        .update(networkMembers)
-        .set({ permissions: ['member'], updatedAt: new Date() })
-        .where(sql`
-          ${networkMembers.networkId} = ${fixture.networkId}
-          AND ${networkMembers.userId} = ${fixture.userAId}
-          AND ${networkMembers.deletedAt} IS NULL
-          AND (SELECT count(*) FROM ${networkMembers}
-               WHERE ${networkMembers.networkId} = ${fixture.networkId}
-               AND 'owner' = ANY(${networkMembers.permissions})
-               AND ${networkMembers.deletedAt} IS NULL) > 1
-        `)
-        .returning({ userId: networkMembers.userId });
-      // 0 rows returned — sole owner not demoted
-      expect(directResult.length).toBe(0);
-      // Confirm A is still owner
+      let threw = false;
+      try {
+        await db.transaction(async (tx) => {
+          const owners = await tx
+            .select({ userId: networkMembers.userId })
+            .from(networkMembers)
+            .where(and(
+              eq(networkMembers.networkId, fixture.networkId),
+              sql`'owner' = ANY(${networkMembers.permissions})`,
+              isNull(networkMembers.deletedAt)
+            ))
+            .for('update');
+          if (owners.length <= 1) {
+            throw new Error('Cannot demote the last owner');
+          }
+          await tx
+            .update(networkMembers)
+            .set({ permissions: ['member'], updatedAt: new Date() })
+            .where(and(
+              eq(networkMembers.networkId, fixture.networkId),
+              eq(networkMembers.userId, fixture.userAId),
+              isNull(networkMembers.deletedAt)
+            ));
+        });
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message === 'Cannot demote the last owner') {
+          threw = true;
+        } else {
+          throw err;
+        }
+      }
+      expect(threw).toBe(true);
+      // Confirm A is still owner (transaction rolled back)
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
     }, 15000);
 

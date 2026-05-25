@@ -2840,23 +2840,34 @@ export class ChatDatabaseAdapter {
 
     const newPermissions = role === 'owner' ? ['owner'] : ['member'];
 
-    // Atomic demotion guard: only demote if more than one owner remains.
-    // Uses a conditional UPDATE to avoid TOCTOU races.
+    // Demotion guard: prevent demoting the last owner.
+    // Uses a transaction with SELECT ... FOR UPDATE to lock all owner rows,
+    // preventing concurrent write-skew under READ COMMITTED.
     if (role === 'member' && existing.permissions?.includes('owner')) {
-      const result = await db
-        .update(networkMembers)
-        .set({ permissions: newPermissions, updatedAt: new Date() })
-        .where(and(
-          eq(networkMembers.networkId, networkId),
-          eq(networkMembers.userId, targetUserId),
-          isNull(networkMembers.deletedAt),
-          sql`(SELECT count(*) FROM ${networkMembers} WHERE ${networkMembers.networkId} = ${networkId} AND 'owner' = ANY(${networkMembers.permissions}) AND ${networkMembers.deletedAt} IS NULL) > 1`
-        ))
-        .returning({ userId: networkMembers.userId });
+      await db.transaction(async (tx) => {
+        const owners = await tx
+          .select({ userId: networkMembers.userId })
+          .from(networkMembers)
+          .where(and(
+            eq(networkMembers.networkId, networkId),
+            sql`'owner' = ANY(${networkMembers.permissions})`,
+            isNull(networkMembers.deletedAt)
+          ))
+          .for('update');
 
-      if (result.length === 0) {
-        throw new Error('Cannot demote the last owner');
-      }
+        if (owners.length <= 1) {
+          throw new Error('Cannot demote the last owner');
+        }
+
+        await tx
+          .update(networkMembers)
+          .set({ permissions: newPermissions, updatedAt: new Date() })
+          .where(and(
+            eq(networkMembers.networkId, networkId),
+            eq(networkMembers.userId, targetUserId),
+            isNull(networkMembers.deletedAt)
+          ));
+      });
     } else {
       await db
         .update(networkMembers)
