@@ -576,7 +576,7 @@ export class OpportunityGraphFactory {
 
     /**
      * Node 3: Discovery
-     * Generates HyDE embeddings and performs semantic search (path A), or profile-as-source search (path B/C).
+     * Generates HyDE embeddings and performs semantic search.
      */
     const discoveryNode = withNodeTrace(
       "opportunity-discovery",
@@ -724,9 +724,6 @@ export class OpportunityGraphFactory {
 
           if (state.discoverySource === 'profile') {
             // Profile-context discovery: HyDE (when search query exists) + premise-to-premise.
-            // Profile-embedding direct search (Path B) has been removed — all semantic
-            // matching goes through HyDE embeddings or premise-to-premise similarity.
-
             if (state.searchQuery?.trim()) {
               logger.verbose('[Graph:Discovery] Profile source with searchQuery → running query HyDE + premise paths', {
                 searchQuery: state.searchQuery.trim().substring(0, 80),
@@ -858,17 +855,6 @@ export class OpportunityGraphFactory {
                   all.push({
                     candidateUserId: r.userId as Id<'users'>,
                     candidateIntentId: r.id as Id<'intents'>,
-                    networkId: targetIndex.networkId,
-                    similarity: r.score,
-                    lens: r.matchedVia,
-                    candidatePayload: '',
-                    candidateSummary: undefined,
-                    discoverySource: 'query' as const,
-                  });
-                }
-                for (const r of results.filter((x) => x.type === 'profile')) {
-                  all.push({
-                    candidateUserId: r.userId as Id<'users'>,
                     networkId: targetIndex.networkId,
                     similarity: r.score,
                     lens: r.matchedVia,
@@ -1051,17 +1037,6 @@ export class OpportunityGraphFactory {
                 allCandidates.push({
                   candidateUserId: result.userId as Id<'users'>,
                   candidateIntentId: result.id as Id<'intents'>,
-                  networkId: targetIndex.networkId,
-                  similarity: result.score,
-                  lens: result.matchedVia,
-                  candidatePayload: '',
-                  candidateSummary: undefined,
-                  discoverySource: 'query' as const,
-                });
-              }
-              for (const result of results.filter((r) => r.type === 'profile')) {
-                allCandidates.push({
-                  candidateUserId: result.userId as Id<'users'>,
                   networkId: targetIndex.networkId,
                   similarity: result.score,
                   lens: result.matchedVia,
