@@ -285,7 +285,6 @@ export class OpportunityGraphFactory {
             }));
             const sourceProfile = profile
               ? {
-                  embedding: profile.embedding ?? null,
                   identity: profile.identity ?? undefined,
                   narrative: profile.narrative ?? undefined,
                   attributes: profile.attributes ?? undefined,

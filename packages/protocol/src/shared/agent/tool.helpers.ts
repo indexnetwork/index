@@ -256,11 +256,9 @@ export async function resolveChatContext(params: {
     database.getNetworkMemberships(userId),
   ]);
 
-  // Omit embedding from profile so resolved context stays lean (embedding is for search only).
   let userProfile: ProfileContext = null;
   if (rawProfile) {
-    const { embedding: _omit, ...rest } = rawProfile;
-    userProfile = rest;
+    userProfile = rawProfile;
   }
 
   if (!user) {

@@ -331,7 +331,7 @@ async function enrichOpportunities(
       // Skip soft-deleted users (deletedAt is set)
       if (candidateUser && 'deletedAt' in candidateUser && candidateUser.deletedAt) return null;
       const isDirectTarget = targetUserId && candidateUserId === targetUserId;
-      if (!isDirectTarget && !candidateUser?.isGhost && !profile?.embedding) return null;
+      if (!isDirectTarget && !candidateUser?.isGhost && !profile) return null;
       const confidence =
         typeof opp.interpretation?.confidence === "number"
           ? opp.interpretation.confidence
