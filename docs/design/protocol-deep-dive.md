@@ -140,10 +140,13 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 **File:** `profile/profile.graph.ts`
 **Purpose:** Generate, embed, and maintain user profiles with optional web scraping and HyDE generation.
-**Nodes:** `check_state`, `scrape`, `auto_generate`, `use_prepopulated_profile`, `generate_profile`, `embed_save_profile`, `generate_hyde`, `embed_save_hyde`
-**State:** `ProfileGraphState` (userId, operationMode, input, forceUpdate, profile, hydeDescription, needs* flags, etc.)
+**Nodes:** `check_state`, `scrape`, `decompose_premises`, `aggregate_premises`, `auto_generate`, `use_prepopulated_profile`, `generate_profile`, `embed_save_profile`, `generate_hyde`, `embed_save_hyde`
+**State:** `ProfileGraphState` (userId, operationMode, input, forceUpdate, profile, hydeDescription, needs* flags, premises, etc.)
 **Conditional edges:**
 - After `check_state`: routes based on operation mode and what components are missing (profile, embedding, HyDE)
+- After `scrape`: routes to `decompose_premises` (when premise graph is wired) or `generate_profile` (legacy path)
+- After `decompose_premises`: routes to `aggregate_premises` (premises found) or `aggregate_premises` (no premises, falls through to profile generation if needed)
+- After `aggregate_premises`: routes to `generate_profile` (when `needsProfileGeneration` is set) or `embed_save_profile`
 - After `auto_generate`: routes to `use_prepopulated_profile` (enrichment succeeded) or `generate_profile` (fallback)
 - After `embed_save_profile`: routes to `generate_hyde` or `END`
 - After `generate_hyde`: routes to `embed_save_hyde`
@@ -153,8 +156,10 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 - Write mode detects what needs generation and only runs necessary steps
 - If input is a confirmation phrase ("yes", "go ahead"), it is treated as no input so scraping runs
 - Profile updates merge new information with existing profile data
+- When `premiseGraph` is injected, chat input and scraped content are routed through `PremiseDecomposer` before profile generation. Extracted premises are persisted via the premise graph, then aggregated into the profile input. This ensures atomic facts are captured as premises and the profile is synthesized from structured data.
+- The `decompose_premises` node also handles direct chat input (not just scraped content) — any free-text describing the user is decomposed into premises first.
 
-**Dependencies:** `ProfileGraphDatabase`, `Embedder`, `Scraper`
+**Dependencies:** `ProfileGraphDatabase`, `Embedder`, `Scraper`, optional `Enricher`, optional `questionerEnqueue`, optional compiled `PremiseGraph`
 
 ### 3.4 Opportunity Graph
 
@@ -450,7 +455,16 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Role:** Generates contextual invite messages for ghost user outreach.
 **Model:** `google/gemini-2.5-flash`, temperature 0.3, maxTokens 512
 
-### 4.18 Premise Analyzer
+### 4.18 Premise Decomposer
+
+**File:** `premise/premise.decomposer.ts`
+**Role:** Decomposes free-text input (chat messages, scraped bios, LinkedIn content) into individual atomic premises. Converts third-person text to first-person, classifies each premise as `assertive` (stable identity facts) or `contextual` (temporal/situational), and filters out intents/desires.
+**Model:** `google/gemini-2.5-flash`
+**Input:** Free-text string (chat input, scraped content, or bio text)
+**Output:** Array of `{ text, tier }` premises plus reasoning; empty array for non-descriptive input (confirmations, greetings)
+**Used by:** Profile Graph (decompose_premises node)
+
+### 4.19 Premise Analyzer
 
 **File:** `premise/premise.analyzer.ts`
 **Role:** Classifies a premise using adapted speech act theory (DECLARATIVE vs ASSERTIVE) and scores felicity conditions (authority, sincerity, clarity) plus semantic entropy.
@@ -459,7 +473,7 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Output:** speechActType, felicityAuthority (0-100), felicitySincerity (0-100), felicityClarity (0-100), semanticEntropy (0.0-1.0)
 **Used by:** Premise Graph (analyze node)
 
-### 4.19 Premise Indexer
+### 4.20 Premise Indexer
 
 **File:** `premise/premise.indexer.ts`
 **Role:** Scores a premise's relevancy to a network based on the index prompt and member preferences.
@@ -468,7 +482,7 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Output:** indexScore (0.0-1.0), memberScore (0.0-1.0), reasoning
 **Used by:** Premise Graph (index node)
 
-### 4.20 QuestionerAgent
+### 4.21 QuestionerAgent
 
 **File:** `questioner/questioner.agent.ts`
 **Role:** Generates structured questions to elicit missing information from users. Uses mode-specific presets (system prompt + builder) to produce up to 3 questions per invocation.

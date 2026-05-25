@@ -117,6 +117,8 @@ export type { InviteInput, InviteOutput } from "./contact/contact.inviter.js";
 export { IntentIndexer } from "./intent/intent.indexer.js";
 export { PremiseAnalyzer } from "./premise/premise.analyzer.js";
 export type { PremiseAnalyzerOutput } from "./premise/premise.analyzer.js";
+export { PremiseDecomposer } from "./premise/premise.decomposer.js";
+export type { PremiseDecomposerOutput, DecomposedPremise } from "./premise/premise.decomposer.js";
 export { PremiseIndexer } from "./premise/premise.indexer.js";
 export type { PremiseIndexerOutput } from "./premise/premise.indexer.js";
 export { LensInferrer } from "./shared/hyde/lens.inferrer.js";

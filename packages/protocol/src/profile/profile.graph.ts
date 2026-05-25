@@ -13,6 +13,23 @@ import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
+import { PremiseDecomposer } from "../premise/premise.decomposer.js";
+
+/**
+ * Compiled premise graph interface. Matches the invoke signature of a compiled LangGraph.
+ * Accepted as an optional dependency so write-mode input can be decomposed into premises.
+ */
+export interface CompiledPremiseGraph {
+  invoke(input: {
+    userId: string;
+    assertionText: string;
+    tier: 'assertive' | 'contextual';
+    operationMode: 'create';
+  }): Promise<{
+    premise?: { id: string } | undefined;
+    error?: string | undefined;
+  }>;
+}
 
 const logger = protocolLogger("ProfileGraphFactory");
 
@@ -97,11 +114,13 @@ export class ProfileGraphFactory {
     private scraper: Scraper,
     private enricher?: ProfileEnricher,
     private questionerEnqueue?: QuestionerEnqueueFn,
+    private premiseGraph?: CompiledPremiseGraph,
   ) { }
 
   public createGraph() {
     const profileGenerator = new ProfileGenerator();
     const hydeGenerator = new HydeGenerator();
+    const premiseDecomposer = new PremiseDecomposer();
 
     // ─────────────────────────────────────────────────────────
     // NODE: Check State
@@ -863,6 +882,116 @@ export class ProfileGraphFactory {
     };
 
     // ─────────────────────────────────────────────────────────
+    // NODE: Decompose Premises
+    // Decomposes free-text input (chat or scraped) into individual premises,
+    // creates each via the premise graph, then routes to aggregate_profile
+    // to synthesize the profile from all active premises.
+    // ─────────────────────────────────────────────────────────
+    const decomposePremisesNode = async (state: typeof ProfileGraphState.State) => {
+      return timed("ProfileGraph.decomposePremises", async () => {
+        if (!state.input) {
+          logger.error("No input for premise decomposition");
+          return { error: "Input required for premise decomposition" };
+        }
+
+        if (!this.premiseGraph) {
+          // Fallback: if no premise graph is available, skip decomposition
+          // and route directly to profile generation (legacy behavior)
+          logger.warn("No premise graph injected — falling back to direct profile generation");
+          return {
+            needsProfileGeneration: true,
+            forceUpdate: true,
+          };
+        }
+
+        logger.verbose("Decomposing input into premises...", {
+          userId: state.userId,
+          inputLength: state.input.length,
+        });
+
+        const agentTimingsAccum: DebugMetaAgent[] = [];
+
+        try {
+          const _traceEmitter = requestContext.getStore()?.traceEmitter;
+
+          const decomposeStart = Date.now();
+          _traceEmitter?.({ type: "agent_start", name: "premise-decomposer" });
+          const result = await premiseDecomposer.invoke(state.input);
+          const decomposeMs = Date.now() - decomposeStart;
+          agentTimingsAccum.push({ name: "premise.decomposer", durationMs: decomposeMs });
+          _traceEmitter?.({
+            type: "agent_end",
+            name: "premise-decomposer",
+            durationMs: decomposeMs,
+            summary: `Decomposed into ${result.premises.length} premise(s)`,
+          });
+
+          if (result.premises.length === 0) {
+            logger.verbose("No premises extracted — skipping decomposition");
+            // No premises found; fall through to aggregate which will
+            // synthesize from any existing premises, or to generate_profile
+            // if needsProfileGeneration is still set from check_state
+            return {
+              operationMode: 'aggregate' as const,
+              agentTimings: agentTimingsAccum,
+            };
+          }
+
+          logger.verbose(`Creating ${result.premises.length} premise(s) via premise graph`, {
+            userId: state.userId,
+          });
+
+          let created = 0;
+          for (const p of result.premises) {
+            try {
+              const premiseResult = await this.premiseGraph.invoke({
+                userId: state.userId,
+                assertionText: p.text,
+                tier: p.tier,
+                operationMode: 'create',
+              });
+
+              if (premiseResult.premise) {
+                created++;
+              } else if (premiseResult.error) {
+                logger.warn("Premise creation failed", {
+                  text: p.text.substring(0, 60),
+                  error: premiseResult.error,
+                });
+              }
+            } catch (err) {
+              logger.warn("Premise creation threw", {
+                text: p.text.substring(0, 60),
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+
+          logger.verbose(`Created ${created}/${result.premises.length} premise(s)`, {
+            userId: state.userId,
+          });
+
+          // Route to aggregate mode to rebuild the profile from all active premises
+          return {
+            operationMode: 'aggregate' as const,
+            agentTimings: agentTimingsAccum,
+            operationsPerformed: { decomposedPremises: true },
+          };
+        } catch (err) {
+          logger.error("Premise decomposition failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          // Fallback: route to direct profile generation
+          return {
+            needsProfileGeneration: true,
+            forceUpdate: true,
+            agentTimings: agentTimingsAccum,
+          };
+        }
+      });
+    };
+
+    // ─────────────────────────────────────────────────────────
     // ROUTING CONDITIONS
     // Smart conditional routing based on operation mode and missing components
     // ─────────────────────────────────────────────────────────
@@ -909,6 +1038,13 @@ export class ProfileGraphFactory {
       if (state.needsProfileGeneration) {
         // Only use provided input if it's meaningful (not just "Yes" / confirmation)
         if (state.input && isMeaningfulProfileInput(state.input)) {
+          // Route through premise decomposition when a premise graph is available.
+          // The decompose node extracts atomic premises, creates them, then
+          // routes to aggregate_profile for profile synthesis.
+          if (this.premiseGraph) {
+            logger.verbose("Profile generation needed — decomposing input into premises");
+            return "decompose_premises";
+          }
           logger.verbose("Profile generation needed with meaningful input provided");
           return "generate_profile";
         } else {
@@ -979,6 +1115,7 @@ export class ProfileGraphFactory {
       // Add all nodes
       .addNode("check_state", checkStateNode)
       .addNode("scrape", scrapeNode)
+      .addNode("decompose_premises", decomposePremisesNode)
       .addNode("auto_generate", autoGenerateNode)
       .addNode("use_prepopulated_profile", usePrePopulatedProfileNode)
       .addNode("aggregate_profile", aggregateProfileNode)
@@ -998,8 +1135,9 @@ export class ProfileGraphFactory {
           use_prepopulated_profile: "use_prepopulated_profile", // Pre-populated profile -> skip generation
           auto_generate: "auto_generate",       // Generate mode -> Chat API enrichment
           aggregate_profile: "aggregate_profile", // Aggregate mode -> synthesize from premises
+          decompose_premises: "decompose_premises", // Write mode + input + premise graph -> decompose first
           scrape: "scrape",                     // Need profile, no input -> scrape first
-          generate_profile: "generate_profile", // Need profile, have input -> generate
+          generate_profile: "generate_profile", // Need profile, have input -> generate (legacy, no premise graph)
           embed_save_profile: "embed_save_profile", // Have profile, need embedding
           generate_hyde: "generate_hyde",       // Have profile+embedding, need hyde
           embed_save_hyde: "embed_save_hyde",   // Have hyde, need embedding
@@ -1009,6 +1147,21 @@ export class ProfileGraphFactory {
 
       // Pre-populated profile feeds into embedding (skips generation)
       .addEdge("use_prepopulated_profile", "embed_save_profile")
+
+      // Decompose premises routes to aggregate (normal) or generate_profile (fallback)
+      .addConditionalEdges(
+        "decompose_premises",
+        (state: typeof ProfileGraphState.State) => {
+          if (state.operationMode === 'aggregate') return "aggregate_profile";
+          // Fallback when decomposition failed (no premise graph or error)
+          if (state.needsProfileGeneration) return "generate_profile";
+          return "aggregate_profile";
+        },
+        {
+          aggregate_profile: "aggregate_profile",
+          generate_profile: "generate_profile",
+        },
+      )
 
       // Aggregate profile: generate if premises found, END if none
       .addConditionalEdges(
@@ -1043,9 +1196,19 @@ export class ProfileGraphFactory {
         }
       )
 
-      // Scrape -> Generate profile (linear)
-      .addEdge("scrape", "generate_profile")
-      
+      // Scrape -> decompose_premises (when premise graph available) or generate_profile (legacy)
+      .addConditionalEdges(
+        "scrape",
+        (_state: typeof ProfileGraphState.State) => {
+          if (this.premiseGraph) return "decompose_premises";
+          return "generate_profile";
+        },
+        {
+          decompose_premises: "decompose_premises",
+          generate_profile: "generate_profile",
+        },
+      )
+
       // Generate profile -> Embed profile (linear)
       .addEdge("generate_profile", "embed_save_profile")
 
