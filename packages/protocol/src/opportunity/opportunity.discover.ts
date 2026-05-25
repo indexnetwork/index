@@ -321,10 +321,8 @@ async function enrichOpportunities(
         : [null, null];
       // Skip soft-deleted users (deletedAt is set)
       if (candidateUser && 'deletedAt' in candidateUser && candidateUser.deletedAt) return null;
-      // Skip non-onboarded real users (registered but haven't completed onboarding),
-      // unless this is an explicit direct-connection target (targetUserId bypass).
       const isDirectTarget = targetUserId && candidateUserId === targetUserId;
-      if (candidateUser && !candidateUser.isGhost && !candidateUser.onboarding?.completedAt && !isDirectTarget) return null;
+      if (!isDirectTarget && !profile?.embedding) return null;
       const confidence =
         typeof opp.interpretation?.confidence === "number"
           ? opp.interpretation.confidence
