@@ -133,6 +133,18 @@ git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork
 git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git <branch>
 ```
 
+#### packages/edge-hermes/ → indexnetwork/edge-hermes
+
+The `@edge-city/edge-hermes` Agent Village workspace and installer for Edge Esmeralda on Hermes. Includes skills for edge-esmeralda, index-network, and edgeos.
+
+```bash
+# Manual push if the hook failed (use dev or main)
+git subtree push --prefix=packages/edge-hermes https://github.com/indexnetwork/edge-hermes.git <branch>
+
+# Pull if external repo was edited directly
+git subtree pull --squash --prefix=packages/edge-hermes https://github.com/indexnetwork/edge-hermes.git <branch>
+```
+
 #### packages/edgeclaw/ → indexnetwork/edgeclaw (fork of Edge-City/edgeclaw)
 
 The `edgeclaw` skills + onboarding package. Unlike the other subtrees, the canonical upstream (`Edge-City/edgeclaw`) is **owned by a different organization**, so the monorepo pushes through a GitHub fork (`indexnetwork/edgeclaw`) and PRs flow upstream from there.
@@ -181,7 +193,9 @@ index/
 ├── packages/
 │   ├── protocol/        # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
 │   ├── cli/             # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
-│   └── claude-plugin/   # @indexnetwork/claude-plugin — index-orchestrator and index-negotiator skills, subtree → indexnetwork/claude-plugin
+│   ├── claude-plugin/   # @indexnetwork/claude-plugin — index-orchestrator and index-negotiator skills, subtree → indexnetwork/claude-plugin
+│   ├── edge-hermes/     # @edge-city/edge-hermes — Agent Village installer + skills, subtree → indexnetwork/edge-hermes
+│   └── edgeclaw/        # edgeclaw skills + onboarding, subtree → indexnetwork/edgeclaw (fork of Edge-City/edgeclaw)
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
 └── scripts/           # Worktree helpers, hooks, dev launcher

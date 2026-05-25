@@ -32,6 +32,8 @@ jobs:
             repo: indexnetwork/cli
           - prefix: packages/claude-plugin
             repo: indexnetwork/claude-plugin
+          - prefix: packages/edge-hermes
+            repo: indexnetwork/edge-hermes
           - prefix: packages/edgeclaw
             repo: indexnetwork/edgeclaw
             upstream_repo: Edge-City/edgeclaw
