@@ -70,7 +70,7 @@ The profile generator is explicitly instructed to never include email addresses,
 
 ## Implicit Intents
 
-> **Deprecated.** The `implicitIntents` column is being replaced by the **premises** entity (IND-320). Premises provide a composable, first-class representation of the same information with richer semantics (speech-act classification, felicity scoring, validity windows). The column will be dropped in a future migration.
+> **Deprecated.** The `implicitIntents` column has been replaced by the **premises** entity. Premises provide a composable, first-class representation of the same information with richer semantics (speech-act classification, felicity scoring, validity windows). The column will be dropped in a future migration.
 
 The `user_profiles` table has an `implicitIntents` field that stores intents inferred from the profile itself, rather than from explicit user declarations. These are goals or needs that can be deduced from someone's background, skills, and narrative without the person explicitly stating them.
 
@@ -107,4 +107,4 @@ The profile graph manages the full lifecycle:
 - **Intents** depend on profiles: felicity conditions (authority, sincerity) are scored against the user's profile. A profile claiming "Senior ML Engineer" gives authority to an intent about seeking ML collaborators.
 - **Opportunities** reference profiles: the evaluator receives profile data for both the source and candidate to assess fit.
 - **HyDE** uses profiles as a target corpus: when searching for people (as opposed to searching for intents), the HyDE system generates hypothetical profile documents and searches the profile embedding space.
-- **Premises** (IND-320, in progress) will decompose profiles into composable self-descriptions. Rather than one monolithic profile, a user will have many premises ("I am a climate-tech founder", "I'm raising Series A") that can be individually created, retracted, and expired. The profile will become a materialized view aggregated from active premises.
+- **Premises** decompose profiles into composable self-descriptions. Rather than one monolithic profile, a user has many premises ("I am a climate-tech founder", "I'm raising Series A") that can be individually created, retracted, and expired. The profile is a materialized view aggregated from active premises via the profile graph's `aggregate` operation mode. Premise lifecycle events (create, update, retract, expire) trigger automatic profile regeneration. Premises also participate directly in opportunity discovery through premise-to-premise similarity search.

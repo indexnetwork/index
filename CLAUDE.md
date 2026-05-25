@@ -205,7 +205,7 @@ index/
 - `src/schemas/` - Drizzle table definitions; primary schema is `schemas/database.schema.ts`
 - `src/guards/` - Auth/validation guards
 - `src/queues/` - BullMQ job queue definitions
-- `src/events/` - Event emitters (intent events, index membership events)
+- `src/events/` - Event emitters (intent events, index membership events, premise lifecycle events)
 - `src/cli/` - CLI and maintenance scripts
 - `packages/protocol/` - `@indexnetwork/protocol` NPM package — the agent graphs, interfaces, and tools layer. Published independently; `backend/` imports it as a versioned NPM dependency.
 
@@ -270,7 +270,7 @@ Intent creation is synchronous; complex processing (indexing, generation) is asy
 
 ### Event-Driven Broker System
 
-Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `network_membership.event.ts`. Services emit events after DB transactions; other services/graphs react independently.
+Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `network_membership.event.ts`. Premise lifecycle events in `premise.event.ts`: `PremiseEvents.onCreated/onUpdated/onRetracted/onExpired` — each enqueues cascade and profile regeneration jobs via `PremiseQueue`. Services emit events after DB transactions; other services/graphs react independently.
 
 ### Agent Registry
 
