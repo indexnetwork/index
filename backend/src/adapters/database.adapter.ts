@@ -1583,6 +1583,7 @@ export class ChatDatabaseAdapter {
         embedding: intents.embedding,
         sourceType: intents.sourceType,
         sourceId: intents.sourceId,
+        status: intents.status,
       })
       .from(intents)
       .where(eq(intents.id, intentId))
@@ -1610,6 +1611,7 @@ export class ChatDatabaseAdapter {
       embedding: embedding ?? undefined,
       sourceType: row.sourceType ?? undefined,
       sourceId: row.sourceId ?? undefined,
+      status: row.status,
     };
   }
 
@@ -3018,6 +3020,9 @@ export class ChatDatabaseAdapter {
     approved: boolean,
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityActorApproval(id, introducerUserId, approved);
+  }
+  async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
+    await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
   }
   async stampOpportunityActorAction(
     id: string,
@@ -4604,6 +4609,7 @@ interface OpportunityRow {
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
+  metadata: Record<string, unknown>;
 }
 
 /** Create opportunity input (matches protocol CreateOpportunityData). */
@@ -4630,6 +4636,7 @@ function toOpportunityRow(row: typeof opportunities.$inferSelect): OpportunityRo
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     expiresAt: row.expiresAt,
+    metadata: (row.metadata ?? {}) as Record<string, unknown>,
   };
 }
 
@@ -4839,6 +4846,10 @@ export class OpportunityDatabaseAdapter {
         .returning();
       return row ? toOpportunityRow(row) : null;
     });
+  }
+
+  async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
+    await db.update(opportunities).set({ metadata }).where(eq(opportunities.id, id));
   }
 
   async stampOpportunityActorAction(

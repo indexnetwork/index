@@ -533,6 +533,13 @@
       "when": 1779719001486,
       "tag": "0075_add_questions_expires_at",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1779820800000,
+      "tag": "0076_add_opportunities_metadata",
+      "breakpoints": true
     }
   ]
 }
