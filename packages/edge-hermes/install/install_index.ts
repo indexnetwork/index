@@ -3,7 +3,7 @@
  *
  *   - Merges `mcp_servers.index` into `$HERMES_HOME/config.yaml`
  *   - Writes `INDEX_API_KEY` to `$HERMES_HOME/.env`
- *   - Installs the morning digest cron (`Edge — daily digest`, 08:00 host-local)
+ *   - Installs the morning digest cron (08:00 host-local)
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -14,7 +14,7 @@ import YAML from "yaml";
 import { readFlag } from "./args";
 import { upsertEnvVar } from "./env";
 import { hermesBin, hermesExecEnv } from "./hermes_cli";
-import { CRON_NAME_PREFIX, hermesHome } from "./paths";
+import { EDGE_SKILL_NAMES, cronDisplayPrefix, hermesHome, readIdentityName } from "./paths";
 
 const PROD_MCP_URL = "https://protocol.index.network/mcp";
 const DEV_MCP_URL = "https://protocol.dev.index.network/mcp";
@@ -56,16 +56,17 @@ function removeEdgeCronJobs(env: NodeJS.ProcessEnv): void {
   const jobsPath = join(hermesHome(), "cron", "jobs.json");
   if (!existsSync(jobsPath)) return;
 
-  let parsed: { jobs?: Array<{ id: string; name: string }> };
+  let parsed: { jobs?: Array<{ id: string; name: string; skill?: string }> };
   try {
     parsed = JSON.parse(readFileSync(jobsPath, "utf8"));
   } catch {
     return;
   }
 
+  const skillSet = new Set<string>(EDGE_SKILL_NAMES);
   const bin = hermesBin();
   for (const job of parsed.jobs ?? []) {
-    if (!job.name.startsWith(CRON_NAME_PREFIX)) continue;
+    if (!job.skill || !skillSet.has(job.skill)) continue;
     try {
       execFileSync(bin, ["cron", "remove", job.id], { stdio: "ignore", env });
       console.log(`→ removed cron ${job.name}`);
@@ -86,6 +87,8 @@ function installCronJobs(env: NodeJS.ProcessEnv): void {
   removeEdgeCronJobs(env);
 
   const digestMessage = readFileSync(digestPath, "utf8");
+  const agentName = readIdentityName(home);
+  const cronName = `${cronDisplayPrefix(agentName)} daily digest`;
   console.log("→ installing morning digest cron");
 
   const deliver = process.env.TELEGRAM_HOME_CHANNEL?.trim() ? "telegram" : "origin";
@@ -110,7 +113,7 @@ function installCronJobs(env: NodeJS.ProcessEnv): void {
         "0 8 * * *",
         digestMessage,
         "--name",
-        "Edge — daily digest",
+        cronName,
         "--skill",
         "index-network",
         "--deliver",

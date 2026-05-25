@@ -16,7 +16,6 @@ import { execFileSync } from "node:child_process";
 import YAML from "yaml";
 
 import {
-  CRON_NAME_PREFIX,
   EDGE_SKILL_NAMES,
   hermesHome,
   skillsDir,
@@ -25,7 +24,7 @@ import {
 
 const TARGET_HOME = targetWorkspace();
 
-const PROJECT_FILES = ["AGENTS.md", "SCHEDULE.md"];
+const PROJECT_FILES = ["AGENTS.md", "IDENTITY.md", "SCHEDULE.md"];
 
 function ensureHermesAvailable(): void {
   try {
@@ -50,7 +49,7 @@ function removeCronJobs(): void {
     return;
   }
 
-  let parsed: { jobs?: Array<{ id: string; name: string }> };
+  let parsed: { jobs?: Array<{ id: string; name: string; skill?: string }> };
   try {
     parsed = JSON.parse(readFileSync(jobsPath, "utf8"));
   } catch {
@@ -58,9 +57,10 @@ function removeCronJobs(): void {
     return;
   }
 
-  const edgeJobs = (parsed.jobs ?? []).filter((j) => j.name.startsWith(CRON_NAME_PREFIX));
+  const skillSet = new Set<string>(EDGE_SKILL_NAMES);
+  const edgeJobs = (parsed.jobs ?? []).filter((j) => j.skill && skillSet.has(j.skill));
   if (edgeJobs.length === 0) {
-    console.log("→ no Edge cron jobs found");
+    console.log("→ no cron jobs found for managed skills");
     return;
   }
 

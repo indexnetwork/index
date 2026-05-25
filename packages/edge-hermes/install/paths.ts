@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -18,4 +19,25 @@ export function skillsDir(): string {
 /** Skill bundles shipped by this repo (installed into `$HERMES_HOME/skills/<name>/`). */
 export const EDGE_SKILL_NAMES = ["index-network", "edgeos", "edge-esmeralda"] as const;
 
-export const CRON_NAME_PREFIX = "Edge —";
+/** Returns the cron name prefix for a given agent display name. */
+export function cronDisplayPrefix(name: string): string {
+  return `${name} —`;
+}
+
+/**
+ * Reads the agent display name from `IDENTITY.md` in `home`.
+ * Parses the `Display name:` field and returns the value, or `"Edge"` if missing/empty.
+ */
+export function readIdentityName(home: string): string {
+  const identityPath = join(home, "IDENTITY.md");
+  if (!existsSync(identityPath)) return "Edge";
+  const content = readFileSync(identityPath, "utf8");
+  for (const line of content.split("\n")) {
+    const match = line.match(/^Display name:\s*(.+)/);
+    if (match) {
+      const value = match[1].trim();
+      return value || "Edge";
+    }
+  }
+  return "Edge";
+}

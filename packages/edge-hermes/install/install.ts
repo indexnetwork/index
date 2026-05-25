@@ -93,7 +93,7 @@ function copyWorkspaceFiles(wipeUser: boolean): void {
 
     if (!entry.endsWith(".md")) continue;
 
-    if (entry === "USER.md" && !wipeUser && existsSync(targetPath)) {
+    if ((entry === "USER.md" || entry === "IDENTITY.md") && !wipeUser && existsSync(targetPath)) {
       preservedUserNotes = true;
       continue;
     }
@@ -103,7 +103,7 @@ function copyWorkspaceFiles(wipeUser: boolean): void {
 
   console.log(`→ staged ${copied} project files into ${TARGET_HOME}`);
   if (preservedUserNotes) {
-    console.log("  (USER.md preserved — pass --wipe-user to overwrite it)");
+    console.log("  (USER.md and IDENTITY.md preserved — pass --wipe-user to overwrite)");
   }
 
   if (wipeUser) {
