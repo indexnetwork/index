@@ -150,17 +150,6 @@ function buildProfilePrompt(ctx: ProfileContext): string {
     "",
   ];
 
-  if (ctx.existingPremises && ctx.existingPremises.length > 0) {
-    parts.push("## Existing premises (already captured)");
-    parts.push(
-      "The user has already asserted these facts about themselves. Do NOT ask questions that would elicit information already covered here.",
-    );
-    ctx.existingPremises.forEach((premise, i) => {
-      parts.push(`${i + 1}. ${premise}`);
-    });
-    parts.push("");
-  }
-
   parts.push(
     "## Your task",
     "Generate the minimum set of questions needed to fill the identified gaps.",
