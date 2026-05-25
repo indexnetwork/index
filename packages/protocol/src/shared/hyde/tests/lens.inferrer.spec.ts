@@ -1,6 +1,6 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll } from 'bun:test';
 import { LensInferrer, type Lens } from '../lens.inferrer.js';

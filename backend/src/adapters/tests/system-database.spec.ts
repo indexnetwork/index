@@ -7,7 +7,7 @@
  */
 
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test';
 

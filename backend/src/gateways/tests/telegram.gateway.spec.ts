@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect, beforeEach } from 'bun:test';
 import type { TelegramPrefs } from '../../schemas/database.schema';

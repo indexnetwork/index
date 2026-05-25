@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';

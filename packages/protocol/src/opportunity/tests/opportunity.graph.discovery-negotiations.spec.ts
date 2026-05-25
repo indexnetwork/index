@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config({ path: ".env.test" });
+config({ path: ".env.test", override: true });
 process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key";
 
 import { describe, it, expect } from "bun:test";

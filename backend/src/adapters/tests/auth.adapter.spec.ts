@@ -5,7 +5,7 @@
  */
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect, afterAll } from 'bun:test';
 import { eq } from 'drizzle-orm';

@@ -1,6 +1,5 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: 'backend/.env.test', override: true });
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";

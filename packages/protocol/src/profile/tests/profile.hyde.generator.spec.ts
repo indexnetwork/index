@@ -1,6 +1,6 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { HydeGenerator } from "../profile.hyde.generator.js";
 import { beforeEach, describe, expect, it } from "bun:test";

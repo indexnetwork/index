@@ -1,14 +1,12 @@
 import { describe, it, expect, afterAll } from 'bun:test';
 import { config } from 'dotenv';
-import { resolve } from 'path';
+config({ path: '.env.test', override: true });
+
 import {
     sendConnectionRequestEmail,
     sendConnectionAcceptedEmail,
 
 } from '../notification.sender';
-
-// Load environment variables
-config({ path: resolve(__dirname, '../../../../../.env.development') });
 
 // Only run this if explicitly requested or if we have the API key
 const runIntegration = process.env.RESEND_API_KEY && process.env.TESTING_EMAIL_ADDRESS;

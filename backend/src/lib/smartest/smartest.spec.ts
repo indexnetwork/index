@@ -3,7 +3,7 @@
  */
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

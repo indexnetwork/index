@@ -7,7 +7,7 @@
  * etc.) live in each tool's `description` string, not here.
  */
 import { config } from "dotenv";
-config({ path: ".env.test" });
+config({ path: ".env.test", override: true });
 
 import { describe, test, expect } from "bun:test";
 import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "../mcp.server.js";

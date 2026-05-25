@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config({ path: '.env.development' });
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect, afterAll } from 'bun:test';
 import { OpportunityDatabaseAdapter } from '../src/adapters/database.adapter';

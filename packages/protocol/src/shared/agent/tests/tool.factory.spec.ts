@@ -3,7 +3,7 @@
  */
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { mock, afterAll } from "bun:test";
 mock.module("../../../../../backend/queues/notification.queue", () => ({

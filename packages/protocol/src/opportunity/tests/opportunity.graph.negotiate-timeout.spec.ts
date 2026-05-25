@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 // Guard against the existing flake where `.env.test` resolves to
 // `packages/protocol/.env.test` (which doesn't exist) when bun is invoked
 // from this workspace. Matches the pattern in opportunity.tools.mcp-orchestrator.spec.ts.

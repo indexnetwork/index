@@ -2,7 +2,7 @@
  * Unit tests for IntegrationSyncQueue. Uses injected deps to avoid Redis/Composio/DB.
  */
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, afterAll } from 'bun:test';
 import { mock } from 'bun:test';

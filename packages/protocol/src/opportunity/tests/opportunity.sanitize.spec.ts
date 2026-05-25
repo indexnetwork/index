@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config({ path: ".env.development", override: true });
+config({ path: ".env.test", override: true });
 
 import { describe, expect, it } from "bun:test";
 import { stripIntroducerMentions } from "../opportunity.presentation.js";

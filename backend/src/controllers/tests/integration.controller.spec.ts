@@ -4,7 +4,7 @@
  * and index-scoped link/unlink/import operations.
  */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeEach } from "bun:test";
 import { IntegrationController } from "../integration.controller";
