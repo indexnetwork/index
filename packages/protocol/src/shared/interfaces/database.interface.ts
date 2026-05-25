@@ -1832,13 +1832,13 @@ export interface SystemDatabase {
 
 /**
  * Database interface narrowed for Profile Graph operations.
- * Provides full profile lifecycle: read, write, HyDE management, and query mode.
+ * Provides full profile lifecycle: read, write, and query mode.
  *
  * Access layer: Primarily UserDatabase (user's own profile)
  */
 export type ProfileGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getHydeDocument' | 'saveHydeDocument' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser'
 >;
 
 /**

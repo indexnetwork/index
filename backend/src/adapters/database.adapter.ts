@@ -1025,16 +1025,17 @@ export class ChatDatabaseAdapter {
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
+    const emb = profile.embedding ?? null;
     const data = {
       userId,
       identity: profile.identity,
       narrative: profile.narrative,
       attributes: profile.attributes,
-      embedding: profile.embedding === null 
-        ? null 
-        : (Array.isArray(profile.embedding[0])
-          ? (profile.embedding as number[][])[0]
-          : (profile.embedding as number[])),
+      embedding: emb === null
+        ? null
+        : (Array.isArray(emb[0])
+          ? (emb as number[][])[0]
+          : (emb as number[])),
       updatedAt: new Date(),
     };
     await db.insert(schema.userProfiles)
@@ -4104,16 +4105,17 @@ export class ProfileDatabaseAdapter {
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
+    const emb = profile.embedding ?? null;
     const data = {
       userId,
       identity: profile.identity,
       narrative: profile.narrative,
       attributes: profile.attributes,
-      embedding: profile.embedding === null 
-        ? null 
-        : (Array.isArray(profile.embedding[0])
-          ? (profile.embedding as number[][])[0]
-          : (profile.embedding as number[])),
+      embedding: emb === null
+        ? null
+        : (Array.isArray(emb[0])
+          ? (emb as number[][])[0]
+          : (emb as number[])),
       updatedAt: new Date(),
     };
     await db.insert(schema.userProfiles)

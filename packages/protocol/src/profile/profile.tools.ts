@@ -547,8 +547,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       "- `action=\"set location\"`, `details=\"Berlin\"`\n\n" +
       "**When to use:** When the user wants to make specific changes without regenerating the whole profile. For full profile regeneration from social URLs, use create_user_profile instead.\n\n" +
       "**Important:** If the user provides a URL to update from, call scrape_url first, then pass the scraped content in `details`.\n\n" +
-      "**Returns:** Confirmation that the profile was updated. The profile's semantic embeddings are automatically recalculated, " +
-      "which may surface new opportunity matches.",
+      "**Returns:** Confirmation that the profile was updated.",
     querySchema: z.object({
       profileId: z.string().optional().describe("Profile UUID from read_user_profiles. Omit to update the current user's own profile (most common usage)."),
       action: z.string().describe("Natural language description of ALL changes to make in a single call. Examples: 'update bio to focus on AI research', 'add Python and Rust to skills', 'change location to Berlin and add machine learning to interests'."),

@@ -151,7 +151,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const qEnqueue = protocolDeps.questionerEnqueue;
   const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue, qEnqueue).createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, protocolDeps.enricher, qEnqueue, premiseGraph).createGraph();
+  const profileGraph = new ProfileGraphFactory(database, scraper, protocolDeps.enricher, qEnqueue, premiseGraph).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
