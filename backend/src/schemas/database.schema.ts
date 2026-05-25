@@ -431,10 +431,12 @@ export const questions = pgTable('questions', {
   payload: jsonb('payload').$type<import('@indexnetwork/protocol').Question>().notNull(),
   status: questionStatusEnum('status').notNull().default('pending'),
   answer: jsonb('answer').$type<QuestionAnswer>(),
+  conversationId: text('conversation_id'),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   statusIdx: index('questions_status_idx').on(table.status),
+  conversationIdx: index('questions_conversation_id_idx').on(table.conversationId),
 }));
 
 export type QuestionRow = typeof questions.$inferSelect;

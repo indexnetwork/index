@@ -547,6 +547,13 @@
       "when": 1779742807177,
       "tag": "0077_drop_user_profiles_embedding_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1779748964381,
+      "tag": "0078_add_questions_conversation_id",
+      "breakpoints": true
     }
   ]
 }
