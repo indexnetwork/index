@@ -1,3 +1,4 @@
+src/events/tests/premise.event.spec.ts
 src/adapters/tests/scraper.adapter.spec.ts
 src/adapters/tests/storage.adapter.spec.ts
 src/adapters/tests/system-database.spec.ts
