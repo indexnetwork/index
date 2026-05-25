@@ -31,7 +31,6 @@ describe("getPreset", () => {
   });
 
   it("throws for an unimplemented mode", () => {
-    expect(() => getPreset("profile")).toThrow("not implemented");
     expect(() => getPreset("negotiation")).toThrow("not implemented");
   });
 });
@@ -55,5 +54,27 @@ describe("intent preset", () => {
     expect(typeof result).toBe("string");
     expect(result).toContain("cofounder");
     expect(result).toContain("Alice");
+  });
+});
+
+describe("profile preset", () => {
+  it("returns the profile preset with systemPrompt and buildPrompt", () => {
+    const preset = getPreset("profile");
+    expect(preset).toBeDefined();
+    expect(typeof preset.systemPrompt).toBe("string");
+    expect(preset.systemPrompt.length).toBeGreaterThan(0);
+    expect(typeof preset.buildPrompt).toBe("function");
+  });
+
+  it("profile buildPrompt produces a string containing the gaps", () => {
+    const preset = getPreset("profile");
+    const result = preset.buildPrompt({
+      userProfile: { name: "Bob", bio: "Engineer" },
+      gaps: ["location", "current project"],
+    });
+    expect(typeof result).toBe("string");
+    expect(result).toContain("location");
+    expect(result).toContain("current project");
+    expect(result).toContain("Bob");
   });
 });

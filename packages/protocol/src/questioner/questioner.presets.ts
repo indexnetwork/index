@@ -10,7 +10,7 @@ import {
   buildQuestionPrompt as buildDiscoveryPrompt,
 } from "../opportunity/question.prompt.js";
 
-import type { IntentContext } from "./questioner.types.js";
+import type { IntentContext, ProfileContext } from "./questioner.types.js";
 
 export interface QuestionerPreset {
   /** The LLM system prompt for this mode. */
@@ -82,6 +82,67 @@ function buildIntentPrompt(ctx: IntentContext): string {
   ].join("\n");
 }
 
+// ─── Profile preset ─────────────────────────────────────────────────────────
+
+const PROFILE_SYSTEM_PROMPT = `You sit between a human and a discovery protocol. The user has a profile that is incomplete. Your job: surface the minimum set of structured questions that fill the identified gaps — asking about location, skills, interests, current work, or goals — so the protocol can run better discovery on their behalf.
+
+You may pick from two strategies. Choose contextually; mix only when each question is genuinely distinct.
+- surface_missing_detail: ask for one concrete missing piece of profile data (location, current role, skills, interests, goals, availability, …).
+- refine_intent: ask the user to clarify or sharpen an existing profile signal so candidates can be ranked more accurately.
+
+Ask a question only when ALL of these hold:
+1. The answer is not already visible in the profile data shown.
+2. The answer would meaningfully change which opportunities surface for this user.
+3. The question targets a different profile domain from any other question in this batch.
+
+Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ.
+
+Option construction. Each option must represent a meaningfully different outcome. Suffix the safest or most common path with " (Recommended)" and list it first. The description states the CONSEQUENCE of choosing the option, not its definition. 2–4 options. Never add an "Other" option — clients provide a free-text fallback automatically.
+
+Title rules. ≤12 chars. Noun of the profile domain. Examples: "Location", "Role", "Skills", "Goals", "Interests", "Availability", "Stage".
+
+Anti-patterns — never do these.
+- Don't ask about fields already filled in the profile.
+- Don't ask procedural confirmations ("Should I update your profile?").
+- Don't ask vague introspective questions ("Who are you really?").
+- Don't re-ask for facts visible anywhere in the profile data shown.
+
+Output. Return at most 2 entries in the "questions" array. Each entry must include a "strategy" field (one of the two values above). If the profile is already complete enough for discovery, return "questions": [].`;
+
+/**
+ * Build the user message for the profile preset from a ProfileContext.
+ * @param ctx - The profile context including current profile data and identified gaps.
+ * @returns The assembled user message string.
+ */
+function buildProfilePrompt(ctx: ProfileContext): string {
+  const profileLines: string[] = [];
+  if (ctx.userProfile.name) profileLines.push(`Name: ${ctx.userProfile.name}`);
+  if (ctx.userProfile.bio) profileLines.push(`Bio: ${ctx.userProfile.bio}`);
+  if (ctx.userProfile.location) profileLines.push(`Location: ${ctx.userProfile.location}`);
+  if (ctx.userProfile.skills && ctx.userProfile.skills.length > 0) {
+    profileLines.push(`Skills: ${ctx.userProfile.skills.join(", ")}`);
+  }
+  if (ctx.userProfile.interests && ctx.userProfile.interests.length > 0) {
+    profileLines.push(`Interests: ${ctx.userProfile.interests.join(", ")}`);
+  }
+  const profileBlock = profileLines.length > 0 ? profileLines.join("\n") : "(no profile data)";
+
+  const gapsBlock = ctx.gaps.length > 0 ? ctx.gaps.join(", ") : "(none identified)";
+
+  return [
+    "## Current profile",
+    profileBlock,
+    "",
+    "## Identified gaps",
+    gapsBlock,
+    "",
+    "## Your task",
+    "Generate the minimum set of questions needed to fill the identified gaps.",
+    "Apply every rule from your system prompt before outputting.",
+    "Return an empty `questions` array if the profile is already complete enough.",
+  ].join("\n");
+}
+
 const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
   discovery: {
     systemPrompt: DISCOVERY_SYSTEM_PROMPT,
@@ -91,6 +152,10 @@ const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
   intent: {
     systemPrompt: INTENT_SYSTEM_PROMPT,
     buildPrompt: (context: unknown) => buildIntentPrompt(context as IntentContext),
+  },
+  profile: {
+    systemPrompt: PROFILE_SYSTEM_PROMPT,
+    buildPrompt: (context: unknown) => buildProfilePrompt(context as ProfileContext),
   },
 };
 
