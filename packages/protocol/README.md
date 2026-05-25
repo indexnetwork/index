@@ -39,7 +39,7 @@ The package defines interfaces — your application provides the concrete implem
 | `IntentGraphQueue` | Background intent processing queue |
 | `ChatSessionReader` | Load conversation history |
 | `ProfileEnricher` | Enrich profiles from external sources |
-| `NegotiationDatabase` | Negotiation state persistence |
+| `NegotiationGraphDatabase` | Negotiation state persistence |
 | `AgentDatabase` | Agent registry CRUD (agents, transports, permissions) |
 | `AgentDispatcher` | Resolves and invokes agents during negotiation turns |
 | `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request |

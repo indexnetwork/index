@@ -40,7 +40,7 @@ function createDeps() {
     getMessagesForConversation: mock(() => Promise.resolve([])),
     getArtifactsForTask: mock(() => Promise.resolve([])),
     updateOpportunityStatus,
-  } satisfies Partial<NegotiationGraphDatabase> as unknown as NegotiationGraphDatabase;
+  } as unknown as NegotiationGraphDatabase;
   const dispatcher = {
     dispatch: mock(async () => ({ handled: false as const, reason: "no_agent" as const })),
     hasPersonalAgent: mock(async () => false),

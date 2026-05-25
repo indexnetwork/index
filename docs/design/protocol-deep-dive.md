@@ -290,7 +290,7 @@ The health scorer considers connection count, connector flow count, expired coun
 
 The graph creates an A2A conversation, alternates between proposer and responder agents, and records each turn as a message with structured data parts. The finalize node determines whether an opportunity was produced, computes agreed roles and average fit score, then persists the outcome as an artifact.
 
-**Dependencies:** `NegotiationDatabase`, proposer agent, responder agent
+**Dependencies:** `NegotiationGraphDatabase`, proposer agent, responder agent
 
 ### 3.12 Premise Graph
 
