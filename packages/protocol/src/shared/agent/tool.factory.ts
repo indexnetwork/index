@@ -16,6 +16,8 @@ import { PremiseGraphFactory } from "../../premise/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 import { configureProtocol } from "./model.config.js";
 
+import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
+
 import {
   type ToolContext,
   type ResolvedToolContext,
@@ -113,9 +115,18 @@ export async function createChatTools(
   }
 
   // ─── Compile subgraphs ─────────────────────────────────────────────────────
-  const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue, deps.questionerEnqueue).createGraph();
+
+  // Wrap questionerEnqueue to include session context when available
+  const sessionAwareEnqueue: QuestionerEnqueueFn | undefined = deps.questionerEnqueue
+    ? (input) => deps.questionerEnqueue!({
+        ...input,
+        ...(resolvedContext.sessionId ? { conversationId: resolvedContext.sessionId } : {}),
+      })
+    : undefined;
+
+  const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue, sessionAwareEnqueue).createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, scraper, deps.enricher, deps.questionerEnqueue, premiseGraph).createGraph();
+  const profileGraph = new ProfileGraphFactory(database, scraper, deps.enricher, sessionAwareEnqueue, premiseGraph).createGraph();
   const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
   const hydeGenerator = new HydeGenerator();

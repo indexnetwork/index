@@ -1104,6 +1104,7 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
         sourceType: 'discovery',
         sourceId: args.chatSessionId ?? crypto.randomUUID(),
         context: enqueueInput,
+        conversationId: args.chatSessionId,
       });
       logger.info("Question generation enqueued to QuestionerQueue", {
         userId: args.userId,
