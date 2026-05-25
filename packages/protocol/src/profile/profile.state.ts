@@ -151,6 +151,7 @@ export const ProfileGraphState = Annotation.Root({
    */
   operationsPerformed: Annotation<{
     scraped?: boolean;
+    decomposedPremises?: boolean;
     generatedProfile?: boolean;
     embeddedProfile?: boolean;
     generatedHyde?: boolean;

@@ -150,7 +150,8 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const { database, embedder, scraper } = protocolDeps;
   const qEnqueue = protocolDeps.questionerEnqueue;
   const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue, qEnqueue).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, protocolDeps.enricher, qEnqueue).createGraph();
+  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
+  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, protocolDeps.enricher, qEnqueue, premiseGraph).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
@@ -173,7 +174,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
   const intentIndexGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
-  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
 
   compiledGraphs = {
     profile: profileGraph,

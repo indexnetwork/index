@@ -114,7 +114,8 @@ export async function createChatTools(
 
   // ─── Compile subgraphs ─────────────────────────────────────────────────────
   const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, deps.enricher).createGraph();
+  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
+  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, deps.enricher, deps.questionerEnqueue, premiseGraph).createGraph();
   const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
   const hydeGenerator = new HydeGenerator();
@@ -145,7 +146,6 @@ export async function createChatTools(
   const networkGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
   const intentNetworkGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
-  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
 
   // ─── Create context-bound databases ────────────────────────────────────────
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
