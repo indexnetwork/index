@@ -5,7 +5,7 @@ import db from "../src/lib/drizzle/drizzle.js";
 import * as schema from "../src/schemas/database.schema.js";
 
 // This is an integration test — requires DATABASE_URL in environment.
-// Run: bun test tests/agent-permission-upsert.test.ts
+// Run: bun test tests/agent-permission-upsert.spec.ts
 import "../src/startup.env";
 
 const adapter = new AgentDatabaseAdapter();

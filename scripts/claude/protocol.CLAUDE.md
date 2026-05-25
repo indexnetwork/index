@@ -55,7 +55,7 @@ skills/
 Target specific test files — the full suite is slow:
 
 ```bash
-bun test src/intent/tests/intent.graph.test.ts
+bun test src/intent/tests/intent.graph.spec.ts
 bun test src/negotiation/tests/
 ```
 

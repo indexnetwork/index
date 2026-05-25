@@ -33,13 +33,13 @@ linear-issue: IND-270
 
 ### Backend tests
 - backend/src/controllers/tests/tool.controller.spec.ts
-- backend/tests/mcp.test.ts
+- backend/tests/mcp.spec.ts
 
 ### CLI
 - packages/cli/src/opportunity.command.ts
 - packages/cli/src/output/base.ts
-- packages/cli/tests/opportunity.command.test.ts
-- packages/cli/tests/tool-calls.test.ts
+- packages/cli/tests/opportunity.command.spec.ts
+- packages/cli/tests/tool-calls.spec.ts
 
 ### Frontend
 - frontend/src/components/chat/ToolCallsDisplay.tsx
@@ -92,7 +92,7 @@ Mechanical find-and-replace across ~38 files. No logic, behavior, schema, or que
 
 **Verification gate:**
 - `bun run tsc` clean across backend, packages/protocol, packages/cli, frontend
-- Affected test suites pass (tool.factory.spec.ts, chat.prompt.modules.spec.ts, chat.prompt.spec.ts, chat.agent.spec.ts, tool.controller.spec.ts, mcp.test.ts, opportunity.command.test.ts, tool-calls.test.ts)
+- Affected test suites pass (tool.factory.spec.ts, chat.prompt.modules.spec.ts, chat.prompt.spec.ts, chat.agent.spec.ts, tool.controller.spec.ts, mcp.spec.ts, opportunity.command.spec.ts, tool-calls.spec.ts)
 - `bun run lint` clean
 - MCP `tools/list` exposes `discover_opportunities`; no `create_opportunities` remains
 - Regenerated SKILL.md files match updated templates

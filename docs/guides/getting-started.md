@@ -258,7 +258,7 @@ Once both servers are running, open http://localhost:3000 in your browser.
 cd backend
 
 # Run a specific test file (preferred)
-bun test tests/e2e.test.ts
+bun test tests/e2e.spec.ts
 
 # Run tests in watch mode
 bun test --watch
