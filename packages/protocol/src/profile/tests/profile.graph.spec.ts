@@ -4,15 +4,13 @@ config({ path: '.env.test', override: true });
 
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { ProfileGraphFactory } from '../profile.graph.js';
-import { ProfileGraphDatabase } from '../../shared/interfaces/database.interface.js';
-import { Embedder } from '../../shared/interfaces/embedder.interface.js';
-import { Scraper } from '../../shared/interfaces/scraper.interface.js';
-import { ProfileDocument } from '../profile.generator.js';
+import type { ProfileGraphDatabase } from '../../shared/interfaces/database.interface.js';
+import type { Scraper } from '../../shared/interfaces/scraper.interface.js';
+import type { ProfileDocument } from '../profile.generator.js';
 
 describe('ProfileGraph', () => {
   let factory: ProfileGraphFactory;
   let mockDatabase: ProfileGraphDatabase;
-  let mockEmbedder: Embedder;
   let mockScraper: Scraper;
 
   const mockProfile: ProfileDocument = {
@@ -29,7 +27,6 @@ describe('ProfileGraph', () => {
       interests: ['testing', 'coding'],
       skills: ['TypeScript', 'Testing']
     },
-    embedding: [0.1, 0.2, 0.3] as any
   };
 
   beforeEach(() => {
@@ -53,14 +50,8 @@ describe('ProfileGraph', () => {
         location: data.location ?? null,
       })),
       saveProfile: mock(async () => {}),
-      getHydeDocument: mock(async () => null),
-      saveHydeDocument: mock(async () => ({ id: 'mock-hyde-doc-id' })),
       softDeleteGhost: mock(async () => true),
-    } as any;
-
-    // Mock embedder
-    mockEmbedder = {
-      generate: mock(async (text: string) => [0.1, 0.2, 0.3])
+      getPremisesForUser: mock(async () => []),
     } as any;
 
     // Mock scraper
@@ -68,7 +59,7 @@ describe('ProfileGraph', () => {
       scrape: mock(async (objective: string) => 'Scraped data about the user')
     } as any;
 
-    factory = new ProfileGraphFactory(mockDatabase, mockEmbedder, mockScraper);
+    factory = new ProfileGraphFactory(mockDatabase, mockScraper);
   });
 
   describe('Query Mode (Fast Path)', () => {
@@ -84,9 +75,8 @@ describe('ProfileGraph', () => {
 
       expect(result.profile).toEqual(mockProfile);
       expect(mockDatabase.getProfile).toHaveBeenCalledWith('test-user-id');
-      
+
       // Should NOT call generation methods in query mode
-      expect(mockEmbedder.generate).not.toHaveBeenCalled();
       expect(mockScraper.scrape).not.toHaveBeenCalled();
     });
 
@@ -101,10 +91,9 @@ describe('ProfileGraph', () => {
       });
 
       expect(result.profile).toBeUndefined();
-      
+
       // Should NOT attempt to generate profile in query mode
       expect(mockScraper.scrape).not.toHaveBeenCalled();
-      expect(mockEmbedder.generate).not.toHaveBeenCalled();
     });
   });
 
@@ -122,86 +111,11 @@ describe('ProfileGraph', () => {
 
       expect(result.profile).toBeDefined();
       expect(mockDatabase.saveProfile).toHaveBeenCalled();
-      expect(mockEmbedder.generate).toHaveBeenCalled();
     });
 
-    it('should only generate embedding when profile exists but embedding is missing', async () => {
-      // Setup: Profile exists but no embedding
-      const profileWithoutEmbedding = {
-        ...mockProfile,
-        embedding: [] as any
-      };
-      (mockDatabase.getProfile as any).mockResolvedValue(profileWithoutEmbedding);
-
-      const graph = factory.createGraph();
-      const result = await graph.invoke({
-        userId: 'test-user-id',
-        operationMode: 'write'
-      });
-
-      // Should generate embedding but not regenerate profile
-      expect(mockEmbedder.generate).toHaveBeenCalled();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
-      
-      // Should NOT scrape or regenerate profile content
-      expect(mockScraper.scrape).not.toHaveBeenCalled();
-    });
-
-    it('should only generate hyde when profile exists but hyde is missing', async () => {
-      // Setup: Profile with embedding exists, but no hyde document
-      const profileWithEmbedding = {
-        ...mockProfile,
-        embedding: [0.1, 0.2, 0.3] as any,
-      };
-      (mockDatabase.getProfile as any).mockResolvedValue(profileWithEmbedding);
-      (mockDatabase.getHydeDocument as any).mockResolvedValue(null);
-
-      const graph = factory.createGraph();
-      const result = await graph.invoke({
-        userId: 'test-user-id',
-        operationMode: 'write'
-      });
-
-      // Should generate hyde and its embedding
-      expect(mockEmbedder.generate).toHaveBeenCalled();
-      expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
-      
-      // Should NOT regenerate profile
-      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
-    });
-
-    it('should generate and save hyde when no hyde document exists', async () => {
-      // Setup: Profile exists with embedding, but no hyde document
-      const profileWithEmbedding = {
-        ...mockProfile,
-        embedding: [0.1, 0.2, 0.3] as any,
-      };
-      (mockDatabase.getProfile as any).mockResolvedValue(profileWithEmbedding);
-      (mockDatabase.getHydeDocument as any).mockResolvedValue(null);
-
-      const graph = factory.createGraph();
-      const result = await graph.invoke({
-        userId: 'test-user-id',
-        operationMode: 'write'
-      });
-
-      // Should generate hyde and save to hyde_documents
-      expect(mockEmbedder.generate).toHaveBeenCalled();
-      expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
-      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
-    });
-
-    it('should do nothing when all components exist', async () => {
-      // Setup: Complete profile and existing hyde document
-      const completeProfile = {
-        ...mockProfile,
-        embedding: [0.1, 0.2, 0.3] as any,
-      };
-      (mockDatabase.getProfile as any).mockResolvedValue(completeProfile);
-      (mockDatabase.getHydeDocument as any).mockResolvedValue({
-        hydeText: 'Existing hyde description',
-        hydeEmbedding: [0.4, 0.5, 0.6],
-      });
+    it('should do nothing when profile already exists', async () => {
+      // Setup: Complete profile exists
+      (mockDatabase.getProfile as any).mockResolvedValue(mockProfile);
 
       const graph = factory.createGraph();
       const result = await graph.invoke({
@@ -210,25 +124,16 @@ describe('ProfileGraph', () => {
       });
 
       // Should return existing profile without any generation
-      expect(result.profile).toEqual(completeProfile);
-      expect(mockEmbedder.generate).not.toHaveBeenCalled();
+      expect(result.profile).toEqual(mockProfile);
       expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
-      expect(mockDatabase.saveHydeDocument).not.toHaveBeenCalled();
     });
   });
 
   describe('Force Update Behavior', () => {
-    it('should regenerate profile and hyde when forceUpdate is true with new input', async () => {
-      // Setup: Complete profile and hyde doc exist
-      const existingProfile = {
-        ...mockProfile,
-        embedding: [0.1, 0.2, 0.3] as any,
-      };
+    it('should regenerate profile when forceUpdate is true with new input', async () => {
+      // Setup: Complete profile exists
+      const existingProfile = { ...mockProfile };
       (mockDatabase.getProfile as any).mockResolvedValue(existingProfile);
-      (mockDatabase.getHydeDocument as any).mockResolvedValue({
-        hydeText: 'Old hyde description',
-        hydeEmbedding: [0.4, 0.5, 0.6],
-      });
 
       const graph = factory.createGraph();
       const result = await graph.invoke({
@@ -238,18 +143,12 @@ describe('ProfileGraph', () => {
         input: 'New information about the user'
       });
 
-      // Should regenerate profile
+      // Should regenerate and save profile
       expect(mockDatabase.saveProfile).toHaveBeenCalled();
-      
-      // Should also regenerate hyde (because profile was updated)
-      expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
-      
-      // Should generate embeddings for both
-      expect(mockEmbedder.generate).toHaveBeenCalled();
     });
 
-    it('should regenerate hyde when profile is updated', async () => {
-      // Setup: Profile exists but needs update
+    it('should save profile when generating from scratch', async () => {
+      // Setup: No profile exists
       (mockDatabase.getProfile as any).mockResolvedValue(null);
 
       const graph = factory.createGraph();
@@ -259,9 +158,8 @@ describe('ProfileGraph', () => {
         input: 'New profile information'
       });
 
-      // When profile is generated, hyde should be regenerated too
+      // Profile should be generated and saved
       expect(mockDatabase.saveProfile).toHaveBeenCalled();
-      expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
     });
   });
 
@@ -278,7 +176,7 @@ describe('ProfileGraph', () => {
 
       // Should call scraper to get input
       expect(mockScraper.scrape).toHaveBeenCalled();
-      
+
       // Should then generate profile
       expect(mockDatabase.saveProfile).toHaveBeenCalled();
     });
@@ -296,7 +194,7 @@ describe('ProfileGraph', () => {
 
       // Should NOT call scraper
       expect(mockScraper.scrape).not.toHaveBeenCalled();
-      
+
       // Should generate profile from provided input
       expect(mockDatabase.saveProfile).toHaveBeenCalled();
     });
@@ -324,10 +222,10 @@ describe('ProfileGraph', () => {
       expect(result.needsUserInfo).toBe(true);
       expect(result.missingUserInfo).toContain('social_urls');
       expect(result.missingUserInfo).toContain('full_name');
-      
+
       // Should NOT attempt to scrape
       expect(mockScraper.scrape).not.toHaveBeenCalled();
-      
+
       // Should NOT generate profile
       expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     });
@@ -339,11 +237,11 @@ describe('ProfileGraph', () => {
         id: 'test-user-id',
         name: 'Test',
         email: 'test@example.com',
-        socials: [
-          { id: '1', userId: 'test-user-id', label: 'twitter', value: 'https://x.com/testuser' },
-          { id: '2', userId: 'test-user-id', label: 'linkedin', value: 'https://linkedin.com/in/testuser' },
-        ]
       });
+      (mockDatabase.getUserSocials as any).mockResolvedValue([
+        { id: '1', userId: 'test-user-id', label: 'twitter', value: 'https://x.com/testuser' },
+        { id: '2', userId: 'test-user-id', label: 'linkedin', value: 'https://linkedin.com/in/testuser' },
+      ]);
 
       const graph = factory.createGraph();
       const result = await graph.invoke({
@@ -353,7 +251,7 @@ describe('ProfileGraph', () => {
 
       // Should NOT detect missing user info
       expect(result.needsUserInfo).toBe(false);
-      
+
       // Should proceed with scraping
       expect(mockScraper.scrape).toHaveBeenCalled();
     });
@@ -377,7 +275,7 @@ describe('ProfileGraph', () => {
 
       // Should NOT detect missing user info
       expect(result.needsUserInfo).toBe(false);
-      
+
       // Should proceed with scraping
       expect(mockScraper.scrape).toHaveBeenCalled();
     });
@@ -401,10 +299,10 @@ describe('ProfileGraph', () => {
 
       // Should NOT detect missing user info (because input was provided)
       expect(result.needsUserInfo).toBe(false);
-      
+
       // Should NOT scrape
       expect(mockScraper.scrape).not.toHaveBeenCalled();
-      
+
       // Should generate profile from input
       expect(mockDatabase.saveProfile).toHaveBeenCalled();
     });
@@ -421,7 +319,7 @@ describe('ProfileGraph', () => {
 
       // Should NOT detect missing user info (profile exists)
       expect(result.needsUserInfo).toBe(false);
-      
+
       // Should NOT scrape (not needed)
       expect(mockScraper.scrape).not.toHaveBeenCalled();
     });
@@ -429,13 +327,6 @@ describe('ProfileGraph', () => {
 });
 
 // ─── Generate mode tests ─────────────────────────────────────────────────────
-
-
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import { ProfileGraphFactory } from '../profile.graph.js';
-import type { ProfileGraphDatabase } from '../../shared/interfaces/database.interface.js';
-import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
-import type { Scraper } from '../../shared/interfaces/scraper.interface.js';
 
 const mockEnrichUserProfile = mock(async () => null as any);
 
@@ -448,7 +339,6 @@ const mockEnrichUserProfile = mock(async () => null as any);
  */
 describe('ProfileGraph - Generate Mode', () => {
   let mockDatabase: ProfileGraphDatabase;
-  let mockEmbedder: Embedder;
   let mockScraper: Scraper;
 
   let savedProfiles: Map<string, any>;
@@ -467,13 +357,10 @@ describe('ProfileGraph - Generate Mode', () => {
       saveProfile: mock(async (userId: string, profile: any) => {
         savedProfiles.set(userId, profile);
       }),
-      getHydeDocument: mock(async () => null),
-      saveHydeDocument: mock(async () => ({ id: 'mock-hyde-doc-id' })),
       softDeleteGhost: mock(async () => true),
-    } as any;
-
-    mockEmbedder = {
-      generate: mock(async () => Array(2000).fill(0.01)),
+      findDuplicateUser: mock(async () => null),
+      mergeGhostUser: mock(async () => {}),
+      getPremisesForUser: mock(async () => []),
     } as any;
 
     mockScraper = {
@@ -482,7 +369,7 @@ describe('ProfileGraph - Generate Mode', () => {
   });
 
   function buildGraph() {
-    return new ProfileGraphFactory(mockDatabase, mockEmbedder, mockScraper, { enrichUserProfile: mockEnrichUserProfile }).createGraph();
+    return new ProfileGraphFactory(mockDatabase, mockScraper, { enrichUserProfile: mockEnrichUserProfile }).createGraph();
   }
 
   // ─────────────────────────────────────────────────────────
@@ -567,21 +454,6 @@ describe('ProfileGraph - Generate Mode', () => {
       const updateCall = (mockDatabase.updateUser as any).mock.calls[0];
       expect(updateCall[1]).not.toHaveProperty('name');
     }, 60_000);
-
-    it('should generate HyDE document after enrichment', async () => {
-      (mockDatabase.getUser as any).mockResolvedValue(user);
-      mockEnrichUserProfile.mockResolvedValue(enrichmentResult);
-
-      const graph = buildGraph();
-      const result = await graph.invoke({
-        userId: user.id,
-        operationMode: 'generate',
-      });
-
-      expect(result.error).toBeUndefined();
-      expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
-      expect(mockEmbedder.generate).toHaveBeenCalled();
-    }, 120_000);
   });
 
   // ─────────────────────────────────────────────────────────
@@ -687,7 +559,7 @@ describe('ProfileGraph - Generate Mode', () => {
   // Full pipeline
   // ─────────────────────────────────────────────────────────
 
-  describe('full pipeline produces hyde document', () => {
+  describe('full pipeline produces saved profile', () => {
     const ghost = {
       id: 'ghost-pipeline',
       name: 'seren',
@@ -697,7 +569,7 @@ describe('ProfileGraph - Generate Mode', () => {
       intro: null,
     };
 
-    it('should generate profile, embedding, and hyde document end to end', async () => {
+    it('should generate and save profile end to end', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(ghost);
       mockEnrichUserProfile.mockResolvedValue(null);
 
@@ -710,29 +582,19 @@ describe('ProfileGraph - Generate Mode', () => {
       expect(result.error).toBeUndefined();
       expect(result.profile).toBeDefined();
       expect(mockDatabase.saveProfile).toHaveBeenCalled();
-      expect(mockEmbedder.generate).toHaveBeenCalled();
-      expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
     }, 120_000);
   });
 });
 
 // ─── Pre-populated profile path tests ───────────────────────────────────────
 
-
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import { ProfileGraphFactory } from '../profile.graph.js';
-import type { ProfileGraphDatabase } from '../../shared/interfaces/database.interface.js';
-import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
-import type { Scraper } from '../../shared/interfaces/scraper.interface.js';
-
 /**
  * Tests for the pre-populated profile path in ProfileGraph.
  * When a prePopulatedProfile is provided (e.g. from Parallel Chat API),
- * the graph should skip LLM profile generation and go directly to embedding + HyDE.
+ * the graph should skip LLM profile generation and go directly to save.
  */
 describe('ProfileGraph - Pre-Populated Profile Path', () => {
   let mockDatabase: ProfileGraphDatabase;
-  let mockEmbedder: Embedder;
   let mockScraper: Scraper;
   let savedProfiles: Map<string, unknown>;
 
@@ -771,14 +633,9 @@ describe('ProfileGraph - Pre-Populated Profile Path', () => {
       saveProfile: mock(async (userId: string, profile: unknown) => {
         savedProfiles.set(userId, profile);
       }),
-      getHydeDocument: mock(async () => null),
-      saveHydeDocument: mock(async () => ({ id: 'mock-hyde-doc-id' })),
       softDeleteGhost: mock(async () => true),
+      getPremisesForUser: mock(async () => []),
     } as unknown as ProfileGraphDatabase;
-
-    mockEmbedder = {
-      generate: mock(async () => Array(2000).fill(0.01)),
-    } as unknown as Embedder;
 
     mockScraper = {
       scrape: mock(async () => ''),
@@ -786,7 +643,7 @@ describe('ProfileGraph - Pre-Populated Profile Path', () => {
   });
 
   function buildGraph() {
-    return new ProfileGraphFactory(mockDatabase, mockEmbedder, mockScraper).createGraph();
+    return new ProfileGraphFactory(mockDatabase, mockScraper).createGraph();
   }
 
   it('skips profile generation and saves pre-populated profile directly', async () => {
@@ -802,31 +659,11 @@ describe('ProfileGraph - Pre-Populated Profile Path', () => {
     expect(result.profile!.identity.name).toBe('Sarah Hoople Shere');
     expect(result.profile!.identity.bio).toBe(prePopulatedProfile.identity.bio);
 
-    // Profile was saved (embedding step ran)
+    // Profile was saved
     expect(mockDatabase.saveProfile).toHaveBeenCalledWith('ghost-sarah', expect.anything());
-
-    // Embedder was called (for profile embedding)
-    expect(mockEmbedder.generate).toHaveBeenCalled();
 
     // Scraper was NOT called (skipped generation entirely)
     expect(mockScraper.scrape).not.toHaveBeenCalled();
-  }, 30_000);
-
-  it('generates HyDE document after embedding pre-populated profile', async () => {
-    const graph = buildGraph();
-    const result = await graph.invoke({
-      userId: 'ghost-sarah',
-      operationMode: 'generate',
-      prePopulatedProfile,
-    });
-
-    expect(result.error).toBeUndefined();
-
-    // HyDE document was saved
-    expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
-
-    // Embedder called at least twice: once for profile, once for HyDE
-    expect((mockEmbedder.generate as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThanOrEqual(2);
   }, 30_000);
 
   it('preserves profile attributes from pre-populated data', async () => {
