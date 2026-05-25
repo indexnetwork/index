@@ -21,6 +21,7 @@ import { intentQueue } from '../queues/intent.queue';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 
 import { log } from '../lib/log';
+import { PremiseEvents } from '../events/premise.event';
 
 const logger = log.service.from('tool');
 
@@ -80,6 +81,11 @@ export class ToolService {
       integrationImporter: this.integrationImporter,
       enricher: { enrichUserProfile },
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
+      premiseEvents: {
+        onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
+        onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
+        onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
+      },
       graphs,
     };
 
@@ -138,6 +144,11 @@ export class ToolService {
       integrationImporter: this.integrationImporter,
       enricher: { enrichUserProfile },
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
+      premiseEvents: {
+        onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
+        onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
+        onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
+      },
       graphs,
     };
 

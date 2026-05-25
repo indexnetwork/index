@@ -50,6 +50,7 @@ import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
+import { PremiseEvents } from '../events/premise.event';
 
 const logger = log.server.from('mcp');
 
@@ -406,6 +407,11 @@ function getOrCreateMcpServer(): McpServer {
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
     ...(protocolDeps.questionerEnqueue && { questionerEnqueue: protocolDeps.questionerEnqueue }),
+    premiseEvents: {
+      onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
+      onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
+      onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
+    },
     graphs,
   };
 
