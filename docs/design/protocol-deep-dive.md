@@ -139,17 +139,17 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 ### 3.3 Profile Graph
 
 **File:** `profile/profile.graph.ts`
-**Purpose:** Generate, embed, and maintain user profiles with optional web scraping and HyDE generation.
-**Nodes:** `check_state`, `scrape`, `decompose_premises`, `aggregate_premises`, `auto_generate`, `use_prepopulated_profile`, `generate_profile`, `embed_save_profile`, `generate_hyde`, `embed_save_hyde`
-**State:** `ProfileGraphState` (userId, operationMode, input, forceUpdate, profile, hydeDescription, needs* flags, premises, etc.)
+**Purpose:** Generate and render human-readable user profiles with optional web scraping and premise decomposition. Profiles are presentation-only — no embeddings or HyDE documents are generated. All semantic discovery uses premises.
+**Nodes:** `check_state`, `scrape`, `decompose_premises`, `aggregate_premises`, `auto_generate`, `use_prepopulated_profile`, `generate_profile`, `save_profile`
+**State:** `ProfileGraphState` (userId, operationMode, input, forceUpdate, profile, needsProfileGeneration, premises, etc.)
 **Conditional edges:**
-- After `check_state`: routes based on operation mode and what components are missing (profile, embedding, HyDE)
+- After `check_state`: routes based on operation mode and whether a profile needs generation
 - After `scrape`: routes to `decompose_premises` (when premise graph is wired) or `generate_profile` (legacy path)
-- After `decompose_premises`: routes to `aggregate_premises` (premises found) or `aggregate_premises` (no premises, falls through to profile generation if needed)
-- After `aggregate_premises`: routes to `generate_profile` (when `needsProfileGeneration` is set) or `embed_save_profile`
+- After `decompose_premises`: routes to `aggregate_premises`
+- After `aggregate_premises`: routes to `generate_profile` (when `needsProfileGeneration` is set) or `save_profile`
 - After `auto_generate`: routes to `use_prepopulated_profile` (enrichment succeeded) or `generate_profile` (fallback)
-- After `embed_save_profile`: routes to `generate_hyde` or `END`
-- After `generate_hyde`: routes to `embed_save_hyde`
+- After `generate_profile` / `use_prepopulated_profile`: routes to `save_profile`
+- `save_profile` is terminal (→ END)
 
 **Key behaviors:**
 - Query mode returns immediately (fast path) without any LLM calls
@@ -159,7 +159,7 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 - When `premiseGraph` is injected, chat input and scraped content are routed through `PremiseDecomposer` before profile generation. Extracted premises are persisted via the premise graph, then aggregated into the profile input. This ensures atomic facts are captured as premises and the profile is synthesized from structured data.
 - The `decompose_premises` node also handles direct chat input (not just scraped content) — any free-text describing the user is decomposed into premises first.
 
-**Dependencies:** `ProfileGraphDatabase`, `Embedder`, `Scraper`, optional `Enricher`, optional `questionerEnqueue`, optional compiled `PremiseGraph`
+**Dependencies:** `ProfileGraphDatabase`, `Scraper`, optional `Enricher`, optional `questionerEnqueue`, optional compiled `PremiseGraph`
 
 ### 3.4 Opportunity Graph
 
@@ -403,14 +403,7 @@ Scoring bands:
 **Output:** ProfileDocument with identity (name, bio, location), narrative (context), attributes (skills, interests)
 **Used by:** Profile Graph (generate_profile node)
 
-### 4.11 Profile HyDE Generator
-
-**File:** `profile.hyde.generator.ts`
-**Role:** Creates hypothetical document embeddings specifically for profile matching.
-**Model:** `google/gemini-2.5-flash`
-**Used by:** Profile Graph (generate_hyde node)
-
-### 4.12 HyDE Generator
+### 4.11 HyDE Generator
 
 **File:** `hyde.generator.ts`
 **Role:** Generates hypothetical documents in a target corpus voice for semantic search. Takes a source text and a lens label, produces text that would match the ideal counterpart.
@@ -419,7 +412,7 @@ Scoring bands:
 **Output:** `HydeGeneratorOutput` (text)
 **Used by:** HyDE Graph (generate_missing node)
 
-### 4.13 Lens Inferrer
+### 4.12 Lens Inferrer
 
 **File:** `lens.inferrer.ts`
 **Role:** Analyzes source text with optional profile context and infers 1-5 search lenses, each tagged with a target corpus (profiles, intents, or premises).
@@ -430,32 +423,32 @@ Scoring bands:
 
 Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with dynamic, LLM-inferred lenses. This allows the system to generate contextually appropriate search perspectives for any domain.
 
-### 4.14 Home Categorizer
+### 4.13 Home Categorizer
 
 **File:** `home.categorizer.ts`
 **Role:** Groups opportunity cards into themed sections with titles, subtitles, and Lucide icon names.
 **Model:** `google/gemini-2.5-flash`
 **Used by:** Home Graph (categorizeDynamically node)
 
-### 4.15 Suggestion Generator
+### 4.14 Suggestion Generator
 
 **File:** `suggestion.generator.ts`
 **Role:** Generates contextual suggestions for users.
 **Model:** `google/gemini-2.5-flash`, temperature 0.4, maxTokens 512
 
-### 4.16 Chat Title Generator
+### 4.15 Chat Title Generator
 
 **File:** `chat.title.generator.ts`
 **Role:** Generates concise titles for chat sessions.
 **Model:** `google/gemini-2.5-flash`, temperature 0.3, maxTokens 32
 
-### 4.17 Invite Generator
+### 4.16 Invite Generator
 
 **File:** `invite.generator.ts`
 **Role:** Generates contextual invite messages for ghost user outreach.
 **Model:** `google/gemini-2.5-flash`, temperature 0.3, maxTokens 512
 
-### 4.18 Premise Decomposer
+### 4.17 Premise Decomposer
 
 **File:** `premise/premise.decomposer.ts`
 **Role:** Decomposes free-text input (chat messages, scraped bios, LinkedIn content) into individual atomic premises. Converts third-person text to first-person, classifies each premise as `assertive` (stable identity facts) or `contextual` (temporal/situational), and filters out intents/desires.
@@ -464,7 +457,7 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Output:** Array of `{ text, tier }` premises plus reasoning; empty array for non-descriptive input (confirmations, greetings)
 **Used by:** Profile Graph (decompose_premises node)
 
-### 4.19 Premise Analyzer
+### 4.18 Premise Analyzer
 
 **File:** `premise/premise.analyzer.ts`
 **Role:** Classifies a premise using adapted speech act theory (DECLARATIVE vs ASSERTIVE) and scores felicity conditions (authority, sincerity, clarity) plus semantic entropy.
@@ -473,7 +466,7 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Output:** speechActType, felicityAuthority (0-100), felicitySincerity (0-100), felicityClarity (0-100), semanticEntropy (0.0-1.0)
 **Used by:** Premise Graph (analyze node)
 
-### 4.20 Premise Indexer
+### 4.19 Premise Indexer
 
 **File:** `premise/premise.indexer.ts`
 **Role:** Scores a premise's relevancy to a network based on the index prompt and member preferences.
@@ -482,7 +475,7 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Output:** indexScore (0.0-1.0), memberScore (0.0-1.0), reasoning
 **Used by:** Premise Graph (index node)
 
-### 4.21 QuestionerAgent
+### 4.20 QuestionerAgent
 
 **File:** `questioner/questioner.agent.ts`
 **Role:** Generates structured questions to elicit missing information from users. Uses mode-specific presets (system prompt + builder) to produce up to 3 questions per invocation.
