@@ -143,7 +143,7 @@
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "1.12.3",
+      "version": "1.12.2",
       "dependencies": {
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",
