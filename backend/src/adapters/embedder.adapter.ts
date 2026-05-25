@@ -35,7 +35,7 @@ export interface HydeSearchOptions {
 }
 
 export interface HydeCandidate {
-  type: 'profile' | 'intent' | 'premise';
+  type: 'intent' | 'premise';
   id: string;
   userId: string;
   score: number;

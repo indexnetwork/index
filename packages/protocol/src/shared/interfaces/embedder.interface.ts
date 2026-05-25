@@ -26,13 +26,11 @@ export interface HydeSearchOptions {
   limit?: number;
   /** Minimum cosine similarity for intent searches (default 0.40). */
   minScore?: number;
-  /** Minimum cosine similarity for profile searches (default 0.25). Lower because profile embeddings are broader. */
-  profileMinScore?: number;
 }
 
-/** A single candidate from HyDE search (profile, intent, or premise), with score and which lens matched. */
+/** A single candidate from HyDE search (intent or premise), with score and which lens matched. */
 export interface HydeCandidate {
-  type: 'profile' | 'intent' | 'premise';
+  type: 'intent' | 'premise';
   id: string;
   userId: string;
   score: number;
