@@ -34,7 +34,7 @@ export class QuestionController {
   /**
    * GET /questions — list questions for the authenticated user.
    *
-   * Query params: status (default: pending), mode, sourceType, sourceId.
+   * Query params: status (default: pending), mode, sourceType, sourceId, conversationId, noConversation.
    *
    * @param req  - Incoming request with optional query params.
    * @param user - Authenticated user from AuthGuard.
@@ -48,6 +48,8 @@ export class QuestionController {
     const rawMode = url.searchParams.get('mode');
     const sourceType = url.searchParams.get('sourceType');
     const sourceId = url.searchParams.get('sourceId');
+    const conversationId = url.searchParams.get('conversationId');
+    const noConversation = url.searchParams.get('noConversation');
 
     const statusResult = statusQuerySchema.safeParse(rawStatus ?? 'pending');
     if (!statusResult.success) {
@@ -79,6 +81,8 @@ export class QuestionController {
     }
     if (sourceType) filters.sourceType = sourceType;
     if (sourceId) filters.sourceId = sourceId;
+    if (conversationId) filters.conversationId = conversationId;
+    if (noConversation === 'true') filters.noConversation = true;
 
     const hasFilters = Object.keys(filters).length > 0;
     const questions = await questionService.findPending(user.id, hasFilters ? filters : undefined);
