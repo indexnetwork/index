@@ -45,7 +45,7 @@ import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
 
 import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload } from '@indexnetwork/protocol';
 
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -120,20 +120,7 @@ const protocolDeps = {
   apiBaseUrl,
   questionerDatabase: questionerAdapter,
   ...(process.env.QUESTIONER_ENABLED === 'true' && {
-    questionerEnqueue: async (input: {
-      mode: 'discovery';
-      userId: string;
-      sourceType: string;
-      sourceId: string;
-      context: {
-        query: string;
-        sourceProfile: unknown;
-        negotiationDigests: unknown[];
-        summary: unknown;
-        chatContext?: unknown;
-        now: string;
-      };
-    }) => {
+    questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
       await questionerQueue.addGenerateJob(input as Parameters<typeof questionerQueue.addGenerateJob>[0]);
     },
   }),
