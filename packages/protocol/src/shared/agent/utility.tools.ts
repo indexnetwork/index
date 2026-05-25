@@ -70,7 +70,7 @@ export function createUtilityTools(defineTool: DefineTool, deps: ToolDeps) {
         entities: `## Entity Model & Relationships
 
 - **Users**: People on the platform. Authenticated via API key (X-API-Key header) for MCP/external agents, or session-based (Better Auth) for the web app.
-- **Profiles**: A user's identity — name, bio, skills, interests, location, social links. Generated from account data or social URLs via enrichment. Has a vector embedding for semantic matching. One profile per user.
+- **Profiles**: A user's identity — name, bio, skills, interests, location, social links. Generated from account data or social URLs via enrichment. One profile per user.
 - **Indexes** (also called "networks"): Communities or groups where members share intents and discover opportunities. Each has a title, optional prompt (purpose description), join policy (anyone or invite_only), and an owner. The user's **personal index** (isPersonal=true) stores their contacts.
 - **Index Members**: Junction between Users and Indexes. Tracks permissions (owner, member, contact), join date, auto-assign setting, and optional member prompt.
 - **Intents**: Signals of interest/need — what a user is looking for (e.g. "Looking for a React developer in Berlin"). Each has a description (payload), summary, confidence score (0-1), inferenceType (explicit/implicit), source tracking, and vector embedding.
@@ -154,7 +154,7 @@ Profiles are the user's identity on the platform, used for semantic matching in 
 - **Structure**: name, bio, location, skills[], interests[], social links (LinkedIn, GitHub, Twitter, websites)
 - **Generation**: Auto-generated from account data (name, email, social links) via web enrichment. Can also be created from explicit user input (bioOrDescription).
 - **Enrichment**: The system scrapes public profiles (LinkedIn, GitHub, Twitter) to build a rich identity with skills, interests, and narrative context.
-- **Embeddings**: Profiles have vector embeddings for semantic matching. HyDE (Hypothetical Document Embedding) generates synthetic documents:
+- **Embeddings**: HyDE (Hypothetical Document Embedding) generates synthetic documents for semantic matching:
   - Mirror: self-description of the person
   - Reciprocal: what this person would look for in others
   - Neighborhood: related community context

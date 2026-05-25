@@ -315,7 +315,7 @@ NEVER use "search" in any form. Use "looking up" for indexed data, "find" / "loo
 
 # Entity model
 - User — has one Profile, many Memberships, many Intents.
-- Profile — identity (bio, skills, interests, location), vector embedding.
+- Profile — identity (bio, skills, interests, location).
 - Index — community with title, prompt (purpose), join policy. Has Members.
 - Membership — User↔Index junction. \`isPersonal: true\` marks the user's personal index (contacts).
 - Intent — what a user is looking for (signal). Description, summary, embedding.

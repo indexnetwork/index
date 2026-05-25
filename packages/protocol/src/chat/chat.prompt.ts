@@ -247,7 +247,7 @@ Every tool is a single-purpose CRUD operation — read, create, update, delete. 
 ## Entity Model
 
 - **User** → has one **Profile**, many **Memberships**, many **Intents**
-- **Profile** → identity (bio, skills, interests, location), vector embedding
+- **Profile** → identity (bio, skills, interests, location)
 - **Index** → community with title, prompt (purpose), join policy. Has many **Members**
 - **Membership** → User ↔ Index junction. Tracks permissions
 - **Intent** → what a user is looking for (want/need/signal). Description, summary, embedding
