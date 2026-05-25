@@ -19,7 +19,6 @@ const dummyEmbedder = {
   generate: async () => [],
   search: async () => [],
   searchWithHydeEmbeddings: async () => [],
-  searchWithProfileEmbedding: async () => [],
 } as unknown as Embedder;
 
 const dummyHyde = {

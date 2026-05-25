@@ -53,7 +53,6 @@ function createMockEmbedder(): Embedder {
     generate: async (_text: string | string[]) => new Array(2000).fill(0.01),
     search: async () => [],
     searchWithHydeEmbeddings: async () => [],
-    searchWithProfileEmbedding: async () => [],
   } as Embedder;
 }
 
