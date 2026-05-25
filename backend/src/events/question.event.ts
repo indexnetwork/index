@@ -5,10 +5,12 @@ interface QuestionAnswer {
   answeredAt: string;
 }
 
+type QuestionMode = 'discovery' | 'intent' | 'profile' | 'negotiation';
+
 interface QuestionCreatedPayload {
   questionId: string;
   userId: string;
-  mode: string;
+  mode: QuestionMode;
   sourceType: string;
   sourceId: string;
 }
@@ -16,7 +18,7 @@ interface QuestionCreatedPayload {
 interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
-  mode: string;
+  mode: QuestionMode;
   sourceType: string;
   sourceId: string;
   answer: QuestionAnswer;

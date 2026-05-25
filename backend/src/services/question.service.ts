@@ -51,7 +51,7 @@ export class QuestionService {
    * @param questionId - ID of the question to answer.
    * @param userId     - Authenticated user; must be an actor on the question.
    * @param answer     - The user's response data.
-   * @returns `true` if the question was answered, `false` if not found or unauthorized.
+   * @returns `true` if the question was answered, `false` if not found, not pending, or unauthorized.
    */
   async answer(questionId: string, userId: string, answer: AdapterQuestionAnswer): Promise<boolean> {
     logger.verbose('Answering question', { questionId, answeredBy: answer.answeredBy });
@@ -64,7 +64,7 @@ export class QuestionService {
    *
    * @param questionId - ID of the question to dismiss.
    * @param userId     - Authenticated user; must be an actor on the question.
-   * @returns `true` if the question was dismissed, `false` if not found or unauthorized.
+   * @returns `true` if the question was dismissed, `false` if not found, not pending, or unauthorized.
    */
   async dismiss(questionId: string, userId: string): Promise<boolean> {
     logger.verbose('Dismissing question', { questionId, userId });
