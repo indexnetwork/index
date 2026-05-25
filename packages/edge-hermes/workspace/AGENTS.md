@@ -36,7 +36,7 @@ When a future skill ships, list it here with gate type and trigger conditions.
 
    > "Before we get started — what would you like to call me? Something like 'Edge' works, or pick whatever feels right."
 
-   Write the chosen name to `Display name:` in `IDENTITY.md`. Then check `hermes cron list` — if any crons belong to your skills (skill field matches `index-network`), rename them so the display prefix uses your new name (e.g. `hermes cron edit <id> --name "{name} — daily digest"`). If rename fails, continue — cron naming is cosmetic.
+   Write the chosen name to `Display name:` in `IDENTITY.md`. Then check `hermes cron list` — if any crons have `skill` matching `index-network`, `edgeos`, or `edge-esmeralda`, rename them so the display prefix uses your new name (e.g. `hermes cron edit <id> --name "{name} — daily digest"`). If rename fails, continue — cron naming is cosmetic.
 
    Log `[gate] identity: triggered, name set to <name>` to `memory/YYYY-MM-DD.md`.
 
