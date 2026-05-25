@@ -3098,6 +3098,52 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 
 ---
 
+## Questions
+
+Structured question delivery and lifecycle. Questions are generated asynchronously by the QuestionerAgent (behind `QUESTIONER_ENABLED=true`) and served to clients for user interaction.
+
+### GET /api/questions
+
+**Auth**: Required (session or API key)
+
+List pending questions for the authenticated user.
+
+**Query params:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `status` | `pending` \| `answered` \| `dismissed` | `pending` | Only `pending` is currently supported |
+| `mode` | `discovery` \| `intent` \| `profile` \| `negotiation` | — | Filter by generation mode |
+| `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
+| `sourceId` | string | — | Filter by source entity ID |
+
+**Response:** `{ questions: PersistedQuestion[] }`
+
+### POST /api/questions/:id/answer
+
+**Auth**: Required (session or API key)
+
+Submit an answer for a pending question. Only succeeds if the user is an actor on the question and the question is still pending.
+
+**Body:**
+```json
+{
+  "selectedOptions": ["Option A"],
+  "freeText": "optional free-text elaboration"
+}
+```
+
+**Response:** `{ success: true }` (200) or `{ error: "Question not found" }` (404)
+
+### POST /api/questions/:id/dismiss
+
+**Auth**: Required (session or API key)
+
+Dismiss a pending question. Only succeeds if the user is an actor on the question and the question is still pending.
+
+**Response:** `{ success: true }` (200) or `{ error: "Question not found" }` (404)
+
+---
+
 ## Queue Monitoring (Dev Only)
 
 ### Bull Board UI
@@ -3114,5 +3160,6 @@ Serves the Bull Board UI for monitoring BullMQ job queues. Monitors the followin
 - opportunity
 - profile
 - email
+- questioner (when `QUESTIONER_ENABLED=true`)
 
 Accessible at `http://localhost:3001/dev/queues/` when the protocol server is running in development mode.
