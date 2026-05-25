@@ -9,7 +9,7 @@ import { Timed } from "../observability/performance.js";
 import { protocolLogger } from '../observability/protocol.logger.js';
 import { createModel } from "../agent/model.config.js";
 
-export type HydeTargetCorpus = 'profiles' | 'intents';
+export type HydeTargetCorpus = 'profiles' | 'intents' | 'premises';
 
 /** A single inferred lens — a search perspective the LLM decided is relevant. */
 export interface Lens {

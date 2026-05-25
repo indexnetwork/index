@@ -38,6 +38,10 @@ export function deriveRolesFromCorpus(corpus: HydeTargetCorpus): DerivedRoles {
     case 'intents':
       // Source offers or needs; candidate has complementary goal → source is agent, candidate is patient
       return { sourceRole: 'agent', candidateRole: 'patient' };
+    case 'premises':
+      // Premise matches are symmetric: two people whose self-descriptions align.
+      // Unlike intents (directional roles), premises express stable identity truths.
+      return { sourceRole: 'peer', candidateRole: 'peer' };
     default:
       return { sourceRole: 'peer', candidateRole: 'peer' };
   }

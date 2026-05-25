@@ -9,7 +9,7 @@ export interface LensEmbedding {
   /** Free-text lens label (e.g. "crypto infrastructure VC"). */
   lens: string;
   /** Which corpus to search. */
-  corpus: 'profiles' | 'intents';
+  corpus: 'profiles' | 'intents' | 'premises';
   /** 2000-dim embedding vector. */
   embedding: number[];
 }

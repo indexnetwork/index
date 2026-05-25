@@ -182,7 +182,7 @@ export class OpportunityGraphFactory {
     private hydeGenerator: {
       invoke: (input: HydeGeneratorInvokeInput) => Promise<{
         hydeEmbeddings: Record<string, number[]>;
-        lenses?: Array<{ label: string; corpus: 'profiles' | 'intents' }>;
+        lenses?: Array<{ label: string; corpus: 'profiles' | 'intents' | 'premises' }>;
         hydeDocuments?: Record<string, { hydeText?: string; lens?: string }>;
       }>;
     },
