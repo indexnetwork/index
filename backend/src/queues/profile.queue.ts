@@ -2,7 +2,6 @@ import { Job } from 'bullmq';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ProfileDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ProfileGraphFactory } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
@@ -223,9 +222,8 @@ export class ProfileQueue {
 
   private async invokeProfileGraph(userId: string, operationMode: 'write' | 'generate') {
     const database = new ProfileDatabaseAdapter();
-    const embedder = new EmbedderAdapter();
     const scraper = new ScraperAdapter();
-    const factory = new ProfileGraphFactory(database, embedder, scraper, { enrichUserProfile });
+    const factory = new ProfileGraphFactory(database, scraper, { enrichUserProfile });
     const graph = factory.createGraph();
     return graph.invoke({ userId, operationMode });
   }

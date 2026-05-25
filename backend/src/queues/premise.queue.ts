@@ -4,7 +4,6 @@ import { Job } from 'bullmq';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter, ProfileDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ProfileGraphFactory } from '@indexnetwork/protocol';
 
@@ -375,9 +374,8 @@ export class PremiseQueue {
    */
   private async defaultInvokeProfileAggregate(userId: string): Promise<void> {
     const database = new ProfileDatabaseAdapter();
-    const embedder = new EmbedderAdapter();
     const scraper = new ScraperAdapter();
-    const factory = new ProfileGraphFactory(database, embedder, scraper);
+    const factory = new ProfileGraphFactory(database, scraper);
     const graph = factory.createGraph();
     await graph.invoke({ userId, operationMode: 'aggregate' });
   }

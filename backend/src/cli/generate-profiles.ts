@@ -11,7 +11,6 @@ import { userProfiles, users } from '../schemas/database.schema';
 import { setLevel } from '../lib/log';
 import { ProfileGraphFactory } from '@indexnetwork/protocol';
 import { ProfileDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 
 const DEFAULT_CONCURRENCY = 100;
@@ -69,7 +68,6 @@ async function generateProfiles(opts: GlobalOpts): Promise<{ ok: boolean; error?
 
     const factory = new ProfileGraphFactory(
       new ProfileDatabaseAdapter(),
-      new EmbedderAdapter(),
       new ScraperAdapter(),
     );
 

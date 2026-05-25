@@ -1,9 +1,7 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { ProfileGraphState } from "./profile.state.js";
 import { ProfileGenerator, ProfileDocument } from "./profile.generator.js";
-import { HydeGenerator } from "./profile.hyde.generator.js";
 import { ProfileGraphDatabase, PremiseRecord } from "../shared/interfaces/database.interface.js";
-import { Embedder } from "../shared/interfaces/embedder.interface.js";
 import { Scraper } from "../shared/interfaces/scraper.interface.js";
 import type { ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
 import { shouldEnrichGhostDisplayNameFromParallel, isEnrichedNameMeaningful } from "./profile.enricher.js";
@@ -59,58 +57,25 @@ function isMeaningfulProfileInput(input: string | undefined): boolean {
   return true;
 }
 
-/**
- * Returns true only when the value is a fully valid numeric vector (flat or nested).
- * Used so we don't treat DB returns (e.g. pg vector as string, or empty/partial array) as "has embedding".
- * Ensures callers re-embed when vectors contain non-number or NaN/Infinity.
- */
-function hasValidProfileEmbedding(embedding: unknown): boolean {
-  if (embedding == null) return false;
-  if (!Array.isArray(embedding)) return false;
-  if (embedding.length === 0) return false;
-  const first = embedding[0];
-  if (Array.isArray(first)) {
-    // Nested: number[][]
-    for (let i = 0; i < embedding.length; i++) {
-      const sub = embedding[i];
-      if (!Array.isArray(sub) || sub.length === 0) return false;
-      for (let j = 0; j < sub.length; j++) {
-        const v = sub[j];
-        if (typeof v !== "number" || !Number.isFinite(v)) return false;
-      }
-    }
-    return true;
-  }
-  // Flat: number[]
-  for (let i = 0; i < embedding.length; i++) {
-    const v = embedding[i];
-    if (typeof v !== "number" || !Number.isFinite(v)) return false;
-  }
-  return true;
-}
 
 /**
  * Factory class to build and compile the Profile Generation Graph.
- * 
+ *
  * Flow:
- * 1. check_state - Detect what's missing (profile, embeddings, hyde)
+ * 1. check_state - Detect whether profile needs generation
  * 2. Conditional routing based on operation mode and missing components:
  *    - Query mode: Return immediately (fast path)
  *    - Write mode: Generate only what's needed
  * 3. Profile generation (if needed)
- * 4. Profile embedding (if needed)
- * 5. HyDE generation (if needed or profile updated)
- * 6. HyDE embedding (if needed)
- * 
+ * 4. Save profile to DB
+ *
  * Key Features:
  * - Read/Write separation (query vs write)
- * - Conditional generation (skip expensive operations if data exists)
- * - Automatic hyde regeneration when profile is updated
+ * - Conditional generation (skip generation if profile already exists)
  */
 export class ProfileGraphFactory {
   constructor(
     private database: ProfileGraphDatabase,
-    private embedder: Embedder,
     private scraper: Scraper,
     private enricher?: ProfileEnricher,
     private questionerEnqueue?: QuestionerEnqueueFn,
@@ -119,16 +84,12 @@ export class ProfileGraphFactory {
 
   public createGraph() {
     const profileGenerator = new ProfileGenerator();
-    const hydeGenerator = new HydeGenerator();
     const premiseDecomposer = new PremiseDecomposer();
 
     // ─────────────────────────────────────────────────────────
     // NODE: Check State
     // Loads existing profile from DB and detects what needs generation:
     // - Profile missing
-    // - Profile embedding missing
-    // - HyDE description missing
-    // - HyDE embedding missing
     // - User information insufficient for scraping
     // ─────────────────────────────────────────────────────────
     const checkStateNode = async (state: typeof ProfileGraphState.State) => {
@@ -181,10 +142,6 @@ export class ProfileGraphFactory {
           // Treat confirmation-only input (e.g. "Yes") as no input so we ask for info / use scraper
           const hasMeaningfulInput = !!state.input && isMeaningfulProfileInput(state.input);
           const needsProfileGeneration = !profile || (state.forceUpdate && hasMeaningfulInput);
-          const needsProfileEmbedding = profile && !hasValidProfileEmbedding(profile.embedding);
-          const existingHydeDoc = await this.database.getHydeDocument('profile', state.userId, 'mirror');
-          const needsHydeGeneration = !existingHydeDoc || (state.forceUpdate && hasMeaningfulInput);
-          const needsHydeEmbedding = false; // Profile HyDE lives in hyde_documents; no partial "text only" state
 
           // Check if we need to scrape (profile generation needed but no meaningful input provided)
           const willNeedScraping = needsProfileGeneration && !hasMeaningfulInput;
@@ -262,24 +219,16 @@ export class ProfileGraphFactory {
           logger.verbose("📊 State detection complete", {
             hasProfile: !!profile,
             needsProfileGeneration,
-            needsProfileEmbedding,
-            needsHydeGeneration,
-            needsHydeEmbedding,
             needsUserInfo,
             missingUserInfo,
             forceUpdate: state.forceUpdate,
             hasInput: !!state.input,
             hasMeaningfulInput,
-            hasHydeDocument: !!existingHydeDoc,
           });
 
           return {
             profile: profile || undefined,
-            hydeDescription: existingHydeDoc?.hydeText ?? undefined,
             needsProfileGeneration,
-            needsProfileEmbedding,
-            needsHydeGeneration,
-            needsHydeEmbedding,
             needsUserInfo,
             missingUserInfo
           };
@@ -588,9 +537,7 @@ export class ProfileGraphFactory {
           profile: {
             ...state.prePopulatedProfile,
             userId: state.userId,
-            embedding: [] as number[] | number[][],
           },
-          needsHydeGeneration: true,
           operationsPerformed: { generatedProfile: true },
         };
       });
@@ -648,10 +595,7 @@ export class ProfileGraphFactory {
             profile: {
               ...result.output,
               userId: state.userId,
-              embedding: [] as number[] | number[][]
             },
-            // Mark that hyde needs regeneration since profile was updated
-            needsHydeGeneration: true,
             agentTimings: agentTimingsAccum,
             operationsPerformed: { generatedProfile: true }
           };
@@ -668,47 +612,24 @@ export class ProfileGraphFactory {
     };
 
     // ─────────────────────────────────────────────────────────
-    // NODE: Embed & Save Profile
-    // Generates embedding for profile and saves to DB
+    // NODE: Save Profile
+    // Saves the generated profile to DB (no embedding)
     // ─────────────────────────────────────────────────────────
-    const embedSaveProfileNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.embedSaveProfile", async () => {
+    const saveProfileNode = async (state: typeof ProfileGraphState.State) => {
+      return timed("ProfileGraph.saveProfile", async () => {
         if (!state.profile || !state.profile.identity) {
-          logger.error("Profile or identity missing in embed step");
+          logger.error("Profile or identity missing in save step");
           return {
-            error: "Profile missing in embed step"
+            error: "Profile missing in save step"
           };
         }
 
-        logger.verbose("Starting profile embedding...", {
+        logger.verbose("Saving profile to DB...", {
           userId: state.userId
         });
 
         try {
           const profile = { ...state.profile };
-          const textToEmbed = [
-            '# Identity',
-            '## Name', profile.identity?.name ?? '',
-            '## Bio', profile.identity?.bio ?? '',
-            '## Location', profile.identity?.location ?? '',
-            '# Narrative',
-            '## Context', profile.narrative?.context ?? '',
-            '# Attributes',
-            '## Interests', (profile.attributes?.interests ?? []).join(', '),
-            '## Skills', (profile.attributes?.skills ?? []).join(', ')
-          ].join('\n');
-
-          logger.verbose("Generating embedding...", {
-            textLength: textToEmbed.length
-          });
-
-          const embedding = await this.embedder.generate(textToEmbed);
-          profile.embedding = embedding;
-
-          logger.verbose("Saving profile to DB...", {
-            userId: state.userId,
-            embeddingDimensions: Array.isArray(embedding[0]) ? embedding[0].length : embedding.length
-          });
 
           await this.database.saveProfile(state.userId, profile);
 
@@ -761,118 +682,14 @@ export class ProfileGraphFactory {
 
           return {
             profile,
-            operationsPerformed: { embeddedProfile: true }
+            operationsPerformed: { savedProfile: true }
           };
         } catch (error) {
-          logger.error("Failed to embed/save profile", {
+          logger.error("Failed to save profile", {
             error: error instanceof Error ? error.message : String(error)
           });
           return {
-            error: "Failed to embed/save profile"
-          };
-        }
-      });
-    };
-
-
-    // ─────────────────────────────────────────────────────────
-    // NODE: Generate HyDE
-    // Generates Hypothetical Document Embedding description for profile matching
-    // ─────────────────────────────────────────────────────────
-    const generateHydeNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.generateHyde", async () => {
-        if (!state.profile || !state.profile.identity) {
-          logger.error("Profile or identity missing for HyDE generation");
-          return {
-            error: "Profile missing for HyDE generation"
-          };
-        }
-
-        logger.verbose("Starting HyDE generation...", {
-          userId: state.userId,
-          profileName: state.profile.identity?.name
-        });
-
-        const agentTimingsAccum: DebugMetaAgent[] = [];
-
-        try {
-          const profileString = JSON.stringify(state.profile, null, 2);
-          const _traceEmitterHydeGen = requestContext.getStore()?.traceEmitter;
-          const hydeGeneratorStart = Date.now();
-          _traceEmitterHydeGen?.({ type: "agent_start", name: "hyde-generator" });
-          const result = await hydeGenerator.invoke(profileString);
-          agentTimingsAccum.push({ name: 'hyde.generator', durationMs: Date.now() - hydeGeneratorStart });
-          _traceEmitterHydeGen?.({ type: "agent_end", name: "hyde-generator", durationMs: Date.now() - hydeGeneratorStart, summary: `Generated HyDE for ${state.profile?.identity?.name || "profile"}` });
-
-          logger.verbose("✅ HyDE generated successfully", {
-            descriptionLength: result.textToEmbed.length
-          });
-
-          return {
-            hydeDescription: result.textToEmbed,
-            agentTimings: agentTimingsAccum,
-            operationsPerformed: { generatedHyde: true }
-          };
-        } catch (error) {
-          logger.error("HyDE generation failed", {
-            error: error instanceof Error ? error.message : String(error)
-          });
-          return {
-            error: "HyDE generation failed"
-          };
-        }
-      });
-    };
-
-    // ─────────────────────────────────────────────────────────
-    // NODE: Embed & Save HyDE
-    // Generates embedding for HyDE description and saves to DB
-    // ─────────────────────────────────────────────────────────
-    const embedSaveHydeNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.embedSaveHyde", async () => {
-        if (!state.hydeDescription) {
-          logger.error("HyDE description missing");
-          return {
-            error: "HyDE description missing"
-          };
-        }
-
-        logger.verbose("Starting HyDE embedding...", {
-          userId: state.userId,
-          descriptionLength: state.hydeDescription.length
-        });
-
-        try {
-          const hydeEmbedding = await this.embedder.generate(state.hydeDescription);
-
-          // Normalize embedding if needed (Adapters usually handle this, but to be sure)
-          const flatHydeEmbedding = Array.isArray(hydeEmbedding[0])
-            ? (hydeEmbedding as number[][])[0]
-            : (hydeEmbedding as number[]);
-
-          logger.verbose("Saving HyDE to hyde_documents...", {
-            userId: state.userId,
-            embeddingDimensions: flatHydeEmbedding.length
-          });
-
-          await this.database.saveHydeDocument({
-            sourceType: 'profile',
-            sourceId: state.userId,
-            strategy: 'mirror',
-            targetCorpus: 'profiles',
-            hydeText: state.hydeDescription,
-            hydeEmbedding: flatHydeEmbedding,
-          });
-
-          return {
-            operationsPerformed: { embeddedHyde: true }
-          };
-        } catch (error) {
-          logger.error("Failed to embed/save HyDE", {
-            error: error instanceof Error ? error.message : String(error)
-          });
-          return {
-            error: "Failed to embed/save HyDE"
+            error: "Failed to save profile"
           };
         }
       });
@@ -1080,56 +897,9 @@ export class ProfileGraphFactory {
         }
       }
 
-      // Profile exists but missing embedding
-      if (state.needsProfileEmbedding) {
-        logger.verbose("Profile embedding needed");
-        return "embed_save_profile";
-      }
-
-      // Profile and embedding exist, check hyde
-      if (state.needsHydeGeneration) {
-        logger.verbose("HyDE generation needed");
-        return "generate_hyde";
-      }
-
-      // Hyde exists but missing embedding
-      if (state.needsHydeEmbedding) {
-        logger.verbose("HyDE embedding needed");
-        return "embed_save_hyde";
-      }
-
       // Everything exists and is up to date
       logger.verbose("All components exist - ending");
       return END;
-    };
-
-    /**
-     * Route after profile embedding to check if hyde needs generation.
-     */
-    const afterProfileEmbeddingCondition = (state: typeof ProfileGraphState.State): string => {
-      // If profile was just generated/updated, regenerate hyde
-      if (state.needsHydeGeneration || state.forceUpdate) {
-        logger.verbose("Profile updated - regenerating HyDE");
-        return "generate_hyde";
-      }
-
-      // Check if hyde embedding is missing
-      if (state.needsHydeEmbedding) {
-        logger.verbose("HyDE embedding needed");
-        return "embed_save_hyde";
-      }
-
-      logger.verbose("Profile complete - ending");
-      return END;
-    };
-
-    /**
-     * Route after hyde generation to embedding step.
-     * Always embed after generating hyde.
-     */
-    const afterHydeGenerationCondition = (state: typeof ProfileGraphState.State): string => {
-      logger.verbose("HyDE generated - proceeding to embedding");
-      return "embed_save_hyde";
     };
 
 
@@ -1147,9 +917,7 @@ export class ProfileGraphFactory {
       .addNode("use_prepopulated_profile", usePrePopulatedProfileNode)
       .addNode("aggregate_profile", aggregateProfileNode)
       .addNode("generate_profile", generateProfileNode)
-      .addNode("embed_save_profile", embedSaveProfileNode)
-      .addNode("generate_hyde", generateHydeNode)
-      .addNode("embed_save_hyde", embedSaveHydeNode)
+      .addNode("save_profile", saveProfileNode)
 
       // Start with state check
       .addEdge(START, "check_state")
@@ -1165,15 +933,12 @@ export class ProfileGraphFactory {
           decompose_premises: "decompose_premises", // Write mode + input + premise graph -> decompose first
           scrape: "scrape",                     // Need profile, no input -> scrape first
           generate_profile: "generate_profile", // Need profile, have input -> generate (legacy, no premise graph)
-          embed_save_profile: "embed_save_profile", // Have profile, need embedding
-          generate_hyde: "generate_hyde",       // Have profile+embedding, need hyde
-          embed_save_hyde: "embed_save_hyde",   // Have hyde, need embedding
           [END]: END                            // Query mode or everything exists
         }
       )
 
-      // Pre-populated profile feeds into embedding (skips generation)
-      .addEdge("use_prepopulated_profile", "embed_save_profile")
+      // Pre-populated profile feeds directly into save (skips LLM generation)
+      .addEdge("use_prepopulated_profile", "save_profile")
 
       // Decompose premises routes to aggregate (normal) or generate_profile (fallback)
       .addConditionalEdges(
@@ -1236,31 +1001,11 @@ export class ProfileGraphFactory {
         },
       )
 
-      // Generate profile -> Embed profile (linear)
-      .addEdge("generate_profile", "embed_save_profile")
+      // Generate profile -> Save profile (linear)
+      .addEdge("generate_profile", "save_profile")
 
-      // After profile embedding, check if hyde needs generation
-      .addConditionalEdges(
-        "embed_save_profile",
-        afterProfileEmbeddingCondition,
-        {
-          generate_hyde: "generate_hyde",     // Profile updated -> regenerate hyde
-          embed_save_hyde: "embed_save_hyde", // Only hyde embedding missing
-          [END]: END                          // Everything complete
-        }
-      )
-
-      // After hyde generation, always embed it
-      .addConditionalEdges(
-        "generate_hyde",
-        afterHydeGenerationCondition,
-        {
-          embed_save_hyde: "embed_save_hyde"
-        }
-      )
-
-      // Hyde embedding -> END (linear)
-      .addEdge("embed_save_hyde", END);
+      // Save profile -> END (linear)
+      .addEdge("save_profile", END);
 
     logger.verbose("Graph built successfully");
     return workflow.compile();
