@@ -169,10 +169,12 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 **Flow:** `START -> prep -> scope -> resolve -> discovery -> evaluation -> ranking -> persist -> negotiate -> END`
 
-The graph supports three discovery paths:
+The graph supports three discovery paths, each searching across profiles, intents, and premises corpora:
 - **Intent-based (Path A):** Trigger intent is assigned to an index -- use its HyDE documents for search
 - **Profile-based (Path B/C):** Use profile embedding or query-generated HyDE documents for search
 - **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared indexes
+
+Premise-based candidates carry `candidatePremiseId` in the persist node for actor tracking, regardless of discovery source.
 
 **Unified trigger model:** `OpportunityGraphState.trigger` (`'ambient' | 'orchestrator'`, default `'ambient'`) drives branches in the `persist` and `negotiate` nodes so the same graph serves both the queue-driven ambient flow and the chat-driven orchestrator flow. The tool layer passes `trigger: 'orchestrator'` whenever `context.sessionId` is set (i.e. the call comes from a chat session); all other callers inherit the ambient default.
 
@@ -415,7 +417,7 @@ Scoring bands:
 ### 4.13 Lens Inferrer
 
 **File:** `lens.inferrer.ts`
-**Role:** Analyzes source text with optional profile context and infers 1-5 search lenses, each tagged with a target corpus (profiles or intents).
+**Role:** Analyzes source text with optional profile context and infers 1-5 search lenses, each tagged with a target corpus (profiles, intents, or premises).
 **Model:** `google/gemini-2.5-flash`
 **Input:** Source text, optional profile context, optional max lenses
 **Output:** Array of lenses with label, corpus, reasoning
