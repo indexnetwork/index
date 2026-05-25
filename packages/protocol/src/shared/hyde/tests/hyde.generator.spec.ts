@@ -60,6 +60,18 @@ describe('HydeGenerator', () => {
     }, 30_000);
   });
 
+  describe('premises corpus', () => {
+    it('generates an identity statement for a premise lens', async () => {
+      const input: HydeGenerateInput = {
+        sourceText: 'I believe in open-source collaboration and decentralized governance.',
+        lens: 'community-driven builder passionate about open protocols',
+        corpus: 'premises',
+      };
+      const result = await generator.generate(input);
+      expect(result.text.length).toBeGreaterThan(0);
+    }, 30_000);
+  });
+
   describe('output structure', () => {
     it('returns an object with text property', async () => {
       const input: HydeGenerateInput = {

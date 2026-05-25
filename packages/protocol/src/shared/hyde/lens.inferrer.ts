@@ -46,14 +46,14 @@ Guidelines:
 - Consider both sides: who can help the person AND whose goals complement theirs.
 - When user context is provided, tailor perspectives to their domain (e.g. a DePIN founder searching for "investors" needs crypto-native infra investors specifically).
 - Generate only perspectives that add distinct search value — don't repeat similar angles.
-- Use "profiles" when looking for a type of person (expert, advisor, leader). Use "intents" when looking for a complementary goal or need (someone raising, someone hiring, someone seeking collaboration).
+- Use "profiles" when looking for a type of person (expert, advisor, leader). Use "intents" when looking for a complementary goal or need (someone raising, someone hiring, someone seeking collaboration). Use "premises" when looking for someone whose identity, values, or worldview aligns — stable traits rather than transient goals.
 - Always include at least one "profiles" perspective when the source describes a need that a specific type of professional could fulfill. Most intents benefit from profile-based discovery.
 - LOCATION AWARENESS: When the source text or user context mentions a specific location (city, region, country), incorporate it into lens descriptions. For example, "investors in San Francisco" should produce a lens like "SF-based early-stage investor" rather than just "early-stage investor". This helps the hypothetical document generator produce location-specific search documents, improving retrieval quality.`;
 
 const responseFormat = z.object({
   lenses: z.array(z.object({
     label: z.string().describe('Specific description of the search perspective'),
-    corpus: z.enum(['profiles', 'intents']).describe('Search user profiles or user intents'),
+    corpus: z.enum(['profiles', 'intents', 'premises']).describe('Search user profiles, user intents, or user premises (identity/values)'),
     reasoning: z.string().describe('Why this perspective is relevant'),
   })).min(1).max(5).describe('Inferred search lenses'),
 });

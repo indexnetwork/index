@@ -29,8 +29,16 @@ describe('HyDE Corpus Prompts', () => {
     expect(HYDE_DEFAULT_CACHE_TTL).toBe(3600);
   });
 
-  it('both corpus types have prompt templates', () => {
+  it('premises prompt embeds source text and lens with identity framing', () => {
+    const result = HYDE_CORPUS_PROMPTS.premises('Passionate about decentralized governance', 'community-first builder');
+    expect(result).toContain('Passionate about decentralized governance');
+    expect(result).toContain('community-first builder');
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it('all three corpus types have prompt templates', () => {
     expect(typeof HYDE_CORPUS_PROMPTS.profiles).toBe('function');
     expect(typeof HYDE_CORPUS_PROMPTS.intents).toBe('function');
+    expect(typeof HYDE_CORPUS_PROMPTS.premises).toBe('function');
   });
 });

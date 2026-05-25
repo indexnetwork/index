@@ -24,7 +24,7 @@ describe('LensInferrer', () => {
       for (const lens of result.lenses) {
         expect(typeof lens.label).toBe('string');
         expect(lens.label.length).toBeGreaterThan(0);
-        expect(['profiles', 'intents']).toContain(lens.corpus);
+        expect(['profiles', 'intents', 'premises']).toContain(lens.corpus);
         expect(typeof lens.reasoning).toBe('string');
         expect(lens.reasoning.length).toBeGreaterThan(0);
       }
