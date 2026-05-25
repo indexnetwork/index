@@ -136,7 +136,7 @@ function buildProfilePrompt(ctx: ProfileContext): string {
 
   const gapsBlock = ctx.gaps.length > 0 ? ctx.gaps.join(", ") : "(none identified)";
 
-  return [
+  const parts: string[] = [
     "## Current profile",
     profileBlock,
     "",
@@ -146,11 +146,27 @@ function buildProfilePrompt(ctx: ProfileContext): string {
     "## Identified gaps",
     gapsBlock,
     "",
+  ];
+
+  if (ctx.existingPremises && ctx.existingPremises.length > 0) {
+    parts.push("## Existing premises (already captured)");
+    parts.push(
+      "The user has already asserted these facts about themselves. Do NOT ask questions that would elicit information already covered here.",
+    );
+    ctx.existingPremises.forEach((premise, i) => {
+      parts.push(`${i + 1}. ${premise}`);
+    });
+    parts.push("");
+  }
+
+  parts.push(
     "## Your task",
     "Generate the minimum set of questions needed to fill the identified gaps.",
     "Apply every rule from your system prompt before outputting.",
     "Return an empty `questions` array if the profile is already complete enough.",
-  ].join("\n");
+  );
+
+  return parts.join("\n");
 }
 
 // ─── Negotiation preset ──────────────────────────────────────────────────────
