@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw, Shield, ShieldOff } from 'lucide-react';
 
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -57,6 +57,7 @@ export default function AccessTab({
 
   const [resendTarget, setResendTarget] = useState<Member | null>(null);
   const [isResendInFlight, setIsResendInFlight] = useState(false);
+  const [roleChangeTarget, setRoleChangeTarget] = useState<{ member: Member; newRole: 'owner' | 'member' } | null>(null);
 
   const csvInputRef = useRef<HTMLInputElement>(null);
   const [csvPreview, setCsvPreview] = useState<ParsedCsvResult | null>(null);
@@ -190,6 +191,18 @@ export default function AccessTab({
       setMembers(prev => prev.filter(m => m.id !== memberId));
     } catch (err) {
       console.error('Error removing member:', err);
+    }
+  };
+
+  const handleUpdateMemberRole = async (memberId: string, newRole: 'owner' | 'member') => {
+    try {
+      const permissions = newRole === 'owner' ? ['owner'] : ['member'];
+      const updated = await networkService.updateMemberPermissions(networkId, memberId, permissions);
+      setMembers(prev => prev.map(m => m.id === memberId ? { ...m, permissions: updated.permissions } : m));
+      success(`Role updated to ${newRole}`);
+    } catch (err) {
+      console.error('Error updating member role:', err);
+      error(err instanceof Error ? err.message : 'Failed to update role');
     }
   };
 
@@ -481,6 +494,32 @@ export default function AccessTab({
                     {member.permissions.includes('member') ? 'Member' : 'Contact'}
                   </span>
                 )}
+                {/* Role change: promote member → owner */}
+                {!member.permissions.includes('owner') && member.permissions.includes('member') && member.id !== currentUser?.id && (
+                  <Tooltip content="Promote to owner">
+                    <button
+                      type="button"
+                      aria-label="Promote to owner"
+                      onClick={() => setRoleChangeTarget({ member, newRole: 'owner' })}
+                      className="hidden group-hover:block p-1 text-gray-300 hover:text-gray-900 transition-colors flex-shrink-0"
+                    >
+                      <Shield className="h-3.5 w-3.5" />
+                    </button>
+                  </Tooltip>
+                )}
+                {/* Role change: demote owner → member */}
+                {member.permissions.includes('owner') && member.id !== currentUser?.id && (
+                  <Tooltip content="Demote to member">
+                    <button
+                      type="button"
+                      aria-label="Demote to member"
+                      onClick={() => setRoleChangeTarget({ member, newRole: 'member' })}
+                      className="hidden group-hover:block p-1 text-gray-300 hover:text-gray-900 transition-colors flex-shrink-0"
+                    >
+                      <ShieldOff className="h-3.5 w-3.5" />
+                    </button>
+                  </Tooltip>
+                )}
                 {network.isExperiment && (
                   <Tooltip content="Resend invitation · expires old key">
                     <button
@@ -553,6 +592,35 @@ export default function AccessTab({
               </AlertDialog.Cancel>
               <Button onClick={handleConfirmResend} disabled={isResendInFlight}>
                 {isResendInFlight ? 'Sending...' : 'Resend'}
+              </Button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+
+      {/* Role change dialog */}
+      <AlertDialog.Root open={roleChangeTarget !== null} onOpenChange={(open) => { if (!open) setRoleChangeTarget(null); }}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
+            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">
+              {roleChangeTarget?.newRole === 'owner' ? 'Promote' : 'Demote'} {roleChangeTarget?.member.name || 'this member'}?
+            </AlertDialog.Title>
+            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
+              {roleChangeTarget?.newRole === 'owner'
+                ? 'This will give them full control of this community — they can manage settings, members, and integrations.'
+                : 'This will remove their owner privileges. They will remain a member but won\'t be able to manage settings or members.'}
+            </AlertDialog.Description>
+            <div className="flex justify-end gap-2">
+              <AlertDialog.Cancel asChild>
+                <Button variant="outline">Cancel</Button>
+              </AlertDialog.Cancel>
+              <Button onClick={async () => {
+                if (!roleChangeTarget) return;
+                await handleUpdateMemberRole(roleChangeTarget.member.id, roleChangeTarget.newRole);
+                setRoleChangeTarget(null);
+              }}>
+                {roleChangeTarget?.newRole === 'owner' ? 'Promote to Owner' : 'Demote to Member'}
               </Button>
             </div>
           </AlertDialog.Content>

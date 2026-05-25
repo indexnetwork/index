@@ -2423,13 +2423,13 @@ export class ChatDatabaseAdapter {
   async addMemberToNetwork(
     networkId: string,
     userId: string,
-    role: 'owner' | 'admin' | 'member'
+    role: 'owner' | 'member'
   ): Promise<{ success: boolean; alreadyMember?: boolean }> {
     let memberPrompt: string | null = null;
     const [indexRow] = await db.select({ prompt: networks.prompt }).from(networks).where(eq(networks.id, networkId)).limit(1);
     if (indexRow) memberPrompt = indexRow.prompt;
 
-    const finalPermissions = role === 'owner' ? ['owner'] : role === 'admin' ? ['admin', 'member'] : ['member'];
+    const finalPermissions = role === 'owner' ? ['owner'] : ['member'];
     const result = await db.insert(networkMembers).values({
       networkId,
       userId,
@@ -2767,23 +2767,18 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Add a member to an index. Checks that the requesting user has owner or admin permissions.
-   * Throws "Access denied" if not authorized.
+   * Add a member to an index. Owner-only.
+   * Throws "Access denied" if the requesting user is not an owner.
    */
-  async addMemberForOwnerOrAdmin(
+  async addMemberForOwner(
     networkId: string,
     userId: string,
     requestingUserId: string,
-    role: 'admin' | 'member' = 'member'
+    role: 'owner' | 'member' = 'member'
   ) {
-    const [membership] = await db
-      .select({ permissions: networkMembers.permissions })
-      .from(networkMembers)
-      .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, requestingUserId)))
-      .limit(1);
-
-    if (!membership || (!membership.permissions?.includes('owner') && !membership.permissions?.includes('admin'))) {
-      throw new Error('Access denied: Only owners or admins can add members');
+    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+    if (!isOwner) {
+      throw new Error('Access denied: Only owners can add members');
     }
 
     const result = await this.addMemberToNetwork(networkId, userId, role);
@@ -2791,9 +2786,104 @@ export class ChatDatabaseAdapter {
 
     return {
       member: user
-        ? { id: user.id, name: user.name, email: user.email, avatar: user.avatar, permissions: role === 'admin' ? ['admin', 'member'] : ['member'] }
+        ? { id: user.id, name: user.name, email: user.email, avatar: user.avatar, permissions: role === 'owner' ? ['owner'] : ['member'] }
         : null,
       alreadyMember: result.alreadyMember,
+    };
+  }
+
+  /**
+   * Update an existing member's role. Owner-only.
+   * Cannot demote the last owner. Cannot change contacts.
+   * @param networkId - The network ID
+   * @param targetUserId - The member whose role is being changed
+   * @param requestingUserId - The user making the change (must be owner)
+   * @param role - The new role ('owner' | 'member')
+   * @returns The updated member with new permissions
+   * @throws Error if not authorized, last owner, or member not found
+   */
+  async updateMemberRole(
+    networkId: string,
+    targetUserId: string,
+    requestingUserId: string,
+    role: 'owner' | 'member'
+  ) {
+    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+    if (!isOwner) {
+      throw new Error('Access denied: Only owners can change member roles');
+    }
+
+    // Cannot change your own role
+    if (targetUserId === requestingUserId) {
+      throw new Error('Cannot change your own role');
+    }
+
+    // Get existing membership (exclude soft-deleted)
+    const [existing] = await db
+      .select({ permissions: networkMembers.permissions })
+      .from(networkMembers)
+      .where(and(
+        eq(networkMembers.networkId, networkId),
+        eq(networkMembers.userId, targetUserId),
+        isNull(networkMembers.deletedAt)
+      ))
+      .limit(1);
+
+    if (!existing) {
+      throw new Error('Member not found');
+    }
+
+    // Don't allow changing contacts
+    if (existing.permissions?.includes('contact')) {
+      throw new Error('Cannot change role of a contact');
+    }
+
+    const newPermissions = role === 'owner' ? ['owner'] : ['member'];
+
+    // Demotion guard: prevent demoting the last owner.
+    // Uses a transaction with SELECT ... FOR UPDATE to lock all owner rows,
+    // preventing concurrent write-skew under READ COMMITTED.
+    if (role === 'member' && existing.permissions?.includes('owner')) {
+      await db.transaction(async (tx) => {
+        const owners = await tx
+          .select({ userId: networkMembers.userId })
+          .from(networkMembers)
+          .where(and(
+            eq(networkMembers.networkId, networkId),
+            sql`'owner' = ANY(${networkMembers.permissions})`,
+            isNull(networkMembers.deletedAt)
+          ))
+          .for('update');
+
+        if (owners.length <= 1) {
+          throw new Error('Cannot demote the last owner');
+        }
+
+        await tx
+          .update(networkMembers)
+          .set({ permissions: newPermissions, updatedAt: new Date() })
+          .where(and(
+            eq(networkMembers.networkId, networkId),
+            eq(networkMembers.userId, targetUserId),
+            isNull(networkMembers.deletedAt)
+          ));
+      });
+    } else {
+      await db
+        .update(networkMembers)
+        .set({ permissions: newPermissions, updatedAt: new Date() })
+        .where(and(
+          eq(networkMembers.networkId, networkId),
+          eq(networkMembers.userId, targetUserId),
+          isNull(networkMembers.deletedAt)
+        ));
+    }
+
+    const user = await this.getUser(targetUserId);
+    return {
+      member: user
+        ? { id: user.id, name: user.name, email: user.email, avatar: user.avatar, permissions: newPermissions }
+        : null,
     };
   }
 
@@ -6205,7 +6295,7 @@ export function createSystemDatabase(
      * @remarks Intentionally unscoped -- used by join flows, invitation acceptance, and
      * contact addition that operate outside the caller's current index scope.
      */
-    addMemberToNetwork: (networkId: string, userId: string, role: 'owner' | 'admin' | 'member') => db.addMemberToNetwork(networkId, userId, role),
+    addMemberToNetwork: (networkId: string, userId: string, role: 'owner' | 'member') => db.addMemberToNetwork(networkId, userId, role),
     /**
      * Removes a member from an index without scope check.
      * @remarks Intentionally unscoped -- used by leave/kick flows and member removal

@@ -360,7 +360,7 @@ export class NetworkController {
   }
 
   /**
-   * Add a member to a network. Owner/admin-only.
+   * Add a member to a network. Owner-only.
    */
   @Post('/:id/members')
   @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
@@ -374,7 +374,24 @@ export class NetworkController {
     }
     try {
       await assertAgentNetworkScope(req, params.id);
-      const role = body.permissions?.includes('admin') ? 'admin' as const : 'member' as const;
+      let role: 'owner' | 'member' = 'member';
+      if (body.permissions !== undefined) {
+        if (!Array.isArray(body.permissions)) {
+          return new Response(JSON.stringify({ error: "permissions must be an array" }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const isOwnerRole = body.permissions.length === 1 && body.permissions[0] === 'owner';
+        const isMemberRole = body.permissions.length === 1 && body.permissions[0] === 'member';
+        if (!isOwnerRole && !isMemberRole) {
+          return new Response(JSON.stringify({ error: "permissions must be exactly ['owner'] or ['member']" }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        role = isOwnerRole ? 'owner' : 'member';
+      }
       const result = await networkService.addMember(params.id, body.userId, user.id, role);
       return Response.json({ member: result.member, message: result.alreadyMember ? 'Already a member' : 'Member added' });
     } catch (err: unknown) {
@@ -382,6 +399,59 @@ export class NetworkController {
       if (msg.includes('Access denied')) {
         return new Response(JSON.stringify({ error: msg }), {
           status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Update a member's role. Owner-only.
+   * Accepts { permissions: ['owner'] } or { permissions: ['member'] }.
+   */
+  @Patch('/:id/members/:memberId')
+  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  async updateMemberRole(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    const body = await req.json().catch(() => ({})) as { permissions?: string[] };
+    if (!body.permissions || !Array.isArray(body.permissions)) {
+      return new Response(JSON.stringify({ error: 'permissions array is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    // Strict validation: only ['owner'] or ['member'] are accepted
+    const isOwnerRole = body.permissions.length === 1 && body.permissions[0] === 'owner';
+    const isMemberRole = body.permissions.length === 1 && body.permissions[0] === 'member';
+    if (!isOwnerRole && !isMemberRole) {
+      return new Response(JSON.stringify({ error: "permissions must be exactly ['owner'] or ['member']" }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const role = isOwnerRole ? 'owner' as const : 'member' as const;
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      const result = await networkService.updateMemberRole(params.id, params.memberId, user.id, role);
+      logger.verbose('Member role updated', { networkId: params.id, memberId: params.memberId, role });
+      return Response.json({ member: result.member, message: 'Role updated' });
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (msg === 'Member not found') {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (msg === 'Cannot demote the last owner' || msg === 'Cannot change role of a contact' || msg === 'Cannot change your own role') {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
       }
