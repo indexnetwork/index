@@ -1,6 +1,6 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
 import { OpportunityDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";

@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config({ path: ".env.development", override: true });
+config({ path: ".env.test", override: true });
 
 import { describe, expect, it, test } from "bun:test";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";

@@ -1,4 +1,5 @@
-try { (await import('node:process')).loadEnvFile?.('.env.test'); } catch { /* loadEnvFile unavailable */ }
+import { config } from 'dotenv';
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from 'bun:test';
 import {

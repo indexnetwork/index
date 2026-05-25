@@ -6,7 +6,7 @@
  * E.g. [A, B] matches an opportunity with actors [A, B, C].
  */
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
 import { enrichOrCreate, DEFAULT_ENRICHER_EXCLUDE_STATUSES } from '../opportunity.enricher.js';

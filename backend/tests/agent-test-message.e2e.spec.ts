@@ -12,7 +12,7 @@ import type { PickupResult } from '../src/services/agent-test-message.service';
 import { agentService } from '../src/services/agent.service';
 
 // ---------------------------------------------------------------------------
-// Helpers — mirror the pattern from agent-test-message.controller.test.ts
+// Helpers — mirror the pattern from agent-test-message.controller.spec.ts
 // ---------------------------------------------------------------------------
 
 function makeRequest(body?: unknown, method = 'POST') {

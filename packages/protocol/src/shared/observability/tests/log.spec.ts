@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect, spyOn, beforeEach, afterEach } from "bun:test";
 import { log, setLoggerFactory, sanitizeForLog, type LoggerWithSource } from "../log.js";

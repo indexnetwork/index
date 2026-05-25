@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config({ path: '.env.development' });
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect, mock, beforeEach } from 'bun:test';
 import { signConnectToken, verifyConnectToken } from '../src/services/connect-token.service';

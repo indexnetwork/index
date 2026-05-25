@@ -1,6 +1,6 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: ".env.test" });
+config({ path: ".env.test", override: true });
 
 import { describe, expect, test } from "bun:test";
 import type { ChatGraphCompositeDatabase } from "../../interfaces/database.interface.js";

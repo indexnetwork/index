@@ -10,7 +10,7 @@ import { mintConnectLink } from '../src/services/connect-link.service';
 
 // ---------------------------------------------------------------------------
 // Helpers — in-process controller invocation, mirrors the pattern used in
-// agent-test-message.e2e.test.ts (no running dev server required).
+// agent-test-message.e2e.spec.ts (no running dev server required).
 // ---------------------------------------------------------------------------
 
 function makeRequest(path: string) {

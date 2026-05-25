@@ -3,11 +3,6 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { ProfileDocument } from "./profile.generator.js";
-/**
- * Config
- */
-import { config } from "dotenv";
-config({ path: '.env.development', override: true });
 import { Timed } from "../shared/observability/performance.js";
 import { createModel } from "../shared/agent/model.config.js";
 

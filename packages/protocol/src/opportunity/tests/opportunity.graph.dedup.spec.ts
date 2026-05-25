@@ -10,7 +10,7 @@
 
 // Fallback for environments where the env var is already set (e.g., CI with .env.test)
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
 import { describe, test, expect } from 'bun:test';

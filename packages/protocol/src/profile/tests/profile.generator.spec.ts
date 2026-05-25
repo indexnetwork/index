@@ -1,6 +1,6 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { ProfileGenerator } from "../profile.generator.js";
 import { beforeEach, describe, expect, it } from "bun:test";

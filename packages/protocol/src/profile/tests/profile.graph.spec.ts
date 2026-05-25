@@ -1,6 +1,6 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { ProfileGraphFactory } from '../profile.graph.js';

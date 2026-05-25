@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm';

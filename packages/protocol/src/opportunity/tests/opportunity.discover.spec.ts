@@ -3,7 +3,7 @@
  */
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from "bun:test";
 import { runDiscoverFromQuery } from "../opportunity.discover.js";

@@ -1,12 +1,12 @@
 import { config } from "dotenv";
-config({ path: ".env.development" });
+config({ path: ".env.test", override: true });
 
 import { describe, it, expect } from "bun:test";
 import { NegotiationGraphFactory } from "@indexnetwork/protocol";
 import type { NegotiationDatabase } from "@indexnetwork/protocol";
 import { conversationDatabaseAdapter } from "../src/adapters/database.adapter";
 
-// Prerequisites: requires DATABASE_URL and OPENROUTER_API_KEY in .env.development
+// Prerequisites: requires DATABASE_URL and OPENROUTER_API_KEY in .env.test
 // Run with: cd backend && bun test tests/negotiation.e2e.spec.ts
 
 const noopDispatcher = {

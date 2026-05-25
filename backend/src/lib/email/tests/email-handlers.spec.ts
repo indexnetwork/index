@@ -1,5 +1,4 @@
 import { config } from 'dotenv';
-config({ path: 'backend/.env.test', override: true });
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect, jest, beforeEach, mock, afterAll } from 'bun:test';
