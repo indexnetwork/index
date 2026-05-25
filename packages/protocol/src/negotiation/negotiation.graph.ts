@@ -333,8 +333,9 @@ export class NegotiationGraphFactory {
         });
       }
 
-      // Enqueue question generation for stalled/capped negotiations (not accepted or explicitly rejected)
-      if (!hasOpportunity && lastTurn?.action !== 'reject' && state.opportunityId && questionerEnqueue) {
+      // Enqueue question generation for stalled/capped negotiations (not accepted or explicitly rejected).
+      // Require turnCount > 0 so early init/turn errors don't enqueue with empty context.
+      if (!hasOpportunity && lastTurn?.action !== 'reject' && state.turnCount > 0 && state.opportunityId && questionerEnqueue) {
         const stallReason: 'turn_cap' | 'timeout' | 'stalled' = atCap
           ? 'turn_cap'
           : (state.error && /timeout/i.test(state.error))
