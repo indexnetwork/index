@@ -540,6 +540,13 @@
       "when": 1779724220193,
       "tag": "0076_add_opportunities_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1779742807177,
+      "tag": "0077_drop_user_profiles_embedding_columns",
+      "breakpoints": true
     }
   ]
 }
