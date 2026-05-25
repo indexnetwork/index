@@ -83,6 +83,7 @@ export {
   type QuestionActor,
   type QuestionAnswer,
 } from "./shared/schemas/question.schema.js";
+export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
