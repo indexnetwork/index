@@ -67,11 +67,11 @@ describe("profile preset", () => {
     const preset = getPreset("profile");
     const result = preset.buildPrompt({
       userProfile: { name: "Bob", bio: "Engineer" },
-      gaps: ["location", "current project"],
+      gaps: ["location", "current work"],
     });
     expect(typeof result).toBe("string");
     expect(result).toContain("location");
-    expect(result).toContain("current project");
+    expect(result).toContain("current work");
     expect(result).toContain("Bob");
   });
 });
