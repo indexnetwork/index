@@ -63,7 +63,6 @@ describe("ProfileController Integration", () => {
 
     expect(profile).not.toBeNull();
     expect(profile!.identity?.name).toBeDefined();
-    expect(profile!.embedding).not.toBeNull();
     // Verify HyDE is stored in hyde_documents
     const { HydeDatabaseAdapter } = await import("../../adapters/database.adapter");
     const hydeAdapter = new HydeDatabaseAdapter();

@@ -177,7 +177,6 @@ interface ProfileRow {
   identity: ProfileIdentity;
   narrative: ProfileNarrative;
   attributes: ProfileAttributes;
-  embedding: number[] | number[][] | null;
 }
 
 interface NetworkMembershipRow {
@@ -610,7 +609,6 @@ export class IntentDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
@@ -882,7 +880,6 @@ export class ChatDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
@@ -1025,17 +1022,11 @@ export class ChatDatabaseAdapter {
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
-    const emb = profile.embedding ?? null;
     const data = {
       userId,
       identity: profile.identity,
       narrative: profile.narrative,
       attributes: profile.attributes,
-      embedding: emb === null
-        ? null
-        : (Array.isArray(emb[0])
-          ? (emb as number[][])[0]
-          : (emb as number[])),
       updatedAt: new Date(),
     };
     await db.insert(schema.userProfiles)
@@ -2316,7 +2307,6 @@ export class ChatDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
@@ -4100,22 +4090,15 @@ export class ProfileDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
-    const emb = profile.embedding ?? null;
     const data = {
       userId,
       identity: profile.identity,
       narrative: profile.narrative,
       attributes: profile.attributes,
-      embedding: emb === null
-        ? null
-        : (Array.isArray(emb[0])
-          ? (emb as number[][])[0]
-          : (emb as number[])),
       updatedAt: new Date(),
     };
     await db.insert(schema.userProfiles)
@@ -4233,13 +4216,11 @@ export class ProfileDatabaseAdapter {
     identity: ProfileIdentity;
     narrative: ProfileNarrative;
     attributes: ProfileAttributes;
-    embedding: number[] | number[][] | null;
   } | null> {
     const result = await db.select({
       identity: schema.userProfiles.identity,
       narrative: schema.userProfiles.narrative,
       attributes: schema.userProfiles.attributes,
-      embedding: schema.userProfiles.embedding,
     })
       .from(schema.userProfiles)
       .where(eq(schema.userProfiles.userId, userId))
@@ -4250,7 +4231,6 @@ export class ProfileDatabaseAdapter {
       identity: row.identity as ProfileIdentity,
       narrative: row.narrative as ProfileNarrative,
       attributes: row.attributes as ProfileAttributes,
-      embedding: row.embedding,
     };
   }
 
@@ -4261,7 +4241,6 @@ export class ProfileDatabaseAdapter {
       identity: schema.userProfiles.identity,
       narrative: schema.userProfiles.narrative,
       attributes: schema.userProfiles.attributes,
-      embedding: schema.userProfiles.embedding,
     })
       .from(schema.userProfiles)
       .where(eq(schema.userProfiles.userId, userId))
@@ -4274,7 +4253,6 @@ export class ProfileDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
@@ -4658,7 +4636,6 @@ export class OpportunityDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 

@@ -32,11 +32,10 @@ export interface HydeSearchOptions {
   limitPerStrategy?: number;
   limit?: number;
   minScore?: number;
-  profileMinScore?: number;
 }
 
 export interface HydeCandidate {
-  type: 'profile' | 'intent' | 'premise';
+  type: 'intent' | 'premise';
   id: string;
   userId: string;
   score: number;
@@ -149,27 +148,20 @@ export class EmbedderAdapter {
       limitPerStrategy = 40,
       limit = 80,
       minScore = 0.40,
-      profileMinScore = 0.25,
     } = options;
 
     const filter = { indexScope, excludeUserId };
 
-    // Always search ALL corpora (profiles, intents, premises) for each lens.
+    // Search both corpora (intents, premises) for each lens.
     // The corpus hint from the lens inferrer is used only for limit allocation:
     // the preferred corpus gets the full limitPerStrategy while others get half.
+    // 'profiles' hints are remapped to 'premises' (premises decompose profile content).
     const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
 
-      const preferred = le.corpus;
+      const preferred = le.corpus === 'profiles' ? 'premises' : le.corpus;
       return [
-        this.searchProfilesForHyde(
-          le.embedding,
-          filter,
-          preferred === 'profiles' ? limitPerStrategy : halfLimit,
-          profileMinScore,
-          le.lens
-        ),
         this.searchIntentsForHyde(
           le.embedding,
           filter,
@@ -193,56 +185,8 @@ export class EmbedderAdapter {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Private: profile/intent search for HyDE
+  // Private: intent/premise search for HyDE
   // ─────────────────────────────────────────────────────────────────────────
-
-  private async searchProfilesForHyde(
-    embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
-    limit: number,
-    minScore: number,
-    lens: string
-  ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
-    const vectorStr = `[${embedding.join(',')}]`;
-    const { userProfiles, networkMembers } = schema;
-
-    const conditions = [
-      inArray(networkMembers.networkId, filter.indexScope),
-      isNotNull(userProfiles.embedding),
-      isNull(schema.users.deletedAt),
-      sql`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
-      ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
-    ];
-
-    const deduped = db
-      .selectDistinctOn([userProfiles.userId], {
-        userId: userProfiles.userId,
-        similarity: sql<number>`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector)`.as('similarity'),
-        networkId: networkMembers.networkId,
-      })
-      .from(userProfiles)
-      .innerJoin(networkMembers, eq(userProfiles.userId, networkMembers.userId))
-      .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
-      .where(and(...conditions))
-      .orderBy(userProfiles.userId, sql`${userProfiles.embedding} <=> ${vectorStr}::vector`, networkMembers.networkId)
-      .as('deduped');
-
-    const results = await db
-      .select()
-      .from(deduped)
-      .orderBy(sql`${deduped.similarity} DESC`)
-      .limit(limit);
-
-    return results.map((r) => ({
-      type: 'profile' as const,
-      id: r.userId,
-      userId: r.userId,
-      score: r.similarity,
-      matchedVia: lens,
-      networkId: r.networkId,
-    }));
-  }
 
   private async searchIntentsForHyde(
     embedding: number[],

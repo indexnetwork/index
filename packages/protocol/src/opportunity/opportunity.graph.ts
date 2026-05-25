@@ -285,7 +285,6 @@ export class OpportunityGraphFactory {
             }));
             const sourceProfile = profile
               ? {
-                  embedding: profile.embedding ?? null,
                   identity: profile.identity ?? undefined,
                   narrative: profile.narrative ?? undefined,
                   attributes: profile.attributes ?? undefined,
@@ -577,7 +576,7 @@ export class OpportunityGraphFactory {
 
     /**
      * Node 3: Discovery
-     * Generates HyDE embeddings and performs semantic search (path A), or profile-as-source search (path B/C).
+     * Generates HyDE embeddings and performs semantic search.
      */
     const discoveryNode = withNodeTrace(
       "opportunity-discovery",
@@ -725,9 +724,6 @@ export class OpportunityGraphFactory {
 
           if (state.discoverySource === 'profile') {
             // Profile-context discovery: HyDE (when search query exists) + premise-to-premise.
-            // Profile-embedding direct search (Path B) has been removed — all semantic
-            // matching goes through HyDE embeddings or premise-to-premise similarity.
-
             if (state.searchQuery?.trim()) {
               logger.verbose('[Graph:Discovery] Profile source with searchQuery → running query HyDE + premise paths', {
                 searchQuery: state.searchQuery.trim().substring(0, 80),
@@ -867,17 +863,6 @@ export class OpportunityGraphFactory {
                     discoverySource: 'query' as const,
                   });
                 }
-                for (const r of results.filter((x) => x.type === 'profile')) {
-                  all.push({
-                    candidateUserId: r.userId as Id<'users'>,
-                    networkId: targetIndex.networkId,
-                    similarity: r.score,
-                    lens: r.matchedVia,
-                    candidatePayload: '',
-                    candidateSummary: undefined,
-                    discoverySource: 'query' as const,
-                  });
-                }
                 for (const r of results.filter((x) => x.type === 'premise')) {
                   all.push({
                     candidateUserId: r.userId as Id<'users'>,
@@ -892,20 +877,18 @@ export class OpportunityGraphFactory {
                 }
               })
             );
-            const profileCount = all.filter((c) => !c.candidateIntentId && !c.candidatePremiseId).length;
             const intentCount = all.filter((c) => c.candidateIntentId).length;
             const premiseCount = all.filter((c) => c.candidatePremiseId).length;
             logger.verbose('[Graph:Discovery] searchWithHydeEmbeddings raw results', {
               total: all.length,
-              fromProfile: profileCount,
               fromIntent: intentCount,
               fromPremise: premiseCount,
             });
             const byKey = new Map<string, CandidateMatch>();
             for (const c of all) {
-              // Dedup by candidateUserId + entity (intent, premise, or profile), NOT by indexId.
+              // Dedup by candidateUserId + entity (intent or premise), NOT by indexId.
               // Including indexId caused the same user to appear once per index they belong to.
-              const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : c.candidatePremiseId ? `premise:${c.candidatePremiseId}` : 'profile';
+              const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : `premise:${c.candidatePremiseId}`;
               const key = `${c.candidateUserId}:${entityKey}`;
               if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);
@@ -1060,17 +1043,6 @@ export class OpportunityGraphFactory {
                   discoverySource: 'query' as const,
                 });
               }
-              for (const result of results.filter((r) => r.type === 'profile')) {
-                allCandidates.push({
-                  candidateUserId: result.userId as Id<'users'>,
-                  networkId: targetIndex.networkId,
-                  similarity: result.score,
-                  lens: result.matchedVia,
-                  candidatePayload: '',
-                  candidateSummary: undefined,
-                  discoverySource: 'query' as const,
-                });
-              }
               for (const result of results.filter((r) => r.type === 'premise')) {
                 allCandidates.push({
                   candidateUserId: result.userId as Id<'users'>,
@@ -1087,7 +1059,7 @@ export class OpportunityGraphFactory {
           );
           const byUserAndIndex = new Map<string, CandidateMatch>();
           for (const c of allCandidates) {
-            const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : c.candidatePremiseId ? `premise:${c.candidatePremiseId}` : 'profile';
+            const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : `premise:${c.candidatePremiseId}`;
             const key = `${c.candidateUserId}:${c.networkId}:${entityKey}`;
             if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
               byUserAndIndex.set(key, c);

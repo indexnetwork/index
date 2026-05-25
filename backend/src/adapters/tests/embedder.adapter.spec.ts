@@ -238,7 +238,7 @@ describe('EmbedderAdapter', () => {
       const vec = makeTestVector(42); // same as deleted user's profile embedding
       const results = await adapter.searchWithHydeEmbeddings(
         [{ lens: 'test lens', corpus: 'profiles' as const, embedding: vec }],
-        { indexScope: [fixture.networkId], limit: 20, minScore: 0, profileMinScore: 0 },
+        { indexScope: [fixture.networkId], limit: 20, minScore: 0 },
       );
 
       const deletedMatch = results.find((c) => c.userId === fixture.deletedUserId);

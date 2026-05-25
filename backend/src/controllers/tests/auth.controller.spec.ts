@@ -150,8 +150,6 @@ describe("AuthController Integration", () => {
           identity: { name: "Existing Profile User", bio: "Bio", location: "Test City" },
           narrative: { context: "Context" },
           attributes: { interests: ["A"], skills: ["B"] },
-          embedding: [],
-          implicitIntents: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         },
