@@ -576,12 +576,15 @@ describe("opportunity.discover", () => {
       };
       const dbWithOnboardedUser = {
         ...mockDatabase,
-        getProfile: async () => null,
+        getProfile: async (userId: string) =>
+          userId === onboardedId
+            ? { embedding: [0.1, 0.2, 0.3] }
+            : null,
         getUser: async (userId: string) =>
           userId === onboardedId
-            ? { id: onboardedId, name: "Onboarded User", avatar: null, isGhost: false, onboarding: { completedAt: new Date() } }
+            ? { id: onboardedId, name: "Onboarded User", avatar: null, isGhost: false }
             : userId === "u1"
-              ? { id: "u1", name: "Viewer", avatar: null, isGhost: false, onboarding: { completedAt: new Date() } }
+              ? { id: "u1", name: "Viewer", avatar: null, isGhost: false }
               : null,
       } as unknown as ChatGraphCompositeDatabase;
 
@@ -645,18 +648,18 @@ describe("introducer discovery cards - secondParty (Bug 1)", () => {
     ...mockDatabase,
     getProfile: async (userId: string) => {
       if (userId === candidateId)
-        return { identity: { name: "Bob Candidate", bio: "UX researcher." }, attributes: {}, narrative: {} };
+        return { embedding: [0.1, 0.2, 0.3], identity: { name: "Bob Candidate", bio: "UX researcher." }, attributes: {}, narrative: {} };
       if (userId === targetId)
-        return { identity: { name: "Alice Target", bio: "Product designer." }, attributes: {}, narrative: {} };
+        return { embedding: [0.1, 0.2, 0.3], identity: { name: "Alice Target", bio: "Product designer." }, attributes: {}, narrative: {} };
       return null;
     },
     getUser: async (userId: string) => {
       if (userId === introducerId)
-        return { name: "Carol Introducer", avatar: "https://example.com/carol.jpg", onboarding: { completedAt: new Date() } };
+        return { name: "Carol Introducer", avatar: "https://example.com/carol.jpg" };
       if (userId === targetId)
-        return { name: "Alice Target", avatar: "https://example.com/alice.jpg", onboarding: { completedAt: new Date() } };
+        return { name: "Alice Target", avatar: "https://example.com/alice.jpg" };
       if (userId === candidateId)
-        return { name: "Bob Candidate", avatar: "https://example.com/bob.jpg", onboarding: { completedAt: new Date() } };
+        return { name: "Bob Candidate", avatar: "https://example.com/bob.jpg" };
       return null;
     },
   } as unknown as ChatGraphCompositeDatabase;
@@ -734,9 +737,9 @@ describe("introducer discovery cards - secondParty (Bug 1)", () => {
         ...dbWithProfiles,
         getUser: async (userId: string) => {
           if (userId === candidateId)
-            return { name: "Bob Candidate", avatar: null, onboarding: { completedAt: new Date() } };
+            return { name: "Bob Candidate", avatar: null };
           if (userId === "u1")
-            return { name: "User One", avatar: null, onboarding: { completedAt: new Date() } };
+            return { name: "User One", avatar: null };
           return null;
         },
       } as unknown as ChatGraphCompositeDatabase,

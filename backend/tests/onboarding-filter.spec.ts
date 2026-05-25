@@ -33,6 +33,15 @@ describe('Discovery eligibility filtering in opportunity enrichment', () => {
     expect(shouldSkip).toBe(false);
   });
 
+  it('should NOT skip ghost users regardless of embedding status', () => {
+    const candidateUser = { id: 'ghost-1', name: 'Ghost', isGhost: true };
+    const profile = null as { embedding: number[] | null } | null;
+    const isDirectTarget = false;
+
+    const shouldSkip = !isDirectTarget && !candidateUser?.isGhost && !profile?.embedding;
+    expect(shouldSkip).toBe(false);
+  });
+
   it('should still skip soft-deleted users regardless of embedding (separate guard)', () => {
     const candidateUser = {
       id: 'deleted-user-1',
