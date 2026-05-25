@@ -44,6 +44,7 @@ bun run maintenance:export-slack            # Export Slack data
 bun run maintenance:import-slack-export     # Import Slack export files
 bun run maintenance:reset-brokers           # Reset context brokers
 bun run maintenance:update:embeddings       # Regenerate embeddings
+bun run maintenance:decompose-profiles      # Backfill: decompose profiles into premises
 
 # Background workers
 bun run integration-worker                  # Start integration sync worker
