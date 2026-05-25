@@ -1,11 +1,14 @@
+import cron from 'node-cron';
 import { Job } from 'bullmq';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
-import { OpportunityDatabaseAdapter, ProfileDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, OpportunityDatabaseAdapter, ProfileDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ProfileGraphFactory } from '@indexnetwork/protocol';
+
+import { PremiseEvents } from '../events/premise.event';
 
 /** BullMQ queue name for premise cascade and profile regeneration jobs. */
 export const QUEUE_NAME = 'premise-queue';
@@ -75,6 +78,17 @@ export interface PremiseQueueDeps {
    * rebuilding the profile from their current active premises.
    */
   invokeProfileAggregate?: (userId: string) => Promise<void>;
+
+  /**
+   * Find ACTIVE premises whose validity.validUntil has passed.
+   * Returns a minimal shape: id + userId.
+   */
+  getExpiredPremises?: () => Promise<Array<{ id: string; userId: string }>>;
+
+  /**
+   * Transition a premise to EXPIRED status.
+   */
+  expirePremise?: (premiseId: string) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +215,45 @@ export class PremiseQueue {
   }
 
   /**
+   * Schedule expiry detection to run every hour. Call from the protocol server only.
+   */
+  startCrons(): void {
+    cron.schedule('0 * * * *', () => {
+      this.checkExpiredPremises()
+        .catch((err) => this.logger.error('[ExpiryCheck] Cron failed', { error: err }));
+    });
+    this.queueLogger.info('📅 [PremiseJob] Expiry check scheduled (every hour)');
+  }
+
+  /**
+   * Find ACTIVE premises past their validUntil date, transition each to EXPIRED,
+   * and emit {@link PremiseEvents.onExpired} for downstream cascade/regen.
+   * @returns Number of premises expired
+   */
+  async checkExpiredPremises(): Promise<number> {
+    this.logger.verbose('[ExpiryCheck] Starting expired premise check');
+
+    const getExpiredPremises =
+      this.deps?.getExpiredPremises ??
+      (() => this.defaultGetExpiredPremises());
+
+    const expirePremise =
+      this.deps?.expirePremise ??
+      ((id: string) => this.defaultExpirePremise(id));
+
+    const expired = await getExpiredPremises();
+    this.logger.verbose(`[ExpiryCheck] Found ${expired.length} expired premises`);
+
+    for (const { id, userId } of expired) {
+      await expirePremise(id);
+      PremiseEvents.onExpired(id, userId);
+    }
+
+    this.logger.info(`[ExpiryCheck] Expired ${expired.length} premises`);
+    return expired.length;
+  }
+
+  /**
    * Gracefully close the worker and queue connections.
    */
   async close(): Promise<void> {
@@ -243,6 +296,23 @@ export class PremiseQueue {
   ): Promise<void> {
     const adapter = new OpportunityDatabaseAdapter();
     await adapter.updateOpportunityStatus(opportunityId, status);
+  }
+
+  /**
+   * Default production implementation: query the database for ACTIVE premises
+   * whose validity.validUntil has passed.
+   */
+  private async defaultGetExpiredPremises(): Promise<Array<{ id: string; userId: string }>> {
+    const adapter = new ChatDatabaseAdapter();
+    return adapter.getExpiredPremises();
+  }
+
+  /**
+   * Default production implementation: set a premise's status to EXPIRED.
+   */
+  private async defaultExpirePremise(premiseId: string): Promise<void> {
+    const adapter = new ChatDatabaseAdapter();
+    await adapter.updatePremise(premiseId, { status: 'EXPIRED' });
   }
 
   private async handlePremiseCascade(data: PremiseCascadeData): Promise<void> {

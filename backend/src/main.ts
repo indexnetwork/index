@@ -129,6 +129,7 @@ if (process.env.QUESTIONER_ENABLED === 'true') {
   questionerQueue.startWorker();
 }
 premiseQueue.startWorker();
+premiseQueue.startCrons();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });

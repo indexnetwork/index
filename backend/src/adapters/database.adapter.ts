@@ -4039,6 +4039,26 @@ export class ChatDatabaseAdapter {
     }));
   }
 
+  /**
+   * Find ACTIVE premises whose validity.validUntil has passed.
+   * Uses a JSONB text extraction cast to timestamptz for the comparison.
+   * @returns Minimal rows: id and userId for each expired premise
+   */
+  async getExpiredPremises(): Promise<Array<{ id: string; userId: string }>> {
+    const rows = await db
+      .select({ id: schema.premises.id, userId: schema.premises.userId })
+      .from(schema.premises)
+      .where(
+        and(
+          eq(schema.premises.status, 'ACTIVE'),
+          isNull(schema.premises.deletedAt),
+          sql`(${schema.premises.validity}->>'validUntil') IS NOT NULL`,
+          sql`(${schema.premises.validity}->>'validUntil')::timestamptz < NOW()`,
+        )
+      );
+    return rows.map((r) => ({ id: r.id, userId: r.userId }));
+  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
