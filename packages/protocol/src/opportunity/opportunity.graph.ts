@@ -1088,14 +1088,19 @@ export class OpportunityGraphFactory {
               targetNetworks: targetNetworkIds.length,
             });
 
+            const searchResults = await Promise.all(
+              state.sourcePremises.map(sp =>
+                self.database.searchPremisesBySimilarity({
+                  embedding: sp.embedding,
+                  networkIds: targetNetworkIds,
+                  excludeUserId: discoveryUserId,
+                  limit: 20,
+                })
+              )
+            );
+
             const premiseCandidates: CandidateMatch[] = [];
-            for (const sp of state.sourcePremises) {
-              const results = await self.database.searchPremisesBySimilarity({
-                embedding: sp.embedding,
-                networkIds: targetNetworkIds,
-                excludeUserId: discoveryUserId,
-                limit: 20,
-              });
+            for (const results of searchResults) {
               for (const r of results) {
                 premiseCandidates.push({
                   candidateUserId: r.userId as Id<'users'>,
@@ -2720,11 +2725,15 @@ export class OpportunityGraphFactory {
             } else {
               // Discovery path: opportunity_graph source, no introducer, lifecycle guard for agent/patient.
 
-              // Build premise lookup from discovery candidates for premise tracking
-              const premiseLookup = new Map<string, string>();
+              // Build premise lookup from discovery candidates for premise tracking.
+              // When multiple premise candidates exist for the same user, keep the highest-similarity one.
+              const premiseLookup = new Map<string, { premiseId: string; similarity: number }>();
               for (const c of state.candidates ?? []) {
                 if (c.discoverySource === 'premise-similarity' && c.candidatePremiseId) {
-                  premiseLookup.set(c.candidateUserId, c.candidatePremiseId);
+                  const existing = premiseLookup.get(c.candidateUserId);
+                  if (!existing || c.similarity > existing.similarity) {
+                    premiseLookup.set(c.candidateUserId, { premiseId: c.candidatePremiseId, similarity: c.similarity });
+                  }
                 }
               }
 
@@ -2733,7 +2742,7 @@ export class OpportunityGraphFactory {
                 userId: a.userId,
                 role: a.role,
                 ...(a.intentId ? { intent: a.intentId } : {}),
-                ...(premiseLookup.has(a.userId) ? { premise: premiseLookup.get(a.userId) as Id<'premises'> } : {}),
+                ...(premiseLookup.has(a.userId) ? { premise: premiseLookup.get(a.userId)!.premiseId as Id<'premises'> } : {}),
               }));
               actors = evaluatorActors;
 

@@ -108,8 +108,6 @@ export interface PremiseQueueDeps {
  *
  * @remarks
  * Workers are started only by the protocol server via {@link PremiseQueue.startWorker}.
- * Actual cascade and regen logic is implemented in later tasks; handlers are
- * currently stubs that log TODO placeholders.
  */
 export class PremiseQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;

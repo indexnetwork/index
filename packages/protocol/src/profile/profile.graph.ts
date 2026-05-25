@@ -591,8 +591,13 @@ export class ProfileGraphFactory {
           // If updating existing profile, include it in the input for context
           let inputWithContext = state.input;
           if (state.profile && state.forceUpdate) {
-            inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nUSER REQUEST:\n${state.input}\n\nApply the user's request to the existing profile. Preserve existing data unless the user asks to change or remove it. You may add, update, or remove skills and interests as requested. Output the full updated profile.`;
-            logger.verbose("Merging with existing profile");
+            if (state.isAggregate) {
+              inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nPREMISE SYNTHESIS:\n${state.input}\n\nRegenerate the profile by synthesizing the premises above. Use the existing profile as context for continuity, but the premises are the authoritative source. Output the full updated profile.`;
+              logger.verbose("Aggregate synthesis with existing profile context");
+            } else {
+              inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nUSER REQUEST:\n${state.input}\n\nApply the user's request to the existing profile. Preserve existing data unless the user asks to change or remove it. You may add, update, or remove skills and interests as requested. Output the full updated profile.`;
+              logger.verbose("Merging with existing profile");
+            }
           }
 
           const _traceEmitterProfileGen = requestContext.getStore()?.traceEmitter;
@@ -809,8 +814,8 @@ export class ProfileGraphFactory {
         const premises: PremiseRecord[] = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
 
         if (premises.length === 0) {
-          logger.verbose("No active premises found — nothing to aggregate");
-          return {};
+          logger.verbose("No active premises found — skipping aggregate");
+          return { operationMode: 'query' as const };
         }
 
         const premiseTexts = premises.map(p => p.assertion.text);
@@ -822,6 +827,7 @@ export class ProfileGraphFactory {
           input: aggregateInput,
           needsProfileGeneration: true,
           forceUpdate: true,
+          isAggregate: true,
         };
       });
     };

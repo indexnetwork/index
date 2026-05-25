@@ -35,6 +35,15 @@ export const ProfileGraphState = Annotation.Root({
     default: () => false,
   }),
 
+  /**
+   * Flag indicating the profile is being regenerated from aggregated premises.
+   * When true, `generate_profile` uses synthesis framing instead of "apply user request" framing.
+   */
+  isAggregate: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
   // --- Intermediate State ---
 
   /**
