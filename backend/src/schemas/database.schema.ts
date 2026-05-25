@@ -435,6 +435,7 @@ export const questions = pgTable('questions', {
   payload: jsonb('payload').$type<import('@indexnetwork/protocol').Question>().notNull(),
   status: questionStatusEnum('status').notNull().default('pending'),
   answer: jsonb('answer').$type<QuestionAnswer>(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   statusIdx: index('questions_status_idx').on(table.status),
