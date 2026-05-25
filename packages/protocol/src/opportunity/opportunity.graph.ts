@@ -2755,7 +2755,7 @@ export class OpportunityGraphFactory {
               // When multiple premise candidates exist for the same user, keep the highest-similarity one.
               const premiseLookup = new Map<string, { premiseId: string; similarity: number }>();
               for (const c of state.candidates ?? []) {
-                if (c.discoverySource === 'premise-similarity' && c.candidatePremiseId) {
+                if (c.candidatePremiseId) {
                   const existing = premiseLookup.get(c.candidateUserId);
                   if (!existing || c.similarity > existing.similarity) {
                     premiseLookup.set(c.candidateUserId, { premiseId: c.candidatePremiseId, similarity: c.similarity });
