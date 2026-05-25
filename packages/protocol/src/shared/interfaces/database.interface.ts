@@ -1819,7 +1819,7 @@ export interface SystemDatabase {
  */
 export type ProfileGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getHydeDocument' | 'saveHydeDocument' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getHydeDocument' | 'saveHydeDocument' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser'
 >;
 
 /**
@@ -1912,6 +1912,8 @@ export type ChatGraphCompositeDatabase = Pick<
   // ProfileGraph post-enrichment ghost deduplication
   | 'findDuplicateUser'
   | 'mergeGhostUser'
+  // ProfileGraph aggregate mode (premise-to-profile materialization)
+  | 'getPremisesForUser'
 >;
 
 /**

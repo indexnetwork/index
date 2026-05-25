@@ -2,7 +2,7 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 import { ProfileGraphState } from "./profile.state.js";
 import { ProfileGenerator, ProfileDocument } from "./profile.generator.js";
 import { HydeGenerator } from "./profile.hyde.generator.js";
-import { ProfileGraphDatabase } from "../shared/interfaces/database.interface.js";
+import { ProfileGraphDatabase, PremiseRecord } from "../shared/interfaces/database.interface.js";
 import { Embedder } from "../shared/interfaces/embedder.interface.js";
 import { Scraper } from "../shared/interfaces/scraper.interface.js";
 import type { ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
@@ -798,6 +798,35 @@ export class ProfileGraphFactory {
     };
 
     // ─────────────────────────────────────────────────────────
+    // NODE: Aggregate Profile
+    // Fetches the user's active premises and synthesizes them into profile input.
+    // Sets state.input and flags so the existing generate_profile pipeline runs.
+    // ─────────────────────────────────────────────────────────
+    const aggregateProfileNode = async (state: typeof ProfileGraphState.State) => {
+      return timed("ProfileGraph.aggregateProfile", async () => {
+        logger.verbose("Aggregating profile from premises...", { userId: state.userId });
+
+        const premises: PremiseRecord[] = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
+
+        if (premises.length === 0) {
+          logger.verbose("No active premises found — nothing to aggregate");
+          return {};
+        }
+
+        const premiseTexts = premises.map(p => p.assertion.text);
+        const aggregateInput = `The following are self-descriptions (premises) the user has asserted about themselves:\n\n${premiseTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\nSynthesize these into a cohesive profile.`;
+
+        logger.verbose(`Aggregated ${premises.length} premise(s) into profile input`);
+
+        return {
+          input: aggregateInput,
+          needsProfileGeneration: true,
+          forceUpdate: true,
+        };
+      });
+    };
+
+    // ─────────────────────────────────────────────────────────
     // ROUTING CONDITIONS
     // Smart conditional routing based on operation mode and missing components
     // ─────────────────────────────────────────────────────────
@@ -810,6 +839,12 @@ export class ProfileGraphFactory {
       if (state.operationMode === 'query') {
         logger.verbose("Query mode - ending (fast path)");
         return END;
+      }
+
+      // Aggregate mode: Synthesize profile from active premises
+      if (state.operationMode === 'aggregate') {
+        logger.verbose("Aggregate mode - synthesizing profile from premises");
+        return "aggregate_profile";
       }
 
       // Pre-populated profile from external enrichment (e.g. Parallel Chat API)
@@ -910,6 +945,7 @@ export class ProfileGraphFactory {
       .addNode("scrape", scrapeNode)
       .addNode("auto_generate", autoGenerateNode)
       .addNode("use_prepopulated_profile", usePrePopulatedProfileNode)
+      .addNode("aggregate_profile", aggregateProfileNode)
       .addNode("generate_profile", generateProfileNode)
       .addNode("embed_save_profile", embedSaveProfileNode)
       .addNode("generate_hyde", generateHydeNode)
@@ -925,6 +961,7 @@ export class ProfileGraphFactory {
         {
           use_prepopulated_profile: "use_prepopulated_profile", // Pre-populated profile -> skip generation
           auto_generate: "auto_generate",       // Generate mode -> Chat API enrichment
+          aggregate_profile: "aggregate_profile", // Aggregate mode -> synthesize from premises
           scrape: "scrape",                     // Need profile, no input -> scrape first
           generate_profile: "generate_profile", // Need profile, have input -> generate
           embed_save_profile: "embed_save_profile", // Have profile, need embedding
@@ -936,6 +973,9 @@ export class ProfileGraphFactory {
 
       // Pre-populated profile feeds into embedding (skips generation)
       .addEdge("use_prepopulated_profile", "embed_save_profile")
+
+      // Aggregate profile prepares input -> generate profile uses it (linear)
+      .addEdge("aggregate_profile", "generate_profile")
 
       // Auto-generate routes based on enrichment result
       .addConditionalEdges(

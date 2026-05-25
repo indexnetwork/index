@@ -19,8 +19,9 @@ export const ProfileGraphState = Annotation.Root({
    * - 'query': Fast path - only retrieve existing profile (no generation)
    * - 'write': Full pipeline - generate/update profile and hyde as needed
    * - 'generate': Auto-generate profile from user table data via enrichUserProfile Chat API
+   * - 'aggregate': Synthesize profile from the user's active premises
    */
-  operationMode: Annotation<'query' | 'write' | 'generate'>({
+  operationMode: Annotation<'query' | 'write' | 'generate' | 'aggregate'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'write',
   }),
