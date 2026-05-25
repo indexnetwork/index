@@ -1,22 +1,24 @@
 # SCHEDULE.md — Cron Sub-Dialog (Toggle + Reschedule)
 
-Edge installs one cron by default — the **morning digest at 08:00 host-local**. Two more passes are available but **opt-in**: the **afternoon check-in (14:00)** and the **evening check-in (20:00)**. The user can enable either of those, disable any active cron, or change their time. This file is the procedure.
+One cron is installed by default — the **morning digest at 08:00 host-local**. Two more passes are available but **opt-in**: the **afternoon check-in (14:00)** and the **evening check-in (20:00)**. The user can enable either of those, disable any active cron, or change their time. This file is the procedure.
 
 **Never name this file to the user.** Don't say "the schedule file", "SCHEDULE.md says", "let me check the schedule file", or anything that surfaces the workspace layout. The user does not need to know what's stored where. Speak in plain terms: "morning digest", "afternoon check-in", "evening check-in" — describe what's happening, not the storage.
 
 ## State source
 
-Hermes's cron store (`~/.hermes/cron/jobs.json`) is the source of truth. There is no separate preferences file. List jobs with `hermes cron list` (or read `jobs.json` when you need IDs). The Edge crons are the ones whose `name` starts with `Edge —`. Each entry has an `id` (UUID), `name`, schedule, and enabled/paused state.
+Hermes's cron store (`~/.hermes/cron/jobs.json`) is the source of truth. There is no separate preferences file. List jobs with `hermes cron list` (or read `jobs.json` when you need IDs). Your crons are the ones whose `skill` field is `index-network`. Each entry has an `id` (UUID), `name`, `skill`, schedule, and enabled/paused state.
 
-| display name | cron name | default schedule | installed by default? |
+| display name | cron name pattern | default schedule | installed by default? |
 |---|---|---|---|
-| morning digest | `Edge — daily digest` | `0 8 * * *` | yes |
-| afternoon check-in | `Edge — ambient discovery (afternoon)` | `0 14 * * *` | no — opt-in |
-| evening check-in | `Edge — ambient discovery (evening)` | `0 20 * * *` | no — opt-in |
+| morning digest | `{name} — daily digest` | `0 8 * * *` | yes |
+| afternoon check-in | `{name} — ambient discovery (afternoon)` | `0 14 * * *` | no — opt-in |
+| evening check-in | `{name} — ambient discovery (evening)` | `0 20 * * *` | no — opt-in |
+
+`{name}` is your display name from `IDENTITY.md`.
 
 ## Reading current state
 
-Run `hermes cron list`. Filter to jobs whose `name` starts with `Edge —`. For each one present, the user-facing summary is "{display name} {on|off} at {HH:MM}". Note the two opt-in passes only exist after the user has enabled them — if they're absent from the list, surface them as "off (not installed)". Example:
+Run `hermes cron list`. Filter to jobs whose `skill` is `index-network`. For each one present, the user-facing summary is "{display name} {on|off} at {HH:MM}". Note the two opt-in passes only exist after the user has enabled them — if they're absent from the list, surface them as "off (not installed)". Example:
 
 > "Right now: morning digest at 08:00 — on. Afternoon and evening check-ins — off."
 
@@ -32,13 +34,13 @@ Afternoon and evening passes are not installed by the installer; the user has to
 
 ```
 hermes cron create "0 14 * * *" "$(cat ~/.hermes/skills/index-network/prompts/ambient.md)" \
-  --name "Edge — ambient discovery (afternoon)" \
+  --name "{name} — ambient discovery (afternoon)" \
   --skill index-network \
   --deliver telegram \
   --workdir ~/.hermes
 ```
 
-For the evening pass, use schedule `"0 20 * * *"` and `--name "Edge — ambient discovery (evening)"`. Always include `--skill index-network`. Delivery uses `TELEGRAM_HOME_CHANNEL` from `~/.hermes/.env` when you pass `--deliver telegram`.
+For the evening pass, use schedule `"0 20 * * *"` and `--name "{name} — ambient discovery (evening)"`. `{name}` is your display name from `IDENTITY.md`. Always include `--skill index-network`. Delivery uses `TELEGRAM_HOME_CHANNEL` from `~/.hermes/.env` when you pass `--deliver telegram`.
 
 ### Toggle existing cron on/off
 
@@ -66,7 +68,7 @@ If a change fails (the `cron` command errors), report the failure verbatim and d
 
 ## Rules
 
-- Only three Edge cron names exist (`Edge — daily digest`, `Edge — ambient discovery (afternoon)`, `Edge — ambient discovery (evening)`). Do not invent more. Do not pretend to schedule one-off events.
+- Only three cron jobs exist (`{name} — daily digest`, `{name} — ambient discovery (afternoon)`, `{name} — ambient discovery (evening)`). Do not invent more. Do not pretend to schedule one-off events.
 - Daily-only. Refuse weekly/weekend/weekday-only patterns — explain you can only set a single daily time per cron.
 - Times are host-local. If the user is unsure about their machine's timezone, say so plainly and let them confirm.
 - Never expose IDs, cron expressions, or file paths in user-facing replies. Translate everything to display names + `HH:MM`.
