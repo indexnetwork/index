@@ -4183,15 +4183,26 @@ export class ProfileDatabaseAdapter {
     await db.transaction(async (tx) => {
       await tx.delete(schema.userSocials).where(eq(schema.userSocials.userId, userId));
       if (socials.length > 0) {
-        const filtered = socials.filter(s => s.value.trim() !== '');
-        if (filtered.length > 0) {
-          await tx.insert(schema.userSocials).values(
-            filtered.map(s => ({
-              userId,
-              label: detectSocialLabel(s.value) === 'custom' ? s.label : detectSocialLabel(s.value),
-              value: s.value.trim(),
-            })),
-          );
+        const classified = socials
+          .filter(s => s.value.trim() !== '')
+          .map(s => ({
+            userId,
+            label: detectSocialLabel(s.value) === 'custom' ? s.label : detectSocialLabel(s.value),
+            value: s.value.trim(),
+          }));
+
+        // Dedup: for non-custom labels the unique index allows only one row per label.
+        // Keep the first occurrence (explicit field) and drop later duplicates.
+        const seen = new Set<string>();
+        const deduped = classified.filter(s => {
+          if (s.label === 'custom') return true;
+          if (seen.has(s.label)) return false;
+          seen.add(s.label);
+          return true;
+        });
+
+        if (deduped.length > 0) {
+          await tx.insert(schema.userSocials).values(deduped);
         }
       }
     });
