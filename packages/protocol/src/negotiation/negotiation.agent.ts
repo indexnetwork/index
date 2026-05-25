@@ -156,10 +156,11 @@ Policy: You are continuing a prior dialogue. If this signal is materially the sa
 
     const userAnswersContext = input.userAnswers && input.userAnswers.length > 0
       ? `\n\n--- ${userName}'s additional context (provided between sessions) ---\n${input.userAnswers.map((a) => {
-          const parts = a.selectedOptions.length > 0 ? a.selectedOptions.join(', ') : '';
+          const opts = Array.isArray(a.selectedOptions) ? a.selectedOptions : [];
+          const parts = opts.length > 0 ? opts.join(', ') : '';
           const free = a.freeText ? (parts ? ` — ${a.freeText}` : a.freeText) : '';
           return `- ${parts}${free}`;
-        }).join("\n")}\n`
+        }).filter(Boolean).join("\n")}\n`
       : '';
 
     const discoveryQueryReminder = input.discoveryQuery

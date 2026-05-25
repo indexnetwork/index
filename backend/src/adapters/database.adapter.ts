@@ -7498,7 +7498,16 @@ export class ConversationDatabaseAdapter {
       .limit(1);
     if (!row?.metadata) return [];
     const meta = row.metadata as Record<string, unknown>;
-    return Array.isArray(meta.userAnswers) ? meta.userAnswers : [];
+    if (!Array.isArray(meta.userAnswers)) return [];
+    return (meta.userAnswers as Record<string, unknown>[])
+      .filter((a): a is Record<string, unknown> & { questionId: string; answeredAt: string } =>
+        typeof a?.questionId === 'string' && typeof a?.answeredAt === 'string')
+      .map((a) => ({
+        questionId: a.questionId,
+        selectedOptions: Array.isArray(a.selectedOptions) ? (a.selectedOptions as unknown[]).filter((o): o is string => typeof o === 'string') : [],
+        ...(typeof a.freeText === 'string' && { freeText: a.freeText }),
+        answeredAt: a.answeredAt,
+      }));
   }
 
   /**
