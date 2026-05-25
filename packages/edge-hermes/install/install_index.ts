@@ -111,6 +111,8 @@ function installCronJobs(env: NodeJS.ProcessEnv): void {
         digestMessage,
         "--name",
         "Edge — daily digest",
+        "--skill",
+        "index-network",
         "--deliver",
         deliver,
         "--workdir",

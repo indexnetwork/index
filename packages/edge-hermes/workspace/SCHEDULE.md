@@ -33,11 +33,12 @@ Afternoon and evening passes are not installed by the installer; the user has to
 ```
 hermes cron create "0 14 * * *" "$(cat ~/.hermes/skills/index-network/prompts/ambient.md)" \
   --name "Edge — ambient discovery (afternoon)" \
+  --skill index-network \
   --deliver telegram \
   --workdir ~/.hermes
 ```
 
-For the evening pass, use schedule `"0 20 * * *"` and `--name "Edge — ambient discovery (evening)"`. Delivery uses `TELEGRAM_HOME_CHANNEL` from `~/.hermes/.env` when you pass `--deliver telegram`.
+For the evening pass, use schedule `"0 20 * * *"` and `--name "Edge — ambient discovery (evening)"`. Always include `--skill index-network`. Delivery uses `TELEGRAM_HOME_CHANNEL` from `~/.hermes/.env` when you pass `--deliver telegram`.
 
 ### Toggle existing cron on/off
 
