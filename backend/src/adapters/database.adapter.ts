@@ -4494,6 +4494,50 @@ export class ProfileDatabaseAdapter {
         .where(eq(schema.users.id, sourceId));
     });
   }
+
+  /**
+   * Retrieve premises for a user, optionally filtered by status.
+   * Used by the profile graph in `aggregate` mode to synthesize profile from active premises.
+   * @param userId - The user whose premises to retrieve
+   * @param status - Optional status filter (`ACTIVE`, `RETRACTED`, or `EXPIRED`)
+   * @returns Array of premise records
+   */
+  async getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
+    id: string; userId: string;
+    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
+    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
+    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding: number[] | null;
+    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
+  }>> {
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(schema.premises.userId, userId),
+      isNull(schema.premises.deletedAt),
+    ];
+    if (status) {
+      conditions.push(eq(schema.premises.status, status));
+    }
+    const rows = await db
+      .select()
+      .from(schema.premises)
+      .where(and(...conditions))
+      .orderBy(desc(schema.premises.createdAt));
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
+      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
+      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
+      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
+      embedding: row.embedding,
+      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      retractedAt: row.retractedAt ?? null,
+    }));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

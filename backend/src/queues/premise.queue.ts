@@ -2,7 +2,10 @@ import { Job } from 'bullmq';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
-import { OpportunityDatabaseAdapter } from '../adapters/database.adapter';
+import { OpportunityDatabaseAdapter, ProfileDatabaseAdapter } from '../adapters/database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { ScraperAdapter } from '../adapters/scraper.adapter';
+import { ProfileGraphFactory } from '@indexnetwork/protocol';
 
 /** BullMQ queue name for premise cascade and profile regeneration jobs. */
 export const QUEUE_NAME = 'premise-queue';
@@ -283,16 +286,26 @@ export class PremiseQueue {
     const { userId, trigger } = data;
     this.logger.info('[ProfileRegen] Starting profile regeneration', { userId, trigger });
 
-    // TODO(Task N): Implement profile regeneration logic.
-    // 1. Invoke the profile graph in 'aggregate' mode for userId.
-    //    Use: this.deps?.invokeProfileAggregate ?? defaultInvokeProfileAggregate
-    //    The graph reads the user's active premises and rebuilds profile + embeddings.
-    // 2. Log completion.
+    const invokeProfileAggregate =
+      this.deps?.invokeProfileAggregate ??
+      ((uid: string) => this.defaultInvokeProfileAggregate(uid));
 
-    this.logger.info('[ProfileRegen] Profile regen stub complete (not yet implemented)', {
-      userId,
-      trigger,
-    });
+    await invokeProfileAggregate(userId);
+
+    this.logger.info('[ProfileRegen] Profile regeneration complete', { userId, trigger });
+  }
+
+  /**
+   * Default production implementation: invoke the profile graph in `aggregate` mode.
+   * Reads the user's active premises and rebuilds profile + embeddings.
+   */
+  private async defaultInvokeProfileAggregate(userId: string): Promise<void> {
+    const database = new ProfileDatabaseAdapter();
+    const embedder = new EmbedderAdapter();
+    const scraper = new ScraperAdapter();
+    const factory = new ProfileGraphFactory(database, embedder, scraper);
+    const graph = factory.createGraph();
+    await graph.invoke({ userId, operationMode: 'aggregate' });
   }
 }
 

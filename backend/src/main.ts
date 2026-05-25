@@ -58,6 +58,8 @@ import { questionerQueue } from './queues/questioner.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { NegotiationEvents } from './events/negotiation.event';
+import { PremiseEvents } from './events/premise.event';
+import { premiseQueue } from './queues/premise.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
@@ -126,6 +128,7 @@ integrationSyncQueue.startWorker();
 if (process.env.QUESTIONER_ENABLED === 'true') {
   questionerQueue.startWorker();
 }
+premiseQueue.startWorker();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
@@ -144,6 +147,34 @@ IntentEvents.onUpdated = (intentId: string, userId: string) => {
 IntentEvents.onArchived = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent archived, triggering maintenance', { intentId, userId });
   opportunityService.triggerMaintenance(userId, 'intent-archived');
+};
+
+PremiseEvents.onCreated = (premiseId: string, userId: string) => {
+  log.job.from('PremiseEvents').verbose('Premise created, triggering profile regen', { premiseId, userId });
+  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_created' })
+    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
+};
+
+PremiseEvents.onUpdated = (premiseId: string, userId: string) => {
+  log.job.from('PremiseEvents').verbose('Premise updated, triggering profile regen', { premiseId, userId });
+  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_updated' })
+    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
+};
+
+PremiseEvents.onRetracted = (premiseId: string, userId: string) => {
+  log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade + regen', { premiseId, userId });
+  premiseQueue.addCascadeJob({ premiseId, userId, event: 'retracted' })
+    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
+  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_retracted' })
+    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
+};
+
+PremiseEvents.onExpired = (premiseId: string, userId: string) => {
+  log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade + regen', { premiseId, userId });
+  premiseQueue.addCascadeJob({ premiseId, userId, event: 'expired' })
+    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
+  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_expired' })
+    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
 };
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
@@ -471,6 +502,7 @@ const shutdown = async () => {
     negotiationTimeoutQueue.close(),
     negotiationClaimTimeoutQueue.close(),
     questionerQueue.close(),
+    premiseQueue.close(),
   ]);
   logger.info('Workers closed');
   process.exit(0);
