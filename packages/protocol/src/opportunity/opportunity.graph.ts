@@ -272,9 +272,10 @@ export class OpportunityGraphFactory {
               };
             }
             const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
-            const [intents, profile] = await Promise.all([
+            const [intents, profile, userPremises] = await Promise.all([
               this.database.getActiveIntents(discoveryUserId),
               this.database.getProfile(discoveryUserId),
+              this.database.getPremisesForUser(discoveryUserId, 'ACTIVE'),
             ]);
             const indexedIntents: IndexedIntent[] = intents.map((intent: ActiveIntent) => ({
               intentId: intent.id,
@@ -290,13 +291,20 @@ export class OpportunityGraphFactory {
                   attributes: profile.attributes ?? undefined,
                 }
               : null;
+            const sourcePremises = (userPremises ?? [])
+              .filter(p => p.embedding && p.embedding.length > 0)
+              .map(p => ({
+                premiseId: p.id as Id<'premises'>,
+                embedding: p.embedding!,
+              }));
             return {
               userNetworks: userNetworkIds,
               indexedIntents,
               sourceProfile,
+              sourcePremises,
               trace: [{
                 node: "prep",
-                detail: `${userNetworkIds.length} network(s), ${intents.length} intent(s), ${profile ? 'profile loaded' : 'no profile'}`,
+                detail: `${userNetworkIds.length} network(s), ${intents.length} intent(s), ${sourcePremises.length} premise(s), ${profile ? 'profile loaded' : 'no profile'}`,
               }],
             };
           },
@@ -837,14 +845,32 @@ export class OpportunityGraphFactory {
                   },
                 });
                 
-                return { candidates: filterByTarget(merged), trace: traceEntries };
+                const premiseCands = await runPremiseDiscovery();
+                const withPremises = mergePremiseCandidates(merged, premiseCands);
+                if (premiseCands.length > 0) {
+                  traceEntries.push({ node: "discovery", detail: `+ Premise search → ${premiseCands.length} candidate(s), merged to ${withPremises.length}` });
+                }
+                return { candidates: filterByTarget(withPremises), trace: traceEntries };
               }
 
-              return { candidates: filterByTarget(queryCandidates), trace: traceEntries };
+              const premiseCands = await runPremiseDiscovery();
+              const withPremises = mergePremiseCandidates(queryCandidates, premiseCands);
+              if (premiseCands.length > 0) {
+                traceEntries.push({ node: "discovery", detail: `+ Premise search → ${premiseCands.length} candidate(s), merged to ${withPremises.length}` });
+              }
+              return { candidates: filterByTarget(withPremises), trace: traceEntries };
             }
 
             // No search query - use profile embedding directly (mirror-only)
             if (!vector || vector.length === 0) {
+              // Still attempt premise-based discovery even without a profile vector
+              const premiseCands = await runPremiseDiscovery();
+              if (premiseCands.length > 0) {
+                return {
+                  candidates: filterByTarget(premiseCands),
+                  trace: [{ node: "discovery", detail: `No profile vector; premise search → ${premiseCands.length} candidate(s)` }],
+                };
+              }
               return { candidates: [] };
             }
             const allCandidates: CandidateMatch[] = [];
@@ -947,8 +973,13 @@ export class OpportunityGraphFactory {
               });
             }
 
+            const premiseCands = await runPremiseDiscovery();
+            const withPremises = mergePremiseCandidates(candidates, premiseCands);
+            if (premiseCands.length > 0) {
+              traceEntries.push({ node: "discovery", detail: `+ Premise search → ${premiseCands.length} candidate(s), merged to ${withPremises.length}` });
+            }
             return {
-              candidates: filterByTarget(candidates),
+              candidates: filterByTarget(withPremises),
               trace: traceEntries,
             };
           }
@@ -1042,12 +1073,90 @@ export class OpportunityGraphFactory {
             return Array.from(byKey.values());
           }
 
+          /**
+           * Premise-to-premise discovery (path D).
+           * Searches for other users' premises similar to the discoverer's premises,
+           * scoped to target networks. Additive — merges into existing candidates.
+           */
+          async function runPremiseDiscovery(): Promise<CandidateMatch[]> {
+            if (!state.sourcePremises?.length) return [];
+            const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
+            if (targetNetworkIds.length === 0) return [];
+
+            logger.verbose('[Graph:Discovery] runPremiseDiscovery start', {
+              premiseCount: state.sourcePremises.length,
+              targetNetworks: targetNetworkIds.length,
+            });
+
+            const premiseCandidates: CandidateMatch[] = [];
+            for (const sp of state.sourcePremises) {
+              const results = await self.database.searchPremisesBySimilarity({
+                embedding: sp.embedding,
+                networkIds: targetNetworkIds,
+                excludeUserId: discoveryUserId,
+                limit: 20,
+              });
+              for (const r of results) {
+                premiseCandidates.push({
+                  candidateUserId: r.userId as Id<'users'>,
+                  candidatePremiseId: r.premiseId as Id<'premises'>,
+                  networkId: r.networkId as Id<'networks'>,
+                  similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
+                  lens: 'premise_match',
+                  candidatePayload: r.assertionText ?? '',
+                  discoverySource: 'premise-similarity',
+                });
+              }
+            }
+
+            // Dedup by userId + premiseId
+            const byKey = new Map<string, CandidateMatch>();
+            for (const c of premiseCandidates) {
+              const key = `${c.candidateUserId}:${c.candidatePremiseId ?? 'none'}`;
+              if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
+                byKey.set(key, c);
+              }
+            }
+            const deduped = Array.from(byKey.values());
+            logger.verbose('[Graph:Discovery] runPremiseDiscovery complete', {
+              rawCount: premiseCandidates.length,
+              dedupedCount: deduped.length,
+            });
+            return deduped;
+          }
+
+          /**
+           * Merge premise candidates into an existing candidate list.
+           * Deduplicates by userId + networkId + discoverySource + entityId.
+           */
+          function mergePremiseCandidates(
+            existing: CandidateMatch[],
+            premise: CandidateMatch[],
+          ): CandidateMatch[] {
+            if (premise.length === 0) return existing;
+            const merged = new Map<string, CandidateMatch>();
+            for (const c of [...existing, ...premise]) {
+              const key = `${c.candidateUserId}:${c.networkId}:${c.discoverySource}:${c.candidateIntentId ?? c.candidatePremiseId ?? 'none'}`;
+              if (!merged.has(key) || c.similarity > (merged.get(key)?.similarity ?? 0)) {
+                merged.set(key, c);
+              }
+            }
+            return Array.from(merged.values());
+          }
+
           const resolvedIntent = state.resolvedTriggerIntentId
             ? state.indexedIntents.find((i) => i.intentId === state.resolvedTriggerIntentId)
             : state.indexedIntents[0];
           const searchText = state.searchQuery ?? resolvedIntent?.payload ?? '';
           if (!searchText) {
             logger.warn('[Graph:Discovery] No search text available for intent path');
+            const premiseCands = await runPremiseDiscovery();
+            if (premiseCands.length > 0) {
+              return {
+                candidates: filterByTarget(premiseCands),
+                trace: [{ node: "discovery", detail: `No search text; premise search → ${premiseCands.length} candidate(s)` }],
+              };
+            }
             return { candidates: [] };
           }
 
@@ -1065,6 +1174,14 @@ export class OpportunityGraphFactory {
           const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
           const lenses = hydeResult.lenses ?? [];
           if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) {
+            const premiseCands = await runPremiseDiscovery();
+            if (premiseCands.length > 0) {
+              return {
+                hydeEmbeddings: {} as Record<string, number[]>,
+                candidates: filterByTarget(premiseCands),
+                trace: [{ node: "discovery", detail: `No HyDE embeddings; premise search → ${premiseCands.length} candidate(s)` }],
+              };
+            }
             return { hydeEmbeddings: {} as Record<string, number[]>, candidates: [] };
           }
           const lensMap = new Map(lenses.map(l => [l.label, l]));
@@ -1199,9 +1316,14 @@ export class OpportunityGraphFactory {
             });
           }
 
+          const premiseCands = await runPremiseDiscovery();
+          const withPremises = mergePremiseCandidates(candidates, premiseCands);
+          if (premiseCands.length > 0) {
+            traceEntries.push({ node: "discovery", detail: `+ Premise search → ${premiseCands.length} candidate(s), merged to ${withPremises.length}` });
+          }
           return {
             hydeEmbeddings: hydeEmbeddings as Record<string, number[]>,
-            candidates: filterByTarget(candidates),
+            candidates: filterByTarget(withPremises),
             trace: traceEntries,
           };
         } catch (error) {
@@ -2597,11 +2719,21 @@ export class OpportunityGraphFactory {
               };
             } else {
               // Discovery path: opportunity_graph source, no introducer, lifecycle guard for agent/patient.
+
+              // Build premise lookup from discovery candidates for premise tracking
+              const premiseLookup = new Map<string, string>();
+              for (const c of state.candidates ?? []) {
+                if (c.discoverySource === 'premise-similarity' && c.candidatePremiseId) {
+                  premiseLookup.set(c.candidateUserId, c.candidatePremiseId);
+                }
+              }
+
               const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
                 networkId: a.networkId ?? indexIdForActors,
                 userId: a.userId,
                 role: a.role,
                 ...(a.intentId ? { intent: a.intentId } : {}),
+                ...(premiseLookup.has(a.userId) ? { premise: premiseLookup.get(a.userId) as Id<'premises'> } : {}),
               }));
               actors = evaluatorActors;
 

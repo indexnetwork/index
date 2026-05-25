@@ -347,6 +347,12 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => null,
   }),
 
+  /** User's active premises with embeddings (from prep). Used for premise-to-premise discovery path D. */
+  sourcePremises: Annotation<Array<{ premiseId: Id<'premises'>; embedding: number[] }>>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
+  }),
+
   /** Resolved intent is in at least one target index (path A vs C). */
   resolvedIntentInIndex: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,

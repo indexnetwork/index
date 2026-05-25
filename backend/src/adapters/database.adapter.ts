@@ -3965,6 +3965,19 @@ export class ChatDatabaseAdapter {
     }));
   }
 
+  /**
+   * Cosine similarity search against premise embeddings, scoped to shared networks.
+   * Delegates to OpportunityDatabaseAdapter (which hosts the raw SQL query).
+   */
+  async searchPremisesBySimilarity(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+  }) {
+    return this.opportunityAdapter.searchPremisesBySimilarity(params);
+  }
+
   async updatePremise(premiseId: string, updates: {
     assertion?: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
     analysis?: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number };
@@ -5031,6 +5044,98 @@ export class OpportunityDatabaseAdapter {
       )
       .returning({ id: opportunities.id });
     return updated.length;
+  }
+
+  /**
+   * Retrieve premises for a user, optionally filtered by status.
+   * Used by the opportunity graph prep node for premise-to-premise discovery.
+   * @param userId - The user whose premises to retrieve
+   * @param status - Optional status filter
+   * @returns Array of premise records
+   */
+  async getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
+    id: string; userId: string;
+    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
+    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
+    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding: number[] | null;
+    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
+  }>> {
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(schema.premises.userId, userId),
+      isNull(schema.premises.deletedAt),
+    ];
+    if (status) {
+      conditions.push(eq(schema.premises.status, status));
+    }
+    const rows = await db
+      .select()
+      .from(schema.premises)
+      .where(and(...conditions))
+      .orderBy(desc(schema.premises.createdAt));
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
+      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
+      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
+      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
+      embedding: row.embedding,
+      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      retractedAt: row.retractedAt,
+    }));
+  }
+
+  /**
+   * Cosine similarity search against premise embeddings, scoped to shared networks.
+   * Used by the opportunity graph's premise discovery path (path D).
+   * @param params - Search parameters including embedding vector, network scope, and exclusions
+   * @returns Matching premises ranked by cosine similarity
+   */
+  async searchPremisesBySimilarity(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+  }) {
+    const { embedding, networkIds, excludeUserId, limit } = params;
+    const vectorStr = `[${embedding.join(',')}]`;
+
+    const rows = await db.execute<{
+      premiseId: string;
+      userId: string;
+      networkId: string;
+      assertionText: string;
+      similarity: number;
+    }>(sql`
+      SELECT
+        p.id AS "premiseId",
+        p.user_id AS "userId",
+        pn.network_id AS "networkId",
+        p.assertion->>'text' AS "assertionText",
+        1 - (p.embedding <=> ${vectorStr}::vector) AS similarity
+      FROM ${schema.premises} p
+      JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
+      WHERE pn.network_id = ANY(${networkIds})
+        AND p.user_id != ${excludeUserId}
+        AND p.status = 'ACTIVE'
+        AND p.embedding IS NOT NULL
+        AND p.deleted_at IS NULL
+      ORDER BY p.embedding <=> ${vectorStr}::vector
+      LIMIT ${limit}
+    `);
+
+    return rows as Array<{
+      premiseId: string;
+      userId: string;
+      networkId: string;
+      assertionText: string;
+      similarity: number;
+    }>;
   }
 }
 

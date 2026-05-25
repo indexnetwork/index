@@ -1428,6 +1428,23 @@ export interface Database {
   assignPremiseToNetwork(premiseId: string, networkId: string, relevancyScore: number): Promise<void>;
 
   getPremiseNetworks(premiseId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>>;
+
+  /**
+   * Cosine similarity search against premise embeddings, scoped to shared networks.
+   * Used by the opportunity graph's premise discovery path (path D).
+   */
+  searchPremisesBySimilarity(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+  }): Promise<Array<{
+    premiseId: string;
+    userId: string;
+    networkId: string;
+    assertionText: string;
+    similarity: number;
+  }>>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1916,6 +1933,8 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'mergeGhostUser'
   // ProfileGraph aggregate mode (premise-to-profile materialization)
   | 'getPremisesForUser'
+  // Premise-to-premise discovery (path D) in OpportunityGraph
+  | 'searchPremisesBySimilarity'
 >;
 
 /**
@@ -1951,6 +1970,9 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
   | 'getIntent'
+  // Premise-to-premise discovery (path D)
+  | 'getPremisesForUser'
+  | 'searchPremisesBySimilarity'
 >;
 
 /**
