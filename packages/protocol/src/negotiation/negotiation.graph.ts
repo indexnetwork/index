@@ -120,6 +120,7 @@ export class NegotiationGraphFactory {
           turnCount: 0,
           maxTurns,
           isContinuation,
+          priorTurnCount: priorTurns.length,
           ...(seedMessages.length > 0 && { messages: seedMessages }),
         };
       } catch (err) {

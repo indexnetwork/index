@@ -257,4 +257,106 @@ describe("Negotiation continuation telemetry", () => {
     expect(outcomes[0].outcome).toBe("waiting_for_agent");
     expect(outcomes[0].isContinuation).toBe(false);
   }, 30_000);
+
+  it("continuation: reuses conversation, seeds prior turns, sets isContinuation true", async () => {
+    const priorTurn = {
+      action: "propose",
+      assessment: { reasoning: "Good fit", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
+    };
+    const priorMessages = [{
+      id: "msg-prior-1",
+      senderId: `agent:${sourceUser.id}`,
+      role: "agent" as const,
+      parts: [{ kind: "data" as const, data: priorTurn }],
+      createdAt: new Date(Date.now() - 60_000),
+    }];
+
+    let call = 0;
+    IndexNegotiator.prototype.invoke = async function () {
+      call++;
+      return { action: "accept", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+    };
+
+    const db = createMockDatabase({
+      getMessagesForConversation: async () => priorMessages,
+    });
+    const dispatcher = createMockDispatcher();
+    const graph = new NegotiationGraphFactory(db, dispatcher).createGraph();
+
+    const result = await graph.invoke({
+      sourceUser,
+      candidateUser,
+      indexContext,
+      seedAssessment: seed,
+      maxTurns: 2,
+    } as Partial<typeof NegotiationGraphState.State>);
+
+    expect(result.isContinuation).toBe(true);
+    expect(result.priorTurnCount).toBe(1);
+    expect(result.outcome).not.toBeNull();
+
+    IndexNegotiator.prototype.invoke = origInvoke;
+  }, 30_000);
+
+  it("lock gate: returns error when active task exists within freshness window", async () => {
+    const db = createMockDatabase({
+      getNegotiationTaskForOpportunity: async () => ({
+        id: "task-prior",
+        conversationId: "conv-1",
+        state: "working",
+        metadata: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    });
+    const dispatcher = createMockDispatcher();
+    const graph = new NegotiationGraphFactory(db, dispatcher).createGraph();
+
+    const result = await graph.invoke({
+      sourceUser,
+      candidateUser,
+      indexContext,
+      seedAssessment: seed,
+      opportunityId: "opp-locked",
+      maxTurns: 2,
+    } as Partial<typeof NegotiationGraphState.State>);
+
+    expect(result.error).toBe("busy");
+  }, 30_000);
+
+  it("stale lock: task older than 5 minutes does not block", async () => {
+    const staleTime = new Date(Date.now() - 10 * 60 * 1000);
+    let call = 0;
+    IndexNegotiator.prototype.invoke = async function () {
+      call++;
+      if (call === 1) return { action: "propose", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+      return { action: "accept", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+    };
+
+    const db = createMockDatabase({
+      getNegotiationTaskForOpportunity: async () => ({
+        id: "task-stale",
+        conversationId: "conv-1",
+        state: "working",
+        metadata: null,
+        createdAt: staleTime,
+        updatedAt: staleTime,
+      }),
+    });
+    const dispatcher = createMockDispatcher();
+    const graph = new NegotiationGraphFactory(db, dispatcher).createGraph();
+
+    const result = await graph.invoke({
+      sourceUser,
+      candidateUser,
+      indexContext,
+      seedAssessment: seed,
+      opportunityId: "opp-stale",
+      maxTurns: 4,
+    } as Partial<typeof NegotiationGraphState.State>);
+
+    expect(result.outcome).not.toBeNull();
+
+    IndexNegotiator.prototype.invoke = origInvoke;
+  }, 30_000);
 });

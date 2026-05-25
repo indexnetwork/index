@@ -184,11 +184,6 @@ export const NegotiationGraphState = Annotation.Root({
     default: () => 'active' as const,
   }),
 
-  /** Whether this session continues a prior conversation (DM reuse detected prior turns). */
-  isContinuation: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
   /** Number of turns present in the conversation before this session started. */
   priorTurnCount: Annotation<number>({
     reducer: (curr, next) => next ?? curr,
