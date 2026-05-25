@@ -122,7 +122,7 @@ const protocolDeps = {
   questionerDatabase: questionerAdapter,
   ...(process.env.QUESTIONER_ENABLED === 'true' && {
     questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
-      await questionerQueue.addGenerateJob(input as Parameters<typeof questionerQueue.addGenerateJob>[0]);
+      await questionerQueue.addGenerateJob(input);
     },
   }),
 };
@@ -148,8 +148,9 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   logger.info('Compiling MCP graphs (first call, will be cached)');
 
   const { database, embedder, scraper } = protocolDeps;
-  const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, protocolDeps.enricher).createGraph();
+  const qEnqueue = protocolDeps.questionerEnqueue;
+  const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue, qEnqueue).createGraph();
+  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, protocolDeps.enricher, qEnqueue).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
@@ -161,6 +162,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     protocolDeps.negotiationDatabase,
     protocolDeps.agentDispatcher!,
     protocolDeps.negotiationTimeoutQueue,
+    qEnqueue,
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,

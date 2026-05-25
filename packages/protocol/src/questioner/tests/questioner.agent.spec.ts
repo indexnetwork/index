@@ -4,7 +4,7 @@ process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key-for
 
 import { describe, it, expect } from "bun:test";
 import { QuestionerAgent } from "../questioner.agent.js";
-import type { QuestionerInput, DiscoveryContext } from "../questioner.types.js";
+import type { QuestionerInput, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext } from "../questioner.types.js";
 
 const okOption = { label: "A", description: "desc-a" };
 
@@ -139,9 +139,29 @@ describe("QuestionerAgent", () => {
     expect(result).toBeNull();
   });
 
-  it("throws for an unimplemented mode", async () => {
-    const agent = new QuestionerAgent();
-    const input = { ...makeDiscoveryInput(), mode: "intent" as const };
-    await expect(agent.invoke(input)).rejects.toThrow("not implemented");
+  it.each(["discovery", "intent", "profile", "negotiation"] as const)("mode '%s' invokes the LLM and returns questions", async (mode) => {
+    const agent = makeAgent(async () => ({
+      questions: [makeQuestion({ title: "Test" })],
+    }));
+    const discoveryContext: DiscoveryContext = makeDiscoveryInput().context as DiscoveryContext;
+    const intentContext: IntentContext = { intentId: "i-1", payload: "test intent", userProfile: { name: "Test" } };
+    const profileContext: ProfileContext = { userProfile: { name: "Test" }, gaps: ["location"] };
+    const negotiationContext: NegotiationContext = { negotiationId: "n-1", counterpartyHint: "founder", indexContext: "AI", outcomeReason: "turn_cap" as const, keyTake: "test", userProfile: { name: "Test" } };
+    const contexts = {
+      discovery: discoveryContext,
+      intent: intentContext,
+      profile: profileContext,
+      negotiation: negotiationContext,
+    };
+    const input: QuestionerInput = {
+      mode,
+      userId: "user-1",
+      sourceType: "test",
+      sourceId: "test-1",
+      context: contexts[mode],
+    };
+    const result = await agent.invoke(input);
+    expect(result).not.toBeNull();
+    expect(result!.questions).toHaveLength(1);
   });
 });

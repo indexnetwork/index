@@ -48,25 +48,11 @@ export type QuestionerContext =
   | NegotiationContext;
 
 /**
- * Payload shape accepted by the questionerEnqueue callback at the
- * composition-root boundary. Context fields are typed as `unknown` because the
- * protocol layer is agnostic of the concrete queue input types — the backend
- * composition root casts them to `QuestionerInput` when bridging.
+ * Payload shape accepted by the questionerEnqueue callback. Covers all
+ * question modes — the composition root bridges this to the concrete
+ * QuestionerQueue.
  */
-export interface QuestionerEnqueuePayload {
-  mode: 'discovery';
-  userId: string;
-  sourceType: string;
-  sourceId: string;
-  context: {
-    query: string;
-    sourceProfile: unknown;
-    negotiationDigests: unknown[];
-    summary: unknown;
-    chatContext?: unknown;
-    now: string;
-  };
-}
+export type QuestionerEnqueuePayload = QuestionerInput;
 
 /** Callback signature for async question generation enqueue. */
 export type QuestionerEnqueueFn = (input: QuestionerEnqueuePayload) => Promise<void>;
