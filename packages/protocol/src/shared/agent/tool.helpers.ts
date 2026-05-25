@@ -28,6 +28,7 @@ import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.j
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";
 import type { MintConnectLink } from "../interfaces/connect-link.interface.js";
 import type { QuestionerDatabase } from "../interfaces/questioner.interface.js";
+import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 
 /** Profile without embedding — used in resolved context to avoid bloating prompts and memory. */
 export type ProfileContext = Omit<ProfileDocument, "embedding"> | null;
@@ -158,20 +159,7 @@ export interface ToolContext {
    * is dispatched asynchronously to the QuestionerQueue instead of running inline.
    * Injected by the composition root when QUESTIONER_ENABLED=true.
    */
-  questionerEnqueue?: (input: {
-    mode: 'discovery';
-    userId: string;
-    sourceType: string;
-    sourceId: string;
-    context: {
-      query: string;
-      sourceProfile: unknown;
-      negotiationDigests: unknown[];
-      summary: unknown;
-      chatContext?: unknown;
-      now: string;
-    };
-  }) => Promise<void>;
+  questionerEnqueue?: QuestionerEnqueueFn;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /** Profile enrichment from external data sources. */
@@ -433,20 +421,7 @@ export interface ToolDeps {
    * via the `questionGenerator`. Injected by the composition root when
    * QUESTIONER_ENABLED=true.
    */
-  questionerEnqueue?: (input: {
-    mode: 'discovery';
-    userId: string;
-    sourceType: string;
-    sourceId: string;
-    context: {
-      query: string;
-      sourceProfile: unknown;
-      negotiationDigests: unknown[];
-      summary: unknown;
-      chatContext?: unknown;
-      now: string;
-    };
-  }) => Promise<void>;
+  questionerEnqueue?: QuestionerEnqueueFn;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */

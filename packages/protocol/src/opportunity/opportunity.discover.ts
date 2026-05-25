@@ -13,6 +13,7 @@ import type { Opportunity, ChatGraphCompositeDatabase, UserRecord } from "../sha
 import type { Cache } from "../shared/interfaces/cache.interface.js";
 import type { OpportunityGraphOptions, CandidateMatch, SourceProfileData } from "./opportunity.state.js";
 import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
+import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import {
   OpportunityPresenter,
   gatherPresenterContext,
@@ -157,20 +158,7 @@ export interface DiscoverInput {
    * returns a promise that resolves when the job is enqueued (not when generation
    * completes).
    */
-  questionerEnqueue?: (input: {
-    mode: 'discovery';
-    userId: string;
-    sourceType: string;
-    sourceId: string;
-    context: {
-      query: string;
-      sourceProfile: unknown;
-      negotiationDigests: unknown[];
-      summary: unknown;
-      chatContext?: unknown;
-      now: string;
-    };
-  }) => Promise<void>;
+  questionerEnqueue?: QuestionerEnqueueFn;
 }
 
 /** Context used by the minimal (no-LLM) path; only introducerName is needed for narrator chip. */

@@ -129,6 +129,8 @@ export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";
 export type {
   QuestionerInput,
   QuestionerContext,
+  QuestionerEnqueuePayload,
+  QuestionerEnqueueFn,
   DiscoveryContext,
   IntentContext,
   ProfileContext,
