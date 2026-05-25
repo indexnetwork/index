@@ -81,7 +81,13 @@ export interface NegotiationGraphLike {
     opportunityId?: string;
     maxTurns?: number;
     timeoutMs?: number;
-  }): Promise<{ outcome: NegotiationOutcome | null; messages?: NegotiationMessage[] }>;
+  }): Promise<{
+    outcome: NegotiationOutcome | null;
+    messages?: NegotiationMessage[];
+    conversationId?: string;
+    isContinuation?: boolean;
+    priorTurnCount?: number;
+  }>;
 }
 
 /** A2A message record shape (matches messages table). */
@@ -176,6 +182,17 @@ export const NegotiationGraphState = Annotation.Root({
   status: Annotation<'active' | 'waiting_for_agent' | 'completed'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'active' as const,
+  }),
+
+  /** Whether this session continues a prior conversation (DM reuse detected prior turns). */
+  isContinuation: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+  /** Number of turns present in the conversation before this session started. */
+  priorTurnCount: Annotation<number>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => 0,
   }),
 
   outcome: Annotation<NegotiationOutcome | null>({

@@ -297,6 +297,7 @@ export class NegotiationGraphFactory {
             opportunityId: state.opportunityId,
             outcome: "waiting_for_agent",
             turnCount: state.turnCount,
+            isContinuation: state.isContinuation,
           });
         }
         return {};
@@ -342,6 +343,16 @@ export class NegotiationGraphFactory {
           metadata: { hasOpportunity, turnCount: state.turnCount },
         });
 
+        logger.info('[Graph:Finalize] Session complete', {
+          conversationId: state.conversationId,
+          taskId: state.taskId,
+          isContinuation: state.isContinuation,
+          turnsAdded: state.turnCount,
+          priorTurnCount: state.priorTurnCount,
+          outcome: hasOpportunity ? 'accepted' : (atCap ? 'turn_cap' : (lastTurn?.action ?? 'unknown')),
+          opportunityId: state.opportunityId || undefined,
+        });
+
         if (state.opportunityId) {
           const nextStatus = lastTurn?.action === 'accept'
             ? 'pending'
@@ -373,6 +384,9 @@ export class NegotiationGraphFactory {
           opportunityId: state.opportunityId,
           outcome: emittedOutcome,
           turnCount: state.turnCount,
+          isContinuation: state.isContinuation,
+          turnsAdded: state.turnCount,
+          priorTurnCount: state.priorTurnCount,
           ...(outcome.reasoning && { reasoning: outcome.reasoning }),
           ...(hasOpportunity && agreedRoles.length >= 2 && {
             agreedRoles: {
@@ -543,6 +557,8 @@ export async function negotiateCandidates(
         const durationMs = Date.now() - start;
         const outcome = result.outcome;
         const hasOpportunity = outcome?.hasOpportunity === true;
+        const isContinuation = (result as { isContinuation?: boolean }).isContinuation ?? false;
+        const priorTurnCount = (result as { priorTurnCount?: number }).priorTurnCount ?? 0;
 
         const turnFlow = (result.messages ?? [])
           .map((m) => {
@@ -563,6 +579,9 @@ export async function negotiateCandidates(
             opportunityId: candidate.opportunityId,
             negotiationConversationId: (result as { conversationId?: string }).conversationId ?? "",
             durationMs: Date.now() - start,
+            isContinuation,
+            turnsAdded: outcome?.turnCount ?? 0,
+            priorTurnCount,
           });
         }
 
