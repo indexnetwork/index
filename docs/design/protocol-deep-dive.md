@@ -474,7 +474,8 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Input:** `QuestionerInput` envelope with mode (`discovery` | `intent` | `profile` | `negotiation`), userId, sourceType/sourceId, and mode-specific context
 **Output:** Array of `QuestionWithStrategy` (title, prompt, options, multiSelect, strategy)
 **Used by:** QuestionerQueue worker (async, behind `QUESTIONER_ENABLED` flag)
-**Presets:** Currently only `discovery` is implemented; `intent`, `profile`, `negotiation` are planned for Slice 4.
+**Presets:** `discovery`, `intent`, `profile`, `negotiation` — each provides a mode-specific system prompt and context builder.
+**Attachment points:** Intent graph (after creation), profile graph (after save, when gaps detected), negotiation graph (after stall/turn-cap). All fire-and-forget via `questionerEnqueue` callback injection.
 
 ## 5. Chat Tool System
 
