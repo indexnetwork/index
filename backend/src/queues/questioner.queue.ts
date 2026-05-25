@@ -154,10 +154,12 @@ export class QuestionerQueue {
         sourceType: data.sourceType,
         sourceId: data.sourceId,
         timestamp: new Date().toISOString(),
+        ...(data.messageId ? { messageId: data.messageId } : {}),
       },
       actors: [{ userId: data.userId, role: 'subject' as const }],
       payload: question,
       strategy: result.strategies[i],
+      conversationId: data.conversationId,
     }));
 
     const ids = await this.adapter.persist(batch);
