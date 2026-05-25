@@ -247,6 +247,7 @@ export const userProfiles = pgTable('user_profiles', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   embedding: vector('embedding', { dimensions: 2000 }),
+  /** @deprecated Replaced by premises entity (IND-320). Will be dropped in a future migration. */
   implicitIntents: json('implicit_intents'),
 }, (table) => ({
   embeddingIndex: index('user_profiles_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
