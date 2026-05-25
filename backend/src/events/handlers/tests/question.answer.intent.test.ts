@@ -118,4 +118,20 @@ describe("enqueueIntentRefinementFactory", () => {
     expect(newDesc).toContain("[Refined: Must be available for in-person meetings]");
     expect(newDesc).not.toContain("[Refined: .");
   });
+
+  it("skips refinement when answer has no content", async () => {
+    const deps = makeDeps();
+    const fn = enqueueIntentRefinementFactory(deps);
+
+    await fn({
+      userId: "u-1",
+      intentId: "int-1",
+      questionId: "q-1",
+      selectedOptions: [],
+      freeText: "   ",
+    });
+
+    expect(deps.updateIntentDescription).not.toHaveBeenCalled();
+    expect(deps.enqueueHydeRegeneration).not.toHaveBeenCalled();
+  });
 });

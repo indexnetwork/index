@@ -96,4 +96,20 @@ describe("createPremiseFromAnswerFactory", () => {
     const call = (deps.createPremise as ReturnType<typeof mock>).mock.calls[0][0];
     expect(call.assertion.text).toBe("I prefer async communication");
   });
+
+  it("skips premise creation when answer has no content", async () => {
+    const deps = makeDeps();
+    const fn = createPremiseFromAnswerFactory(deps);
+
+    await fn({
+      userId: "u-1",
+      questionId: "q-1",
+      selectedOptions: [],
+      freeText: "   ",
+      sourceId: "prof-1",
+    });
+
+    expect(deps.createPremise).not.toHaveBeenCalled();
+    expect(deps.emitPremiseCreated).not.toHaveBeenCalled();
+  });
 });

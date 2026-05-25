@@ -43,6 +43,14 @@ export function createPremiseFromAnswerFactory(deps: PremiseCreatorDeps) {
   }): Promise<void> => {
     const assertionText = buildAssertionText(input.selectedOptions, input.freeText);
 
+    if (!assertionText) {
+      logger.warn('Empty answer content — skipping premise creation', {
+        questionId: input.questionId,
+        userId: input.userId,
+      });
+      return;
+    }
+
     logger.verbose('Creating premise from profile answer', {
       userId: input.userId,
       questionId: input.questionId,

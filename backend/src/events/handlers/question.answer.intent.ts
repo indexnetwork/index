@@ -67,6 +67,15 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
       return;
     }
 
+    const hasContent = input.selectedOptions.length > 0 || !!input.freeText?.trim();
+    if (!hasContent) {
+      logger.warn('Empty answer content — skipping intent refinement', {
+        intentId: input.intentId,
+        questionId: input.questionId,
+      });
+      return;
+    }
+
     const addendum = buildRefinementAddendum(input.selectedOptions, input.freeText);
     const newDescription = intent.description + addendum;
 
