@@ -13,6 +13,7 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
 import { selectByComposition } from "./opportunity.utils.js";
+import { mergePendingQuestions } from "./opportunity.pending-questions.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
@@ -936,6 +937,19 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           process.env.ENABLE_DISCOVERY_QUESTIONS === "true" &&
           (!!context.sessionId || !!context.isMcp),
       });
+
+      // ── Pending question injection ────────────────────────────────────
+      // Look up previously-generated questions relevant to this user's
+      // discovery context and merge them into the result alongside any
+      // inline-generated questions from the current run.
+      const pendingQuestionResult = await mergePendingQuestions({
+        findPendingQuestions: deps.findPendingQuestions,
+        userId: context.userId,
+        sourceType: 'discovery',
+        surfacedQuestionIds: new Set(), // Dedup handled at chat.agent level
+      });
+      const pendingQuestions = pendingQuestionResult.questions;
+
       const _discoverGraphMs = Date.now() - _discoverGraphStart;
       _discoverTraceEmitter?.({ type: "graph_end", name: "opportunity", durationMs: _discoverGraphMs });
       const _discoverGraphTimings = [
@@ -973,7 +987,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           ...(result.pagination ? { pagination: result.pagination } : {}),
           debugSteps: allDebugSteps,
           _graphTimings: _allGraphTimings,
-          ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+          ...(() => {
+            const allQ = [...(result.questions ?? []), ...pendingQuestions];
+            return allQ.length > 0 ? { questions: allQ } : {};
+          })(),
           ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         });
       }
@@ -987,7 +1004,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           ...(result.pagination ? { pagination: result.pagination } : {}),
           debugSteps: allDebugSteps,
           _graphTimings: _allGraphTimings,
-          ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+          ...(() => {
+            const allQ = [...(result.questions ?? []), ...pendingQuestions];
+            return allQ.length > 0 ? { questions: allQ } : {};
+          })(),
           ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         });
       }
@@ -1007,7 +1027,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           summary: "No new matches (existing connections only)",
           debugSteps: allDebugSteps,
           _graphTimings: _allGraphTimings,
-          ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+          ...(() => {
+            const allQ = [...(result.questions ?? []), ...pendingQuestions];
+            return allQ.length > 0 ? { questions: allQ } : {};
+          })(),
           ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         });
       }
@@ -1188,7 +1211,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               suggestedIntentDescription: searchQuery,
             }
           : {}),
-        ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+        ...(() => {
+          const allQ = [...(result.questions ?? []), ...pendingQuestions];
+          return allQ.length > 0 ? { questions: allQ } : {};
+        })(),
         ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         _graphTimings: _allGraphTimings,
       });

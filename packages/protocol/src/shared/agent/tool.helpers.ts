@@ -29,6 +29,7 @@ import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js"
 import type { MintConnectLink } from "../interfaces/connect-link.interface.js";
 import type { QuestionerDatabase } from "../interfaces/questioner.interface.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
+import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
 
 /** Profile without embedding — used in resolved context to avoid bloating prompts and memory. */
 export type ProfileContext = Omit<ProfileDocument, "embedding"> | null;
@@ -428,6 +429,15 @@ export interface ToolDeps {
    * QUESTIONER_ENABLED=true.
    */
   questionerEnqueue?: QuestionerEnqueueFn;
+  /**
+   * Lookup pending questions for a user, optionally filtered by source.
+   * Used by tools to attach contextually relevant questions to their results.
+   * Injected by the composition root — absent when question delivery is disabled.
+   */
+  findPendingQuestions?: (
+    userId: string,
+    filters?: { sourceType?: string; sourceId?: string },
+  ) => Promise<PendingQuestionSummary[]>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */

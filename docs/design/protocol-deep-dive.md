@@ -493,6 +493,8 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Presets:** `discovery`, `intent`, `profile`, `negotiation` — each provides a mode-specific system prompt and context builder.
 **Attachment points:** Intent graph (after creation), profile graph (after save, when gaps detected), negotiation graph (after stall/turn-cap). All fire-and-forget via `questionerEnqueue` callback injection.
 
+**Question delivery pipeline.** Generated questions are persisted with `expiresAt` (default 7 days). Pending questions are injected into `discover_opportunities` tool results via `mergePendingQuestions` (max 3 per source, deduplicated per session via a local Set in the ChatAgent). The frontend polls `GET /api/questions?status=pending` every 30s and displays a sidebar badge + dropdown. When a user answers, `QuestionEvents.onAnswered` dispatches to mode-specific handlers: profile answers create premises (tier=contextual, confidence=0.9), intent answers append `[Refined: ...]` addenda and enqueue HyDE regeneration, negotiation answers enrich `opportunities.metadata.userAnswers`, and discovery answers are no-ops. Empty answers (no selected options and no free text) are guarded against at the handler level.
+
 ## 5. Chat Tool System
 
 Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool functions that the LLM can invoke during the ReAct loop. Tools handle input validation, call the appropriate subgraph, and return a formatted string result.

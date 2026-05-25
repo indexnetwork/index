@@ -59,12 +59,18 @@ import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { NegotiationEvents } from './events/negotiation.event';
 import { PremiseEvents } from './events/premise.event';
+import { QuestionEvents } from './events/question.event';
+import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
+import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.profile';
+import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
+import { storeNegotiationContextFactory } from './events/handlers/question.answer.negotiation';
 import { premiseQueue } from './queues/premise.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
 import { NegotiationGraphFactory } from '@indexnetwork/protocol';
-import { conversationDatabaseAdapter } from './adapters/database.adapter';
+import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
+import { embedderAdapter } from './adapters/embedder.adapter';
 import { agentService } from './services/agent.service';
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 
@@ -138,6 +144,59 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
   premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_expired' })
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
+};
+
+// ─── Question answer reaction handlers ──────────────────────────────────────
+
+const questionAnswerDeps = {
+  createPremiseFromAnswer: createPremiseFromAnswerFactory({
+    createPremise: (input) => chatDatabaseAdapter.createPremise(input),
+    embedText: async (text) => {
+      const result = await embedderAdapter.generate([text]) as number[][];
+      return result[0] ?? [];
+    },
+    emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
+  }),
+  enqueueIntentRefinement: enqueueIntentRefinementFactory({
+    getIntent: async (intentId) => {
+      const intent = await chatDatabaseAdapter.getIntent(intentId);
+      if (!intent) return null;
+      return {
+        id: intent.id,
+        userId: intent.userId,
+        description: intent.payload,
+        status: (intent.status ?? 'ACTIVE').toLowerCase(),
+      };
+    },
+    updateIntentDescription: async (intentId, newDescription) => {
+      await chatDatabaseAdapter.updateIntent(intentId, { payload: newDescription });
+    },
+    enqueueHydeRegeneration: async (data) => {
+      await intentQueue.addGenerateHydeJob(data);
+    },
+  }),
+  storeNegotiationContext: storeNegotiationContextFactory({
+    getOpportunity: async (opportunityId) => {
+      const opp = await chatDatabaseAdapter.getOpportunity(opportunityId);
+      if (!opp) return null;
+      return {
+        id: opp.id,
+        status: opp.status,
+        metadata: (opp.metadata ?? {}) as Record<string, unknown>,
+      };
+    },
+    updateOpportunityMetadata: async (opportunityId, metadata) => {
+      await chatDatabaseAdapter.updateOpportunityMetadata(opportunityId, metadata);
+    },
+  }),
+};
+
+QuestionEvents.onAnswered = (payload) => {
+  handleQuestionAnswered(payload, questionAnswerDeps)
+    .catch(err => log.job.from('QuestionEvents').error('Answer handler failed', {
+      questionId: payload.questionId,
+      error: err instanceof Error ? err.message : String(err),
+    }));
 };
 
 intentQueue.startWorker();

@@ -1,6 +1,6 @@
 {
-  "id": "0d76aed8-0aed-4e40-ad63-577266ebb39f",
-  "prevId": "598dc829-01eb-4136-9dde-1630e560f444",
+  "id": "1aefabdb-af05-45a2-8214-efa54752aa4c",
+  "prevId": "0d76aed8-0aed-4e40-ad63-577266ebb39f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2885,6 +2885,86 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.questions": {
+      "name": "questions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "detection": {
+          "name": "detection",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actors": {
+          "name": "actors",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "question_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "answer": {
+          "name": "answer",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "questions_status_idx": {
+          "name": "questions_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.sessions": {
       "name": "sessions",
       "schema": "",
@@ -4163,80 +4243,6 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
-    },
-    "public.questions": {
-      "name": "questions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "detection": {
-          "name": "detection",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "actors": {
-          "name": "actors",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "question_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "answer": {
-          "name": "answer",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "questions_status_idx": {
-          "name": "questions_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -4314,6 +4320,15 @@
         "EXPIRED"
       ]
     },
+    "public.question_status": {
+      "name": "question_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "answered",
+        "dismissed"
+      ]
+    },
     "public.source_type": {
       "name": "source_type",
       "schema": "public",
@@ -4370,15 +4385,6 @@
         "auth_required",
         "waiting_for_agent",
         "claimed"
-      ]
-    },
-    "public.question_status": {
-      "name": "question_status",
-      "schema": "public",
-      "values": [
-        "pending",
-        "answered",
-        "dismissed"
       ]
     }
   },

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
-import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, Library, History, Network, Bot } from 'lucide-react';
+import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, Library, History, Network, Bot, CircleHelp } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -15,6 +15,8 @@ import { useOpportunities } from '@/contexts/APIContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import CreateNetworkModal from '@/components/modals/CreateIndexModal';
 import MasterKeyDialog from '@/components/MasterKeyDialog';
+import { useQuestions } from '@/contexts/QuestionsContext';
+import { PendingQuestions } from '@/components/PendingQuestions/PendingQuestions';
 
 
 interface ChatSession {
@@ -47,6 +49,9 @@ export default function Sidebar() {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
+  const { count: pendingQuestionsCount } = useQuestions();
+  const [questionsOpen, setQuestionsOpen] = useState(false);
+  const questionsRef = useRef<HTMLDivElement>(null);
 
   const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
   const isLibraryView = pathname?.startsWith('/library');
@@ -169,6 +174,18 @@ export default function Sidebar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [userDropdownOpen]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (questionsRef.current && !questionsRef.current.contains(event.target as Node)) {
+        setQuestionsOpen(false);
+      }
+    };
+    if (questionsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [questionsOpen]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Logo */}
@@ -266,6 +283,32 @@ export default function Sidebar() {
           )}
         </div>
 
+        {pendingQuestionsCount > 0 && (
+          <div className="relative" ref={questionsRef}>
+            <button
+              type="button"
+              aria-expanded={questionsOpen}
+              onClick={() => setQuestionsOpen(!questionsOpen)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+                questionsOpen
+                  ? 'bg-gray-100 text-black font-bold'
+                  : 'text-black font-medium hover:bg-gray-50'
+              }`}
+            >
+              <CircleHelp className="w-5 h-5" />
+              <span className="flex-1 text-left">Questions</span>
+              <span className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                {pendingQuestionsCount > 99 ? '99+' : pendingQuestionsCount}
+              </span>
+            </button>
+
+            {questionsOpen && (
+              <div className="absolute left-0 right-0 bottom-full mb-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-[340px]">
+                <PendingQuestions />
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       {/* Spacer */}

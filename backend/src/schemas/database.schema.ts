@@ -401,6 +401,7 @@ export const opportunities = pgTable('opportunities', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
 }, (table) => ({
   statusIdx: index('opportunities_status_idx').on(table.status),
 }));
@@ -435,6 +436,7 @@ export const questions = pgTable('questions', {
   payload: jsonb('payload').$type<import('@indexnetwork/protocol').Question>().notNull(),
   status: questionStatusEnum('status').notNull().default('pending'),
   answer: jsonb('answer').$type<QuestionAnswer>(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   statusIdx: index('questions_status_idx').on(table.status),

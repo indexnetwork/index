@@ -11,12 +11,15 @@
  * alignment spec.
  */
 
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, or, isNull } from 'drizzle-orm';
 
 import { questions } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
+
+/** Default question TTL in milliseconds (7 days). */
+const DEFAULT_QUESTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
 
@@ -73,6 +76,7 @@ export interface AdapterPersistedQuestion {
   payload: AdapterQuestionPayload;
   status: 'pending' | 'answered' | 'dismissed';
   answer: AdapterQuestionAnswer | null;
+  expiresAt: string | null;
   createdAt: string;
 }
 
@@ -104,6 +108,7 @@ export class QuestionerAdapter {
       actors: q.actors as QuestionActor[],
       payload: q.payload,
       status: 'pending' as const,
+      expiresAt: new Date(Date.now() + DEFAULT_QUESTION_TTL_MS),
     }));
 
     const inserted = await this.db.insert(questions).values(rows).returning({ id: questions.id });
@@ -128,6 +133,7 @@ export class QuestionerAdapter {
     const conditions = [
       eq(questions.status, 'pending'),
       sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+      or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
     ];
 
     if (filters?.mode) {
@@ -225,6 +231,7 @@ function toPersistedQuestion(
     payload: row.payload as AdapterQuestionPayload,
     status: row.status,
     answer: (row.answer as AdapterQuestionAnswer) ?? null,
+    expiresAt: row.expiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }

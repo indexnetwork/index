@@ -25,6 +25,7 @@ import type { Question, QuestionStrategy } from "../shared/schemas/question.sche
 import type { Opportunity } from "../shared/interfaces/database.interface.js";
 import { Timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
+import { deduplicateQuestions } from "./chat.question-dedup.js";
 
 const logger = protocolLogger("ChatAgent");
 
@@ -831,6 +832,7 @@ export class ChatAgent {
     let messages = initialMessages;
     let iterationCount = 0;
     const toolsDebug: DebugMetaToolCall[] = [];
+    const surfacedQuestionIds = new Set<string>();
 
     while (iterationCount < HARD_ITERATION_LIMIT) {
       if (signal?.aborted) {
@@ -983,7 +985,11 @@ export class ChatAgent {
             result = resultStr;
 
             if (normalized.decisionQuestions && normalized.decisionQuestions.length > 0) {
-              emit({ type: "decision_questions", questions: normalized.decisionQuestions });
+              const { fresh, newIds } = deduplicateQuestions(normalized.decisionQuestions, surfacedQuestionIds);
+              if (fresh.length > 0) {
+                emit({ type: "decision_questions", questions: fresh });
+                for (const id of newIds) surfacedQuestionIds.add(id);
+              }
             }
 
             logger.verbose("Streaming: tool completed", {
@@ -1130,7 +1136,11 @@ export class ChatAgent {
               latestDiscoveryQuestionsDebug = normalized.discoveryQuestionsDebug;
             }
             if (normalized.decisionQuestions && normalized.decisionQuestions.length > 0) {
-              emit({ type: "decision_questions", questions: normalized.decisionQuestions });
+              const { fresh: freshHallucination, newIds: newIdsHallucination } = deduplicateQuestions(normalized.decisionQuestions, surfacedQuestionIds);
+              if (freshHallucination.length > 0) {
+                emit({ type: "decision_questions", questions: freshHallucination });
+                for (const id of newIdsHallucination) surfacedQuestionIds.add(id);
+              }
             }
             emit({
               type: "tool_activity",

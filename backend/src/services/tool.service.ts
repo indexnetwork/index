@@ -16,14 +16,18 @@ import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { enrichUserProfile } from '../lib/parallel/parallel';
+import { QuestionerAdapter } from '../adapters/questioner.adapter';
+import db from '../lib/drizzle/drizzle';
 
 import { log } from '../lib/log';
 import { PremiseEvents } from '../events/premise.event';
 
 const logger = log.service.from('tool');
+
+const questionerAdapter = new QuestionerAdapter(db);
 
 /**
  * Manages direct HTTP invocation of chat tools.
@@ -85,6 +89,21 @@ export class ToolService {
         onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
         onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
         onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
+      },
+      findPendingQuestions: async (userId: string, filters?: { sourceType?: string; sourceId?: string }) => {
+        const rows = await questionerAdapter.findPending(userId, filters);
+        return rows.map((row): PendingQuestionSummary => ({
+          id: row.id,
+          title: row.payload.title,
+          prompt: row.payload.prompt,
+          options: row.payload.options,
+          multiSelect: row.payload.multiSelect,
+          mode: row.detection.mode,
+          sourceType: row.detection.sourceType,
+          sourceId: row.detection.sourceId,
+          createdAt: row.createdAt,
+          ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+        }));
       },
       graphs,
     };
@@ -148,6 +167,21 @@ export class ToolService {
         onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
         onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
         onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
+      },
+      findPendingQuestions: async (userId: string, filters?: { sourceType?: string; sourceId?: string }) => {
+        const rows = await questionerAdapter.findPending(userId, filters);
+        return rows.map((row): PendingQuestionSummary => ({
+          id: row.id,
+          title: row.payload.title,
+          prompt: row.payload.prompt,
+          options: row.payload.options,
+          multiSelect: row.payload.multiSelect,
+          mode: row.detection.mode,
+          sourceType: row.detection.sourceType,
+          sourceId: row.detection.sourceId,
+          createdAt: row.createdAt,
+          ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+        }));
       },
       graphs,
     };
