@@ -50,14 +50,16 @@ export interface TargetNetwork {
 export interface CandidateMatch {
   candidateUserId: Id<'users'>;
   candidateIntentId?: Id<'intents'>;
+  /** Premise that produced this candidate (set when discoverySource is 'premise-similarity'). */
+  candidatePremiseId?: Id<'premises'>;
   networkId: Id<'networks'>;
   similarity: number;
   /** Free-text lens label that produced this match. */
   lens: string;
   candidatePayload: string;
   candidateSummary?: string;
-  /** How this candidate was found: 'query' (HyDE from search text) or 'profile-similarity'. */
-  discoverySource?: 'query' | 'profile-similarity';
+  /** How this candidate was found: 'query' (HyDE from search text), 'profile-similarity', or 'premise-similarity'. */
+  discoverySource?: 'query' | 'profile-similarity' | 'premise-similarity';
 }
 
 /**
@@ -327,8 +329,8 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => ({}),
   }),
 
-  /** Whether discovery used intent (path A) or profile (path B/C). Used by persist for triggeredBy. */
-  discoverySource: Annotation<'intent' | 'profile'>({
+  /** Whether discovery used intent (path A), profile (path B/C), or premise (path D). Used by persist for triggeredBy. */
+  discoverySource: Annotation<'intent' | 'profile' | 'premise'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'intent',
   }),

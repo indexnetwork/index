@@ -37,6 +37,8 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
+  /** Which premise grounded this match (set when discoverySource is 'premise-similarity'). */
+  premise?: Id<'premises'>;
   role: string;
   /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
   approved?: boolean;
