@@ -11,9 +11,9 @@ process.env.OPENROUTER_API_KEY ??= 'test';
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 
 // ─── Mock LLM-calling modules ──────────────────────────────────────────────
-// ProfileGenerator and HydeGenerator create models at MODULE SCOPE, so they
-// call createModel() before mock.module on model.config can intercept it.
-// Instead, we mock the entire module that exports these classes.
+// ProfileGenerator creates models at MODULE SCOPE, so it calls createModel()
+// before mock.module on model.config can intercept it. Instead, we mock the
+// entire module that exports the class.
 
 const mockProfileOutput = {
   identity: {
@@ -39,16 +39,6 @@ mock.module("../profile.generator.js", () => ({
   },
 }));
 
-mock.module("../profile.hyde.generator.js", () => ({
-  HydeGenerator: class MockHydeGenerator {
-    async invoke(_input: string) {
-      return {
-        textToEmbed: 'Mock HyDE text for test user profile',
-      };
-    }
-  },
-}));
-
 const mockDecomposeOutput = {
   reasoning: 'Decomposed input into premises',
   premises: [
@@ -67,7 +57,6 @@ mock.module("../../premise/premise.decomposer.js", () => ({
 
 import { ProfileGraphFactory } from '../profile.graph.js';
 import type { ProfileGraphDatabase, PremiseRecord } from '../../shared/interfaces/database.interface.js';
-import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { Scraper } from '../../shared/interfaces/scraper.interface.js';
 import type { CompiledPremiseGraph } from '../profile.graph.js';
 
@@ -88,7 +77,6 @@ interface ProfileDocument {
 
 describe('ProfileGraph - Premise Decomposition', () => {
   let mockDatabase: ProfileGraphDatabase;
-  let mockEmbedder: Embedder;
   let mockScraper: Scraper;
   let mockPremiseGraph: CompiledPremiseGraph;
 
@@ -104,7 +92,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
       interests: ['testing'],
       skills: ['TypeScript'],
     },
-    embedding: [0.1, 0.2, 0.3],
+    embedding: null,
   };
 
   const mockActivePremises: PremiseRecord[] = [
@@ -157,15 +145,9 @@ describe('ProfileGraph - Premise Decomposition', () => {
         ...(data as object),
       })),
       saveProfile: mock(async () => {}),
-      getHydeDocument: mock(async () => null),
-      saveHydeDocument: mock(async () => ({ id: 'mock-hyde-id' })),
       softDeleteGhost: mock(async () => true),
       getPremisesForUser: mock(async () => mockActivePremises),
     } as unknown as ProfileGraphDatabase;
-
-    mockEmbedder = {
-      generate: mock(async () => [0.1, 0.2, 0.3]),
-    } as unknown as Embedder;
 
     mockScraper = {
       scrape: mock(async () => 'Scraped content about the user: software engineer in Berlin'),
@@ -188,7 +170,6 @@ describe('ProfileGraph - Premise Decomposition', () => {
   function buildGraph() {
     return new ProfileGraphFactory(
       mockDatabase,
-      mockEmbedder,
       mockScraper,
       undefined, // no enricher
       undefined, // no questionerEnqueue
@@ -199,7 +180,6 @@ describe('ProfileGraph - Premise Decomposition', () => {
   function buildGraphWithoutPremise() {
     return new ProfileGraphFactory(
       mockDatabase,
-      mockEmbedder,
       mockScraper,
     ).createGraph();
   }
@@ -297,10 +277,6 @@ describe('ProfileGraph - Premise Decomposition', () => {
     it('should skip scraping and decomposition when scraping is not needed', async () => {
       // Profile already exists, no forceUpdate
       (mockDatabase.getProfile as ReturnType<typeof mock>).mockResolvedValue(mockProfile);
-      (mockDatabase.getHydeDocument as ReturnType<typeof mock>).mockResolvedValue({
-        hydeText: 'Existing HyDE',
-        hydeEmbedding: [0.4, 0.5, 0.6],
-      });
 
       const graph = buildGraph();
       const result = await graph.invoke({
@@ -369,7 +345,6 @@ describe('ProfileGraph - Premise Decomposition', () => {
 
       const graph = new ProfileGraphFactory(
         mockDatabase,
-        mockEmbedder,
         mockScraper,
         undefined, // no enricher
         undefined, // no questionerEnqueue
