@@ -90,6 +90,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
             maxTurns?: number;
             networkId?: string;
             turnContext?: { indexContext?: { networkId?: string } };
+            isContinuation?: boolean;
+            priorTurnCount?: number;
           } | null;
           if (meta?.type !== 'negotiation') return null;
 
@@ -131,6 +133,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
             turnCount,
             status,
             isUsersTurn,
+            isContinuation: meta.isContinuation ?? false,
+            priorTurnCount: meta.priorTurnCount ?? 0,
             latestAction: lastTurnData?.action ?? null,
             latestMessagePreview: lastTurnData?.message ?? null,
             createdAt: task.createdAt,
@@ -204,6 +208,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           maxTurns?: number;
           opportunityId?: string;
           networkId?: string;
+          isContinuation?: boolean;
+          priorTurnCount?: number;
           turnContext?: {
             sourceUser: UserNegotiationContext;
             candidateUser: UserNegotiationContext;
@@ -307,6 +313,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         const isUsersTurn = status !== 'completed' &&
           ((isSource && currentSpeaker === 'source') || (!isSource && currentSpeaker === 'candidate'));
 
+        const isContinuation = meta.isContinuation ?? false;
+        const priorTurnCount = meta.priorTurnCount ?? 0;
+
         return success({
           id: task.id,
           conversationId: task.conversationId,
@@ -315,6 +324,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           counterpartyId: counterpartyId ?? 'unknown',
           turnCount,
           isUsersTurn,
+          isContinuation,
+          priorTurnCount,
+          turnsAdded: turnCount - priorTurnCount,
           turns,
           outcome,
           context: negotiationContext,
