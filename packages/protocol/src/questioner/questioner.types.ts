@@ -28,6 +28,8 @@ export interface IntentContext {
 export interface ProfileContext {
   userProfile: { name?: string; bio?: string; location?: string; skills?: string[]; interests?: string[] };
   gaps: string[];
+  /** Existing premise texts the user has already stated (e.g. "I live in Berlin"). */
+  existingPremises?: string[];
 }
 
 /** Negotiation context — data from a stalled or capped negotiation. */
