@@ -570,6 +570,7 @@ export class IntentGraphFactory {
               );
 
               if (this.questionerEnqueue) {
+                const parsed = parseProfile(state.userProfile);
                 this.questionerEnqueue({
                   mode: 'intent',
                   userId: state.userId,
@@ -578,7 +579,12 @@ export class IntentGraphFactory {
                   context: {
                     intentId: created.id,
                     payload: sanitizedPayload,
-                    userProfile: {},
+                    userProfile: {
+                      name: parsed?.identity?.name,
+                      bio: parsed?.identity?.bio,
+                      skills: parsed?.attributes?.skills,
+                      interests: parsed?.attributes?.interests,
+                    },
                   },
                 }).catch((err) =>
                   logger.error('Failed to enqueue intent question generation', { intentId: created.id, error: err })
