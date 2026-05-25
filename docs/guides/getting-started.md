@@ -344,7 +344,7 @@ Examples:
 feat(chat): add streaming response support
 fix(auth): resolve invalid_origin error for localhost
 docs: update getting started guide
-refactor(intent): use NegotiationDatabase adapter interface
+refactor(intent): use NegotiationGraphDatabase adapter interface
 ```
 
 Breaking changes use `!` after the type or `BREAKING CHANGE:` in the footer.
