@@ -7482,6 +7482,26 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Returns user answers collected by the questioner for a given opportunity.
+   * Reads `metadata.userAnswers` from the opportunities table.
+   */
+  async getOpportunityUserAnswers(opportunityId: string): Promise<Array<{
+    questionId: string;
+    selectedOptions: string[];
+    freeText?: string;
+    answeredAt: string;
+  }>> {
+    const [row] = await db
+      .select({ metadata: opportunities.metadata })
+      .from(opportunities)
+      .where(eq(opportunities.id, opportunityId))
+      .limit(1);
+    if (!row?.metadata) return [];
+    const meta = row.metadata as Record<string, unknown>;
+    return Array.isArray(meta.userAnswers) ? meta.userAnswers : [];
+  }
+
+  /**
    * Gets all messages for a conversation, ordered by creation time (ascending).
    * Used by negotiation tools to reconstruct turn history.
    * @param conversationId - The conversation to fetch messages for

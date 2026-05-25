@@ -1,5 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
+import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 
 /** Zod schema for a single negotiation turn (DataPart payload in A2A message). */
 export const NegotiationTurnSchema = z.object({
@@ -188,6 +189,12 @@ export const NegotiationGraphState = Annotation.Root({
   priorTurnCount: Annotation<number>({
     reducer: (curr, next) => next ?? curr,
     default: () => 0,
+  }),
+
+  /** User answers collected by the questioner between negotiation sessions. */
+  userAnswers: Annotation<NegotiationUserAnswer[]>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
   }),
 
   outcome: Annotation<NegotiationOutcome | null>({

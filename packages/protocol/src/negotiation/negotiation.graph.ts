@@ -104,6 +104,14 @@ export class NegotiationGraphFactory {
           });
         }
 
+        // Load user answers collected by the questioner between sessions
+        const userAnswers = (isContinuation && state.opportunityId)
+          ? await database.getOpportunityUserAnswers(state.opportunityId).catch((err) => {
+              logger.error('[Graph:Init] Failed to load user answers', { opportunityId: state.opportunityId, error: err });
+              return [];
+            })
+          : [];
+
         // Seed messages with prior turns (additive reducer appends new turns on top)
         const seedMessages = isContinuation ? priorMessages.map((m) => ({
           id: m.id,
@@ -121,6 +129,7 @@ export class NegotiationGraphFactory {
           maxTurns,
           isContinuation,
           priorTurnCount: priorTurns.length,
+          ...(userAnswers.length > 0 && { userAnswers }),
           ...(seedMessages.length > 0 && { messages: seedMessages }),
         };
       } catch (err) {
@@ -206,6 +215,7 @@ export class NegotiationGraphFactory {
             isDiscoverer: isSource,
             ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
             isContinuation: state.isContinuation,
+            ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
           });
         }
 

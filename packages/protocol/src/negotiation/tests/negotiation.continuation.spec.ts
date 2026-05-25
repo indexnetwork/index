@@ -22,6 +22,7 @@ function createMockDatabase(overrides: Partial<Record<string, unknown>> = {}) {
     createArtifact: async () => ({ id: "art-1" }),
     setTaskTurnContext: async () => {},
     getNegotiationTaskForOpportunity: async () => null,
+    getOpportunityUserAnswers: async () => [],
     getTasksForUser: async () => [],
     getTask: async () => null,
     getMessagesForConversation: async () => [],
@@ -294,6 +295,83 @@ describe("Negotiation continuation telemetry", () => {
     expect(result.isContinuation).toBe(true);
     expect(result.priorTurnCount).toBe(1);
     expect(result.outcome).not.toBeNull();
+
+    IndexNegotiator.prototype.invoke = origInvoke;
+  }, 30_000);
+
+  it("continuation with userAnswers: passes answers to agent prompt", async () => {
+    const priorTurn = {
+      action: "propose",
+      assessment: { reasoning: "Good fit", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
+    };
+    const priorMessages = [{
+      id: "msg-prior-1",
+      senderId: `agent:${sourceUser.id}`,
+      role: "agent" as const,
+      parts: [{ kind: "data" as const, data: priorTurn }],
+      createdAt: new Date(Date.now() - 60_000),
+    }];
+
+    const mockAnswers = [
+      { questionId: "q1", selectedOptions: ["ML infrastructure"], freeText: "Specifically PyTorch", answeredAt: "2026-05-25T12:00:00Z" },
+      { questionId: "q2", selectedOptions: ["Co-founder"], answeredAt: "2026-05-25T12:01:00Z" },
+    ];
+
+    let capturedInput: Record<string, unknown> | null = null;
+    IndexNegotiator.prototype.invoke = async function (input) {
+      capturedInput = input as unknown as Record<string, unknown>;
+      return { action: "accept", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+    };
+
+    const db = createMockDatabase({
+      getMessagesForConversation: async () => priorMessages,
+      getOpportunityUserAnswers: async () => mockAnswers,
+    });
+    const dispatcher = createMockDispatcher();
+    const graph = new NegotiationGraphFactory(db, dispatcher).createGraph();
+
+    const result = await graph.invoke({
+      sourceUser,
+      candidateUser,
+      indexContext,
+      seedAssessment: seed,
+      opportunityId: "opp-answers",
+      maxTurns: 4,
+    } as Partial<typeof NegotiationGraphState.State>);
+
+    expect(result.isContinuation).toBe(true);
+    expect(result.userAnswers).toHaveLength(2);
+    expect(capturedInput).not.toBeNull();
+    expect((capturedInput as Record<string, unknown>).userAnswers).toHaveLength(2);
+
+    IndexNegotiator.prototype.invoke = origInvoke;
+  }, 30_000);
+
+  it("fresh flow: userAnswers not loaded when not a continuation", async () => {
+    let getAnswersCalled = false;
+    const scripted = [
+      { action: "propose", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } },
+      { action: "accept", assessment: { reasoning: "r2", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } },
+    ];
+    let call = 0;
+    IndexNegotiator.prototype.invoke = async function () { return scripted[Math.min(call++, scripted.length - 1)] as never; };
+
+    const db = createMockDatabase({
+      getOpportunityUserAnswers: async () => { getAnswersCalled = true; return []; },
+    });
+    const dispatcher = createMockDispatcher();
+    const graph = new NegotiationGraphFactory(db, dispatcher).createGraph();
+
+    await graph.invoke({
+      sourceUser,
+      candidateUser,
+      indexContext,
+      seedAssessment: seed,
+      opportunityId: "opp-fresh-no-answers",
+      maxTurns: 4,
+    } as Partial<typeof NegotiationGraphState.State>);
+
+    expect(getAnswersCalled).toBe(false);
 
     IndexNegotiator.prototype.invoke = origInvoke;
   }, 30_000);

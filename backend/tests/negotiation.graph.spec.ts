@@ -40,6 +40,7 @@ function createDeps() {
     getMessagesForConversation: mock(() => Promise.resolve([])),
     getArtifactsForTask: mock(() => Promise.resolve([])),
     getNegotiationTaskForOpportunity: mock(() => Promise.resolve(null)),
+    getOpportunityUserAnswers: mock(() => Promise.resolve([])),
     updateOpportunityStatus,
   } satisfies Partial<NegotiationGraphDatabase>;
   const database = {

@@ -6,6 +6,7 @@ import {
   type UserNegotiationContext,
   type SeedAssessment,
 } from "./negotiation.state.js";
+import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 
 const SYSTEM_PROMPT = `You are the Index Negotiator, an AI agent acting on behalf of {userName}. You represent their interests in a bilateral negotiation about a potential connection on a discovery network.
 
@@ -40,6 +41,8 @@ export interface NegotiationAgentInput {
   discoveryQuery?: string;
   /** Whether this negotiation is continuing a prior conversation with the same counterparty. */
   isContinuation?: boolean;
+  /** User answers collected by the questioner between negotiation sessions. */
+  userAnswers?: NegotiationUserAnswer[];
 }
 
 export interface IndexNegotiatorConfig {
@@ -151,6 +154,14 @@ ${input.discoveryQuery
 Policy: You are continuing a prior dialogue. If this signal is materially the same as one you previously evaluated, you may resolve quickly. If materially different, evaluate on its own merits.`
       : '';
 
+    const userAnswersContext = input.userAnswers && input.userAnswers.length > 0
+      ? `\n\n--- ${userName}'s additional context (provided between sessions) ---\n${input.userAnswers.map((a) => {
+          const parts = a.selectedOptions.length > 0 ? a.selectedOptions.join(', ') : '';
+          const free = a.freeText ? (parts ? ` — ${a.freeText}` : a.freeText) : '';
+          return `- ${parts}${free}`;
+        }).join("\n")}\n`
+      : '';
+
     const discoveryQueryReminder = input.discoveryQuery
       ? `\nREMINDER: ${userName} searched for "${input.discoveryQuery}". Evaluate ${otherName} against this query FIRST. If ${otherName} is not a "${input.discoveryQuery}", reject.\n`
       : '';
@@ -169,7 +180,7 @@ Skills: ${input.otherUser.profile.skills?.join(", ") ?? "N/A"}
 Intents:
 ${input.otherUser.intents.map((i) => `- ${i.title}: ${i.description}`).join("\n")}
 
-Why this match was suggested: ${input.seedAssessment.reasoning}${input.isContinuation ? continuationContext : historyText}
+Why this match was suggested: ${input.seedAssessment.reasoning}${input.isContinuation ? continuationContext : historyText}${userAnswersContext}
 ${discoveryQueryReminder}
 ${input.history.length === 0 && !input.isContinuation ? "This is the opening turn. Propose the connection case." : "Evaluate the latest arguments and respond."}`;
 
