@@ -207,7 +207,7 @@ function buildNegotiationPrompt(ctx: NegotiationContext): string {
   ].join("\n");
 }
 
-const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
+const presets: Record<QuestionMode, QuestionerPreset> = {
   discovery: {
     systemPrompt: DISCOVERY_SYSTEM_PROMPT,
     buildPrompt: (context: unknown) =>
