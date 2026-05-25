@@ -152,6 +152,16 @@ export const ChatGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
+  /**
+   * IDs of questions already surfaced as `decision_questions` events in this
+   * session. Used to deduplicate pending questions injected from tool results
+   * so the same question isn't shown twice within a single chat session.
+   */
+  surfacedQuestionIds: Annotation<Set<string>>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => new Set(),
+  }),
+
   // Legacy subgraph state (used by index/intent/response nodes when present)
   /** Router output: target, operationType, extractedContext. */
   routingDecision: Annotation<RoutingDecision | undefined>({
