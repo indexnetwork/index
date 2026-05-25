@@ -463,15 +463,25 @@ export class ProfileGraphFactory {
               if (enrichment!.identity.bio?.trim()) updatePayload.intro = enrichment!.identity.bio.trim();
               if (enrichment!.identity.location?.trim()) updatePayload.location = enrichment!.identity.location.trim();
 
-              const newSocials: { label: string; value: string }[] = [];
-              if (enrichment!.socials.twitter) newSocials.push({ label: 'twitter', value: enrichment!.socials.twitter });
-              if (enrichment!.socials.linkedin) newSocials.push({ label: 'linkedin', value: enrichment!.socials.linkedin });
-              if (enrichment!.socials.github) newSocials.push({ label: 'github', value: enrichment!.socials.github });
-              if (enrichment!.socials.telegram) newSocials.push({ label: 'telegram', value: enrichment!.socials.telegram });
+              const enrichedSocials: { label: string; value: string }[] = [];
+              if (enrichment!.socials.twitter) enrichedSocials.push({ label: 'twitter', value: enrichment!.socials.twitter });
+              if (enrichment!.socials.linkedin) enrichedSocials.push({ label: 'linkedin', value: enrichment!.socials.linkedin });
+              if (enrichment!.socials.github) enrichedSocials.push({ label: 'github', value: enrichment!.socials.github });
+              if (enrichment!.socials.telegram) enrichedSocials.push({ label: 'telegram', value: enrichment!.socials.telegram });
               if (enrichment!.socials.websites?.length) {
-                for (const w of enrichment!.socials.websites) newSocials.push({ label: 'custom', value: w });
+                for (const w of enrichment!.socials.websites) enrichedSocials.push({ label: 'custom', value: w });
               }
-              if (newSocials.length > 0) await this.database.setUserSocials(state.userId, newSocials);
+              if (enrichedSocials.length > 0) {
+                const existingSocials = await this.database.getUserSocials(state.userId);
+                const enrichedLabels = new Set(enrichedSocials.map(s => s.label));
+                const kept = existingSocials
+                  .filter(s => !enrichedLabels.has(s.label) || s.label === 'custom')
+                  .map(s => ({ label: s.label, value: s.value }));
+                const merged = enrichedLabels.has('custom')
+                  ? [...kept.filter(s => s.label !== 'custom'), ...enrichedSocials]
+                  : [...kept, ...enrichedSocials];
+                await this.database.setUserSocials(state.userId, merged);
+              }
 
               if (Object.keys(updatePayload).length > 0) {
                 await this.database.updateUser(state.userId, updatePayload);
