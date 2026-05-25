@@ -44,7 +44,8 @@ export async function mergePendingQuestions(
   let pending: PendingQuestionSummary[];
   try {
     pending = await input.findPendingQuestions(input.userId, filters);
-  } catch {
+  } catch (err) {
+    console.warn('[mergePendingQuestions] Failed to fetch pending questions, returning empty', err);
     return { questions: [], surfacedIds: [] };
   }
 

@@ -4849,7 +4849,7 @@ export class OpportunityDatabaseAdapter {
   }
 
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
-    await db.update(opportunities).set({ metadata }).where(eq(opportunities.id, id));
+    await db.update(opportunities).set({ metadata, updatedAt: new Date() }).where(eq(opportunities.id, id));
   }
 
   async stampOpportunityActorAction(

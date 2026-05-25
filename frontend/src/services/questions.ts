@@ -63,7 +63,7 @@ export const createQuestionsService = (
    * Optionally filter by mode, sourceType, or sourceId.
    */
   getPending: async (filters?: {
-    mode?: string;
+    mode?: QuestionDetection['mode'];
     sourceType?: string;
     sourceId?: string;
   }): Promise<PendingQuestion[]> => {
