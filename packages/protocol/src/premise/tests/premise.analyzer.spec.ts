@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeAll } from "bun:test";
+// Env must be set before any imports that transitively call createModel
 import { config } from "dotenv";
+config({ path: "backend/.env.test" });
+config({ path: ".env.test" });
 
-config({ path: ".env.development", override: true });
-
+import { describe, it, expect, beforeAll } from "bun:test";
 import { PremiseAnalyzer } from "../premise.analyzer.js";
 
 describe("PremiseAnalyzer", () => {

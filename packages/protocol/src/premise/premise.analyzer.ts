@@ -6,8 +6,6 @@ import { createModel } from "../shared/agent/model.config.js";
 
 const logger = protocolLogger("PremiseAnalyzer");
 
-const model = createModel("premiseAnalyzer");
-
 const systemPrompt = `
 You are the Premise Analyzer for the Index Network — an intent-driven discovery protocol.
 
@@ -92,9 +90,10 @@ export type PremiseAnalyzerOutput = z.infer<typeof responseFormat>;
  * Classifies a premise using adapted Speech Act Theory and scores felicity conditions.
  */
 export class PremiseAnalyzer {
-  private model: ReturnType<typeof model.withStructuredOutput>;
+  private model: ReturnType<ReturnType<typeof createModel>["withStructuredOutput"]>;
 
   constructor() {
+    const model = createModel("premiseAnalyzer");
     this.model = model.withStructuredOutput(responseFormat, {
       name: "premise_analyzer"
     });
