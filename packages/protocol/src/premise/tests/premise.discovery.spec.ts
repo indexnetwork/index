@@ -49,7 +49,7 @@ describe('Premise Discovery', () => {
         similarity: 0.72,
         lens: 'profile_match',
         candidatePayload: 'Product manager at a climate startup',
-        discoverySource: 'profile-similarity',
+        discoverySource: 'query',
       };
       expect(candidate.candidatePremiseId).toBeUndefined();
     });

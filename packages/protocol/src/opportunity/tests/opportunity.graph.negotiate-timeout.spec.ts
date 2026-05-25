@@ -87,7 +87,6 @@ function makeFactory(opts: { hangNegotiationForever: boolean }) {
       matchedVia: 'mirror' as const,
       networkId: 'idx-1',
     }]),
-    searchWithProfileEmbedding: async () => [],
   } as unknown as Embedder;
 
   const mockHyde = {

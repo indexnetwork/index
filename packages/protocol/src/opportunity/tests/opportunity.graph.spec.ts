@@ -122,7 +122,6 @@ function createMockGraph(deps?: {
           networkId: 'idx-1',
         },
       ]),
-    searchWithProfileEmbedding: () => Promise.resolve([]),
   } as unknown as Embedder;
 
   const mockHydeGenerator = {
@@ -218,7 +217,6 @@ function createMockGraphWithFnOverrides(deps?: {
           networkId: 'idx-1',
         },
       ]),
-    searchWithProfileEmbedding: () => Promise.resolve([]),
   } as unknown as Embedder;
 
   const mockHyde = {
@@ -441,10 +439,7 @@ describe('Opportunity Graph', () => {
   describe('Evaluation node: early termination', () => {
     test('when search is query-driven and remaining candidates have no query-sourced entries, remainingCandidates is empty', async () => {
       // 5 query candidates come through HyDE search → tagged 'query'
-      // 25 profile candidates come through profile search → tagged 'profile-similarity'
-      // With EVAL_BATCH_SIZE=25, batch 1 gets all 5 query + 20 profile
-      // Remaining 5 are all profile-similarity → should be cleared
-      const dummyProfileEmbedding = new Array(2000).fill(0.1);
+      // With EVAL_BATCH_SIZE=25, all 5 fit in one batch → remaining = 0
       const queryCandidates = Array.from({ length: 5 }, (_, i) => ({
         type: 'intent' as const,
         id: `intent-query-${i}`,
@@ -453,30 +448,13 @@ describe('Opportunity Graph', () => {
         matchedVia: 'Painters' as const,
         networkId: 'idx-1',
       }));
-      const profileCandidates = Array.from({ length: 25 }, (_, i) => ({
-        type: 'profile' as const,
-        id: `user-profile-${i}`,
-        userId: `${String(i + 1).padStart(8, '0')}-0000-4000-8000-0000000000b0`,
-        score: 0.6 - i * 0.005,
-        matchedVia: 'profile-similarity' as const,
-        networkId: 'idx-1',
-      }));
 
       const { compiledGraph, mockEmbedder } = createMockGraph({
         evaluatorResult: [],
-        getProfile: {
-          userId: 'a0000000-0000-4000-8000-000000000001',
-          embedding: dummyProfileEmbedding,
-          identity: { name: 'Test User', bio: 'Test bio', location: 'Remote' },
-          narrative: { context: 'Test narrative' },
-          attributes: { interests: ['painting'], skills: ['art'] },
-        } satisfies ProfileDocument,
       });
 
       // HyDE search returns query candidates (tagged 'query' in discovery node)
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(queryCandidates);
-      // Profile search returns profile candidates (tagged 'profile-similarity' in discovery node)
-      spyOn(mockEmbedder, 'searchWithProfileEmbedding').mockResolvedValue(profileCandidates);
 
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
@@ -484,8 +462,7 @@ describe('Opportunity Graph', () => {
         options: { minScore: 50 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      // All query candidates consumed in batch 1, remaining are profile-only
-      // Early termination should clear remainingCandidates
+      // All query candidates consumed in one batch → remainingCandidates is empty
       expect(result.remainingCandidates.length).toBe(0);
     });
 
@@ -1485,7 +1462,6 @@ describe('Opportunity Graph', () => {
               networkId: 'idx-1',
             },
           ]),
-        searchWithProfileEmbedding: () => Promise.resolve([]),
       } as unknown as Embedder;
 
       const mockHyde = {
@@ -1883,7 +1859,6 @@ describe('Opportunity Graph', () => {
         generate: () => Promise.resolve(dummyEmbedding),
         search: () => Promise.resolve([]),
         searchWithHydeEmbeddings: () => Promise.resolve([]),
-        searchWithProfileEmbedding: () => Promise.resolve([]),
       } as unknown as Embedder;
 
       const mockHyde = { invoke: () => Promise.resolve({ hydeEmbeddings: { mirror: dummyEmbedding } }) };
@@ -2016,7 +1991,6 @@ describe('Opportunity Graph', () => {
               networkId: 'idx-1',
             },
           ]),
-        searchWithProfileEmbedding: () => Promise.resolve([]),
       } as unknown as Embedder;
 
       const mockHydeGenerator = {
@@ -2141,7 +2115,6 @@ describe('Opportunity Graph', () => {
               networkId: 'idx-1',
             },
           ]),
-        searchWithProfileEmbedding: () => Promise.resolve([]),
       } as unknown as Embedder;
 
       const mockHydeGenerator = {
@@ -2292,7 +2265,6 @@ describe('Opportunity Graph', () => {
         generate: () => Promise.resolve(dummyEmbedding),
         search: () => Promise.resolve([]),
         searchWithHydeEmbeddings: () => Promise.resolve([]),
-        searchWithProfileEmbedding: () => Promise.resolve([]),
       } as unknown as Embedder;
 
       const mockHydeGenerator = {
@@ -2631,7 +2603,6 @@ function createTraceMockGraph() {
           networkId: 'idx-1',
         },
       ]),
-    searchWithProfileEmbedding: () => Promise.resolve([]),
   } as unknown as Embedder;
 
   const mockHydeGenerator = {

@@ -52,13 +52,12 @@ const mockEvaluator: OpportunityEvaluatorLike = {
   ],
 };
 
-// Embedder that returns USER_B as a profile-based candidate so the graph
+// Embedder that returns USER_B as a query-based candidate so the graph
 // produces evaluated opportunities and reaches the Persist node.
 const dummyEmbedder: Embedder = {
   generate: async () => DUMMY_EMBEDDING,
   search: async () => [],
-  searchWithHydeEmbeddings: async () => [],
-  searchWithProfileEmbedding: async () => [
+  searchWithHydeEmbeddings: async () => [
     {
       type: 'intent' as const,
       id: 'intent-bob' as Id<'intents'>,
@@ -171,6 +170,7 @@ function buildGraph(db: OpportunityGraphDatabase) {
 const discoveryInput = {
   userId: USER_A,
   operationMode: 'discover' as const,
+  searchQuery: 'co-founder',
   options: { initialStatus: 'latent' as const },
 };
 

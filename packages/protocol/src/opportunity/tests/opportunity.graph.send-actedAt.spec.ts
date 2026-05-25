@@ -15,7 +15,7 @@ import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
 const mockEvaluator: OpportunityEvaluatorLike = { invokeEntityBundle: async () => [] };
 const dummyEmbedder = {
   generate: async () => [], search: async () => [],
-  searchWithHydeEmbeddings: async () => [], searchWithProfileEmbedding: async () => [],
+  searchWithHydeEmbeddings: async () => [],
 } as unknown as Embedder;
 const dummyHyde = { invoke: async () => ({ hydeEmbeddings: { mirror: [], reciprocal: [] } }) };
 
