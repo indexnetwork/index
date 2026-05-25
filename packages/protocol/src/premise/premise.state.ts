@@ -1,5 +1,5 @@
 import { Annotation } from "@langchain/langgraph";
-import type { PremiseAnalysis, PremiseRecord } from "../shared/interfaces/database.interface.js";
+import type { PremiseAnalysis, PremiseProvenance, PremiseRecord } from "../shared/interfaces/database.interface.js";
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
 
 export const PremiseGraphState = Annotation.Root({
@@ -30,7 +30,7 @@ export const PremiseGraphState = Annotation.Root({
     default: () => false,
   }),
 
-  provenanceSource: Annotation<'explicit' | 'enrichment' | 'integration' | 'onboarding' | undefined>({
+  provenanceSource: Annotation<PremiseProvenance['source'] | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
