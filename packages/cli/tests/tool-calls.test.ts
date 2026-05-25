@@ -311,7 +311,7 @@ describe("CLI tool call contracts", () => {
 
     it("discover --introduce gathers entities then calls discover_opportunities with partyUserIds + entities", async () => {
       // Mock the prerequisite tool responses
-      mock.setToolResponse("read_index_memberships", {
+      mock.setToolResponse("read_network_memberships", {
         success: true,
         data: {
           memberships: [{ networkId: "shared-index-1", indexTitle: "AI Network" }],
@@ -337,9 +337,9 @@ describe("CLI tool call contracts", () => {
         json: true,
       });
 
-      // Should have called: read_index_memberships x2, read_user_profiles x2, read_intents x2, discover_opportunities x1
+      // Should have called: read_network_memberships x2, read_user_profiles x2, read_intents x2, discover_opportunities x1
       const toolNames = mock.toolCalls.map((c) => c.toolName);
-      expect(toolNames.filter((n) => n === "read_index_memberships")).toHaveLength(2);
+      expect(toolNames.filter((n) => n === "read_network_memberships")).toHaveLength(2);
       expect(toolNames.filter((n) => n === "read_user_profiles")).toHaveLength(2);
       expect(toolNames.filter((n) => n === "read_intents")).toHaveLength(2);
       expect(toolNames.filter((n) => n === "discover_opportunities")).toHaveLength(1);
@@ -361,7 +361,7 @@ describe("CLI tool call contracts", () => {
     });
 
     it("discover --introduce without hint omits hint field", async () => {
-      mock.setToolResponse("read_index_memberships", {
+      mock.setToolResponse("read_network_memberships", {
         success: true,
         data: { memberships: [{ networkId: "idx-1" }] },
       });
@@ -381,7 +381,7 @@ describe("CLI tool call contracts", () => {
     });
 
     it("discover --introduce fails gracefully when no shared indexes", async () => {
-      mock.setToolResponse("read_index_memberships", {
+      mock.setToolResponse("read_network_memberships", {
         success: true,
         data: { memberships: [] },
       });
@@ -396,7 +396,7 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls.filter((c) => c.toolName === "discover_opportunities")).toHaveLength(0);
       // Should only have the 2 membership lookups
       expect(mock.toolCalls).toHaveLength(2);
-      expect(mock.toolCalls.every((c) => c.toolName === "read_index_memberships")).toBe(true);
+      expect(mock.toolCalls.every((c) => c.toolName === "read_network_memberships")).toBe(true);
     });
 
     it("accept calls update_opportunity with status accepted (CLI: opportunity accept)", async () => {
@@ -441,8 +441,8 @@ describe("CLI tool call contracts", () => {
   // ── Network ──────────────────────────────────────────────────────
 
   describe("network", () => {
-    it("update calls update_index with networkId and settings", async () => {
-      mock.setToolResponse("update_index", { success: true, data: {} });
+    it("update calls update_network with networkId and settings", async () => {
+      mock.setToolResponse("update_network", { success: true, data: {} });
 
       await handleNetwork(client, "update", ["index-123"], {
         title: "New Name",
@@ -450,20 +450,20 @@ describe("CLI tool call contracts", () => {
       });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("update_index");
+      expect(mock.toolCalls[0].toolName).toBe("update_network");
       expect(mock.toolCalls[0].query).toEqual({
         networkId: "index-123",
         settings: { title: "New Name", prompt: "Updated description" },
       });
     });
 
-    it("delete calls delete_index with networkId", async () => {
-      mock.setToolResponse("delete_index", { success: true, data: {} });
+    it("delete calls delete_network with networkId", async () => {
+      mock.setToolResponse("delete_network", { success: true, data: {} });
 
       await handleNetwork(client, "delete", ["index-456"], {});
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("delete_index");
+      expect(mock.toolCalls[0].toolName).toBe("delete_network");
       expect(mock.toolCalls[0].query).toEqual({ networkId: "index-456" });
     });
   });
