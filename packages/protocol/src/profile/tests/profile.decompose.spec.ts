@@ -72,7 +72,6 @@ interface ProfileDocument {
     interests: string[];
     skills: string[];
   };
-  embedding: number[] | number[][] | null;
 }
 
 describe('ProfileGraph - Premise Decomposition', () => {
@@ -92,7 +91,6 @@ describe('ProfileGraph - Premise Decomposition', () => {
       interests: ['testing'],
       skills: ['TypeScript'],
     },
-    embedding: null,
   };
 
   const mockActivePremises: PremiseRecord[] = [
