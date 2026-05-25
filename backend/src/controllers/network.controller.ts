@@ -375,7 +375,13 @@ export class NetworkController {
     try {
       await assertAgentNetworkScope(req, params.id);
       let role: 'owner' | 'member' = 'member';
-      if (body.permissions) {
+      if (body.permissions !== undefined) {
+        if (!Array.isArray(body.permissions)) {
+          return new Response(JSON.stringify({ error: "permissions must be an array" }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
         const isOwnerRole = body.permissions.length === 1 && body.permissions[0] === 'owner';
         const isMemberRole = body.permissions.length === 1 && body.permissions[0] === 'member';
         if (!isOwnerRole && !isMemberRole) {
