@@ -120,7 +120,7 @@ export async function createChatTools(
   const sessionAwareEnqueue: QuestionerEnqueueFn | undefined = deps.questionerEnqueue
     ? (input) => deps.questionerEnqueue!({
         ...input,
-        ...(resolvedContext.sessionId ? { conversationId: resolvedContext.sessionId } : {}),
+        ...(resolvedContext.sessionId && !input.conversationId ? { conversationId: resolvedContext.sessionId } : {}),
       })
     : undefined;
 

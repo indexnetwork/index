@@ -409,6 +409,8 @@ export interface QuestionDetection {
   timestamp: string;
   /** Generation strategy — persisted as metadata, not exposed on read. */
   strategy?: string;
+  /** ID of the assistant message that triggered this question. */
+  messageId?: string;
 }
 
 export interface QuestionActor {
