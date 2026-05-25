@@ -27,7 +27,8 @@ export interface IntentRefinementDeps {
  */
 function buildRefinementAddendum(selectedOptions: string[], freeText?: string): string {
   const parts = selectedOptions.join('; ');
-  const addendum = freeText?.trim() ? `${parts}. ${freeText.trim()}` : parts;
+  const trimmed = freeText?.trim();
+  const addendum = parts && trimmed ? `${parts}. ${trimmed}` : (trimmed || parts);
   return `\n\n[Refined: ${addendum}]`;
 }
 

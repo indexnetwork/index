@@ -80,4 +80,20 @@ describe("createPremiseFromAnswerFactory", () => {
     const call = (deps.createPremise as ReturnType<typeof mock>).mock.calls[0][0];
     expect(call.assertion.text).toBe("Solo option");
   });
+
+  it("handles free-text-only answers (empty selectedOptions)", async () => {
+    const deps = makeDeps();
+    const fn = createPremiseFromAnswerFactory(deps);
+
+    await fn({
+      userId: "u-1",
+      questionId: "q-1",
+      selectedOptions: [],
+      freeText: "I prefer async communication",
+      sourceId: "prof-1",
+    });
+
+    const call = (deps.createPremise as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.assertion.text).toBe("I prefer async communication");
+  });
 });

@@ -286,6 +286,8 @@ export default function Sidebar() {
         {pendingQuestionsCount > 0 && (
           <div className="relative" ref={questionsRef}>
             <button
+              type="button"
+              aria-expanded={questionsOpen}
               onClick={() => setQuestionsOpen(!questionsOpen)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
                 questionsOpen

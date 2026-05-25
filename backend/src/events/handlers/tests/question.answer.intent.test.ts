@@ -100,4 +100,22 @@ describe("enqueueIntentRefinementFactory", () => {
 
     expect(deps.updateIntentDescription).not.toHaveBeenCalled();
   });
+
+  it("handles free-text-only answers (empty selectedOptions)", async () => {
+    const deps = makeDeps();
+    const fn = enqueueIntentRefinementFactory(deps);
+
+    await fn({
+      userId: "u-1",
+      intentId: "int-1",
+      questionId: "q-1",
+      selectedOptions: [],
+      freeText: "Must be available for in-person meetings",
+    });
+
+    const updateCall = (deps.updateIntentDescription as ReturnType<typeof mock>).mock.calls[0];
+    const newDesc: string = updateCall[1];
+    expect(newDesc).toContain("[Refined: Must be available for in-person meetings]");
+    expect(newDesc).not.toContain("[Refined: .");
+  });
 });

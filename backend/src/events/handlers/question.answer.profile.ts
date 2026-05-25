@@ -28,10 +28,9 @@ export interface PremiseCreatorDeps {
  */
 function buildAssertionText(selectedOptions: string[], freeText?: string): string {
   const base = selectedOptions.join('; ');
-  if (freeText?.trim()) {
-    return `${base}. ${freeText.trim()}`;
-  }
-  return base;
+  const trimmed = freeText?.trim();
+  if (base && trimmed) return `${base}. ${trimmed}`;
+  return trimmed || base;
 }
 
 export function createPremiseFromAnswerFactory(deps: PremiseCreatorDeps) {
