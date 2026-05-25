@@ -174,9 +174,9 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 **Flow:** `START -> prep -> scope -> resolve -> discovery -> evaluation -> ranking -> persist -> negotiate -> END`
 
-The graph supports three discovery paths, each searching across profiles, intents, and premises corpora:
+The graph supports multiple discovery paths, searching across intents and premises corpora:
 - **Intent-based (Path A):** Trigger intent is assigned to an index -- use its HyDE documents for search
-- **Profile-based (Path B/C):** Use profile embedding or query-generated HyDE documents for search
+- **Query-based (Path B):** Query-generated HyDE documents for search
 - **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared indexes
 
 Premise-based candidates carry `candidatePremiseId` in the persist node for actor tracking, regardless of discovery source.
@@ -606,12 +606,12 @@ HyDE (Hypothetical Document Embeddings) is the core semantic search technique. I
 2. **Cache check:** For each lens, the system checks Redis cache and PostgreSQL `hyde_documents` table. Only lenses with cache misses proceed to generation.
 
 3. **HyDE generation:** The `HydeGenerator` agent takes each uncached lens and generates a hypothetical document in the target corpus voice:
-   - **Profiles corpus:** Generates a professional biography of the ideal matching person
    - **Intents corpus:** Generates a goal/aspiration statement from the complementary perspective
+   - **Premises corpus:** Generates an identity assertion matching the ideal person's values or expertise
 
-4. **Embedding:** Generated texts are embedded using the same embedding model (text-embedding-3-large, 2000 dimensions) as the stored profiles and intents.
+4. **Embedding:** Generated texts are embedded using the same embedding model (text-embedding-3-large, 2000 dimensions) as the stored intents and premises.
 
-5. **Caching:** Results are cached in Redis (1-hour TTL) and persisted to PostgreSQL for entity sources (intents, profiles).
+5. **Caching:** Results are cached in Redis (1-hour TTL) and persisted to PostgreSQL for entity sources (intents, premises).
 
 ### Dynamic lenses vs. hardcoded strategies
 
@@ -757,27 +757,23 @@ Profile generation combines web scraping, external API enrichment, LLM generatio
 
 ### Generation modes
 
-**Write mode (with meaningful input):** User provides text about themselves -> `generate_profile` node -> ProfileGenerator agent structures it into identity/narrative/attributes -> embed -> save.
+**Write mode (with meaningful input):** User provides text about themselves -> `generate_profile` node -> ProfileGenerator agent structures it into identity/narrative/attributes -> save.
 
-**Write mode (scraping):** User has social links or full name but no text input -> `scrape` node uses the Scraper adapter to gather web data -> `generate_profile` node processes scraped content -> embed -> save.
+**Write mode (scraping):** User has social links or full name but no text input -> `scrape` node uses the Scraper adapter to gather web data -> `generate_profile` node processes scraped content -> save.
 
-**Generate mode:** Uses external enrichment API (Parallel Chat API) via `auto_generate` node. If enrichment returns confident results, the pre-populated profile skips LLM generation and goes directly to embedding. If enrichment fails, falls back to basic user info and LLM generation.
+**Generate mode:** Uses external enrichment API (Parallel Chat API) via `auto_generate` node. If enrichment returns confident results, the pre-populated profile skips LLM generation. If enrichment fails, falls back to basic user info and LLM generation.
 
 **Query mode:** Fast path that returns the existing profile without any LLM calls.
 
-### Embedding and HyDE
+### Premises and HyDE
 
-After profile generation:
-1. The profile text is concatenated (identity + narrative + attributes) and embedded via the Embedder adapter (text-embedding-3-large, 2000 dimensions)
-2. The profile embedding is stored in `user_profiles.embedding` for direct similarity search
-3. A HyDE document is generated for the profile (`mirror` strategy) describing what kind of person would be a good match
-4. The HyDE document is embedded and stored in `hyde_documents` for enhanced retrieval
+After profile generation, the profile is decomposed into premises (identity assertions). Premises carry their own vector embeddings and serve as the profile-level search corpus for HyDE discovery. This replaces the earlier approach of embedding entire profiles into a single vector.
 
 ### State detection
 
 The `check_state` node performs intelligent detection of what components are missing:
 - Profile missing -> needs generation
-- Profile exists but embedding invalid -> needs re-embedding
+- Premises missing -> needs decomposition
 - HyDE document missing -> needs HyDE generation
 - Everything exists and up to date -> returns immediately
 
