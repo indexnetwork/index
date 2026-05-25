@@ -18,6 +18,8 @@ export interface PersistableQuestion {
   actors: QuestionActor[];
   payload: Question;
   strategy: QuestionStrategy;
+  /** Conversation ID — set when the question originates from a chat session. */
+  conversationId?: string;
 }
 
 /** Shape returned by `findPending()` — a persisted question with its DB id and status. */
