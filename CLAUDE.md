@@ -270,7 +270,7 @@ Intent creation is synchronous; complex processing (indexing, generation) is asy
 
 ### Event-Driven Broker System
 
-Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `network_membership.event.ts`. Premise lifecycle events in `premise.event.ts`: `PremiseEvents.onCreated/onUpdated/onRetracted/onExpired` — each enqueues cascade and profile regeneration jobs via `PremiseQueue`. Question lifecycle events in `question.event.ts`: `QuestionEvents.onCreated/onAnswered` — `onAnswered` dispatches to mode-specific handlers (`question.answer.handler.ts`): profile→premise creation, intent→description refinement + HyDE regen, negotiation→opportunity metadata enrichment, discovery→no-op. Services emit events after DB transactions; other services/graphs react independently.
+Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `network_membership.event.ts`. Premise lifecycle events in `premise.event.ts`: `PremiseEvents.onCreated/onUpdated/onRetracted/onExpired` — each enqueues cascade and profile regeneration jobs via `PremiseQueue`. Question lifecycle events in `question.event.ts`: `QuestionEvents.onCreated/onAnswered` — `onAnswered` dispatches to mode-specific handlers (`question.answer.handler.ts`): profile→premise creation, intent→description refinement + HyDE regen, negotiation→opportunity metadata enrichment (read back during continuation via `NegotiationQueries.getOpportunityUserAnswers`), discovery→no-op. Services emit events after DB transactions; other services/graphs react independently.
 
 ### Agent Registry
 
