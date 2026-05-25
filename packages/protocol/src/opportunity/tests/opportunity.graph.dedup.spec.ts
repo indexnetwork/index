@@ -36,7 +36,7 @@ const OPP_ID = 'op000000-0000-4000-8000-000000000001' as Id<'opportunities'>;
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Dummy embedding — non-empty so profile-based discovery runs.
+// Dummy embedding for HyDE and embedder mocks.
 const DUMMY_EMBEDDING = new Array(512).fill(0.1);
 
 const mockEvaluator: OpportunityEvaluatorLike = {
@@ -73,9 +73,8 @@ const dummyHyde = {
   invoke: async () => ({ hydeEmbeddings: { mirror: DUMMY_EMBEDDING, reciprocal: DUMMY_EMBEDDING } }),
 };
 
-// Minimal profile with an embedding so the discovery node picks up the vector.
+// Minimal profile so the discovery node runs.
 const mockProfile = {
-  embedding: DUMMY_EMBEDDING,
   identity: { name: 'Alice', bio: 'Builder' },
   narrative: { context: 'Building things' },
   attributes: { skills: ['TypeScript'], interests: ['startups'] },
@@ -102,7 +101,7 @@ function makeOpportunity(
 
 function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraphDatabase {
   const base: OpportunityGraphDatabase = {
-    // Return a profile with embedding so discovery can run without a search query.
+    // Return a profile so discovery can run.
     getProfile: async () => mockProfile as unknown as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>,
     createOpportunity: async (data) => ({
       ...data,
