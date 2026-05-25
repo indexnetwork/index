@@ -31,8 +31,7 @@ import type { QuestionerDatabase } from "../interfaces/questioner.interface.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
 
-/** Profile without embedding — used in resolved context to avoid bloating prompts and memory. */
-export type ProfileContext = Omit<ProfileDocument, "embedding"> | null;
+export type ProfileContext = ProfileDocument | null;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPILED GRAPH TYPE
@@ -60,7 +59,7 @@ export interface ResolvedToolContext {
   indexName?: string;
   /** True when chat is index-scoped and the user owns the index. */
   isOwner?: boolean;
-  // Rich identity context for prompt/tool orchestration (profile omits embedding to keep context lean).
+  // Rich identity context for prompt/tool orchestration.
   user: UserRecord;
   userProfile: ProfileContext;
   userNetworks: NetworkMembership[];
@@ -256,10 +255,7 @@ export async function resolveChatContext(params: {
     database.getNetworkMemberships(userId),
   ]);
 
-  let userProfile: ProfileContext = null;
-  if (rawProfile) {
-    userProfile = rawProfile;
-  }
+  const userProfile: ProfileContext = rawProfile ?? null;
 
   if (!user) {
     throw new ChatContextAccessError(

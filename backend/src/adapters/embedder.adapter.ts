@@ -152,14 +152,15 @@ export class EmbedderAdapter {
 
     const filter = { indexScope, excludeUserId };
 
-    // Always search ALL corpora (profiles, intents, premises) for each lens.
+    // Search both corpora (intents, premises) for each lens.
     // The corpus hint from the lens inferrer is used only for limit allocation:
     // the preferred corpus gets the full limitPerStrategy while others get half.
+    // 'profiles' hints are remapped to 'premises' (premises decompose profile content).
     const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
 
-      const preferred = le.corpus;
+      const preferred = le.corpus === 'profiles' ? 'premises' : le.corpus;
       return [
         this.searchIntentsForHyde(
           le.embedding,

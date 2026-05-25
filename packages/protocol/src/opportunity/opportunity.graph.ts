@@ -877,20 +877,18 @@ export class OpportunityGraphFactory {
                 }
               })
             );
-            const profileCount = all.filter((c) => !c.candidateIntentId && !c.candidatePremiseId).length;
             const intentCount = all.filter((c) => c.candidateIntentId).length;
             const premiseCount = all.filter((c) => c.candidatePremiseId).length;
             logger.verbose('[Graph:Discovery] searchWithHydeEmbeddings raw results', {
               total: all.length,
-              fromProfile: profileCount,
               fromIntent: intentCount,
               fromPremise: premiseCount,
             });
             const byKey = new Map<string, CandidateMatch>();
             for (const c of all) {
-              // Dedup by candidateUserId + entity (intent, premise, or profile), NOT by indexId.
+              // Dedup by candidateUserId + entity (intent or premise), NOT by indexId.
               // Including indexId caused the same user to appear once per index they belong to.
-              const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : c.candidatePremiseId ? `premise:${c.candidatePremiseId}` : 'profile';
+              const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : `premise:${c.candidatePremiseId}`;
               const key = `${c.candidateUserId}:${entityKey}`;
               if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);
@@ -1061,7 +1059,7 @@ export class OpportunityGraphFactory {
           );
           const byUserAndIndex = new Map<string, CandidateMatch>();
           for (const c of allCandidates) {
-            const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : c.candidatePremiseId ? `premise:${c.candidatePremiseId}` : 'profile';
+            const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : `premise:${c.candidatePremiseId}`;
             const key = `${c.candidateUserId}:${c.networkId}:${entityKey}`;
             if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
               byUserAndIndex.set(key, c);

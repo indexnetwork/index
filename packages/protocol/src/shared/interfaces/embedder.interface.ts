@@ -90,7 +90,7 @@ export interface Embedder extends EmbeddingGenerator, VectorStore {
    *
    * @param lensEmbeddings - Array of lens embeddings to search with
    * @param options - indexScope, excludeUserId, limits, minScore
-   * @returns Deduplicated, ranked candidates (profile or intent) with scores
+   * @returns Deduplicated, ranked candidates (intent or premise) with scores
    */
   searchWithHydeEmbeddings(
     lensEmbeddings: LensEmbedding[],
