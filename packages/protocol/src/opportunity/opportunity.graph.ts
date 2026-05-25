@@ -1114,10 +1114,10 @@ export class OpportunityGraphFactory {
               }
             }
 
-            // Dedup by userId + premiseId
+            // Dedup by userId + premiseId + networkId (a premise can appear in multiple networks)
             const byKey = new Map<string, CandidateMatch>();
             for (const c of premiseCandidates) {
-              const key = `${c.candidateUserId}:${c.candidatePremiseId ?? 'none'}`;
+              const key = `${c.candidateUserId}:${c.candidatePremiseId ?? 'none'}:${c.networkId}`;
               if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);
               }

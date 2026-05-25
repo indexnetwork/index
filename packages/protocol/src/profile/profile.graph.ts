@@ -980,8 +980,16 @@ export class ProfileGraphFactory {
       // Pre-populated profile feeds into embedding (skips generation)
       .addEdge("use_prepopulated_profile", "embed_save_profile")
 
-      // Aggregate profile prepares input -> generate profile uses it (linear)
-      .addEdge("aggregate_profile", "generate_profile")
+      // Aggregate profile: generate if premises found, END if none
+      .addConditionalEdges(
+        "aggregate_profile",
+        (state: typeof ProfileGraphState.State) => {
+          if (state.needsProfileGeneration) return "generate_profile";
+          logger.verbose("Aggregate mode — no premises, ending");
+          return END;
+        },
+        { generate_profile: "generate_profile", [END]: END },
+      )
 
       // Auto-generate routes based on enrichment result
       .addConditionalEdges(
