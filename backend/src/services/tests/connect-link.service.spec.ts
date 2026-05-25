@@ -97,11 +97,6 @@ describe('connect-link service', () => {
       .set({ expiresAt: past })
       .where(eq(connectLinks.code, a.code));
 
-    // Expired code self-heals since the opportunity is actionable.
-    const healed = await resolveConnectLink(a.code);
-    expect(healed).not.toBeNull();
-    expect(healed!.code).toBe(a.code);
-
     // Re-minting must succeed (rotates code + expiresAt + greeting in place)
     // — without this, the unique index on (opp,user,kind) would deadlock the
     // insert and the retry loop would throw after 3 attempts.

@@ -1,13 +1,15 @@
 import { and, eq, gt } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
-import { connectLinks } from '../schemas/database.schema';
+import { connectLinks, opportunities } from '../schemas/database.schema';
 
 export type ConnectLinkKind = 'connect' | 'approve_introduction' | 'outreach' | 'send_direct';
 
 const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const CODE_LENGTH = 10;
 const TTL_DAYS = 30;
+
+const TERMINAL_STATUSES = new Set(['expired', 'rejected']);
 
 function generateCode(): string {
   const bytes = new Uint8Array(CODE_LENGTH);
@@ -155,33 +157,58 @@ export interface ResolvedLink {
   preferredSurface: 'telegram' | 'web' | null;
 }
 
-/**
- * Resolve a short code to its row, only if the row hasn't expired.
- *
- * @param code - The 10-char base62 short code.
- * @returns The resolved link row, or `null` for unknown or expired codes.
- */
-export async function resolveConnectLink(code: string): Promise<ResolvedLink | null> {
-  const [row] = await db
-    .select()
-    .from(connectLinks)
-    .where(and(eq(connectLinks.code, code), gt(connectLinks.expiresAt, new Date())))
-    .limit(1);
-  if (!row) return null;
+function toResolvedLink(row: typeof connectLinks.$inferSelect): ResolvedLink {
   return {
     code: row.code,
     userId: row.userId,
     opportunityId: row.opportunityId,
     kind: row.kind as ConnectLinkKind,
     greeting: row.greeting,
-    // The DB column is unconstrained text — narrow defensively so any non-
-    // canonical value (a new surface added without normalization, a hand-edited
-    // row, a typo) collapses to null rather than silently passing through the
-    // type-cast and being interpreted later as `'telegram' | 'web'`.
     preferredSurface:
       row.preferredSurface === 'telegram' || row.preferredSurface === 'web'
         ? row.preferredSurface
         : null,
   };
+}
+
+/**
+ * Resolve a short code to its row. Self-heals expired codes by extending
+ * TTL when the underlying opportunity is still actionable.
+ *
+ * @param code - The 10-char base62 short code.
+ * @returns The resolved link row, or `null` for unknown codes or codes
+ *   whose opportunity has reached a terminal status.
+ */
+export async function resolveConnectLink(code: string): Promise<ResolvedLink | null> {
+  const [row] = await db
+    .select()
+    .from(connectLinks)
+    .where(eq(connectLinks.code, code))
+    .limit(1);
+  if (!row) return null;
+
+  const now = new Date();
+
+  if (row.expiresAt > now) {
+    return toResolvedLink(row);
+  }
+
+  // Expired — check if the opportunity is still actionable.
+  const [opp] = await db
+    .select({ status: opportunities.status })
+    .from(opportunities)
+    .where(eq(opportunities.id, row.opportunityId))
+    .limit(1);
+
+  if (!opp || TERMINAL_STATUSES.has(opp.status)) return null;
+
+  // Extend TTL.
+  const expiresAt = new Date(now.getTime() + TTL_DAYS * 24 * 60 * 60 * 1000);
+  await db
+    .update(connectLinks)
+    .set({ expiresAt })
+    .where(eq(connectLinks.code, code));
+
+  return toResolvedLink(row);
 }
 
