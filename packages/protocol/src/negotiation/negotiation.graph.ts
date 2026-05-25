@@ -81,15 +81,10 @@ export class NegotiationGraphFactory {
           dispatcher.hasPersonalAgent(state.candidateUser.id, scope),
         ]);
 
+        const ambientMax = Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6;
         let maxTurns = state.maxTurns;
         if (maxTurns == null) {
-          if (sourceHasAgent && candidateHasAgent) {
-            maxTurns = 0;
-          } else if (sourceHasAgent || candidateHasAgent) {
-            maxTurns = 8;
-          } else {
-            maxTurns = 6;
-          }
+          maxTurns = (sourceHasAgent && candidateHasAgent) ? 0 : ambientMax;
         }
 
         const task = await database.createTask(conversation.id, {

@@ -1959,7 +1959,9 @@ export class OpportunityGraphFactory {
         );
 
         const isChatPath = !!state.options?.conversationId;
-        const maxTurns = isChatPath ? 4 : 6;
+        const maxTurns = isChatPath
+          ? Number(process.env.NEGOTIATION_MAX_TURNS_CHAT) || 4
+          : Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6;
 
         // Fetch per-candidate index context (group by networkId to avoid duplicate lookups)
         const uniqueIndexIds = [...new Set(candidates.map(c => c.networkId).filter((id): id is string => !!id))];
@@ -3478,7 +3480,7 @@ export class OpportunityGraphFactory {
           this.negotiationGraph, sourceUser, [candidate],
           { networkId: '', prompt: '' },
           {
-            maxTurns: 6,
+            maxTurns: Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6,
             indexContextOverrides: indexContextMap,
             timeoutMs: AMBIENT_PARK_WINDOW_MS,
             trigger: 'ambient',
