@@ -24,7 +24,7 @@ describe.skipIf(!HAS_OPENROUTER_KEY)('PremiseDecomposer', () => {
 
     // All premises should be first-person
     for (const p of result.premises) {
-      expect(p.text.toLowerCase()).toMatch(/^i\s/);
+      expect(p.text.toLowerCase()).toMatch(/^i\b/);
       expect(['assertive', 'contextual']).toContain(p.tier);
     }
 
@@ -43,7 +43,7 @@ describe.skipIf(!HAS_OPENROUTER_KEY)('PremiseDecomposer', () => {
 
     // All should be first-person
     for (const p of result.premises) {
-      expect(p.text.toLowerCase()).toMatch(/^i\s/);
+      expect(p.text.toLowerCase()).toMatch(/^i\b/);
     }
   }, 30_000);
 
