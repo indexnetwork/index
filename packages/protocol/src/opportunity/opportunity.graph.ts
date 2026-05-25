@@ -724,23 +724,17 @@ export class OpportunityGraphFactory {
           const minScore = 0.3;
 
           if (state.discoverySource === 'profile') {
-            const embedding = state.sourceProfile?.embedding ?? null;
-            const vector = Array.isArray(embedding) && embedding.length > 0 && typeof embedding[0] === 'number'
-              ? (embedding as number[])
-              : Array.isArray(embedding) && Array.isArray(embedding[0])
-                ? (embedding[0] as number[])
-                : null;
+            // Profile-context discovery: HyDE (when search query exists) + premise-to-premise.
+            // Profile-embedding direct search (Path B) has been removed — all semantic
+            // matching goes through HyDE embeddings or premise-to-premise similarity.
 
-            // ALWAYS run query-based HyDE when we have a search query (e.g., "looking for investors")
-            // This ensures we use the right strategies (investor, mentor, etc.) not just mirror
             if (state.searchQuery?.trim()) {
-              logger.verbose('[Graph:Discovery] Profile source with searchQuery → running query HyDE path for broader search', {
+              logger.verbose('[Graph:Discovery] Profile source with searchQuery → running query HyDE + premise paths', {
                 searchQuery: state.searchQuery.trim().substring(0, 80),
-                hasProfileVector: !!vector,
               });
               const queryCandidates = await runQueryHydeDiscovery();
               logger.verbose('[Graph:Discovery] Query HyDE path complete', { candidatesFound: queryCandidates.length });
-              
+
               // Build trace entries for this path
               const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
 
@@ -796,62 +790,6 @@ export class OpportunityGraphFactory {
                   model: getModelName("hydeGenerator"),
                 },
               });
-              
-              // If we also have a profile vector, merge with profile-based results
-              if (vector && vector.length > 0) {
-                const profileCandidates: CandidateMatch[] = [];
-                for (const targetIndex of state.targetNetworks) {
-                  const results = await this.embedder.searchWithProfileEmbedding(vector, {
-                    indexScope: [targetIndex.networkId],
-                    excludeUserId: discoveryUserId,
-                    limitPerStrategy: Math.floor(limitPerStrategy / 2),
-                    limit: Math.floor(perIndexLimit / 2),
-                    minScore,
-                  });
-                  for (const result of results) {
-                    profileCandidates.push({
-                      candidateUserId: result.userId as Id<'users'>,
-                      candidateIntentId: result.type === 'intent' ? result.id as Id<'intents'> : undefined,
-                      networkId: targetIndex.networkId,
-                      similarity: result.score,
-                      lens: result.matchedVia,
-                      candidatePayload: '',
-                      candidateSummary: undefined,
-                      discoverySource: 'profile-similarity' as const,
-                    });
-                  }
-                }
-                // Merge and dedupe - keep both intent and profile candidates per user
-                const byKey = new Map<string, CandidateMatch>();
-                for (const c of [...queryCandidates, ...profileCandidates]) {
-                  const key = `${c.candidateUserId}:${c.networkId}:${c.candidateIntentId ?? 'profile'}:${c.discoverySource ?? 'unknown'}`;
-                  if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
-                    byKey.set(key, c);
-                  }
-                }
-                const merged = Array.from(byKey.values());
-                logger.verbose('[Graph:Discovery] Merged HyDE + profile candidates', { 
-                  hydeCandidates: queryCandidates.length, 
-                  profileCandidates: profileCandidates.length,
-                  merged: merged.length 
-                });
-                
-                traceEntries.push({
-                  node: "discovery",
-                  detail: `+ Profile search → ${profileCandidates.length} additional, merged to ${merged.length}`,
-                  data: {
-                    profileCandidates: profileCandidates.length,
-                    merged: merged.length,
-                  },
-                });
-                
-                const premiseCands = await runPremiseDiscovery();
-                const withPremises = mergePremiseCandidates(merged, premiseCands);
-                if (premiseCands.length > 0) {
-                  traceEntries.push({ node: "discovery", detail: `+ Premise search → ${premiseCands.length} candidate(s), merged to ${withPremises.length}` });
-                }
-                return { candidates: filterByTarget(withPremises), trace: traceEntries };
-              }
 
               const premiseCands = await runPremiseDiscovery();
               const withPremises = mergePremiseCandidates(queryCandidates, premiseCands);
@@ -861,127 +799,15 @@ export class OpportunityGraphFactory {
               return { candidates: filterByTarget(withPremises), trace: traceEntries };
             }
 
-            // No search query - use profile embedding directly (mirror-only)
-            if (!vector || vector.length === 0) {
-              // Still attempt premise-based discovery even without a profile vector
-              const premiseCands = await runPremiseDiscovery();
-              if (premiseCands.length > 0) {
-                return {
-                  candidates: filterByTarget(premiseCands),
-                  trace: [{ node: "discovery", detail: `No profile vector; premise search → ${premiseCands.length} candidate(s)` }],
-                };
-              }
-              return { candidates: [] };
-            }
-            const allCandidates: CandidateMatch[] = [];
-            for (const targetIndex of state.targetNetworks) {
-              const results = await this.embedder.searchWithProfileEmbedding(vector, {
-                indexScope: [targetIndex.networkId],
-                excludeUserId: discoveryUserId,
-                limitPerStrategy,
-                limit: perIndexLimit,
-                minScore,
-              });
-              for (const result of results) {
-                if (result.type === 'intent') {
-                  allCandidates.push({
-                    candidateUserId: result.userId as Id<'users'>,
-                    candidateIntentId: result.id as Id<'intents'>,
-                    networkId: targetIndex.networkId,
-                    similarity: result.score,
-                    lens: result.matchedVia,
-                    candidatePayload: '',
-                    candidateSummary: undefined,
-                    discoverySource: 'profile-similarity' as const,
-                  });
-                } else {
-                  allCandidates.push({
-                    candidateUserId: result.userId as Id<'users'>,
-                    networkId: targetIndex.networkId,
-                    similarity: result.score,
-                    lens: result.matchedVia,
-                    candidatePayload: '',
-                    candidateSummary: undefined,
-                    discoverySource: 'profile-similarity' as const,
-                  });
-                }
-              }
-            }
-            const byUserAndIndex = new Map<string, CandidateMatch>();
-            for (const c of allCandidates) {
-              const key = `${c.candidateUserId}:${c.networkId}:${c.candidateIntentId ?? 'profile'}`;
-              if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
-                byUserAndIndex.set(key, c);
-              }
-            }
-            const candidates = Array.from(byUserAndIndex.values());
-            logger.verbose('[Graph:Discovery] Profile-as-source discovery complete', { candidatesFound: candidates.length });
-
-            // Build trace with individual candidate similarity scores
-            const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
-
-            // Show what the profile search is based on
-            const profileBio = state.sourceProfile?.identity?.bio;
-            const profileContext = state.sourceProfile?.narrative?.context;
-            const profileSummary = profileBio || profileContext || '(profile embedding)';
-
-            // Compute per-lens stats from deduped candidates
-            const lensStats: Record<string, { count: number; avgSimilarity: number }> = {};
-            for (const c of candidates) {
-              const s = c.lens || 'unknown';
-              if (!lensStats[s]) lensStats[s] = { count: 0, avgSimilarity: 0 };
-              lensStats[s].count++;
-              lensStats[s].avgSimilarity += c.similarity;
-            }
-            for (const s of Object.values(lensStats)) {
-              s.avgSimilarity = s.count > 0 ? Math.round((s.avgSimilarity / s.count) * 1000) / 1000 : 0;
-            }
-
-            traceEntries.push({
-              node: "discovery",
-              detail: `Profile-based search → ${candidates.length} candidate(s)`,
-              data: {
-                source: "profile",
-                candidateCount: candidates.length,
-                byLens: lensStats,
-                durationMs: Date.now() - startTime,
-              },
-            });
-
-            traceEntries.push({
-              node: "search_query",
-              detail: `Searching for matches to: "${profileSummary.slice(0, 150)}${profileSummary.length > 150 ? '...' : ''}"`,
-              data: {
-                type: "profile_embedding",
-                bio: profileBio,
-                context: profileContext,
-              },
-            });
-
-            // Add top candidates with similarity scores
-            const sortedCandidates = [...candidates].sort((a, b) => b.similarity - a.similarity).slice(0, 10);
-            for (const c of sortedCandidates) {
-              traceEntries.push({
-                node: "match",
-                detail: `Similarity ${Math.round(c.similarity * 100)}% via ${c.lens}`,
-                data: {
-                  userId: c.candidateUserId,
-                  similarity: Math.round(c.similarity * 100),
-                  lens: c.lens,
-                  hasIntent: !!c.candidateIntentId,
-                },
-              });
-            }
-
+            // No search query — premise-to-premise discovery only
             const premiseCands = await runPremiseDiscovery();
-            const withPremises = mergePremiseCandidates(candidates, premiseCands);
             if (premiseCands.length > 0) {
-              traceEntries.push({ node: "discovery", detail: `+ Premise search → ${premiseCands.length} candidate(s), merged to ${withPremises.length}` });
+              return {
+                candidates: filterByTarget(premiseCands),
+                trace: [{ node: "discovery", detail: `No search query; premise search → ${premiseCands.length} candidate(s)` }],
+              };
             }
-            return {
-              candidates: filterByTarget(withPremises),
-              trace: traceEntries,
-            };
+            return { candidates: [] };
           }
 
           async function runQueryHydeDiscovery(): Promise<CandidateMatch[]> {
@@ -1436,7 +1262,7 @@ export class OpportunityGraphFactory {
         const remaining = dedupedCandidates.slice(EVAL_BATCH_SIZE);
 
         // Early termination: if search was query-driven and no query-sourced candidates remain,
-        // clear remaining to prevent pointless pagination through profile-similarity leftovers
+        // clear remaining to prevent pointless pagination through non-query leftovers
         const isQueryDriven = !!state.searchQuery?.trim();
         const queryRemaining = remaining.filter(
           (c) => c.discoverySource === 'query' || c.discoverySource == null,
