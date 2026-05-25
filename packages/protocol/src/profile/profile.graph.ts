@@ -728,15 +728,6 @@ export class ProfileGraphFactory {
           if (!profile.narrative?.context) gaps.push('current work');
 
           if (gaps.length > 0 && this.questionerEnqueue) {
-            // Fetch existing premises so the questioner LLM avoids re-asking
-            let existingPremises: string[] = [];
-            try {
-              const premises = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
-              existingPremises = premises.map(p => p.assertion.text);
-            } catch (err) {
-              logger.warn('Failed to fetch premises for questioner context', { userId: state.userId, error: err });
-            }
-
             this.questionerEnqueue({
               mode: 'profile',
               userId: state.userId,
