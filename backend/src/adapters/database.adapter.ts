@@ -3827,9 +3827,9 @@ export class ChatDatabaseAdapter {
    *   insert fails and no pre-existing row can be found after a unique
    *   constraint collision (surfaced by the underlying ConversationDatabaseAdapter).
    */
-  async getOrCreateDM(userA: string, userB: string): Promise<{ id: string }> {
+  async getOrCreateDM(userA: string, userB: string, participantType?: 'user' | 'agent'): Promise<{ id: string }> {
     const conversationAdapter = new ConversationDatabaseAdapter();
-    return conversationAdapter.getOrCreateDM(userA, userB);
+    return conversationAdapter.getOrCreateDM(userA, userB, participantType);
   }
 
   /**
@@ -6888,7 +6888,7 @@ export class ConversationDatabaseAdapter {
    * @param userB - Second user ID
    * @returns The existing or newly created conversation
    */
-  async getOrCreateDM(userA: string, userB: string): Promise<Conversation> {
+  async getOrCreateDM(userA: string, userB: string, participantType: 'user' | 'agent' = 'user'): Promise<Conversation> {
     if (userA === userB) {
       throw new Error('Cannot create a DM with yourself');
     }
@@ -6908,8 +6908,8 @@ export class ConversationDatabaseAdapter {
     try {
       return await this.createConversationWithDmPair(
         [
-          { participantId: userA, participantType: 'user' as const },
-          { participantId: userB, participantType: 'user' as const },
+          { participantId: userA, participantType },
+          { participantId: userB, participantType },
         ],
         dmPair,
       );

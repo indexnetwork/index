@@ -1368,7 +1368,7 @@ export interface Database {
    * (Plan B Task 8) to atomically surface the h2h conversation when
    * accepting an opportunity.
    */
-  getOrCreateDM(userA: string, userB: string): Promise<{ id: string }>;
+  getOrCreateDM(userA: string, userB: string, participantType?: 'user' | 'agent'): Promise<{ id: string }>;
 
   /**
    * Clears hiddenAt for a user on a conversation, making it visible in their
