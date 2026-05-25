@@ -1668,8 +1668,7 @@ describe('Opportunity Graph', () => {
           identity: { name: 'Alice Chen', bio: 'Full-stack engineer building AI tools', location: 'Remote' },
           narrative: { context: 'Alice is a software engineer' },
           attributes: { interests: ['machine learning', 'startups'], skills: ['TypeScript', 'Python'] },
-          embedding: dummyEmbedding,
-        } as ProfileDocument & { embedding: number[] },
+        } as ProfileDocument,
         getActiveIntents: () =>
           Promise.resolve([
             {
