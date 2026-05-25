@@ -70,6 +70,10 @@ function makeFactory(opts: { hangNegotiationForever: boolean }) {
     getIntentIndexScores: async () => [],
     getNetworkMemberContext: async () => null,
     getOrCreateDM: async () => ({ id: 'conv-1' }),
+    getNegotiationTaskForOpportunity: async () => null,
+    stampOpportunityActorAction: async () => null,
+    getPremisesForUser: async () => [],
+    searchPremisesBySimilarity: async () => [],
   } as unknown as OpportunityGraphDatabase;
 
   const mockEmbedder = {

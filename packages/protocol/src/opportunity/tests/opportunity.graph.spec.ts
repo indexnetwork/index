@@ -102,6 +102,10 @@ function createMockGraph(deps?: {
     getIntent: () => Promise.resolve(null),
     getIntentIndexScores: async () => [],
     getNetworkMemberContext: async () => null,
+    getNegotiationTaskForOpportunity: async () => null,
+    stampOpportunityActorAction: async () => null,
+    getPremisesForUser: async () => [],
+    searchPremisesBySimilarity: async () => [],
   };
 
   const mockEmbedder: Embedder = {
@@ -194,6 +198,10 @@ function createMockGraphWithFnOverrides(deps?: {
     getIntent: () => Promise.resolve(null),
     getIntentIndexScores: async () => [],
     getNetworkMemberContext: async () => null,
+    getNegotiationTaskForOpportunity: async () => null,
+    stampOpportunityActorAction: async () => null,
+    getPremisesForUser: async () => [],
+    searchPremisesBySimilarity: async () => [],
   };
 
   const mockEmbedder: Embedder = {
@@ -1457,6 +1465,10 @@ describe('Opportunity Graph', () => {
         getIntent: () => Promise.resolve(null),
             getIntentIndexScores: async () => [],
         getNetworkMemberContext: async () => null,
+        getNegotiationTaskForOpportunity: async () => null,
+        stampOpportunityActorAction: async () => null,
+        getPremisesForUser: async () => [],
+        searchPremisesBySimilarity: async () => [],
       };
 
       const mockEmbedder: Embedder = {
@@ -1861,6 +1873,10 @@ describe('Opportunity Graph', () => {
         getIntent: () => Promise.resolve(null),
         getIntentIndexScores: async () => [],
         getNetworkMemberContext: async () => null,
+        getNegotiationTaskForOpportunity: async () => null,
+        stampOpportunityActorAction: async () => null,
+        getPremisesForUser: async () => [],
+        searchPremisesBySimilarity: async () => [],
       };
 
       const mockEmbedder = {
@@ -1980,6 +1996,10 @@ describe('Opportunity Graph', () => {
         getIntent: () => Promise.resolve(null),
         getIntentIndexScores: async () => [],
         getNetworkMemberContext: async () => null,
+        getNegotiationTaskForOpportunity: async () => null,
+        stampOpportunityActorAction: async () => null,
+        getPremisesForUser: async () => [],
+        searchPremisesBySimilarity: async () => [],
       };
 
       const mockEmbedder: Embedder = {
@@ -2101,6 +2121,10 @@ describe('Opportunity Graph', () => {
         getIntent: () => Promise.resolve(null),
         getIntentIndexScores: async () => [],
         getNetworkMemberContext: async () => null,
+        getNegotiationTaskForOpportunity: async () => null,
+        stampOpportunityActorAction: async () => null,
+        getPremisesForUser: async () => [],
+        searchPremisesBySimilarity: async () => [],
       };
 
       const mockEmbedder: Embedder = {
@@ -2258,6 +2282,10 @@ describe('Opportunity Graph', () => {
         getIntent: () => Promise.resolve(null),
         getIntentIndexScores: async () => [],
         getNetworkMemberContext: async () => null,
+        getNegotiationTaskForOpportunity: async () => null,
+        stampOpportunityActorAction: async () => null,
+        getPremisesForUser: async () => [],
+        searchPremisesBySimilarity: async () => [],
       };
 
       const mockEmbedder: Embedder = {
@@ -2343,6 +2371,7 @@ describe('Opportunity Graph', () => {
         getNetworkMemberCount: () => Promise.resolve(0),
         getIntentIndexScores: async () => [],
         getNetworkMemberContext: async () => null,
+        getNegotiationTaskForOpportunity: async () => null,
         getUser: (_id: string) => Promise.resolve({ id: _id, name: 'Test', email: 'test@test.com' }),
         isNetworkMember: () => Promise.resolve(false),
         isIndexOwner: () => Promise.resolve(false),
@@ -2354,6 +2383,9 @@ describe('Opportunity Graph', () => {
           return Promise.resolve({ ...existingOpp, actors: existingOpp.actors.map((a: any) => a.userId === userId && a.role === 'introducer' ? { ...a, approved } : a) } as any);
         },
         getIntent: () => Promise.resolve(null),
+        stampOpportunityActorAction: async () => null,
+        getPremisesForUser: async () => [],
+        searchPremisesBySimilarity: async () => [],
       };
 
       const mockEmbedder = { generate: async () => new Array(2000).fill(0.1) };
@@ -2579,6 +2611,10 @@ function createTraceMockGraph() {
     getIntent: () => Promise.resolve(null),
     getIntentIndexScores: async () => [],
     getNetworkMemberContext: async () => null,
+    getNegotiationTaskForOpportunity: async () => null,
+    stampOpportunityActorAction: async () => null,
+    getPremisesForUser: async () => [],
+    searchPremisesBySimilarity: async () => [],
   };
 
   const mockEmbedder: Embedder = {

@@ -1935,6 +1935,10 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getPremisesForUser'
   // Premise-to-premise discovery (path D) in OpportunityGraph
   | 'searchPremisesBySimilarity'
+> & Pick<
+  NegotiationQueries,
+  // Orphan heal in OpportunityGraph persist node
+  | 'getNegotiationTaskForOpportunity'
 >;
 
 /**
@@ -1973,6 +1977,10 @@ export type OpportunityGraphDatabase = Pick<
   // Premise-to-premise discovery (path D)
   | 'getPremisesForUser'
   | 'searchPremisesBySimilarity'
+> & Pick<
+  NegotiationQueries,
+  // Orphan heal: check if a prior negotiating opportunity has a stale task
+  | 'getNegotiationTaskForOpportunity'
 >;
 
 /**
@@ -1981,9 +1989,12 @@ export type OpportunityGraphDatabase = Pick<
  */
 export interface NegotiationQueries {
   /**
-   * Persists the full negotiation turn context onto the task metadata so
-   * polling agents can reconstruct the same context the system agent sees.
-   * Merges into `metadata.turnContext`, leaving other keys intact.
+   * Persists the full negotiation turn context (source/candidate user contexts,
+   * seed assessment, index context, discovery query) onto the task metadata so
+   * that polling agents can reconstruct the same context the system agent sees
+   * in-process. Merges into `metadata.turnContext`, leaving other keys intact.
+   * @param taskId - Task whose metadata to enrich
+   * @param turnContext - Absolute (source/candidate) view of the negotiation context
    */
   setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>): Promise<void>;
 

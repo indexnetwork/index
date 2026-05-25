@@ -90,6 +90,7 @@ describe('introducer gating lifecycle', () => {
         return Promise.resolve(currentOpp());
       },
       getIntent: () => Promise.resolve(null),
+      getNegotiationTaskForOpportunity: async () => null,
     };
 
     const mockEmbedder = { generate: async () => dummyEmbedding } as unknown as Embedder;

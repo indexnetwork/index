@@ -23,6 +23,7 @@ const seed: SeedAssessment = { reasoning: "Complementary skills", valencyRole: "
 function createDeps() {
   const updateOpportunityStatus = mock(() => Promise.resolve({ id: "opp-1", status: "negotiating" as const }));
   const typedMock = {
+    getOrCreateDM: mock(() => Promise.resolve({ id: "conv-1" })),
     createMessage: mock((data: { parts: unknown[] }) => Promise.resolve({
       id: `msg-${Math.random().toString(36).slice(2, 8)}`,
       senderId: "agent",
@@ -38,11 +39,11 @@ function createDeps() {
     getTask: mock(() => Promise.resolve(null)),
     getMessagesForConversation: mock(() => Promise.resolve([])),
     getArtifactsForTask: mock(() => Promise.resolve([])),
+    getNegotiationTaskForOpportunity: mock(() => Promise.resolve(null)),
     updateOpportunityStatus,
   } satisfies Partial<NegotiationGraphDatabase>;
   const database = {
     ...typedMock,
-    createConversation: mock(() => Promise.resolve({ id: "conv-1" })),
   } as unknown as NegotiationGraphDatabase;
   const dispatcher = {
     dispatch: mock(async () => ({ handled: false as const, reason: "no_agent" as const })),

@@ -38,6 +38,8 @@ export interface NegotiationAgentInput {
   isDiscoverer?: boolean;
   /** The explicit search query that triggered discovery (if any). Takes priority over background intents. */
   discoveryQuery?: string;
+  /** Whether this negotiation is continuing a prior conversation with the same counterparty. */
+  isContinuation?: boolean;
 }
 
 export interface IndexNegotiatorConfig {
@@ -136,6 +138,19 @@ QUERY PRIORITY RULE: This search query is the PRIMARY criterion for this negotia
         }).join("\n")}`
       : "";
 
+    const continuationContext = input.isContinuation && input.history.length > 0
+      ? `\n\n--- Prior dialogue with this counterparty ---
+${historyText}
+
+--- New signal under evaluation ---
+${input.discoveryQuery
+  ? `Discovery query: "${input.discoveryQuery}"`
+  : `Seed assessment: ${input.seedAssessment.reasoning}`
+}
+
+Policy: You are continuing a prior dialogue. If this signal is materially the same as one you previously evaluated, you may resolve quickly. If materially different, evaluate on its own merits.`
+      : '';
+
     const discoveryQueryReminder = input.discoveryQuery
       ? `\nREMINDER: ${userName} searched for "${input.discoveryQuery}". Evaluate ${otherName} against this query FIRST. If ${otherName} is not a "${input.discoveryQuery}", reject.\n`
       : '';
@@ -154,9 +169,9 @@ Skills: ${input.otherUser.profile.skills?.join(", ") ?? "N/A"}
 Intents:
 ${input.otherUser.intents.map((i) => `- ${i.title}: ${i.description}`).join("\n")}
 
-Why this match was suggested: ${input.seedAssessment.reasoning}${historyText}
+Why this match was suggested: ${input.seedAssessment.reasoning}${input.isContinuation ? continuationContext : historyText}
 ${discoveryQueryReminder}
-${input.history.length === 0 ? "This is the opening turn. Propose the connection case." : "Evaluate the latest arguments and respond."}`;
+${input.history.length === 0 && !input.isContinuation ? "This is the opening turn. Propose the connection case." : "Evaluate the latest arguments and respond."}`;
 
     const result = await model.invoke(
       [

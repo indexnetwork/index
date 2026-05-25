@@ -117,6 +117,11 @@ export const NegotiationGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
+  /** Whether this run is continuing a prior conversation with the same pair. */
+  isContinuation: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
   opportunityId: Annotation<string>({
     reducer: (curr, next) => next ?? curr,
     default: () => "",

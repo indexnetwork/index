@@ -150,6 +150,10 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     getUser: async (id) => ({ id, name: 'Test User', email: 'test@example.com' }),
     getOrCreateDM: async () => ({ id: 'conv-1' }),
     getIntent: async () => null,
+    getNegotiationTaskForOpportunity: async () => null,
+    stampOpportunityActorAction: async () => null,
+    getPremisesForUser: async () => [],
+    searchPremisesBySimilarity: async () => [],
   };
   return { ...base, ...overrides };
 }
@@ -276,16 +280,23 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     expect(updateCalledWith![1]).toBe('pending');
   });
 
-  test('stuck negotiating fix: old negotiating opp allows new opportunity creation', async () => {
+  test('stuck negotiating fix: orphaned negotiating opp is reactivated instead of creating new', async () => {
     // Existing negotiating opportunity created 15 minutes ago — outside the 10-minute window.
+    // getNegotiationTaskForOpportunity returns null (no active task), so persist node
+    // reactivates the orphaned opp via updateOpportunityStatus instead of creating a new one.
     const oldNegotiatingOpp = makeOpportunity({
       status: 'negotiating',
       createdAt: new Date(Date.now() - 15 * 60 * 1000),
     });
 
     let createCalled = false;
+    let updateCalledWith: [string, string] | null = null;
     const db = buildDb({
       findOpportunitiesByActors: async () => [oldNegotiatingOpp],
+      updateOpportunityStatus: async (id, status) => {
+        updateCalledWith = [id, status];
+        return { ...oldNegotiatingOpp, status: 'latent' } as unknown as Opportunity;
+      },
       createOpportunity: async (data) => {
         createCalled = true;
         return { ...data, id: 'opp-new', status: 'latent' as const, createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
@@ -293,9 +304,12 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     });
 
     const graph = buildGraph(db);
-    await graph.invoke(discoveryInput);
+    const result = await graph.invoke(discoveryInput);
 
-    expect(createCalled).toBe(true);
+    expect(createCalled).toBe(false);
+    expect(updateCalledWith).not.toBeNull();
+    expect(updateCalledWith![0]).toBe(OPP_ID);
+    expect(result.opportunities?.length).toBeGreaterThanOrEqual(1);
   });
 
   test('introduction path: recent existing opp skips creation (onBehalfOfUserId dedup)', async () => {

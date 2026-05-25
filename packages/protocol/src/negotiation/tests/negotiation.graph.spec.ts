@@ -6,6 +6,7 @@ function mkStubs() {
   const messages: Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }> = [];
   const database = {
     createConversation: async () => ({ id: "conv-1" }),
+    getOrCreateDM: async () => ({ id: "conv-1" }),
     createTask: async () => ({ id: "task-1" }),
     updateOpportunityStatus: async () => {},
     createMessage: async (p: { conversationId: string; senderId: string; parts: unknown[] }) => {
@@ -16,6 +17,8 @@ function mkStubs() {
     updateTaskState: async () => {},
     createArtifact: async () => {},
     setTaskTurnContext: async () => {},
+    getMessagesForConversation: async () => [],
+    getNegotiationTaskForOpportunity: async () => null,
   } as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0];
 
   const dispatcher = {

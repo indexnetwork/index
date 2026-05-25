@@ -2691,6 +2691,37 @@ export class OpportunityGraphFactory {
                     }
                     continue;
                   }
+                } else if (existing.status === 'negotiating') {
+                  // Orphan heal (introduction path): same logic as discovery path
+                  const priorTask = await this.database.getNegotiationTaskForOpportunity(existing.id);
+                  if (priorTask) {
+                    const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
+                    const isFresh = (Date.now() - new Date(priorTask.updatedAt).getTime()) < 5 * 60 * 1000;
+                    if (activeStates.includes(priorTask.state) && isFresh) {
+                      existingBetweenActors.push({
+                        candidateUserId: candidateUserId as Id<'users'>,
+                        networkId: (state.networkId ?? indexIdForActors ?? '') as Id<'networks'>,
+                        existingOpportunityId: existing.id as Id<'opportunities'>,
+                        existingStatus: existing.status,
+                      });
+                      logger.verbose('[Graph:Persist] Skipping negotiating opportunity with active task (introduction path)', {
+                        opportunityId: existing.id,
+                        candidateUserId,
+                        taskState: priorTask.state,
+                      });
+                      continue;
+                    }
+                  }
+                  const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
+                  if (reactivated) {
+                    logger.info('[Graph:Persist] Resuming orphaned negotiating opportunity (introduction path)', {
+                      opportunityId: existing.id,
+                      candidateUserId,
+                      priorTaskState: priorTask?.state,
+                    });
+                    reactivatedOpportunities.push(reactivated);
+                  }
+                  continue;
                 } else if (existing.status === 'latent') {
                   // Upgrade latent to draft for introduction path
                   const upgraded = await this.database.updateOpportunityStatus(existing.id, 'draft');
@@ -2826,6 +2857,40 @@ export class OpportunityGraphFactory {
                       candidateUserId,
                       previousStatus: existing.status,
                       newStatus: initialStatus,
+                    });
+                    reactivatedOpportunities.push(reactivated);
+                  }
+                  continue;
+                } else if (existing.status === 'negotiating') {
+                  // Orphan heal: if a prior opportunity is stuck in 'negotiating' with a stale task,
+                  // reactivate it so the new discovery run can reuse it instead of creating a duplicate.
+                  const priorTask = await this.database.getNegotiationTaskForOpportunity(existing.id);
+                  if (priorTask) {
+                    const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
+                    const isFresh = (Date.now() - new Date(priorTask.updatedAt).getTime()) < 5 * 60 * 1000;
+                    if (activeStates.includes(priorTask.state) && isFresh) {
+                      // Still active — skip (lock gate in init node will handle)
+                      existingBetweenActors.push({
+                        candidateUserId: candidateUserId as Id<'users'>,
+                        networkId: existingIndexId,
+                        existingOpportunityId: existing.id as Id<'opportunities'>,
+                        existingStatus: existing.status,
+                      });
+                      logger.verbose('[Graph:Persist] Skipping negotiating opportunity with active task', {
+                        opportunityId: existing.id,
+                        candidateUserId,
+                        taskState: priorTask.state,
+                      });
+                      continue;
+                    }
+                  }
+                  // Task is stale or missing — reactivate the orphaned negotiating opportunity
+                  const reactivated = await this.database.updateOpportunityStatus(existing.id, initialStatus);
+                  if (reactivated) {
+                    logger.info('[Graph:Persist] Resuming orphaned negotiating opportunity', {
+                      opportunityId: existing.id,
+                      candidateUserId,
+                      priorTaskState: priorTask?.state,
                     });
                     reactivatedOpportunities.push(reactivated);
                   }

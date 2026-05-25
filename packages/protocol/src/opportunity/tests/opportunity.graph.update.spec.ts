@@ -57,6 +57,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     getUser: async (id) => ({ id, name: 'Test', email: 'test@example.com' }),
     getOrCreateDM: async () => ({ id: 'conv-default' }),
     getIntent: async () => null,
+    getNegotiationTaskForOpportunity: async () => null,
   };
   return { ...base, ...overrides };
 }
