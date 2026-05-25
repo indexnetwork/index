@@ -11,12 +11,6 @@ import { createModel } from "../shared/agent/model.config.js";
 
 const logger = protocolLogger("OpportunityEvaluator");
 
-/**
- * Config
- */
-import { config } from "dotenv";
-config({ path: '.env.development' });
-
 const model = createModel("opportunityEvaluator");
 
 // ──────────────────────────────────────────────────────────────
