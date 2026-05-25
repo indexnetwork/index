@@ -1,0 +1,20 @@
+{
+  "name": "agentvillage-skills",
+  "interface": {
+    "displayName": "AgentVillage Skills"
+  },
+  "plugins": [
+    {
+      "name": "agentvillage",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "USER_CONFIG"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

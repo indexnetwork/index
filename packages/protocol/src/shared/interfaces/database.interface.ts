@@ -1987,6 +1987,14 @@ export type OpportunityGraphDatabase = Pick<
  * Negotiation-specific query operations not covered by generic
  * conversation/task primitives.
  */
+/** A user's answer to a questioner-generated question, stored on opportunity metadata. */
+export interface NegotiationUserAnswer {
+  questionId: string;
+  selectedOptions: string[];
+  freeText?: string;
+  answeredAt: string;
+}
+
 export interface NegotiationQueries {
   /**
    * Persists the full negotiation turn context (source/candidate user contexts,
@@ -2011,6 +2019,14 @@ export interface NegotiationQueries {
     createdAt: Date;
     updatedAt: Date;
   } | null>;
+
+  /**
+   * Returns user answers collected by the questioner system for a given
+   * opportunity. Reads `metadata.userAnswers` from the opportunities table.
+   * Used by the negotiation graph to inject between-session context into
+   * continuation prompts.
+   */
+  getOpportunityUserAnswers(opportunityId: string): Promise<NegotiationUserAnswer[]>;
 }
 
 /**

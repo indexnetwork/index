@@ -1,0 +1,9 @@
+{
+  "index": {
+    "type": "http",
+    "url": "https://protocol.index.network/mcp",
+    "headers": {
+      "x-api-key": "${INDEX_API_KEY}"
+    }
+  }
+}
