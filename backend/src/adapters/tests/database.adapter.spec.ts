@@ -373,47 +373,44 @@ describe('ChatDatabaseAdapter', () => {
       expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
     }, 15000);
 
-    it('should reject demoting the last owner (transactional guard)', async () => {
+    it('should reject demoting the last owner under concurrent demotions', async () => {
       await resetRoles();
-      // A is sole owner. The transactional guard locks owner rows with FOR UPDATE,
-      // counts them, and throws if <= 1. In serial access, application guards (self,
-      // access-denied) fire before this path, so test the guard directly via transaction.
-      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
-      let threw = false;
-      try {
-        await db.transaction(async (tx) => {
-          const owners = await tx
-            .select({ userId: networkMembers.userId })
-            .from(networkMembers)
-            .where(and(
-              eq(networkMembers.networkId, fixture.networkId),
-              sql`'owner' = ANY(${networkMembers.permissions})`,
-              isNull(networkMembers.deletedAt)
-            ))
-            .for('update');
-          if (owners.length <= 1) {
-            throw new Error('Cannot demote the last owner');
-          }
-          await tx
-            .update(networkMembers)
-            .set({ permissions: ['member'], updatedAt: new Date() })
-            .where(and(
-              eq(networkMembers.networkId, fixture.networkId),
-              eq(networkMembers.userId, fixture.userAId),
-              isNull(networkMembers.deletedAt)
-            ));
-        });
-      } catch (err: unknown) {
-        if (err instanceof Error && err.message === 'Cannot demote the last owner') {
-          threw = true;
-        } else {
-          throw err;
-        }
-      }
-      expect(threw).toBe(true);
-      // Confirm A is still owner (transaction rolled back)
-      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
-    }, 15000);
+      // Make both A and B owners (2 total)
+      await db.update(networkMembers).set({ permissions: ['owner'] }).where(
+        sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userBId}`
+      );
+
+      // Concurrently: A demotes B, B demotes A.
+      // FOR UPDATE lock serializes the transactions — the second sees ownerCount = 1
+      // after the first commits and rejects the demotion.
+      const results = await Promise.allSettled([
+        adapter.updateMemberRole(fixture.networkId, fixture.userBId, fixture.userAId, 'member'),
+        adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userBId, 'member'),
+      ]);
+
+      const fulfilled = results.filter(r => r.status === 'fulfilled');
+      const rejected = results.filter(r => r.status === 'rejected');
+      expect(fulfilled.length).toBe(1);
+      expect(rejected.length).toBe(1);
+      // The rejected call hits either the demotion guard ("Cannot demote the last owner")
+      // or the access check ("Access denied") depending on timing — both prevent 0 owners.
+      const errorMsg = (rejected[0] as PromiseRejectedResult).reason.message;
+      expect(
+        errorMsg === 'Cannot demote the last owner' ||
+        errorMsg === 'Access denied: Only owners can change member roles'
+      ).toBe(true);
+
+      // Exactly one owner remains
+      const owners = await db
+        .select({ userId: networkMembers.userId })
+        .from(networkMembers)
+        .where(and(
+          eq(networkMembers.networkId, fixture.networkId),
+          sql`'owner' = ANY(${networkMembers.permissions})`,
+          isNull(networkMembers.deletedAt)
+        ));
+      expect(owners.length).toBe(1);
+    }, 30000);
 
     it('should reject self role change', async () => {
       await resetRoles();
