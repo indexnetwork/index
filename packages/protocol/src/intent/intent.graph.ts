@@ -569,19 +569,21 @@ export class IntentGraphFactory {
                 logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
               );
 
-              this.questionerEnqueue?.({
-                mode: 'intent',
-                userId: state.userId,
-                sourceType: 'intent',
-                sourceId: created.id,
-                context: {
-                  intentId: created.id,
-                  payload: sanitizedPayload,
-                  userProfile: {},
-                },
-              }).catch((err) =>
-                logger.error('Failed to enqueue intent question generation', { intentId: created.id, error: err })
-              );
+              if (this.questionerEnqueue) {
+                this.questionerEnqueue({
+                  mode: 'intent',
+                  userId: state.userId,
+                  sourceType: 'intent',
+                  sourceId: created.id,
+                  context: {
+                    intentId: created.id,
+                    payload: sanitizedPayload,
+                    userProfile: {},
+                  },
+                }).catch((err) =>
+                  logger.error('Failed to enqueue intent question generation', { intentId: created.id, error: err })
+                );
+              }
 
             } else if (actionType === 'update') {
               const updateAction = action as {

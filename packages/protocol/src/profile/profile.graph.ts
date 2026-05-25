@@ -687,8 +687,8 @@ export class ProfileGraphFactory {
           if (!profile.attributes?.interests?.length) gaps.push('interests');
           if (!profile.narrative?.context) gaps.push('current work');
 
-          if (gaps.length > 0) {
-            this.questionerEnqueue?.({
+          if (gaps.length > 0 && this.questionerEnqueue) {
+            this.questionerEnqueue({
               mode: 'profile',
               userId: state.userId,
               sourceType: 'profile',
