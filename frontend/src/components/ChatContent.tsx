@@ -488,7 +488,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       setInjectedQuestions([]);
       return;
     }
-    questionsService.getByConversation(sessionId).then(setInjectedQuestions).catch(() => {});
+    let active = true;
+    questionsService.getByConversation(sessionId).then((qs) => {
+      if (active) setInjectedQuestions(qs);
+    }).catch(() => {});
+    return () => { active = false; };
   }, [sessionId, questionsService]);
 
   // Group injected questions by messageId

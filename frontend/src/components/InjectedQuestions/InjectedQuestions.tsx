@@ -93,7 +93,7 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
             disabled={submitting}
             onChange={(checked) => {
               setOtherSelected(checked);
-              if (!checked) setSelectedLabels([]);
+              if (checked) setSelectedLabels([]);
             }}
           />
           {otherSelected && (
