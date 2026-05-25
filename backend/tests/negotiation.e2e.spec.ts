@@ -3,7 +3,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, it, expect } from "bun:test";
 import { NegotiationGraphFactory } from "@indexnetwork/protocol";
-import type { NegotiationDatabase } from "@indexnetwork/protocol";
+import type { NegotiationGraphDatabase } from "@indexnetwork/protocol";
 import { conversationDatabaseAdapter } from "../src/adapters/database.adapter";
 
 // Prerequisites: requires DATABASE_URL and OPENROUTER_API_KEY in .env.test
@@ -17,7 +17,7 @@ const noopDispatcher = {
 describe("Negotiation E2E", () => {
   it("runs a full negotiation with real agents and A2A persistence", async () => {
     const factory = new NegotiationGraphFactory(
-      conversationDatabaseAdapter as unknown as NegotiationDatabase,
+      conversationDatabaseAdapter as unknown as NegotiationGraphDatabase,
       noopDispatcher,
     );
     const graph = factory.createGraph();

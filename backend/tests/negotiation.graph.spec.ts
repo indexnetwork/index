@@ -4,7 +4,7 @@ config({ path: ".env.test", override: true });
 import { describe, it, expect, mock } from "bun:test";
 
 import { NegotiationGraphFactory } from "@indexnetwork/protocol";
-import type { NegotiationDatabase, AgentDispatcher, UserNegotiationContext, SeedAssessment } from "@indexnetwork/protocol";
+import type { NegotiationGraphDatabase, AgentDispatcher, UserNegotiationContext, SeedAssessment } from "@indexnetwork/protocol";
 
 const sourceUser: UserNegotiationContext = {
   id: "user-source",
@@ -40,7 +40,7 @@ function createDeps() {
     getMessagesForConversation: mock(() => Promise.resolve([])),
     getArtifactsForTask: mock(() => Promise.resolve([])),
     updateOpportunityStatus,
-  } satisfies Partial<NegotiationDatabase> as unknown as NegotiationDatabase;
+  } satisfies Partial<NegotiationGraphDatabase> as unknown as NegotiationGraphDatabase;
   const dispatcher = {
     dispatch: mock(async () => ({ handled: false as const, reason: "no_agent" as const })),
     hasPersonalAgent: mock(async () => false),
