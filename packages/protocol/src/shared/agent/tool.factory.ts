@@ -142,6 +142,7 @@ export async function createChatTools(
         deps.negotiationDatabase,
         deps.agentDispatcher,
         deps.negotiationTimeoutQueue,
+        sessionAwareEnqueue,
       ).createGraph()
     : undefined;
   const opportunityGraph = new OpportunityGraphFactory(
@@ -199,7 +200,7 @@ export async function createChatTools(
     ...(deps.premiseEvents && { premiseEvents: deps.premiseEvents }),
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
     ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
-    ...(deps.questionerEnqueue && { questionerEnqueue: deps.questionerEnqueue }),
+    ...(sessionAwareEnqueue && { questionerEnqueue: sessionAwareEnqueue }),
     ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
     graphs: {
       profile: profileGraph,
