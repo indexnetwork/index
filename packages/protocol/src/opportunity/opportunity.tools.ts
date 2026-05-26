@@ -322,6 +322,7 @@ export function buildMinimalOpportunityCard(
  */
 type OpportunityCardLike = Record<string, unknown> & {
   opportunityId: string;
+  userId?: string | undefined;
   name?: string | undefined;
   mainText?: string | undefined;
   status?: string | undefined;
