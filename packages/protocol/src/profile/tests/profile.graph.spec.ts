@@ -334,8 +334,8 @@ const mockEnrichUserProfile = mock(async () => null as any);
  * Integration tests for generate mode (ghost user profile generation).
  *
  * These tests mock the enrichUserProfile Chat API call and verify that the
- * profile graph correctly handles both enrichment success (prePopulatedProfile)
- * and fallback to LLM-based generation.
+ * profile graph correctly handles both enrichment success (text blob routed
+ * through LLM generation) and fallback to basic info LLM generation.
  */
 describe('ProfileGraph - Generate Mode', () => {
   let mockDatabase: ProfileGraphDatabase;
@@ -373,7 +373,7 @@ describe('ProfileGraph - Generate Mode', () => {
   }
 
   // ─────────────────────────────────────────────────────────
-  // enrichUserProfile success path (prePopulatedProfile)
+  // enrichUserProfile success path (text blob → LLM generation)
   // ─────────────────────────────────────────────────────────
 
   describe('when enrichUserProfile returns a structured profile', () => {
@@ -395,7 +395,7 @@ describe('ProfileGraph - Generate Mode', () => {
       isHuman: true,
     };
 
-    it('should use pre-populated profile, skipping LLM generation', async () => {
+    it('should generate profile from enrichment text blob via LLM', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(user);
       mockEnrichUserProfile.mockResolvedValue(enrichmentResult);
 
@@ -407,12 +407,10 @@ describe('ProfileGraph - Generate Mode', () => {
 
       expect(result.error).toBeUndefined();
       expect(result.profile).toBeDefined();
-      expect(result.profile!.identity.name).toBe('Jane Doe');
-      expect(result.profile!.identity.bio).toBe('Senior engineer at Acme Corp');
-      expect(result.profile!.attributes.skills).toContain('TypeScript');
+      expect(result.profile!.identity.name).toBeTruthy();
       expect(mockDatabase.saveProfile).toHaveBeenCalledWith(user.id, expect.anything());
       expect(mockDatabase.updateUser).toHaveBeenCalled();
-    }, 60_000);
+    }, 120_000);
 
     it('should update ghost user display name from enrichment when placeholder', async () => {
       const ghost = {
@@ -586,117 +584,84 @@ describe('ProfileGraph - Generate Mode', () => {
   });
 });
 
-// ─── Pre-populated profile path tests ───────────────────────────────────────
+// ─── Enrichment → Premise Decomposition Path ─────────────────────────────────
 
-/**
- * Tests for the pre-populated profile path in ProfileGraph.
- * When a prePopulatedProfile is provided (e.g. from Parallel Chat API),
- * the graph should skip LLM profile generation and go directly to save.
- */
-describe('ProfileGraph - Pre-Populated Profile Path', () => {
+describe('ProfileGraph - Enrichment with Premise Decomposition', () => {
   let mockDatabase: ProfileGraphDatabase;
   let mockScraper: Scraper;
-  let savedProfiles: Map<string, unknown>;
+  let mockPremiseGraph: { invoke: ReturnType<typeof mock> };
 
-  const prePopulatedProfile = {
-    identity: {
-      name: 'Sarah Hoople Shere',
-      bio: 'VP of Operations at TechCo with experience in scaling startups.',
-      location: 'San Francisco, CA',
-    },
-    narrative: {
-      context: 'Sarah is currently VP of Operations at TechCo, focused on scaling the company.',
-    },
-    attributes: {
-      skills: ['operations', 'strategy', 'scaling'],
-      interests: ['startups', 'leadership'],
-    },
+  const enrichmentResult = {
+    identity: { name: 'Jane Doe', bio: 'Senior engineer at Acme Corp', location: 'San Francisco, USA' },
+    narrative: { context: 'Jane is a seasoned software engineer with 10 years of experience.' },
+    attributes: { skills: ['TypeScript', 'React', 'Node.js'], interests: ['AI', 'Open Source'] },
+    socials: { linkedin: 'janedoe', twitter: 'janedoe', github: 'janedoe', websites: [] },
+    confidentMatch: true,
+    isHuman: true,
+  };
+
+  const user = {
+    id: 'user-premise-enrichment',
+    name: 'Jane Doe',
+    email: 'jane@example.com',
+    socials: [{ id: '1', userId: 'user-premise-enrichment', label: 'linkedin', value: 'janedoe' }],
+    location: null,
+    intro: null,
   };
 
   beforeEach(() => {
-    savedProfiles = new Map();
+    mockEnrichUserProfile.mockReset();
 
     mockDatabase = {
       getProfile: mock(async () => null),
       getProfileByUserId: mock(async () => null),
-      getUser: mock(async () => ({
-        id: 'ghost-sarah',
-        name: 'Sarah Hoople Shere',
-        email: 'sarah@example.com',
-        socials: [],
-        location: null,
-        intro: null,
-      })),
-      getUserSocials: mock(async () => []),
+      getUser: mock(async () => user),
+      getUserSocials: mock(async () => user.socials),
       setUserSocials: mock(async () => {}),
-      updateUser: mock(async (userId: string, data: unknown) => ({ id: userId, ...data as object })),
-      saveProfile: mock(async (userId: string, profile: unknown) => {
-        savedProfiles.set(userId, profile);
-      }),
+      updateUser: mock(async (userId: string, data: any) => ({ id: userId, ...data })),
+      saveProfile: mock(async () => {}),
       softDeleteGhost: mock(async () => true),
+      findDuplicateUser: mock(async () => null),
+      mergeGhostUser: mock(async () => {}),
       getPremisesForUser: mock(async () => []),
-    } as unknown as ProfileGraphDatabase;
+    } as any;
 
-    mockScraper = {
-      scrape: mock(async () => ''),
-    } as unknown as Scraper;
+    mockScraper = { scrape: mock(async () => '') } as any;
+
+    mockPremiseGraph = {
+      invoke: mock(async (input: any) => ({
+        premise: { id: `premise-${Date.now()}` },
+      })),
+    };
   });
 
-  function buildGraph() {
-    return new ProfileGraphFactory(mockDatabase, mockScraper).createGraph();
-  }
+  it('should route enrichment through premise decomposition when premiseGraph is provided', async () => {
+    mockEnrichUserProfile.mockResolvedValue(enrichmentResult);
 
-  it('skips profile generation and saves pre-populated profile directly', async () => {
-    const graph = buildGraph();
+    const factory = new ProfileGraphFactory(
+      mockDatabase,
+      mockScraper,
+      { enrichUserProfile: mockEnrichUserProfile },
+      undefined, // questionerEnqueue
+      mockPremiseGraph as any, // premiseGraph — 5th constructor arg
+    );
+    const graph = factory.createGraph();
+
     const result = await graph.invoke({
-      userId: 'ghost-sarah',
+      userId: user.id,
       operationMode: 'generate',
-      prePopulatedProfile,
     });
 
     expect(result.error).toBeUndefined();
     expect(result.profile).toBeDefined();
-    expect(result.profile!.identity.name).toBe('Sarah Hoople Shere');
-    expect(result.profile!.identity.bio).toBe(prePopulatedProfile.identity.bio);
-
-    // Profile was saved
-    expect(mockDatabase.saveProfile).toHaveBeenCalledWith('ghost-sarah', expect.anything());
-
-    // Scraper was NOT called (skipped generation entirely)
-    expect(mockScraper.scrape).not.toHaveBeenCalled();
-  }, 30_000);
-
-  it('preserves profile attributes from pre-populated data', async () => {
-    const graph = buildGraph();
-    const result = await graph.invoke({
-      userId: 'ghost-sarah',
-      operationMode: 'generate',
-      prePopulatedProfile,
-    });
-
-    expect(result.profile!.attributes.skills).toEqual(['operations', 'strategy', 'scaling']);
-    expect(result.profile!.attributes.interests).toEqual(['startups', 'leadership']);
-  }, 30_000);
-
-  it('falls back to auto_generate when no prePopulatedProfile is provided', async () => {
-    (mockDatabase.getUser as ReturnType<typeof mock>).mockResolvedValue({
-      id: 'ghost-sarah',
-      name: 'Sarah Hoople Shere',
-      email: 'sarah@example.com',
-      socials: [],
-      location: null,
-      intro: null,
-    });
-
-    const graph = buildGraph();
-    const result = await graph.invoke({
-      userId: 'ghost-sarah',
-      operationMode: 'generate',
-      // No prePopulatedProfile — should go through auto_generate path
-    });
-
-    // Should still succeed (falling back to basic info generation)
-    expect(result.profile).toBeDefined();
     expect(mockDatabase.saveProfile).toHaveBeenCalled();
+
+    // The premise graph should have been called at least once with
+    // assertion text derived from the enrichment data
+    expect(mockPremiseGraph.invoke).toHaveBeenCalled();
+    const firstCall = (mockPremiseGraph.invoke as any).mock.calls[0][0];
+    expect(firstCall.userId).toBe(user.id);
+    expect(firstCall.operationMode).toBe('create');
+    expect(firstCall.assertionText).toBeTruthy();
   }, 120_000);
 });
