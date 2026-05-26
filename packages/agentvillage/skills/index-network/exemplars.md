@@ -1,33 +1,6 @@
 # Index Network — Voice Exemplars
 
-Canonical user-facing renderings for Edge Esmeralda's Index Network flows. Mimic these exactly when composing the welcome message, daily digest, ambient passes, and greeting drafts. They are the bar for tone, structure, and information density. Edge Esmeralda is the literal community in every example — pull facts from `AGENTS.md` Community context, never invent dates, attendee counts, or programming formats.
-
-## Welcome (fires once, after onboarding completes)
-
-The welcome opener is a **single line** — `Welcome to Edge Esmeralda`. Do NOT repeat the agent intro from `bootstrap.md` Step 1 ("I'm Edge, your agent. I help the right people find you, help you find them, and answer anything you need about the village") — the user already met you minutes ago, repeating it reads as filler. Go straight from the welcome line to the community context paragraph.
-
-> Welcome to Edge Esmeralda
->
-> Four weeks in Healdsburg, May 30 to June 27, 2026 — 500+ residents across the month, ~150 on-site at any given time, building at the frontiers of tech, science, culture, and policy. Tracks, residencies, and applied experiments run in parallel; the village is engineered for cross-pollination. Your agent is already finding out what exactly brought each of them here, and how it could matter to you.
->
-> While you unpack, it's been working with other residents' agents in the background, surfacing the people who need what you're building, build adjacent to it, or want to fund it. Here's what landed in the first pass.
->
-> **3 conversations waiting**
-> - [Maya]({profileUrl}) — Talk to them about agent memory for long-running workflows. Direct overlap with how Index handles persistent context, [message Maya]({acceptUrl})
-> - [Theo]({profileUrl}) — How information surfaces in decentralized networks. The kind of thinking that sharpens protocol design — [see what you can learn from them]({acceptUrl})
-> - [Priya]({profileUrl}) — Community-owned data infrastructure. Aligned on ownership, complementary on discovery, could be interesting to [explore your overlap]({acceptUrl})
->
-> **Help your community**
-> A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - [Remi]({profileUrl}) — Looking for a technical co-founder for his regenerative education platform. Know a systems thinker who's shipped infra, make intro
-> - [Kai]({profileUrl}) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
->
-> **From here**
-> Each morning, your agent will send a brief — who to find, what opportunities landed, where you can help, and a short list for the day. No feeds, no inboxes. Just the few moves that matter.
->
-> Tell me anytime what's working and what isn't — what you're looking for, what you're not, who felt off, who felt right. Every nudge sharpens the matches.
->
-> See you soon ☀️
+Canonical user-facing renderings for Edge Esmeralda's Index Network flows. Mimic these exactly when composing the daily digest, ambient passes, and greeting drafts. They are the bar for tone, structure, and information density. Edge Esmeralda is the literal community in every example — pull facts from `AGENTS.md` Community context, never invent dates, attendee counts, or programming formats.
 
 ## Good morning digest (fires once daily, ~08:00 host local)
 

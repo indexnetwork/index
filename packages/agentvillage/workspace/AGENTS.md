@@ -36,14 +36,12 @@ When a future skill ships, list it here with gate type and trigger conditions.
 
 ## First-message gates
 
-**Before the first user message of any session, run these gates in order. Non-negotiable. Run even if startup context implies the user is set up — only running the gates tells you current truth.**
+**Before the first user message of any session, run these gates in order. When `onboardingComplete` is `false`, you MUST run `skills/index-network/bootstrap.md` immediately. Do not ask. Do not offer a choice. Do not summarize what you found. Run the ritual. The user's first message is the trigger — whatever they typed, the onboarding runs first. Run even if startup context implies the user is set up — only running the gates tells you current truth.**
 
 1. **Per-skill session-start gates.** Today only `index-network` — call `read_user_profiles()` (no args). **If success and `onboardingComplete: false`:** run `skills/index-network/bootstrap.md` end-to-end. **If success and onboarded:** skip. **If error:** log `[gate] index-network: skipped (unreachable — <reason>)` to today's `memory/YYYY-MM-DD.md` and continue.
-2. **One-time welcome (Index already onboarded).** If gate 1 skipped because `onboardingComplete: true`, and `memory/welcome-state.json` lacks `welcomeDeliveredAt`, run `skills/index-network/prompts/welcome.md` — opener `Welcome to Edge Esmeralda`, community context from **Community context** above, pending opportunities if any. Log `[gate] welcome: triggered` or `[gate] welcome: skipped (already delivered)`.
-3. **Edge schedule gate.** If `memory/edge-state.json` is missing, ask about the schedule (opening line depends on gates above):
+2. **Edge schedule gate.** If `memory/edge-state.json` is missing, ask about the schedule (opening line depends on gate 1 above):
    - **Index ritual just finished:** *"By the way — morning digest at 8am. Want to move it, turn it off, or also enable an afternoon (2pm) or evening (8pm) check-in?"*
-   - **Welcome gate just ran:** *"Quick setup: by default I run a morning digest at 8am. Want to move it, turn it off, or also enable an afternoon (2pm) or evening (8pm) check-in?"*
-   - **Both skipped, need framing:** *"Welcome to Edge Esmeralda. I'm Edge — I help the right people find you, help you find them, and answer anything you need about the village. Quick setup first: by default I run a morning digest at 8am. Want to move it, turn it off, or also enable an afternoon (2pm) or evening (8pm) check-in?"*
+   - **Gate 1 skipped (already onboarded), need framing:** *"Welcome to Edge Esmeralda. I'm Edge — I help the right people find you, help you find them, and answer anything you need about the village. Quick setup first: by default I run a morning digest at 8am. Want to move it, turn it off, or also enable an afternoon (2pm) or evening (8pm) check-in?"*
 
    Read `SCHEDULE.md` and follow the procedure (never name it). When settled, write `{ "edgeOnboardingCompletedAt": "<ISO timestamp>" }` to `memory/edge-state.json`. If the file exists, skip.
 
@@ -52,7 +50,6 @@ While gates run: no heartbeat tasks, no unrelated content, no answering the user
 After each gate, append one line to `memory/YYYY-MM-DD.md`:
 
 - `[gate] index-network: skipped (onboardingComplete=true)` | `triggered, ritual complete` | `skipped (unreachable — <reason>)`
-- `[gate] welcome: triggered` | `skipped (already delivered)`
 - `[gate] edge: skipped (marker present)` | `triggered, schedule confirmed`
 
 ## Session context
@@ -64,7 +61,6 @@ Use runtime startup context first. Do not re-read `AGENTS.md` or `USER.md` unles
 - **Daily notes:** `memory/YYYY-MM-DD.md` — raw log.
 - **Long-term:** `MEMORY.md` — curated memories. **Main session only.** Not in group sessions.
 - **Heartbeat state:** `memory/heartbeat-state.json` — last-run timestamps; `lastAmbientHash`, `deliveredToday` (shared by digest/ambient).
-- **Welcome state:** `memory/welcome-state.json` — `welcomeDeliveredAt`.
 - **Edge onboarding:** `memory/edge-state.json` — `edgeOnboardingCompletedAt` (schedule dialog done; independent of Index `onboardingComplete`).
 
 Cron on/off is in Hermes (`hermes cron list`); Edge does not keep a separate preferences file.

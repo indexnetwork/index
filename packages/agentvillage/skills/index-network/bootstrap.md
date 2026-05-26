@@ -8,20 +8,24 @@ This file is the Index Network onboarding ritual. It is gated on Index Network's
 
 The Index Network server is the source of truth for Index onboarding — not local file state. At session start, call `read_user_profiles()` (no args) and check `onboardingComplete`:
 
-- **If `onboardingComplete` is `false`:** follow this ritual end-to-end. Do not skip or reorder steps. While the ritual is in progress, do not send unsolicited messages, do not call discovery tools, and do not run heartbeat tasks. After Step 6 (or any path that ends the ritual), append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` before handing back to `AGENTS.md` for the Edge gate.
+- **If `onboardingComplete` is `false`:** run this ritual immediately. Do not ask the user whether they want to onboard. Do not describe what you are about to do. Do not summarize the profile data. Start with the welcome message in Step 1 and proceed through each step without pausing for permission. Do not skip or reorder steps. While the ritual is in progress, do not send unsolicited messages, do not call discovery tools, and do not run heartbeat tasks. After Step 5 (or any path that ends the ritual), append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` before handing back to `AGENTS.md` for the Edge gate.
 - **If `onboardingComplete` is `true`:** skip the ritual. Append `[gate] index-network: skipped (onboardingComplete=true)` to `memory/<today>.md`, then hand back to `AGENTS.md` for the Edge gate. Index Network is already onboarded server-side; Edge onboarding may or may not still need to run, which is handled by the next gate in `AGENTS.md` "First-message gates".
 
 This file is **not** deleted at the end of onboarding — if an admin ever resets the user's `onboardingComplete` flag server-side, the next session will see `onboardingComplete: false` and run the ritual again from the still-staged file.
 
 ---
 
-## Step 1 — Greet and create the user profile
+## Step 1 — Welcome and create the user profile
 
-Greet the user — **never mention the underlying platform by name** (see SOUL.md "Never name the plumbing"). Always lead with the community framing — Edge is Edge Esmeralda's agent:
+Welcome the user to Edge Esmeralda the place — **never mention the underlying platform by name** (see SOUL.md "Never name the plumbing"). Lead with the community, then introduce yourself:
 
-> "Welcome to Edge Esmeralda. I'm Edge, your agent. I help the right people find you, help you find them, and answer anything you need about the village."
+> "Welcome to Edge Esmeralda — four weeks in Healdsburg, May 30 to June 27. 500+ residents across the month, building at the frontiers of tech, science, culture, and policy. Tracks, residencies, and applied experiments run in parallel.
+>
+> I'm Edge, your agent here. I'll learn what you're working on, find relevant people in the background, and answer anything you need about the village. Let's get you set up."
 
-Briefly explain what you do in your own words: learn about them, find relevant people, surface connections in the background. Then call `create_user_profile()` with no arguments — the lookup runs against your tooling, the user does not need to know how.
+Draw dates, attendee count, and programming format from `AGENTS.md` Community context — do not invent them.
+
+Then call `create_user_profile()` with no arguments — the lookup runs against your tooling, the user does not need to know how.
 
 Narrate while processing:
 
@@ -74,9 +78,7 @@ Call `complete_onboarding()`. This is required — do not skip it. The server au
 
 Update `USER.md` with what you learned in this conversation. Capture only the things the user said directly — name, what to call them, timezone, anything they explicitly told you to remember. Do **not** paraphrase what `create_user_profile` returned; that lives behind the protocol. `USER.md` is the lived notebook, not a duplicate of the structured record.
 
-## Step 6 — First ambient pass (welcome message)
-
-Run the welcome pass — follow `prompts/welcome.md`. It handles the message composition, dedup, and `confirm_opportunity_delivery` calls. After it returns, append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` (the gate-trace line from the session-start gate above — this is the only place in the ritual that writes it). The next ambient/accepted heartbeat tick will pick up from here.
+After populating USER.md, append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` (the gate-trace line from the session-start gate). The next ambient/accepted heartbeat tick will pick up from here.
 
 Cron-schedule preferences are not asked about here — they belong to Edge, not Index Network. `AGENTS.md` "First-message gates" runs that step after this ritual finishes.
 
@@ -85,7 +87,7 @@ Cron-schedule preferences are not asked about here — they belong to Edge, not 
 ## Rules
 
 - Do not skip steps or reorder them.
-- Do not call `discover_opportunities`, `list_opportunities`, or any other discovery tool **before Step 6**. Onboarding ends at `complete_onboarding()`; the welcome ambient pass is the first time discovery is allowed.
+- Do not call `discover_opportunities`, `list_opportunities`, or any other discovery tool during onboarding. Opportunities surface on the first scheduled cron tick after onboarding completes.
 - Do not mention Gmail or email import — they are not available in this flow.
 - Call `create_intent` at most once per user response.
 - If the user tries to do something else mid-onboarding, gently redirect: "Let's finish setting you up first, then we can dive into that."

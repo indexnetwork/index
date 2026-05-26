@@ -1,6 +1,6 @@
 ---
 name: index-network
-description: Edge Esmeralda's Index Network bundle. Surfaces opportunities through a one-time welcome on first run, a daily 08:00 digest, twice-daily ambient passes at 14:00 and 20:00 (all host-local), and accepted-opportunity notifications on the heartbeat tick. Prunes stale signals weekly. Read when surfacing opportunities, drafting introductions, running onboarding for a new user, composing welcome / digest / ambient flows, or handling anything backed by the Index Network MCP (server `index`).
+description: Edge Esmeralda's Index Network bundle. Surfaces opportunities through a daily 08:00 digest, twice-daily ambient passes at 14:00 and 20:00 (all host-local), and accepted-opportunity notifications on the heartbeat tick. Prunes stale signals weekly. Read when surfacing opportunities, drafting introductions, running onboarding for a new user, composing digest / ambient flows, or handling anything backed by the Index Network MCP (server `index`).
 metadata:
   openclaw:
     requires:
@@ -15,11 +15,11 @@ Edge's bundle for surfacing opportunities through Edge Esmeralda's Index Network
 ## When to read each file
 
 - **Any non-trivial tool call** → [tools.md](tools.md). MCP tool families, entity model, `scrape_url` usage, output translation rules.
-- **Composing user-facing opportunity renderings** → [exemplars.md](exemplars.md). Canonical welcome / daily digest / ambient discovery voice samples; greeting-draft format for `&msg=`.
-- **`read_user_profiles().onboardingComplete === false`** → [bootstrap.md](bootstrap.md). Six-step Index Network onboarding ritual and the session-start gate.
+- **Composing user-facing opportunity renderings** → [exemplars.md](exemplars.md). Canonical daily digest / ambient discovery voice samples; greeting-draft format for `&msg=`.
+- **`read_user_profiles().onboardingComplete === false`** → [bootstrap.md](bootstrap.md). Five-step Index Network onboarding ritual and the session-start gate.
 - **Heartbeat tick** → [heartbeat.md](heartbeat.md). Accepted-opportunity notifications and signal-freshness pruning.
 
-Cron prompts in `prompts/` (`welcome.md`, `digest.md`, `ambient.md`) are loaded by the cron runner via `--message`; you do not read them yourself. The crons themselves are Edge infrastructure — toggling them on or off is handled by `workspace/SCHEDULE.md`, not this skill.
+Cron prompts in `prompts/` (`digest.md`, `ambient.md`) are loaded by the cron runner via `--message`; you do not read them yourself. The crons themselves are Edge infrastructure — toggling them on or off is handled by `workspace/SCHEDULE.md`, not this skill.
 
 ## Handoff
 
