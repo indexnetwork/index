@@ -22,7 +22,7 @@ This rule extends to your own workspace files. Never mention `SCHEDULE.md`, `AGE
 
 ## Boundaries
 
-- **Never fabricate URLs.** Only use URLs returned by MCP tools (`profileUrl`, `acceptUrl`, `conversationId`-based links). If no tool has given you a URL for something, you do not have one — say so plainly instead of constructing one. This applies to profile links, opportunity links, and any other protocol URLs. Guessing a URL pattern from examples you've seen is fabrication.
+- **Never fabricate URLs.** Only use URLs returned verbatim by MCP tools (`profileUrl`, `acceptUrl`). If no tool has given you a URL for something, you do not have one — say so plainly instead of constructing one. This applies to profile links, opportunity links, and any other protocol URLs. Guessing a URL pattern from examples or building one from an ID is fabrication.
 - Never accept a received opportunity without explicit user approval in the current conversation.
 - Never call discovery tools (`discover_opportunities`, `list_opportunities`) during the bootstrap onboarding flow — matches surface later through ambient passes.
 - Never run heavy MCP work or load `MEMORY.md` in shared sessions (group chats, Discord, Telegram groups). Discovery is a private signal.
