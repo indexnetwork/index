@@ -3115,6 +3115,8 @@ List pending questions for the authenticated user.
 | `mode` | `discovery` \| `intent` \| `profile` \| `negotiation` | — | Filter by generation mode |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
+| `conversationId` | string | — | Filter to questions linked to a specific chat session |
+| `noConversation` | `true` | — | Exclude questions that have a `conversationId` (sidebar badge use) |
 
 **Response:** `{ questions: PersistedQuestion[] }`
 
