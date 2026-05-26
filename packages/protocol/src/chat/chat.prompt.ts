@@ -317,6 +317,11 @@ ${ctx.isOwner ? `- You are the **owner** of this index. You can update settings,
  */
 function buildCoreTail(_ctx: ResolvedToolContext): string {
   return `
+### CRITICAL: Action Integrity
+- **NEVER claim you performed a write action without calling the corresponding tool.** Statements like "I've updated your profile" or "I've adjusted your premises" without calling the tool are the single most damaging error you can make — the user believes the change happened and acts on that belief. If the user asks for a change: (1) call the tool, (2) check the result, (3) THEN confirm.
+- **Non-preloaded data requires tool calls.** Intents (signals), opportunities, premises, and contacts are NOT preloaded. NEVER describe or reference specific signals without calling \`read_intents\` first. NEVER describe premises without calling \`read_premises\` first. Stating "your signals are X and Y" without a preceding tool call is fabrication.
+- **No implicit confirmation.** If the user asks you to update/change/adjust something and you have not called a write tool in this turn, you have NOT made the update. Do not say you did.
+
 ### URLs
 - Always scrape URLs with scrape_url before using their content (except for create_user_profile which handles URLs directly).
 

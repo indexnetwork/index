@@ -507,22 +507,31 @@ export class ChatAgent {
    *
    * @returns Block info if hallucination detected, null otherwise
    */
+  /**
+   * Check whether any tool call produced valid opportunity blocks.
+   * Both `discover_opportunities` and `list_opportunities` can return
+   * ```opportunity code blocks — either one counts as a valid source.
+   */
+  private static hasOpportunitySource(
+    toolsUsed: Array<{ name: string; success: boolean; resultSummary?: string }>,
+  ): boolean {
+    return toolsUsed.some(
+      (t) =>
+        (t.name === "discover_opportunities" || t.name === "list_opportunities") &&
+        t.success &&
+        !t.resultSummary?.startsWith("Found 0") &&
+        !t.resultSummary?.startsWith("No matches") &&
+        !t.resultSummary?.startsWith("No opportunities"),
+    );
+  }
+
   private detectHallucinatedBlock(
     text: string,
     toolsUsed: Array<{ name: string; success: boolean; resultSummary?: string }>,
     userMessage?: string,
   ): { type: string; tool: string; description: string } | null {
-    // Only trust successful tool calls that actually returned results.
-    // A call that returned "Found 0 match(es)" doesn't produce valid blocks.
     const hasSuccessfulCreateIntent = toolsUsed.some(
       (t) => t.name === "create_intent" && t.success,
-    );
-    const hasSuccessfulDiscoverOpportunities = toolsUsed.some(
-      (t) =>
-        t.name === "discover_opportunities" &&
-        t.success &&
-        !t.resultSummary?.startsWith("Found 0") &&
-        !t.resultSummary?.startsWith("No matches"),
     );
 
     // Check for hallucinated intent_proposal
@@ -534,7 +543,7 @@ export class ChatAgent {
     }
 
     // Check for hallucinated opportunity blocks
-    if (text.includes("```opportunity") && !hasSuccessfulDiscoverOpportunities) {
+    if (text.includes("```opportunity") && !ChatAgent.hasOpportunitySource(toolsUsed)) {
       // Use the user's original message as the search query — NOT fields from the
       // hallucinated JSON. The model fabricates person names and reasoning that have
       // nothing to do with the user's actual request, leading to wrong results and
@@ -563,18 +572,11 @@ export class ChatAgent {
     let result = text;
     let removedBlock = false;
 
-    const hasSuccessfulDiscoverOpportunities = toolsUsed.some(
-      (t) =>
-        t.name === "discover_opportunities" &&
-        t.success &&
-        !t.resultSummary?.startsWith("Found 0") &&
-        !t.resultSummary?.startsWith("No matches"),
-    );
     const hasSuccessfulCreateIntent = toolsUsed.some(
       (t) => t.name === "create_intent" && t.success,
     );
 
-    if (!hasSuccessfulDiscoverOpportunities && result.includes("```opportunity")) {
+    if (!ChatAgent.hasOpportunitySource(toolsUsed) && result.includes("```opportunity")) {
       const next = result.replace(/```opportunity\s*\n[\s\S]*?```/g, "");
       removedBlock ||= next !== result;
       result = next;
@@ -591,6 +593,28 @@ export class ChatAgent {
     }
 
     return result;
+  }
+
+  // ─── Phantom write detection ─────────────────────────────────────────────
+
+  private static readonly PHANTOM_WRITE_PATTERNS = [
+    /\bI(?:'ve| have) (?:updated|adjusted|changed|modified|edited|created|added|removed|deleted|saved|set up)\b/i,
+    /\bI (?:updated|adjusted|changed|modified|edited|created|added|removed|deleted|saved|set up)\b/i,
+    /\b(?:Updated|Adjusted|Changed|Modified|Edited|Created|Added|Removed|Deleted|Saved) (?:your|the|their)\b/i,
+    /\bEverything is (?:now )?(?:updated|changed|adjusted|saved|set)\b/i,
+    /\b(?:profile|bio|premise|signal|intent|membership|narrative) (?:has been|is now) (?:updated|changed|modified|adjusted|saved)\b/i,
+  ];
+
+  /**
+   * Detect when the model claims to have performed a write action
+   * without having called any tools in the turn.
+   */
+  private static detectPhantomWrite(
+    responseText: string,
+    toolsUsed: Array<{ name: string }>,
+  ): boolean {
+    if (toolsUsed.length > 0) return false;
+    return ChatAgent.PHANTOM_WRITE_PATTERNS.some(pattern => pattern.test(responseText));
   }
 
   // ─── Shared tool-result post-processing types ─────────────────────────────
@@ -833,6 +857,7 @@ export class ChatAgent {
     let iterationCount = 0;
     const toolsDebug: DebugMetaToolCall[] = [];
     const surfacedQuestionIds = new Set<string>();
+    const hallucinationAutoInvokeCounts = new Map<string, number>();
 
     while (iterationCount < HARD_ITERATION_LIMIT) {
       if (signal?.aborted) {
@@ -1081,12 +1106,15 @@ export class ChatAgent {
       // lack valid proposalIds / data and won't work in the frontend.
       // Auto-invoke the correct tool directly instead of re-asking the LLM.
       const hallucinatedBlock = this.detectHallucinatedBlock(iterationText, toolsDebug, iterCtx.currentMessage);
-      if (hallucinatedBlock && iterationCount < HARD_ITERATION_LIMIT - 1) {
+      const priorAutoInvokes = hallucinatedBlock ? (hallucinationAutoInvokeCounts.get(hallucinatedBlock.type) ?? 0) : 0;
+      if (hallucinatedBlock && priorAutoInvokes < 2 && iterationCount < HARD_ITERATION_LIMIT - 1) {
+        hallucinationAutoInvokeCounts.set(hallucinatedBlock.type, priorAutoInvokes + 1);
         logger.warn("Streaming: detected hallucinated block, auto-invoking tool", {
           iteration: iterationCount,
           blockType: hallucinatedBlock.type,
           tool: hallucinatedBlock.tool,
           extractedDescription: hallucinatedBlock.description,
+          autoInvokeAttempt: priorAutoInvokes + 1,
         });
         // Tell the frontend to discard all streamed tokens from this iteration
         emit({ type: "response_reset", reason: `Hallucinated ${hallucinatedBlock.type} block detected` });
@@ -1198,6 +1226,56 @@ export class ChatAgent {
             ),
           ];
         }
+        iterationCount++;
+        continue;
+      }
+
+      // ── Circuit breaker: hallucination detected but auto-invoke cap reached ──
+      if (hallucinatedBlock && priorAutoInvokes >= 2) {
+        logger.warn("Streaming: hallucination auto-invoke cap reached, stripping blocks", {
+          iteration: iterationCount,
+          blockType: hallucinatedBlock.type,
+          attempts: priorAutoInvokes,
+        });
+        emit({ type: "response_reset", reason: `Hallucination cap reached for ${hallucinatedBlock.type}` });
+        const stripped = this.stripUnbackedBlocks(iterationText, toolsDebug);
+        if (stripped.trim()) {
+          emit({ type: "text_chunk", content: stripped });
+        } else {
+          messages = [
+            ...messages,
+            accumulated,
+            new SystemMessage(
+              "Your previous response only contained invalid code blocks that were removed. " +
+              "Write a plain text response now — summarize the results of the tools you used. " +
+              "Do NOT include ```opportunity or ```intent_proposal blocks.",
+            ),
+          ];
+          iterationCount++;
+          continue;
+        }
+      }
+
+      // ── Phantom write: model claims a write action without calling any tools ──
+      if (
+        ChatAgent.detectPhantomWrite(iterationText, toolsDebug) &&
+        iterationCount < HARD_ITERATION_LIMIT - 1
+      ) {
+        logger.warn("Streaming: detected phantom write claim without tool calls", {
+          iteration: iterationCount,
+        });
+        emit({ type: "response_reset", reason: "Phantom write detected — no tools were called" });
+        emit({ type: "hallucination_detected", blockType: "phantom_write", tool: "none" });
+
+        messages = [
+          ...messages,
+          accumulated,
+          new SystemMessage(
+            "CORRECTION: You claimed to have performed an action (update, create, modify) but you did NOT call any tools. " +
+            "The user's request has NOT been fulfilled. You MUST call the appropriate tool(s) to actually make the change, " +
+            "then confirm based on the tool result. Do it now.",
+          ),
+        ];
         iterationCount++;
         continue;
       }
