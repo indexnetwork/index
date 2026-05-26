@@ -156,7 +156,7 @@ export class ConnectLinkController {
       if ('error' in result) return jsonError(result.error, result.status);
 
       // Receiver surface determines redirect target. preferredSurface = 'telegram'
-      // means the click came from a Telegram-rendering MCP client (EdgeClaw) and
+      // means the click came from a Telegram-rendering MCP client and
       // we should attempt the t.me deep link. Anything else (including NULL on
       // pre-rollout rows) goes to the web frontend.
       if (link.preferredSurface === 'telegram') {

@@ -312,22 +312,14 @@ export default function IntegrationsTab({
           </div>
         )}
 
-        {/* EdgeClaw section for experiment networks */}
+        {/* Experiment signup section */}
         {network.isExperiment && (
           <div className="pt-2">
             <div className="flex items-start gap-3 p-3 border border-gray-200 rounded-sm">
-              <img
-                src="/integrations/edgeclaw.png"
-                width={24}
-                height={24}
-                alt="EdgeClaw"
-                className="flex-shrink-0 mt-0.5"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-              />
               <div className="flex-1 min-w-0 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-black">EdgeClaw</div>
+                    <div className="text-sm font-medium text-black">Experiment Signup</div>
                     <div className="text-xs text-gray-500">Server-side signup for experiment attendees</div>
                   </div>
                   <Button
@@ -348,7 +340,7 @@ export default function IntegrationsTab({
                   <CopyableBox value={'•••••••• (shown once at creation — rotate for a new one)'} />
                 </div>
                 <p className="text-xs text-gray-500">
-                  Used server-side by InstaClaw and EdgeOS. Never expose in user-facing apps.
+                  Used server-side by external integrators. Never expose in user-facing apps.
                 </p>
               </div>
             </div>
@@ -363,7 +355,7 @@ export default function IntegrationsTab({
           <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
             <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Rotate master key</AlertDialog.Title>
             <AlertDialog.Description className="text-sm text-gray-600 mb-4">
-              Rotating issues a new master key and immediately revokes the current one. Any backend using the old key (InstaClaw, EdgeOS) will stop working until you redeploy it with the new key. We will also email the new key to every owner of this network. Type the network name to confirm.
+              Rotating issues a new master key and immediately revokes the current one. Any backend using the old key will stop working until you redeploy it with the new key. We will also email the new key to every owner of this network. Type the network name to confirm.
             </AlertDialog.Description>
             <Input
               value={rotateConfirmationText}

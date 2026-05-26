@@ -28,7 +28,7 @@ async function setupExperimentNetwork() {
   const [network] = await db
     .insert(networks)
     .values({
-      title: `EdgeClaw Test ${randomUUID().slice(0, 6)}`,
+      title: `Experiment Signup Test ${randomUUID().slice(0, 6)}`,
       isExperiment: true,
       isPersonal: false,
       experimentMasterKeyHash: 'test-hash-not-verified-at-service-layer',

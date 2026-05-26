@@ -30,7 +30,7 @@ async function setupExperimentNetwork() {
   const [network] = await db
     .insert(networks)
     .values({
-      title: `EdgeClaw Lookup Test ${randomUUID().slice(0, 6)}`,
+      title: `Experiment Lookup Test ${randomUUID().slice(0, 6)}`,
       isExperiment: true,
       isPersonal: false,
       experimentMasterKeyHash: 'test-hash-not-verified-at-service-layer',
@@ -225,7 +225,7 @@ async function setupExperimentNetworkWithKey() {
   const [network] = await db
     .insert(networks)
     .values({
-      title: `EdgeClaw Lookup HTTP ${randomUUID().slice(0, 6)}`,
+      title: `Experiment Lookup HTTP ${randomUUID().slice(0, 6)}`,
       isExperiment: true,
       isPersonal: false,
       experimentMasterKeyHash: hash,

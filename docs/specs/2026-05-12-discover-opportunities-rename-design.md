@@ -63,8 +63,8 @@ See IND-270 for the full inventory. High-level groups:
 - **Backend tests**: `backend/src/controllers/tests/tool.controller.spec.ts`, `backend/tests/mcp.spec.ts`
 - **CLI**: `packages/cli/src/opportunity.command.ts`, `packages/cli/src/output/base.ts`, `packages/cli/tests/opportunity.command.spec.ts`, `packages/cli/tests/tool-calls.spec.ts`
 - **Frontend**: `frontend/src/components/chat/ToolCallsDisplay.tsx`
-- **Plugins**: `packages/openclaw-plugin/skills/index-orchestrator/SKILL.md`, `packages/openclaw-plugin/src/polling/onboarding/onboarding.prompt.ts`, `packages/claude-plugin/skills/index-orchestrator/SKILL.md`
-- **Skill templates** (sources of truth for SKILL.md generation): `packages/protocol/skills/openclaw/index-orchestrator.template.md`, `packages/protocol/skills/claude-plugin/index-orchestrator.template.md`
+- **Plugins**: `packages/claude-plugin/skills/index-orchestrator/SKILL.md`
+- **Skill templates** (sources of truth for SKILL.md generation): `packages/protocol/skills/claude-plugin/index-orchestrator.template.md`
 - **Docs**: `docs/specs/api-reference.md`, `docs/specs/cli-reference.md`, `docs/design/protocol-deep-dive.md`, `docs/specs/2026-05-06-welcome-message-design.md`, `packages/protocol/src/README.md`, `packages/protocol/src/docs/Latent Opportunity Lifecycle.md`
 
 ## Out of scope
@@ -96,4 +96,4 @@ See IND-270 for the full inventory. High-level groups:
 
 ## Rollout
 
-Single PR. Merge to `dev`, push to origin — subtree workflow propagates to `indexnetwork/cli`, `indexnetwork/protocol`, `indexnetwork/claude-plugin`, `indexnetwork/openclaw-plugin`. Plugin version bumps required (see CLAUDE.md "Finishing a Branch" — both `package.json` AND `openclaw.plugin.json` for openclaw-plugin).
+Single PR. Merge to `dev`, push to origin — subtree workflow propagates to `indexnetwork/cli`, `indexnetwork/protocol`, `indexnetwork/claude-plugin`.
