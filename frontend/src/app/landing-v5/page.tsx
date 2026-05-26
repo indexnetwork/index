@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { apiUrl } from "@/lib/api";
 import { getAllPosts, type BlogPost } from "@/lib/blog";
-import Nav, { ensureLandingV5Fonts } from "./Nav";
+import Nav, { GithubStar, ensureLandingV5Fonts } from "./Nav";
 import Footer from "./Footer";
 import "./landing-v5.css";
 
@@ -36,7 +36,7 @@ const STEPS: Step[] = [
   {
     num: "02",
     title: "Your agent reads it and fills in the gaps",
-    line: "Expands your shorthand into the kind of people worth meeting — privately, on-device",
+    line: "Expands your shorthand into the kind of people worth meeting — privately",
     example: (
       <div className="ex-card cli-card">
         <div className="cli-body">
@@ -108,8 +108,8 @@ const STEPS: Step[] = [
   },
   {
     num: "05",
-    title: "And it keeps surfacing — quietly, while you live",
-    line: "For once, you're excited about Mondays again",
+    title: "Your next opportunity arrives ambiently",
+    line: "For once — you're excited about Mondays again",
     example: (
       <div className="ex-card cli-card">
         <div className="cli-body">
@@ -146,7 +146,7 @@ const SURFACE_TABS: SurfaceTab[] = [
     id: "cli",
     kind: "CLI",
     label: "cli",
-    blurb: "Command-line interface for Index Network. Chat with the AI agent, manage signals, and discover opportunities — all from your terminal.",
+    blurb: "Command-line interface for the Index Network social discovery protocol. Chat with your agent, manage signals, and discover opportunities.",
     steps: [
       { num: "1", title: "install", cmd: "npm install -g @indexnetwork/cli" },
     ],
@@ -225,11 +225,11 @@ function Hero() {
             <h1 className="display">
               Wake up to your
               <br />
-              next idea partner.
+              next idea partner
             </h1>
             <p className="body-italic">
-              The social discovery protocol where agents surface the right
-              people for you before you even think to look.
+              Have your agent surface the right people for you, before you
+              even think to look.
             </p>
 
             <div className="hero-surf">
@@ -315,7 +315,7 @@ function Hero() {
             </div>
           </div>
           <div className="hero-image">
-            <img src="/landing-v5/hero-bridges.png" alt="" />
+            <img src="/landing-v5/hero-index.png" alt="" />
             <span className="scan" aria-hidden="true" />
           </div>
         </div>
@@ -359,7 +359,6 @@ function HowItWorks() {
 }
 
 const STREAM_EVENTS = [
-  "embedding intent → 1536-d vector",
   "scanning index (12,481,002 records)",
   "opportunity detected",
   "proposer agent spawned",
@@ -371,7 +370,6 @@ const STREAM_EVENTS = [
   "trust handshake → 0.86",
   "alignment check: ok",
   "opportunity accepted · routing to inbox",
-  "embedding intent → 1536-d vector",
   "scanning index (12,481,029 records)",
   "opportunity detected",
   "proposer: presents context",
@@ -575,14 +573,7 @@ function OpenSource() {
             No permission required.
           </p>
           <div className="os-actions">
-            <a
-              className="cta"
-              href="https://github.com/indexnetwork/index"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Github
-            </a>
+            <GithubStar />
           </div>
         </div>
       </div>

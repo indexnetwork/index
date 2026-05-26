@@ -94,9 +94,8 @@ function AboutPage() {
         <div className="how-inner">
           <div className="how-head">
             <span className="title">
-              <span className="arrow">›</span>join us
+              <span className="arrow">›</span>say hello
             </span>
-            <span className="meta">say hello</span>
           </div>
 
           <div className="about-join-body">
@@ -105,10 +104,6 @@ function AboutPage() {
                 hello@index.network
               </a>
               <span className="cursor" aria-hidden="true" />
-            </p>
-            <p className="comment">
-              <span className="hash">#</span>tell us what you&rsquo;re working
-              toward — we read every note.
             </p>
           </div>
         </div>
