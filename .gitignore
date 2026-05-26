@@ -29,6 +29,7 @@ txt/
 # Documentation & Reports
 # ===================
 *.report.md
+docs/superpowers/
 packages/protocol/CLAUDE.md
 packages/protocol/.claude
 
