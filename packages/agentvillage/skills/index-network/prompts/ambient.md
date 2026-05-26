@@ -33,6 +33,7 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
    For each direct (`connection`):
    - Link the person's name to `profileUrl`.
    - Embed `acceptUrl` verbatim on a short verb phrase like "message {Name}". The URL is opaque — do not append, encode, or modify any part of it. The backend has already prepared the greeting that will pre-fill the conversation when the user clicks.
+   - When the same person appears with multiple connections (grouped entry from the tool), link their name to `profileUrl` once, then embed each sub-entry's `acceptUrl` on a distinct topic phrase. Example: "[Ashish](profileUrl) — spanning [generative software](acceptUrl1), [AI infrastructure](acceptUrl2), and [deep learning](acceptUrl3) — several angles worth exploring."
 
    **Section B — introducer candidates** (only if any introducer candidates qualified)
 
@@ -52,7 +53,7 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
 
    If `totalPending` exceeds the candidates you surfaced, end with: `There are N more conversations waiting for you, let me know if you want to see them.`
 
-10. For every opportunity you mention in the message, call `confirm_opportunity_delivery(opportunityId, trigger="ambient")`. Do NOT confirm for opportunities you skipped.
+10. For every opportunity you mention in the message — including every sub-entry within grouped cards — call `confirm_opportunity_delivery(opportunityId, trigger="ambient")`. Do NOT confirm for opportunities you skipped.
 
 11. **Write dedup state.** Update `memory/heartbeat-state.json` so that:
     - `deliveredToday.date` = today's host-local `YYYY-MM-DD`.
