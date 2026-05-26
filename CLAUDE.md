@@ -414,7 +414,7 @@ Format: `<type>/<short-description>`. No Linear issue IDs. Examples: `feat/user-
 
 ### Pull Requests
 
-Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Features, Bug Fixes, Refactors, Documentation, Tests.
+Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Features, Bug Fixes, Refactors, Documentation, Tests.
 
 ### Finishing a Branch
 
@@ -429,7 +429,7 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
 3. **Bump package versions** for every package touched by the branch, following [Semantic Versioning 2.0.0](https://semver.org/). Do this before merging or pushing — never skip it.
    - **`packages/cli/`** and **`packages/protocol/`**: bump `package.json` version.
 4. Merge into dev: `git checkout dev && git merge <branch-name>`
-5. Push both remotes: `git push upstream dev && git push origin dev`
+5. Push: `git push origin dev`
 6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.
 7. Clean up: delete branch and remove worktree
 
