@@ -51,7 +51,7 @@ Compose the brief; Hermes delivers your **final assistant reply** to the user's 
 
 8. **URL rules:** weave links into prose. The strip-the-URLs test is the rule — if a reader removes every link, the prose still reads coherently. NO bullet-list-of-links, NO link tables, NO action strips, NO blockquote whose body is link labels.
 
-9. **acceptUrl handling (connection candidates only):** Embed `acceptUrl` verbatim on a short verb phrase. The URL is opaque — do not append, encode, or modify any part of it. The backend has already prepared the greeting that will pre-fill the conversation when the user clicks. **`connector-flow` candidates carry no `acceptUrl`** — those trigger an introduction approval, not a direct conversation.
+9. **acceptUrl handling (connection candidates only):** Embed `acceptUrl` verbatim on a short verb phrase. For grouped entries (same person, multiple connections), embed each sub-entry's `acceptUrl` on a distinct topic phrase instead — see the template in step 6. The URL is opaque — do not append, encode, or modify any part of it. The backend has already prepared the greeting that will pre-fill the conversation when the user clicks. **`connector-flow` candidates carry no `acceptUrl`** — those trigger an introduction approval, not a direct conversation.
 
 10. For every opportunity you mention in the brief — including every sub-entry within grouped cards — call `confirm_opportunity_delivery(opportunityId, trigger="digest")`. Do NOT confirm for opportunities you skipped.
 
