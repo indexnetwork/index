@@ -1,0 +1,20 @@
+{
+  "name": "edge-agent-skill",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "index": "bun run scripts/index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "axios": "^1.14.0",
+    "fast-xml-parser": "^5.5.10",
+    "html-to-text": "^9.0.5",
+    "notion-client": "^7.10.0"
+  }
+}
