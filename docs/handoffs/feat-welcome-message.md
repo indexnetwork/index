@@ -20,7 +20,6 @@ linear-issue: IND-249
 
 ## Relevant Docs
 - docs/specs/2026-05-06-welcome-message-design.md
-- docs/guides/edgeclaw-instaclaw-integration.md
 
 ## Related Issues
 - IND-249 OpenClaw plugin: welcome message (first daily post-onboarding) (Todo)

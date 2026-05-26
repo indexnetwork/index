@@ -65,7 +65,6 @@ See IND-270 for the full inventory. High-level groups:
 - **Frontend**: `frontend/src/components/chat/ToolCallsDisplay.tsx`
 - **Plugins**: `packages/openclaw-plugin/skills/index-orchestrator/SKILL.md`, `packages/openclaw-plugin/src/polling/onboarding/onboarding.prompt.ts`, `packages/claude-plugin/skills/index-orchestrator/SKILL.md`
 - **Skill templates** (sources of truth for SKILL.md generation): `packages/protocol/skills/openclaw/index-orchestrator.template.md`, `packages/protocol/skills/claude-plugin/index-orchestrator.template.md`
-- **Edgeclaw**: `packages/edgeclaw/workspace/AGENTS.md`, `BOOTSTRAP.md`, `SOUL.md`, `TOOLS.md`
 - **Docs**: `docs/specs/api-reference.md`, `docs/specs/cli-reference.md`, `docs/design/protocol-deep-dive.md`, `docs/specs/2026-05-06-welcome-message-design.md`, `packages/protocol/src/README.md`, `packages/protocol/src/docs/Latent Opportunity Lifecycle.md`
 
 ## Out of scope

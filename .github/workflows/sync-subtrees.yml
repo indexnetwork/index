@@ -105,14 +105,6 @@ jobs:
           SPLIT_FLAGS=""
           IGNORE_JOINS="${{ matrix.ignore_joins || 'false' }}"
           if [ "$IGNORE_JOINS" = "true" ]; then
-            # Edgeclaw receives `git subtree pull --squash` from an external
-            # upstream (Edge-City/edgeclaw). Those squash merges write
-            # `git-subtree-split:` annotations referencing commits that live
-            # only in the subtree repo. This workflow force-pushes the fork,
-            # so those commits become unreachable from the branch tip and
-            # `git subtree split` fails with "could not rev-parse split hash".
-            # --ignore-joins tells split to skip those stale annotations and
-            # walk the full history instead.
             SPLIT_FLAGS="--ignore-joins"
             echo "Using --ignore-joins (squash-pull annotations may reference unreachable commits)"
           else

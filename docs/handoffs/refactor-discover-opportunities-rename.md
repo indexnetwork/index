@@ -48,12 +48,6 @@ linear-issue: IND-270
 - packages/claude-plugin/skills/index-orchestrator/SKILL.md
 - packages/protocol/skills/claude-plugin/index-orchestrator.template.md
 
-### Edgeclaw workspace
-- packages/edgeclaw/workspace/AGENTS.md
-- packages/edgeclaw/workspace/BOOTSTRAP.md
-- packages/edgeclaw/workspace/SOUL.md
-- packages/edgeclaw/workspace/TOOLS.md
-
 ### Docs
 - docs/specs/api-reference.md
 - docs/specs/cli-reference.md

@@ -96,8 +96,6 @@ git push <indexnetwork-remote> main
 
 The following packages are git subtrees tracked to external repos. **Syncing is automatic** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). The workflow also exposes `workflow_dispatch` for manual reruns. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
 
-> **Exception — edgeclaw.** `packages/edgeclaw/` mirrors the `indexnetwork/edgeclaw` GitHub fork of `Edge-City/edgeclaw`. The monorepo force-pushes to the fork; merges into the upstream `Edge-City/edgeclaw` happen by PR from the fork. See the `packages/edgeclaw/` section below for the full flow.
-
 #### packages/protocol/ → indexnetwork/protocol
 
 The `@indexnetwork/protocol` npm package (agent graphs, interfaces, tools). Two-way: edit here or in the external repo.
@@ -134,41 +132,16 @@ git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork
 git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git <branch>
 ```
 
-#### packages/edge-hermes/ → indexnetwork/edge-hermes
+#### packages/agentvillage/ → indexnetwork/agentvillage
 
-The `@edge-city/edge-hermes` Agent Village workspace and installer for Edge Esmeralda on Hermes. Includes skills for edge-esmeralda, index-network, and edgeos.
+The `@indexnetwork/agentvillage` Agent Village workspace, skills, and installer. Includes skills for edge-esmeralda, index-network, and edgeos.
 
 ```bash
 # Manual push if the hook failed (use dev or main)
-git subtree push --prefix=packages/edge-hermes https://github.com/indexnetwork/edge-hermes.git <branch>
+git subtree push --prefix=packages/agentvillage https://github.com/indexnetwork/agentvillage.git <branch>
 
 # Pull if external repo was edited directly
-git subtree pull --squash --prefix=packages/edge-hermes https://github.com/indexnetwork/edge-hermes.git <branch>
-```
-
-#### packages/edgeclaw/ → indexnetwork/edgeclaw (fork of Edge-City/edgeclaw)
-
-The `edgeclaw` skills + onboarding package. Unlike the other subtrees, the canonical upstream (`Edge-City/edgeclaw`) is **owned by a different organization**, so the monorepo pushes through a GitHub fork (`indexnetwork/edgeclaw`) and PRs flow upstream from there.
-
-**Push flow (monorepo → fork → Edge-City):**
-1. Commits to `packages/edgeclaw/` land in the monorepo on `dev`, then `main`.
-2. On every push to monorepo `main`, `.github/workflows/sync-subtrees.yml` splits the prefix and force-pushes to `indexnetwork/edgeclaw` `main` (the fork). The fork is a derived staging area — its `main` is freely overwritten.
-3. When ready to ship to upstream, open a PR from `indexnetwork/edgeclaw` → `Edge-City/edgeclaw` via the GitHub UI. The fork relationship enables cross-network PRs.
-
-**Pull flow (Edge-City → fork → monorepo):**
-1. `.github/workflows/sync-edgeclaw-fork.yml` (manual `workflow_dispatch`) calls `gh repo sync --force` to align the fork's `main` with `Edge-City/edgeclaw` `main`. This discards any pending fork-local commits — fine, since they're recoverable from the next monorepo subtree push.
-2. The same workflow fires a `repository_dispatch` event (`edgeclaw-updated`) on the monorepo.
-3. `.github/workflows/pull-edgeclaw-subtree.yml` listens for that event, runs `git subtree pull` against the fork, and pushes the merge commit to monorepo `main`.
-
-```bash
-# Manual push if the workflow failed (sync monorepo HEAD into the fork)
-git subtree push --prefix=packages/edgeclaw https://github.com/indexnetwork/edgeclaw.git <branch>
-
-# Manual pull from the fork (if it has changes the monorepo hasn't picked up)
-git subtree pull --squash --prefix=packages/edgeclaw https://github.com/indexnetwork/edgeclaw.git main
-
-# Force-sync the fork from Edge-City (e.g. after an upstream merge)
-gh repo sync indexnetwork/edgeclaw --source Edge-City/edgeclaw --branch main --force
+git subtree pull --squash --prefix=packages/agentvillage https://github.com/indexnetwork/agentvillage.git <branch>
 ```
 
 ### Root
@@ -195,8 +168,7 @@ index/
 │   ├── protocol/        # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
 │   ├── cli/             # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
 │   ├── claude-plugin/   # @indexnetwork/claude-plugin — index-orchestrator and index-negotiator skills, subtree → indexnetwork/claude-plugin
-│   ├── edge-hermes/     # @edge-city/edge-hermes — Agent Village installer + skills, subtree → indexnetwork/edge-hermes
-│   └── edgeclaw/        # edgeclaw skills + onboarding, subtree → indexnetwork/edgeclaw (fork of Edge-City/edgeclaw)
+│   └── agentvillage/    # @indexnetwork/agentvillage — Agent Village workspace + skills, subtree → indexnetwork/agentvillage
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
 └── scripts/           # Worktree helpers, hooks, dev launcher

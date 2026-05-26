@@ -10,8 +10,6 @@
 !.vscode/index.code-workspace
 .cursor/
 .claude/settings.local.json
-.codex
-.agent
 .claude/worktrees
 
 # ===================
@@ -30,7 +28,6 @@ txt/
 # ===================
 # Documentation & Reports
 # ===================
-!packages/edgeclaw/workspace/AGENTS.md
 *.report.md
 packages/protocol/CLAUDE.md
 packages/protocol/.claude
@@ -59,9 +56,3 @@ node_modules/
 # Generated skills (local workspace dev output)
 # ===================
 /skills/**/SKILL.md
-.superpowers/
-
-# ===================
-# EdgeClaw auto-generated references (CI-refreshed upstream)
-# ===================
-packages/edgeclaw/skills/edge-esmeralda/references/
