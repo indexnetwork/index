@@ -1042,13 +1042,6 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
   questions?: Question[];
   debug?: DiscoverResult["discoveryQuestionsDebug"];
 }> {
-  logger.info("maybeBuildQuestions entry", {
-    enableQuestions: args.enableQuestions,
-    trigger: args.trigger,
-    hasQuestionerEnqueue: !!args.questionerEnqueue,
-    hasQuestionGenerator: !!args.questionGenerator,
-    userId: args.userId,
-  });
   if (!args.enableQuestions) return {};
   if (args.trigger !== 'orchestrator') return {};
 
