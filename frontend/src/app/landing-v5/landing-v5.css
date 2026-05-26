@@ -30,7 +30,7 @@
 ============================================================ */
 .landing-v5 .hero {
   width: 100%;
-  min-height: 100vh;
+  min-height: 84vh;
   position: relative;
   overflow: hidden;
   background: var(--bg);
@@ -294,7 +294,7 @@
 .landing-v5 .h1 .display {
   font-size: 48px;
   letter-spacing: -0.03em;
-  max-width: 16ch;
+  max-width: 17ch;
 }
 .landing-v5 .h1 .body-italic {
   font-size: 17px;
@@ -313,7 +313,7 @@
   position: sticky;
   top: 0;
   align-self: start;
-  height: 100vh;
+  height: 84vh;
   overflow: hidden;
   background: var(--bg-deep);
 }

@@ -315,7 +315,7 @@ function Hero() {
             </div>
           </div>
           <div className="hero-image">
-            <img src="/landing-v5/hero-index.png" alt="" />
+            <img src="/landing-v5/hero-index-v2.png" alt="" />
             <span className="scan" aria-hidden="true" />
           </div>
         </div>
