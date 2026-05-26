@@ -14,6 +14,7 @@ import type { Opportunity, OpportunityStatus } from "../shared/interfaces/databa
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
 import { selectByComposition } from "./opportunity.utils.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
+import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
@@ -73,13 +74,26 @@ export function resolveActionableLinkKind(input: {
  * Trailing slashes on frontendUrl are stripped before concatenation.
  */
 export function buildProfileUrl(
-  _counterpartUser:
+  counterpartUser:
     | { socials?: Array<{ label?: string | null; value?: string | null }> | null }
     | null
     | undefined,
   counterpartUserId: string,
   frontendUrl: string | undefined,
+  preferredSurface?: 'telegram' | 'web',
 ): string | undefined {
+  // When the viewer is on Telegram and the counterpart has a Telegram handle,
+  // link directly to t.me/{handle} so the user stays in Telegram (EDG-5).
+  if (preferredSurface === 'telegram' && counterpartUser?.socials) {
+    const tgSocial = counterpartUser.socials.find(
+      (s) => s.label?.toLowerCase() === 'telegram' && s.value,
+    );
+    if (tgSocial?.value) {
+      const handle = normalizeTelegramHandle(tgSocial.value);
+      if (handle) return `https://t.me/${handle}`;
+    }
+  }
+
   if (!frontendUrl) return undefined;
   const base = frontendUrl.replace(/\/+$/, "");
   return `${base}/u/${counterpartUserId}?link_preview=false`;
@@ -119,7 +133,7 @@ export async function attachActionableLinks(
   // (e.g. draft + party in `discover_opportunities` direct mode) still carry
   // the profile link the agent needs to render. Without this, the agent gets
   // a name with no URL attached and tends to fabricate one.
-  const profileUrl = buildProfileUrl(opts.counterpartUser, opts.counterpartUserId, opts.frontendUrl);
+  const profileUrl = buildProfileUrl(opts.counterpartUser, opts.counterpartUserId, opts.frontendUrl, opts.preferredSurface);
   if (profileUrl) card.profileUrl = profileUrl;
 
   const kind = resolveActionableLinkKind({

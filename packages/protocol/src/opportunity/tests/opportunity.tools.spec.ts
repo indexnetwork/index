@@ -464,17 +464,28 @@ describe("attachActionableLinks — mutation and resilience", () => {
 // buildProfileUrl — edge cases
 // ---------------------------------------------------------------------------
 
-describe("buildProfileUrl — always the Index web URL (IND-289)", () => {
+describe("buildProfileUrl — web surface (IND-289)", () => {
   test("returns the web profile URL when frontendUrl is set", () => {
     expect(
       buildProfileUrl({ socials: [] }, "user-1", "https://app.test"),
     ).toBe("https://app.test/u/user-1?link_preview=false");
   });
 
-  test("ignores Telegram socials — always uses the web URL", () => {
+  test("ignores Telegram socials when surface is web", () => {
     expect(
       buildProfileUrl(
-        { socials: [{ label: "telegram", value: "alice" }] },
+        { socials: [{ label: "telegram", value: "alice_tg" }] },
+        "user-2",
+        "https://app.test",
+        "web",
+      ),
+    ).toBe("https://app.test/u/user-2?link_preview=false");
+  });
+
+  test("ignores Telegram socials when surface is omitted", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "alice_tg" }] },
         "user-2",
         "https://app.test",
       ),
@@ -504,6 +515,90 @@ describe("buildProfileUrl — always the Index web URL (IND-289)", () => {
     expect(
       buildProfileUrl(null, "user-6", "https://app.test///"),
     ).toBe("https://app.test/u/user-6?link_preview=false");
+  });
+});
+
+describe("buildProfileUrl — telegram surface (EDG-5)", () => {
+  test("returns t.me deep link when counterpart has Telegram handle", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "alice_tg" }] },
+        "user-1",
+        "https://app.test",
+        "telegram",
+      ),
+    ).toBe("https://t.me/alice_tg");
+  });
+
+  test("normalizes Telegram handle (strips @, URL prefix)", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "@bob_handle" }] },
+        "user-2",
+        "https://app.test",
+        "telegram",
+      ),
+    ).toBe("https://t.me/bob_handle");
+
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "https://t.me/carol_h" }] },
+        "user-3",
+        "https://app.test",
+        "telegram",
+      ),
+    ).toBe("https://t.me/carol_h");
+  });
+
+  test("falls back to web URL when counterpart has no Telegram social", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "github", value: "alice" }] },
+        "user-4",
+        "https://app.test",
+        "telegram",
+      ),
+    ).toBe("https://app.test/u/user-4?link_preview=false");
+  });
+
+  test("falls back to web URL when socials is null", () => {
+    expect(
+      buildProfileUrl({ socials: null }, "user-5", "https://app.test", "telegram"),
+    ).toBe("https://app.test/u/user-5?link_preview=false");
+  });
+
+  test("falls back to web URL when counterpartUser is null", () => {
+    expect(
+      buildProfileUrl(null, "user-6", "https://app.test", "telegram"),
+    ).toBe("https://app.test/u/user-6?link_preview=false");
+  });
+
+  test("falls back to web URL when Telegram handle is invalid", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "ab" }] },
+        "user-7",
+        "https://app.test",
+        "telegram",
+      ),
+    ).toBe("https://app.test/u/user-7?link_preview=false");
+  });
+
+  test("returns undefined when frontendUrl is missing and no Telegram handle", () => {
+    expect(
+      buildProfileUrl({ socials: [] }, "user-8", undefined, "telegram"),
+    ).toBeUndefined();
+  });
+
+  test("returns t.me even when frontendUrl is missing if Telegram handle exists", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "valid_handle" }] },
+        "user-9",
+        undefined,
+        "telegram",
+      ),
+    ).toBe("https://t.me/valid_handle");
   });
 });
 
