@@ -46,9 +46,9 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
    - **No greeting and no `acceptUrl`.**
    - Render the line as: `[{Name}]({profileUrl}) — {their need, 1–2 sentences drawn from `mainText`}. {short closing phrase}, make intro`
    - Examples (the literal target shape — match this):
-     - `[Remi](https://index.network/u/...?link_preview=false) — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro`
-     - `[Kai](https://index.network/u/...?link_preview=false) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm open conversation, make intro`
-     - `[Celia](https://index.network/u/...?link_preview=false) — Designing governance tooling for popup communities. Coordination, consent, collective decision-making. Point her at the right people, make intro`
+     - `[Remi]({profileUrl}) — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro`
+     - `[Kai]({profileUrl}) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm open conversation, make intro`
+     - `[Celia]({profileUrl}) — Designing governance tooling for popup communities. Coordination, consent, collective decision-making. Point her at the right people, make intro`
 
    If `totalPending` exceeds the candidates you surfaced, end with: `There are N more conversations waiting for you, let me know if you want to see them.`
 
