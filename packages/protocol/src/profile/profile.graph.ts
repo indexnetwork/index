@@ -333,8 +333,11 @@ export class ProfileGraphFactory {
 
     // ─────────────────────────────────────────────────────────
     // NODE: Auto-Generate (Parallel Chat API enrichment)
-    // Calls enrichUserProfile to get a structured profile directly.
-    // On success, sets prePopulatedProfile (skips LLM generation).
+    // Calls enrichUserProfile to get structured data, then builds a
+    // text blob as input for the decompose → aggregate → generate
+    // pipeline. This ensures enriched users get premises with
+    // embeddings, making them discoverable via premise-to-premise
+    // matching.
     // On failure, falls back to basic user info for LLM generation.
     // Used in 'generate' mode only.
     // ─────────────────────────────────────────────────────────
@@ -471,13 +474,23 @@ export class ProfileGraphFactory {
                 }
               }
 
+              // Build a text blob from the enrichment result so it flows
+              // through premise decomposition (when available) rather than
+              // bypassing premises via prePopulatedProfile.
+              const enrichmentParts = [
+                enrichment!.identity.name ? `My name is ${enrichment!.identity.name}.` : '',
+                enrichment!.identity.location ? `I am based in ${enrichment!.identity.location}.` : '',
+                enrichment!.identity.bio || '',
+                enrichment!.narrative.context || '',
+                enrichment!.attributes.skills.length ? `My skills include ${enrichment!.attributes.skills.join(', ')}.` : '',
+                enrichment!.attributes.interests.length ? `My interests include ${enrichment!.attributes.interests.join(', ')}.` : '',
+              ].filter(Boolean).join('\n');
+
               return {
-                prePopulatedProfile: {
-                  identity: enrichment!.identity,
-                  narrative: enrichment!.narrative,
-                  attributes: enrichment!.attributes,
-                },
+                input: enrichmentParts,
                 needsUserInfo: false,
+                needsProfileGeneration: true,
+                forceUpdate: true,
                 operationsPerformed: { scraped: true },
               };
             }
@@ -512,34 +525,6 @@ export class ProfileGraphFactory {
           });
           return { error: `Auto-generate failed: ${err instanceof Error ? err.message : String(err)}` };
         }
-      });
-    };
-
-    // ─────────────────────────────────────────────────────────
-    // NODE: Use Pre-Populated Profile
-    // Converts pre-populated profile (from external enrichment like Parallel Chat API)
-    // into the format expected by the embedding step, skipping LLM generation.
-    // ─────────────────────────────────────────────────────────
-    const usePrePopulatedProfileNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.usePrePopulatedProfile", async () => {
-        if (!state.prePopulatedProfile) {
-          logger.error("No pre-populated profile provided");
-          return { error: "Pre-populated profile required" };
-        }
-
-        logger.verbose("Using pre-populated profile from external enrichment", {
-          name: state.prePopulatedProfile.identity.name,
-          skillsCount: state.prePopulatedProfile.attributes.skills.length,
-          interestsCount: state.prePopulatedProfile.attributes.interests.length,
-        });
-
-        return {
-          profile: {
-            ...state.prePopulatedProfile,
-            userId: state.userId,
-          },
-          operationsPerformed: { generatedProfile: true },
-        };
       });
     };
 
@@ -856,13 +841,6 @@ export class ProfileGraphFactory {
         return "aggregate_profile";
       }
 
-      // Pre-populated profile from external enrichment (e.g. Parallel Chat API)
-      // Skip profile generation, go directly to embedding
-      if (state.prePopulatedProfile) {
-        logger.verbose("Pre-populated profile detected - skipping generation, routing to embed");
-        return "use_prepopulated_profile";
-      }
-
       // Generate mode: use enrichUserProfile Chat API to auto-generate
       if (state.operationMode === 'generate') {
         logger.verbose("Generate mode - routing to auto_generate");
@@ -914,7 +892,6 @@ export class ProfileGraphFactory {
       .addNode("scrape", scrapeNode)
       .addNode("decompose_premises", decomposePremisesNode)
       .addNode("auto_generate", autoGenerateNode)
-      .addNode("use_prepopulated_profile", usePrePopulatedProfileNode)
       .addNode("aggregate_profile", aggregateProfileNode)
       .addNode("generate_profile", generateProfileNode)
       .addNode("save_profile", saveProfileNode)
@@ -927,7 +904,6 @@ export class ProfileGraphFactory {
         "check_state",
         checkStateCondition,
         {
-          use_prepopulated_profile: "use_prepopulated_profile", // Pre-populated profile -> skip generation
           auto_generate: "auto_generate",       // Generate mode -> Chat API enrichment
           aggregate_profile: "aggregate_profile", // Aggregate mode -> synthesize from premises
           decompose_premises: "decompose_premises", // Write mode + input + premise graph -> decompose first
@@ -936,9 +912,6 @@ export class ProfileGraphFactory {
           [END]: END                            // Query mode or everything exists
         }
       )
-
-      // Pre-populated profile feeds directly into save (skips LLM generation)
-      .addEdge("use_prepopulated_profile", "save_profile")
 
       // Decompose premises routes to aggregate (normal) or generate_profile (fallback)
       .addConditionalEdges(
@@ -966,23 +939,24 @@ export class ProfileGraphFactory {
         { generate_profile: "generate_profile", [END]: END },
       )
 
-      // Auto-generate routes based on enrichment result
+      // Auto-generate routes to decompose_premises (when premise graph
+      // available) or generate_profile (legacy, no premise graph)
       .addConditionalEdges(
         "auto_generate",
         (state: typeof ProfileGraphState.State) => {
-          if (state.prePopulatedProfile) {
-            logger.verbose("Enrichment succeeded — using pre-populated profile");
-            return "use_prepopulated_profile";
+          if (state.input && this.premiseGraph) {
+            logger.verbose("Enrichment produced input — routing to premise decomposition");
+            return "decompose_premises";
           }
           if (state.input) {
-            logger.verbose("Enrichment fell back — using basic info for LLM generation");
+            logger.verbose("Enrichment produced input — routing to LLM generation (no premise graph)");
             return "generate_profile";
           }
           logger.verbose("Enrichment ended without data (ghost soft-deleted or error) — done");
           return END;
         },
         {
-          use_prepopulated_profile: "use_prepopulated_profile",
+          decompose_premises: "decompose_premises",
           generate_profile: "generate_profile",
           [END]: END,
         }

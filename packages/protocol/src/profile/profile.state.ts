@@ -47,19 +47,6 @@ export const ProfileGraphState = Annotation.Root({
   // --- Intermediate State ---
 
   /**
-   * Pre-populated profile from external enrichment (e.g. Parallel Chat API).
-   * When provided, the graph skips profile generation and goes directly to save.
-   */
-  prePopulatedProfile: Annotation<{
-    identity: { name: string; bio: string; location: string };
-    narrative: { context: string };
-    attributes: { skills: string[]; interests: string[] };
-  } | undefined>({
-    reducer: (curr, next) => next,
-    default: () => undefined,
-  }),
-
-  /**
    * Internal objective constructed from user data.
    */
   objective: Annotation<string | undefined>({
