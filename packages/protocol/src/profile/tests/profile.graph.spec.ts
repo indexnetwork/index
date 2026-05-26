@@ -584,4 +584,84 @@ describe('ProfileGraph - Generate Mode', () => {
   });
 });
 
-// ─── Pre-populated profile path tests ───────────────────────────────────────
+// ─── Enrichment → Premise Decomposition Path ─────────────────────────────────
+
+describe('ProfileGraph - Enrichment with Premise Decomposition', () => {
+  let mockDatabase: ProfileGraphDatabase;
+  let mockScraper: Scraper;
+  let mockPremiseGraph: { invoke: ReturnType<typeof mock> };
+
+  const enrichmentResult = {
+    identity: { name: 'Jane Doe', bio: 'Senior engineer at Acme Corp', location: 'San Francisco, USA' },
+    narrative: { context: 'Jane is a seasoned software engineer with 10 years of experience.' },
+    attributes: { skills: ['TypeScript', 'React', 'Node.js'], interests: ['AI', 'Open Source'] },
+    socials: { linkedin: 'janedoe', twitter: 'janedoe', github: 'janedoe', websites: [] },
+    confidentMatch: true,
+    isHuman: true,
+  };
+
+  const user = {
+    id: 'user-premise-enrichment',
+    name: 'Jane Doe',
+    email: 'jane@example.com',
+    socials: [{ id: '1', userId: 'user-premise-enrichment', label: 'linkedin', value: 'janedoe' }],
+    location: null,
+    intro: null,
+  };
+
+  beforeEach(() => {
+    mockEnrichUserProfile.mockReset();
+
+    mockDatabase = {
+      getProfile: mock(async () => null),
+      getProfileByUserId: mock(async () => null),
+      getUser: mock(async () => user),
+      getUserSocials: mock(async () => user.socials),
+      setUserSocials: mock(async () => {}),
+      updateUser: mock(async (userId: string, data: any) => ({ id: userId, ...data })),
+      saveProfile: mock(async () => {}),
+      softDeleteGhost: mock(async () => true),
+      findDuplicateUser: mock(async () => null),
+      mergeGhostUser: mock(async () => {}),
+      getPremisesForUser: mock(async () => []),
+    } as any;
+
+    mockScraper = { scrape: mock(async () => '') } as any;
+
+    mockPremiseGraph = {
+      invoke: mock(async (input: any) => ({
+        premise: { id: `premise-${Date.now()}` },
+      })),
+    };
+  });
+
+  it('should route enrichment through premise decomposition when premiseGraph is provided', async () => {
+    mockEnrichUserProfile.mockResolvedValue(enrichmentResult);
+
+    const factory = new ProfileGraphFactory(
+      mockDatabase,
+      mockScraper,
+      { enrichUserProfile: mockEnrichUserProfile },
+      undefined, // questionerEnqueue
+      mockPremiseGraph as any, // premiseGraph — 5th constructor arg
+    );
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({
+      userId: user.id,
+      operationMode: 'generate',
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.profile).toBeDefined();
+    expect(mockDatabase.saveProfile).toHaveBeenCalled();
+
+    // The premise graph should have been called at least once with
+    // assertion text derived from the enrichment data
+    expect(mockPremiseGraph.invoke).toHaveBeenCalled();
+    const firstCall = (mockPremiseGraph.invoke as any).mock.calls[0][0];
+    expect(firstCall.userId).toBe(user.id);
+    expect(firstCall.operationMode).toBe('create');
+    expect(firstCall.assertionText).toBeTruthy();
+  }, 120_000);
+});
