@@ -5125,7 +5125,7 @@ export class OpportunityDatabaseAdapter {
         1 - (p.embedding <=> ${vectorStr}::vector) AS similarity
       FROM ${schema.premises} p
       JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
-      WHERE pn.network_id = ANY(${networkIds}::text[])
+      WHERE pn.network_id IN ${networkIds}
         AND p.user_id != ${excludeUserId}
         AND p.status = 'ACTIVE'
         AND p.embedding IS NOT NULL
