@@ -1,20 +1,20 @@
-# Splits skills/ and pushes to Edge-City/Agentvillage-skills when main is updated.
+# Splits skills/ and pushes to indexnetwork/agentvillage-skills (dev + main)
+# and Edge-City/agentvillage-skills (main only, upstream fork sync).
 #
-# Edge-City/Agentvillage-skills is the standalone, plugin-installable repo.
-# Its root IS the skills/ directory, so plugin manifests (.claude-plugin/,
-# .codex-plugin/, openclaw.plugin.json) land at the repo root where
-# installers expect them.
+# The skills/ directory IS the repo root in the target repos, so plugin
+# manifests (.claude-plugin/, .codex-plugin/, openclaw.plugin.json) land
+# where installers expect them.
 name: Sync Agentvillage-skills
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
     paths:
       - 'skills/**'
   workflow_dispatch:
 
 concurrency:
-  group: sync-skills
+  group: sync-skills-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -40,10 +40,21 @@ jobs:
             echo "❌ SKILLS_SYNC_PAT secret is not set."
             exit 1
           fi
-          echo "Splitting skills/ on main..."
-          SPLIT_SHA=$(git subtree split --prefix=skills main)
+          BRANCH="${GITHUB_REF_NAME}"
+          echo "Splitting skills/ on $BRANCH..."
+          SPLIT_SHA=$(git subtree split --prefix=skills "$BRANCH")
           echo "Split SHA: $SPLIT_SHA"
+
+          # Always push to indexnetwork/agentvillage-skills (matching branch)
           git push --force \
-            "https://x-access-token:${GH_PAT}@github.com/Edge-City/Agentvillage-skills.git" \
-            "${SPLIT_SHA}:refs/heads/main"
-          echo "✓ pushed to Edge-City/Agentvillage-skills (main)"
+            "https://x-access-token:${GH_PAT}@github.com/indexnetwork/agentvillage-skills.git" \
+            "${SPLIT_SHA}:refs/heads/${BRANCH}"
+          echo "✓ pushed to indexnetwork/agentvillage-skills ($BRANCH)"
+
+          # On main, also sync upstream fork
+          if [ "$BRANCH" = "main" ]; then
+            git push --force \
+              "https://x-access-token:${GH_PAT}@github.com/Edge-City/agentvillage-skills.git" \
+              "${SPLIT_SHA}:refs/heads/main"
+            echo "✓ pushed to Edge-City/agentvillage-skills (main)"
+          fi
