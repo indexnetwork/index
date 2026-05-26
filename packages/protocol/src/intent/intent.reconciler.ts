@@ -7,12 +7,6 @@ import { createModel } from "../shared/agent/model.config.js";
 
 const logger = protocolLogger("IntentReconciler");
 
-/**
- * Config
- */
-import { config } from "dotenv";
-config({ path: '.env.development', override: true });
-
 const model = createModel("intentReconciler");
 
 const CreateActionTypeSchema = z.union([z.literal("create"), z.literal("CREATE")]);

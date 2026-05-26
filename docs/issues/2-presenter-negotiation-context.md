@@ -40,7 +40,7 @@ Today the presenter renders opportunities without visibility into the negotiatio
 
 ## Implementation Notes
 
-- Loader reads from `NegotiationDatabase` (`packages/protocol/src/shared/interfaces/database.interface.ts`) — the full `tasks` + `messages` + `artifacts` chain for the opportunity.
+- Loader reads from `NegotiationGraphDatabase` (`packages/protocol/src/shared/interfaces/database.interface.ts`) — the full `tasks` + `messages` + `artifacts` chain for the opportunity.
 - Presenter prompt changes live in `opportunity.presenter.ts` (or wherever the prompt template is assembled — confirmed during implementation).
 - Snapshot tests use `bun test` with a snapshot of the prompt string, not the LLM output.
 - Full task-level breakdown: megaplan Issue 2 section.

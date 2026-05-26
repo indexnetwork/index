@@ -60,12 +60,11 @@ See IND-270 for the full inventory. High-level groups:
 
 - **Protocol tool layer**: `opportunity/opportunity.tools.ts`, `chat/chat.agent.ts`, `chat/chat.prompt.ts`, `chat/chat.prompt.modules.ts`, `contact/contact.tools.ts`, `intent/intent.tools.ts`, `network/network.tools.ts`, `shared/agent/utility.tools.ts`, `opportunity/opportunity.discover.ts`, `opportunity/opportunity.graph.ts`, `opportunity/opportunity.state.ts`
 - **Protocol tests**: `chat/tests/chat.prompt.modules.spec.ts`, `chat/tests/chat.prompt.spec.ts`, `chat/tests/chat.agent.spec.ts`, `chat/tests/chat.graph.mocks.ts`, `opportunity/tests/opportunity.state.dedupAlreadyAccepted.spec.ts`, `shared/agent/tests/tool.factory.spec.ts`
-- **Backend tests**: `backend/src/controllers/tests/tool.controller.spec.ts`, `backend/tests/mcp.test.ts`
-- **CLI**: `packages/cli/src/opportunity.command.ts`, `packages/cli/src/output/base.ts`, `packages/cli/tests/opportunity.command.test.ts`, `packages/cli/tests/tool-calls.test.ts`
+- **Backend tests**: `backend/src/controllers/tests/tool.controller.spec.ts`, `backend/tests/mcp.spec.ts`
+- **CLI**: `packages/cli/src/opportunity.command.ts`, `packages/cli/src/output/base.ts`, `packages/cli/tests/opportunity.command.spec.ts`, `packages/cli/tests/tool-calls.spec.ts`
 - **Frontend**: `frontend/src/components/chat/ToolCallsDisplay.tsx`
-- **Plugins**: `packages/openclaw-plugin/skills/index-orchestrator/SKILL.md`, `packages/openclaw-plugin/src/polling/onboarding/onboarding.prompt.ts`, `packages/claude-plugin/skills/index-orchestrator/SKILL.md`
-- **Skill templates** (sources of truth for SKILL.md generation): `packages/protocol/skills/openclaw/index-orchestrator.template.md`, `packages/protocol/skills/claude-plugin/index-orchestrator.template.md`
-- **Edgeclaw**: `packages/edgeclaw/workspace/AGENTS.md`, `BOOTSTRAP.md`, `SOUL.md`, `TOOLS.md`
+- **Plugins**: `packages/claude-plugin/skills/index-orchestrator/SKILL.md`
+- **Skill templates** (sources of truth for SKILL.md generation): `packages/protocol/skills/claude-plugin/index-orchestrator.template.md`
 - **Docs**: `docs/specs/api-reference.md`, `docs/specs/cli-reference.md`, `docs/design/protocol-deep-dive.md`, `docs/specs/2026-05-06-welcome-message-design.md`, `packages/protocol/src/README.md`, `packages/protocol/src/docs/Latent Opportunity Lifecycle.md`
 
 ## Out of scope
@@ -83,9 +82,9 @@ See IND-270 for the full inventory. High-level groups:
   - `bun test src/chat/tests/chat.prompt.spec.ts`
   - `bun test src/chat/tests/chat.agent.spec.ts`
   - `bun test src/controllers/tests/tool.controller.spec.ts` (in backend)
-  - `bun test tests/mcp.test.ts` (in backend)
-  - `bun test tests/opportunity.command.test.ts` (in packages/cli)
-  - `bun test tests/tool-calls.test.ts` (in packages/cli)
+  - `bun test tests/mcp.spec.ts` (in backend)
+  - `bun test tests/opportunity.command.spec.ts` (in packages/cli)
+  - `bun test tests/tool-calls.spec.ts` (in packages/cli)
 - `bun run lint` clean
 - Manual: `mcp/tools/list` response includes `discover_opportunities`; no `create_opportunities` entry remains
 - After rebuild of skills (`scripts/build-skills.ts`), generated SKILL.md files match templates
@@ -97,4 +96,4 @@ See IND-270 for the full inventory. High-level groups:
 
 ## Rollout
 
-Single PR. Merge to `dev`, push to upstream — subtree workflow propagates to `indexnetwork/cli`, `indexnetwork/protocol`, `indexnetwork/claude-plugin`, `indexnetwork/openclaw-plugin`. Plugin version bumps required (see CLAUDE.md "Finishing a Branch" — both `package.json` AND `openclaw.plugin.json` for openclaw-plugin).
+Single PR. Merge to `dev`, push to origin — subtree workflow propagates to `indexnetwork/cli`, `indexnetwork/protocol`, `indexnetwork/claude-plugin`.

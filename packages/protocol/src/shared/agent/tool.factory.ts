@@ -16,6 +16,8 @@ import { PremiseGraphFactory } from "../../premise/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 import { configureProtocol } from "./model.config.js";
 
+import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
+
 import {
   type ToolContext,
   type ResolvedToolContext,
@@ -113,8 +115,18 @@ export async function createChatTools(
   }
 
   // ─── Compile subgraphs ─────────────────────────────────────────────────────
-  const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, deps.enricher).createGraph();
+
+  // Wrap questionerEnqueue to include session context when available
+  const sessionAwareEnqueue: QuestionerEnqueueFn | undefined = deps.questionerEnqueue
+    ? (input) => deps.questionerEnqueue!({
+        ...input,
+        ...(resolvedContext.sessionId && !input.conversationId ? { conversationId: resolvedContext.sessionId } : {}),
+      })
+    : undefined;
+
+  const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue, sessionAwareEnqueue).createGraph();
+  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
+  const profileGraph = new ProfileGraphFactory(database, scraper, deps.enricher, sessionAwareEnqueue, premiseGraph).createGraph();
   const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
   const hydeGenerator = new HydeGenerator();
@@ -130,6 +142,7 @@ export async function createChatTools(
         deps.negotiationDatabase,
         deps.agentDispatcher,
         deps.negotiationTimeoutQueue,
+        sessionAwareEnqueue,
       ).createGraph()
     : undefined;
   const opportunityGraph = new OpportunityGraphFactory(
@@ -145,7 +158,6 @@ export async function createChatTools(
   const networkGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
   const intentNetworkGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
-  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
 
   // ─── Create context-bound databases ────────────────────────────────────────
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
@@ -185,9 +197,10 @@ export async function createChatTools(
     mintConnectLink: deps.mintConnectLink,
     frontendUrl: deps.frontendUrl,
     apiBaseUrl: deps.apiBaseUrl,
+    ...(deps.premiseEvents && { premiseEvents: deps.premiseEvents }),
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
     ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
-    ...(deps.questionerEnqueue && { questionerEnqueue: deps.questionerEnqueue }),
+    ...(sessionAwareEnqueue && { questionerEnqueue: sessionAwareEnqueue }),
     ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
     graphs: {
       profile: profileGraph,

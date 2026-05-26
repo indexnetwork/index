@@ -9,7 +9,7 @@
 
 /** Config — must come before any project imports */
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, and, inArray } from 'drizzle-orm';

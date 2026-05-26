@@ -177,7 +177,6 @@ interface ProfileRow {
   identity: ProfileIdentity;
   narrative: ProfileNarrative;
   attributes: ProfileAttributes;
-  embedding: number[] | number[][] | null;
 }
 
 interface NetworkMembershipRow {
@@ -610,7 +609,6 @@ export class IntentDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
@@ -882,7 +880,6 @@ export class ChatDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
@@ -1030,11 +1027,6 @@ export class ChatDatabaseAdapter {
       identity: profile.identity,
       narrative: profile.narrative,
       attributes: profile.attributes,
-      embedding: profile.embedding === null 
-        ? null 
-        : (Array.isArray(profile.embedding[0])
-          ? (profile.embedding as number[][])[0]
-          : (profile.embedding as number[])),
       updatedAt: new Date(),
     };
     await db.insert(schema.userProfiles)
@@ -1583,6 +1575,7 @@ export class ChatDatabaseAdapter {
         embedding: intents.embedding,
         sourceType: intents.sourceType,
         sourceId: intents.sourceId,
+        status: intents.status,
       })
       .from(intents)
       .where(eq(intents.id, intentId))
@@ -1610,6 +1603,7 @@ export class ChatDatabaseAdapter {
       embedding: embedding ?? undefined,
       sourceType: row.sourceType ?? undefined,
       sourceId: row.sourceId ?? undefined,
+      status: row.status,
     };
   }
 
@@ -2313,7 +2307,6 @@ export class ChatDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
@@ -3018,6 +3011,9 @@ export class ChatDatabaseAdapter {
     approved: boolean,
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityActorApproval(id, introducerUserId, approved);
+  }
+  async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
+    await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
   }
   async stampOpportunityActorAction(
     id: string,
@@ -3827,9 +3823,9 @@ export class ChatDatabaseAdapter {
    *   insert fails and no pre-existing row can be found after a unique
    *   constraint collision (surfaced by the underlying ConversationDatabaseAdapter).
    */
-  async getOrCreateDM(userA: string, userB: string): Promise<{ id: string }> {
+  async getOrCreateDM(userA: string, userB: string, participantType?: 'user' | 'agent'): Promise<{ id: string }> {
     const conversationAdapter = new ConversationDatabaseAdapter();
-    return conversationAdapter.getOrCreateDM(userA, userB);
+    return conversationAdapter.getOrCreateDM(userA, userB, participantType);
   }
 
   /**
@@ -3965,6 +3961,19 @@ export class ChatDatabaseAdapter {
     }));
   }
 
+  /**
+   * Cosine similarity search against premise embeddings, scoped to shared networks.
+   * Delegates to OpportunityDatabaseAdapter (which hosts the raw SQL query).
+   */
+  async searchPremisesBySimilarity(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+  }) {
+    return this.opportunityAdapter.searchPremisesBySimilarity(params);
+  }
+
   async updatePremise(premiseId: string, updates: {
     assertion?: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
     analysis?: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number };
@@ -4039,6 +4048,26 @@ export class ChatDatabaseAdapter {
     }));
   }
 
+  /**
+   * Find ACTIVE premises whose validity.validUntil has passed.
+   * Uses a JSONB text extraction cast to timestamptz for the comparison.
+   * @returns Minimal rows: id and userId for each expired premise
+   */
+  async getExpiredPremises(): Promise<Array<{ id: string; userId: string }>> {
+    const rows = await db
+      .select({ id: schema.premises.id, userId: schema.premises.userId })
+      .from(schema.premises)
+      .where(
+        and(
+          eq(schema.premises.status, 'ACTIVE'),
+          isNull(schema.premises.deletedAt),
+          sql`(${schema.premises.validity}->>'validUntil') IS NOT NULL`,
+          sql`(${schema.premises.validity}->>'validUntil')::timestamptz < NOW()`,
+        )
+      );
+    return rows.map((r) => ({ id: r.id, userId: r.userId }));
+  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4061,7 +4090,6 @@ export class ProfileDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
@@ -4071,11 +4099,6 @@ export class ProfileDatabaseAdapter {
       identity: profile.identity,
       narrative: profile.narrative,
       attributes: profile.attributes,
-      embedding: profile.embedding === null 
-        ? null 
-        : (Array.isArray(profile.embedding[0])
-          ? (profile.embedding as number[][])[0]
-          : (profile.embedding as number[])),
       updatedAt: new Date(),
     };
     await db.insert(schema.userProfiles)
@@ -4150,15 +4173,30 @@ export class ProfileDatabaseAdapter {
     await db.transaction(async (tx) => {
       await tx.delete(schema.userSocials).where(eq(schema.userSocials.userId, userId));
       if (socials.length > 0) {
-        const filtered = socials.filter(s => s.value.trim() !== '');
-        if (filtered.length > 0) {
-          await tx.insert(schema.userSocials).values(
-            filtered.map(s => ({
+        const classified = socials
+          .filter(s => s.value.trim() !== '')
+          .map(s => {
+            const value = s.value.trim();
+            const detected = detectSocialLabel(value);
+            return {
               userId,
-              label: detectSocialLabel(s.value) === 'custom' ? s.label : detectSocialLabel(s.value),
-              value: s.value.trim(),
-            })),
-          );
+              label: detected === 'custom' ? s.label : detected,
+              value,
+            };
+          });
+
+        // Dedup: for non-custom labels the unique index allows only one row per label.
+        // Keep the first occurrence (explicit field) and drop later duplicates.
+        const seen = new Set<string>();
+        const deduped = classified.filter(s => {
+          if (s.label === 'custom') return true;
+          if (seen.has(s.label)) return false;
+          seen.add(s.label);
+          return true;
+        });
+
+        if (deduped.length > 0) {
+          await tx.insert(schema.userSocials).values(deduped);
         }
       }
     });
@@ -4178,13 +4216,11 @@ export class ProfileDatabaseAdapter {
     identity: ProfileIdentity;
     narrative: ProfileNarrative;
     attributes: ProfileAttributes;
-    embedding: number[] | number[][] | null;
   } | null> {
     const result = await db.select({
       identity: schema.userProfiles.identity,
       narrative: schema.userProfiles.narrative,
       attributes: schema.userProfiles.attributes,
-      embedding: schema.userProfiles.embedding,
     })
       .from(schema.userProfiles)
       .where(eq(schema.userProfiles.userId, userId))
@@ -4195,7 +4231,6 @@ export class ProfileDatabaseAdapter {
       identity: row.identity as ProfileIdentity,
       narrative: row.narrative as ProfileNarrative,
       attributes: row.attributes as ProfileAttributes,
-      embedding: row.embedding,
     };
   }
 
@@ -4206,7 +4241,6 @@ export class ProfileDatabaseAdapter {
       identity: schema.userProfiles.identity,
       narrative: schema.userProfiles.narrative,
       attributes: schema.userProfiles.attributes,
-      embedding: schema.userProfiles.embedding,
     })
       .from(schema.userProfiles)
       .where(eq(schema.userProfiles.userId, userId))
@@ -4219,7 +4253,6 @@ export class ProfileDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
@@ -4494,6 +4527,50 @@ export class ProfileDatabaseAdapter {
         .where(eq(schema.users.id, sourceId));
     });
   }
+
+  /**
+   * Retrieve premises for a user, optionally filtered by status.
+   * Used by the profile graph in `aggregate` mode to synthesize profile from active premises.
+   * @param userId - The user whose premises to retrieve
+   * @param status - Optional status filter (`ACTIVE`, `RETRACTED`, or `EXPIRED`)
+   * @returns Array of premise records
+   */
+  async getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
+    id: string; userId: string;
+    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
+    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
+    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding: number[] | null;
+    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
+  }>> {
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(schema.premises.userId, userId),
+      isNull(schema.premises.deletedAt),
+    ];
+    if (status) {
+      conditions.push(eq(schema.premises.status, status));
+    }
+    const rows = await db
+      .select()
+      .from(schema.premises)
+      .where(and(...conditions))
+      .orderBy(desc(schema.premises.createdAt));
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
+      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
+      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
+      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
+      embedding: row.embedding,
+      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      retractedAt: row.retractedAt ?? null,
+    }));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4512,6 +4589,7 @@ interface OpportunityRow {
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
+  metadata: Record<string, unknown>;
 }
 
 /** Create opportunity input (matches protocol CreateOpportunityData). */
@@ -4538,6 +4616,7 @@ function toOpportunityRow(row: typeof opportunities.$inferSelect): OpportunityRo
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     expiresAt: row.expiresAt,
+    metadata: (row.metadata ?? {}) as Record<string, unknown>,
   };
 }
 
@@ -4557,7 +4636,6 @@ export class OpportunityDatabaseAdapter {
       identity: profile.identity as ProfileIdentity,
       narrative: profile.narrative as ProfileNarrative,
       attributes: profile.attributes as ProfileAttributes,
-      embedding: profile.embedding,
     };
   }
 
@@ -4747,6 +4825,10 @@ export class OpportunityDatabaseAdapter {
         .returning();
       return row ? toOpportunityRow(row) : null;
     });
+  }
+
+  async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
+    await db.update(opportunities).set({ metadata, updatedAt: new Date() }).where(eq(opportunities.id, id));
   }
 
   async stampOpportunityActorAction(
@@ -4967,6 +5049,98 @@ export class OpportunityDatabaseAdapter {
       )
       .returning({ id: opportunities.id });
     return updated.length;
+  }
+
+  /**
+   * Retrieve premises for a user, optionally filtered by status.
+   * Used by the opportunity graph prep node for premise-to-premise discovery.
+   * @param userId - The user whose premises to retrieve
+   * @param status - Optional status filter
+   * @returns Array of premise records
+   */
+  async getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
+    id: string; userId: string;
+    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
+    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
+    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding: number[] | null;
+    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
+  }>> {
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(schema.premises.userId, userId),
+      isNull(schema.premises.deletedAt),
+    ];
+    if (status) {
+      conditions.push(eq(schema.premises.status, status));
+    }
+    const rows = await db
+      .select()
+      .from(schema.premises)
+      .where(and(...conditions))
+      .orderBy(desc(schema.premises.createdAt));
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
+      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
+      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
+      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
+      embedding: row.embedding,
+      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      retractedAt: row.retractedAt,
+    }));
+  }
+
+  /**
+   * Cosine similarity search against premise embeddings, scoped to shared networks.
+   * Used by the opportunity graph's premise discovery path (path D).
+   * @param params - Search parameters including embedding vector, network scope, and exclusions
+   * @returns Matching premises ranked by cosine similarity
+   */
+  async searchPremisesBySimilarity(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+  }) {
+    const { embedding, networkIds, excludeUserId, limit } = params;
+    const vectorStr = `[${embedding.join(',')}]`;
+
+    const rows = await db.execute<{
+      premiseId: string;
+      userId: string;
+      networkId: string;
+      assertionText: string;
+      similarity: number;
+    }>(sql`
+      SELECT
+        p.id AS "premiseId",
+        p.user_id AS "userId",
+        pn.network_id AS "networkId",
+        p.assertion->>'text' AS "assertionText",
+        1 - (p.embedding <=> ${vectorStr}::vector) AS similarity
+      FROM ${schema.premises} p
+      JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
+      WHERE pn.network_id = ANY(${networkIds})
+        AND p.user_id != ${excludeUserId}
+        AND p.status = 'ACTIVE'
+        AND p.embedding IS NOT NULL
+        AND p.deleted_at IS NULL
+      ORDER BY p.embedding <=> ${vectorStr}::vector
+      LIMIT ${limit}
+    `);
+
+    return rows as Array<{
+      premiseId: string;
+      userId: string;
+      networkId: string;
+      assertionText: string;
+      similarity: number;
+    }>;
   }
 }
 
@@ -6704,7 +6878,7 @@ export class ConversationDatabaseAdapter {
    * @param userB - Second user ID
    * @returns The existing or newly created conversation
    */
-  async getOrCreateDM(userA: string, userB: string): Promise<Conversation> {
+  async getOrCreateDM(userA: string, userB: string, participantType: 'user' | 'agent' = 'user'): Promise<Conversation> {
     if (userA === userB) {
       throw new Error('Cannot create a DM with yourself');
     }
@@ -6724,8 +6898,8 @@ export class ConversationDatabaseAdapter {
     try {
       return await this.createConversationWithDmPair(
         [
-          { participantId: userA, participantType: 'user' as const },
-          { participantId: userB, participantType: 'user' as const },
+          { participantId: userA, participantType },
+          { participantId: userB, participantType },
         ],
         dmPair,
       );
@@ -7200,7 +7374,7 @@ export class ConversationDatabaseAdapter {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // NegotiationDatabase query methods (used by negotiation MCP tools)
+  // NegotiationGraphDatabase query methods (used by negotiation MCP tools)
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
@@ -7287,6 +7461,35 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Returns user answers collected by the questioner for a given opportunity.
+   * Reads `metadata.userAnswers` from the opportunities table.
+   */
+  async getOpportunityUserAnswers(opportunityId: string): Promise<Array<{
+    questionId: string;
+    selectedOptions: string[];
+    freeText?: string;
+    answeredAt: string;
+  }>> {
+    const [row] = await db
+      .select({ metadata: opportunities.metadata })
+      .from(opportunities)
+      .where(eq(opportunities.id, opportunityId))
+      .limit(1);
+    if (!row?.metadata) return [];
+    const meta = row.metadata as Record<string, unknown>;
+    if (!Array.isArray(meta.userAnswers)) return [];
+    return (meta.userAnswers as Record<string, unknown>[])
+      .filter((a): a is Record<string, unknown> & { questionId: string; answeredAt: string } =>
+        typeof a?.questionId === 'string' && typeof a?.answeredAt === 'string')
+      .map((a) => ({
+        questionId: a.questionId,
+        selectedOptions: Array.isArray(a.selectedOptions) ? (a.selectedOptions as unknown[]).filter((o): o is string => typeof o === 'string') : [],
+        ...(typeof a.freeText === 'string' && { freeText: a.freeText }),
+        answeredAt: a.answeredAt,
+      }));
+  }
+
+  /**
    * Gets all messages for a conversation, ordered by creation time (ascending).
    * Used by negotiation tools to reconstruct turn history.
    * @param conversationId - The conversation to fetch messages for
@@ -7319,7 +7522,7 @@ export class ConversationDatabaseAdapter {
 
   /**
    * Gets artifacts for a task (e.g. negotiation outcome).
-   * Alias for getArtifacts with the interface name expected by NegotiationDatabase.
+   * Alias for getArtifacts with the interface name expected by NegotiationGraphDatabase.
    * @param taskId - The task to fetch artifacts for
    * @returns Array of artifact records
    */

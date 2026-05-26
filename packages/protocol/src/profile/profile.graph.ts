@@ -1,17 +1,33 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { ProfileGraphState } from "./profile.state.js";
 import { ProfileGenerator, ProfileDocument } from "./profile.generator.js";
-import { HydeGenerator } from "./profile.hyde.generator.js";
-import { ProfileGraphDatabase } from "../shared/interfaces/database.interface.js";
-import { Embedder } from "../shared/interfaces/embedder.interface.js";
+import { ProfileGraphDatabase, PremiseRecord } from "../shared/interfaces/database.interface.js";
 import { Scraper } from "../shared/interfaces/scraper.interface.js";
 import type { ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
 import { shouldEnrichGhostDisplayNameFromParallel, isEnrichedNameMeaningful } from "./profile.enricher.js";
 import { socialsToEnrichmentRequest } from "../shared/utils/social-label.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
+import { PremiseDecomposer } from "../premise/premise.decomposer.js";
+
+/**
+ * Compiled premise graph interface. Matches the invoke signature of a compiled LangGraph.
+ * Accepted as an optional dependency so write-mode input can be decomposed into premises.
+ */
+export interface CompiledPremiseGraph {
+  invoke(input: {
+    userId: string;
+    assertionText: string;
+    tier: 'assertive' | 'contextual';
+    operationMode: 'create';
+  }): Promise<{
+    premise?: { id: string } | undefined;
+    error?: string | undefined;
+  }>;
+}
 
 const logger = protocolLogger("ProfileGraphFactory");
 
@@ -41,73 +57,39 @@ function isMeaningfulProfileInput(input: string | undefined): boolean {
   return true;
 }
 
-/**
- * Returns true only when the value is a fully valid numeric vector (flat or nested).
- * Used so we don't treat DB returns (e.g. pg vector as string, or empty/partial array) as "has embedding".
- * Ensures callers re-embed when vectors contain non-number or NaN/Infinity.
- */
-function hasValidProfileEmbedding(embedding: unknown): boolean {
-  if (embedding == null) return false;
-  if (!Array.isArray(embedding)) return false;
-  if (embedding.length === 0) return false;
-  const first = embedding[0];
-  if (Array.isArray(first)) {
-    // Nested: number[][]
-    for (let i = 0; i < embedding.length; i++) {
-      const sub = embedding[i];
-      if (!Array.isArray(sub) || sub.length === 0) return false;
-      for (let j = 0; j < sub.length; j++) {
-        const v = sub[j];
-        if (typeof v !== "number" || !Number.isFinite(v)) return false;
-      }
-    }
-    return true;
-  }
-  // Flat: number[]
-  for (let i = 0; i < embedding.length; i++) {
-    const v = embedding[i];
-    if (typeof v !== "number" || !Number.isFinite(v)) return false;
-  }
-  return true;
-}
 
 /**
  * Factory class to build and compile the Profile Generation Graph.
- * 
+ *
  * Flow:
- * 1. check_state - Detect what's missing (profile, embeddings, hyde)
+ * 1. check_state - Detect whether profile needs generation
  * 2. Conditional routing based on operation mode and missing components:
  *    - Query mode: Return immediately (fast path)
  *    - Write mode: Generate only what's needed
  * 3. Profile generation (if needed)
- * 4. Profile embedding (if needed)
- * 5. HyDE generation (if needed or profile updated)
- * 6. HyDE embedding (if needed)
- * 
+ * 4. Save profile to DB
+ *
  * Key Features:
  * - Read/Write separation (query vs write)
- * - Conditional generation (skip expensive operations if data exists)
- * - Automatic hyde regeneration when profile is updated
+ * - Conditional generation (skip generation if profile already exists)
  */
 export class ProfileGraphFactory {
   constructor(
     private database: ProfileGraphDatabase,
-    private embedder: Embedder,
     private scraper: Scraper,
     private enricher?: ProfileEnricher,
+    private questionerEnqueue?: QuestionerEnqueueFn,
+    private premiseGraph?: CompiledPremiseGraph,
   ) { }
 
   public createGraph() {
     const profileGenerator = new ProfileGenerator();
-    const hydeGenerator = new HydeGenerator();
+    const premiseDecomposer = new PremiseDecomposer();
 
     // ─────────────────────────────────────────────────────────
     // NODE: Check State
     // Loads existing profile from DB and detects what needs generation:
     // - Profile missing
-    // - Profile embedding missing
-    // - HyDE description missing
-    // - HyDE embedding missing
     // - User information insufficient for scraping
     // ─────────────────────────────────────────────────────────
     const checkStateNode = async (state: typeof ProfileGraphState.State) => {
@@ -160,10 +142,6 @@ export class ProfileGraphFactory {
           // Treat confirmation-only input (e.g. "Yes") as no input so we ask for info / use scraper
           const hasMeaningfulInput = !!state.input && isMeaningfulProfileInput(state.input);
           const needsProfileGeneration = !profile || (state.forceUpdate && hasMeaningfulInput);
-          const needsProfileEmbedding = profile && !hasValidProfileEmbedding(profile.embedding);
-          const existingHydeDoc = await this.database.getHydeDocument('profile', state.userId, 'mirror');
-          const needsHydeGeneration = !existingHydeDoc || (state.forceUpdate && hasMeaningfulInput);
-          const needsHydeEmbedding = false; // Profile HyDE lives in hyde_documents; no partial "text only" state
 
           // Check if we need to scrape (profile generation needed but no meaningful input provided)
           const willNeedScraping = needsProfileGeneration && !hasMeaningfulInput;
@@ -241,24 +219,16 @@ export class ProfileGraphFactory {
           logger.verbose("📊 State detection complete", {
             hasProfile: !!profile,
             needsProfileGeneration,
-            needsProfileEmbedding,
-            needsHydeGeneration,
-            needsHydeEmbedding,
             needsUserInfo,
             missingUserInfo,
             forceUpdate: state.forceUpdate,
             hasInput: !!state.input,
             hasMeaningfulInput,
-            hasHydeDocument: !!existingHydeDoc,
           });
 
           return {
             profile: profile || undefined,
-            hydeDescription: existingHydeDoc?.hydeText ?? undefined,
             needsProfileGeneration,
-            needsProfileEmbedding,
-            needsHydeGeneration,
-            needsHydeEmbedding,
             needsUserInfo,
             missingUserInfo
           };
@@ -363,8 +333,11 @@ export class ProfileGraphFactory {
 
     // ─────────────────────────────────────────────────────────
     // NODE: Auto-Generate (Parallel Chat API enrichment)
-    // Calls enrichUserProfile to get a structured profile directly.
-    // On success, sets prePopulatedProfile (skips LLM generation).
+    // Calls enrichUserProfile to get structured data, then builds a
+    // text blob as input for the decompose → aggregate → generate
+    // pipeline. This ensures enriched users get premises with
+    // embeddings, making them discoverable via premise-to-premise
+    // matching.
     // On failure, falls back to basic user info for LLM generation.
     // Used in 'generate' mode only.
     // ─────────────────────────────────────────────────────────
@@ -501,13 +474,23 @@ export class ProfileGraphFactory {
                 }
               }
 
+              // Build a text blob from the enrichment result so it flows
+              // through premise decomposition (when available) rather than
+              // bypassing premises via prePopulatedProfile.
+              const enrichmentParts = [
+                enrichment!.identity.name ? `My name is ${enrichment!.identity.name}.` : '',
+                enrichment!.identity.location ? `I am based in ${enrichment!.identity.location}.` : '',
+                enrichment!.identity.bio || '',
+                enrichment!.narrative.context || '',
+                enrichment!.attributes.skills.length ? `My skills include ${enrichment!.attributes.skills.join(', ')}.` : '',
+                enrichment!.attributes.interests.length ? `My interests include ${enrichment!.attributes.interests.join(', ')}.` : '',
+              ].filter(Boolean).join('\n');
+
               return {
-                prePopulatedProfile: {
-                  identity: enrichment!.identity,
-                  narrative: enrichment!.narrative,
-                  attributes: enrichment!.attributes,
-                },
+                input: enrichmentParts,
                 needsUserInfo: false,
+                needsProfileGeneration: true,
+                forceUpdate: true,
                 operationsPerformed: { scraped: true },
               };
             }
@@ -546,36 +529,6 @@ export class ProfileGraphFactory {
     };
 
     // ─────────────────────────────────────────────────────────
-    // NODE: Use Pre-Populated Profile
-    // Converts pre-populated profile (from external enrichment like Parallel Chat API)
-    // into the format expected by the embedding step, skipping LLM generation.
-    // ─────────────────────────────────────────────────────────
-    const usePrePopulatedProfileNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.usePrePopulatedProfile", async () => {
-        if (!state.prePopulatedProfile) {
-          logger.error("No pre-populated profile provided");
-          return { error: "Pre-populated profile required" };
-        }
-
-        logger.verbose("Using pre-populated profile from external enrichment", {
-          name: state.prePopulatedProfile.identity.name,
-          skillsCount: state.prePopulatedProfile.attributes.skills.length,
-          interestsCount: state.prePopulatedProfile.attributes.interests.length,
-        });
-
-        return {
-          profile: {
-            ...state.prePopulatedProfile,
-            userId: state.userId,
-            embedding: [] as number[] | number[][],
-          },
-          needsHydeGeneration: true,
-          operationsPerformed: { generatedProfile: true },
-        };
-      });
-    };
-
-    // ─────────────────────────────────────────────────────────
     // NODE: Generate Profile
     // Generates profile from input using ProfileGenerator agent.
     // If updating existing profile, merges new information intelligently.
@@ -601,8 +554,13 @@ export class ProfileGraphFactory {
           // If updating existing profile, include it in the input for context
           let inputWithContext = state.input;
           if (state.profile && state.forceUpdate) {
-            inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nUSER REQUEST:\n${state.input}\n\nApply the user's request to the existing profile. Preserve existing data unless the user asks to change or remove it. You may add, update, or remove skills and interests as requested. Output the full updated profile.`;
-            logger.verbose("Merging with existing profile");
+            if (state.isAggregate) {
+              inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nPREMISE SYNTHESIS:\n${state.input}\n\nRegenerate the profile by synthesizing the premises above. Use the existing profile as context for continuity, but the premises are the authoritative source. Output the full updated profile.`;
+              logger.verbose("Aggregate synthesis with existing profile context");
+            } else {
+              inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nUSER REQUEST:\n${state.input}\n\nApply the user's request to the existing profile. Preserve existing data unless the user asks to change or remove it. You may add, update, or remove skills and interests as requested. Output the full updated profile.`;
+              logger.verbose("Merging with existing profile");
+            }
           }
 
           const _traceEmitterProfileGen = requestContext.getStore()?.traceEmitter;
@@ -622,10 +580,7 @@ export class ProfileGraphFactory {
             profile: {
               ...result.output,
               userId: state.userId,
-              embedding: [] as number[] | number[][]
             },
-            // Mark that hyde needs regeneration since profile was updated
-            needsHydeGeneration: true,
             agentTimings: agentTimingsAccum,
             operationsPerformed: { generatedProfile: true }
           };
@@ -642,166 +597,224 @@ export class ProfileGraphFactory {
     };
 
     // ─────────────────────────────────────────────────────────
-    // NODE: Embed & Save Profile
-    // Generates embedding for profile and saves to DB
+    // NODE: Save Profile
+    // Saves the generated profile to DB (no embedding)
     // ─────────────────────────────────────────────────────────
-    const embedSaveProfileNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.embedSaveProfile", async () => {
+    const saveProfileNode = async (state: typeof ProfileGraphState.State) => {
+      return timed("ProfileGraph.saveProfile", async () => {
         if (!state.profile || !state.profile.identity) {
-          logger.error("Profile or identity missing in embed step");
+          logger.error("Profile or identity missing in save step");
           return {
-            error: "Profile missing in embed step"
+            error: "Profile missing in save step"
           };
         }
 
-        logger.verbose("Starting profile embedding...", {
+        logger.verbose("Saving profile to DB...", {
           userId: state.userId
         });
 
         try {
           const profile = { ...state.profile };
-          const textToEmbed = [
-            '# Identity',
-            '## Name', profile.identity?.name ?? '',
-            '## Bio', profile.identity?.bio ?? '',
-            '## Location', profile.identity?.location ?? '',
-            '# Narrative',
-            '## Context', profile.narrative?.context ?? '',
-            '# Attributes',
-            '## Interests', (profile.attributes?.interests ?? []).join(', '),
-            '## Skills', (profile.attributes?.skills ?? []).join(', ')
-          ].join('\n');
-
-          logger.verbose("Generating embedding...", {
-            textLength: textToEmbed.length
-          });
-
-          const embedding = await this.embedder.generate(textToEmbed);
-          profile.embedding = embedding;
-
-          logger.verbose("Saving profile to DB...", {
-            userId: state.userId,
-            embeddingDimensions: Array.isArray(embedding[0]) ? embedding[0].length : embedding.length
-          });
 
           await this.database.saveProfile(state.userId, profile);
 
           logger.verbose("✅ Profile saved successfully");
 
+          // Fetch active premises so the questioner can see what's already covered
+          let existingPremises: string[] = [];
+          try {
+            const activePremises = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
+            existingPremises = activePremises.map(p => p.assertion.text);
+            logger.verbose("Fetched active premises for questioner context", {
+              userId: state.userId,
+              count: existingPremises.length,
+            });
+          } catch (premiseErr) {
+            logger.error("Failed to fetch premises for questioner context — continuing with empty list", {
+              userId: state.userId,
+              error: premiseErr instanceof Error ? premiseErr.message : String(premiseErr),
+            });
+          }
+
+          // Compute profile gaps from missing fields
+          const gaps: string[] = [];
+          if (!profile.identity?.location) gaps.push('location');
+          if (!profile.attributes?.skills?.length) gaps.push('skills');
+          if (!profile.attributes?.interests?.length) gaps.push('interests');
+          if (!profile.narrative?.context) gaps.push('current work');
+
+          if (gaps.length > 0 && this.questionerEnqueue) {
+            this.questionerEnqueue({
+              mode: 'profile',
+              userId: state.userId,
+              sourceType: 'profile',
+              sourceId: state.userId,
+              context: {
+                userProfile: {
+                  name: profile.identity?.name,
+                  bio: profile.identity?.bio,
+                  location: profile.identity?.location,
+                  skills: profile.attributes?.skills,
+                  interests: profile.attributes?.interests,
+                },
+                gaps,
+                existingPremises,
+              },
+            }).catch((err) =>
+              logger.error('Failed to enqueue profile question generation', { userId: state.userId, error: err })
+            );
+          }
+
           return {
             profile,
-            operationsPerformed: { embeddedProfile: true }
+            operationsPerformed: { savedProfile: true }
           };
         } catch (error) {
-          logger.error("Failed to embed/save profile", {
+          logger.error("Failed to save profile", {
             error: error instanceof Error ? error.message : String(error)
           });
           return {
-            error: "Failed to embed/save profile"
+            error: "Failed to save profile"
           };
         }
       });
     };
 
+    // ─────────────────────────────────────────────────────────
+    // NODE: Aggregate Profile
+    // Fetches the user's active premises and synthesizes them into profile input.
+    // Sets state.input and flags so the existing generate_profile pipeline runs.
+    // ─────────────────────────────────────────────────────────
+    const aggregateProfileNode = async (state: typeof ProfileGraphState.State) => {
+      return timed("ProfileGraph.aggregateProfile", async () => {
+        logger.verbose("Aggregating profile from premises...", { userId: state.userId });
+
+        const premises: PremiseRecord[] = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
+
+        if (premises.length === 0) {
+          logger.verbose("No active premises found — skipping aggregate");
+          return { operationMode: 'query' as const };
+        }
+
+        const premiseTexts = premises.map(p => p.assertion.text);
+        const aggregateInput = `The following are self-descriptions (premises) the user has asserted about themselves:\n\n${premiseTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\nSynthesize these into a cohesive profile.`;
+
+        logger.verbose(`Aggregated ${premises.length} premise(s) into profile input`);
+
+        return {
+          input: aggregateInput,
+          needsProfileGeneration: true,
+          forceUpdate: true,
+          isAggregate: true,
+        };
+      });
+    };
 
     // ─────────────────────────────────────────────────────────
-    // NODE: Generate HyDE
-    // Generates Hypothetical Document Embedding description for profile matching
+    // NODE: Decompose Premises
+    // Decomposes free-text input (chat or scraped) into individual premises,
+    // creates each via the premise graph, then routes to aggregate_profile
+    // to synthesize the profile from all active premises.
     // ─────────────────────────────────────────────────────────
-    const generateHydeNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.generateHyde", async () => {
-        if (!state.profile || !state.profile.identity) {
-          logger.error("Profile or identity missing for HyDE generation");
+    const decomposePremisesNode = async (state: typeof ProfileGraphState.State) => {
+      return timed("ProfileGraph.decomposePremises", async () => {
+        if (!state.input) {
+          logger.error("No input for premise decomposition");
+          return { error: "Input required for premise decomposition" };
+        }
+
+        if (!this.premiseGraph) {
+          // Fallback: if no premise graph is available, skip decomposition
+          // and route directly to profile generation (legacy behavior)
+          logger.warn("No premise graph injected — falling back to direct profile generation");
           return {
-            error: "Profile missing for HyDE generation"
+            needsProfileGeneration: true,
+            forceUpdate: true,
           };
         }
 
-        logger.verbose("Starting HyDE generation...", {
+        logger.verbose("Decomposing input into premises...", {
           userId: state.userId,
-          profileName: state.profile.identity?.name
+          inputLength: state.input.length,
         });
 
         const agentTimingsAccum: DebugMetaAgent[] = [];
 
         try {
-          const profileString = JSON.stringify(state.profile, null, 2);
-          const _traceEmitterHydeGen = requestContext.getStore()?.traceEmitter;
-          const hydeGeneratorStart = Date.now();
-          _traceEmitterHydeGen?.({ type: "agent_start", name: "hyde-generator" });
-          const result = await hydeGenerator.invoke(profileString);
-          agentTimingsAccum.push({ name: 'hyde.generator', durationMs: Date.now() - hydeGeneratorStart });
-          _traceEmitterHydeGen?.({ type: "agent_end", name: "hyde-generator", durationMs: Date.now() - hydeGeneratorStart, summary: `Generated HyDE for ${state.profile?.identity?.name || "profile"}` });
+          const _traceEmitter = requestContext.getStore()?.traceEmitter;
 
-          logger.verbose("✅ HyDE generated successfully", {
-            descriptionLength: result.textToEmbed.length
+          const decomposeStart = Date.now();
+          _traceEmitter?.({ type: "agent_start", name: "premise-decomposer" });
+          const result = await premiseDecomposer.invoke(state.input);
+          const decomposeMs = Date.now() - decomposeStart;
+          agentTimingsAccum.push({ name: "premise.decomposer", durationMs: decomposeMs });
+          _traceEmitter?.({
+            type: "agent_end",
+            name: "premise-decomposer",
+            durationMs: decomposeMs,
+            summary: `Decomposed into ${result.premises.length} premise(s)`,
           });
 
-          return {
-            hydeDescription: result.textToEmbed,
-            agentTimings: agentTimingsAccum,
-            operationsPerformed: { generatedHyde: true }
-          };
-        } catch (error) {
-          logger.error("HyDE generation failed", {
-            error: error instanceof Error ? error.message : String(error)
-          });
-          return {
-            error: "HyDE generation failed"
-          };
-        }
-      });
-    };
+          if (result.premises.length === 0) {
+            logger.verbose("No premises extracted — skipping decomposition");
+            // No premises found; fall through to aggregate which will
+            // synthesize from any existing premises, or to generate_profile
+            // if needsProfileGeneration is still set from check_state
+            return {
+              operationMode: 'aggregate' as const,
+              agentTimings: agentTimingsAccum,
+            };
+          }
 
-    // ─────────────────────────────────────────────────────────
-    // NODE: Embed & Save HyDE
-    // Generates embedding for HyDE description and saves to DB
-    // ─────────────────────────────────────────────────────────
-    const embedSaveHydeNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.embedSaveHyde", async () => {
-        if (!state.hydeDescription) {
-          logger.error("HyDE description missing");
-          return {
-            error: "HyDE description missing"
-          };
-        }
-
-        logger.verbose("Starting HyDE embedding...", {
-          userId: state.userId,
-          descriptionLength: state.hydeDescription.length
-        });
-
-        try {
-          const hydeEmbedding = await this.embedder.generate(state.hydeDescription);
-
-          // Normalize embedding if needed (Adapters usually handle this, but to be sure)
-          const flatHydeEmbedding = Array.isArray(hydeEmbedding[0])
-            ? (hydeEmbedding as number[][])[0]
-            : (hydeEmbedding as number[]);
-
-          logger.verbose("Saving HyDE to hyde_documents...", {
+          logger.verbose(`Creating ${result.premises.length} premise(s) via premise graph`, {
             userId: state.userId,
-            embeddingDimensions: flatHydeEmbedding.length
           });
 
-          await this.database.saveHydeDocument({
-            sourceType: 'profile',
-            sourceId: state.userId,
-            strategy: 'mirror',
-            targetCorpus: 'profiles',
-            hydeText: state.hydeDescription,
-            hydeEmbedding: flatHydeEmbedding,
+          let created = 0;
+          for (const p of result.premises) {
+            try {
+              const premiseResult = await this.premiseGraph.invoke({
+                userId: state.userId,
+                assertionText: p.text,
+                tier: p.tier,
+                operationMode: 'create',
+              });
+
+              if (premiseResult.premise) {
+                created++;
+              } else if (premiseResult.error) {
+                logger.warn("Premise creation failed", {
+                  text: p.text.substring(0, 60),
+                  error: premiseResult.error,
+                });
+              }
+            } catch (err) {
+              logger.warn("Premise creation threw", {
+                text: p.text.substring(0, 60),
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+
+          logger.verbose(`Created ${created}/${result.premises.length} premise(s)`, {
+            userId: state.userId,
           });
 
+          // Route to aggregate mode to rebuild the profile from all active premises
           return {
-            operationsPerformed: { embeddedHyde: true }
+            operationMode: 'aggregate' as const,
+            agentTimings: agentTimingsAccum,
+            operationsPerformed: { decomposedPremises: true },
           };
-        } catch (error) {
-          logger.error("Failed to embed/save HyDE", {
-            error: error instanceof Error ? error.message : String(error)
+        } catch (err) {
+          logger.error("Premise decomposition failed", {
+            error: err instanceof Error ? err.message : String(err),
           });
+          // Fallback: route to direct profile generation
           return {
-            error: "Failed to embed/save HyDE"
+            needsProfileGeneration: true,
+            forceUpdate: true,
+            agentTimings: agentTimingsAccum,
           };
         }
       });
@@ -822,11 +835,10 @@ export class ProfileGraphFactory {
         return END;
       }
 
-      // Pre-populated profile from external enrichment (e.g. Parallel Chat API)
-      // Skip profile generation, go directly to embedding
-      if (state.prePopulatedProfile) {
-        logger.verbose("Pre-populated profile detected - skipping generation, routing to embed");
-        return "use_prepopulated_profile";
+      // Aggregate mode: Synthesize profile from active premises
+      if (state.operationMode === 'aggregate') {
+        logger.verbose("Aggregate mode - synthesizing profile from premises");
+        return "aggregate_profile";
       }
 
       // Generate mode: use enrichUserProfile Chat API to auto-generate
@@ -848,6 +860,13 @@ export class ProfileGraphFactory {
       if (state.needsProfileGeneration) {
         // Only use provided input if it's meaningful (not just "Yes" / confirmation)
         if (state.input && isMeaningfulProfileInput(state.input)) {
+          // Route through premise decomposition when a premise graph is available.
+          // The decompose node extracts atomic premises, creates them, then
+          // routes to aggregate_profile for profile synthesis.
+          if (this.premiseGraph) {
+            logger.verbose("Profile generation needed — decomposing input into premises");
+            return "decompose_premises";
+          }
           logger.verbose("Profile generation needed with meaningful input provided");
           return "generate_profile";
         } else {
@@ -856,56 +875,9 @@ export class ProfileGraphFactory {
         }
       }
 
-      // Profile exists but missing embedding
-      if (state.needsProfileEmbedding) {
-        logger.verbose("Profile embedding needed");
-        return "embed_save_profile";
-      }
-
-      // Profile and embedding exist, check hyde
-      if (state.needsHydeGeneration) {
-        logger.verbose("HyDE generation needed");
-        return "generate_hyde";
-      }
-
-      // Hyde exists but missing embedding
-      if (state.needsHydeEmbedding) {
-        logger.verbose("HyDE embedding needed");
-        return "embed_save_hyde";
-      }
-
       // Everything exists and is up to date
       logger.verbose("All components exist - ending");
       return END;
-    };
-
-    /**
-     * Route after profile embedding to check if hyde needs generation.
-     */
-    const afterProfileEmbeddingCondition = (state: typeof ProfileGraphState.State): string => {
-      // If profile was just generated/updated, regenerate hyde
-      if (state.needsHydeGeneration || state.forceUpdate) {
-        logger.verbose("Profile updated - regenerating HyDE");
-        return "generate_hyde";
-      }
-
-      // Check if hyde embedding is missing
-      if (state.needsHydeEmbedding) {
-        logger.verbose("HyDE embedding needed");
-        return "embed_save_hyde";
-      }
-
-      logger.verbose("Profile complete - ending");
-      return END;
-    };
-
-    /**
-     * Route after hyde generation to embedding step.
-     * Always embed after generating hyde.
-     */
-    const afterHydeGenerationCondition = (state: typeof ProfileGraphState.State): string => {
-      logger.verbose("HyDE generated - proceeding to embedding");
-      return "embed_save_hyde";
     };
 
 
@@ -918,12 +890,11 @@ export class ProfileGraphFactory {
       // Add all nodes
       .addNode("check_state", checkStateNode)
       .addNode("scrape", scrapeNode)
+      .addNode("decompose_premises", decomposePremisesNode)
       .addNode("auto_generate", autoGenerateNode)
-      .addNode("use_prepopulated_profile", usePrePopulatedProfileNode)
+      .addNode("aggregate_profile", aggregateProfileNode)
       .addNode("generate_profile", generateProfileNode)
-      .addNode("embed_save_profile", embedSaveProfileNode)
-      .addNode("generate_hyde", generateHydeNode)
-      .addNode("embed_save_hyde", embedSaveHydeNode)
+      .addNode("save_profile", saveProfileNode)
 
       // Start with state check
       .addEdge(START, "check_state")
@@ -933,70 +904,82 @@ export class ProfileGraphFactory {
         "check_state",
         checkStateCondition,
         {
-          use_prepopulated_profile: "use_prepopulated_profile", // Pre-populated profile -> skip generation
           auto_generate: "auto_generate",       // Generate mode -> Chat API enrichment
+          aggregate_profile: "aggregate_profile", // Aggregate mode -> synthesize from premises
+          decompose_premises: "decompose_premises", // Write mode + input + premise graph -> decompose first
           scrape: "scrape",                     // Need profile, no input -> scrape first
-          generate_profile: "generate_profile", // Need profile, have input -> generate
-          embed_save_profile: "embed_save_profile", // Have profile, need embedding
-          generate_hyde: "generate_hyde",       // Have profile+embedding, need hyde
-          embed_save_hyde: "embed_save_hyde",   // Have hyde, need embedding
+          generate_profile: "generate_profile", // Need profile, have input -> generate (legacy, no premise graph)
           [END]: END                            // Query mode or everything exists
         }
       )
 
-      // Pre-populated profile feeds into embedding (skips generation)
-      .addEdge("use_prepopulated_profile", "embed_save_profile")
+      // Decompose premises routes to aggregate (normal) or generate_profile (fallback)
+      .addConditionalEdges(
+        "decompose_premises",
+        (state: typeof ProfileGraphState.State) => {
+          if (state.operationMode === 'aggregate') return "aggregate_profile";
+          // Fallback when decomposition failed (no premise graph or error)
+          if (state.needsProfileGeneration) return "generate_profile";
+          return "aggregate_profile";
+        },
+        {
+          aggregate_profile: "aggregate_profile",
+          generate_profile: "generate_profile",
+        },
+      )
 
-      // Auto-generate routes based on enrichment result
+      // Aggregate profile: generate if premises found, END if none
+      .addConditionalEdges(
+        "aggregate_profile",
+        (state: typeof ProfileGraphState.State) => {
+          if (state.needsProfileGeneration) return "generate_profile";
+          logger.verbose("Aggregate mode — no premises, ending");
+          return END;
+        },
+        { generate_profile: "generate_profile", [END]: END },
+      )
+
+      // Auto-generate routes to decompose_premises (when premise graph
+      // available) or generate_profile (legacy, no premise graph)
       .addConditionalEdges(
         "auto_generate",
         (state: typeof ProfileGraphState.State) => {
-          if (state.prePopulatedProfile) {
-            logger.verbose("Enrichment succeeded — using pre-populated profile");
-            return "use_prepopulated_profile";
+          if (state.input && this.premiseGraph) {
+            logger.verbose("Enrichment produced input — routing to premise decomposition");
+            return "decompose_premises";
           }
           if (state.input) {
-            logger.verbose("Enrichment fell back — using basic info for LLM generation");
+            logger.verbose("Enrichment produced input — routing to LLM generation (no premise graph)");
             return "generate_profile";
           }
           logger.verbose("Enrichment ended without data (ghost soft-deleted or error) — done");
           return END;
         },
         {
-          use_prepopulated_profile: "use_prepopulated_profile",
+          decompose_premises: "decompose_premises",
           generate_profile: "generate_profile",
           [END]: END,
         }
       )
 
-      // Scrape -> Generate profile (linear)
-      .addEdge("scrape", "generate_profile")
-      
-      // Generate profile -> Embed profile (linear)
-      .addEdge("generate_profile", "embed_save_profile")
-
-      // After profile embedding, check if hyde needs generation
+      // Scrape -> decompose_premises (when premise graph available) or generate_profile (legacy)
       .addConditionalEdges(
-        "embed_save_profile",
-        afterProfileEmbeddingCondition,
+        "scrape",
+        (_state: typeof ProfileGraphState.State) => {
+          if (this.premiseGraph) return "decompose_premises";
+          return "generate_profile";
+        },
         {
-          generate_hyde: "generate_hyde",     // Profile updated -> regenerate hyde
-          embed_save_hyde: "embed_save_hyde", // Only hyde embedding missing
-          [END]: END                          // Everything complete
-        }
+          decompose_premises: "decompose_premises",
+          generate_profile: "generate_profile",
+        },
       )
 
-      // After hyde generation, always embed it
-      .addConditionalEdges(
-        "generate_hyde",
-        afterHydeGenerationCondition,
-        {
-          embed_save_hyde: "embed_save_hyde"
-        }
-      )
+      // Generate profile -> Save profile (linear)
+      .addEdge("generate_profile", "save_profile")
 
-      // Hyde embedding -> END (linear)
-      .addEdge("embed_save_hyde", END);
+      // Save profile -> END (linear)
+      .addEdge("save_profile", END);
 
     logger.verbose("Graph built successfully");
     return workflow.compile();

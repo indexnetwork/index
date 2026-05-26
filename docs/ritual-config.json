@@ -64,8 +64,8 @@
       "Keep docs concise and reference-oriented — no tutorials or prose-heavy explanations."
     ],
     "delivery": [
-      "Push branches to origin (fork), open PRs targeting upstream/dev.",
-      "On finish: merge to dev locally, push to both origin and upstream (gh pr auto-closes).",
+      "Push branches to origin, open PRs targeting origin/dev.",
+      "On finish: merge to dev locally, push to origin.",
       "Conventional commits: <type>[scope]: <description>.",
       "PR description as changelog: New Features, Bug Fixes, Refactors, Documentation, Tests.",
       "Bump package versions before merging — never skip.",

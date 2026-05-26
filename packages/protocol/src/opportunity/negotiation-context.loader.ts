@@ -14,18 +14,18 @@
  * explanation in concrete turn content.
  */
 
-import type { NegotiationDatabase, OpportunityStatus } from '../shared/interfaces/database.interface.js';
+import type { NegotiationGraphDatabase, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 import type { NegotiationOutcome, NegotiationTurn } from '../negotiation/negotiation.state.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('NegotiationContextLoader');
 
 /**
- * Narrow slice of {@link NegotiationDatabase} required by the loader. Kept
+ * Narrow slice of {@link NegotiationGraphDatabase} required by the loader. Kept
  * minimal so call sites can opt into a smaller surface.
  */
 export type NegotiationContextDatabase = Pick<
-  NegotiationDatabase,
+  NegotiationGraphDatabase,
   'getNegotiationTaskForOpportunity' | 'getMessagesForConversation' | 'getArtifactsForTask'
 >;
 
@@ -51,7 +51,7 @@ const NEGOTIATION_OUTCOME_ARTIFACT_NAME = 'negotiation-outcome';
 /**
  * Loads the negotiation context for an opportunity.
  *
- * @param db - Narrow slice of NegotiationDatabase.
+ * @param db - Narrow slice of NegotiationGraphDatabase.
  * @param opportunityId - Opportunity to load negotiation context for.
  * @param opportunityStatus - Current opportunity status. Used to gate loading
  *   and to decide which fields to populate.

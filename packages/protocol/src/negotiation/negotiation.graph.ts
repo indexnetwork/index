@@ -1,12 +1,13 @@
 import { StateGraph } from "@langchain/langgraph";
 
 import { requestContext, type TraceEmitter } from "../shared/observability/request-context.js";
-import type { NegotiationDatabase } from "../shared/interfaces/database.interface.js";
+import type { NegotiationGraphDatabase } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-events.interface.js";
 import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 
 const logger = protocolLogger("NegotiationGraph");
 
@@ -16,51 +17,85 @@ const logger = protocolLogger("NegotiationGraph");
  */
 export class NegotiationGraphFactory {
   constructor(
-    private database: NegotiationDatabase,
+    private database: NegotiationGraphDatabase,
     private dispatcher: AgentDispatcher,
     private timeoutQueue?: NegotiationTimeoutQueue,
+    private questionerEnqueue?: QuestionerEnqueueFn,
   ) {}
 
   createGraph() {
-    const { database, dispatcher, timeoutQueue } = this;
+    const { database, dispatcher, timeoutQueue, questionerEnqueue } = this;
     const systemAgent = new IndexNegotiator();
 
     const initNode = async (state: typeof NegotiationGraphState.State) => {
       try {
-        const conversation = await database.createConversation([
-          { participantId: `agent:${state.sourceUser.id}`, participantType: "agent" },
-          { participantId: `agent:${state.candidateUser.id}`, participantType: "agent" },
-        ]);
+        // Find-or-create the DM conversation for this agent pair (same as user DMs)
+        const agentIdA = `agent:${state.sourceUser.id}`;
+        const agentIdB = `agent:${state.candidateUser.id}`;
+        const conversation = await database.getOrCreateDM(agentIdA, agentIdB, 'agent');
 
-        // Determine scenario-based maxTurns before creating the task
+        // --- Lock gate: check for an active task on this conversation ---
+        const priorMessages = await database.getMessagesForConversation(conversation.id);
+
+        let isLocked = false;
+        if (state.opportunityId) {
+          const priorTask = await database.getNegotiationTaskForOpportunity(state.opportunityId);
+          if (priorTask) {
+            const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
+            const isFresh = (Date.now() - new Date(priorTask.updatedAt).getTime()) < 5 * 60 * 1000;
+            if (activeStates.includes(priorTask.state) && isFresh) {
+              isLocked = true;
+            }
+          }
+        }
+
+        if (isLocked) {
+          logger.info('[Graph:Init] Conversation locked by active task, returning busy', {
+            conversationId: conversation.id,
+            opportunityId: state.opportunityId,
+          });
+          return { error: 'busy' };
+        }
+
+        // --- Load prior messages and determine continuation ---
+        const priorTurns: NegotiationTurn[] = priorMessages
+          .map((m) => {
+            const dataPart = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === 'data');
+            return dataPart?.data as NegotiationTurn;
+          })
+          .filter(Boolean);
+
+        const isContinuation = priorTurns.length > 0;
+
+        // Determine currentSpeaker from last prior message
+        let currentSpeaker: 'source' | 'candidate' = 'source';
+        if (isContinuation && priorMessages.length > 0) {
+          const lastSender = priorMessages[priorMessages.length - 1].senderId;
+          currentSpeaker = lastSender === agentIdA ? 'candidate' : 'source';
+        }
+
+        // Determine scenario-based maxTurns
         const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
         const [sourceHasAgent, candidateHasAgent] = await Promise.all([
           dispatcher.hasPersonalAgent(state.sourceUser.id, scope),
           dispatcher.hasPersonalAgent(state.candidateUser.id, scope),
         ]);
 
+        const ambientMax = Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6;
         let maxTurns = state.maxTurns;
         if (maxTurns == null) {
-          // No explicit override from caller — choose based on agent presence
-          if (sourceHasAgent && candidateHasAgent) {
-            maxTurns = 0; // unlimited — 24h timeout is the safety valve
-          } else if (sourceHasAgent || candidateHasAgent) {
-            maxTurns = 8;
-          } else {
-            maxTurns = 6; // both system agents: default cap
-          }
+          maxTurns = (sourceHasAgent && candidateHasAgent) ? 0 : ambientMax;
         }
 
         const task = await database.createTask(conversation.id, {
-          type: "negotiation",
+          type: 'negotiation',
           sourceUserId: state.sourceUser.id,
           candidateUserId: state.candidateUser.id,
-          // Denormalized so MCP scope checks (negotiation tools, list/get/respond)
-          // can filter by network without re-loading the parked turnContext or
-          // joining through the opportunity.
           networkId: state.indexContext.networkId,
           ...(state.opportunityId && { opportunityId: state.opportunityId }),
           maxTurns,
+          isContinuation,
+          priorTurnCount: priorTurns.length,
         });
 
         if (state.opportunityId) {
@@ -69,12 +104,33 @@ export class NegotiationGraphFactory {
           });
         }
 
+        // Load user answers collected by the questioner between sessions
+        const userAnswers = (isContinuation && state.opportunityId)
+          ? await database.getOpportunityUserAnswers(state.opportunityId).catch((err) => {
+              logger.error('[Graph:Init] Failed to load user answers', { opportunityId: state.opportunityId, error: err });
+              return [];
+            })
+          : [];
+
+        // Seed messages with prior turns (additive reducer appends new turns on top)
+        const seedMessages = isContinuation ? priorMessages.map((m) => ({
+          id: m.id,
+          senderId: m.senderId,
+          role: 'agent' as const,
+          parts: m.parts,
+          createdAt: m.createdAt,
+        })) : [];
+
         return {
           conversationId: conversation.id,
           taskId: task.id,
-          currentSpeaker: "source" as const,
+          currentSpeaker,
           turnCount: 0,
           maxTurns,
+          isContinuation,
+          priorTurnCount: priorTurns.length,
+          ...(userAnswers.length > 0 && { userAnswers }),
+          ...(seedMessages.length > 0 && { messages: seedMessages }),
         };
       } catch (err) {
         return { error: `Init failed: ${err instanceof Error ? err.message : String(err)}` };
@@ -158,13 +214,15 @@ export class NegotiationGraphFactory {
             isFinalTurn,
             isDiscoverer: isSource,
             ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
+            isContinuation: state.isContinuation,
+            ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
           });
         }
 
         traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `${turn.action}` });
 
-        // First turn must be "propose"
-        if (state.turnCount === 0 && turn.action !== "propose") {
+        // First turn must be "propose" (unless continuing a prior conversation)
+        if (state.turnCount === 0 && !state.isContinuation && turn.action !== "propose") {
           logger.warn("[Graph:Turn] Agent returned unexpected action on turn 0, forcing to propose", { action: turn.action });
           turn.action = "propose";
         }
@@ -245,6 +303,7 @@ export class NegotiationGraphFactory {
             opportunityId: state.opportunityId,
             outcome: "waiting_for_agent",
             turnCount: state.turnCount,
+            isContinuation: state.isContinuation,
           });
         }
         return {};
@@ -290,6 +349,16 @@ export class NegotiationGraphFactory {
           metadata: { hasOpportunity, turnCount: state.turnCount },
         });
 
+        logger.info('[Graph:Finalize] Session complete', {
+          conversationId: state.conversationId,
+          taskId: state.taskId,
+          isContinuation: state.isContinuation,
+          turnsAdded: state.turnCount,
+          priorTurnCount: state.priorTurnCount,
+          outcome: hasOpportunity ? 'accepted' : (atCap ? 'turn_cap' : (lastTurn?.action ?? 'unknown')),
+          opportunityId: state.opportunityId || undefined,
+        });
+
         if (state.opportunityId) {
           const nextStatus = lastTurn?.action === 'accept'
             ? 'pending'
@@ -321,6 +390,9 @@ export class NegotiationGraphFactory {
           opportunityId: state.opportunityId,
           outcome: emittedOutcome,
           turnCount: state.turnCount,
+          isContinuation: state.isContinuation,
+          turnsAdded: state.turnCount,
+          priorTurnCount: state.priorTurnCount,
           ...(outcome.reasoning && { reasoning: outcome.reasoning }),
           ...(hasOpportunity && agreedRoles.length >= 2 && {
             agreedRoles: {
@@ -329,6 +401,36 @@ export class NegotiationGraphFactory {
             },
           }),
         });
+      }
+
+      // Enqueue question generation for stalled/capped negotiations (not accepted or explicitly rejected).
+      // Require turnCount > 0 so early init/turn errors don't enqueue with empty context.
+      if (!hasOpportunity && lastTurn?.action !== 'reject' && state.turnCount > 0 && state.opportunityId && questionerEnqueue) {
+        const stallReason: 'turn_cap' | 'timeout' | 'stalled' = atCap
+          ? 'turn_cap'
+          : (state.error && /timeout/i.test(state.error))
+            ? 'timeout'
+            : 'stalled';
+
+        questionerEnqueue({
+          mode: 'negotiation',
+          userId: state.sourceUser.id,
+          sourceType: 'opportunity',
+          sourceId: state.opportunityId,
+          context: {
+            negotiationId: state.taskId,
+            counterpartyHint: `${state.candidateUser.profile.name ?? 'Unknown'}${state.candidateUser.profile.bio ? ', ' + state.candidateUser.profile.bio : ''}`,
+            indexContext: state.indexContext.prompt,
+            outcomeReason: stallReason,
+            keyTake: outcome.reasoning,
+            userProfile: state.sourceUser.profile,
+          },
+        }).catch((err) =>
+          logger.error('[Graph:Finalize] Failed to enqueue negotiation question generation', {
+            opportunityId: state.opportunityId,
+            error: err,
+          })
+        );
       }
 
       return { outcome, status: 'completed' as const };
@@ -461,6 +563,8 @@ export async function negotiateCandidates(
         const durationMs = Date.now() - start;
         const outcome = result.outcome;
         const hasOpportunity = outcome?.hasOpportunity === true;
+        const isContinuation = (result as { isContinuation?: boolean }).isContinuation ?? false;
+        const priorTurnCount = (result as { priorTurnCount?: number }).priorTurnCount ?? 0;
 
         const turnFlow = (result.messages ?? [])
           .map((m) => {
@@ -481,6 +585,9 @@ export async function negotiateCandidates(
             opportunityId: candidate.opportunityId,
             negotiationConversationId: (result as { conversationId?: string }).conversationId ?? "",
             durationMs: Date.now() - start,
+            isContinuation,
+            turnsAdded: outcome?.turnCount ?? 0,
+            priorTurnCount,
           });
         }
 
@@ -568,7 +675,7 @@ export async function negotiateCandidates(
  * Creates a negotiation graph with the provided dependencies.
  */
 export function createDefaultNegotiationGraph(deps: {
-  database: NegotiationDatabase;
+  database: NegotiationGraphDatabase;
   dispatcher: AgentDispatcher;
   timeoutQueue?: NegotiationTimeoutQueue;
 }) {

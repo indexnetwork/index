@@ -2,11 +2,8 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import { config } from "dotenv";
 import { Timed } from "../shared/observability/performance.js";
 import { createModel } from "../shared/agent/model.config.js";
-
-config({ path: '.env.development', override: true });
 
 const logger = protocolLogger("ProfileGenerator");
 
@@ -38,7 +35,7 @@ const responseFormat = z.object({
 });
 
 type Profile = z.infer<typeof responseFormat>;
-export type ProfileDocument = Profile & { userId: string, embedding: number[] | number[][] | null };
+export type ProfileDocument = Profile & { userId: string };
 
 export class ProfileGenerator {
   private model: any;

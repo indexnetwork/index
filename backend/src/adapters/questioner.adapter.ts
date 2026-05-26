@@ -11,12 +11,15 @@
  * alignment spec.
  */
 
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, or, isNull } from 'drizzle-orm';
 
 import { questions } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
+
+/** Default question TTL in milliseconds (7 days). */
+const DEFAULT_QUESTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
 
@@ -27,6 +30,8 @@ export interface AdapterQuestionDetection {
   sourceId: string;
   triggeredBy?: string;
   timestamp: string;
+  /** ID of the assistant message that triggered this question. */
+  messageId?: string;
 }
 
 /** An actor targeted by a question (typically the user who should answer). */
@@ -63,6 +68,8 @@ export interface AdapterPersistableQuestion {
     | 'open_adjacent_thread'
     | 'reflective_summary'
     | 'surface_emergent_knowledge';
+  /** Conversation ID — set when the question originates from a chat session. */
+  conversationId?: string;
 }
 
 /** A question row returned from the database. */
@@ -73,7 +80,9 @@ export interface AdapterPersistedQuestion {
   payload: AdapterQuestionPayload;
   status: 'pending' | 'answered' | 'dismissed';
   answer: AdapterQuestionAnswer | null;
+  expiresAt: string | null;
   createdAt: string;
+  conversationId: string | null;
 }
 
 /** Optional filters for the `findPending` query. */
@@ -81,6 +90,10 @@ export interface AdapterQuestionFilters {
   mode?: 'discovery' | 'intent' | 'profile' | 'negotiation';
   sourceType?: string;
   sourceId?: string;
+  /** Filter to questions linked to a specific conversation. */
+  conversationId?: string;
+  /** When true, only return questions with no conversationId (sidebar-only). */
+  noConversation?: boolean;
 }
 
 /**
@@ -104,6 +117,8 @@ export class QuestionerAdapter {
       actors: q.actors as QuestionActor[],
       payload: q.payload,
       status: 'pending' as const,
+      expiresAt: new Date(Date.now() + DEFAULT_QUESTION_TTL_MS),
+      conversationId: q.conversationId ?? null,
     }));
 
     const inserted = await this.db.insert(questions).values(rows).returning({ id: questions.id });
@@ -128,6 +143,7 @@ export class QuestionerAdapter {
     const conditions = [
       eq(questions.status, 'pending'),
       sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+      or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
     ];
 
     if (filters?.mode) {
@@ -138,6 +154,12 @@ export class QuestionerAdapter {
     }
     if (filters?.sourceId) {
       conditions.push(sql`${questions.detection}->>'sourceId' = ${filters.sourceId}`);
+    }
+    if (filters?.conversationId) {
+      conditions.push(eq(questions.conversationId, filters.conversationId));
+    }
+    if (filters?.noConversation) {
+      conditions.push(isNull(questions.conversationId));
     }
 
     const rows = await this.db
@@ -225,6 +247,8 @@ function toPersistedQuestion(
     payload: row.payload as AdapterQuestionPayload,
     status: row.status,
     answer: (row.answer as AdapterQuestionAnswer) ?? null,
+    expiresAt: row.expiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
+    conversationId: row.conversationId ?? null,
   };
 }

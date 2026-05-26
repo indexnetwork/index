@@ -1,6 +1,6 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { ProfileController } from "../profile.controller";
@@ -63,7 +63,6 @@ describe("ProfileController Integration", () => {
 
     expect(profile).not.toBeNull();
     expect(profile!.identity?.name).toBeDefined();
-    expect(profile!.embedding).not.toBeNull();
     // Verify HyDE is stored in hyde_documents
     const { HydeDatabaseAdapter } = await import("../../adapters/database.adapter");
     const hydeAdapter = new HydeDatabaseAdapter();

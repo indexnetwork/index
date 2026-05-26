@@ -4,7 +4,7 @@
  */
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll } from 'bun:test';
 import { HydeGenerator, type HydeGenerateInput } from '../hyde.generator.js';
@@ -54,6 +54,18 @@ describe('HydeGenerator', () => {
         sourceText: 'Looking for a design co-founder for a consumer app.',
         lens: 'designer seeking a technical co-founder for a consumer product',
         corpus: 'intents',
+      };
+      const result = await generator.generate(input);
+      expect(result.text.length).toBeGreaterThan(0);
+    }, 30_000);
+  });
+
+  describe('premises corpus', () => {
+    it('generates an identity statement for a premise lens', async () => {
+      const input: HydeGenerateInput = {
+        sourceText: 'I believe in open-source collaboration and decentralized governance.',
+        lens: 'community-driven builder passionate about open protocols',
+        corpus: 'premises',
       };
       const result = await generator.generate(input);
       expect(result.text.length).toBeGreaterThan(0);

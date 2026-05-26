@@ -6,7 +6,7 @@ export interface McpServerConfig {
 
 /**
  * Builds the MCP server config snippet returned by the headless signup endpoint.
- * Callers (EdgeOS, InstaClaw) embed this in their runtime's MCP servers config.
+ * Callers embed this in their runtime's MCP servers config.
  *
  * URL precedence matches `protocol-init.ts` and `opportunity.controller.ts`:
  * `BASE_URL || API_BASE_URL || APP_URL`, with the production protocol host as

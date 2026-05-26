@@ -1,8 +1,7 @@
 import { log } from '../lib/log';
 import { ProfileGraphFactory } from '@indexnetwork/protocol';
-import type { ProfileGraphDatabase, Scraper, Embedder } from '@indexnetwork/protocol';
+import type { ProfileGraphDatabase, Scraper } from '@indexnetwork/protocol';
 import { ProfileDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 
 const logger = log.service.from("ProfileService");
@@ -16,19 +15,17 @@ const logger = log.service.from("ProfileService");
  * 
  * RESPONSIBILITIES:
  * - Generate/sync user profiles through Profile Graph
- * - Coordinate profile, embedder, and scraper operations
+ * - Coordinate profile and scraper operations
  */
 export class ProfileService {
   private db: ProfileGraphDatabase;
-  private embedder: Embedder;
   private scraper: Scraper;
   private factory: ProfileGraphFactory;
 
   constructor() {
     this.db = new ProfileDatabaseAdapter();
-    this.embedder = new EmbedderAdapter();
     this.scraper = new ScraperAdapter();
-    this.factory = new ProfileGraphFactory(this.db, this.embedder, this.scraper);
+    this.factory = new ProfileGraphFactory(this.db, this.scraper);
   }
 
   /**

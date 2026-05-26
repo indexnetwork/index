@@ -1,0 +1,24 @@
+{
+  "name": "agentvillage",
+  "version": "1.2.0",
+  "description": "Edge Esmeralda 2026 — popup knowledge, EdgeOS calendar & directory, and Index Network discovery.",
+  "author": {
+    "name": "Edge City",
+    "url": "https://edgecity.live"
+  },
+  "homepage": "https://edgecity.live",
+  "repository": "https://github.com/Edge-City/agentvillage-skills",
+  "license": "MIT",
+  "keywords": ["edge-city", "edge-esmeralda", "popup-village", "community", "discovery"],
+  "skills": "./",
+  "mcpServers": "./mcp.json",
+  "interface": {
+    "displayName": "AgentVillage Skills",
+    "shortDescription": "Edge Esmeralda popup knowledge, calendar, directory, and discovery.",
+    "developerName": "Edge City",
+    "category": "Productivity",
+    "capabilities": ["MCP", "Skills"],
+    "websiteURL": "https://edgecity.live",
+    "brandColor": "#1a1a2e"
+  }
+}

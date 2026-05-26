@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
@@ -90,6 +90,7 @@ describe('introducer gating lifecycle', () => {
         return Promise.resolve(currentOpp());
       },
       getIntent: () => Promise.resolve(null),
+      getNegotiationTaskForOpportunity: async () => null,
     };
 
     const mockEmbedder = { generate: async () => dummyEmbedding } as unknown as Embedder;

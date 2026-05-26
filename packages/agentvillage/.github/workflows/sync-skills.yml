@@ -1,0 +1,60 @@
+# Splits skills/ and pushes to indexnetwork/agentvillage-skills (dev + main)
+# and Edge-City/agentvillage-skills (main only, upstream fork sync).
+#
+# The skills/ directory IS the repo root in the target repos, so plugin
+# manifests (.claude-plugin/, .codex-plugin/, openclaw.plugin.json) land
+# where installers expect them.
+name: Sync Agentvillage-skills
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - 'skills/**'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-skills-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Split and push
+        env:
+          GH_PAT: ${{ secrets.SKILLS_SYNC_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_PAT:-}" ]; then
+            echo "❌ SKILLS_SYNC_PAT secret is not set."
+            exit 1
+          fi
+          BRANCH="${GITHUB_REF_NAME}"
+          echo "Splitting skills/ on $BRANCH..."
+          SPLIT_SHA=$(git subtree split --prefix=skills "$BRANCH")
+          echo "Split SHA: $SPLIT_SHA"
+
+          # Always push to indexnetwork/agentvillage-skills (matching branch)
+          git push --force \
+            "https://x-access-token:${GH_PAT}@github.com/indexnetwork/agentvillage-skills.git" \
+            "${SPLIT_SHA}:refs/heads/${BRANCH}"
+          echo "✓ pushed to indexnetwork/agentvillage-skills ($BRANCH)"
+
+          # On main, also sync upstream fork
+          if [ "$BRANCH" = "main" ]; then
+            git push --force \
+              "https://x-access-token:${GH_PAT}@github.com/Edge-City/agentvillage-skills.git" \
+              "${SPLIT_SHA}:refs/heads/main"
+            echo "✓ pushed to Edge-City/agentvillage-skills (main)"
+          fi

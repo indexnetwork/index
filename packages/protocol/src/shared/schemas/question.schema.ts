@@ -80,6 +80,8 @@ export const QuestionDetectionSchema = z.object({
   triggeredBy: z.string().optional(),
   /** ISO-8601 timestamp of generation. */
   timestamp: z.string().min(1),
+  /** ID of the assistant message that triggered this question. Used by the frontend to anchor the question card inline. */
+  messageId: z.string().optional(),
 });
 
 export const QuestionActorSchema = z.object({

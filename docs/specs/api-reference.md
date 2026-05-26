@@ -144,7 +144,7 @@ The value drives the click-time redirect on opportunity connect links (`/c/{code
 
 The surface is snapshotted onto each minted `connect_links` row at MCP-call time (the auth resolver reads the header, the protocol threads it through `ResolvedToolContext.clientSurface`, and `mintConnectLink` writes it). First mint wins for the link's lifetime; rotation of an expired row re-stamps the surface.
 
-Today only EdgeClaw (the Telegram-bot MCP surface) sends `telegram`. Every other caller — Claude Desktop, the web app, Claude Code, the CLI — omits the header and gets the web fallback.
+Today only the Telegram-bot MCP surface sends `telegram`. Every other caller — Claude Desktop, the web app, Claude Code, the CLI — omits the header and gets the web fallback.
 
 ### Performance Stats (Dev Only)
 
@@ -3115,6 +3115,8 @@ List pending questions for the authenticated user.
 | `mode` | `discovery` \| `intent` \| `profile` \| `negotiation` | — | Filter by generation mode |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
+| `conversationId` | string | — | Filter to questions linked to a specific chat session |
+| `noConversation` | `true` | — | Exclude questions that have a `conversationId` (sidebar badge use) |
 
 **Response:** `{ questions: PersistedQuestion[] }`
 

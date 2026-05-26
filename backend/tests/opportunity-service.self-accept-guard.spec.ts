@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config({ path: '.env.development' });
+config({ path: '.env.test', override: true });
 
 // Set OPENROUTER_API_KEY before any protocol module is imported so that
 // the model.config.ts module-level guard does not throw.

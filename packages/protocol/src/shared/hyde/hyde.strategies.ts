@@ -16,7 +16,7 @@ export const HYDE_DEFAULT_CACHE_TTL = 3600;
  * Prompt templates for HyDE document generation.
  * Keyed by target corpus — the lens label provides the semantic specificity.
  */
-export const HYDE_CORPUS_PROMPTS: Record<'profiles' | 'intents', (sourceText: string, lens: string) => string> = {
+export const HYDE_CORPUS_PROMPTS: Record<'profiles' | 'intents' | 'premises', (sourceText: string, lens: string) => string> = {
   profiles: (sourceText, lens) => `
     Write a professional biography for someone who could fulfill this need: "${sourceText}".
     Focus on the specific expertise, background, and role described by: ${lens}.
@@ -28,5 +28,11 @@ export const HYDE_CORPUS_PROMPTS: Record<'profiles' | 'intents', (sourceText: st
     This person's needs would complement: "${sourceText}".
 
     Write in first person as if stating their own goal.
+  `,
+  premises: (sourceText, lens) => `
+    Write a short self-description for someone whose identity, values, or worldview aligns with: "${sourceText}".
+    Reflect the character described by: ${lens}.
+
+    Write in first person as a stable statement of who this person is, not what they want.
   `,
 };

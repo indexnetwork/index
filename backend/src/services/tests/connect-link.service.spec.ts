@@ -1,6 +1,6 @@
 /** Config */
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { eq } from 'drizzle-orm';
@@ -11,6 +11,7 @@ import { mintConnectLink, resolveConnectLink, buildConnectShortUrl } from '../co
 
 const USER_ID = `cl-svc-user-${Date.now()}`;
 const OPP_ID = `cl-svc-opp-${Date.now()}`;
+const EXPIRED_OPP_ID = `cl-svc-expired-opp-${Date.now()}`;
 
 describe('connect-link service', () => {
   beforeAll(async () => {
@@ -28,11 +29,21 @@ describe('connect-link service', () => {
       confidence: '0.9',
       status: 'pending',
     });
+    await db.insert(opportunities).values({
+      id: EXPIRED_OPP_ID,
+      actors: [{ userId: USER_ID, networkId: 'n/a', role: 'seeker' }],
+      detection: { source: 'test', timestamp: new Date().toISOString(), createdBy: USER_ID },
+      interpretation: { category: 'test', reasoning: 'test', confidence: 0.9 },
+      context: { networkId: 'n/a' },
+      confidence: '0.9',
+      status: 'expired',
+    });
   });
 
   afterAll(async () => {
     await db.delete(connectLinks).where(eq(connectLinks.userId, USER_ID));
     await db.delete(opportunities).where(eq(opportunities.id, OPP_ID));
+    await db.delete(opportunities).where(eq(opportunities.id, EXPIRED_OPP_ID));
     await db.delete(users).where(eq(users.id, USER_ID));
   });
 
@@ -86,9 +97,6 @@ describe('connect-link service', () => {
       .set({ expiresAt: past })
       .where(eq(connectLinks.code, a.code));
 
-    // Resolver must reject the expired code.
-    expect(await resolveConnectLink(a.code)).toBeNull();
-
     // Re-minting must succeed (rotates code + expiresAt + greeting in place)
     // — without this, the unique index on (opp,user,kind) would deadlock the
     // insert and the retry loop would throw after 3 attempts.
@@ -107,7 +115,59 @@ describe('connect-link service', () => {
     const resolved = await resolveConnectLink(b.code);
     expect(resolved?.userId).toBe(USER_ID);
     expect(resolved?.greeting).toBe('second greeting');
+    // The old code was rotated away by re-mint — it no longer exists in the DB,
+    // so resolve returns null (unknown code, not expired code).
     expect(await resolveConnectLink(a.code)).toBeNull();
+  });
+
+  test('resolve self-heals an expired code when opportunity is actionable', async () => {
+    const r = await mintConnectLink({
+      userId: USER_ID,
+      opportunityId: OPP_ID,
+      kind: 'send_direct',
+      greeting: 'heal me',
+    });
+
+    // Expire the link.
+    const past = new Date(Date.now() - 60 * 1000);
+    await db
+      .update(connectLinks)
+      .set({ expiresAt: past })
+      .where(eq(connectLinks.code, r.code));
+
+    // Should self-heal: resolve returns the row and extends TTL.
+    const resolved = await resolveConnectLink(r.code);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.code).toBe(r.code);
+    expect(resolved!.greeting).toBe('heal me');
+    expect(resolved!.kind).toBe('send_direct');
+
+    // Verify TTL was extended in the DB.
+    const [row] = await db
+      .select()
+      .from(connectLinks)
+      .where(eq(connectLinks.code, r.code))
+      .limit(1);
+    expect(row.expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  test('resolve returns null for expired code when opportunity is terminal', async () => {
+    const r = await mintConnectLink({
+      userId: USER_ID,
+      opportunityId: EXPIRED_OPP_ID,
+      kind: 'connect',
+      greeting: 'should not heal',
+    });
+
+    // Expire the link.
+    const past = new Date(Date.now() - 60 * 1000);
+    await db
+      .update(connectLinks)
+      .set({ expiresAt: past })
+      .where(eq(connectLinks.code, r.code));
+
+    // Terminal opportunity — should NOT self-heal.
+    expect(await resolveConnectLink(r.code)).toBeNull();
   });
 });
 

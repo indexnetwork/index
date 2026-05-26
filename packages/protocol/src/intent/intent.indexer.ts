@@ -23,12 +23,6 @@ export type IntentIndexerOutput = z.infer<typeof IntentIndexerOutputSchema>;
 
 const logger = log.lib.from("IntentIndexer");
 
-/**
- * Config
- */
-import { config } from "dotenv";
-config({ path: ".env.development", override: true });
-
 const model = createModel("intentIndexer");
 
 // ──────────────────────────────────────────────────────────────

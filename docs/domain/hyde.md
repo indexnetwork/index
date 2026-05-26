@@ -95,7 +95,7 @@ For cache misses, the HyDE Generator agent produces a hypothetical document in t
 
 ### 4. Embedding
 
-The generated text is embedded using the same 2000-dimensional text-embedding-3-large model used for profiles and intents, producing a vector that lives in the same embedding space.
+The generated text is embedded using the same 2000-dimensional text-embedding-3-large model used for intents and premises, producing a vector that lives in the same embedding space.
 
 ### 5. Caching
 
@@ -105,7 +105,7 @@ The generated document and its embedding are stored:
 
 ### 6. Search
 
-The HyDE embedding is used to perform cosine similarity search against the target corpus (profile embeddings or intent embeddings) using pgvector's HNSW index. Results are candidate users or intents ranked by similarity.
+The HyDE embedding is used to perform cosine similarity search against the target corpus (intent embeddings or premise embeddings) using pgvector's HNSW index. Results are candidate users ranked by similarity.
 
 ---
 
@@ -115,8 +115,7 @@ HyDE documents can be generated from three source types:
 
 | Source | When | Purpose |
 |---|---|---|
-| **intent** | When an intent is created or updated | Find people whose profiles or intents complement this intent |
-| **profile** | When a profile is created or updated | Find people who might match this person |
+| **intent** | When an intent is created or updated | Find people whose intents or premises complement this intent |
 | **query** | When a user asks the chat agent to find someone | Find people matching the search query |
 
 ---
@@ -144,4 +143,4 @@ HyDE is the bridge between intent expression and candidate retrieval in the oppo
 6. Negotiation validates high-scoring matches
 7. Opportunities are persisted and surfaced to users
 
-Without HyDE, the system would rely on direct intent-to-profile or intent-to-intent embedding comparison, which suffers from the voice mismatch problem described above.
+Without HyDE, the system would rely on direct intent-to-intent or intent-to-premise embedding comparison, which suffers from the voice mismatch problem described above.

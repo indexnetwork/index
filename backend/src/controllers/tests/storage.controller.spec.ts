@@ -3,7 +3,7 @@
  * Tests file upload, list, download, and delete operations with mocked S3.
  */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { StorageController } from "../storage.controller";

@@ -10,7 +10,7 @@
 
 // Fallback for environments where the env var is already set (e.g., CI with .env.test)
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
 import { describe, test, expect } from 'bun:test';
@@ -36,7 +36,7 @@ const OPP_ID = 'op000000-0000-4000-8000-000000000001' as Id<'opportunities'>;
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Dummy embedding — non-empty so profile-based discovery runs.
+// Dummy embedding for HyDE and embedder mocks.
 const DUMMY_EMBEDDING = new Array(512).fill(0.1);
 
 const mockEvaluator: OpportunityEvaluatorLike = {
@@ -52,13 +52,12 @@ const mockEvaluator: OpportunityEvaluatorLike = {
   ],
 };
 
-// Embedder that returns USER_B as a profile-based candidate so the graph
+// Embedder that returns USER_B as a query-based candidate so the graph
 // produces evaluated opportunities and reaches the Persist node.
 const dummyEmbedder: Embedder = {
   generate: async () => DUMMY_EMBEDDING,
   search: async () => [],
-  searchWithHydeEmbeddings: async () => [],
-  searchWithProfileEmbedding: async () => [
+  searchWithHydeEmbeddings: async () => [
     {
       type: 'intent' as const,
       id: 'intent-bob' as Id<'intents'>,
@@ -74,9 +73,8 @@ const dummyHyde = {
   invoke: async () => ({ hydeEmbeddings: { mirror: DUMMY_EMBEDDING, reciprocal: DUMMY_EMBEDDING } }),
 };
 
-// Minimal profile with an embedding so the discovery node picks up the vector.
+// Minimal profile so the discovery node runs.
 const mockProfile = {
-  embedding: DUMMY_EMBEDDING,
   identity: { name: 'Alice', bio: 'Builder' },
   narrative: { context: 'Building things' },
   attributes: { skills: ['TypeScript'], interests: ['startups'] },
@@ -103,7 +101,7 @@ function makeOpportunity(
 
 function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraphDatabase {
   const base: OpportunityGraphDatabase = {
-    // Return a profile with embedding so discovery can run without a search query.
+    // Return a profile so discovery can run.
     getProfile: async () => mockProfile as unknown as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>,
     createOpportunity: async (data) => ({
       ...data,
@@ -150,6 +148,10 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     getUser: async (id) => ({ id, name: 'Test User', email: 'test@example.com' }),
     getOrCreateDM: async () => ({ id: 'conv-1' }),
     getIntent: async () => null,
+    getNegotiationTaskForOpportunity: async () => null,
+    stampOpportunityActorAction: async () => null,
+    getPremisesForUser: async () => [],
+    searchPremisesBySimilarity: async () => [],
   };
   return { ...base, ...overrides };
 }
@@ -167,6 +169,7 @@ function buildGraph(db: OpportunityGraphDatabase) {
 const discoveryInput = {
   userId: USER_A,
   operationMode: 'discover' as const,
+  searchQuery: 'co-founder',
   options: { initialStatus: 'latent' as const },
 };
 
@@ -276,16 +279,23 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     expect(updateCalledWith![1]).toBe('pending');
   });
 
-  test('stuck negotiating fix: old negotiating opp allows new opportunity creation', async () => {
+  test('stuck negotiating fix: orphaned negotiating opp is reactivated instead of creating new', async () => {
     // Existing negotiating opportunity created 15 minutes ago — outside the 10-minute window.
+    // getNegotiationTaskForOpportunity returns null (no active task), so persist node
+    // reactivates the orphaned opp via updateOpportunityStatus instead of creating a new one.
     const oldNegotiatingOpp = makeOpportunity({
       status: 'negotiating',
       createdAt: new Date(Date.now() - 15 * 60 * 1000),
     });
 
     let createCalled = false;
+    let updateCalledWith: [string, string] | null = null;
     const db = buildDb({
       findOpportunitiesByActors: async () => [oldNegotiatingOpp],
+      updateOpportunityStatus: async (id, status) => {
+        updateCalledWith = [id, status];
+        return { ...oldNegotiatingOpp, status: 'latent' } as unknown as Opportunity;
+      },
       createOpportunity: async (data) => {
         createCalled = true;
         return { ...data, id: 'opp-new', status: 'latent' as const, createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
@@ -293,9 +303,12 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     });
 
     const graph = buildGraph(db);
-    await graph.invoke(discoveryInput);
+    const result = await graph.invoke(discoveryInput);
 
-    expect(createCalled).toBe(true);
+    expect(createCalled).toBe(false);
+    expect(updateCalledWith).not.toBeNull();
+    expect(updateCalledWith![0]).toBe(OPP_ID);
+    expect(result.opportunities?.length).toBeGreaterThanOrEqual(1);
   });
 
   test('introduction path: recent existing opp skips creation (onBehalfOfUserId dedup)', async () => {

@@ -32,12 +32,10 @@ jobs:
             repo: indexnetwork/cli
           - prefix: packages/claude-plugin
             repo: indexnetwork/claude-plugin
-          - prefix: packages/edgeclaw
-            repo: indexnetwork/edgeclaw
-            upstream_repo: Edge-City/edgeclaw
-            source_branch: main
-            target_branch: main
+          - prefix: packages/agentvillage
+            repo: indexnetwork/agentvillage
             ignore_joins: true
+            rebase_onto_main: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -108,14 +106,6 @@ jobs:
           SPLIT_FLAGS=""
           IGNORE_JOINS="${{ matrix.ignore_joins || 'false' }}"
           if [ "$IGNORE_JOINS" = "true" ]; then
-            # Edgeclaw receives `git subtree pull --squash` from an external
-            # upstream (Edge-City/edgeclaw). Those squash merges write
-            # `git-subtree-split:` annotations referencing commits that live
-            # only in the subtree repo. This workflow force-pushes the fork,
-            # so those commits become unreachable from the branch tip and
-            # `git subtree split` fails with "could not rev-parse split hash".
-            # --ignore-joins tells split to skip those stale annotations and
-            # walk the full history instead.
             SPLIT_FLAGS="--ignore-joins"
             echo "Using --ignore-joins (squash-pull annotations may reference unreachable commits)"
           else
@@ -130,6 +120,27 @@ jobs:
           echo "Splitting ${{ matrix.prefix }} on $BRANCH..."
           SPLIT_SHA=$(git subtree split $SPLIT_FLAGS --prefix="${{ matrix.prefix }}" "$BRANCH")
           echo "Split SHA: $SPLIT_SHA"
+
+          PUSH_REF="$SPLIT_SHA"
+          REBASE_ONTO="${{ matrix.rebase_onto_main || 'false' }}"
+          if [ "$REBASE_ONTO" = "true" ] && [ "$TARGET_BRANCH" != "main" ]; then
+            echo "Rebasing split onto ${{ matrix.repo }}#main for shared ancestry..."
+            REMOTE_URL="https://x-access-token:${GH_PAT}@github.com/${{ matrix.repo }}.git"
+            git fetch --no-tags "$REMOTE_URL" main 2>/dev/null \
+              || echo "note: fetch main failed; pushing split as-is"
+            if git rev-parse FETCH_HEAD >/dev/null 2>&1; then
+              git checkout --detach "$SPLIT_SHA"
+              if git rebase --onto FETCH_HEAD --root; then
+                PUSH_REF="$(git rev-parse HEAD)"
+                echo "Rebase succeeded — push ref: $PUSH_REF"
+              else
+                git rebase --abort 2>/dev/null || true
+                PUSH_REF="$SPLIT_SHA"
+                echo "Rebase had conflicts — falling back to split SHA"
+              fi
+            fi
+          fi
+
           # Plain --force (not --force-with-lease): the subtree repo is a
           # derived artifact this workflow owns end-to-end, and we serialize
           # writes per branch via the concurrency group above. We have no
@@ -138,5 +149,5 @@ jobs:
           # history diverges (always the case after squash/rebase merges).
           git push --force \
             "https://x-access-token:${GH_PAT}@github.com/${{ matrix.repo }}.git" \
-            "${SPLIT_SHA}:refs/heads/${TARGET_BRANCH}"
+            "${PUSH_REF}:refs/heads/${TARGET_BRANCH}"
           echo "✓ pushed to ${{ matrix.repo }} ($TARGET_BRANCH)"

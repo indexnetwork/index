@@ -1,5 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
+import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 
 /** Zod schema for a single negotiation turn (DataPart payload in A2A message). */
 export const NegotiationTurnSchema = z.object({
@@ -81,7 +82,13 @@ export interface NegotiationGraphLike {
     opportunityId?: string;
     maxTurns?: number;
     timeoutMs?: number;
-  }): Promise<{ outcome: NegotiationOutcome | null; messages?: NegotiationMessage[] }>;
+  }): Promise<{
+    outcome: NegotiationOutcome | null;
+    messages?: NegotiationMessage[];
+    conversationId?: string;
+    isContinuation?: boolean;
+    priorTurnCount?: number;
+  }>;
 }
 
 /** A2A message record shape (matches messages table). */
@@ -116,6 +123,11 @@ export const NegotiationGraphState = Annotation.Root({
   discoveryQuery: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
+  }),
+  /** Whether this run is continuing a prior conversation with the same pair. */
+  isContinuation: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
   }),
   opportunityId: Annotation<string>({
     reducer: (curr, next) => next ?? curr,
@@ -171,6 +183,18 @@ export const NegotiationGraphState = Annotation.Root({
   status: Annotation<'active' | 'waiting_for_agent' | 'completed'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'active' as const,
+  }),
+
+  /** Number of turns present in the conversation before this session started. */
+  priorTurnCount: Annotation<number>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => 0,
+  }),
+
+  /** User answers collected by the questioner between negotiation sessions. */
+  userAnswers: Annotation<NegotiationUserAnswer[]>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
   }),
 
   outcome: Annotation<NegotiationOutcome | null>({

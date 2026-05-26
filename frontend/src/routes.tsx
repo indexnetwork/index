@@ -6,6 +6,7 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 import { DiscoveryFilterProvider } from "@/contexts/DiscoveryFilterContext";
 import { AIChatSessionsProvider } from "@/contexts/AIChatSessionsContext";
 import { AIChatProvider } from "@/contexts/AIChatContext";
+import { QuestionsProvider } from "@/contexts/QuestionsContext";
 
 import ClientWrapper from "@/components/ClientWrapper";
 
@@ -21,10 +22,12 @@ function RootLayout() {
           <DiscoveryFilterProvider>
             <AIChatSessionsProvider>
               <AIChatProvider>
-                <ClientWrapper>
-                  <ScrollRestoration />
-                  <Outlet />
-                </ClientWrapper>
+                <QuestionsProvider>
+                  <ClientWrapper>
+                    <ScrollRestoration />
+                    <Outlet />
+                  </ClientWrapper>
+                </QuestionsProvider>
               </AIChatProvider>
             </AIChatSessionsProvider>
           </DiscoveryFilterProvider>

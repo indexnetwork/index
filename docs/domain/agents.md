@@ -112,7 +112,7 @@ When a user is invited or signed up through the headless experiment-network flow
 3. A personal agent with `scope = 'network'`, restricted to the experiment network.
 4. An API key bound to that agent.
 
-The signup response returns the user, the API key, and a drop-in `mcpServer` config (`name`, `url`, `headers`) ready to paste into any MCP-compatible runtime. No follow-up `agentId` lookup is needed. See `docs/guides/edgeclaw-instaclaw-integration.md` for the integration walkthrough.
+The signup response returns the user, the API key, and a drop-in `mcpServer` config (`name`, `url`, `headers`) ready to paste into any MCP-compatible runtime. No follow-up `agentId` lookup is needed.
 
 ---
 

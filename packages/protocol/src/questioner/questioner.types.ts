@@ -28,6 +28,8 @@ export interface IntentContext {
 export interface ProfileContext {
   userProfile: { name?: string; bio?: string; location?: string; skills?: string[]; interests?: string[] };
   gaps: string[];
+  /** Existing premise texts the user has already stated (e.g. "I live in Berlin"). */
+  existingPremises?: string[];
 }
 
 /** Negotiation context — data from a stalled or capped negotiation. */
@@ -48,25 +50,11 @@ export type QuestionerContext =
   | NegotiationContext;
 
 /**
- * Payload shape accepted by the questionerEnqueue callback at the
- * composition-root boundary. Context fields are typed as `unknown` because the
- * protocol layer is agnostic of the concrete queue input types — the backend
- * composition root casts them to `QuestionerInput` when bridging.
+ * Payload shape accepted by the questionerEnqueue callback. Covers all
+ * question modes — the composition root bridges this to the concrete
+ * QuestionerQueue.
  */
-export interface QuestionerEnqueuePayload {
-  mode: 'discovery';
-  userId: string;
-  sourceType: string;
-  sourceId: string;
-  context: {
-    query: string;
-    sourceProfile: unknown;
-    negotiationDigests: unknown[];
-    summary: unknown;
-    chatContext?: unknown;
-    now: string;
-  };
-}
+export type QuestionerEnqueuePayload = QuestionerInput;
 
 /** Callback signature for async question generation enqueue. */
 export type QuestionerEnqueueFn = (input: QuestionerEnqueuePayload) => Promise<void>;
@@ -83,4 +71,8 @@ export interface QuestionerInput {
   sourceId: string;
   /** Mode-specific context. Must align with the selected mode. */
   context: QuestionerContext;
+  /** Conversation ID — set when the question originates from a chat session. Persisted on the question row for frontend filtering. */
+  conversationId?: string;
+  /** Assistant message ID — set when we know which message triggered the question. Stored in detection.messageId for inline anchoring. */
+  messageId?: string;
 }

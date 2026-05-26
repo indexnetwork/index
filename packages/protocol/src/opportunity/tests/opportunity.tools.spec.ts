@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config({ path: ".env.development", override: true });
+config({ path: ".env.test", override: true });
 
 import { describe, expect, it, test } from "bun:test";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
@@ -464,17 +464,28 @@ describe("attachActionableLinks — mutation and resilience", () => {
 // buildProfileUrl — edge cases
 // ---------------------------------------------------------------------------
 
-describe("buildProfileUrl — always the Index web URL (IND-289)", () => {
+describe("buildProfileUrl — web surface (IND-289)", () => {
   test("returns the web profile URL when frontendUrl is set", () => {
     expect(
       buildProfileUrl({ socials: [] }, "user-1", "https://app.test"),
     ).toBe("https://app.test/u/user-1?link_preview=false");
   });
 
-  test("ignores Telegram socials — always uses the web URL", () => {
+  test("ignores Telegram socials when surface is web", () => {
     expect(
       buildProfileUrl(
-        { socials: [{ label: "telegram", value: "alice" }] },
+        { socials: [{ label: "telegram", value: "alice_tg" }] },
+        "user-2",
+        "https://app.test",
+        "web",
+      ),
+    ).toBe("https://app.test/u/user-2?link_preview=false");
+  });
+
+  test("ignores Telegram socials when surface is omitted", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "alice_tg" }] },
         "user-2",
         "https://app.test",
       ),
@@ -504,6 +515,90 @@ describe("buildProfileUrl — always the Index web URL (IND-289)", () => {
     expect(
       buildProfileUrl(null, "user-6", "https://app.test///"),
     ).toBe("https://app.test/u/user-6?link_preview=false");
+  });
+});
+
+describe("buildProfileUrl — telegram surface (EDG-5)", () => {
+  test("returns t.me deep link when counterpart has Telegram handle", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "alice_tg" }] },
+        "user-1",
+        "https://app.test",
+        "telegram",
+      ),
+    ).toBe("https://t.me/alice_tg");
+  });
+
+  test("normalizes Telegram handle (strips @, URL prefix)", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "@bob_handle" }] },
+        "user-2",
+        "https://app.test",
+        "telegram",
+      ),
+    ).toBe("https://t.me/bob_handle");
+
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "https://t.me/carol_h" }] },
+        "user-3",
+        "https://app.test",
+        "telegram",
+      ),
+    ).toBe("https://t.me/carol_h");
+  });
+
+  test("falls back to web URL when counterpart has no Telegram social", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "github", value: "alice" }] },
+        "user-4",
+        "https://app.test",
+        "telegram",
+      ),
+    ).toBe("https://app.test/u/user-4?link_preview=false");
+  });
+
+  test("falls back to web URL when socials is null", () => {
+    expect(
+      buildProfileUrl({ socials: null }, "user-5", "https://app.test", "telegram"),
+    ).toBe("https://app.test/u/user-5?link_preview=false");
+  });
+
+  test("falls back to web URL when counterpartUser is null", () => {
+    expect(
+      buildProfileUrl(null, "user-6", "https://app.test", "telegram"),
+    ).toBe("https://app.test/u/user-6?link_preview=false");
+  });
+
+  test("falls back to web URL when Telegram handle is invalid", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "ab" }] },
+        "user-7",
+        "https://app.test",
+        "telegram",
+      ),
+    ).toBe("https://app.test/u/user-7?link_preview=false");
+  });
+
+  test("returns undefined when frontendUrl is missing and no Telegram handle", () => {
+    expect(
+      buildProfileUrl({ socials: [] }, "user-8", undefined, "telegram"),
+    ).toBeUndefined();
+  });
+
+  test("returns t.me even when frontendUrl is missing if Telegram handle exists", () => {
+    expect(
+      buildProfileUrl(
+        { socials: [{ label: "telegram", value: "valid_handle" }] },
+        "user-9",
+        undefined,
+        "telegram",
+      ),
+    ).toBe("https://t.me/valid_handle");
   });
 });
 
@@ -554,5 +649,234 @@ describe("buildOpportunityPresentation — MCP opportunityId omission", () => {
     expect(out).not.toContain("opportunityId: opp-actionable");
     expect(out).toContain("opportunityId: opp-draft-sender");
     expect(out).toContain("Use opportunityId values only when calling update_opportunity");
+  });
+});
+
+describe("buildOpportunityPresentation — per-person grouping (MCP)", () => {
+  test("groups multiple cards for the same person into one entry", () => {
+    const out = buildOpportunityPresentation(
+      [
+        {
+          opportunityId: "opp-1",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "Generative software and programmable organizations.",
+          status: "pending",
+          acceptUrl: "https://api.test/c/link1",
+          profileUrl: "https://app.test/u/ashish-id",
+          feedCategory: "connection",
+        },
+        {
+          opportunityId: "opp-2",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "AI in creativity and design.",
+          status: "pending",
+          acceptUrl: "https://api.test/c/link2",
+          profileUrl: "https://app.test/u/ashish-id",
+          feedCategory: "connection",
+        },
+        {
+          opportunityId: "opp-3",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "AI infrastructure and deployment workflows.",
+          status: "pending",
+          acceptUrl: "https://api.test/c/link3",
+          profileUrl: "https://app.test/u/ashish-id",
+          feedCategory: "connection",
+        },
+      ],
+      { isMcp: true, leadIn: "You have 1 opportunity(ies)." },
+    );
+
+    // Should appear as ONE top-level entry, not three
+    expect(out).toContain("1. Ashish");
+    expect(out).not.toContain("2. Ashish");
+    expect(out).not.toContain("3. Ashish");
+
+    // All three acceptUrls must be present
+    expect(out).toContain("acceptUrl: https://api.test/c/link1");
+    expect(out).toContain("acceptUrl: https://api.test/c/link2");
+    expect(out).toContain("acceptUrl: https://api.test/c/link3");
+
+    // All three opportunityIds must be present (for confirm_opportunity_delivery)
+    expect(out).toContain("opportunityId: opp-1");
+    expect(out).toContain("opportunityId: opp-2");
+    expect(out).toContain("opportunityId: opp-3");
+
+    // profileUrl appears once
+    const profileMatches = out.match(/profileUrl: https:\/\/app\.test\/u\/ashish-id/g);
+    expect(profileMatches?.length).toBe(1);
+
+    // Sub-entries labeled with letters
+    expect(out).toContain("a.");
+    expect(out).toContain("b.");
+    expect(out).toContain("c.");
+
+    // Grouped instruction present
+    expect(out).toContain("grouped entries");
+  });
+
+  test("single-card person renders exactly as before (no grouping)", () => {
+    const out = buildOpportunityPresentation(
+      [
+        {
+          opportunityId: "opp-solo",
+          userId: "solo-id",
+          name: "Maya",
+          mainText: "Agent memory layer for long-running workflows.",
+          status: "pending",
+          acceptUrl: "https://api.test/c/solo-link",
+          profileUrl: "https://app.test/u/solo-id",
+          feedCategory: "connection",
+        },
+      ],
+      { isMcp: true, leadIn: "You have 1 opportunity(ies)." },
+    );
+
+    // Renders as a flat entry, not grouped
+    expect(out).toContain("1. Maya");
+    expect(out).toContain("Agent memory layer");
+    expect(out).toContain("acceptUrl: https://api.test/c/solo-link");
+    // No sub-entry letters
+    expect(out).not.toMatch(/\n\s+a\./);
+  });
+
+  test("different feedCategory for same userId stays separate", () => {
+    const out = buildOpportunityPresentation(
+      [
+        {
+          opportunityId: "opp-conn",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "Direct connection reason.",
+          status: "pending",
+          acceptUrl: "https://api.test/c/conn-link",
+          profileUrl: "https://app.test/u/ashish-id",
+          feedCategory: "connection",
+        },
+        {
+          opportunityId: "opp-intro",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "Introducer reason.",
+          status: "latent",
+          profileUrl: "https://app.test/u/ashish-id",
+          feedCategory: "connector-flow",
+        },
+      ],
+      { isMcp: true, leadIn: "Found 2." },
+    );
+
+    // Two separate top-level entries because feedCategory differs
+    expect(out).toContain("1. Ashish");
+    expect(out).toContain("2. Ashish");
+  });
+
+  test("mixed: one grouped person + one solo person", () => {
+    const out = buildOpportunityPresentation(
+      [
+        {
+          opportunityId: "opp-a1",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "Reason A.",
+          status: "pending",
+          acceptUrl: "https://api.test/c/a1",
+          profileUrl: "https://app.test/u/ashish-id",
+          feedCategory: "connection",
+        },
+        {
+          opportunityId: "opp-a2",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "Reason B.",
+          status: "pending",
+          acceptUrl: "https://api.test/c/a2",
+          profileUrl: "https://app.test/u/ashish-id",
+          feedCategory: "connection",
+        },
+        {
+          opportunityId: "opp-m1",
+          userId: "maya-id",
+          name: "Maya",
+          mainText: "Solo reason.",
+          status: "pending",
+          acceptUrl: "https://api.test/c/m1",
+          profileUrl: "https://app.test/u/maya-id",
+          feedCategory: "connection",
+        },
+      ],
+      { isMcp: true, leadIn: "Found 2." },
+    );
+
+    // Ashish grouped as entry 1, Maya as entry 2
+    expect(out).toContain("1. Ashish");
+    expect(out).toContain("2. Maya");
+    expect(out).not.toContain("3.");
+    // Ashish has sub-entries
+    expect(out).toContain("a.");
+    expect(out).toContain("b.");
+    // Maya rendered flat (solo)
+    expect(out).toContain("Solo reason.");
+  });
+
+  test("web UI (isMcp=false) is unaffected — no grouping", () => {
+    const out = buildOpportunityPresentation(
+      [
+        {
+          opportunityId: "opp-1",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "Reason A.",
+          status: "pending",
+          feedCategory: "connection",
+        },
+        {
+          opportunityId: "opp-2",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "Reason B.",
+          status: "pending",
+          feedCategory: "connection",
+        },
+      ],
+      { isMcp: false, leadIn: "Found 2." },
+    );
+
+    // Web path emits code fences, one per card — both present
+    const fenceCount = (out.match(/```opportunity/g) || []).length;
+    expect(fenceCount).toBe(2);
+  });
+
+  test("grouped entry without acceptUrl shows opportunityId per sub-entry", () => {
+    const out = buildOpportunityPresentation(
+      [
+        {
+          opportunityId: "opp-d1",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "Draft reason A.",
+          status: "draft",
+          profileUrl: "https://app.test/u/ashish-id",
+          feedCategory: "connection",
+        },
+        {
+          opportunityId: "opp-d2",
+          userId: "ashish-id",
+          name: "Ashish",
+          mainText: "Draft reason B.",
+          status: "draft",
+          profileUrl: "https://app.test/u/ashish-id",
+          feedCategory: "connection",
+        },
+      ],
+      { isMcp: true, leadIn: "Found 1." },
+    );
+
+    expect(out).toContain("1. Ashish");
+    expect(out).toContain("opportunityId: opp-d1");
+    expect(out).toContain("opportunityId: opp-d2");
   });
 });

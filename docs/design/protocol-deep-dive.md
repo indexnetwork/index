@@ -139,22 +139,27 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 ### 3.3 Profile Graph
 
 **File:** `profile/profile.graph.ts`
-**Purpose:** Generate, embed, and maintain user profiles with optional web scraping and HyDE generation.
-**Nodes:** `check_state`, `scrape`, `auto_generate`, `use_prepopulated_profile`, `generate_profile`, `embed_save_profile`, `generate_hyde`, `embed_save_hyde`
-**State:** `ProfileGraphState` (userId, operationMode, input, forceUpdate, profile, hydeDescription, needs* flags, etc.)
+**Purpose:** Generate and render human-readable user profiles with optional web scraping and premise decomposition. Profiles are presentation-only — no embeddings or HyDE documents are generated. All semantic discovery uses premises.
+**Nodes:** `check_state`, `scrape`, `decompose_premises`, `aggregate_premises`, `auto_generate`, `use_prepopulated_profile`, `generate_profile`, `save_profile`
+**State:** `ProfileGraphState` (userId, operationMode, input, forceUpdate, profile, needsProfileGeneration, premises, etc.)
 **Conditional edges:**
-- After `check_state`: routes based on operation mode and what components are missing (profile, embedding, HyDE)
+- After `check_state`: routes based on operation mode and whether a profile needs generation
+- After `scrape`: routes to `decompose_premises` (when premise graph is wired) or `generate_profile` (legacy path)
+- After `decompose_premises`: routes to `aggregate_premises`
+- After `aggregate_premises`: routes to `generate_profile` (when `needsProfileGeneration` is set) or `save_profile`
 - After `auto_generate`: routes to `use_prepopulated_profile` (enrichment succeeded) or `generate_profile` (fallback)
-- After `embed_save_profile`: routes to `generate_hyde` or `END`
-- After `generate_hyde`: routes to `embed_save_hyde`
+- After `generate_profile` / `use_prepopulated_profile`: routes to `save_profile`
+- `save_profile` is terminal (→ END)
 
 **Key behaviors:**
 - Query mode returns immediately (fast path) without any LLM calls
 - Write mode detects what needs generation and only runs necessary steps
 - If input is a confirmation phrase ("yes", "go ahead"), it is treated as no input so scraping runs
 - Profile updates merge new information with existing profile data
+- When `premiseGraph` is injected, chat input and scraped content are routed through `PremiseDecomposer` before profile generation. Extracted premises are persisted via the premise graph, then aggregated into the profile input. This ensures atomic facts are captured as premises and the profile is synthesized from structured data.
+- The `decompose_premises` node also handles direct chat input (not just scraped content) — any free-text describing the user is decomposed into premises first.
 
-**Dependencies:** `ProfileGraphDatabase`, `Embedder`, `Scraper`
+**Dependencies:** `ProfileGraphDatabase`, `Scraper`, optional `Enricher`, optional `questionerEnqueue`, optional compiled `PremiseGraph`
 
 ### 3.4 Opportunity Graph
 
@@ -169,10 +174,12 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 **Flow:** `START -> prep -> scope -> resolve -> discovery -> evaluation -> ranking -> persist -> negotiate -> END`
 
-The graph supports three discovery paths:
+The graph supports multiple discovery paths, searching across intents and premises corpora:
 - **Intent-based (Path A):** Trigger intent is assigned to an index -- use its HyDE documents for search
-- **Profile-based (Path B/C):** Use profile embedding or query-generated HyDE documents for search
+- **Query-based (Path B):** Query-generated HyDE documents for search
 - **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared indexes
+
+Premise-based candidates carry `candidatePremiseId` in the persist node for actor tracking, regardless of discovery source.
 
 **Unified trigger model:** `OpportunityGraphState.trigger` (`'ambient' | 'orchestrator'`, default `'ambient'`) drives branches in the `persist` and `negotiate` nodes so the same graph serves both the queue-driven ambient flow and the chat-driven orchestrator flow. The tool layer passes `trigger: 'orchestrator'` whenever `context.sessionId` is set (i.e. the call comes from a chat session); all other callers inherit the ambient default.
 
@@ -283,7 +290,7 @@ The health scorer considers connection count, connector flow count, expired coun
 
 The graph creates an A2A conversation, alternates between proposer and responder agents, and records each turn as a message with structured data parts. The finalize node determines whether an opportunity was produced, computes agreed roles and average fit score, then persists the outcome as an artifact.
 
-**Dependencies:** `NegotiationDatabase`, proposer agent, responder agent
+**Dependencies:** `NegotiationGraphDatabase`, proposer agent, responder agent
 
 ### 3.12 Premise Graph
 
@@ -396,14 +403,7 @@ Scoring bands:
 **Output:** ProfileDocument with identity (name, bio, location), narrative (context), attributes (skills, interests)
 **Used by:** Profile Graph (generate_profile node)
 
-### 4.11 Profile HyDE Generator
-
-**File:** `profile.hyde.generator.ts`
-**Role:** Creates hypothetical document embeddings specifically for profile matching.
-**Model:** `google/gemini-2.5-flash`
-**Used by:** Profile Graph (generate_hyde node)
-
-### 4.12 HyDE Generator
+### 4.11 HyDE Generator
 
 **File:** `hyde.generator.ts`
 **Role:** Generates hypothetical documents in a target corpus voice for semantic search. Takes a source text and a lens label, produces text that would match the ideal counterpart.
@@ -412,10 +412,10 @@ Scoring bands:
 **Output:** `HydeGeneratorOutput` (text)
 **Used by:** HyDE Graph (generate_missing node)
 
-### 4.13 Lens Inferrer
+### 4.12 Lens Inferrer
 
 **File:** `lens.inferrer.ts`
-**Role:** Analyzes source text with optional profile context and infers 1-5 search lenses, each tagged with a target corpus (profiles or intents).
+**Role:** Analyzes source text with optional profile context and infers 1-5 search lenses, each tagged with a target corpus (profiles, intents, or premises).
 **Model:** `google/gemini-2.5-flash`
 **Input:** Source text, optional profile context, optional max lenses
 **Output:** Array of lenses with label, corpus, reasoning
@@ -423,30 +423,39 @@ Scoring bands:
 
 Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with dynamic, LLM-inferred lenses. This allows the system to generate contextually appropriate search perspectives for any domain.
 
-### 4.14 Home Categorizer
+### 4.13 Home Categorizer
 
 **File:** `home.categorizer.ts`
 **Role:** Groups opportunity cards into themed sections with titles, subtitles, and Lucide icon names.
 **Model:** `google/gemini-2.5-flash`
 **Used by:** Home Graph (categorizeDynamically node)
 
-### 4.15 Suggestion Generator
+### 4.14 Suggestion Generator
 
 **File:** `suggestion.generator.ts`
 **Role:** Generates contextual suggestions for users.
 **Model:** `google/gemini-2.5-flash`, temperature 0.4, maxTokens 512
 
-### 4.16 Chat Title Generator
+### 4.15 Chat Title Generator
 
 **File:** `chat.title.generator.ts`
 **Role:** Generates concise titles for chat sessions.
 **Model:** `google/gemini-2.5-flash`, temperature 0.3, maxTokens 32
 
-### 4.17 Invite Generator
+### 4.16 Invite Generator
 
 **File:** `invite.generator.ts`
 **Role:** Generates contextual invite messages for ghost user outreach.
 **Model:** `google/gemini-2.5-flash`, temperature 0.3, maxTokens 512
+
+### 4.17 Premise Decomposer
+
+**File:** `premise/premise.decomposer.ts`
+**Role:** Decomposes free-text input (chat messages, scraped bios, LinkedIn content) into individual atomic premises. Converts third-person text to first-person, classifies each premise as `assertive` (stable identity facts) or `contextual` (temporal/situational), and filters out intents/desires.
+**Model:** `google/gemini-2.5-flash`
+**Input:** Free-text string (chat input, scraped content, or bio text)
+**Output:** Array of `{ text, tier }` premises plus reasoning; empty array for non-descriptive input (confirmations, greetings)
+**Used by:** Profile Graph (decompose_premises node)
 
 ### 4.18 Premise Analyzer
 
@@ -474,7 +483,10 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Input:** `QuestionerInput` envelope with mode (`discovery` | `intent` | `profile` | `negotiation`), userId, sourceType/sourceId, and mode-specific context
 **Output:** Array of `QuestionWithStrategy` (title, prompt, options, multiSelect, strategy)
 **Used by:** QuestionerQueue worker (async, behind `QUESTIONER_ENABLED` flag)
-**Presets:** Currently only `discovery` is implemented; `intent`, `profile`, `negotiation` are planned for Slice 4.
+**Presets:** `discovery`, `intent`, `profile`, `negotiation` — each provides a mode-specific system prompt and context builder.
+**Attachment points:** Intent graph (after creation), profile graph (after save, when gaps detected), negotiation graph (after stall/turn-cap). All fire-and-forget via `questionerEnqueue` callback injection. The profile attachment point fetches active premises via `getPremisesForUser` and passes their texts as `existingPremises` in the `ProfileContext`, so the LLM skips domains already covered by a premise.
+
+**Question delivery pipeline.** Generated questions are persisted with `expiresAt` (default 7 days). Pending questions are injected into `discover_opportunities` tool results via `mergePendingQuestions` (max 3 per source, deduplicated per session via a local Set in the ChatAgent). The frontend polls `GET /api/questions?status=pending` every 30s and displays a sidebar badge + dropdown. When a user answers, `QuestionEvents.onAnswered` dispatches to mode-specific handlers: profile answers create premises (tier=contextual, confidence=0.9), intent answers append `[Refined: ...]` addenda and enqueue HyDE regeneration, negotiation answers enrich `opportunities.metadata.userAnswers`, and discovery answers are no-ops. Empty answers (no selected options and no free text) are guarded against at the handler level. When a negotiation continuation resumes, the init node reads `userAnswers` back from the opportunity via `NegotiationQueries.getOpportunityUserAnswers` and injects them into the agent prompt so the negotiator sees between-session context.
 
 ## 5. Chat Tool System
 
@@ -594,12 +606,12 @@ HyDE (Hypothetical Document Embeddings) is the core semantic search technique. I
 2. **Cache check:** For each lens, the system checks Redis cache and PostgreSQL `hyde_documents` table. Only lenses with cache misses proceed to generation.
 
 3. **HyDE generation:** The `HydeGenerator` agent takes each uncached lens and generates a hypothetical document in the target corpus voice:
-   - **Profiles corpus:** Generates a professional biography of the ideal matching person
    - **Intents corpus:** Generates a goal/aspiration statement from the complementary perspective
+   - **Premises corpus:** Generates an identity assertion matching the ideal person's values or expertise
 
-4. **Embedding:** Generated texts are embedded using the same embedding model (text-embedding-3-large, 2000 dimensions) as the stored profiles and intents.
+4. **Embedding:** Generated texts are embedded using the same embedding model (text-embedding-3-large, 2000 dimensions) as the stored intents and premises.
 
-5. **Caching:** Results are cached in Redis (1-hour TTL) and persisted to PostgreSQL for entity sources (intents, profiles).
+5. **Caching:** Results are cached in Redis (1-hour TTL) and persisted to PostgreSQL for entity sources (intents, premises).
 
 ### Dynamic lenses vs. hardcoded strategies
 
@@ -745,27 +757,23 @@ Profile generation combines web scraping, external API enrichment, LLM generatio
 
 ### Generation modes
 
-**Write mode (with meaningful input):** User provides text about themselves -> `generate_profile` node -> ProfileGenerator agent structures it into identity/narrative/attributes -> embed -> save.
+**Write mode (with meaningful input):** User provides text about themselves -> `generate_profile` node -> ProfileGenerator agent structures it into identity/narrative/attributes -> save.
 
-**Write mode (scraping):** User has social links or full name but no text input -> `scrape` node uses the Scraper adapter to gather web data -> `generate_profile` node processes scraped content -> embed -> save.
+**Write mode (scraping):** User has social links or full name but no text input -> `scrape` node uses the Scraper adapter to gather web data -> `generate_profile` node processes scraped content -> save.
 
-**Generate mode:** Uses external enrichment API (Parallel Chat API) via `auto_generate` node. If enrichment returns confident results, the pre-populated profile skips LLM generation and goes directly to embedding. If enrichment fails, falls back to basic user info and LLM generation.
+**Generate mode:** Uses external enrichment API (Parallel Chat API) via `auto_generate` node. If enrichment returns confident results, the pre-populated profile skips LLM generation. If enrichment fails, falls back to basic user info and LLM generation.
 
 **Query mode:** Fast path that returns the existing profile without any LLM calls.
 
-### Embedding and HyDE
+### Premises and HyDE
 
-After profile generation:
-1. The profile text is concatenated (identity + narrative + attributes) and embedded via the Embedder adapter (text-embedding-3-large, 2000 dimensions)
-2. The profile embedding is stored in `user_profiles.embedding` for direct similarity search
-3. A HyDE document is generated for the profile (`mirror` strategy) describing what kind of person would be a good match
-4. The HyDE document is embedded and stored in `hyde_documents` for enhanced retrieval
+After profile generation, the profile is decomposed into premises (identity assertions). Premises carry their own vector embeddings and serve as the profile-level search corpus for HyDE discovery. This replaces the earlier approach of embedding entire profiles into a single vector.
 
 ### State detection
 
 The `check_state` node performs intelligent detection of what components are missing:
 - Profile missing -> needs generation
-- Profile exists but embedding invalid -> needs re-embedding
+- Premises missing -> needs decomposition
 - HyDE document missing -> needs HyDE generation
 - Everything exists and up to date -> returns immediately
 

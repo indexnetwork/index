@@ -21,7 +21,9 @@ import { MentionsTextInput } from "@/components/MentionsInput";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useUploadServiceV2 } from "@/services/v2/upload.service";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useOpportunities } from "@/contexts/APIContext";
+import { useOpportunities, useQuestionsService } from "@/contexts/APIContext";
+import { InjectedQuestions } from '@/components/InjectedQuestions/InjectedQuestions';
+import type { PendingQuestion, AnswerBody } from '@/services/questions';
 import { validateFiles } from "@/lib/file-validation";
 import InlineDiscoveryCard from "@/components/chat/InlineDiscoveryCard";
 import { DecisionQuestions } from "@/components/DecisionQuestions";
@@ -476,6 +478,44 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   // Invite message modal state
   const [inviteModal, setInviteModal] = useState<{ userId: string; userName: string; message: string; loading: boolean; opportunityId: string } | null>(null);
   const inviteModalResolveRef = useRef<((msg: string | null) => void) | null>(null);
+
+  const questionsService = useQuestionsService();
+  const [injectedQuestions, setInjectedQuestions] = useState<PendingQuestion[]>([]);
+
+  // Fetch conversation-linked questions on session load
+  useEffect(() => {
+    if (!sessionId) {
+      setInjectedQuestions([]);
+      return;
+    }
+    let active = true;
+    questionsService.getByConversation(sessionId).then((qs) => {
+      if (active) setInjectedQuestions(qs);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [sessionId, questionsService]);
+
+  // Group injected questions by messageId
+  const injectedByMessageId = useMemo(() => {
+    const map = new Map<string | null, PendingQuestion[]>();
+    for (const q of injectedQuestions) {
+      const key = q.detection.messageId ?? null;
+      const existing = map.get(key) ?? [];
+      existing.push(q);
+      map.set(key, existing);
+    }
+    return map;
+  }, [injectedQuestions]);
+
+  const handleInjectedAnswer = useCallback(async (questionId: string, body: AnswerBody) => {
+    await questionsService.answer(questionId, body);
+    setInjectedQuestions((prev) => prev.filter((q) => q.id !== questionId));
+  }, [questionsService]);
+
+  const handleInjectedDismiss = useCallback(async (questionId: string) => {
+    await questionsService.dismiss(questionId);
+    setInjectedQuestions((prev) => prev.filter((q) => q.id !== questionId));
+  }, [questionsService]);
 
   // Clear pending join IDs when stream completes (agent processed the join)
   const prevIsLoadingRef = useRef(isLoading);
@@ -1795,8 +1835,23 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       }}
                     />
                   )}
+                {msg.role === "assistant" &&
+                  injectedByMessageId.has(msg.id) && (
+                    <InjectedQuestions
+                      questions={injectedByMessageId.get(msg.id)!}
+                      onAnswer={handleInjectedAnswer}
+                      onDismiss={handleInjectedDismiss}
+                    />
+                  )}
               </div>
             ))}
+            {injectedByMessageId.has(null) && (
+              <InjectedQuestions
+                questions={injectedByMessageId.get(null)!}
+                onAnswer={handleInjectedAnswer}
+                onDismiss={handleInjectedDismiss}
+              />
+            )}
             <div ref={scrollRef} />
           </div>
         </ContentContainer>

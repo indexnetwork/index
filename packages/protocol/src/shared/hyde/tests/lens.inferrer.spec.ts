@@ -1,6 +1,6 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll } from 'bun:test';
 import { LensInferrer, type Lens } from '../lens.inferrer.js';
@@ -24,7 +24,7 @@ describe('LensInferrer', () => {
       for (const lens of result.lenses) {
         expect(typeof lens.label).toBe('string');
         expect(lens.label.length).toBeGreaterThan(0);
-        expect(['profiles', 'intents']).toContain(lens.corpus);
+        expect(['profiles', 'intents', 'premises']).toContain(lens.corpus);
         expect(typeof lens.reasoning).toBe('string');
         expect(lens.reasoning.length).toBeGreaterThan(0);
       }

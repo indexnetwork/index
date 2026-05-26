@@ -4,7 +4,7 @@
  */
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
@@ -13,6 +13,7 @@ import db from '../../lib/drizzle/drizzle';
 import {
   users,
   userProfiles,
+  userSocials,
   networks,
   networkMembers,
   intents,
@@ -571,6 +572,23 @@ describe('ProfileDatabaseAdapter', () => {
     const user = await adapter.getUser(fixture.userAId);
     expect(user).not.toBeNull();
     expect(user!.id).toBe(fixture.userAId);
+  });
+
+  it('should dedup socials when detectSocialLabel reclassifies a website as linkedin', async () => {
+    await adapter.setUserSocials(fixture.userAId, [
+      { label: 'linkedin', value: 'some-slug' },
+      { label: 'custom', value: 'https://www.linkedin.com/in/some-slug' },
+      { label: 'custom', value: 'http://example.org' },
+    ]);
+    const rows = await adapter.getUserSocials(fixture.userAId);
+    const linkedinRows = rows.filter(r => r.label === 'linkedin');
+    const customRows = rows.filter(r => r.label === 'custom');
+    expect(linkedinRows).toHaveLength(1);
+    expect(linkedinRows[0].value).toBe('some-slug');
+    expect(customRows).toHaveLength(1);
+    expect(customRows[0].value).toBe('http://example.org');
+
+    await db.delete(userSocials).where(eq(userSocials.userId, fixture.userAId));
   });
 });
 

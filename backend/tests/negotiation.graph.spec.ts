@@ -1,10 +1,10 @@
 import { config } from "dotenv";
-config({ path: ".env.development" });
+config({ path: ".env.test", override: true });
 
 import { describe, it, expect, mock } from "bun:test";
 
 import { NegotiationGraphFactory } from "@indexnetwork/protocol";
-import type { NegotiationDatabase, AgentDispatcher, UserNegotiationContext, SeedAssessment } from "@indexnetwork/protocol";
+import type { NegotiationGraphDatabase, AgentDispatcher, UserNegotiationContext, SeedAssessment } from "@indexnetwork/protocol";
 
 const sourceUser: UserNegotiationContext = {
   id: "user-source",
@@ -22,8 +22,8 @@ const seed: SeedAssessment = { reasoning: "Complementary skills", valencyRole: "
 
 function createDeps() {
   const updateOpportunityStatus = mock(() => Promise.resolve({ id: "opp-1", status: "negotiating" as const }));
-  const database = {
-    createConversation: mock(() => Promise.resolve({ id: "conv-1" })),
+  const typedMock = {
+    getOrCreateDM: mock(() => Promise.resolve({ id: "conv-1" })),
     createMessage: mock((data: { parts: unknown[] }) => Promise.resolve({
       id: `msg-${Math.random().toString(36).slice(2, 8)}`,
       senderId: "agent",
@@ -39,8 +39,13 @@ function createDeps() {
     getTask: mock(() => Promise.resolve(null)),
     getMessagesForConversation: mock(() => Promise.resolve([])),
     getArtifactsForTask: mock(() => Promise.resolve([])),
+    getNegotiationTaskForOpportunity: mock(() => Promise.resolve(null)),
+    getOpportunityUserAnswers: mock(() => Promise.resolve([])),
     updateOpportunityStatus,
-  } satisfies Partial<NegotiationDatabase> as unknown as NegotiationDatabase;
+  } satisfies Partial<NegotiationGraphDatabase>;
+  const database = {
+    ...typedMock,
+  } as unknown as NegotiationGraphDatabase;
   const dispatcher = {
     dispatch: mock(async () => ({ handled: false as const, reason: "no_agent" as const })),
     hasPersonalAgent: mock(async () => false),

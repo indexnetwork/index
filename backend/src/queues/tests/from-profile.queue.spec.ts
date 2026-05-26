@@ -2,7 +2,7 @@
  * Unit tests for FromProfileQueue. Use injected deps to avoid Redis/DB; QueueFactory is mocked.
  */
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, mock, afterAll } from 'bun:test';
 

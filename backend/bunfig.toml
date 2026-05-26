@@ -5,7 +5,7 @@
 # scripts/test-safe.sh which reads .test-isolated to exclude contaminating files.
 # Use `bun run test` (which calls test-safe.sh) instead of bare `bun test`.
 
-# Preload .env.development before any test module runs so integration tests
-# that touch the live database get the correct DATABASE_URL. Bun auto-loads
-# .env.test (which points to a stale test schema), so we override here.
+# Preload .env.test before any test module runs so env vars are available
+# before module-level imports. Individual test files also load .env.test
+# with override: true for consistency.
 preload = ["./src/preload.test.ts"]

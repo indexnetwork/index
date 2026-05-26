@@ -1,8 +1,8 @@
-import { describe, it, expect } from "bun:test";
+// Env must be set before any imports that transitively call createModel
 import { config } from "dotenv";
+config({ path: ".env.test", override: true });
 
-config({ path: ".env.development", override: true });
-
+import { describe, it, expect } from "bun:test";
 import { PremiseGraphFactory } from "../premise.graph.js";
 import type {
   PremiseGraphDatabase,
@@ -53,7 +53,6 @@ function createMockEmbedder(): Embedder {
     generate: async (_text: string | string[]) => new Array(2000).fill(0.01),
     search: async () => [],
     searchWithHydeEmbeddings: async () => [],
-    searchWithProfileEmbedding: async () => [],
   } as Embedder;
 }
 
@@ -78,6 +77,27 @@ describe("PremiseGraphFactory", () => {
     expect(result.analysis!.speechActType).toMatch(/DECLARATIVE|ASSERTIVE/);
     expect(result.embedding).toBeDefined();
     expect(result.embedding!.length).toBe(2000);
+    expect(result.error).toBeUndefined();
+  }, 60_000);
+
+  it("respects custom provenanceSource and provenanceConfidence overrides", async () => {
+    const db = createMockDatabase();
+    const embedder = createMockEmbedder();
+    const factory = new PremiseGraphFactory(db, embedder);
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({
+      userId: "user-2",
+      assertionText: "I have 10 years of experience in machine learning",
+      tier: "assertive" as const,
+      volatile: false,
+      provenanceSource: "enrichment" as const,
+      provenanceConfidence: 0.85,
+    });
+
+    expect(result.premise).toBeDefined();
+    expect(result.premise!.provenance.source).toBe("enrichment");
+    expect(result.premise!.provenance.confidence).toBe(0.85);
     expect(result.error).toBeUndefined();
   }, 60_000);
 

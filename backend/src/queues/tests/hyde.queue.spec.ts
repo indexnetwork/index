@@ -2,7 +2,7 @@
  * Unit tests for HydeQueue (cron-based cleanup and refresh). Uses injected database only.
  */
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, mock, afterAll } from 'bun:test';
 

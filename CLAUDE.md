@@ -32,7 +32,7 @@ bun run db:flush                            # Flush all data from database
 
 # Testing
 bun test                                    # Run tests with bun test
-bun test tests/e2e.test.ts                  # Run specific test file
+bun test tests/e2e.spec.ts                  # Run specific test file
 bun test --watch                            # Run tests in watch mode
 
 # Code quality
@@ -44,6 +44,7 @@ bun run maintenance:export-slack            # Export Slack data
 bun run maintenance:import-slack-export     # Import Slack export files
 bun run maintenance:reset-brokers           # Reset context brokers
 bun run maintenance:update:embeddings       # Regenerate embeddings
+bun run maintenance:decompose-profiles      # Backfill: decompose profiles into premises
 
 # Background workers
 bun run integration-worker                  # Start integration sync worker
@@ -95,8 +96,6 @@ git push <indexnetwork-remote> main
 
 The following packages are git subtrees tracked to external repos. **Syncing is automatic** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). The workflow also exposes `workflow_dispatch` for manual reruns. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
 
-> **Exception — edgeclaw.** `packages/edgeclaw/` mirrors the `indexnetwork/edgeclaw` GitHub fork of `Edge-City/edgeclaw`. The monorepo force-pushes to the fork; merges into the upstream `Edge-City/edgeclaw` happen by PR from the fork. See the `packages/edgeclaw/` section below for the full flow.
-
 #### packages/protocol/ → indexnetwork/protocol
 
 The `@indexnetwork/protocol` npm package (agent graphs, interfaces, tools). Two-way: edit here or in the external repo.
@@ -133,29 +132,16 @@ git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork
 git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git <branch>
 ```
 
-#### packages/edgeclaw/ → indexnetwork/edgeclaw (fork of Edge-City/edgeclaw)
+#### packages/agentvillage/ → indexnetwork/agentvillage
 
-The `edgeclaw` skills + onboarding package. Unlike the other subtrees, the canonical upstream (`Edge-City/edgeclaw`) is **owned by a different organization**, so the monorepo pushes through a GitHub fork (`indexnetwork/edgeclaw`) and PRs flow upstream from there.
-
-**Push flow (monorepo → fork → Edge-City):**
-1. Commits to `packages/edgeclaw/` land in the monorepo on `dev`, then `main`.
-2. On every push to monorepo `main`, `.github/workflows/sync-subtrees.yml` splits the prefix and force-pushes to `indexnetwork/edgeclaw` `main` (the fork). The fork is a derived staging area — its `main` is freely overwritten.
-3. When ready to ship to upstream, open a PR from `indexnetwork/edgeclaw` → `Edge-City/edgeclaw` via the GitHub UI. The fork relationship enables cross-network PRs.
-
-**Pull flow (Edge-City → fork → monorepo):**
-1. `.github/workflows/sync-edgeclaw-fork.yml` (manual `workflow_dispatch`) calls `gh repo sync --force` to align the fork's `main` with `Edge-City/edgeclaw` `main`. This discards any pending fork-local commits — fine, since they're recoverable from the next monorepo subtree push.
-2. The same workflow fires a `repository_dispatch` event (`edgeclaw-updated`) on the monorepo.
-3. `.github/workflows/pull-edgeclaw-subtree.yml` listens for that event, runs `git subtree pull` against the fork, and pushes the merge commit to monorepo `main`.
+The `@indexnetwork/agentvillage` Agent Village workspace, skills, and installer. Includes skills for edge-esmeralda, index-network, and edgeos.
 
 ```bash
-# Manual push if the workflow failed (sync monorepo HEAD into the fork)
-git subtree push --prefix=packages/edgeclaw https://github.com/indexnetwork/edgeclaw.git <branch>
+# Manual push if the hook failed (use dev or main)
+git subtree push --prefix=packages/agentvillage https://github.com/indexnetwork/agentvillage.git <branch>
 
-# Manual pull from the fork (if it has changes the monorepo hasn't picked up)
-git subtree pull --squash --prefix=packages/edgeclaw https://github.com/indexnetwork/edgeclaw.git main
-
-# Force-sync the fork from Edge-City (e.g. after an upstream merge)
-gh repo sync indexnetwork/edgeclaw --source Edge-City/edgeclaw --branch main --force
+# Pull if external repo was edited directly
+git subtree pull --squash --prefix=packages/agentvillage https://github.com/indexnetwork/agentvillage.git <branch>
 ```
 
 ### Root
@@ -181,7 +167,8 @@ index/
 ├── packages/
 │   ├── protocol/        # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
 │   ├── cli/             # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
-│   └── claude-plugin/   # @indexnetwork/claude-plugin — index-orchestrator and index-negotiator skills, subtree → indexnetwork/claude-plugin
+│   ├── claude-plugin/   # @indexnetwork/claude-plugin — index-orchestrator and index-negotiator skills, subtree → indexnetwork/claude-plugin
+│   └── agentvillage/    # @indexnetwork/agentvillage — Agent Village workspace + skills, subtree → indexnetwork/agentvillage
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
 └── scripts/           # Worktree helpers, hooks, dev launcher
@@ -205,7 +192,7 @@ index/
 - `src/schemas/` - Drizzle table definitions; primary schema is `schemas/database.schema.ts`
 - `src/guards/` - Auth/validation guards
 - `src/queues/` - BullMQ job queue definitions
-- `src/events/` - Event emitters (intent events, index membership events)
+- `src/events/` - Event emitters (intent events, index membership events, premise lifecycle events)
 - `src/cli/` - CLI and maintenance scripts
 - `packages/protocol/` - `@indexnetwork/protocol` NPM package — the agent graphs, interfaces, and tools layer. Published independently; `backend/` imports it as a versioned NPM dependency.
 
@@ -270,7 +257,7 @@ Intent creation is synchronous; complex processing (indexing, generation) is asy
 
 ### Event-Driven Broker System
 
-Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `network_membership.event.ts`. Services emit events after DB transactions; other services/graphs react independently.
+Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `network_membership.event.ts`. Premise lifecycle events in `premise.event.ts`: `PremiseEvents.onCreated/onUpdated/onRetracted/onExpired` — each enqueues cascade and profile regeneration jobs via `PremiseQueue`. Question lifecycle events in `question.event.ts`: `QuestionEvents.onCreated/onAnswered` — `onAnswered` dispatches to mode-specific handlers (`question.answer.handler.ts`): profile→premise creation, intent→description refinement + HyDE regen, negotiation→opportunity metadata enrichment (read back during continuation via `NegotiationQueries.getOpportunityUserAnswers`), discovery→no-op. Questions have an optional `conversationId` column linking them to the chat session that triggered them, and `detection.messageId` for anchoring to a specific assistant message. `tool.factory.ts` wraps `questionerEnqueue` in `sessionAwareEnqueue` to default `conversationId` from the active session context. The frontend renders conversation-linked questions inline via `InjectedQuestions`; sidebar badge uses `noConversation=true` to exclude them. Services emit events after DB transactions; other services/graphs react independently.
 
 ### Agent Registry
 
@@ -286,7 +273,7 @@ Negotiation-specific events (`negotiation_session_start/end`, `negotiation_turn`
 
 ### OpenRouter Configuration
 
-Model settings centralized in `packages/protocol/src/shared/agent/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental). Use `configureProtocol({ apiKey, chatModel, ... })` to inject config programmatically.
+Model settings centralized in `packages/protocol/src/shared/agent/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental), `NEGOTIATION_MAX_TURNS_CHAT` (default 4, chat-path negotiations), `NEGOTIATION_MAX_TURNS_AMBIENT` (default 6, ambient/background negotiations). Use `configureProtocol({ apiKey, chatModel, ... })` to inject config programmatically.
 
 ### Rate Limiting
 
@@ -427,7 +414,7 @@ Format: `<type>/<short-description>`. No Linear issue IDs. Examples: `feat/user-
 
 ### Pull Requests
 
-Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Features, Bug Fixes, Refactors, Documentation, Tests.
+Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Features, Bug Fixes, Refactors, Documentation, Tests.
 
 ### Finishing a Branch
 
@@ -442,7 +429,7 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
 3. **Bump package versions** for every package touched by the branch, following [Semantic Versioning 2.0.0](https://semver.org/). Do this before merging or pushing — never skip it.
    - **`packages/cli/`** and **`packages/protocol/`**: bump `package.json` version.
 4. Merge into dev: `git checkout dev && git merge <branch-name>`
-5. Push both remotes: `git push upstream dev && git push origin dev`
+5. Push: `git push origin dev`
 6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.
 7. Clean up: delete branch and remove worktree
 

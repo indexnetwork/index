@@ -3,7 +3,7 @@
  */
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll, beforeEach } from "bun:test";
 import { IntentGraphFactory } from "../intent.graph.js";

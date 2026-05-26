@@ -108,7 +108,7 @@ export class NetworkController {
   /**
    * Headless signup for experiment networks. Authenticated via master key (x-api-key header).
    * Accepts an optional rich profile payload; returns the user, API key, and MCP server config.
-   * Never sends email — the integrator (InstaClaw / EdgeOS) is the delivery channel.
+   * Never sends email — the integrator is the delivery channel.
    */
   @Post('/:id/signup')
   @UseGuards(RateLimit('write'))

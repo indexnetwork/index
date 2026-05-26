@@ -30,9 +30,112 @@ describe("getPreset", () => {
     expect(result).toContain("Alice");
   });
 
-  it("throws for an unimplemented mode", () => {
-    expect(() => getPreset("intent")).toThrow("not implemented");
-    expect(() => getPreset("profile")).toThrow("not implemented");
-    expect(() => getPreset("negotiation")).toThrow("not implemented");
+});
+
+describe("intent preset", () => {
+  it("returns the intent preset with systemPrompt and buildPrompt", () => {
+    const preset = getPreset("intent");
+    expect(preset).toBeDefined();
+    expect(typeof preset.systemPrompt).toBe("string");
+    expect(preset.systemPrompt.length).toBeGreaterThan(0);
+    expect(typeof preset.buildPrompt).toBe("function");
+  });
+
+  it("intent buildPrompt produces a string containing the intent payload", () => {
+    const preset = getPreset("intent");
+    const result = preset.buildPrompt({
+      intentId: "intent-1",
+      payload: "I want to find a cofounder for my AI startup",
+      userProfile: { name: "Alice", bio: "AI researcher" },
+    });
+    expect(typeof result).toBe("string");
+    expect(result).toContain("cofounder");
+    expect(result).toContain("Alice");
+  });
+});
+
+describe("profile preset", () => {
+  it("returns the profile preset with systemPrompt and buildPrompt", () => {
+    const preset = getPreset("profile");
+    expect(preset).toBeDefined();
+    expect(typeof preset.systemPrompt).toBe("string");
+    expect(preset.systemPrompt.length).toBeGreaterThan(0);
+    expect(typeof preset.buildPrompt).toBe("function");
+  });
+
+  it("profile buildPrompt produces a string containing the gaps", () => {
+    const preset = getPreset("profile");
+    const result = preset.buildPrompt({
+      userProfile: { name: "Bob", bio: "Engineer" },
+      gaps: ["location", "current work"],
+    });
+    expect(typeof result).toBe("string");
+    expect(result).toContain("location");
+    expect(result).toContain("current work");
+    expect(result).toContain("Bob");
+  });
+
+  it("profile buildPrompt includes existing premises when provided", () => {
+    const preset = getPreset("profile");
+    const result = preset.buildPrompt({
+      userProfile: { name: "Bob", bio: "Engineer" },
+      gaps: ["goals"],
+      existingPremises: ["I live in Berlin", "I am a CTO at Acme Corp"],
+    });
+    expect(result).toContain("## Existing premises");
+    expect(result).toContain("1. I live in Berlin");
+    expect(result).toContain("2. I am a CTO at Acme Corp");
+  });
+
+  it("profile buildPrompt shows (none) when existingPremises is empty", () => {
+    const preset = getPreset("profile");
+    const result = preset.buildPrompt({
+      userProfile: { name: "Bob" },
+      gaps: ["location"],
+      existingPremises: [],
+    });
+    expect(result).toContain("## Existing premises");
+    expect(result).toContain("(none)");
+  });
+
+  it("profile buildPrompt shows (none) when existingPremises is absent", () => {
+    const preset = getPreset("profile");
+    const result = preset.buildPrompt({
+      userProfile: { name: "Bob" },
+      gaps: ["location"],
+    });
+    expect(result).toContain("## Existing premises");
+    expect(result).toContain("(none)");
+  });
+
+  it("profile system prompt mentions premises", () => {
+    const preset = getPreset("profile");
+    expect(preset.systemPrompt).toContain("premises");
+  });
+});
+
+describe("negotiation preset", () => {
+  it("returns the negotiation preset with systemPrompt and buildPrompt", () => {
+    const preset = getPreset("negotiation");
+    expect(preset).toBeDefined();
+    expect(typeof preset.systemPrompt).toBe("string");
+    expect(preset.systemPrompt.length).toBeGreaterThan(0);
+    expect(typeof preset.buildPrompt).toBe("function");
+  });
+
+  it("negotiation buildPrompt produces a string containing the stall reason", () => {
+    const preset = getPreset("negotiation");
+    const result = preset.buildPrompt({
+      negotiationId: "neg-1",
+      counterpartyHint: "AI infra founder, Berlin",
+      indexContext: "AI founders community",
+      outcomeReason: "turn_cap",
+      keyTake: "Both interested but scope unclear",
+      userProfile: { name: "Alice" },
+    });
+    expect(typeof result).toBe("string");
+    expect(result).toContain("turn_cap");
+    expect(result).toContain("AI infra founder");
+    expect(result).toContain("Alice");
   });
 });

@@ -37,6 +37,8 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
+  /** Which premise grounded this match (set when discoverySource is 'premise-similarity'). */
+  premise?: Id<'premises'>;
   role: string;
   /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
   approved?: boolean;
@@ -1366,7 +1368,7 @@ export interface Database {
    * (Plan B Task 8) to atomically surface the h2h conversation when
    * accepting an opportunity.
    */
-  getOrCreateDM(userA: string, userB: string): Promise<{ id: string }>;
+  getOrCreateDM(userA: string, userB: string, participantType?: 'user' | 'agent'): Promise<{ id: string }>;
 
   /**
    * Clears hiddenAt for a user on a conversation, making it visible in their
@@ -1426,6 +1428,23 @@ export interface Database {
   assignPremiseToNetwork(premiseId: string, networkId: string, relevancyScore: number): Promise<void>;
 
   getPremiseNetworks(premiseId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>>;
+
+  /**
+   * Cosine similarity search against premise embeddings, scoped to shared networks.
+   * Used by the opportunity graph's premise discovery path (path D).
+   */
+  searchPremisesBySimilarity(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+  }): Promise<Array<{
+    premiseId: string;
+    userId: string;
+    networkId: string;
+    assertionText: string;
+    similarity: number;
+  }>>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1813,13 +1832,13 @@ export interface SystemDatabase {
 
 /**
  * Database interface narrowed for Profile Graph operations.
- * Provides full profile lifecycle: read, write, HyDE management, and query mode.
+ * Provides full profile lifecycle: read, write, and query mode.
  *
  * Access layer: Primarily UserDatabase (user's own profile)
  */
 export type ProfileGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getHydeDocument' | 'saveHydeDocument' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser'
 >;
 
 /**
@@ -1912,6 +1931,14 @@ export type ChatGraphCompositeDatabase = Pick<
   // ProfileGraph post-enrichment ghost deduplication
   | 'findDuplicateUser'
   | 'mergeGhostUser'
+  // ProfileGraph aggregate mode (premise-to-profile materialization)
+  | 'getPremisesForUser'
+  // Premise-to-premise discovery (path D) in OpportunityGraph
+  | 'searchPremisesBySimilarity'
+> & Pick<
+  NegotiationQueries,
+  // Orphan heal in OpportunityGraph persist node
+  | 'getNegotiationTaskForOpportunity'
 >;
 
 /**
@@ -1947,52 +1974,28 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
   | 'getIntent'
+  // Premise-to-premise discovery (path D)
+  | 'getPremisesForUser'
+  | 'searchPremisesBySimilarity'
+> & Pick<
+  NegotiationQueries,
+  // Orphan heal: check if a prior negotiating opportunity has a stale task
+  | 'getNegotiationTaskForOpportunity'
 >;
 
 /**
- * Database interface for the negotiation graph (A2A conversation/task/artifact persistence).
- *
- * Access layer: ConversationDatabaseAdapter
+ * Negotiation-specific query operations not covered by generic
+ * conversation/task primitives.
  */
-export interface NegotiationDatabase {
-  /**
-   * Creates an A2A conversation between negotiation agents.
-   * @param participants - Agent participant descriptors
-   * @returns The created conversation with its id
-   */
-  createConversation(participants: { participantId: string; participantType: 'user' | 'agent' }[]): Promise<{ id: string }>;
+/** A user's answer to a questioner-generated question, stored on opportunity metadata. */
+export interface NegotiationUserAnswer {
+  questionId: string;
+  selectedOptions: string[];
+  freeText?: string;
+  answeredAt: string;
+}
 
-  /**
-   * Persists a negotiation turn message within a conversation.
-   * @param data - Message payload including conversation, sender, role, and structured parts
-   * @returns The persisted message record
-   */
-  createMessage(data: {
-    conversationId: string;
-    senderId: string;
-    role: 'user' | 'agent';
-    parts: unknown[];
-    taskId?: string;
-    metadata?: Record<string, unknown> | null;
-  }): Promise<{ id: string; senderId: string; role: 'user' | 'agent'; parts: unknown; createdAt: Date }>;
-
-  /**
-   * Creates a task to track the negotiation lifecycle within a conversation.
-   * @param conversationId - Parent conversation id
-   * @param metadata - Task metadata (type, sourceUserId, candidateUserId)
-   * @returns The created task with id, conversationId, and initial state
-   */
-  createTask(conversationId: string, metadata?: Record<string, unknown>): Promise<{ id: string; conversationId: string; state: string }>;
-
-  /**
-   * Transitions a task to a new state (e.g. working, completed, failed).
-   * @param taskId - Task to update
-   * @param state - Target state
-   * @param statusMessage - Optional status message or structured status
-   * @returns The updated task record
-   */
-  updateTaskState(taskId: string, state: string, statusMessage?: unknown): Promise<{ id: string; conversationId: string; state: string }>;
-
+export interface NegotiationQueries {
   /**
    * Persists the full negotiation turn context (source/candidate user contexts,
    * seed assessment, index context, discovery query) onto the task metadata so
@@ -2004,54 +2007,9 @@ export interface NegotiationDatabase {
   setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>): Promise<void>;
 
   /**
-   * Persists a negotiation outcome artifact attached to a task.
-   * @param data - Artifact payload including task reference, name, structured parts, and metadata
-   * @returns The created artifact with its id
-   */
-  createArtifact(data: { taskId: string; name?: string; parts: unknown[]; metadata?: Record<string, unknown> | null }): Promise<{ id: string }>;
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Query Operations (used by negotiation MCP tools)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Lists negotiation tasks where the given user is source or candidate.
-   * @param userId - The user ID to filter by (matches sourceUserId or candidateUserId in task metadata)
-   * @param options - Optional status filter
-   * @returns Array of task records with metadata
-   */
-  getTasksForUser(userId: string, options?: { state?: string }): Promise<Array<{
-    id: string;
-    conversationId: string;
-    state: string;
-    metadata: Record<string, unknown> | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }>>;
-
-  /**
-   * Gets a specific task by ID.
-   * @param taskId - The task ID to look up
-   * @returns The task record or null if not found
-   */
-  getTask(taskId: string): Promise<{
-    id: string;
-    conversationId: string;
-    state: string;
-    metadata: Record<string, unknown> | null;
-    createdAt: Date;
-    updatedAt: Date;
-  } | null>;
-
-  /**
-   * Looks up the negotiation task attached to an opportunity.
-   *
    * Returns the most-recently-created task whose metadata carries
    * `type: 'negotiation'` and `opportunityId: <id>`. Returns null if no
    * negotiation has been started for that opportunity yet.
-   *
-   * @param opportunityId - Opportunity whose negotiation task to fetch
-   * @returns The task record or null if no negotiation exists for the opportunity
    */
   getNegotiationTaskForOpportunity(opportunityId: string): Promise<{
     id: string;
@@ -2063,10 +2021,73 @@ export interface NegotiationDatabase {
   } | null>;
 
   /**
-   * Gets all messages for a conversation, ordered by creation time.
-   * @param conversationId - The conversation to fetch messages for
-   * @returns Array of message records
+   * Returns user answers collected by the questioner system for a given
+   * opportunity. Reads `metadata.userAnswers` from the opportunities table.
+   * Used by the negotiation graph to inject between-session context into
+   * continuation prompts.
    */
+  getOpportunityUserAnswers(opportunityId: string): Promise<NegotiationUserAnswer[]>;
+}
+
+/**
+ * Database dependency for the negotiation graph (A2A conversation/task/artifact
+ * persistence). Composes generic conversation ops with negotiation-specific queries.
+ *
+ * Access layer: ConversationDatabaseAdapter
+ */
+export type NegotiationGraphDatabase = Pick<
+  Database,
+  | 'getOrCreateDM'
+> & NegotiationQueries & {
+  /**
+   * Update the status of an opportunity. Called from the negotiation graph to
+   * advance the opportunity lifecycle (negotiating -> pending/rejected/stalled).
+   * Returns only the narrow { id, status } needed by the graph, not the full Opportunity.
+   */
+  updateOpportunityStatus(
+    id: string,
+    status: OpportunityStatus,
+  ): Promise<{ id: string; status: OpportunityStatus } | null>;
+  /** Persists a negotiation turn message within a conversation. */
+  createMessage(data: {
+    conversationId: string;
+    senderId: string;
+    role: 'user' | 'agent';
+    parts: unknown[];
+    taskId?: string;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<{ id: string; senderId: string; role: 'user' | 'agent'; parts: unknown; createdAt: Date }>;
+
+  /** Creates a task to track the negotiation lifecycle within a conversation. */
+  createTask(conversationId: string, metadata?: Record<string, unknown>): Promise<{ id: string; conversationId: string; state: string }>;
+
+  /** Transitions a task to a new state (e.g. working, completed, failed). */
+  updateTaskState(taskId: string, state: string, statusMessage?: unknown): Promise<{ id: string; conversationId: string; state: string }>;
+
+  /** Persists a negotiation outcome artifact attached to a task. */
+  createArtifact(data: { taskId: string; name?: string; parts: unknown[]; metadata?: Record<string, unknown> | null }): Promise<{ id: string }>;
+
+  /** Lists negotiation tasks where the given user is source or candidate. */
+  getTasksForUser(userId: string, options?: { state?: string }): Promise<Array<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }>>;
+
+  /** Gets a specific task by ID. */
+  getTask(taskId: string): Promise<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null>;
+
+  /** Gets all messages for a conversation, ordered by creation time. */
   getMessagesForConversation(conversationId: string): Promise<Array<{
     id: string;
     senderId: string;
@@ -2075,30 +2096,14 @@ export interface NegotiationDatabase {
     createdAt: Date;
   }>>;
 
-  /**
-   * Gets artifacts for a task (e.g. negotiation outcome).
-   * @param taskId - The task to fetch artifacts for
-   * @returns Array of artifact records
-   */
+  /** Gets artifacts for a task (e.g. negotiation outcome). */
   getArtifactsForTask(taskId: string): Promise<Array<{
     id: string;
     name: string | null;
     parts: unknown[];
     metadata: Record<string, unknown> | null;
   }>>;
-
-  /**
-   * Update the status of an opportunity. Called from the negotiation graph to
-   * advance the opportunity lifecycle (negotiating → pending/rejected/stalled).
-   * @param id - Opportunity ID
-   * @param status - New status
-   * @returns The updated opportunity or null if not found
-   */
-  updateOpportunityStatus(
-    id: string,
-    status: OpportunityStatus,
-  ): Promise<{ id: string; status: OpportunityStatus } | null>;
-}
+};
 
 /**
  * Database interface for opportunity controller (API).
@@ -2250,7 +2255,7 @@ export type HomeGraphDatabase = Pick<
   | 'getNetwork'
   | 'getUser'
 > & Pick<
-  NegotiationDatabase,
+  NegotiationGraphDatabase,
   | 'getNegotiationTaskForOpportunity'
   | 'getMessagesForConversation'
   | 'getArtifactsForTask'

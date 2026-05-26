@@ -195,7 +195,7 @@ Graphs are LangGraph state machines. Each graph is created by a factory class th
 |-----------------|---------|
 | Chat | ReAct agent loop with tool calling |
 | Intent | Extract, verify, reconcile, and persist intents |
-| Profile | Generate/update user profiles with scraping and embedding |
+| Profile | Generate/update user profiles with scraping |
 | Opportunity | HyDE-based discovery: search, evaluate, rank, persist |
 | HyDE | Generate hypothetical document embeddings (cache-aware) |
 | Network | Manage index (network) CRUD |
@@ -487,7 +487,7 @@ The canonical schema lives in `backend/src/schemas/database.schema.ts`. All tabl
 | Table | Purpose |
 |-------|---------|
 | `users` | User accounts (Better Auth integration) |
-| `user_profiles` | User identity with 2000-dim vector embeddings |
+| `user_profiles` | User identity (bio, skills, interests, narrative) |
 | `intents` | User intents with embeddings, confidence scores, semantic governance fields |
 | `networks` | Communities/collections (indexes); personal networks have `isPersonal=true` |
 | `network_members` | Membership with permissions, custom prompts, auto-assignment settings |
@@ -508,7 +508,7 @@ The canonical schema lives in `backend/src/schemas/database.schema.ts`. All tabl
 
 **Soft deletes**: Records use `deletedAt` timestamps rather than hard deletes, preserving audit trails and enabling recovery.
 
-**Vector similarity search**: Intents and profiles have vector embeddings. Queries use pgvector's cosine similarity with HNSW indexes for sub-millisecond approximate nearest-neighbor lookups. This powers opportunity discovery, finding similar intents across index members.
+**Vector similarity search**: Intents and premises have vector embeddings. Queries use pgvector's cosine similarity with HNSW indexes for sub-millisecond approximate nearest-neighbor lookups. This powers opportunity discovery, finding similar intents and premises across index members.
 
 ### Migration Workflow
 

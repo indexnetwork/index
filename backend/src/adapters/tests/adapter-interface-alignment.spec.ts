@@ -10,7 +10,7 @@
  */
 
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from 'bun:test';
 
@@ -25,7 +25,6 @@ import type {
 import type {
   LensEmbedding as ProtocolLensEmbedding,
   HydeSearchOptions as ProtocolHydeSearchOptions,
-  ProfileEmbeddingSearchOptions as ProtocolProfileEmbeddingSearchOptions,
   HydeCandidate as ProtocolHydeCandidate,
   VectorSearchResult as ProtocolVectorSearchResult,
   VectorStoreOption as ProtocolVectorStoreOption,
@@ -61,7 +60,6 @@ import type {
 
 import type {
   LensEmbedding as AdapterLensEmbedding,
-  ProfileEmbeddingSearchOptions as AdapterProfileEmbeddingSearchOptions,
   HydeSearchOptions as AdapterHydeSearchOptions,
   HydeCandidate as AdapterHydeCandidate,
   VectorSearchResult as AdapterVectorSearchResult,
@@ -136,16 +134,6 @@ describe('Embedder adapter ↔ protocol interface alignment', () => {
 
   it('HydeSearchOptions: protocol → adapter', () => {
     const check: (_: ProtocolHydeSearchOptions) => AdapterHydeSearchOptions = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('ProfileEmbeddingSearchOptions: adapter → protocol', () => {
-    const check: (_: AdapterProfileEmbeddingSearchOptions) => ProtocolProfileEmbeddingSearchOptions = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('ProfileEmbeddingSearchOptions: protocol → adapter', () => {
-    const check: (_: ProtocolProfileEmbeddingSearchOptions) => AdapterProfileEmbeddingSearchOptions = (v) => v;
     expect(check).toBeDefined();
   });
 

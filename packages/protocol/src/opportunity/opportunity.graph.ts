@@ -182,7 +182,7 @@ export class OpportunityGraphFactory {
     private hydeGenerator: {
       invoke: (input: HydeGeneratorInvokeInput) => Promise<{
         hydeEmbeddings: Record<string, number[]>;
-        lenses?: Array<{ label: string; corpus: 'profiles' | 'intents' }>;
+        lenses?: Array<{ label: string; corpus: 'profiles' | 'intents' | 'premises' }>;
         hydeDocuments?: Record<string, { hydeText?: string; lens?: string }>;
       }>;
     },
@@ -272,9 +272,10 @@ export class OpportunityGraphFactory {
               };
             }
             const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
-            const [intents, profile] = await Promise.all([
+            const [intents, profile, userPremises] = await Promise.all([
               this.database.getActiveIntents(discoveryUserId),
               this.database.getProfile(discoveryUserId),
+              this.database.getPremisesForUser(discoveryUserId, 'ACTIVE'),
             ]);
             const indexedIntents: IndexedIntent[] = intents.map((intent: ActiveIntent) => ({
               intentId: intent.id,
@@ -284,19 +285,25 @@ export class OpportunityGraphFactory {
             }));
             const sourceProfile = profile
               ? {
-                  embedding: profile.embedding ?? null,
                   identity: profile.identity ?? undefined,
                   narrative: profile.narrative ?? undefined,
                   attributes: profile.attributes ?? undefined,
                 }
               : null;
+            const sourcePremises = (userPremises ?? [])
+              .filter(p => p.embedding && p.embedding.length > 0)
+              .map(p => ({
+                premiseId: p.id as Id<'premises'>,
+                embedding: p.embedding!,
+              }));
             return {
               userNetworks: userNetworkIds,
               indexedIntents,
               sourceProfile,
+              sourcePremises,
               trace: [{
                 node: "prep",
-                detail: `${userNetworkIds.length} network(s), ${intents.length} intent(s), ${profile ? 'profile loaded' : 'no profile'}`,
+                detail: `${userNetworkIds.length} network(s), ${intents.length} intent(s), ${sourcePremises.length} premise(s), ${profile ? 'profile loaded' : 'no profile'}`,
               }],
             };
           },
@@ -569,7 +576,7 @@ export class OpportunityGraphFactory {
 
     /**
      * Node 3: Discovery
-     * Generates HyDE embeddings and performs semantic search (path A), or profile-as-source search (path B/C).
+     * Generates HyDE embeddings and performs semantic search.
      */
     const discoveryNode = withNodeTrace(
       "opportunity-discovery",
@@ -716,23 +723,14 @@ export class OpportunityGraphFactory {
           const minScore = 0.3;
 
           if (state.discoverySource === 'profile') {
-            const embedding = state.sourceProfile?.embedding ?? null;
-            const vector = Array.isArray(embedding) && embedding.length > 0 && typeof embedding[0] === 'number'
-              ? (embedding as number[])
-              : Array.isArray(embedding) && Array.isArray(embedding[0])
-                ? (embedding[0] as number[])
-                : null;
-
-            // ALWAYS run query-based HyDE when we have a search query (e.g., "looking for investors")
-            // This ensures we use the right strategies (investor, mentor, etc.) not just mirror
+            // Profile-context discovery: HyDE (when search query exists) + premise-to-premise.
             if (state.searchQuery?.trim()) {
-              logger.verbose('[Graph:Discovery] Profile source with searchQuery → running query HyDE path for broader search', {
+              logger.verbose('[Graph:Discovery] Profile source with searchQuery → running query HyDE + premise paths', {
                 searchQuery: state.searchQuery.trim().substring(0, 80),
-                hasProfileVector: !!vector,
               });
               const queryCandidates = await runQueryHydeDiscovery();
               logger.verbose('[Graph:Discovery] Query HyDE path complete', { candidatesFound: queryCandidates.length });
-              
+
               // Build trace entries for this path
               const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
 
@@ -788,169 +786,24 @@ export class OpportunityGraphFactory {
                   model: getModelName("hydeGenerator"),
                 },
               });
-              
-              // If we also have a profile vector, merge with profile-based results
-              if (vector && vector.length > 0) {
-                const profileCandidates: CandidateMatch[] = [];
-                for (const targetIndex of state.targetNetworks) {
-                  const results = await this.embedder.searchWithProfileEmbedding(vector, {
-                    indexScope: [targetIndex.networkId],
-                    excludeUserId: discoveryUserId,
-                    limitPerStrategy: Math.floor(limitPerStrategy / 2),
-                    limit: Math.floor(perIndexLimit / 2),
-                    minScore,
-                  });
-                  for (const result of results) {
-                    profileCandidates.push({
-                      candidateUserId: result.userId as Id<'users'>,
-                      candidateIntentId: result.type === 'intent' ? result.id as Id<'intents'> : undefined,
-                      networkId: targetIndex.networkId,
-                      similarity: result.score,
-                      lens: result.matchedVia,
-                      candidatePayload: '',
-                      candidateSummary: undefined,
-                      discoverySource: 'profile-similarity' as const,
-                    });
-                  }
-                }
-                // Merge and dedupe - keep both intent and profile candidates per user
-                const byKey = new Map<string, CandidateMatch>();
-                for (const c of [...queryCandidates, ...profileCandidates]) {
-                  const key = `${c.candidateUserId}:${c.networkId}:${c.candidateIntentId ?? 'profile'}:${c.discoverySource ?? 'unknown'}`;
-                  if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
-                    byKey.set(key, c);
-                  }
-                }
-                const merged = Array.from(byKey.values());
-                logger.verbose('[Graph:Discovery] Merged HyDE + profile candidates', { 
-                  hydeCandidates: queryCandidates.length, 
-                  profileCandidates: profileCandidates.length,
-                  merged: merged.length 
-                });
-                
-                traceEntries.push({
-                  node: "discovery",
-                  detail: `+ Profile search → ${profileCandidates.length} additional, merged to ${merged.length}`,
-                  data: {
-                    profileCandidates: profileCandidates.length,
-                    merged: merged.length,
-                  },
-                });
-                
-                return { candidates: filterByTarget(merged), trace: traceEntries };
+
+              const premiseCands = await runPremiseDiscovery();
+              const withPremises = mergePremiseCandidates(queryCandidates, premiseCands);
+              if (premiseCands.length > 0) {
+                traceEntries.push({ node: "discovery", detail: `+ Premise search → ${premiseCands.length} candidate(s), merged to ${withPremises.length}` });
               }
-
-              return { candidates: filterByTarget(queryCandidates), trace: traceEntries };
+              return { candidates: filterByTarget(withPremises), trace: traceEntries };
             }
 
-            // No search query - use profile embedding directly (mirror-only)
-            if (!vector || vector.length === 0) {
-              return { candidates: [] };
+            // No search query — premise-to-premise discovery only
+            const premiseCands = await runPremiseDiscovery();
+            if (premiseCands.length > 0) {
+              return {
+                candidates: filterByTarget(premiseCands),
+                trace: [{ node: "discovery", detail: `No search query; premise search → ${premiseCands.length} candidate(s)` }],
+              };
             }
-            const allCandidates: CandidateMatch[] = [];
-            for (const targetIndex of state.targetNetworks) {
-              const results = await this.embedder.searchWithProfileEmbedding(vector, {
-                indexScope: [targetIndex.networkId],
-                excludeUserId: discoveryUserId,
-                limitPerStrategy,
-                limit: perIndexLimit,
-                minScore,
-              });
-              for (const result of results) {
-                if (result.type === 'intent') {
-                  allCandidates.push({
-                    candidateUserId: result.userId as Id<'users'>,
-                    candidateIntentId: result.id as Id<'intents'>,
-                    networkId: targetIndex.networkId,
-                    similarity: result.score,
-                    lens: result.matchedVia,
-                    candidatePayload: '',
-                    candidateSummary: undefined,
-                    discoverySource: 'profile-similarity' as const,
-                  });
-                } else {
-                  allCandidates.push({
-                    candidateUserId: result.userId as Id<'users'>,
-                    networkId: targetIndex.networkId,
-                    similarity: result.score,
-                    lens: result.matchedVia,
-                    candidatePayload: '',
-                    candidateSummary: undefined,
-                    discoverySource: 'profile-similarity' as const,
-                  });
-                }
-              }
-            }
-            const byUserAndIndex = new Map<string, CandidateMatch>();
-            for (const c of allCandidates) {
-              const key = `${c.candidateUserId}:${c.networkId}:${c.candidateIntentId ?? 'profile'}`;
-              if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
-                byUserAndIndex.set(key, c);
-              }
-            }
-            const candidates = Array.from(byUserAndIndex.values());
-            logger.verbose('[Graph:Discovery] Profile-as-source discovery complete', { candidatesFound: candidates.length });
-
-            // Build trace with individual candidate similarity scores
-            const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
-
-            // Show what the profile search is based on
-            const profileBio = state.sourceProfile?.identity?.bio;
-            const profileContext = state.sourceProfile?.narrative?.context;
-            const profileSummary = profileBio || profileContext || '(profile embedding)';
-
-            // Compute per-lens stats from deduped candidates
-            const lensStats: Record<string, { count: number; avgSimilarity: number }> = {};
-            for (const c of candidates) {
-              const s = c.lens || 'unknown';
-              if (!lensStats[s]) lensStats[s] = { count: 0, avgSimilarity: 0 };
-              lensStats[s].count++;
-              lensStats[s].avgSimilarity += c.similarity;
-            }
-            for (const s of Object.values(lensStats)) {
-              s.avgSimilarity = s.count > 0 ? Math.round((s.avgSimilarity / s.count) * 1000) / 1000 : 0;
-            }
-
-            traceEntries.push({
-              node: "discovery",
-              detail: `Profile-based search → ${candidates.length} candidate(s)`,
-              data: {
-                source: "profile",
-                candidateCount: candidates.length,
-                byLens: lensStats,
-                durationMs: Date.now() - startTime,
-              },
-            });
-
-            traceEntries.push({
-              node: "search_query",
-              detail: `Searching for matches to: "${profileSummary.slice(0, 150)}${profileSummary.length > 150 ? '...' : ''}"`,
-              data: {
-                type: "profile_embedding",
-                bio: profileBio,
-                context: profileContext,
-              },
-            });
-
-            // Add top candidates with similarity scores
-            const sortedCandidates = [...candidates].sort((a, b) => b.similarity - a.similarity).slice(0, 10);
-            for (const c of sortedCandidates) {
-              traceEntries.push({
-                node: "match",
-                detail: `Similarity ${Math.round(c.similarity * 100)}% via ${c.lens}`,
-                data: {
-                  userId: c.candidateUserId,
-                  similarity: Math.round(c.similarity * 100),
-                  lens: c.lens,
-                  hasIntent: !!c.candidateIntentId,
-                },
-              });
-            }
-
-            return {
-              candidates: filterByTarget(candidates),
-              trace: traceEntries,
-            };
+            return { candidates: [] };
           }
 
           async function runQueryHydeDiscovery(): Promise<CandidateMatch[]> {
@@ -1010,9 +863,10 @@ export class OpportunityGraphFactory {
                     discoverySource: 'query' as const,
                   });
                 }
-                for (const r of results.filter((x) => x.type === 'profile')) {
+                for (const r of results.filter((x) => x.type === 'premise')) {
                   all.push({
                     candidateUserId: r.userId as Id<'users'>,
+                    candidatePremiseId: r.id as Id<'premises'>,
                     networkId: targetIndex.networkId,
                     similarity: r.score,
                     lens: r.matchedVia,
@@ -1023,23 +877,100 @@ export class OpportunityGraphFactory {
                 }
               })
             );
-            const profileCount = all.filter((c) => !c.candidateIntentId).length;
             const intentCount = all.filter((c) => c.candidateIntentId).length;
+            const premiseCount = all.filter((c) => c.candidatePremiseId).length;
             logger.verbose('[Graph:Discovery] searchWithHydeEmbeddings raw results', {
               total: all.length,
-              fromProfile: profileCount,
               fromIntent: intentCount,
+              fromPremise: premiseCount,
             });
             const byKey = new Map<string, CandidateMatch>();
             for (const c of all) {
-              // Dedup by candidateUserId + intent (or profile), NOT by indexId.
+              // Dedup by candidateUserId + entity (intent or premise), NOT by indexId.
               // Including indexId caused the same user to appear once per index they belong to.
-              const key = `${c.candidateUserId}:${c.candidateIntentId ?? 'profile'}`;
+              const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : `premise:${c.candidatePremiseId}`;
+              const key = `${c.candidateUserId}:${entityKey}`;
               if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);
               }
             }
             return Array.from(byKey.values());
+          }
+
+          /**
+           * Premise-to-premise discovery (path D).
+           * Searches for other users' premises similar to the discoverer's premises,
+           * scoped to target networks. Additive — merges into existing candidates.
+           */
+          async function runPremiseDiscovery(): Promise<CandidateMatch[]> {
+            if (!state.sourcePremises?.length) return [];
+            const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
+            if (targetNetworkIds.length === 0) return [];
+
+            logger.verbose('[Graph:Discovery] runPremiseDiscovery start', {
+              premiseCount: state.sourcePremises.length,
+              targetNetworks: targetNetworkIds.length,
+            });
+
+            const searchResults = await Promise.all(
+              state.sourcePremises.map(sp =>
+                self.database.searchPremisesBySimilarity({
+                  embedding: sp.embedding,
+                  networkIds: targetNetworkIds,
+                  excludeUserId: discoveryUserId,
+                  limit: 20,
+                })
+              )
+            );
+
+            const premiseCandidates: CandidateMatch[] = [];
+            for (const results of searchResults) {
+              for (const r of results) {
+                premiseCandidates.push({
+                  candidateUserId: r.userId as Id<'users'>,
+                  candidatePremiseId: r.premiseId as Id<'premises'>,
+                  networkId: r.networkId as Id<'networks'>,
+                  similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
+                  lens: 'premise_match',
+                  candidatePayload: r.assertionText ?? '',
+                  discoverySource: 'premise-similarity',
+                });
+              }
+            }
+
+            // Dedup by userId + premiseId + networkId (a premise can appear in multiple networks)
+            const byKey = new Map<string, CandidateMatch>();
+            for (const c of premiseCandidates) {
+              const key = `${c.candidateUserId}:${c.candidatePremiseId ?? 'none'}:${c.networkId}`;
+              if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
+                byKey.set(key, c);
+              }
+            }
+            const deduped = Array.from(byKey.values());
+            logger.verbose('[Graph:Discovery] runPremiseDiscovery complete', {
+              rawCount: premiseCandidates.length,
+              dedupedCount: deduped.length,
+            });
+            return deduped;
+          }
+
+          /**
+           * Merge premise candidates into an existing candidate list.
+           * Deduplicates by userId + networkId + discoverySource + entityId.
+           */
+          function mergePremiseCandidates(
+            existing: CandidateMatch[],
+            premise: CandidateMatch[],
+          ): CandidateMatch[] {
+            if (premise.length === 0) return existing;
+            const merged = new Map<string, CandidateMatch>();
+            for (const c of [...existing, ...premise]) {
+              const key = `${c.candidateUserId}:${c.networkId}:${c.discoverySource}:${c.candidateIntentId ?? c.candidatePremiseId ?? 'none'}`;
+              if (!merged.has(key) || c.similarity > (merged.get(key)?.similarity ?? 0)) {
+                merged.set(key, c);
+              }
+            }
+            return Array.from(merged.values());
           }
 
           const resolvedIntent = state.resolvedTriggerIntentId
@@ -1048,6 +979,13 @@ export class OpportunityGraphFactory {
           const searchText = state.searchQuery ?? resolvedIntent?.payload ?? '';
           if (!searchText) {
             logger.warn('[Graph:Discovery] No search text available for intent path');
+            const premiseCands = await runPremiseDiscovery();
+            if (premiseCands.length > 0) {
+              return {
+                candidates: filterByTarget(premiseCands),
+                trace: [{ node: "discovery", detail: `No search text; premise search → ${premiseCands.length} candidate(s)` }],
+              };
+            }
             return { candidates: [] };
           }
 
@@ -1065,6 +1003,14 @@ export class OpportunityGraphFactory {
           const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
           const lenses = hydeResult.lenses ?? [];
           if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) {
+            const premiseCands = await runPremiseDiscovery();
+            if (premiseCands.length > 0) {
+              return {
+                hydeEmbeddings: {} as Record<string, number[]>,
+                candidates: filterByTarget(premiseCands),
+                trace: [{ node: "discovery", detail: `No HyDE embeddings; premise search → ${premiseCands.length} candidate(s)` }],
+              };
+            }
             return { hydeEmbeddings: {} as Record<string, number[]>, candidates: [] };
           }
           const lensMap = new Map(lenses.map(l => [l.label, l]));
@@ -1097,9 +1043,10 @@ export class OpportunityGraphFactory {
                   discoverySource: 'query' as const,
                 });
               }
-              for (const result of results.filter((r) => r.type === 'profile')) {
+              for (const result of results.filter((r) => r.type === 'premise')) {
                 allCandidates.push({
                   candidateUserId: result.userId as Id<'users'>,
+                  candidatePremiseId: result.id as Id<'premises'>,
                   networkId: targetIndex.networkId,
                   similarity: result.score,
                   lens: result.matchedVia,
@@ -1112,7 +1059,8 @@ export class OpportunityGraphFactory {
           );
           const byUserAndIndex = new Map<string, CandidateMatch>();
           for (const c of allCandidates) {
-            const key = `${c.candidateUserId}:${c.networkId}:${c.candidateIntentId ?? 'profile'}`;
+            const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : `premise:${c.candidatePremiseId}`;
+            const key = `${c.candidateUserId}:${c.networkId}:${entityKey}`;
             if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
               byUserAndIndex.set(key, c);
             }
@@ -1199,9 +1147,14 @@ export class OpportunityGraphFactory {
             });
           }
 
+          const premiseCands = await runPremiseDiscovery();
+          const withPremises = mergePremiseCandidates(candidates, premiseCands);
+          if (premiseCands.length > 0) {
+            traceEntries.push({ node: "discovery", detail: `+ Premise search → ${premiseCands.length} candidate(s), merged to ${withPremises.length}` });
+          }
           return {
             hydeEmbeddings: hydeEmbeddings as Record<string, number[]>,
-            candidates: filterByTarget(candidates),
+            candidates: filterByTarget(withPremises),
             trace: traceEntries,
           };
         } catch (error) {
@@ -1281,7 +1234,7 @@ export class OpportunityGraphFactory {
         const remaining = dedupedCandidates.slice(EVAL_BATCH_SIZE);
 
         // Early termination: if search was query-driven and no query-sourced candidates remain,
-        // clear remaining to prevent pointless pagination through profile-similarity leftovers
+        // clear remaining to prevent pointless pagination through non-query leftovers
         const isQueryDriven = !!state.searchQuery?.trim();
         const queryRemaining = remaining.filter(
           (c) => c.discoverySource === 'query' || c.discoverySource == null,
@@ -1293,7 +1246,7 @@ export class OpportunityGraphFactory {
           logger.info(
             "[Graph:Evaluation] Early termination: no query-sourced candidates remain",
             {
-              droppedProfileCandidates: remaining.length,
+              droppedCandidates: remaining.length,
             },
           );
         }
@@ -1804,7 +1757,9 @@ export class OpportunityGraphFactory {
         );
 
         const isChatPath = !!state.options?.conversationId;
-        const maxTurns = isChatPath ? 4 : 6;
+        const maxTurns = isChatPath
+          ? Number(process.env.NEGOTIATION_MAX_TURNS_CHAT) || 4
+          : Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6;
 
         // Fetch per-candidate index context (group by networkId to avoid duplicate lookups)
         const uniqueIndexIds = [...new Set(candidates.map(c => c.networkId).filter((id): id is string => !!id))];
@@ -2536,6 +2491,37 @@ export class OpportunityGraphFactory {
                     }
                     continue;
                   }
+                } else if (existing.status === 'negotiating') {
+                  // Orphan heal (introduction path): same logic as discovery path
+                  const priorTask = await this.database.getNegotiationTaskForOpportunity(existing.id);
+                  if (priorTask) {
+                    const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
+                    const isFresh = (Date.now() - new Date(priorTask.updatedAt).getTime()) < 5 * 60 * 1000;
+                    if (activeStates.includes(priorTask.state) && isFresh) {
+                      existingBetweenActors.push({
+                        candidateUserId: candidateUserId as Id<'users'>,
+                        networkId: (state.networkId ?? indexIdForActors ?? '') as Id<'networks'>,
+                        existingOpportunityId: existing.id as Id<'opportunities'>,
+                        existingStatus: existing.status,
+                      });
+                      logger.verbose('[Graph:Persist] Skipping negotiating opportunity with active task (introduction path)', {
+                        opportunityId: existing.id,
+                        candidateUserId,
+                        taskState: priorTask.state,
+                      });
+                      continue;
+                    }
+                  }
+                  const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
+                  if (reactivated) {
+                    logger.info('[Graph:Persist] Resuming orphaned negotiating opportunity (introduction path)', {
+                      opportunityId: existing.id,
+                      candidateUserId,
+                      priorTaskState: priorTask?.state,
+                    });
+                    reactivatedOpportunities.push(reactivated);
+                  }
+                  continue;
                 } else if (existing.status === 'latent') {
                   // Upgrade latent to draft for introduction path
                   const upgraded = await this.database.updateOpportunityStatus(existing.id, 'draft');
@@ -2597,11 +2583,25 @@ export class OpportunityGraphFactory {
               };
             } else {
               // Discovery path: opportunity_graph source, no introducer, lifecycle guard for agent/patient.
+
+              // Build premise lookup from discovery candidates for premise tracking.
+              // When multiple premise candidates exist for the same user, keep the highest-similarity one.
+              const premiseLookup = new Map<string, { premiseId: string; similarity: number }>();
+              for (const c of state.candidates ?? []) {
+                if (c.candidatePremiseId) {
+                  const existing = premiseLookup.get(c.candidateUserId);
+                  if (!existing || c.similarity > existing.similarity) {
+                    premiseLookup.set(c.candidateUserId, { premiseId: c.candidatePremiseId, similarity: c.similarity });
+                  }
+                }
+              }
+
               const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
                 networkId: a.networkId ?? indexIdForActors,
                 userId: a.userId,
                 role: a.role,
                 ...(a.intentId ? { intent: a.intentId } : {}),
+                ...(premiseLookup.has(a.userId) ? { premise: premiseLookup.get(a.userId)!.premiseId as Id<'premises'> } : {}),
               }));
               actors = evaluatorActors;
 
@@ -2657,6 +2657,40 @@ export class OpportunityGraphFactory {
                       candidateUserId,
                       previousStatus: existing.status,
                       newStatus: initialStatus,
+                    });
+                    reactivatedOpportunities.push(reactivated);
+                  }
+                  continue;
+                } else if (existing.status === 'negotiating') {
+                  // Orphan heal: if a prior opportunity is stuck in 'negotiating' with a stale task,
+                  // reactivate it so the new discovery run can reuse it instead of creating a duplicate.
+                  const priorTask = await this.database.getNegotiationTaskForOpportunity(existing.id);
+                  if (priorTask) {
+                    const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
+                    const isFresh = (Date.now() - new Date(priorTask.updatedAt).getTime()) < 5 * 60 * 1000;
+                    if (activeStates.includes(priorTask.state) && isFresh) {
+                      // Still active — skip (lock gate in init node will handle)
+                      existingBetweenActors.push({
+                        candidateUserId: candidateUserId as Id<'users'>,
+                        networkId: existingIndexId,
+                        existingOpportunityId: existing.id as Id<'opportunities'>,
+                        existingStatus: existing.status,
+                      });
+                      logger.verbose('[Graph:Persist] Skipping negotiating opportunity with active task', {
+                        opportunityId: existing.id,
+                        candidateUserId,
+                        taskState: priorTask.state,
+                      });
+                      continue;
+                    }
+                  }
+                  // Task is stale or missing — reactivate the orphaned negotiating opportunity
+                  const reactivated = await this.database.updateOpportunityStatus(existing.id, initialStatus);
+                  if (reactivated) {
+                    logger.info('[Graph:Persist] Resuming orphaned negotiating opportunity', {
+                      opportunityId: existing.id,
+                      candidateUserId,
+                      priorTaskState: priorTask?.state,
                     });
                     reactivatedOpportunities.push(reactivated);
                   }
@@ -3244,7 +3278,7 @@ export class OpportunityGraphFactory {
           this.negotiationGraph, sourceUser, [candidate],
           { networkId: '', prompt: '' },
           {
-            maxTurns: 6,
+            maxTurns: Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6,
             indexContextOverrides: indexContextMap,
             timeoutMs: AMBIENT_PARK_WINDOW_MS,
             trigger: 'ambient',

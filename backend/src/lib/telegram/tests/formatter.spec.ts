@@ -195,18 +195,18 @@ describe('formatOpportunityCardHtml', () => {
     expect(text).toContain('💡 <i>Strong overlap in AI</i>');
   });
 
-  it('generates inline keyboard with action button', () => {
+  it('generates inline keyboard with acceptUrl when present (EDG-5)', () => {
     const { keyboard } = formatOpportunityCardHtml(
-      { opportunityId: '1', name: 'Frank', primaryActionLabel: 'Start Chat' },
+      { opportunityId: '1', name: 'Frank', primaryActionLabel: 'Start Chat', acceptUrl: 'https://index.network/c/abc123' },
       'https://index.network',
     );
     expect(keyboard).toHaveLength(1);
     expect(keyboard[0]).toHaveLength(1);
     expect(keyboard[0][0].text).toContain('Start Chat');
-    expect(keyboard[0][0].url).toBe('https://index.network/opportunities');
+    expect(keyboard[0][0].url).toBe('https://index.network/c/abc123');
   });
 
-  it('uses "View" as default button label when primaryActionLabel is absent', () => {
+  it('falls back to /opportunities when acceptUrl is absent', () => {
     const { keyboard } = formatOpportunityCardHtml(
       { opportunityId: '1', name: 'Grace' },
       'https://app.example.com',

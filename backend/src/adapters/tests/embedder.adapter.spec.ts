@@ -5,7 +5,7 @@
  */
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm';
@@ -37,7 +37,6 @@ let fixture: {
   deletedUserId: string;
   networkId: string;
   intentId: string;
-  profileEmbeddingIntentId: string;
   /** Intent owned by the soft-deleted user. */
   deletedUserIntentId: string;
 };
@@ -48,7 +47,6 @@ beforeAll(async () => {
   const deletedUserId = uuidv4();
   const networkId = uuidv4();
   const intentId = uuidv4();
-  const profileEmbeddingIntentId = uuidv4();
   const deletedUserIntentId = uuidv4();
 
   await db.insert(users).values([
@@ -97,7 +95,7 @@ beforeAll(async () => {
   });
   await db.insert(intentNetworks).values({ intentId: deletedUserIntentId, networkId });
 
-  fixture = { userAId, userBId, deletedUserId, networkId, intentId, profileEmbeddingIntentId, deletedUserIntentId };
+  fixture = { userAId, userBId, deletedUserId, networkId, intentId, deletedUserIntentId };
 });
 
 afterAll(async () => {
@@ -235,68 +233,12 @@ describe('EmbedderAdapter', () => {
     });
   });
 
-  describe('searchWithProfileEmbedding', () => {
-    beforeAll(async () => {
-      await db.insert(intents).values({
-        id: fixture.profileEmbeddingIntentId,
-        userId: fixture.userAId,
-        payload: TEST_PREFIX + 'Intent for profile-embedding search',
-        summary: 'Summary',
-        embedding: makeTestVector(42),
-      });
-      await db.insert(intentNetworks).values({
-        intentId: fixture.profileEmbeddingIntentId,
-        networkId: fixture.networkId,
-      });
-    });
-
-    it('should return candidates (profiles and/or intents) in index scope with correct shape', async () => {
-      const profileEmbedding = makeTestVector(42);
-      const results = await adapter.searchWithProfileEmbedding(profileEmbedding, {
-        indexScope: [fixture.networkId],
-        limit: 10,
-        limitPerStrategy: 5,
-        minScore: 0,
-      });
-
-      expect(Array.isArray(results)).toBe(true);
-      for (const c of results) {
-        expect(['profile', 'intent']).toContain(c.type);
-        expect(c.id).toBeDefined();
-        expect(c.userId).toBeDefined();
-        expect(c.score).toBeGreaterThanOrEqual(0);
-        expect(c.matchedVia).toBeDefined();
-        expect(c.networkId).toBe(fixture.networkId);
-      }
-      const intentMatch = results.find(
-        (r) => r.type === 'intent' && r.id === fixture.profileEmbeddingIntentId
-      );
-      expect(intentMatch).toBeDefined();
-      expect(intentMatch!.score).toBeGreaterThanOrEqual(0.99);
-    });
-
-    it('should respect indexScope and excludeUserId', async () => {
-      const profileEmbedding = makeTestVector(100);
-      const results = await adapter.searchWithProfileEmbedding(profileEmbedding, {
-        indexScope: [fixture.networkId],
-        excludeUserId: fixture.userAId,
-        limit: 5,
-        minScore: 0,
-      });
-
-      for (const c of results) {
-        expect(c.userId).not.toBe(fixture.userAId);
-        expect(c.networkId).toBe(fixture.networkId);
-      }
-    });
-  });
-
   describe('soft-deleted user exclusion', () => {
     it('should not return soft-deleted users from searchWithHydeEmbeddings (profiles)', async () => {
       const vec = makeTestVector(42); // same as deleted user's profile embedding
       const results = await adapter.searchWithHydeEmbeddings(
         [{ lens: 'test lens', corpus: 'profiles' as const, embedding: vec }],
-        { indexScope: [fixture.networkId], limit: 20, minScore: 0, profileMinScore: 0 },
+        { indexScope: [fixture.networkId], limit: 20, minScore: 0 },
       );
 
       const deletedMatch = results.find((c) => c.userId === fixture.deletedUserId);
@@ -309,19 +251,6 @@ describe('EmbedderAdapter', () => {
         [{ lens: 'test lens', corpus: 'intents' as const, embedding: vec }],
         { indexScope: [fixture.networkId], limit: 20, minScore: 0 },
       );
-
-      const deletedMatch = results.find((c) => c.userId === fixture.deletedUserId);
-      expect(deletedMatch).toBeUndefined();
-    });
-
-    it('should not return soft-deleted users from searchWithProfileEmbedding', async () => {
-      const vec = makeTestVector(42);
-      const results = await adapter.searchWithProfileEmbedding(vec, {
-        indexScope: [fixture.networkId],
-        limit: 20,
-        minScore: 0,
-        profileMinScore: 0,
-      });
 
       const deletedMatch = results.find((c) => c.userId === fixture.deletedUserId);
       expect(deletedMatch).toBeUndefined();

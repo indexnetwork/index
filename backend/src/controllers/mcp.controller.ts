@@ -45,11 +45,12 @@ import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
 
 import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary } from '@indexnetwork/protocol';
 
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
+import { PremiseEvents } from '../events/premise.event';
 
 const logger = log.server.from('mcp');
 
@@ -121,7 +122,7 @@ const protocolDeps = {
   questionerDatabase: questionerAdapter,
   ...(process.env.QUESTIONER_ENABLED === 'true' && {
     questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
-      await questionerQueue.addGenerateJob(input as Parameters<typeof questionerQueue.addGenerateJob>[0]);
+      await questionerQueue.addGenerateJob(input);
     },
   }),
 };
@@ -147,8 +148,10 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   logger.info('Compiling MCP graphs (first call, will be cached)');
 
   const { database, embedder, scraper } = protocolDeps;
-  const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, protocolDeps.enricher).createGraph();
+  const qEnqueue = protocolDeps.questionerEnqueue;
+  const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue, qEnqueue).createGraph();
+  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
+  const profileGraph = new ProfileGraphFactory(database, scraper, protocolDeps.enricher, qEnqueue, premiseGraph).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
@@ -160,6 +163,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     protocolDeps.negotiationDatabase,
     protocolDeps.agentDispatcher!,
     protocolDeps.negotiationTimeoutQueue,
+    qEnqueue,
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
@@ -170,7 +174,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
   const intentIndexGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
-  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
 
   compiledGraphs = {
     profile: profileGraph,
@@ -406,6 +409,26 @@ function getOrCreateMcpServer(): McpServer {
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
     ...(protocolDeps.questionerEnqueue && { questionerEnqueue: protocolDeps.questionerEnqueue }),
+    findPendingQuestions: async (userId: string, filters?: { sourceType?: string; sourceId?: string }) => {
+      const rows = await questionerAdapter.findPending(userId, filters);
+      return rows.map((row): PendingQuestionSummary => ({
+        id: row.id,
+        title: row.payload.title,
+        prompt: row.payload.prompt,
+        options: row.payload.options,
+        multiSelect: row.payload.multiSelect,
+        mode: row.detection.mode,
+        sourceType: row.detection.sourceType,
+        sourceId: row.detection.sourceId,
+        createdAt: row.createdAt,
+        ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+      }));
+    },
+    premiseEvents: {
+      onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
+      onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
+      onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
+    },
     graphs,
   };
 

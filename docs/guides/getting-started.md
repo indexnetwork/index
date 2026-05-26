@@ -258,7 +258,7 @@ Once both servers are running, open http://localhost:3000 in your browser.
 cd backend
 
 # Run a specific test file (preferred)
-bun test tests/e2e.test.ts
+bun test tests/e2e.spec.ts
 
 # Run tests in watch mode
 bun test --watch
@@ -344,7 +344,7 @@ Examples:
 feat(chat): add streaming response support
 fix(auth): resolve invalid_origin error for localhost
 docs: update getting started guide
-refactor(intent): use NegotiationDatabase adapter interface
+refactor(intent): use NegotiationGraphDatabase adapter interface
 ```
 
 Breaking changes use `!` after the type or `BREAKING CHANGE:` in the footer.
@@ -362,7 +362,7 @@ docs/getting-started
 
 ### Pull requests
 
-Use the `gh` CLI to create PRs targeting `upstream/dev`:
+Use the `gh` CLI to create PRs targeting `origin/dev`:
 
 ```bash
 gh pr create --base dev --title "feat: add streaming responses" --body "..."

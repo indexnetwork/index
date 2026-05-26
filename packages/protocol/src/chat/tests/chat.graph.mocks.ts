@@ -233,6 +233,7 @@ export function createChatGraphMockDb(
     getNetworkWithPermissions: async () => null,
     getIntentForIndexing: noopNull,
     getNetworkMemberContext: noopNull,
+    getNegotiationTaskForOpportunity: noopNull,
     getOpportunitiesForUser: async (userId: string) =>
       Promise.resolve(opportunitiesForUser(userId)).then((f) => (Array.isArray(f) ? f : [])),
     createOpportunity: async () => mockOpportunity({ currentUserId: "system" }) as Opportunity,

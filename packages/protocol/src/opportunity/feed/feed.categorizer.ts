@@ -9,8 +9,6 @@
 import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
-import { config } from 'dotenv';
-config({ path: '.env.development' });
 
 import type { HomeSectionProposal } from './feed.state.js';
 import { getIconNamesForPrompt, DEFAULT_HOME_SECTION_ICON } from '../../shared/ui/lucide.icon-catalog.js';

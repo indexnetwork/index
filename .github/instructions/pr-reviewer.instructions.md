@@ -24,7 +24,6 @@ applyTo: "**"
 
 ## Version Bumping
 
-- Flag any changes to `packages/openclaw-plugin/` where `package.json` version and `openclaw.plugin.json` version do not match — both must always be bumped to the same value.
 - Flag changes to `packages/cli/` or `packages/protocol/` that lack a version bump in their respective `package.json`.
 
 ## Review Completion

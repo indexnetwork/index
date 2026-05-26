@@ -6,10 +6,10 @@ import { opportunityService } from '../services/opportunity.service';
 /** Route params when path has :code */
 type RouteParams = Record<string, string>;
 
-const EXPIRED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Link Expired</title></head>
+const EXPIRED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Unavailable</title></head>
 <body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
-<div style="text-align:center"><h1 style="font-size:1.5rem">This link has expired</h1>
-<p style="color:#666">Connect links are valid for 30 days. Check your latest notification for a fresh link.</p>
+<div style="text-align:center"><h1 style="font-size:1.5rem">This opportunity is no longer available</h1>
+<p style="color:#666">The opportunity behind this link has expired or been closed.</p>
 </div></body></html>`;
 
 const APPROVED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Introduction Approved</title></head>
@@ -156,7 +156,7 @@ export class ConnectLinkController {
       if ('error' in result) return jsonError(result.error, result.status);
 
       // Receiver surface determines redirect target. preferredSurface = 'telegram'
-      // means the click came from a Telegram-rendering MCP client (EdgeClaw) and
+      // means the click came from a Telegram-rendering MCP client and
       // we should attempt the t.me deep link. Anything else (including NULL on
       // pre-rollout rows) goes to the web frontend.
       if (link.preferredSurface === 'telegram') {

@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
 import { describe, test, expect } from 'bun:test';
@@ -17,7 +17,6 @@ const dummyEmbedder = {
   generate: async () => [],
   search: async () => [],
   searchWithHydeEmbeddings: async () => [],
-  searchWithProfileEmbedding: async () => [],
 } as unknown as Embedder;
 const dummyHyde = { invoke: async () => ({ hydeEmbeddings: { mirror: [], reciprocal: [] } }) };
 
@@ -50,6 +49,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     getUser: async (id) => ({ id, name: 'Test', email: 'test@example.com' }),
     getOrCreateDM: async () => ({ id: 'conv-default' }),
     getIntent: async () => null,
+    getNegotiationTaskForOpportunity: async () => null,
     ...overrides,
   } as OpportunityGraphDatabase;
 }

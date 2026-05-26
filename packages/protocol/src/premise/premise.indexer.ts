@@ -6,8 +6,6 @@ import { createModel } from "../shared/agent/model.config.js";
 
 const logger = protocolLogger("PremiseIndexer");
 
-const model = createModel("premiseIndexer");
-
 const systemPrompt = `
 You are a Premise Evaluator for a social networking protocol.
 
@@ -44,9 +42,10 @@ export type PremiseIndexerOutput = z.infer<typeof responseFormat>;
  * Scores a premise's relevancy to a network based on the index and member prompts.
  */
 export class PremiseIndexer {
-  private model: ReturnType<typeof model.withStructuredOutput>;
+  private model: ReturnType<ReturnType<typeof createModel>["withStructuredOutput"]>;
 
   constructor() {
+    const model = createModel("premiseIndexer");
     this.model = model.withStructuredOutput(responseFormat, {
       name: "premise_indexer"
     });

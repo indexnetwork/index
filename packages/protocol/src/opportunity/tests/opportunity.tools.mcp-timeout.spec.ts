@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config({ path: '.env.development', override: true });
+config({ path: '.env.test', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
 import { describe, test, expect, mock, beforeEach, afterAll } from 'bun:test';

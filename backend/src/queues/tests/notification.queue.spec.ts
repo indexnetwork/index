@@ -2,7 +2,7 @@
  * Unit tests for NotificationQueue. Mocks QueueFactory, userService, Redis, email queue, and events.
  */
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, mock, beforeEach, afterAll } from 'bun:test';
 import { EventEmitter } from 'events';

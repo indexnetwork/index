@@ -7,13 +7,6 @@ import { createModel } from "../shared/agent/model.config.js";
 
 const logger = protocolLogger("SemanticVerifier");
 
-/**
- * Config
- */
-import { config } from "dotenv";
-config({ path: '.env.development', override: true });
-
-
 const model = createModel("intentVerifier");
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT

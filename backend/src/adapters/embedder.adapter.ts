@@ -21,19 +21,9 @@ export interface LensEmbedding {
   /** Free-text lens label (e.g. "crypto infrastructure VC"). */
   lens: string;
   /** Which corpus to search. */
-  corpus: 'profiles' | 'intents';
+  corpus: 'profiles' | 'intents' | 'premises';
   /** 2000-dim embedding vector. */
   embedding: number[];
-}
-
-/** Options for searchWithProfileEmbedding (no lenses; direct profile similarity). */
-export interface ProfileEmbeddingSearchOptions {
-  indexScope: string[];
-  excludeUserId?: string;
-  limitPerStrategy?: number;
-  limit?: number;
-  minScore?: number;
-  profileMinScore?: number;
 }
 
 export interface HydeSearchOptions {
@@ -42,11 +32,10 @@ export interface HydeSearchOptions {
   limitPerStrategy?: number;
   limit?: number;
   minScore?: number;
-  profileMinScore?: number;
 }
 
 export interface HydeCandidate {
-  type: 'profile' | 'intent';
+  type: 'intent' | 'premise';
   id: string;
   userId: string;
   score: number;
@@ -159,30 +148,31 @@ export class EmbedderAdapter {
       limitPerStrategy = 40,
       limit = 80,
       minScore = 0.40,
-      profileMinScore = 0.25,
     } = options;
 
     const filter = { indexScope, excludeUserId };
 
-    // Always search BOTH profiles and intents for each lens.
+    // Search both corpora (intents, premises) for each lens.
     // The corpus hint from the lens inferrer is used only for limit allocation:
-    // the preferred corpus gets the full limitPerStrategy while the other gets half.
+    // the preferred corpus gets the full limitPerStrategy while others get half.
+    // 'profiles' hints are remapped to 'premises' (premises decompose profile content).
+    const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
 
-      const isProfilePreferred = le.corpus === 'profiles';
+      const preferred = le.corpus === 'profiles' ? 'premises' : le.corpus;
       return [
-        this.searchProfilesForHyde(
-          le.embedding,
-          filter,
-          isProfilePreferred ? limitPerStrategy : Math.ceil(limitPerStrategy / 2),
-          profileMinScore,
-          le.lens
-        ),
         this.searchIntentsForHyde(
           le.embedding,
           filter,
-          isProfilePreferred ? Math.ceil(limitPerStrategy / 2) : limitPerStrategy,
+          preferred === 'intents' ? limitPerStrategy : halfLimit,
+          minScore,
+          le.lens
+        ),
+        this.searchPremisesForHyde(
+          le.embedding,
+          filter,
+          preferred === 'premises' ? limitPerStrategy : halfLimit,
           minScore,
           le.lens
         ),
@@ -194,78 +184,9 @@ export class EmbedderAdapter {
     return this.mergeAndRankCandidates(flatResults, limit);
   }
 
-  async searchWithProfileEmbedding(
-    profileEmbedding: number[],
-    options: ProfileEmbeddingSearchOptions
-  ): Promise<HydeCandidate[]> {
-    const {
-      indexScope,
-      excludeUserId,
-      limitPerStrategy = 40,
-      limit = 80,
-      minScore = 0.40,
-      profileMinScore = 0.25,
-    } = options;
-    const filter = { indexScope, excludeUserId };
-    const [profileResults, intentResults] = await Promise.all([
-      this.searchProfilesByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, profileMinScore),
-      this.searchIntentsByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, minScore),
-    ]);
-    const flatResults = [...profileResults, ...intentResults];
-    return this.mergeAndRankCandidates(flatResults, limit);
-  }
-
   // ─────────────────────────────────────────────────────────────────────────
-  // Private: profile/intent search for HyDE
+  // Private: intent/premise search for HyDE
   // ─────────────────────────────────────────────────────────────────────────
-
-  private async searchProfilesForHyde(
-    embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
-    limit: number,
-    minScore: number,
-    lens: string
-  ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
-    const vectorStr = `[${embedding.join(',')}]`;
-    const { userProfiles, networkMembers } = schema;
-
-    const conditions = [
-      inArray(networkMembers.networkId, filter.indexScope),
-      isNotNull(userProfiles.embedding),
-      isNull(schema.users.deletedAt),
-      sql`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
-      ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
-    ];
-
-    const deduped = db
-      .selectDistinctOn([userProfiles.userId], {
-        userId: userProfiles.userId,
-        similarity: sql<number>`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector)`.as('similarity'),
-        networkId: networkMembers.networkId,
-      })
-      .from(userProfiles)
-      .innerJoin(networkMembers, eq(userProfiles.userId, networkMembers.userId))
-      .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
-      .where(and(...conditions))
-      .orderBy(userProfiles.userId, sql`${userProfiles.embedding} <=> ${vectorStr}::vector`, networkMembers.networkId)
-      .as('deduped');
-
-    const results = await db
-      .select()
-      .from(deduped)
-      .orderBy(sql`${deduped.similarity} DESC`)
-      .limit(limit);
-
-    return results.map((r) => ({
-      type: 'profile' as const,
-      id: r.userId,
-      userId: r.userId,
-      score: r.similarity,
-      matchedVia: lens,
-      networkId: r.networkId,
-    }));
-  }
 
   private async searchIntentsForHyde(
     embedding: number[],
@@ -311,88 +232,47 @@ export class EmbedderAdapter {
     }));
   }
 
-  private async searchProfilesByProfileEmbedding(
+  private async searchPremisesForHyde(
     embedding: number[],
     filter: { indexScope: string[]; excludeUserId?: string },
     limit: number,
-    minScore: number
+    minScore: number,
+    lens: string
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
-    const { userProfiles, networkMembers } = schema;
+    const { premises, premiseNetworks } = schema;
+
     const conditions = [
-      inArray(networkMembers.networkId, filter.indexScope),
-      isNotNull(userProfiles.embedding),
+      inArray(premiseNetworks.networkId, filter.indexScope),
+      ...(filter.excludeUserId ? [ne(premises.userId, filter.excludeUserId)] : []),
+      eq(premises.status, 'ACTIVE'),
+      isNull(premises.deletedAt),
       isNull(schema.users.deletedAt),
-      sql`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
-      ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
+      isNotNull(premises.embedding),
+      sql`1 - (${premises.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
     ];
 
-    const deduped = db
-      .selectDistinctOn([userProfiles.userId], {
-        userId: userProfiles.userId,
-        similarity: sql<number>`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector)`.as('similarity'),
-        networkId: networkMembers.networkId,
-      })
-      .from(userProfiles)
-      .innerJoin(networkMembers, eq(userProfiles.userId, networkMembers.userId))
-      .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
-      .where(and(...conditions))
-      .orderBy(userProfiles.userId, sql`${userProfiles.embedding} <=> ${vectorStr}::vector`, networkMembers.networkId)
-      .as('deduped');
-
-    const results = await db
-      .select()
-      .from(deduped)
-      .orderBy(sql`${deduped.similarity} DESC`)
-      .limit(limit);
-
-    return results.map((r) => ({
-      type: 'profile' as const,
-      id: r.userId,
-      userId: r.userId,
-      score: r.similarity,
-      matchedVia: 'profile-similarity',
-      networkId: r.networkId,
-    }));
-  }
-
-  private async searchIntentsByProfileEmbedding(
-    embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
-    limit: number,
-    minScore: number
-  ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
-    const vectorStr = `[${embedding.join(',')}]`;
-    const { intents, intentNetworks } = schema;
-    const conditions = [
-      inArray(intentNetworks.networkId, filter.indexScope),
-      isNull(intents.archivedAt),
-      isNull(schema.users.deletedAt),
-      isNotNull(intents.embedding),
-      sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
-      ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
-    ];
     const results = await db
       .select({
-        id: intents.id,
-        userId: intents.userId,
-        similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
-        networkId: intentNetworks.networkId,
+        id: premises.id,
+        userId: premises.userId,
+        similarity: sql<number>`1 - (${premises.embedding} <=> ${vectorStr}::vector)`,
+        networkId: premiseNetworks.networkId,
       })
-      .from(intents)
-      .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
-      .innerJoin(schema.users, eq(intents.userId, schema.users.id))
+      .from(premises)
+      .innerJoin(premiseNetworks, eq(premises.id, premiseNetworks.premiseId))
+      .innerJoin(schema.users, eq(premises.userId, schema.users.id))
       .where(and(...conditions))
-      .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
+      .orderBy(sql`${premises.embedding} <=> ${vectorStr}::vector`)
       .limit(limit);
+
     return results.map((r) => ({
-      type: 'intent' as const,
+      type: 'premise' as const,
       id: r.id,
       userId: r.userId,
       score: r.similarity,
-      matchedVia: 'profile-similarity',
+      matchedVia: lens,
       networkId: r.networkId,
     }));
   }

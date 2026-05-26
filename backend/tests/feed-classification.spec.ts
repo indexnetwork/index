@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config({ path: '.env.development' });
+config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from 'bun:test';
 import { classifyOpportunity, FEED_SOFT_TARGETS } from '@indexnetwork/protocol';

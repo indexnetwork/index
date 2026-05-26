@@ -19,8 +19,9 @@ export const ProfileGraphState = Annotation.Root({
    * - 'query': Fast path - only retrieve existing profile (no generation)
    * - 'write': Full pipeline - generate/update profile and hyde as needed
    * - 'generate': Auto-generate profile from user table data via enrichUserProfile Chat API
+   * - 'aggregate': Synthesize profile from the user's active premises
    */
-  operationMode: Annotation<'query' | 'write' | 'generate'>({
+  operationMode: Annotation<'query' | 'write' | 'generate' | 'aggregate'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'write',
   }),
@@ -34,20 +35,16 @@ export const ProfileGraphState = Annotation.Root({
     default: () => false,
   }),
 
-  // --- Intermediate State ---
-
   /**
-   * Pre-populated profile from external enrichment (e.g. Parallel Chat API).
-   * When provided, the graph skips profile generation and only runs embedding + HyDE.
+   * Flag indicating the profile is being regenerated from aggregated premises.
+   * When true, `generate_profile` uses synthesis framing instead of "apply user request" framing.
    */
-  prePopulatedProfile: Annotation<{
-    identity: { name: string; bio: string; location: string };
-    narrative: { context: string };
-    attributes: { skills: string[]; interests: string[] };
-  } | undefined>({
-    reducer: (curr, next) => next,
-    default: () => undefined,
+  isAggregate: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
   }),
+
+  // --- Intermediate State ---
 
   /**
    * Internal objective constructed from user data.
@@ -67,7 +64,6 @@ export const ProfileGraphState = Annotation.Root({
 
   /**
    * The generated or loaded profile document.
-   * Includes embedding from DB. Profile HyDE is stored in hyde_documents.
    */
   profile: Annotation<ProfileDocument | undefined>({
     reducer: (curr, next) => next,
@@ -78,21 +74,6 @@ export const ProfileGraphState = Annotation.Root({
    * Flags to track what needs to be generated.
    */
   needsProfileGeneration: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  needsProfileEmbedding: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  needsHydeGeneration: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  needsHydeEmbedding: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
   }),
@@ -118,14 +99,6 @@ export const ProfileGraphState = Annotation.Root({
   // --- Output ---
 
   /**
-   * The generated HyDE description string from the HydeGenerator.
-   */
-  hydeDescription: Annotation<string | undefined>({
-    reducer: (curr, next) => next,
-    default: () => undefined,
-  }),
-
-  /**
    * Error message if any step fails (non-fatal).
    */
   error: Annotation<string | undefined>({
@@ -141,10 +114,9 @@ export const ProfileGraphState = Annotation.Root({
    */
   operationsPerformed: Annotation<{
     scraped?: boolean;
+    decomposedPremises?: boolean;
     generatedProfile?: boolean;
-    embeddedProfile?: boolean;
-    generatedHyde?: boolean;
-    embeddedHyde?: boolean;
+    savedProfile?: boolean;
   }>({
     reducer: (curr, next) => ({ ...curr, ...next }),
     default: () => ({}),

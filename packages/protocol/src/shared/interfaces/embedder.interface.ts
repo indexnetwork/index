@@ -9,7 +9,7 @@ export interface LensEmbedding {
   /** Free-text lens label (e.g. "crypto infrastructure VC"). */
   lens: string;
   /** Which corpus to search. */
-  corpus: 'profiles' | 'intents';
+  corpus: 'profiles' | 'intents' | 'premises';
   /** 2000-dim embedding vector. */
   embedding: number[];
 }
@@ -26,16 +26,11 @@ export interface HydeSearchOptions {
   limit?: number;
   /** Minimum cosine similarity for intent searches (default 0.40). */
   minScore?: number;
-  /** Minimum cosine similarity for profile searches (default 0.25). Lower because profile embeddings are broader. */
-  profileMinScore?: number;
 }
 
-/** Options for searchWithProfileEmbedding (no lenses; direct profile similarity). */
-export type ProfileEmbeddingSearchOptions = HydeSearchOptions;
-
-/** A single candidate from HyDE search (profile or intent), with score and which lens matched. */
+/** A single candidate from HyDE search (intent or premise), with score and which lens matched. */
 export interface HydeCandidate {
-  type: 'profile' | 'intent';
+  type: 'intent' | 'premise';
   id: string;
   userId: string;
   score: number;
@@ -95,19 +90,11 @@ export interface Embedder extends EmbeddingGenerator, VectorStore {
    *
    * @param lensEmbeddings - Array of lens embeddings to search with
    * @param options - indexScope, excludeUserId, limits, minScore
-   * @returns Deduplicated, ranked candidates (profile or intent) with scores
+   * @returns Deduplicated, ranked candidates (intent or premise) with scores
    */
   searchWithHydeEmbeddings(
     lensEmbeddings: LensEmbedding[],
     options: HydeSearchOptions
   ): Promise<HydeCandidate[]>;
 
-  /**
-   * Profile-as-source search: run vector search with the asker's profile embedding
-   * against profiles and intents in the given index scope. Returns same shape as HyDE search.
-   */
-  searchWithProfileEmbedding(
-    profileEmbedding: number[],
-    options: ProfileEmbeddingSearchOptions
-  ): Promise<HydeCandidate[]>;
 }

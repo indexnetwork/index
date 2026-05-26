@@ -20,11 +20,10 @@ linear-issue: IND-249
 
 ## Relevant Docs
 - docs/specs/2026-05-06-welcome-message-design.md
-- docs/guides/edgeclaw-instaclaw-integration.md
 
 ## Related Issues
 - IND-249 OpenClaw plugin: welcome message (first daily post-onboarding) (Todo)
-- IND-250 EdgeClaw: end-to-end onboarding and welcome flow (Todo) — parent
+- IND-250 End-to-end onboarding and welcome flow (Todo) — parent
 - IND-248 OpenClaw plugin: onboarding flow (Done) — dependency, merged
 - IND-247 Seren's Telegram message formatting for all notification types (Todo) — related
 

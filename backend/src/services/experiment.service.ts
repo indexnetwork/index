@@ -91,7 +91,7 @@ class ExperimentService {
       });
     }
 
-    // Enqueue profile enrichment so the user gets a profile embedding + HyDE.
+    // Enqueue profile enrichment so the user gets a profile + HyDE.
     try {
       await profileQueue.addEnrichUserJob({ userId: result.user.id });
     } catch (err) {
@@ -190,7 +190,7 @@ class ExperimentService {
 
     // Enqueue profile enrichment: the profile graph reads name, intro, location,
     // and socials from the users/user_socials tables (written by applyProfilePatch
-    // above), then generates a full profile with embedding + HyDE documents.
+    // above), then generates a full profile with premises and HyDE documents.
     if (importedUserIds.length > 0) {
       try {
         await profileQueue.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id })));

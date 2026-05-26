@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 // Guard against the existing flake where `.env.test` resolves to
 // `packages/protocol/.env.test` (which doesn't exist) when bun is invoked
 // from this workspace. Matches the pattern in opportunity.tools.mcp-orchestrator.spec.ts.
@@ -70,6 +70,10 @@ function makeFactory(opts: { hangNegotiationForever: boolean }) {
     getIntentIndexScores: async () => [],
     getNetworkMemberContext: async () => null,
     getOrCreateDM: async () => ({ id: 'conv-1' }),
+    getNegotiationTaskForOpportunity: async () => null,
+    stampOpportunityActorAction: async () => null,
+    getPremisesForUser: async () => [],
+    searchPremisesBySimilarity: async () => [],
   } as unknown as OpportunityGraphDatabase;
 
   const mockEmbedder = {
@@ -83,7 +87,6 @@ function makeFactory(opts: { hangNegotiationForever: boolean }) {
       matchedVia: 'mirror' as const,
       networkId: 'idx-1',
     }]),
-    searchWithProfileEmbedding: async () => [],
   } as unknown as Embedder;
 
   const mockHyde = {

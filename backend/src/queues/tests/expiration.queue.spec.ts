@@ -2,7 +2,7 @@
  * Unit tests for OpportunityExpirationCron. node-cron and drizzle are mocked so no DB/Redis needed.
  */
 import { config } from 'dotenv';
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, expect, it, mock, beforeEach, afterAll } from 'bun:test';
 

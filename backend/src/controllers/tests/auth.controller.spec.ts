@@ -1,6 +1,6 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -150,8 +150,6 @@ describe("AuthController Integration", () => {
           identity: { name: "Existing Profile User", bio: "Bio", location: "Test City" },
           narrative: { context: "Context" },
           attributes: { interests: ["A"], skills: ["B"] },
-          embedding: [],
-          implicitIntents: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         },

@@ -14,9 +14,8 @@ import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.j
  * Following the intent graph pattern with Annotation-based state management.
  */
 
-/** Asker's profile shape (embedding + optional identity/narrative/attributes). Used by sourceProfile annotation. */
+/** Asker's profile shape (identity/narrative/attributes). Used by sourceProfile annotation. */
 export interface SourceProfileData {
-  embedding: number[] | null;
   identity?: { name?: string; bio?: string; location?: string };
   narrative?: { context?: string };
   attributes?: { skills?: string[]; interests?: string[] };
@@ -45,19 +44,20 @@ export interface TargetNetwork {
 
 /**
  * Candidate match from discovery (semantic search).
- * candidateIntentId is set for intent matches; omitted for profile-only matches.
  */
 export interface CandidateMatch {
   candidateUserId: Id<'users'>;
   candidateIntentId?: Id<'intents'>;
+  /** Premise that produced this candidate (set when discoverySource is 'premise-similarity'). */
+  candidatePremiseId?: Id<'premises'>;
   networkId: Id<'networks'>;
   similarity: number;
   /** Free-text lens label that produced this match. */
   lens: string;
   candidatePayload: string;
   candidateSummary?: string;
-  /** How this candidate was found: 'query' (HyDE from search text) or 'profile-similarity'. */
-  discoverySource?: 'query' | 'profile-similarity';
+  /** How this candidate was found: 'query' (HyDE from search text) or 'premise-similarity'. */
+  discoverySource?: 'query' | 'premise-similarity';
 }
 
 /**
@@ -343,6 +343,12 @@ export const OpportunityGraphState = Annotation.Root({
   sourceProfile: Annotation<SourceProfileData | null>({
     reducer: (curr, next) => next ?? curr,
     default: () => null,
+  }),
+
+  /** User's active premises with embeddings (from prep). Used for premise-to-premise discovery path D. */
+  sourcePremises: Annotation<Array<{ premiseId: Id<'premises'>; embedding: number[] }>>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
   }),
 
   /** Resolved intent is in at least one target index (path A vs C). */

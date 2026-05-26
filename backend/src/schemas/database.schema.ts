@@ -246,11 +246,7 @@ export const userProfiles = pgTable('user_profiles', {
   attributes: json('attributes').$type<{ interests: string[]; skills: string[] }>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  embedding: vector('embedding', { dimensions: 2000 }),
-  implicitIntents: json('implicit_intents'),
-}, (table) => ({
-  embeddingIndex: index('user_profiles_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
-}));
+});
 
 export const userNotificationSettings = pgTable('user_notification_settings', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -355,6 +351,8 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
+  /** Which premise grounded this match (set when discoverySource is 'premise-similarity'). */
+  premise?: Id<'premises'>;
   role: string;
   /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
   approved?: boolean;
@@ -398,6 +396,7 @@ export const opportunities = pgTable('opportunities', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
 }, (table) => ({
   statusIdx: index('opportunities_status_idx').on(table.status),
 }));
@@ -410,6 +409,8 @@ export interface QuestionDetection {
   timestamp: string;
   /** Generation strategy — persisted as metadata, not exposed on read. */
   strategy?: string;
+  /** ID of the assistant message that triggered this question. */
+  messageId?: string;
 }
 
 export interface QuestionActor {
@@ -432,9 +433,12 @@ export const questions = pgTable('questions', {
   payload: jsonb('payload').$type<import('@indexnetwork/protocol').Question>().notNull(),
   status: questionStatusEnum('status').notNull().default('pending'),
   answer: jsonb('answer').$type<QuestionAnswer>(),
+  conversationId: text('conversation_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   statusIdx: index('questions_status_idx').on(table.status),
+  conversationIdx: index('questions_conversation_id_idx').on(table.conversationId),
 }));
 
 export type QuestionRow = typeof questions.$inferSelect;
