@@ -40,6 +40,9 @@ jobs:
             source_branch: main
             target_branch: main
             ignore_joins: true
+          - prefix: packages/agentvillage
+            repo: indexnetwork/agentvillage
+            ignore_joins: true
     steps:
       - uses: actions/checkout@v4
         with:

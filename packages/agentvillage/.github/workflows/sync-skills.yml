@@ -1,10 +1,10 @@
-# Splits skills/ and pushes to Edge-City/edgeclaw-skills when main is updated.
+# Splits skills/ and pushes to Edge-City/Agentvillage-skills when main is updated.
 #
-# Edge-City/edgeclaw-skills is the standalone, plugin-installable repo.
+# Edge-City/Agentvillage-skills is the standalone, plugin-installable repo.
 # Its root IS the skills/ directory, so plugin manifests (.claude-plugin/,
 # .codex-plugin/, openclaw.plugin.json) land at the repo root where
 # installers expect them.
-name: Sync edgeclaw-skills
+name: Sync Agentvillage-skills
 
 on:
   push:
@@ -44,6 +44,6 @@ jobs:
           SPLIT_SHA=$(git subtree split --prefix=skills main)
           echo "Split SHA: $SPLIT_SHA"
           git push --force \
-            "https://x-access-token:${GH_PAT}@github.com/Edge-City/edgeclaw-skills.git" \
+            "https://x-access-token:${GH_PAT}@github.com/Edge-City/Agentvillage-skills.git" \
             "${SPLIT_SHA}:refs/heads/main"
-          echo "✓ pushed to Edge-City/edgeclaw-skills (main)"
+          echo "✓ pushed to Edge-City/Agentvillage-skills (main)"
