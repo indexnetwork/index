@@ -59,7 +59,7 @@
     ],
     "delivery": [
       "Conventional commits (feat/fix/refactor/test/docs/chore) and conventional branch names (type/short-description)",
-      "Two remotes: origin (fork) and upstream (main repo). Push worktree branches to origin, create PRs from origin into upstream/dev. After merging a PR into upstream/dev, pull from upstream and push to origin to keep both in sync.",
+      "Single remote: origin (indexnetwork/index). Push worktree branches to origin, create PRs into origin/dev.",
       "For npm-published subtree packages (`packages/cli/`, `packages/protocol/`), bump the base package version before promoting to main. Subtree dev pushes publish `-rc` prereleases under the `rc` npm tag; subtree main pushes publish the stable version when it is not already on npm."
     ],
     "triage": [

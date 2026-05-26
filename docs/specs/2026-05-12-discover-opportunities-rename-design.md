@@ -96,4 +96,4 @@ See IND-270 for the full inventory. High-level groups:
 
 ## Rollout
 
-Single PR. Merge to `dev`, push to upstream — subtree workflow propagates to `indexnetwork/cli`, `indexnetwork/protocol`, `indexnetwork/claude-plugin`, `indexnetwork/openclaw-plugin`. Plugin version bumps required (see CLAUDE.md "Finishing a Branch" — both `package.json` AND `openclaw.plugin.json` for openclaw-plugin).
+Single PR. Merge to `dev`, push to origin — subtree workflow propagates to `indexnetwork/cli`, `indexnetwork/protocol`, `indexnetwork/claude-plugin`, `indexnetwork/openclaw-plugin`. Plugin version bumps required (see CLAUDE.md "Finishing a Branch" — both `package.json` AND `openclaw.plugin.json` for openclaw-plugin).

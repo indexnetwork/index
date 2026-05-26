@@ -362,7 +362,7 @@ docs/getting-started
 
 ### Pull requests
 
-Use the `gh` CLI to create PRs targeting `upstream/dev`:
+Use the `gh` CLI to create PRs targeting `origin/dev`:
 
 ```bash
 gh pr create --base dev --title "feat: add streaming responses" --body "..."
