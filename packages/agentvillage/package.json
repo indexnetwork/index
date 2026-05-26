@@ -1,0 +1,22 @@
+{
+  "name": "@edge-city/agentvillage",
+  "version": "0.1.0",
+  "description": "Agent Village workspace and installer for Edge Esmeralda.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "agentvillage": "./install/install.ts"
+  },
+  "files": [
+    "install/*.ts",
+    "workspace/**/*.md",
+    "skills/",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "yaml": "^2.8.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
