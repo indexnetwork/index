@@ -3,6 +3,9 @@
  * Extracted so it can be unit-tested independently of the tool handler.
  */
 import type { PendingQuestionSummary } from "../shared/schemas/pending-question.schema.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+
+const logger = protocolLogger("PendingQuestions");
 
 /** Maximum pending questions attached to a single tool result. */
 export const MAX_PENDING_QUESTIONS = 3;
@@ -45,7 +48,7 @@ export async function mergePendingQuestions(
   try {
     pending = await input.findPendingQuestions(input.userId, filters);
   } catch (err) {
-    console.warn('[mergePendingQuestions] Failed to fetch pending questions, returning empty', err);
+    logger.warn('Failed to fetch pending questions, returning empty', { err });
     return { questions: [], surfacedIds: [] };
   }
 
