@@ -3,6 +3,15 @@ import { spyOn } from "bun:test";
 export type MockHandler = (req: Request) => Response | Promise<Response>;
 export type PatternHandler = (req: Request, match: RegExpMatchArray) => Response | Promise<Response>;
 
+/**
+ * Create a mock HTTP server that intercepts `globalThis.fetch`.
+ *
+ * IMPORTANT: a mock server mutates the global `fetch`, so only one may be
+ * live at a time. Drive it from `beforeEach`/`afterEach` (one mock per test)
+ * rather than `beforeAll`/`afterAll` when a spec file has more than one
+ * describe block — Bun runs every sibling describe's `beforeAll` before any
+ * test, so two `beforeAll`-scoped mocks would clobber each other's `fetch`.
+ */
 export function createMockServer() {
   const handlers: Record<string, MockHandler> = {};
   const patterns: Array<{ method: string; pattern: RegExp; handler: PatternHandler }> = [];
