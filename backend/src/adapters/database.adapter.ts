@@ -4178,7 +4178,7 @@ export class ChatDatabaseAdapter {
       FROM ${schema.intents} i
       JOIN ${schema.intentNetworks} ine ON i.id = ine.intent_id
       JOIN ${schema.users} u ON i.user_id = u.id
-      WHERE ine.network_id IN ${networkIds}
+      WHERE ine.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}])
         AND i.user_id != ${excludeUserId}
         AND i.status = 'ACTIVE'
         AND i.embedding IS NOT NULL
@@ -5255,7 +5255,7 @@ export class OpportunityDatabaseAdapter {
         1 - (p.embedding <=> ${vectorStr}::vector) AS similarity
       FROM ${schema.premises} p
       JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
-      WHERE pn.network_id = ANY(${networkIds})
+      WHERE pn.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}])
         AND p.user_id != ${excludeUserId}
         AND p.status = 'ACTIVE'
         AND p.embedding IS NOT NULL
