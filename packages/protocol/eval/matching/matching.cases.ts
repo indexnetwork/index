@@ -1,6 +1,7 @@
 import type { EvaluatorEntity } from "../../src/opportunity/opportunity.evaluator.js";
 import type { MatchingCase } from "./matching.types.js";
 import { POOL } from "./matching.personas.js";
+import { HISTORICAL_CASES } from "./matching.historical.js";
 
 const NETWORK = "idx-commons";
 
@@ -413,4 +414,5 @@ export const CASES: MatchingCase[] = [
       { candidateId: "p-designer", match: false, scoreBand: [0, 29] },
     ],
   },
+  ...HISTORICAL_CASES,
 ];
