@@ -3,7 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "composite": false,
-    "rootDir": "../../"
+    "rootDir": "../../",
+    "types": ["node", "bun-types"]
   },
   "include": ["**/*.ts", "../../src/**/*.ts"],
   "exclude": ["node_modules", "../../src/**/*.spec.ts", "../../src/**/*.test.ts"]
