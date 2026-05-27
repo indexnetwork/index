@@ -130,6 +130,38 @@
   color: var(--cream);
 }
 
+/* Mobile menu toggle — hidden on desktop, shown at the mobile breakpoint */
+.landing .nav .nav-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 34px;
+  height: 30px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+  border-radius: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.landing .nav .nav-toggle .nav-toggle-bar {
+  display: block;
+  width: 16px;
+  height: 1.5px;
+  margin: 0 auto;
+  background: var(--cream);
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+.landing .nav .nav-toggle.is-open .nav-toggle-bar:nth-child(1) {
+  transform: translateY(5.5px) rotate(45deg);
+}
+.landing .nav .nav-toggle.is-open .nav-toggle-bar:nth-child(2) { opacity: 0; }
+.landing .nav .nav-toggle.is-open .nav-toggle-bar:nth-child(3) {
+  transform: translateY(-5.5px) rotate(-45deg);
+}
+
 /* ============================================================
    Atoms
 ============================================================ */
@@ -1382,8 +1414,23 @@
   .landing .h1 .hero-image { min-height: 60vh; }
 }
 @media (max-width: 720px) {
-  .landing .nav { padding: 18px 22px; gap: 16px; flex-wrap: wrap; }
-  .landing .nav .right { gap: 14px; }
+  .landing .nav { padding: 18px 22px; gap: 16px; }
+  .landing .nav .nav-toggle { display: inline-flex; }
+  .landing .nav .right {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 22px;
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--rule);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.35);
+  }
+  .landing .nav .right.is-open { display: flex; }
   .landing .h1 .well { padding: 48px 22px; }
   .landing .h1 .display { font-size: 40px; }
   .landing .h1 .hero-terminal { font-size: 12px; padding: 14px 16px; }

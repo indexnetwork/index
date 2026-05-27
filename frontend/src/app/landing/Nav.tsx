@@ -96,19 +96,36 @@ export function GithubStar({ className = "gh-star" }: { className?: string }) {
 }
 
 export default function Nav() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = () => setMenuOpen(false);
+
   return (
     <nav className="nav" aria-label="primary">
-      <Link className="logo" to="/" aria-label="Index Network">
+      <Link className="logo" to="/" aria-label="Index Network" onClick={closeMenu}>
         <img src="/landing/index-wordmark.svg" alt="Index Network" />
       </Link>
-      <div className="right">
-        <Link className="link" to="/blog">Blog</Link>
-        <Link className="link" to="/about">About</Link>
+      <button
+        type="button"
+        className={`nav-toggle${menuOpen ? " is-open" : ""}`}
+        aria-label="Toggle menu"
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen((open) => !open)}
+      >
+        <span className="nav-toggle-bar" />
+        <span className="nav-toggle-bar" />
+        <span className="nav-toggle-bar" />
+      </button>
+      <div className={`right${menuOpen ? " is-open" : ""}`}>
+        <Link className="link" to="/blog" onClick={closeMenu}>Blog</Link>
+        <Link className="link" to="/about" onClick={closeMenu}>About</Link>
         <GithubStar />
         <button
           type="button"
           className="nav-subscribe"
-          onClick={() => window.dispatchEvent(new Event("openSubscribeModal"))}
+          onClick={() => {
+            closeMenu();
+            window.dispatchEvent(new Event("openSubscribeModal"));
+          }}
         >
           Subscribe
         </button>
