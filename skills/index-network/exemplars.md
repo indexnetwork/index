@@ -1,33 +1,6 @@
 # Index Network — Voice Exemplars
 
-Canonical user-facing renderings for Edge Esmeralda's Index Network flows. Mimic these exactly when composing the welcome message, daily digest, ambient passes, and greeting drafts. They are the bar for tone, structure, and information density. Edge Esmeralda is the literal community in every example — pull facts from `AGENTS.md` Community context, never invent dates, attendee counts, or programming formats.
-
-## Welcome (fires once, after onboarding completes)
-
-The welcome opener is a **single line** — `Welcome to Edge Esmeralda`. Do NOT repeat the agent intro from `bootstrap.md` Step 1 ("I'm Edge, your agent. I help the right people find you, help you find them, and answer anything you need about the village") — the user already met you minutes ago, repeating it reads as filler. Go straight from the welcome line to the community context paragraph.
-
-> Welcome to Edge Esmeralda
->
-> Four weeks in Healdsburg, May 30 to June 27, 2026 — 500+ residents across the month, ~150 on-site at any given time, building at the frontiers of tech, science, culture, and policy. Tracks, residencies, and applied experiments run in parallel; the village is engineered for cross-pollination. Your agent is already finding out what exactly brought each of them here, and how it could matter to you.
->
-> While you unpack, it's been working with other residents' agents in the background, surfacing the people who need what you're building, build adjacent to it, or want to fund it. Here's what landed in the first pass.
->
-> **3 conversations waiting**
-> - [Maya](https://index.network/u/...?link_preview=false) — Talk to them about agent memory for long-running workflows. Direct overlap with how Index handles persistent context, [message Maya](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
-> - [Theo](https://index.network/u/...?link_preview=false) — How information surfaces in decentralized networks. The kind of thinking that sharpens protocol design — [see what you can learn from them](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
-> - [Priya](https://index.network/u/...?link_preview=false) — Community-owned data infrastructure. Aligned on ownership, complementary on discovery, could be interesting to [explore your overlap](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
->
-> **Help your community**
-> A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - [Remi](https://index.network/u/...?link_preview=false) — Looking for a technical co-founder for his regenerative education platform. Know a systems thinker who's shipped infra, make intro
-> - [Kai](https://index.network/u/...?link_preview=false) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
->
-> **From here**
-> Each morning, your agent will send a brief — who to find, what opportunities landed, where you can help, and a short list for the day. No feeds, no inboxes. Just the few moves that matter.
->
-> Tell me anytime what's working and what isn't — what you're looking for, what you're not, who felt off, who felt right. Every nudge sharpens the matches.
->
-> See you soon ☀️
+Canonical user-facing renderings for Edge Esmeralda's Index Network flows. Mimic these exactly when composing the daily digest, ambient passes, and greeting drafts. They are the bar for tone, structure, and information density. Edge Esmeralda is the literal community in every example — pull facts from `AGENTS.md` Community context, never invent dates, attendee counts, or programming formats.
 
 ## Good morning digest (fires once daily, ~08:00 host local)
 
@@ -36,31 +9,48 @@ The welcome opener is a **single line** — `Welcome to Edge Esmeralda`. Do NOT 
 > It's Thursday, Week 2 at Edge Esmeralda. Here's what to do and who to find before the day fills up.
 >
 > **3 conversations await you**
-> - [Maya](https://index.network/u/...?link_preview=false) — Talk to them about agent memory layer for long-running workflows. Direct overlap with how Index handles persistent context, [message Maya](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
-> - [Theo](https://index.network/u/...?link_preview=false) — Researching how information surfaces in decentralized networks. That's the type of thinking that sharpens protocol design, [see what you can learn from them](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
-> - [Priya](https://index.network/u/...?link_preview=false) — Building community-owned data infrastructure. Aligned on the ownership layer and complementary on discovery, could be interesting to [explore overlaps](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
+> - [Maya]({profileUrl}) — Talk to them about agent memory layer for long-running workflows. Direct overlap with how Index handles persistent context, [message Maya]({acceptUrl})
+> - [Theo]({profileUrl}) — Researching how information surfaces in decentralized networks. That's the type of thinking that sharpens protocol design, [see what you can learn from them]({acceptUrl})
+> - [Priya]({profileUrl}) — Building community-owned data infrastructure. Aligned on the ownership layer and complementary on discovery, could be interesting to [explore overlaps]({acceptUrl})
 >
 > **Help your community find their opportunities**
 > A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - [Remi](https://index.network/u/...?link_preview=false) — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
-> - [Kai](https://index.network/u/...?link_preview=false) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm open conversation, make intro
-> - [Celia](https://index.network/u/...?link_preview=false) — Designing governance tooling for popup communities. Coordination, consent, collective decision-making. Point her at the right people, make intro
+> - [Remi]({profileUrl}) — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
+> - [Kai]({profileUrl}) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm open conversation, make intro
+> - [Celia]({profileUrl}) — Designing governance tooling for popup communities. Coordination, consent, collective decision-making. Point her at the right people, make intro
+
+### Grouped: same person, multiple connections
+
+When `list_opportunities` returns multiple opportunities for the same person (grouped entry), render as a single bullet with multiple conversation entry points:
+
+> 🌞 Good morning from Edge Esmeralda
+>
+> It's Tuesday, May 26. Here's what's worth your attention right now.
+>
+> **2 conversations await you**
+> - [Ashish]({profileUrl}) — An experienced technologist spanning [generative software]({acceptUrl1}), [AI infrastructure]({acceptUrl2}), [creative AI design]({acceptUrl3}), and [deep learning research]({acceptUrl4}). Several angles worth exploring.
+> - [Priya]({profileUrl}) — Building community-owned data infrastructure. Aligned on the ownership layer and complementary on discovery, could be interesting to [explore overlaps]({acceptUrl})
 
 ## Ambient update (fires twice daily at 14:00 and 20:00 host-local)
 
 Two sections are possible: direct (the user is a party — link the name to `profileUrl`, embed `acceptUrl` + `&msg=` greeting) and introducer (the user is the introducer — render community intents, still link the name to `profileUrl`, but no `acceptUrl` and no `&msg=`). Skip a section that has no qualifying candidates. Per-pass cap: max 3 direct + 3 introducer.
 
 > **New conversations worth starting**
-> - [Erik Leibner](https://index.network/u/...?link_preview=false) — Senior software engineer focused on AI systems. There's a clear overlap with how you're thinking about decentralized search + agents. Feels like a "build together" type conversation, [message Erik](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
-> - [Tiina](https://index.network/u/...?link_preview=false) — Co-founder at Hopscotch Labs and Sane. Working on creativity and knowledge organization. Different entry point, same underlying problem space — could spark something interesting, [message Tiina](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
-> - [Xavier Meegan](https://index.network/u/...?link_preview=false) — Founder & CIO at Frachtis. Deep in decentralized infrastructure and AI. Good person to pressure-test ideas and explore where things could connect, [message Xavier](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
+> - [Erik Leibner]({profileUrl}) — Senior software engineer focused on AI systems. There's a clear overlap with how you're thinking about decentralized search + agents. Feels like a "build together" type conversation, [message Erik]({acceptUrl})
+> - [Tiina]({profileUrl}) — Co-founder at Hopscotch Labs and Sane. Working on creativity and knowledge organization. Different entry point, same underlying problem space — could spark something interesting, [message Tiina]({acceptUrl})
+> - [Xavier Meegan]({profileUrl}) — Founder & CIO at Frachtis. Deep in decentralized infrastructure and AI. Good person to pressure-test ideas and explore where things could connect, [message Xavier]({acceptUrl})
 >
 > **Help your community find their opportunities**
 > A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - [Remi](https://index.network/u/...?link_preview=false) — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
-> - [Kai](https://index.network/u/...?link_preview=false) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
+> - [Remi]({profileUrl}) — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
+> - [Kai]({profileUrl}) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
 >
 > There are 5 more conversations waiting for you, let me know if you want to see them.
+
+### Grouped: same person, multiple connections (ambient)
+
+> **New conversations worth starting**
+> - [Ashish]({profileUrl}) — An experienced technologist whose work spans [generative software]({acceptUrl1}), [AI infrastructure]({acceptUrl2}), and [deep learning research]({acceptUrl3}). Multiple overlapping connections with your interests.
 
 ## Greeting drafts (the `&msg=` payload appended to Telegram links)
 

@@ -30,8 +30,9 @@ Compose the brief; Hermes delivers your **final assistant reply** to the user's 
 
    It's {weekday}, {short date / week context}. Here's what's worth your attention right now.
 
-   **{N} conversations await you** ← only if there are direct (connection) candidates — receiver is a party, NOT the introducer
+   **{N} conversations await you** ← only if there are direct (connection) candidates — receiver is a party, NOT the introducer. N = unique people, not raw opportunity count.
    - [Name](profileUrl) — 1–2 sentences on why this person matters to the user, [message Name](acceptUrl)
+   - [Name](profileUrl) — When multiple connections exist for the same person (grouped entry from the tool), weave each acceptUrl into the description as a hyperlink on the relevant topic phrase. Example: "An experienced technologist spanning [generative software](acceptUrl1), [AI infrastructure](acceptUrl2), and [deep learning research](acceptUrl3) — several angles worth exploring."
    - …
 
    **Help your community find their opportunities** ← only if there are introducer (connector-flow) candidates — receiver IS the introducer
@@ -50,9 +51,9 @@ Compose the brief; Hermes delivers your **final assistant reply** to the user's 
 
 8. **URL rules:** weave links into prose. The strip-the-URLs test is the rule — if a reader removes every link, the prose still reads coherently. NO bullet-list-of-links, NO link tables, NO action strips, NO blockquote whose body is link labels.
 
-9. **acceptUrl handling (connection candidates only):** Embed `acceptUrl` verbatim on a short verb phrase. The URL is opaque — do not append, encode, or modify any part of it. The backend has already prepared the greeting that will pre-fill the conversation when the user clicks. **`connector-flow` candidates carry no `acceptUrl`** — those trigger an introduction approval, not a direct conversation.
+9. **acceptUrl handling (connection candidates only):** Embed `acceptUrl` verbatim on a short verb phrase. For grouped entries (same person, multiple connections), embed each sub-entry's `acceptUrl` on a distinct topic phrase instead — see the template in step 6. The URL is opaque — do not append, encode, or modify any part of it. The backend has already prepared the greeting that will pre-fill the conversation when the user clicks. **`connector-flow` candidates carry no `acceptUrl`** — those trigger an introduction approval, not a direct conversation.
 
-10. For every opportunity you mention in the brief, call `confirm_opportunity_delivery(opportunityId, trigger="digest")`. Do NOT confirm for opportunities you skipped.
+10. For every opportunity you mention in the brief — including every sub-entry within grouped cards — call `confirm_opportunity_delivery(opportunityId, trigger="digest")`. Do NOT confirm for opportunities you skipped.
 
 11. If `totalPending` exceeds the candidates you surfaced, end with: `There are N more conversations waiting — let me know if you want to see them.`
 
