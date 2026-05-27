@@ -1,0 +1,240 @@
+/* ============================================================
+   AuthModal — Landing v5 design language
+   Self-contained (global modal, must render correctly on any
+   page), so tokens are re-declared here rather than relying on
+   landing-v5.css being loaded.
+============================================================ */
+.auth-v5 {
+  --av-bg-deep: #0b1612;
+  --av-cream: #ece3cf;
+  --av-cream-soft: rgba(236, 227, 207, 0.78);
+  --av-cream-faint: rgba(236, 227, 207, 0.5);
+  --av-rule: rgba(236, 227, 207, 0.22);
+  --av-rule-strong: rgba(236, 227, 207, 0.45);
+  --av-ink: #14241f;
+
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  font-family: 'Public Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.auth-v5 *,
+.auth-v5 *::before,
+.auth-v5 *::after { box-sizing: border-box; }
+
+.auth-v5 .av-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 14, 12, 0.65);
+  backdrop-filter: blur(4px);
+}
+
+.auth-v5 .av-card {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  background: var(--av-bg-deep);
+  color: var(--av-cream);
+  padding: 40px 32px 32px;
+  border: 1px solid var(--av-rule-strong);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+}
+
+.auth-v5 .av-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--av-cream-faint);
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 120ms ease;
+}
+.auth-v5 .av-close:hover { color: var(--av-cream); }
+
+.auth-v5 .av-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--av-rule);
+}
+.auth-v5 .av-title {
+  margin: 0;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--av-cream);
+}
+.auth-v5 .av-title::before {
+  content: "› ";
+  color: var(--av-cream-faint);
+  margin-right: 4px;
+}
+.auth-v5 .av-back {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--av-cream-faint);
+  transition: color 120ms ease;
+}
+.auth-v5 .av-back:hover { color: var(--av-cream); }
+
+.auth-v5 .av-lede {
+  margin: 0 0 22px;
+  font-style: italic;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--av-cream-soft);
+}
+.auth-v5 .av-lede strong {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--av-cream);
+}
+
+.auth-v5 .av-oauth {
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--av-cream);
+  background: transparent;
+  border: 1px solid var(--av-rule);
+  border-radius: 0;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.auth-v5 .av-oauth:hover {
+  border-color: var(--av-rule-strong);
+  background: rgba(236, 227, 207, 0.04);
+}
+.auth-v5 .av-oauth:disabled { opacity: 0.5; cursor: default; }
+
+.auth-v5 .av-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--av-cream-faint);
+}
+.auth-v5 .av-divider::before,
+.auth-v5 .av-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--av-rule);
+}
+
+.auth-v5 .av-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.auth-v5 .av-label {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--av-cream-faint);
+}
+.auth-v5 .av-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  color: var(--av-cream);
+  background: transparent;
+  border: 1px solid var(--av-rule);
+  border-radius: 0;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.auth-v5 .av-input::placeholder { color: var(--av-cream-faint); }
+.auth-v5 .av-input:hover { border-color: var(--av-rule-strong); }
+.auth-v5 .av-input:focus { border-color: var(--av-cream); }
+
+.auth-v5 .av-error {
+  margin: 4px 0 0;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #e87a7a;
+}
+
+.auth-v5 .av-submit {
+  margin-top: 14px;
+  width: 100%;
+  height: 44px;
+  padding: 0 16px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--av-ink);
+  background: var(--av-cream);
+  border: 1px solid var(--av-cream);
+  border-radius: 0;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.auth-v5 .av-submit:hover { background: transparent; color: var(--av-cream); }
+.auth-v5 .av-submit:disabled { opacity: 0.5; cursor: default; }
+
+.auth-v5 .av-submit.ghost {
+  color: var(--av-cream);
+  background: transparent;
+  border-color: var(--av-rule-strong);
+}
+.auth-v5 .av-submit.ghost:hover { background: var(--av-cream); color: var(--av-ink); }
+
+.auth-v5 .av-alt {
+  margin: 18px 0 0;
+  text-align: center;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--av-cream-faint);
+}
+.auth-v5 .av-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--av-cream);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 120ms ease;
+}
+.auth-v5 .av-link:hover { color: var(--av-cream-soft); }
+
+.auth-v5 .av-note {
+  margin: 0;
+  font-family: 'Public Sans', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--av-cream-soft);
+}
