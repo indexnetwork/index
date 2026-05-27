@@ -4157,6 +4157,7 @@ export class ChatDatabaseAdapter {
     minScore?: number;
   }) {
     const { embedding, networkIds, excludeUserId, limit, minScore = 0.30 } = params;
+    if (networkIds.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
 
     const rows = await db.execute<{

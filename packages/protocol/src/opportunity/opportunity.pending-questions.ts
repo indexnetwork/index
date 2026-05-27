@@ -2,7 +2,10 @@
  * Helper for merging pending questions from the DB into tool results.
  * Extracted so it can be unit-tested independently of the tool handler.
  */
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { PendingQuestionSummary } from "../shared/schemas/pending-question.schema.js";
+
+const logger = protocolLogger("PendingQuestions");
 
 /** Maximum pending questions attached to a single tool result. */
 export const MAX_PENDING_QUESTIONS = 3;
@@ -45,7 +48,7 @@ export async function mergePendingQuestions(
   try {
     pending = await input.findPendingQuestions(input.userId, filters);
   } catch (err) {
-    console.warn('[mergePendingQuestions] Failed to fetch pending questions, returning empty', err);
+    logger.warn('Failed to fetch pending questions, returning empty', { error: err });
     return { questions: [], surfacedIds: [] };
   }
 

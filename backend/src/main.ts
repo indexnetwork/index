@@ -215,9 +215,9 @@ async function generateUserContexts(userId: string): Promise<void> {
         const hydeEmbedder = new EmbedderAdapter();
         const hydeCache = new RedisCacheAdapter();
         const inferrer = new LensInferrer();
-        const generator = new HydeGenerator();
+        const hydeGenerator = new HydeGenerator();
         const graphDb = chatDatabaseAdapter as unknown as HydeGraphDatabase;
-        const hydeGraph = new HydeGraphFactory(graphDb, hydeEmbedder, hydeCache, inferrer, generator).createGraph();
+        const hydeGraph = new HydeGraphFactory(graphDb, hydeEmbedder, hydeCache, inferrer, hydeGenerator).createGraph();
         await hydeGraph.invoke({
           sourceType: 'context' as const,
           sourceId: upserted.id,
