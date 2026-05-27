@@ -984,21 +984,6 @@ export class OpportunityGraphFactory {
            * Merge premise candidates into an existing candidate list.
            * Deduplicates by userId + networkId + discoverySource + entityId.
            */
-          function mergePremiseCandidates(
-            existing: CandidateMatch[],
-            premise: CandidateMatch[],
-          ): CandidateMatch[] {
-            if (premise.length === 0) return existing;
-            const merged = new Map<string, CandidateMatch>();
-            for (const c of [...existing, ...premise]) {
-              const key = `${c.candidateUserId}:${c.networkId}:${c.discoverySource}:${c.candidateIntentId ?? c.candidatePremiseId ?? 'none'}`;
-              if (!merged.has(key) || c.similarity > (merged.get(key)?.similarity ?? 0)) {
-                merged.set(key, c);
-              }
-            }
-            return Array.from(merged.values());
-          }
-
           /**
            * Context-to-intent discovery: searches intents using user context embeddings.
            * Restores the profile->intent cross-search deleted when Path B was removed.
@@ -1064,7 +1049,8 @@ export class OpportunityGraphFactory {
           /**
            * Merge candidates from multiple strategies. Deduplicates by userId + networkId + entityId,
            * keeps the highest similarity, tracks which strategies found each candidate,
-           * and applies a multi-strategy boost (+0.05 per additional strategy, capped at 1.0).
+           * and applies a multi-strategy boost (+0.05 per additional strategy, boost capped at 0.15,
+           * final similarity capped at 1.0).
            */
           function mergeStrategyCandidates(...groups: CandidateMatch[][]): CandidateMatch[] {
             const merged = new Map<string, CandidateMatch & { _strategies: Set<string> }>();

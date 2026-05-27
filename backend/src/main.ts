@@ -2,6 +2,10 @@ import './startup.env';
 
 import crypto from 'crypto';
 
+import { and, eq, isNull } from 'drizzle-orm';
+
+import db from './lib/drizzle/drizzle';
+import { networkMembers, networks } from './schemas/database.schema';
 import { ChatController } from './controllers/chat.controller';
 import { DebugController } from './controllers/debug.controller';
 import { ToolController } from './controllers/tool.controller';
@@ -156,7 +160,17 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
 async function generateUserContexts(userId: string): Promise<void> {
   const generator = new UserContextGenerator(embedderAdapter);
 
-  const networkIds = await chatDatabaseAdapter.getUserIndexIds(userId);
+  // Fetch ALL networks (not just autoAssign) — context represents the user in every network
+  const memberRows = await db
+    .select({ networkId: networkMembers.networkId })
+    .from(networkMembers)
+    .innerJoin(networks, eq(networkMembers.networkId, networks.id))
+    .where(and(
+      eq(networkMembers.userId, userId),
+      isNull(networks.deletedAt),
+      eq(networks.isPersonal, false),
+    ));
+  const networkIds = memberRows.map(r => r.networkId);
   const allPremises = await chatDatabaseAdapter.getPremisesForUser(userId, 'ACTIVE');
   if (!allPremises?.length || networkIds.length === 0) return;
 
