@@ -3,8 +3,10 @@ import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ProfileDatabaseAdapter } from '../adapters/database.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
-import { ProfileGraphFactory } from '@indexnetwork/protocol';
+import { ProfileGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
+import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
 export const QUEUE_NAME = 'profile-hyde-queue';
@@ -223,7 +225,12 @@ export class EnrichmentQueue {
   private async invokeProfileGraph(userId: string, operationMode: 'write' | 'generate') {
     const database = new ProfileDatabaseAdapter();
     const scraper = new ScraperAdapter();
-    const factory = new ProfileGraphFactory(database, scraper, { enrichUserProfile });
+    const embedder = new EmbedderAdapter();
+    const premiseGraph = new PremiseGraphFactory(
+      database as unknown as PremiseGraphDatabase,
+      embedder,
+    ).createGraph();
+    const factory = new ProfileGraphFactory(database, scraper, { enrichUserProfile }, undefined, premiseGraph);
     const graph = factory.createGraph();
     return graph.invoke({ userId, operationMode });
   }
