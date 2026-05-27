@@ -48,7 +48,7 @@ describe("profileCard", () => {
         intro: "Builder of things",
         avatar: null,
         location: "San Francisco",
-        socials: { twitter: "@alice" },
+        socials: [{ label: "twitter", value: "@alice" }],
         isGhost: false,
         createdAt: "2025-06-15T00:00:00Z",
         updatedAt: null,
@@ -358,8 +358,8 @@ describe("memberTable", () => {
   it("renders member rows with role detection", () => {
     const output = captureLogs(() => {
       memberTable([
-        { user: { name: "Alice", email: "alice@test.com" }, permissions: ["owner"], createdAt: "2026-01-01" },
-        { user: { name: "Bob", email: "bob@test.com" }, permissions: ["member"], createdAt: "2026-01-02" },
+        { id: "u1", name: "Alice", email: "alice@test.com", permissions: ["owner"], createdAt: "2026-01-01" },
+        { id: "u2", name: "Bob", email: "bob@test.com", permissions: ["member"], createdAt: "2026-01-02" },
       ]);
     });
     expect(output).toContain("Name");
@@ -385,8 +385,8 @@ describe("conversationTable", () => {
       id: "c1",
       type: "dm",
       participants: [
-        { participantId: "u1", user: { id: "u1", name: "Alice" } },
-        { participantId: "u2", user: { id: "u2", name: "Bob" } },
+        { participantId: "u1", participantType: "user", name: "Alice", avatar: null },
+        { participantId: "u2", participantType: "user", name: "Bob", avatar: null },
       ],
       createdAt: "2026-01-01T00:00:00Z",
     } as Conversation,
@@ -418,8 +418,8 @@ describe("conversationCard", () => {
         id: "dm-1",
         type: "dm",
         participants: [
-          { participantId: "u1", user: { id: "u1", name: "Alice" } },
-          { participantId: "u2", user: { id: "u2", name: "Bob" } },
+          { participantId: "u1", participantType: "user", name: "Alice", avatar: null },
+          { participantId: "u2", participantType: "user", name: "Bob", avatar: null },
         ],
         createdAt: "2026-01-01T00:00:00Z",
       } as Conversation);

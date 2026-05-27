@@ -36,7 +36,7 @@ export interface ProfileData {
   intro: string | null;
   avatar: string | null;
   location: string | null;
-  socials: Record<string, string> | null;
+  socials: Array<{ label: string; value: string }> | null;
   isGhost: boolean;
   createdAt: string;
   updatedAt: string | null;
@@ -81,10 +81,10 @@ export function profileCard(data: ProfileData): string {
   }
 
   // Socials
-  if (data.socials && Object.keys(data.socials).length > 0) {
+  if (data.socials && data.socials.length > 0) {
     lines.push(`  ${border("|")}${" ".repeat(W)}${border("|")}`);
-    for (const [platform, url] of Object.entries(data.socials)) {
-      const socialLine = `${platform}: ${url}`;
+    for (const { label, value } of data.socials) {
+      const socialLine = `${label}: ${value}`;
       lines.push(`  ${border("|")}  ${BLUE}${socialLine}${RESET}${padTo(W - 2, socialLine)}${border("|")}`);
     }
   }
@@ -529,7 +529,10 @@ export function networkCard(network: {
  */
 export function memberTable(
   members: Array<{
-    user: { name: string; email: string };
+    name?: string | null;
+    email?: string | null;
+    /** Legacy nested shape — kept for backward compatibility. */
+    user?: { name: string; email: string };
     permissions: string[];
     createdAt?: string;
   }>,
@@ -552,8 +555,8 @@ export function memberTable(
   );
 
   for (const m of members) {
-    const name = m.user.name.slice(0, nameW);
-    const email = m.user.email.slice(0, emailW);
+    const name = (m.name ?? m.user?.name ?? "(unnamed)").slice(0, nameW);
+    const email = (m.email ?? m.user?.email ?? "").slice(0, emailW);
     const role = m.permissions.includes("owner")
       ? "owner"
       : m.permissions.includes("admin")
@@ -600,7 +603,7 @@ export function conversationTable(conversations: Conversation[]): void {
   for (const c of conversations) {
     const shortId = c.id.slice(0, 8);
     const names = c.participants
-      .map((p) => p.user?.name ?? p.participantId)
+      .map((p) => p.name ?? p.user?.name ?? p.participantId)
       .join(", ")
       .slice(0, participantsWidth);
     const date = new Date(c.createdAt).toLocaleDateString("en-US", {
@@ -628,7 +631,7 @@ export function conversationCard(conversation: Conversation): void {
 
   if (conversation.participants.length > 0) {
     const names = conversation.participants
-      .map((p) => p.user?.name ?? p.participantId)
+      .map((p) => p.name ?? p.user?.name ?? p.participantId)
       .join(", ");
     console.log(`  ${BOLD}Participants${RESET}  ${names}`);
   }

@@ -194,13 +194,6 @@ describe("parseArgs", () => {
       expect(result.intentId).toBe("intent-id");
       expect(result.targetId).toBe("network-id");
     });
-
-    it("parses intent links", () => {
-      const result = parseArgs(["intent", "links", "intent-id"]);
-      expect(result.command).toBe("intent");
-      expect(result.subcommand).toBe("links");
-      expect(result.intentId).toBe("intent-id");
-    });
   });
 
   // ── Opportunity commands ───────────────────────────────────────────

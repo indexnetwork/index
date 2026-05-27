@@ -197,18 +197,40 @@ export class ApiClient {
     return body.intent;
   }
 
+  /**
+   * Confirm a proposed intent, persisting it as an active signal.
+   *
+   * `create_intent` returns a proposal (for interactive approval); this turns
+   * that proposal into a real intent.
+   *
+   * @param proposalId - The proposal ID from the create_intent result.
+   * @param description - The proposed signal description.
+   * @param networkId - Optional network to scope the intent to.
+   * @returns The created intent's ID.
+   * @throws Error on auth failure or network error.
+   */
+  async confirmIntent(proposalId: string, description: string, networkId?: string): Promise<{ intentId: string }> {
+    const res = await this.post("/api/intents/confirm", {
+      proposalId,
+      description,
+      ...(networkId ? { networkId } : {}),
+    });
+    const body = (await res.json()) as { intentId: string };
+    return body;
+  }
+
   // ── Network methods ─────────────────────────────────────────────
 
   /**
-   * List networks (indexes) the authenticated user is a member of.
+   * List networks the authenticated user is a member of.
    *
    * @returns Array of network objects.
    * @throws Error on auth failure or network error.
    */
   async listNetworks(): Promise<Network[]> {
-    const res = await this.get("/api/indexes");
-    const body = (await res.json()) as { indexes: Array<Network & { permissions?: { joinPolicy?: string } }> };
-    return body.indexes.map((n) => ({
+    const res = await this.get("/api/networks");
+    const body = (await res.json()) as { networks: Array<Network & { permissions?: { joinPolicy?: string } }> };
+    return body.networks.map((n) => ({
       ...n,
       joinPolicy: n.joinPolicy ?? n.permissions?.joinPolicy,
     }));
@@ -223,12 +245,12 @@ export class ApiClient {
    * @throws Error on auth failure or network error.
    */
   async createNetwork(title: string, prompt?: string): Promise<Network> {
-    const res = await this.post("/api/indexes", {
+    const res = await this.post("/api/networks", {
       title,
       ...(prompt ? { prompt } : {}),
     });
-    const body = (await res.json()) as { index: Network };
-    return body.index;
+    const body = (await res.json()) as { network: Network };
+    return body.network;
   }
 
   /**
@@ -239,9 +261,9 @@ export class ApiClient {
    * @throws Error on auth failure or network error.
    */
   async getNetwork(id: string): Promise<Network> {
-    const res = await this.get(`/api/indexes/${id}`);
-    const body = (await res.json()) as { index: Network & { permissions?: { joinPolicy?: string } } };
-    const n = body.index;
+    const res = await this.get(`/api/networks/${id}`);
+    const body = (await res.json()) as { network: Network & { permissions?: { joinPolicy?: string } } };
+    const n = body.network;
     return { ...n, joinPolicy: n.joinPolicy ?? n.permissions?.joinPolicy };
   }
 
@@ -253,7 +275,7 @@ export class ApiClient {
    * @throws Error on auth failure or network error.
    */
   async getNetworkMembers(id: string): Promise<NetworkMember[]> {
-    const res = await this.get(`/api/indexes/${id}/members`);
+    const res = await this.get(`/api/networks/${id}/members`);
     const body = (await res.json()) as { members: NetworkMember[] };
     return body.members;
   }
@@ -266,9 +288,9 @@ export class ApiClient {
    * @throws Error on auth failure, forbidden, or network error.
    */
   async joinNetwork(id: string): Promise<Network> {
-    const res = await this.post(`/api/indexes/${id}/join`, {});
-    const body = (await res.json()) as { index: Network };
-    return body.index;
+    const res = await this.post(`/api/networks/${id}/join`, {});
+    const body = (await res.json()) as { network: Network };
+    return body.network;
   }
 
   /**
@@ -278,11 +300,11 @@ export class ApiClient {
    * @throws Error on auth failure, forbidden (owner), or network error.
    */
   async leaveNetwork(id: string): Promise<void> {
-    await this.post(`/api/indexes/${id}/leave`, {});
+    await this.post(`/api/networks/${id}/leave`, {});
   }
 
   /**
-   * Search users by query string, optionally filtering by index membership.
+   * Search users by query string, optionally filtering by network membership.
    *
    * @param query - Search query (email or name).
    * @param networkId - Optional network ID to exclude existing members.
@@ -291,8 +313,8 @@ export class ApiClient {
    */
   async searchUsers(query: string, networkId?: string): Promise<SearchedUser[]> {
     const params = new URLSearchParams({ q: query });
-    if (networkId) params.set("indexId", networkId);
-    const res = await this.get(`/api/indexes/search-users?${params.toString()}`);
+    if (networkId) params.set("networkId", networkId);
+    const res = await this.get(`/api/networks/search-users?${params.toString()}`);
     const body = (await res.json()) as { users: SearchedUser[] };
     return body.users;
   }
@@ -306,7 +328,7 @@ export class ApiClient {
    * @throws Error on auth failure, forbidden, or network error.
    */
   async addNetworkMember(networkId: string, userId: string): Promise<AddMemberResult> {
-    const res = await this.post(`/api/indexes/${networkId}/members`, { userId });
+    const res = await this.post(`/api/networks/${networkId}/members`, { userId });
     const body = (await res.json()) as AddMemberResult;
     return body;
   }
