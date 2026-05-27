@@ -115,7 +115,7 @@ Output:
     - 50-69: Worth Considering — tangential overlap only.
     - <30 (return empty): Complementary-role mismatch (candidate cannot fill the discoverer's open argument position), same-side match, or already acquainted.
       Example: discoverer seeks "co-founder" → candidate is a VC investor. The investor's contribution is external to the co-founding relation; they cannot substitute into it. Score 0.
-  - IMPORTANT: Include ALL reasonable matches with scores >= 30. Let the system filter by threshold.
+  - IMPORTANT: Include ALL reasonable matches with scores >= 30, and ONLY those. Any candidate you would reject (complementary-role mismatch, same-side, already-acquainted, or a hard location mismatch) must score strictly below 30 and be omitted entirely — the surfacing threshold is 30, so a rejected candidate parked at exactly 30 would be wrongly surfaced.
   - actors: At least 2 actors per opportunity. Each actor has:
     - userId
     - role: "agent" (can do something for others), "patient" (needs something from others), "peer" (symmetric collaboration)
@@ -134,14 +134,14 @@ Rules:
 5. When in introduction mode, each opportunity must have exactly two actors — the two people being introduced. The discoverer (introducer) is added by the system and must not be included in your actors list.
 6. ALREADY KNOW EACH OTHER: Do NOT suggest an opportunity if the entities clearly already know each other. Examples: co-founders of the same company, same team at the same organization, same employer, or any relationship that is obviously existing from their profiles (bio, context). When in doubt, if both profiles mention the same company/org/team in a way that implies they work together, return an empty list for that pair.
 7. ROLE-SATISFIABILITY (evaluate before scoring): A candidate satisfies a discoverer's intent only if they can fill the SUBSTITUTIVE ROLE — the open argument position in the intent (the type of person the discoverer is seeking). A candidate in a COMPLEMENTARY ROLE (one that funds, advises, recruits for, or otherwise enables the sought relation from outside it) does not satisfy the intent, regardless of how closely associated their domain is.
-   COMPLEMENTARY-ROLE CAP: If the candidate occupies a complementary rather than substitutive role relative to the discoverer's intent, score ≤ 30. Return no opportunity.
+   COMPLEMENTARY-ROLE CAP: If the candidate occupies a complementary rather than substitutive role relative to the discoverer's intent, score below 30 (e.g. 0–20). Return no opportunity. A "reject" score must be strictly below 30 so the candidate is not surfaced — never park a rejected candidate at exactly 30.
    CONTEXTUAL OVERRIDE: If the candidate's profile contains explicit evidence that they currently function in the substitutive role (not merely historically or tangentially), treat them as substitutive and score normally.
 8. SAME-SIDE MATCHING: Before scoring, check whether the DISCOVERER and CANDIDATE are both SEEKING the same thing. Look at both parties' intents for directionality:
    - SEEKING signals: "looking for", "seeking", "want to find", "need", "raising", "hiring"
    - OFFERING signals: "can offer", "expert in", "investing in", "mentoring", "available for"
    If both parties have SEEKING intents targeting the same resource (e.g., both seeking investors, both seeking co-founders, both seeking mentorship), this is NOT an opportunity — score <30. An opportunity requires one side to OFFER what the other SEEKS.
 9. LOCATION MATCHING: When the DISCOVERY REQUEST mentions a specific location (city, region, or country):
-   a. If a candidate's profile.location is KNOWN and clearly does NOT match the requested location (different city/region), score ≤ 40 for that candidate. Geographic mismatch is a strong negative signal when the user explicitly requested a location.
+   a. If a candidate's profile.location is KNOWN and clearly does NOT match the requested location (different city/region), score below 30 (e.g. 0–25) and return no opportunity. An explicitly requested location is a hard constraint: a known geographic mismatch excludes the candidate.
    b. If a candidate's profile.location is UNKNOWN, EMPTY, or AMBIGUOUS, do NOT penalize — allow them through and score based on other factors. Note in reasoning that their location is unverified.
    c. If a candidate's profile.location matches or is reasonably close (e.g., "Bay Area" matches "San Francisco", "Remote" matches any location), score normally.
    d. "Remote" or "Global" locations are compatible with any requested location.
@@ -150,6 +150,7 @@ Rules:
    b. THEME ALIGNMENT: Event networks may list themes or tracks. Candidates whose expertise or intents align with event themes should score higher for that network's entities.
    c. CO-ATTENDANCE SIGNAL: Two entities found through the same event network share a co-attendance signal — they will likely be in the same place at the same time. This is a positive signal for in-person collaboration opportunities.
    d. SCHEDULE CONTEXT: If the event network includes upcoming events or sessions, use them as additional matching context. Two people attending the same session or interested in the same topic track are stronger matches.
+   e. CO-ATTENDANCE ROLE: When two co-attendees express mutual or reciprocal collaboration intent — each seeking to work with the other's type, with no clear one-directional provider/seeker split — assign the "peer" role to both. Symmetric, two-sided collaboration is a peer relationship, not an agent/patient one; default to "peer" rather than "agent" for co-attendance matches.
 `;
 
 // ──────────────────────────────────────────────────────────────

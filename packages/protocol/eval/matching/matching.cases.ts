@@ -48,7 +48,7 @@ export const CASES: MatchingCase[] = [
       ],
       discoveryQuery: "samurai",
     },
-    expect: [{ candidateId: "c-yuki", match: false, scoreBand: [0, 49] }],
+    expect: [{ candidateId: "c-yuki", match: false, scoreBand: [0, 29] }],
   },
   {
     id: "is_a_identity/investor-vs-funded-engineer",
@@ -76,7 +76,7 @@ export const CASES: MatchingCase[] = [
       ],
       discoveryQuery: "investors",
     },
-    expect: [{ candidateId: "c-sam", match: false, scoreBand: [0, 49] }],
+    expect: [{ candidateId: "c-sam", match: false, scoreBand: [0, 29] }],
   },
   {
     id: "is_a_identity/investor-vs-real-investor",
@@ -135,7 +135,7 @@ export const CASES: MatchingCase[] = [
       {
         candidateId: "c-yuki",
         match: false,
-        scoreBand: [0, 49],
+        scoreBand: [0, 29],
         reasoningCriteria:
           "The reasoning must NOT justify a match primarily on the source's background intent to connect with visual artists; the explicit query 'samurai' is an identity query that takes priority. PASS if there is no opportunity or it is presented as a weak/non-match.",
       },
@@ -160,7 +160,7 @@ export const CASES: MatchingCase[] = [
         POOL.vcInvestor,
       ],
     },
-    expect: [{ candidateId: "p-vc", match: false, scoreBand: [0, 30] }],
+    expect: [{ candidateId: "p-vc", match: false, scoreBand: [0, 29] }],
   },
   {
     id: "complementary_role/engineer-for-cofounder-intent",
@@ -207,7 +207,7 @@ export const CASES: MatchingCase[] = [
         },
       ],
     },
-    expect: [{ candidateId: "c-raising", match: false, scoreBand: [0, 30] }],
+    expect: [{ candidateId: "c-raising", match: false, scoreBand: [0, 29] }],
   },
 
   // ── Tier 1: already known ───────────────────────────────────────────────
@@ -234,7 +234,7 @@ export const CASES: MatchingCase[] = [
         },
       ],
     },
-    expect: [{ candidateId: "c-acme", match: false, scoreBand: [0, 49] }],
+    expect: [{ candidateId: "c-acme", match: false, scoreBand: [0, 29] }],
   },
 
   // ── Tier 1: location ────────────────────────────────────────────────────
@@ -263,7 +263,7 @@ export const CASES: MatchingCase[] = [
       ],
       discoveryQuery: "Unreal Engine developers in SF",
     },
-    expect: [{ candidateId: "c-ny", match: false, scoreBand: [0, 40] }],
+    expect: [{ candidateId: "c-ny", match: false, scoreBand: [0, 29] }],
   },
   {
     id: "location/unknown-not-penalized",
@@ -409,8 +409,8 @@ export const CASES: MatchingCase[] = [
     },
     expect: [
       { candidateId: "p-tech-cofounder", match: true, scoreBand: [70, 100], role: "agent" },
-      { candidateId: "p-vc", match: false, scoreBand: [0, 30] },
-      { candidateId: "p-designer", match: false, scoreBand: [0, 69] },
+      { candidateId: "p-vc", match: false, scoreBand: [0, 29] },
+      { candidateId: "p-designer", match: false, scoreBand: [0, 29] },
     ],
   },
 ];
