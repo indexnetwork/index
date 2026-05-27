@@ -1,5 +1,7 @@
 import './startup.env';
 
+import crypto from 'crypto';
+
 import { ChatController } from './controllers/chat.controller';
 import { DebugController } from './controllers/debug.controller';
 import { ToolController } from './controllers/tool.controller';
@@ -68,7 +70,7 @@ import { premiseQueue } from './queues/premise.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { NegotiationGraphFactory } from '@indexnetwork/protocol';
+import { NegotiationGraphFactory, UserContextGenerator } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
 import { agentService } from './services/agent.service';
@@ -112,6 +114,9 @@ NetworkMembershipEvents.onMemberAdded = (userId: string) => {
 };
 
 enrichmentQueue.onEnrichmentComplete = (userId: string) => {
+  generateUserContexts(userId)
+    .catch(err => log.job.from('UserContext').error('Failed to generate contexts after enrichment', { userId, error: err }));
+
   fromProfileQueue.addJob(
     { userId },
     { priority: 20, jobId: `profile-discovery-${userId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
@@ -145,6 +150,54 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
   premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_expired' })
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
 };
+
+// ─── User context generation ────────────────────────────────────────────────
+
+async function generateUserContexts(userId: string): Promise<void> {
+  const generator = new UserContextGenerator(embedderAdapter);
+
+  const networkIds = await chatDatabaseAdapter.getUserIndexIds(userId);
+  const allPremises = await chatDatabaseAdapter.getPremisesForUser(userId, 'ACTIVE');
+  if (!allPremises?.length || networkIds.length === 0) return;
+
+  const premiseTexts = allPremises
+    .map(p => ({ text: p.assertion.text }))
+    .filter(p => p.text.length > 0);
+  if (premiseTexts.length === 0) return;
+
+  const premiseHash = crypto.createHash('sha256')
+    .update(allPremises.map(p => `${p.id}:${p.updatedAt.toISOString()}`).sort().join('|'))
+    .digest('hex')
+    .slice(0, 16);
+
+  for (const networkId of networkIds) {
+    try {
+      const existing = await chatDatabaseAdapter.getUserContext(userId, networkId);
+      if (existing && existing.premiseHash === premiseHash) continue;
+
+      const network = await chatDatabaseAdapter.getNetwork(networkId);
+      if (!network) continue;
+
+      const result = await generator.generateColdStart({
+        premises: premiseTexts,
+        networkPrompt: network.prompt ?? null,
+        networkTitle: network.title,
+      });
+
+      await chatDatabaseAdapter.upsertUserContext({
+        userId,
+        networkId,
+        text: result.text,
+        embedding: result.embedding,
+        premiseHash,
+      });
+
+      log.job.from('UserContext').verbose('Generated user context', { userId, networkId });
+    } catch (err) {
+      log.job.from('UserContext').error('Failed to generate user context', { userId, networkId, error: err });
+    }
+  }
+}
 
 // ─── Question answer reaction handlers ──────────────────────────────────────
 
