@@ -1,6 +1,6 @@
-# EDG-18: Unified Discovery Matrix
+# User Contexts + Discovery Parity
 
-**Issue:** [EDG-18 — Import Edge City users, and review opportunity distribution](https://linear.app/edge-city/issue/EDG-18/import-edge-city-users-and-review-opportunity-distribution)
+**Related:** [EDG-18 — Import Edge City users, and review opportunity distribution](https://linear.app/edge-city/issue/EDG-18/import-edge-city-users-and-review-opportunity-distribution)
 **Date:** 2026-05-27
 
 ## Problem
@@ -55,7 +55,7 @@ The corpus hint from the LensInferrer routes limit allocation (preferred corpus 
 | Intent/query → intents | `searchWithHydeEmbeddings` | `searchWithHydeEmbeddings` | Unchanged |
 | Intent/query → premises | *(didn't exist)* | `searchWithHydeEmbeddings` + `runPremiseDiscovery` | Improved |
 
-The new `premise-to-intent` strategy fills the missing row — using each premise embedding to search the intent corpus directly, restoring the cross-entity matching that `searchIntentsByProfileEmbedding` provided.
+The new **user context** strategy fills the missing row. Instead of searching intents with raw premise embeddings (which mixes granularity levels — atomic assertions vs. rich intent descriptions), we synthesize a network-scoped context from all premises and use its embedding to search intents. This is the direct successor to the old profile embedding, but derived from premises and scoped per network.
 
 ## Design
 
@@ -86,16 +86,63 @@ The new `premise-to-intent` strategy fills the missing row — using each premis
 
 **Verification:** After backfill, all 207 Edge City members should have premises with embeddings. Query: `SELECT COUNT(DISTINCT user_id) FROM premises WHERE user_id IN (SELECT user_id FROM network_members WHERE network_id = '<edge-city-id>')`.
 
-### Phase 2: New database method — `searchIntentsByEmbedding`
+### Phase 2: User Contexts
 
-**Goal:** Restore the profile→intent cross-search that was lost when Path B was removed, using premise embeddings instead of the old profile embedding.
+**Goal:** Restore the profile→intent cross-search that was lost when Path B was removed. Instead of using raw premise embeddings against intents (mismatched granularity), synthesize a **user context** — a network-scoped representation of who the user is, derived from all their premises and the network's purpose. This is the direct successor to the old profile embedding that `searchIntentsByProfileEmbedding` used.
 
-**Precedent:** The old `searchIntentsByProfileEmbedding` (deleted in `ad8bd318a`) did exactly this — cosine similarity of a source embedding against the `intents` table, scoped by network via `intent_networks`, excluding the source user. The new method follows the same SQL pattern but lives on the `OpportunityGraphDatabase` interface (not the `Embedder`), consistent with where `searchPremisesBySimilarity` lives.
+#### What a user context is
+
+A user context is a focused narrative paragraph that captures a user's identity through the lens of a specific network. The old system had one global profile embedding per user. User contexts are scoped per `(userId, networkId)` — the same user produces different contexts for different networks, because each network has a different purpose and different premises matter more or less.
+
+#### Generation
+
+**Cold start** (no existing context for this user+network):
+1. Load ALL user premises (no filtering — the user's full identity)
+2. Load the network's `prompt` field (its purpose/description)
+3. LLM call: all premises + network prompt → focused context paragraph
+4. Generate embedding from the context text
+5. Store in `user_contexts` table
+
+**Incremental update** (existing context + a premise change):
+1. Load the current context text
+2. Receive the delta from the premise event:
+   - `added`: new premise text
+   - `updated`: old text → new text
+   - `retracted` / `expired`: removed premise text
+3. LLM call: current context + change type + premise content + network prompt → updated context paragraph
+4. Regenerate embedding
+5. Update `user_contexts` row
+
+The incremental path preserves nuance from the existing context rather than regenerating from scratch on every change. The LLM knows what changed and integrates or removes that specific information.
+
+**Batching:** When multiple premise changes happen in quick succession (e.g., during initial enrichment where 10-20 premises are created at once), queue the deltas and debounce — collect all changes within a short window, then apply them as a single batch update.
+
+#### Storage
+
+New `user_contexts` table:
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | `uuid` | Primary key |
+| `userId` | `uuid` | FK → users |
+| `networkId` | `uuid` | FK → networks |
+| `text` | `text` | The synthesized context paragraph |
+| `embedding` | `vector(2000)` | Embedding of the context text |
+| `premiseHash` | `text` | Hash of premise IDs + updated timestamps |
+| `generatedAt` | `timestamp` | When the context was last generated/updated |
+
+Unique constraint on `(userId, networkId)`. The `premiseHash` acts as a consistency check — if the hash doesn't match the current premise state (e.g., events were missed during downtime), a full cold-start regeneration kicks in as a fallback.
+
+#### Cache invalidation
+
+Premise events (`PremiseEvents.onCreated/onUpdated/onRetracted/onExpired`) trigger incremental context updates for every network the user belongs to. Network prompt changes also trigger regeneration for all members of that network.
+
+#### Database method: `searchIntentsByContextEmbedding`
 
 **Interface addition** on `OpportunityGraphDatabase` (`packages/protocol/src/shared/interfaces/database.interface.ts`):
 
 ```typescript
-searchIntentsByEmbedding(params: {
+searchIntentsByContextEmbedding(params: {
   embedding: number[];
   networkIds: string[];
   excludeUserId: string;
@@ -118,95 +165,87 @@ searchIntentsByEmbedding(params: {
 - Default `minScore`: 0.30 (same as existing premise similarity and HyDE thresholds)
 - SQL pattern mirrors the existing `searchPremisesBySimilarity` and the deleted `searchIntentsByProfileEmbedding`
 
-### Phase 3: Unified discovery matrix
+### Phase 3: Wire context-to-intent into discovery
 
-**Goal:** Replace the branching discovery logic (profile path vs intent path) with a unified search matrix that runs all applicable strategies in parallel.
+**Goal:** Add the `context-to-intent` strategy to the discovery node, restoring the cross-entity matching that Path B provided.
 
-#### Search strategies
+#### Search strategies after this change
 
-| Strategy | Source vectors | Target corpus | Method | Env var | Default |
-|---|---|---|---|---|---|
-| `premise-to-premise` | User's premise embeddings | Premises | `searchPremisesBySimilarity` | `DISCOVERY_PREMISE_TO_PREMISE` | `1` |
-| `premise-to-intent` | User's premise embeddings | Intents | `searchIntentsByEmbedding` (new) | `DISCOVERY_PREMISE_TO_INTENT` | `1` |
-| `hyde-to-*` | HyDE embeddings from intent/query | Intents + Premises | `searchWithHydeEmbeddings` (lens-routed) | Always on when HyDE available | — |
-
-The HyDE strategies (`hyde-to-intent`, `hyde-to-premise`) are controlled by the LensInferrer's `corpus` field on each lens. The LensInferrer decides which corpus each lens targets based on the search context.
-
-#### Premise fan-out mode
-
-Controlled by `DISCOVERY_PREMISE_SEARCH_MODE` env var:
-- `individual` (default) — each premise embedding runs a separate search query. N premises = N searches against each target corpus. Higher recall, captures all facets of the user's identity.
-- `aggregate` — pool premise embeddings into a single representative vector (mean of all premise embeddings), then search once per target corpus. Fewer queries, lower recall. Closer to the old single-profile-vector behavior.
-
-The `aggregate` mode is the direct analog of the old Path B: one vector, two corpora. The `individual` mode is strictly more powerful — it searches with each atomic assertion independently, capturing nuances that a single averaged vector would smooth out.
+| Strategy | Source | Target corpus | When available |
+|---|---|---|---|
+| `premise-to-premise` | User's premise embeddings | Premises | User has premises (existing) |
+| `context-to-intent` | User context embedding | Intents | User has a context for this network (**new**) |
+| `hyde-to-*` | HyDE embeddings from intent/query | Intents + Premises | Intent text or search query exists (existing) |
 
 #### Execution flow
 
-The discovery node replaces its current `if (discoverySource === 'profile') / else` branching with:
+The discovery node's profile-source path currently only runs `runPremiseDiscovery()`. After this change, it also loads the user's context embedding for each network in scope and runs `searchIntentsByContextEmbedding` alongside premise-to-premise:
 
 ```
-discoveryNode:
-  1. Collect source vectors:
-     - sourcePremises[] (already loaded in prep node)
-     - hydeEmbeddings{} (generated when intent text or search query exists)
-
-  2. Build strategy list:
-     - If sourcePremises.length > 0 AND DISCOVERY_PREMISE_TO_PREMISE=1:
-         add premise-to-premise strategy
-     - If sourcePremises.length > 0 AND DISCOVERY_PREMISE_TO_INTENT=1:
-         add premise-to-intent strategy
-     - If hydeEmbeddings has entries:
-         add hyde strategies (lens-routed, as today)
-
-  3. Execute all strategies in parallel (Promise.all)
-
+discoveryNode (profile-source path):
+  1. sourcePremises[] — already loaded in prep node
+  2. userContexts[] — load from user_contexts for each network in scope
+  3. Run in parallel:
+     a. premise-to-premise (existing runPremiseDiscovery)
+     b. context-to-intent (searchIntentsByContextEmbedding for each network's context)
   4. Merge + dedup:
-     - Key: candidateUserId + networkId + entityId (intentId or premiseId)
+     - Key: candidateUserId + networkId + entityId
      - Keep highest similarity per key
-     - Track all matched strategies in matchedStrategies[] on the candidate
-     - Apply multi-strategy boost: +0.05 per additional strategy that found the same
-       candidate (mirrors the old mergeAndRankCandidates lens bonus, capped at 1.0)
-
+     - Track matched strategies in matchedStrategies[]
+     - Multi-strategy boost: +0.05 per additional strategy (capped at 1.0)
   5. Return unified candidate pool → evaluation node
 ```
 
-#### What changes in graph routing
+The intent-source and query-source paths remain unchanged — they already use HyDE to search both intents and premises.
 
-- The `resolve` node still determines whether a trigger intent exists and loads intent context for the prep node.
-- The discovery node no longer branches on `discoverySource`. It checks what source vectors are available and runs all applicable strategies.
-- The `discoverySource` field on `CandidateMatch` changes to a strategy tag (e.g., `'premise-to-premise'`, `'premise-to-intent'`, `'hyde'`).
-- The direct-connection fast path (when `targetUserId` is set) remains unchanged — it bypasses vector search entirely.
+#### What changes in the opportunity graph
+
+- The prep node loads user contexts alongside premises
+- The discovery node adds `context-to-intent` when contexts are available
+- The `discoverySource` field on `CandidateMatch` gains a `'context-to-intent'` value
+- The direct-connection fast path (when `targetUserId` is set) remains unchanged
 
 #### Deduplication and ranking
 
-When the same candidate entity (user + intent/premise + network) is found via multiple strategies:
+When the same candidate is found via multiple strategies:
 - Keep the match with the highest similarity score
-- Store all strategies that found this candidate in `matchedStrategies: string[]`
-- Apply a multi-strategy boost (+0.05 per additional strategy, capped at 1.0) — a candidate found via both premise-to-premise AND premise-to-intent is a stronger signal, similar to the old `mergeAndRankCandidates` lens bonus of +0.1
+- Store all strategies in `matchedStrategies: string[]`
+- Apply multi-strategy boost (+0.05 per additional strategy, capped at 1.0) — mirrors the old `mergeAndRankCandidates` lens bonus
 
 #### Trace instrumentation
 
 Each strategy emits a trace entry:
 ```
-{ node: "strategy", detail: "premise-to-intent → 12 candidate(s) in 45ms" }
+{ node: "strategy", detail: "context-to-intent → 12 candidate(s) in 45ms" }
 ```
 
 The merged result emits a summary:
 ```
-{ node: "discovery", detail: "3 strategies → 28 raw, 19 after dedup" }
+{ node: "discovery", detail: "2 strategies → 28 raw, 19 after dedup" }
 ```
 
 ### Phase 4: Backfill and verification
 
 1. Deploy Phases 1-3 to the dev environment
 2. Run `bun run maintenance:backfill-premises -- --network fee18edc-1e60-4b13-b8c8-20e6f6ed1acb` to create premises for all 207 Edge City members
-3. The enrichment completion callback triggers `FromProfileJob` for each user → unified discovery runs
-4. Verify in the dev DB:
+3. After premise backfill, generate user contexts for all members (cold start — each user's premises + Edge City network prompt)
+4. The enrichment completion callback triggers `FromProfileJob` for each user → discovery runs with both premise-to-premise and context-to-intent strategies
+5. Verify in the dev DB:
    - All 207 members have premises with embeddings
+   - All 207 members have a user context for the Edge City network
    - New opportunities exist between imported users and existing members (especially those with active intents: Seref 6, Vicky 5, Timour 3, Yankı 3, Cooper 2, Seren 1)
-   - Premise-to-intent matches restore the cross-entity discovery that Path B provided
-   - Trace entries in Railway logs show all strategies executing
-5. Review opportunity quality — check that premise-to-intent matches are semantically meaningful, not just high-cosine noise. Compare against the old Path B behavior: the old system found ~81 opportunities on this network; the new system should match or exceed that count with comparable quality.
+   - Context-to-intent matches restore the cross-entity discovery that Path B provided
+   - Trace entries in Railway logs show both strategies executing
+6. Review opportunity quality — check that context-to-intent matches are semantically meaningful, not just high-cosine noise. Compare against the old Path B behavior: the old system found ~81 opportunities on this network; the new system should match or exceed that count with comparable quality.
+
+### Parity table after implementation
+
+| Search path | Old system | New system | Status |
+|---|---|---|---|
+| Profile → profiles | `searchProfilesByProfileEmbedding` | `runPremiseDiscovery` (premise→premise) | Replaced |
+| Profile → intents | `searchIntentsByProfileEmbedding` | `searchIntentsByContextEmbedding` (context→intent) | **Restored** |
+| Intent/query → intents | `searchWithHydeEmbeddings` | `searchWithHydeEmbeddings` | Unchanged |
+| Intent/query → premises | *(didn't exist)* | `searchWithHydeEmbeddings` + `runPremiseDiscovery` | Improved |
 
 ## Files affected
 
@@ -214,16 +253,16 @@ The merged result emits a summary:
 |---|---|
 | `backend/src/queues/profile.queue.ts` | Rename → `enrichment.queue.ts`, inject premise graph |
 | `backend/src/main.ts` | Update queue imports and references |
-| `packages/protocol/src/shared/interfaces/database.interface.ts` | Add `searchIntentsByEmbedding` to `OpportunityGraphDatabase` |
-| `backend/src/adapters/database.adapter.ts` | Implement `searchIntentsByEmbedding` |
-| `packages/protocol/src/opportunity/opportunity.graph.ts` | Refactor discovery node to unified matrix |
+| `backend/src/schemas/database.schema.ts` | Add `user_contexts` table |
+| `packages/protocol/src/shared/interfaces/database.interface.ts` | Add `searchIntentsByContextEmbedding` to `OpportunityGraphDatabase` |
+| `backend/src/adapters/database.adapter.ts` | Implement `searchIntentsByContextEmbedding`, add user context CRUD |
+| `packages/protocol/src/opportunity/opportunity.graph.ts` | Add context-to-intent strategy to discovery node |
 | `packages/protocol/src/opportunity/opportunity.state.ts` | Update `CandidateMatch` type (add `matchedStrategies`) |
-| `backend/src/cli/maintenance/backfill-premises.ts` | New backfill script |
+| `backend/src/events/premise.event.ts` | Add listener to trigger user context regeneration |
+| `backend/src/cli/maintenance/backfill-premises.ts` | New backfill script (premises + user contexts) |
 
 ## Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `DISCOVERY_PREMISE_TO_PREMISE` | `1` | Enable premise → premise similarity search |
-| `DISCOVERY_PREMISE_TO_INTENT` | `1` | Enable premise → intent similarity search |
-| `DISCOVERY_PREMISE_SEARCH_MODE` | `individual` | `individual` or `aggregate` — how premise embeddings are used for search |
+| `DISCOVERY_CONTEXT_TO_INTENT` | `1` | Enable context → intent similarity search |
