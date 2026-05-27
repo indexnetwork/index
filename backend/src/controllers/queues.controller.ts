@@ -17,7 +17,7 @@ import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
 import { fromIntroducerQueue } from '../queues/opportunity/from-introducer.queue';
 import { fromProfileQueue } from '../queues/opportunity/from-profile.queue';
 import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
-import { profileQueue } from '../queues/profile.queue';
+import { enrichmentQueue } from '../queues/enrichment.queue';
 import { emailQueue } from '../queues/email.queue';
 import { integrationSyncQueue } from '../queues/integration.queue';
 import { log } from '../lib/log';
@@ -39,7 +39,7 @@ createBullBoard({
     new BullMQAdapter(fromIntroducerQueue.queue),
     new BullMQAdapter(fromProfileQueue.queue),
     new BullMQAdapter(negotiationRunExistingQueue.queue),
-    new BullMQAdapter(profileQueue.queue),
+    new BullMQAdapter(enrichmentQueue.queue),
     new BullMQAdapter(emailQueue.queue),
     new BullMQAdapter(integrationSyncQueue.queue),
   ],

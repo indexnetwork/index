@@ -1,6 +1,6 @@
 {
   "name": "protocol",
-  "version": "0.25.1",
+  "version": "0.26.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -32,6 +32,9 @@
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
     "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
     "maintenance:decompose-profiles": "bun ./src/cli/decompose-profiles.ts",
+    "maintenance:backfill-premises": "bun ./src/cli/backfill-premises.ts",
+    "maintenance:compare-discovery": "bun ./src/cli/compare-discovery.ts",
+    "maintenance:backfill-context-hyde": "bun ./src/cli/backfill-context-hyde.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",
     "test:raw": "NODE_ENV=test bun test"

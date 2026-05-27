@@ -56,8 +56,10 @@ export interface CandidateMatch {
   lens: string;
   candidatePayload: string;
   candidateSummary?: string;
-  /** How this candidate was found: 'query' (HyDE from search text) or 'premise-similarity'. */
-  discoverySource?: 'query' | 'premise-similarity';
+  /** How this candidate was found: 'query' (HyDE from search text), 'premise-similarity', or 'context-to-intent'. */
+  discoverySource?: 'query' | 'premise-similarity' | 'context-to-intent';
+  /** Which discovery strategies found this candidate (set by mergeStrategyCandidates). */
+  matchedStrategies?: string[];
 }
 
 /**
@@ -347,6 +349,12 @@ export const OpportunityGraphState = Annotation.Root({
 
   /** User's active premises with embeddings (from prep). Used for premise-to-premise discovery path D. */
   sourcePremises: Annotation<Array<{ premiseId: Id<'premises'>; embedding: number[] }>>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
+  }),
+
+  /** User context embeddings per network (from prep). Used for context-to-intent discovery. */
+  sourceContexts: Annotation<Array<{ contextId: string; networkId: Id<'networks'>; embedding: number[] }>>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
