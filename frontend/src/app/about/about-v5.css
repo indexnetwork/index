@@ -1,0 +1,71 @@
+/* about-v5 — uses landing-v5 palette and shell */
+
+.landing-v5.about-v5 { min-height: 100vh; background: var(--bg); }
+
+/* About hero — text only, text takes 2/3 width, no divider */
+.landing-v5.about-v5 .h1 .hero-split { grid-template-columns: 2fr 1fr; }
+.landing-v5.about-v5 .h1 .well { border-right: 0; }
+.landing-v5.about-v5 .h1 .display { max-width: none; }
+.landing-v5.about-v5 .h1 .body-italic { max-width: 64ch; }
+
+.about-link {
+  color: var(--cream);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule-strong);
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.about-link:hover { border-bottom-color: var(--cream); }
+
+/* roster — stacked sections with inline comma-separated names */
+.about-roster-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  margin-top: 8px;
+}
+.about-roster-block {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.about-roster-head {
+  display: flex;
+  align-items: baseline;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--rule);
+}
+.about-roster-label {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cream);
+}
+.about-roster-line {
+  margin: 0;
+  font-family: 'Public Sans', sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--cream);
+}
+.about-roster-sep { color: var(--cream-faint); }
+
+.about-join-body {
+  padding: 12px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.about-join-line {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  color: var(--cream);
+  margin: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.about-join-line .hash { color: var(--cream-faint); margin-right: 8px; }
+.about-join-line .cursor { margin-left: 8px; }
+

@@ -1,55 +1,42 @@
-import { useState, useEffect } from 'react';
-import { useParams } from 'react-router';
-import { getPostBySlug, BlogPost } from '@/lib/blog';
-import ReactMarkdown from 'react-markdown';
-import { Components } from 'react-markdown';
-import Footer from '@/components/Footer';
-import WaitlistModal from './WaitlistModal';
-import { visit } from 'unist-util-visit';
-import type { Root } from 'hast';
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router";
+import ReactMarkdown, { type Components } from "react-markdown";
+import { visit } from "unist-util-visit";
+import type { Root } from "hast";
+import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
+import Footer from "@/app/landing-v5/Footer";
+import { type BlogPost, getPostBySlug } from "@/lib/blog";
+import "@/app/landing-v5/landing-v5.css";
+import "../blog-v5.css";
 
 function getAudioType(src: string): string {
-  const ext = src.split('.').pop()?.toLowerCase();
+  const ext = src.split(".").pop()?.toLowerCase();
   switch (ext) {
-    case 'mp3':
-      return 'audio/mpeg';
-    case 'wav':
-      return 'audio/wav';
-    case 'ogg':
-      return 'audio/ogg';
-    case 'm4a':
-      return 'audio/mp4';
-    case 'aac':
-      return 'audio/aac';
-    default:
-      return 'audio/mpeg';
+    case "mp3": return "audio/mpeg";
+    case "wav": return "audio/wav";
+    case "ogg": return "audio/ogg";
+    case "m4a": return "audio/mp4";
+    case "aac": return "audio/aac";
+    default:    return "audio/mpeg";
   }
 }
 
 function getYouTubeVideoId(url: string): string | null {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\s?]+)/,
-  ];
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
-  }
-  return null;
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\s?]+)/);
+  return match ? match[1] : null;
 }
 
-// Rehype plugin to unwrap images from paragraphs (works on HTML AST after markdown conversion)
 function unwrapImages() {
   return (tree: Root) => {
-    visit(tree, 'element', (node, index, parent) => {
+    visit(tree, "element", (node, index, parent) => {
       if (
-        node.tagName === 'p' &&
+        node.tagName === "p" &&
         parent &&
-        typeof index === 'number' &&
+        typeof index === "number" &&
         node.children.length === 1 &&
-        node.children[0].type === 'element' &&
-        node.children[0].tagName === 'img'
+        node.children[0].type === "element" &&
+        node.children[0].tagName === "img"
       ) {
-        // Replace the paragraph with just the image element
         parent.children[index] = node.children[0];
       }
     });
@@ -58,18 +45,14 @@ function unwrapImages() {
 
 const markdownComponents: Components = {
   a: ({ href, children }) => {
-    const childText = typeof children === 'string' ? children :
-      Array.isArray(children) ? children.join('') : '';
+    const text = typeof children === "string"
+      ? children
+      : Array.isArray(children) ? children.join("") : "";
 
-    // Check if this is an audio link: [audio](file.mp3)
-    if (childText.toLowerCase() === 'audio' && href) {
+    if (text.toLowerCase() === "audio" && href) {
       return (
-        <div className="my-6">
-          <audio
-            controls
-            className="w-1/2"
-            preload="metadata"
-          >
+        <div className="embed-audio">
+          <audio controls preload="metadata">
             <source src={href} type={getAudioType(href)} />
             Your browser does not support the audio element.
           </audio>
@@ -77,33 +60,22 @@ const markdownComponents: Components = {
       );
     }
 
-    // Check if this is a video link: [video](file.mp4)
-    if (childText.toLowerCase() === 'video' && href) {
+    if (text.toLowerCase() === "video" && href) {
       return (
-        <div className="my-6 w-full rounded-lg overflow-hidden">
-          <video
-            src={href}
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="w-full h-auto rounded-lg"
-          />
+        <div className="embed-video">
+          <video src={href} autoPlay muted loop playsInline />
         </div>
       );
     }
 
-    // Check if this is a YouTube link: [youtube](https://youtube.com/watch?v=...)
-    if (childText.toLowerCase() === 'youtube' && href) {
+    if (text.toLowerCase() === "youtube" && href) {
       const videoId = getYouTubeVideoId(href);
       if (videoId) {
         return (
-          <div className="my-6 aspect-video">
+          <div className="embed-youtube">
             <iframe
-              className="w-full h-full rounded-lg"
               src={`https://www.youtube.com/embed/${videoId}`}
               title="YouTube video player"
-              frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
             />
@@ -112,120 +84,84 @@ const markdownComponents: Components = {
       }
     }
 
-    // Regular link
-    return (
-      <a href={href} className="text-blue-600 underline hover:text-blue-800">
-        {children}
-      </a>
-    );
+    return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
   },
   img: ({ src, alt }) => {
-    // Support size hints in alt text: ![alt|small](image.jpg)
-    const [altText, size] = (alt || '').split('|').map(s => s.trim());
-    const sizeClasses: Record<string, string> = {
-      small: 'w-1/4',
-      medium: 'w-1/2',
-      large: 'w-3/4',
-    };
-    const widthClass = sizeClasses[size] || 'w-full';
-
-    if (!src || typeof src !== 'string') return null;
-
-    return (
-      <span className={`${widthClass} rounded-lg my-6 mx-auto block`} style={{ display: 'block' }}>
-        <img
-          src={src}
-          alt={altText || ''}
-          loading="lazy"
-          className="rounded-lg w-full h-auto"
-        />
-      </span>
-    );
+    if (!src || typeof src !== "string") return null;
+    const [altText] = (alt || "").split("|").map((s) => s.trim());
+    return <img src={src} alt={altText || ""} loading="lazy" />;
   },
 };
 
-export default function BlogPostPage() {
-  const { slug } = useParams();
-  const [post, setPost] = useState<BlogPost | null>(null);
-  const [loadedSlug, setLoadedSlug] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState(false);
+type PostState =
+  | { kind: "loading" }
+  | { kind: "ready"; post: BlogPost }
+  | { kind: "not_found" };
 
-  const loading = loadedSlug !== slug;
+function BlogPostPage() {
+  const { slug } = useParams();
+  const [state, setState] = useState<PostState>({ kind: "loading" });
+
+  useEffect(() => {
+    ensureLandingV5Fonts();
+  }, []);
 
   useEffect(() => {
     if (!slug) return;
+    let cancelled = false;
     getPostBySlug(slug).then((result) => {
-      if (result) {
-        setPost(result);
-      } else {
-        setNotFound(true);
-      }
-      setLoadedSlug(slug);
+      if (cancelled) return;
+      setState(result ? { kind: "ready", post: result } : { kind: "not_found" });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [slug]);
 
-  useEffect(() => {
-    if (!post) return;
-    const metaDesc = post.meta_description || post.description;
-    if (!metaDesc) return;
-    let tag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    if (!tag) {
-      tag = document.createElement('meta');
-      tag.name = 'description';
-      document.head.appendChild(tag);
-    }
-    tag.content = metaDesc;
-    return () => {
-      tag!.content = '';
-    };
-  }, [post]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
-      </div>
-    );
-  }
-
-  if (notFound || !post) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Post not found</h1>
-          <p className="text-gray-600">The blog post you are looking for does not exist.</p>
+  return (
+    <div className="landing-v5 blog-v5 blog-post">
+      <div className="hero h1 page-hero post-nav-only">
+        <div className="canvas-area">
+          <Nav />
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <WaitlistModal />
-      <div className="max-w-2xl w-full mx-auto px-4 pt-8 pb-24 flex-1">
-        {/* Post header */}
-        <header className="mb-10 text-center">
-          <time className="text-base text-black font-['Times_New_Roman',_serif]">
-            {new Date(post.date).toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </time>
-          <h1 className="text-3xl md:text-4xl font-garamond font-bold text-black mt-3 mb-4 leading-tight">
-            {post.title}
-          </h1>
-        </header>
+      <article className="post-frame">
+        <Link className="post-back" to="/blog">
+          ← back to all posts
+        </Link>
 
-        {/* Post content */}
-        <article className="text-black text-lg leading-[25px] font-['Times_New_Roman',_serif] [&_h2]:text-2xl [&_h2]:font-['Times_New_Roman',_serif] [&_h2]:font-medium [&_h2]:mt-10 [&_h2]:mb-4 [&_h3]:text-xl [&_h3]:font-['Times_New_Roman',_serif] [&_h3]:font-medium [&_h3]:mt-8 [&_h3]:mb-3 [&_p]:mb-6 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_li]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-sm [&_code]:font-mono [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-6">
-          <ReactMarkdown components={markdownComponents} rehypePlugins={[unwrapImages]}>{post.content || ''}</ReactMarkdown>
-        </article>
+        {state.kind === "loading" ? (
+          <div className="post-status">loading…</div>
+        ) : state.kind === "not_found" ? (
+          <div className="post-status">post not found.</div>
+        ) : (
+          <>
+            <div className="post-meta">
+              {new Date(state.post.date).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </div>
+            <h1 className="post-title">{state.post.title}</h1>
+            <hr className="post-divider" />
+            <div className="post-body">
+              <ReactMarkdown
+                components={markdownComponents}
+                rehypePlugins={[unwrapImages]}
+              >
+                {state.post.content || ""}
+              </ReactMarkdown>
+            </div>
+          </>
+        )}
+      </article>
 
-      </div>
       <Footer />
     </div>
   );
 }
 
+export default BlogPostPage;
 export const Component = BlogPostPage;

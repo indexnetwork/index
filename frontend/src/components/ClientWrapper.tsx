@@ -15,8 +15,8 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const { isAuthenticated } = useAuthContext();
 
   const appRoutes = ['/', '/d', '/i', '/u', '/library', '/networks', '/mynetwork', '/chat', '/settings', '/agents', '/agent'];
-  const publicRoutes = ['/l', '/index', '/blog', '/about'];
-  const bareRoutes = ['/onboarding', '/oauth/callback', '/found-in-translation'];
+  const publicRoutes = ['/l', '/index'];
+  const bareRoutes = ['/', '/onboarding', '/oauth/callback', '/found-in-translation', '/blog', '/about', '/pages'];
 
   const isBareRoute = useMemo(() => {
     return bareRoutes.some(route =>
