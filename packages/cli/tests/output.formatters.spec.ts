@@ -257,33 +257,30 @@ describe("opportunityTable", () => {
 // ── opportunityCard ─────────────────────────────────────────────────
 
 describe("opportunityCard", () => {
-  it("renders full opportunity card", () => {
+  it("renders full opportunity card from the presented detail shape", () => {
     const output = captureLogs(() => {
       opportunityCard({
         id: "o1",
         status: "pending",
-        counterpartName: "Bob",
-        interpretation: {
-          category: "collaboration",
-          confidence: 90,
-          reasoning: "Both are looking for cofounders",
+        presentation: {
+          title: "You can help Bob",
+          description: "You and Bob should connect on the cofounder search.",
         },
-        presentation: "You and Bob should connect!",
-        actors: [
-          { userId: "u1", name: "Alice", role: "agent" },
-          { userId: "u2", name: "Bob", role: "patient" },
-        ],
+        myRole: "agent",
+        otherParties: [{ id: "u2", name: "Bob", role: "patient" }],
+        category: "collaboration",
+        confidence: 0.9,
+        index: { id: "n1", title: "Edge City" },
         createdAt: "2026-01-01T00:00:00Z",
-      } as Opportunity);
+      });
     });
-    expect(output).toContain("Opportunity");
+    expect(output).toContain("You can help Bob");
     expect(output).toContain("pending");
     expect(output).toContain("collaboration");
+    expect(output).toContain("Edge City");
     expect(output).toContain("90%");
-    expect(output).toContain("Alice");
     expect(output).toContain("Bob");
-    expect(output).toContain("Both are looking for cofounders");
-    expect(output).toContain("You and Bob should connect!");
+    expect(output).toContain("You and Bob should connect on the cofounder search.");
   });
 
   it("normalizes 0-1 confidence values to percentages", () => {
@@ -291,14 +288,11 @@ describe("opportunityCard", () => {
       opportunityCard({
         id: "o2",
         status: "pending",
-        counterpartName: "Bob",
-        interpretation: {
-          category: "collaboration",
-          confidence: 0.72,
-          reasoning: "Strong overlap",
-        },
+        presentation: { title: "Strong overlap", description: "Plenty in common." },
+        category: "collaboration",
+        confidence: 0.72,
         createdAt: "2026-01-01T00:00:00Z",
-      } as Opportunity);
+      });
     });
 
     expect(output).toContain("72%");

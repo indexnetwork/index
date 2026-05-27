@@ -129,7 +129,7 @@ export interface OpportunityDetection {
   timestamp?: string;
 }
 
-/** An opportunity object as returned by the API. */
+/** An opportunity object as returned by the list API (GET /api/opportunities). */
 export interface Opportunity {
   id: string;
   status: string;
@@ -140,6 +140,33 @@ export interface Opportunity {
   counterpartName?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** A party in the presented opportunity detail. */
+export interface OpportunityParty {
+  id: string;
+  name?: string | null;
+  avatar?: string | null;
+  role?: string;
+}
+
+/**
+ * Presented opportunity from the detail API (GET /api/opportunities/:id).
+ * Distinct from {@link Opportunity}: the detail endpoint returns a viewer-scoped,
+ * presentation-oriented shape rather than the raw actor/interpretation row.
+ */
+export interface OpportunityDetail {
+  id: string;
+  status: string;
+  presentation?: { title?: string; description?: string; callToAction?: string };
+  myRole?: string;
+  otherParties?: OpportunityParty[];
+  category?: string;
+  confidence?: number;
+  index?: { id: string; title: string };
+  isGhost?: boolean;
+  primaryActionLabel?: string;
+  createdAt?: string;
 }
 
 // ── Network types ───────────────────────────────────────────────────

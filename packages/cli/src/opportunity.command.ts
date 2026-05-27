@@ -105,16 +105,14 @@ export async function handleOpportunity(
         if (options.json) { console.log(JSON.stringify(result)); return; }
         if (!result.success) { output.error(result.error ?? "Discovery failed", 1); return; }
         output.success("Discovery complete.");
-        const data = result.data as { message?: string };
-        if (data?.message) output.dim(`  ${data.message}`);
+        renderDiscovery(result.data as { message?: string });
       } else {
         if (!options.json) output.info("Discovering opportunities...");
         const result = await client.callTool("discover_opportunities", { searchQuery: query });
         if (options.json) { console.log(JSON.stringify(result)); return; }
         if (!result.success) { output.error(result.error ?? "Discovery failed", 1); return; }
         output.success("Discovery complete.");
-        const data = result.data as { message?: string };
-        if (data?.message) output.dim(`  ${data.message}`);
+        renderDiscovery(result.data as { message?: string });
       }
       return;
     }
@@ -266,6 +264,68 @@ async function discoverIntroduction(
   if (json) { console.log(JSON.stringify(result)); return; }
   if (!result.success) { output.error(result.error ?? "Introduction failed", 1); return; }
   output.success("Introduction created.");
-  const data = result.data as { message?: string };
-  if (data?.message) output.dim(`  ${data.message}`);
+  renderDiscovery(result.data as { message?: string });
+}
+
+/** A connection card parsed from a discover_opportunities result. */
+interface DiscoveredCard {
+  name?: string;
+  headline?: string;
+  status?: string;
+}
+
+/**
+ * Extract `opportunity` fenced blocks from a discover_opportunities message.
+ *
+ * The tool returns LLM-oriented ```opportunity blocks (plus a "render these
+ * verbatim" instruction) meant for the chat UI. Pull out the human-relevant
+ * fields so the CLI can print a clean summary instead of the raw payload.
+ *
+ * @param message - The `message` field of the discover_opportunities result.
+ * @returns Parsed connection cards (empty if none found).
+ */
+function parseOpportunityCards(message: string): DiscoveredCard[] {
+  const cards: DiscoveredCard[] = [];
+  const blockRegex = /```opportunity\s*\n([\s\S]*?)\n```/g;
+  let match: RegExpExecArray | null;
+  while ((match = blockRegex.exec(message)) !== null) {
+    try {
+      const o = JSON.parse(match[1]) as Record<string, unknown>;
+      cards.push({
+        name: typeof o.name === "string" ? o.name : undefined,
+        headline: typeof o.headline === "string" ? o.headline : undefined,
+        status: typeof o.status === "string" ? o.status : undefined,
+      });
+    } catch {
+      // Skip blocks whose body is not valid JSON.
+    }
+  }
+  return cards;
+}
+
+/**
+ * Render a clean summary of a discover_opportunities result, parsing the
+ * `opportunity` card blocks and never leaking the raw LLM instruction text.
+ *
+ * @param data - The tool result `data` (carries the `message` field).
+ */
+function renderDiscovery(data: { message?: string } | undefined): void {
+  const message = data?.message;
+  if (!message) { output.dim("  No connections found."); return; }
+
+  const cards = parseOpportunityCards(message);
+  if (cards.length === 0) {
+    // No structured cards — show the prose minus the LLM card-rendering instruction.
+    const clean = message.replace(/IMPORTANT:[\s\S]*/i, "").trim();
+    output.dim(`  ${clean || "No connections found."}`);
+    return;
+  }
+
+  output.dim(`  Found ${cards.length} connection${cards.length === 1 ? "" : "s"}:`);
+  for (const c of cards) {
+    const tag = c.status && c.status !== "pending" ? ` ${output.DIM}[${c.status}]${output.RESET}` : "";
+    console.log(`  ${output.CYAN}*${output.RESET} ${c.name ?? "Unknown"}${tag}`);
+    if (c.headline) output.dim(`    ${c.headline}`);
+  }
+  output.dim("\n  Review them with `index opportunity list`.");
 }

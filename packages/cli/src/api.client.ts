@@ -15,6 +15,7 @@ import type {
   IntentListResult,
   OpportunityListOptions,
   Opportunity,
+  OpportunityDetail,
   Network,
   NetworkMember,
   SearchedUser,
@@ -40,6 +41,8 @@ export type {
   OpportunityActor,
   OpportunityInterpretation,
   OpportunityDetection,
+  OpportunityDetail,
+  OpportunityParty,
   Network,
   NetworkMember,
   SearchedUser,
@@ -131,9 +134,9 @@ export class ApiClient {
    * @returns Opportunity object with presentation.
    * @throws Error on auth failure, not found, or network error.
    */
-  async getOpportunity(id: string): Promise<Opportunity> {
+  async getOpportunity(id: string): Promise<OpportunityDetail> {
     const res = await this.get(`/api/opportunities/${id}`);
-    return (await res.json()) as Opportunity;
+    return (await res.json()) as OpportunityDetail;
   }
 
   /**

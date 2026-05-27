@@ -5,7 +5,7 @@
  * intents, opportunities, networks, conversations, and messages.
  */
 
-import type { Intent, Opportunity, Conversation, ConversationMessage } from "../types";
+import type { Intent, Opportunity, OpportunityDetail, Conversation, ConversationMessage } from "../types";
 
 import {
   RESET,
@@ -341,64 +341,48 @@ export function opportunityTable(opportunities: Opportunity[]): void {
 }
 
 /**
- * Print a detailed opportunity card.
+ * Print a detailed opportunity card from the presented detail shape
+ * (GET /api/opportunities/:id).
  *
- * @param opp - Opportunity object with full details.
+ * @param opp - Presented opportunity detail for the viewer.
  */
-export function opportunityCard(opp: Opportunity): void {
+export function opportunityCard(opp: OpportunityDetail): void {
   const width = 58;
   const innerWidth = width - 2;
+  const title = opp.presentation?.title ?? "Opportunity";
 
   process.stdout.write(`\n  ${BLUE}+${"─".repeat(width)}+${RESET}\n`);
-  process.stdout.write(`  ${BLUE}|${RESET} ${BOLD}${BLUE}Opportunity${RESET}${" ".repeat(innerWidth - 12)}${BLUE}|${RESET}\n`);
+  cardLine(`${BOLD}${BLUE}${title}${RESET}`);
   process.stdout.write(`  ${BLUE}+${"─".repeat(width)}+${RESET}\n`);
 
-  // Status and category
   const st = opp.status ?? "unknown";
-  const category = opp.interpretation?.category ?? "Uncategorized";
   cardLine(`${BOLD}Status:${RESET}  ${statusColor(st)}${st}${RESET}`);
-  cardLine(`${BOLD}Category:${RESET}  ${category}`);
+  if (opp.category) cardLine(`${BOLD}Category:${RESET}  ${opp.category}`);
+  if (opp.index?.title) cardLine(`${BOLD}Network:${RESET}  ${opp.index.title}`);
+  if (opp.confidence != null) cardLine(`${BOLD}Confidence:${RESET}  ${confidenceBar(opp.confidence)}`);
+  if (opp.myRole) cardLine(`${BOLD}Your role:${RESET}  ${roleLabel(opp.myRole)}`);
 
-  // Confidence
-  if (opp.interpretation?.confidence != null) {
-    const bar = confidenceBar(opp.interpretation.confidence);
-    cardLine(`${BOLD}Confidence:${RESET}  ${bar}`);
-  }
-
-  // Parties
-  if (opp.actors && opp.actors.length > 0) {
-    process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
-    cardLine(`${BOLD}Parties:${RESET}`);
-    for (const actor of opp.actors) {
-      const name = actor.name ?? actor.userId;
-      const role = roleLabel(actor.role);
-      cardLine(`  ${name}  ${role}`);
+  // Other parties
+  if (opp.otherParties && opp.otherParties.length > 0) {
+    process.stdout.write(`  ${BLUE}|${RESET}\n`);
+    cardLine(`${BOLD}With:${RESET}`);
+    for (const p of opp.otherParties) {
+      cardLine(`  ${p.name ?? p.id}  ${roleLabel(p.role)}`);
     }
   }
 
-  // Reasoning
-  if (opp.interpretation?.reasoning) {
-    process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
-    cardLine(`${BOLD}Reasoning:${RESET}`);
-    const wrapped = wordWrap(opp.interpretation.reasoning, innerWidth - 4);
-    for (const line of wrapped) {
+  // Description
+  if (opp.presentation?.description) {
+    process.stdout.write(`  ${BLUE}|${RESET}\n`);
+    cardLine(`${BOLD}Details:${RESET}`);
+    for (const line of wordWrap(opp.presentation.description, innerWidth - 4)) {
       cardLine(`  ${AGENT_TEXT}${line}${RESET}`);
     }
   }
 
-  // Presentation
-  if (opp.presentation) {
-    process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
-    cardLine(`${BOLD}Presentation:${RESET}`);
-    const wrapped = wordWrap(opp.presentation, innerWidth - 4);
-    for (const line of wrapped) {
-      cardLine(`  ${AGENT_TEXT}${line}${RESET}`);
-    }
-  }
-
-  // Timestamps
+  // Timestamp
   if (opp.createdAt) {
-    process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
+    process.stdout.write(`  ${BLUE}|${RESET}\n`);
     const created = new Date(opp.createdAt).toLocaleString("en-US", {
       year: "numeric",
       month: "short",
