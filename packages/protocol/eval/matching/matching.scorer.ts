@@ -28,7 +28,7 @@ async function scoreExpectation(
   const out: AssertionResult[] = [];
   const opp = findOpportunity(exp.candidateId, opportunities);
   const matched = !!opp;
-  const effectiveScore = matched ? opp!.score : 0;
+  const effectiveScore = opp ? opp.score : 0;
 
   out.push({
     kind: "match",
@@ -47,8 +47,8 @@ async function scoreExpectation(
     });
   }
 
-  if (exp.role && matched) {
-    const actor = opp!.actors.find((a) => a.userId === exp.candidateId);
+  if (exp.role && opp) {
+    const actor = opp.actors.find((a) => a.userId === exp.candidateId);
     out.push({
       kind: "role",
       candidateId: exp.candidateId,
