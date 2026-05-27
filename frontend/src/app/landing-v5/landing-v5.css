@@ -315,7 +315,7 @@
   align-self: start;
   height: 92vh;
   overflow: hidden;
-  background: var(--bg-deep);
+  background: #091611;
 }
 
 /* Page heroes (blog, about) — content-sized, image stays in column */

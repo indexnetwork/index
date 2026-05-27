@@ -316,7 +316,7 @@ function Hero() {
           </div>
           <div className="hero-image">
             <video
-              src="/landing-v5/hero-index.mp4"
+              src="/landing-v5/hero-index-bg.mp4"
               autoPlay
               loop
               muted
