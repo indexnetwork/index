@@ -33,6 +33,7 @@
     "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
     "maintenance:decompose-profiles": "bun ./src/cli/decompose-profiles.ts",
     "maintenance:backfill-premises": "bun ./src/cli/backfill-premises.ts",
+    "maintenance:compare-discovery": "bun ./src/cli/compare-discovery.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",
     "test:raw": "NODE_ENV=test bun test"
