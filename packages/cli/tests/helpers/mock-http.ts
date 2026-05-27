@@ -16,7 +16,7 @@ export function createMockServer() {
   const handlers: Record<string, MockHandler> = {};
   const patterns: Array<{ method: string; pattern: RegExp; handler: PatternHandler }> = [];
 
-  const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+  const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input, init) => {
     const req = input instanceof Request ? input : new Request(input, init);
     const url = new URL(req.url);
     const key = `${req.method} ${url.pathname}`;
@@ -35,7 +35,8 @@ export function createMockServer() {
     }
 
     return new Response("Not Found", { status: 404 });
-  });
+    // Cast: our stub omits `fetch.preconnect`, which tests never call.
+  }) as typeof fetch);
 
   return {
     url: "http://mock.local",
