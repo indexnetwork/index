@@ -4,13 +4,14 @@ Agent skills for **Edge Esmeralda 2026** (May 30 – Jun 27, Healdsburg, CA). Sh
 
 ## What you get
 
-Three skill bundles that give your agent Edge Esmeralda knowledge and live API access:
+Four skill bundles that give your agent Edge Esmeralda knowledge and live API access:
 
 - **edge-esmeralda** — popup constants (popup id, week dates, themes), attendee directory field semantics, curated wiki/website/newsletter knowledge base, and the onboarding pointer for obtaining EdgeOS tokens.
 - **edgeos** — backend-generic EdgeOS API recipes: events, RSVPs, venues, attendee directory, and your own profile lookup.
+- **geo-esmeralda** — Geo knowledge graph access through the Geo CLI package: ontology, fixed graph tools, guarded native read-only queries, and attendee-authored content/photo creation.
 - **index-network** — Index Network discovery: onboarding ritual, opportunity surfacing, voice exemplars, cron prompts for welcome/digest/ambient flows, and heartbeat tasks.
 
-The skills cross-reference each other. `edge-esmeralda` supplies the popup id that `edgeos` recipes need. `index-network` handles discovery and intent-based matching. Install all three together.
+The skills cross-reference each other. `edge-esmeralda` supplies the popup id that `edgeos` recipes need. `geo-esmeralda` handles Geo knowledge graph-backed knowledge and attendee-authored writes, and `index-network` handles discovery and intent-based matching. Install all four together.
 
 ## Install
 
@@ -22,11 +23,11 @@ All hosts read credentials from environment variables. Set these before installi
 | Variable              | Source                                                                                               | Required |
 | --------------------- | ---------------------------------------------------------------------------------------------------- | -------- |
 | `INDEX_API_KEY`       | Index Network signup (BYOA page or [agent-ee26.edgecity.live](https://agent-ee26.edgecity.live/)) | Yes      |
-| `EDGEOS_BEARER_TOKEN` | EdgeOS email-OTP onboarding flow                                                                     | Optional |
-| `EDGEOS_API_KEY`      | EdgeOS email-OTP onboarding flow (`eos_live_...` key)                                                | Optional |
+| `EDGEOS_BEARER_TOKEN` | EdgeOS email-OTP onboarding flow                                                                     | Yes for Geo knowledge graph access and content writes; also used for EdgeOS directory/profile |
+| `EDGEOS_API_KEY`      | EdgeOS email-OTP onboarding flow (`eos_live_...` key)                                                | Optional; needed for EdgeOS events, RSVPs, venues |
 
 
-`INDEX_API_KEY` is required for the Index Network MCP server. The EdgeOS tokens are optional — without them the agent still loads; EdgeOS recipes will prompt for the missing token on first use.
+`INDEX_API_KEY` is required for the Index Network MCP server. `EDGEOS_BEARER_TOKEN` is required for `geo-esmeralda` auth, graph reads, and content writes. `EDGEOS_API_KEY` is only needed for EdgeOS event, RSVP, and venue recipes.
 
 ### BYOA flow
 
@@ -39,15 +40,15 @@ claude plugin marketplace add Edge-City/agentvillage-skills
 claude plugin install agentvillage@agentvillage-skills --config indexApiKey=<YOUR_API_KEY> --config edgeosToken=<YOUR_TOKEN> --config edgeosApiKey=<YOUR_KEY>
 ```
 
-`--config` values are stored in the plugin's `userConfig`. `indexApiKey` is wired to the Index Network MCP server header. A SessionStart hook exports `EDGEOS_API_KEY` and `EDGEOS_BEARER_TOKEN` into every session via `CLAUDE_ENV_FILE`, so the edgeos skill's curl recipes work without manual shell exports.
+`--config` values are stored in the plugin's `userConfig`. `indexApiKey` is wired to the Index Network MCP server header. A SessionStart hook exports `EDGEOS_API_KEY` and `EDGEOS_BEARER_TOKEN` into every session via `CLAUDE_ENV_FILE`, so the Geo CLI and edgeos skill's curl recipes work without manual shell exports.
 
 ### OpenClaw
 
 ```bash
 openclaw plugins install agentvillage --marketplace Edge-City/agentvillage-skills
 openclaw config set mcp.servers.index '{"url":"https://protocol.index.network/mcp","transport":"streamable-http","headers":{"x-api-key":"<YOUR_API_KEY>"}}'
-openclaw config set env.vars.EDGEOS_BEARER_TOKEN '<YOUR_TOKEN>'
-openclaw config set env.vars.EDGEOS_API_KEY '<YOUR_KEY>'
+openclaw config set env.vars.EDGEOS_BEARER_TOKEN '<YOUR_TOKEN>'  # Human session JWT for Geo knowledge graph access and content writes
+openclaw config set env.vars.EDGEOS_API_KEY '<YOUR_KEY>'         # Long-lived automation key for events, RSVPs, venues
 openclaw gateway restart
 ```
 
@@ -58,6 +59,7 @@ OpenClaw persists credentials in `~/.openclaw/openclaw.json` — no shell profil
 ```bash
 hermes skills install Edge-City/agentvillage/skills/edge-esmeralda --force
 hermes skills install Edge-City/agentvillage/skills/edgeos --force
+hermes skills install Edge-City/agentvillage/skills/geo-esmeralda --force
 hermes skills install Edge-City/agentvillage/skills/index-network --force
 ```
 
@@ -65,8 +67,8 @@ Add to `~/.hermes/.env`:
 
 ```bash
 INDEX_API_KEY=<YOUR_API_KEY>
-EDGEOS_BEARER_TOKEN=<YOUR_TOKEN>
-EDGEOS_API_KEY=<YOUR_KEY>
+EDGEOS_BEARER_TOKEN=<YOUR_TOKEN>   # Human session JWT for Geo knowledge graph access and content writes
+EDGEOS_API_KEY=<YOUR_KEY>          # Long-lived automation key for events, RSVPs, venues
 TELEGRAM_HOME_CHANNEL=<numeric_chat_id>   # optional, for cron delivery
 ```
 
@@ -85,7 +87,8 @@ For workspace, installer, and cron jobs:
 
 ```bash
 bun install/install.ts --index-api-key <KEY>
-# optional: --edgeos-api-key ... --edgeos-bearer-token ...
+# add --edgeos-bearer-token for Geo knowledge graph access/content writes
+# add --edgeos-api-key for EdgeOS event, RSVP, and venue recipes
 # re-onboard: add --wipe-user
 ```
 
@@ -125,7 +128,7 @@ Configure an HTTP MCP server with the following settings:
 }
 ```
 
-Set `EDGEOS_BEARER_TOKEN` and `EDGEOS_API_KEY` in your agent's environment if it supports EdgeOS recipes.
+Set `EDGEOS_BEARER_TOKEN` for Geo knowledge graph access and content writes. Set `EDGEOS_API_KEY` as well if the agent supports EdgeOS event, RSVP, or venue recipes.
 
 For Hermes with workspace + installer, use [agentvillage](https://github.com/Edge-City/agentvillage). For OpenClaw, use [agentvillage](https://github.com/Edge-City/agentvillage).
 

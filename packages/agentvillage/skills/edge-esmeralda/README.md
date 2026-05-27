@@ -11,7 +11,7 @@ For backend-agnostic EdgeOS API recipes (events, RSVPs, venues, the directory en
 - **Claude Code**: copy both files to `~/.claude/skills/edge-esmeralda/SKILL.md` and `~/.claude/skills/edgeos/SKILL.md` respectively.
 - **OpenClaw / Hermes / NanoClaw**: add to your agent's skill directory.
 
-Set environment variables (the `edgeos` skill needs both; this skill needs none):
+Set environment variables when pairing this skill with live API skills. `edge-esmeralda` itself does not read environment variables:
 ```bash
 export EDGEOS_API_KEY="eos_live_..."      # Long-lived automation key for events, RSVPs, venues
 export EDGEOS_BEARER_TOKEN="..."          # Human session JWT for directory, own profile

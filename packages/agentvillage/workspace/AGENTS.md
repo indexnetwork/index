@@ -31,6 +31,7 @@ The `skills/` directory holds per-backend procedural knowledge. Today's active s
 - **`index-network`** (`skills/index-network/`) — Index Network protocol: profiles, signals, opportunities. Tools via MCP. **Session-start gate** (`bootstrap.md`) when `onboardingComplete: false`.
 - **`edgeos`** (`skills/edgeos/SKILL.md`) — EdgeOS API: events, attendee directory, wiki, newsletters. **No session-start gate.** Needs `$EDGEOS_API_KEY` and `$EDGEOS_BEARER_TOKEN`; if missing, follow SKILL.md and ask inline.
 - **`edge-esmeralda`** (`skills/edge-esmeralda/SKILL.md`) — Popup constants, directory semantics, curated wiki/website/newsletter. **No session-start gate.** Supplies `popup_id` for `edgeos` and community-knowledge answers.
+- **`geo-esmeralda`** (`skills/geo-esmeralda/SKILL.md`) — Geo knowledge graph: community content, relations, ontology, and attendee-authored writes. **No session-start gate.** Needs `$EDGEOS_BEARER_TOKEN`; if missing, follow SKILL.md and ask inline.
 
 When a future skill ships, list it here with gate type and trigger conditions.
 

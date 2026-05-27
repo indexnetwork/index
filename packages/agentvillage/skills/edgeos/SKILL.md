@@ -1,7 +1,7 @@
 ---
 name: edgeos
 description: Talk to the EdgeOS popup-village platform — read the event schedule, manage RSVPs and venues, look up the calling user's own profile, and browse the attendee directory for a popup. Backend-generic; the popup id is supplied by whichever popup-specific skill is active (e.g. `edge-esmeralda` for Edge Esmeralda 2026).
-version: 1.1.0
+version: 1.1.1
 author: Edge City
 tags: [edgeos, events, directory, popup-village]
 required_environment_variables:
@@ -23,12 +23,34 @@ You have access to the **EdgeOS** popup-village platform at `https://api.edgeos.
 
 This skill is popup-agnostic. The `popup_id` (a UUID) is supplied by whichever popup-specific skill is currently active. For Edge Esmeralda 2026, see the sibling `edge-esmeralda` skill; it carries the constant.
 
+## 0. Safety rules for write operations
+
+**Always obtain explicit user confirmation before executing any mutating or destructive API call.**
+
+This includes every `POST`, `PATCH`, `PUT`, and `DELETE` request — specifically:
+
+| Operation | Endpoint pattern | Risk |
+|---|---|---|
+| Update event | `PATCH /events/portal/events/{id}` | Changes visible to all attendees; triggers calendar updates |
+| Cancel event | `POST /events/portal/events/{id}/cancel` | **Irreversible** — no un-cancel endpoint |
+| Bulk invite | `POST /events/.../invitations` | Sends invitations to up to 1 000 email addresses |
+| Revoke invitation | `DELETE /events/.../invitations/{id}` | Removes invitee access |
+| RSVP / cancel RSVP | `POST /event-participants/portal/register/{id}` | Modifies user's own participation record |
+| Create venue | `POST /event-venues/portal/venues` | Creates a new venue, possibly triggering admin approval |
+| Update venue | `PATCH /event-venues/portal/venues/{id}` | Changes venue details for all bookings |
+| Delete venue | `DELETE /event-venues/portal/venues/{id}` | **Irreversible** if no events are attached |
+| Update profile | `PATCH /humans/me` | Overwrites the user's own profile fields |
+
+Before running any of the above, show the user the exact request body and URL you intend to send and wait for an explicit "yes / go ahead / confirm" reply. Do **not** auto-approve based on earlier conversational intent or a paraphrase of the user's request.
+
 ## 1. Authentication
 
 You need two tokens, both passed as `Authorization: Bearer <token>`:
 
 - **`$EDGEOS_BEARER_TOKEN`** — human session JWT. Required for: `/humans/me`, `/applications/my/directory/{popup_id}`. Scopes: `portal:self_read`, `portal:directory_read`.
 - **`$EDGEOS_API_KEY`** — long-lived `eos_live_...` automation key. Required for events, RSVPs, venues.
+
+In every curl example below, `<EDGEOS_API_KEY>` and `<EDGEOS_BEARER_TOKEN>` are placeholders — substitute the actual token values from your environment before running the command.
 
 ## 2. Conventions
 
@@ -39,41 +61,42 @@ You need two tokens, both passed as `Authorization: Bearer <token>`:
 
 ## 3. Reading events
 
-All event-read recipes use `Authorization: Bearer $EDGEOS_API_KEY`.
+All event-read recipes use `Authorization: Bearer <EDGEOS_API_KEY>`.
 
 **List upcoming events (next 30 days):**
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
-  "https://api.edgeos.world/api/v1/events/portal/events?start_after=$(date -u +%Y-%m-%dT%H:%M:%SZ)&limit=50"
+curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
+  "https://api.edgeos.world/api/v1/events/portal/events?start_after={current_iso_timestamp}&limit=50"
 ```
+`{current_iso_timestamp}` must be a literal ISO-8601 UTC string (e.g. `2026-05-26T21:00:00Z`) — compute it in code or via the agent's date tools, not via shell substitution.
 
 **List events in a date range:**
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/events/portal/events?start_after={start_iso}&start_before={end_iso}&limit=100"
 ```
 
 **Search events by title:**
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/events/portal/events?search=KEYWORD&start_after={start_iso}&limit=50"
 ```
 
 **Filter by tag, kind, venue, or track:**
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/events/portal/events?tags=AI&tags=Privacy&limit=50"
 ```
 
 **Only events you've RSVPed to:**
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/events/portal/events?rsvped_only=true&limit=50"
 ```
 
 **Fetch a single event (includes caller's RSVP status):**
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/events/portal/events/{event_id}"
 ```
 
@@ -85,7 +108,7 @@ For a recurring event, scope the RSVP lookup to one instance with `?occurrence_s
 
 **Update an event you own:**
 ```bash
-curl -s -X PATCH -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -X PATCH -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/events/portal/events/{event_id}" \
   -d '{"title":"Updated title","start_time":"{start_iso}","end_time":"{end_iso}","timezone":"{timezone}","tags":["AI"]}'
@@ -97,7 +120,7 @@ Setting `venue_id` clears any `custom_location_*` fields, and vice versa. Calend
 
 **Cancel an event you own (soft cancel — no hard delete exists):**
 ```bash
-curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -X POST -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/events/portal/events/{event_id}/cancel"
 ```
 
@@ -105,13 +128,13 @@ curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
 
 **List invitations:**
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/events/portal/events/{event_id}/invitations"
 ```
 
 **Bulk-invite by email (1–1000, case-insensitive, must match existing humans in the tenant; unknown emails come back under `not_found`):**
 ```bash
-curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -X POST -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/events/portal/events/{event_id}/invitations" \
   -d '{"emails":["alice@example.com","bob@example.com"]}'
@@ -119,7 +142,7 @@ curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
 
 **Revoke an invitation:**
 ```bash
-curl -s -X DELETE -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -X DELETE -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/events/portal/events/{event_id}/invitations/{invitation_id}"
 ```
 
@@ -127,7 +150,7 @@ curl -s -X DELETE -H "Authorization: Bearer $EDGEOS_API_KEY" \
 
 **RSVP to a one-off event:**
 ```bash
-curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -X POST -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/event-participants/portal/register/{event_id}" \
   -d '{}'
@@ -135,7 +158,7 @@ curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
 
 **RSVP to one occurrence of a recurring event:**
 ```bash
-curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -X POST -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/event-participants/portal/register/{event_id}" \
   -d '{"occurrence_start":"{occurrence_iso}"}'
@@ -143,7 +166,7 @@ curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
 
 **Cancel a previous RSVP:**
 ```bash
-curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -X POST -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/event-participants/portal/cancel-registration/{event_id}" \
   -d '{}'
@@ -151,7 +174,7 @@ curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
 
 **List your own RSVPs across events:**
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/event-participants/portal/participants"
 ```
 
@@ -159,13 +182,13 @@ curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
 
 **List active venues for a popup (`popup_id` is required, must be a UUID — the active popup skill supplies it):**
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/event-venues/portal/venues?popup_id={popup_uuid}&limit=100"
 ```
 
 **Create a venue (`venues:write`; may land in `PENDING` if the popup requires approval, and may be disabled by the popup's `humans_can_create_venues` setting):**
 ```bash
-curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -X POST -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/event-venues/portal/venues" \
   -d '{"popup_id":"{popup_uuid}","title":"Workshop Room","description":"...","location":"...","formatted_address":"...","capacity":30,"booking_mode":"free"}'
@@ -175,7 +198,7 @@ curl -s -X POST -H "Authorization: Bearer $EDGEOS_API_KEY" \
 
 **Update a venue you own (the `status` field is ignored — re-approval lives in the backoffice):**
 ```bash
-curl -s -X PATCH -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -X PATCH -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/event-venues/portal/venues/{venue_id}" \
   -d '{"title":"...","capacity":40}'
@@ -183,7 +206,7 @@ curl -s -X PATCH -H "Authorization: Bearer $EDGEOS_API_KEY" \
 
 **Delete a venue (`409` if it still has non-cancelled events; reassign or cancel them first):**
 ```bash
-curl -s -X DELETE -H "Authorization: Bearer $EDGEOS_API_KEY" \
+curl -s -X DELETE -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   "https://api.edgeos.world/api/v1/event-venues/portal/venues/{venue_id}"
 ```
 
@@ -191,7 +214,7 @@ curl -s -X DELETE -H "Authorization: Bearer $EDGEOS_API_KEY" \
 
 **Read the calling user's profile** (uses the human bearer, not the API key):
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_BEARER_TOKEN" \
+curl -s -H "Authorization: Bearer <EDGEOS_BEARER_TOKEN>" \
   "https://api.edgeos.world/api/v1/humans/me"
 ```
 
@@ -199,7 +222,7 @@ Returns the human record for the bearer's owner — your own application content
 
 **Update basic profile fields** (uses the human bearer):
 ```bash
-curl -s -X PATCH -H "Authorization: Bearer $EDGEOS_BEARER_TOKEN" \
+curl -s -X PATCH -H "Authorization: Bearer <EDGEOS_BEARER_TOKEN>" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/humans/me" \
   -d '{"first_name":"...","last_name":"...","telegram":"@handle","residence":"...","picture_url":"https://..."}'
@@ -211,7 +234,7 @@ Patchable fields: `first_name`, `last_name`, `telegram`, `gender`, `age`, `resid
 
 **Search attendees in a popup** (uses the human bearer):
 ```bash
-curl -s -H "Authorization: Bearer $EDGEOS_BEARER_TOKEN" \
+curl -s -H "Authorization: Bearer <EDGEOS_BEARER_TOKEN>" \
   "https://api.edgeos.world/api/v1/applications/my/directory/{popup_id}?skip=0&limit=20&q=QUERY"
 ```
 
