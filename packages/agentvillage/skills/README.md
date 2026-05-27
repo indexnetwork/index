@@ -35,14 +35,11 @@ If you authenticated through the EdgeOS portal (https://agent-ee26.edgecity.live
 ### Claude Code
 
 ```bash
-export INDEX_API_KEY=<YOUR_API_KEY>
-export EDGEOS_BEARER_TOKEN=<YOUR_TOKEN>
-export EDGEOS_API_KEY=<YOUR_KEY>
 claude plugin marketplace add Edge-City/agentvillage-skills
-claude plugin install agentvillage@agentvillage-skills
+claude plugin install agentvillage@agentvillage-skills --config indexApiKey=<YOUR_API_KEY> --config edgeosToken=<YOUR_TOKEN> --config edgeosApiKey=<YOUR_KEY>
 ```
 
-The plugin manifest declares the Index Network MCP endpoint and resolves `INDEX_API_KEY` from the environment at runtime. No interactive prompt.
+`--config` values are stored in the plugin's `userConfig`. `indexApiKey` is wired to the Index Network MCP server header. A SessionStart hook exports `EDGEOS_API_KEY` and `EDGEOS_BEARER_TOKEN` into every session via `CLAUDE_ENV_FILE`, so the edgeos skill's curl recipes work without manual shell exports.
 
 ### OpenClaw
 
