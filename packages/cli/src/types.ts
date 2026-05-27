@@ -31,6 +31,12 @@ export interface StreamChatParams {
 
 // ── User types ──────────────────────────────────────────────────────
 
+/** A social link on a user profile. */
+export interface SocialLink {
+  label: string;
+  value: string;
+}
+
 /** Full user data from GET /api/users/:userId. */
 export interface UserData {
   id: string;
@@ -39,7 +45,7 @@ export interface UserData {
   intro: string | null;
   avatar: string | null;
   location: string | null;
-  socials: Record<string, string> | null;
+  socials: SocialLink[] | null;
   isGhost: boolean;
   createdAt: string;
   updatedAt: string | null;
@@ -78,10 +84,14 @@ export interface ListIntentsOptions {
 export interface IntentListResult {
   intents: Intent[];
   pagination: {
-    page: number;
-    limit: number;
+    /** Current page number (1-based). */
+    current: number;
+    /** Total number of pages. */
     total: number;
-    totalPages: number;
+    /** Number of intents on the current page. */
+    count: number;
+    /** Total number of intents across all pages. */
+    totalCount: number;
   };
 }
 
@@ -119,7 +129,7 @@ export interface OpportunityDetection {
   timestamp?: string;
 }
 
-/** An opportunity object as returned by the API. */
+/** An opportunity object as returned by the list API (GET /api/opportunities). */
 export interface Opportunity {
   id: string;
   status: string;
@@ -130,6 +140,33 @@ export interface Opportunity {
   counterpartName?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** A party in the presented opportunity detail. */
+export interface OpportunityParty {
+  id: string;
+  name?: string | null;
+  avatar?: string | null;
+  role?: string;
+}
+
+/**
+ * Presented opportunity from the detail API (GET /api/opportunities/:id).
+ * Distinct from {@link Opportunity}: the detail endpoint returns a viewer-scoped,
+ * presentation-oriented shape rather than the raw actor/interpretation row.
+ */
+export interface OpportunityDetail {
+  id: string;
+  status: string;
+  presentation?: { title?: string; description?: string; callToAction?: string };
+  myRole?: string;
+  otherParties?: OpportunityParty[];
+  category?: string;
+  confidence?: number;
+  index?: { id: string; title: string };
+  isGhost?: boolean;
+  primaryActionLabel?: string;
+  createdAt?: string;
 }
 
 // ── Network types ───────────────────────────────────────────────────
@@ -149,12 +186,17 @@ export interface Network {
   role?: string;
 }
 
-/** A member of a network. */
+/** A member of a network (from GET /api/networks/:id/members). */
 export interface NetworkMember {
-  userId: string;
-  user: { id?: string; name: string; email: string; image?: string | null };
+  id?: string;
+  userId?: string;
+  name: string;
+  email: string;
+  image?: string | null;
   permissions: string[];
   createdAt?: string;
+  /** Legacy nested shape — kept for backward compatibility. */
+  user?: { id?: string; name: string; email: string; image?: string | null };
 }
 
 /** A user returned from the search endpoint. */
@@ -177,6 +219,10 @@ export interface AddMemberResult {
 export interface ConversationParticipant {
   participantId: string;
   participantType: "user" | "agent";
+  /** Display name, present on the list/detail endpoints. */
+  name?: string | null;
+  avatar?: string | null;
+  /** Legacy nested shape — kept for backward compatibility. */
   user?: { name: string; email?: string };
 }
 

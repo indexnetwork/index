@@ -81,14 +81,14 @@ describe("ApiClient", () => {
           intents: [
             { id: "i1", payload: "Looking for a co-founder", summary: "Co-founder search", status: "ACTIVE", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", archivedAt: null },
           ],
-          pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+          pagination: { current: 1, total: 1, count: 1, totalCount: 1 },
         });
       });
 
       const result = await client.listIntents();
       expect(result.intents).toHaveLength(1);
       expect(result.intents[0].id).toBe("i1");
-      expect(result.pagination.total).toBe(1);
+      expect(result.pagination.totalCount).toBe(1);
       expect(receivedBody).toEqual({});
     });
 
@@ -96,7 +96,7 @@ describe("ApiClient", () => {
       let receivedBody: Record<string, unknown> = {};
       mock.on("POST", "/api/intents/list", async (req) => {
         receivedBody = await req.json() as Record<string, unknown>;
-        return Response.json({ intents: [], pagination: { page: 1, limit: 5, total: 0, totalPages: 0 } });
+        return Response.json({ intents: [], pagination: { current: 1, total: 0, count: 0, totalCount: 0 } });
       });
 
       await client.listIntents({ limit: 5, archived: true });
@@ -116,6 +116,33 @@ describe("ApiClient", () => {
       const intent = await client.getIntent("i1");
       expect(intent.id).toBe("i1");
       expect(intent.payload).toBe("Looking for a co-founder");
+    });
+  });
+
+  describe("confirmIntent", () => {
+    it("posts proposalId and description, returns the created intent ID", async () => {
+      let receivedBody: Record<string, unknown> = {};
+      mock.on("POST", "/api/intents/confirm", async (req) => {
+        receivedBody = (await req.json()) as Record<string, unknown>;
+        return Response.json({ success: true, proposalId: "p1", intentId: "i9" });
+      });
+
+      const result = await client.confirmIntent("p1", "Find a co-founder");
+      expect(receivedBody.proposalId).toBe("p1");
+      expect(receivedBody.description).toBe("Find a co-founder");
+      expect(receivedBody.networkId).toBeUndefined();
+      expect(result.intentId).toBe("i9");
+    });
+
+    it("includes networkId when provided", async () => {
+      let receivedBody: Record<string, unknown> = {};
+      mock.on("POST", "/api/intents/confirm", async (req) => {
+        receivedBody = (await req.json()) as Record<string, unknown>;
+        return Response.json({ success: true, proposalId: "p1", intentId: "i9" });
+      });
+
+      await client.confirmIntent("p1", "Find a co-founder", "n1");
+      expect(receivedBody.networkId).toBe("n1");
     });
   });
 
@@ -167,9 +194,9 @@ describe("ApiClient", () => {
 
   describe("listNetworks", () => {
     it("returns networks from the API", async () => {
-      mock.on("GET", "/api/indexes", () =>
+      mock.on("GET", "/api/networks", () =>
         Response.json({
-          indexes: [
+          networks: [
             { id: "n1", title: "Test Network", memberCount: 5, isPersonal: false },
             { id: "n2", title: "Personal", memberCount: 1, isPersonal: true },
           ],
@@ -186,10 +213,10 @@ describe("ApiClient", () => {
   describe("createNetwork", () => {
     it("sends title and prompt in request body", async () => {
       let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/indexes", async (req) => {
+      mock.on("POST", "/api/networks", async (req) => {
         receivedBody = (await req.json()) as Record<string, unknown>;
         return Response.json({
-          index: { id: "n1", title: "New Net", joinPolicy: "invite_only" },
+          network: { id: "n1", title: "New Net", joinPolicy: "invite_only" },
         });
       });
 
@@ -201,10 +228,10 @@ describe("ApiClient", () => {
 
     it("omits prompt when not provided", async () => {
       let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/indexes", async (req) => {
+      mock.on("POST", "/api/networks", async (req) => {
         receivedBody = (await req.json()) as Record<string, unknown>;
         return Response.json({
-          index: { id: "n1", title: "Minimal", joinPolicy: "invite_only" },
+          network: { id: "n1", title: "Minimal", joinPolicy: "invite_only" },
         });
       });
 
@@ -215,9 +242,9 @@ describe("ApiClient", () => {
 
   describe("getNetwork", () => {
     it("returns network details", async () => {
-      mock.on("GET", "/api/indexes/n1", () =>
+      mock.on("GET", "/api/networks/n1", () =>
         Response.json({
-          index: { id: "n1", title: "Test", prompt: "A network", memberCount: 3 },
+          network: { id: "n1", title: "Test", prompt: "A network", memberCount: 3 },
         }),
       );
 
@@ -229,24 +256,24 @@ describe("ApiClient", () => {
 
   describe("getNetworkMembers", () => {
     it("returns members list", async () => {
-      mock.on("GET", "/api/indexes/n1/members", () =>
+      mock.on("GET", "/api/networks/n1/members", () =>
         Response.json({
           members: [
-            { userId: "u1", user: { name: "Alice", email: "alice@test.com" }, permissions: ["owner"] },
+            { id: "u1", name: "Alice", email: "alice@test.com", permissions: ["owner"] },
           ],
         }),
       );
 
       const members = await client.getNetworkMembers("n1");
       expect(members).toHaveLength(1);
-      expect(members[0].user.name).toBe("Alice");
+      expect(members[0].name).toBe("Alice");
     });
   });
 
   describe("joinNetwork", () => {
     it("sends POST to join endpoint", async () => {
-      mock.on("POST", "/api/indexes/n1/join", () =>
-        Response.json({ index: { id: "n1", title: "Public Net" } }),
+      mock.on("POST", "/api/networks/n1/join", () =>
+        Response.json({ network: { id: "n1", title: "Public Net" } }),
       );
 
       const result = await client.joinNetwork("n1");
@@ -256,7 +283,7 @@ describe("ApiClient", () => {
 
   describe("leaveNetwork", () => {
     it("sends POST to leave endpoint", async () => {
-      mock.on("POST", "/api/indexes/n1/leave", () =>
+      mock.on("POST", "/api/networks/n1/leave", () =>
         Response.json({ success: true }),
       );
 
@@ -266,10 +293,10 @@ describe("ApiClient", () => {
   });
 
   describe("searchUsers", () => {
-    it("sends query and indexId as search params", async () => {
+    it("sends query and networkId as search params", async () => {
       let receivedUrl = "";
       // The mock server matches on pathname, so we need to handle query params
-      mock.on("GET", "/api/indexes/search-users", (req) => {
+      mock.on("GET", "/api/networks/search-users", (req) => {
         receivedUrl = req.url;
         return Response.json({
           users: [{ id: "u1", name: "Alice", email: "alice@test.com" }],
@@ -280,14 +307,14 @@ describe("ApiClient", () => {
       expect(users).toHaveLength(1);
       expect(users[0].email).toBe("alice@test.com");
       expect(receivedUrl).toContain("q=alice%40test.com");
-      expect(receivedUrl).toContain("indexId=n1");
+      expect(receivedUrl).toContain("networkId=n1");
     });
   });
 
   describe("addNetworkMember", () => {
     it("sends userId in request body", async () => {
       let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/indexes/n1/members", async (req) => {
+      mock.on("POST", "/api/networks/n1/members", async (req) => {
         receivedBody = (await req.json()) as Record<string, unknown>;
         return Response.json({
           member: { userId: "u1" },

@@ -7,7 +7,7 @@
  * `handleX(client, ...)` pattern.
  */
 
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 
 import { parseArgs } from "./args.parser";
 import { CredentialStore } from "./auth.store";
@@ -27,7 +27,7 @@ import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
 const DEFAULT_APP_URL = "https://index.network";
-const VERSION = "0.10.5";
+const VERSION = "0.10.6";
 
 /** Unicode box-drawing (rounded), same style as Honcho CLI. */
 const BOX = { tl: "\u256d", tr: "\u256e", bl: "\u2570", br: "\u256f", h: "\u2500", v: "\u2502" } as const;
@@ -275,7 +275,13 @@ async function runLogin(apiUrlOverride?: string, appUrlOverride?: string, manual
           : null;
 
     if (opener) {
-      execFile(opener, [authUrl], { stdio: "ignore" });
+      // Fire-and-forget: detach and ignore I/O so the browser launcher
+      // doesn't tie up the CLI. Async failures surface on the error event.
+      const child = spawn(opener, [authUrl], { stdio: "ignore", detached: true });
+      child.on("error", () => {
+        // Browser open failed — user can copy the URL manually.
+      });
+      child.unref();
     }
   } catch {
     // Browser open failed — user can copy the URL manually.

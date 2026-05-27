@@ -4,7 +4,7 @@ import { parseArgs } from "../src/args.parser";
 import { ApiClient } from "../src/api.client";
 import { handleOpportunity } from "../src/opportunity.command";
 import * as output from "../src/output";
-import type { Opportunity } from "../src/api.client";
+import type { Opportunity, OpportunityDetail } from "../src/api.client";
 import { createMockServer } from "./helpers/mock-http";
 
 describe("opportunity argument parsing", () => {
@@ -123,19 +123,23 @@ describe("opportunity API client", () => {
   });
 
   describe("getOpportunity", () => {
-    it("returns a single opportunity", async () => {
+    it("returns a single presented opportunity detail", async () => {
       mock.on("GET", "/api/opportunities/opp-123", () =>
         Response.json({
           id: "opp-123",
           status: "pending",
-          interpretation: { reasoning: "Good match", category: "Hiring", confidence: 88 },
-          actors: [],
+          presentation: { title: "You can help Bob", description: "Good match" },
+          myRole: "agent",
+          otherParties: [{ id: "u2", name: "Bob", role: "patient" }],
+          category: "Hiring",
+          confidence: 0.88,
         }),
       );
 
       const result = await client.getOpportunity("opp-123");
       expect(result.id).toBe("opp-123");
-      expect(result.interpretation.reasoning).toBe("Good match");
+      expect(result.presentation?.title).toBe("You can help Bob");
+      expect(result.otherParties?.[0].name).toBe("Bob");
     });
   });
 
@@ -186,40 +190,37 @@ describe("opportunity output renderers", () => {
 
   describe("opportunityCard", () => {
     it("renders a detailed card with parties and roles", () => {
-      const opportunity: Opportunity = {
+      const opportunity: OpportunityDetail = {
         id: "o2",
         status: "pending",
-        actors: [
-          { userId: "u1", name: "Bob", role: "patient" },
-          { userId: "u2", name: "Carol", role: "agent" },
-        ],
-        interpretation: {
-          category: "Mentoring",
-          reasoning: "Bob needs a mentor and Carol has mentoring experience.",
-          confidence: 90,
+        myRole: "agent",
+        otherParties: [{ id: "u1", name: "Bob", role: "patient" }],
+        category: "Mentoring",
+        confidence: 0.9,
+        presentation: {
+          title: "You can help Bob",
+          description: "Bob needs a mentor and you have mentoring experience.",
         },
-        presentation: "A great opportunity for mentoring.",
         createdAt: "2026-03-30T10:00:00Z",
       };
 
       output.opportunityCard(opportunity);
       expect(captured).toContain("Bob");
-      expect(captured).toContain("Carol");
-      expect(captured).toContain("Seeker");  // patient -> Seeker
-      expect(captured).toContain("Helper");  // agent -> Helper
+      expect(captured).toContain("Seeker");  // patient -> Seeker (otherParty)
+      expect(captured).toContain("Helper");  // agent -> Helper (myRole)
       expect(captured).toContain("Mentoring");
       expect(captured).toContain("Bob needs a mentor");
     });
 
     it("renders peer role correctly", () => {
-      const opportunity: Opportunity = {
+      const opportunity: OpportunityDetail = {
         id: "o3",
         status: "pending",
-        actors: [
-          { userId: "u1", name: "Dan", role: "peer" },
-          { userId: "u2", name: "Eve", role: "peer" },
-        ],
-        interpretation: { category: "Partnership", confidence: 75 },
+        myRole: "peer",
+        otherParties: [{ id: "u2", name: "Eve", role: "peer" }],
+        category: "Partnership",
+        confidence: 0.75,
+        presentation: { title: "Connect with Eve", description: "Aligned goals." },
         createdAt: "2026-03-30T10:00:00Z",
       };
 
