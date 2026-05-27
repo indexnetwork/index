@@ -41,6 +41,10 @@ function has(flag: string): boolean {
 
 async function main(): Promise<void> {
   const runs = Number(arg("--runs") ?? 3);
+  if (!Number.isInteger(runs) || runs < 1) {
+    console.error(`--runs must be a positive integer (got "${arg("--runs")}")`);
+    process.exit(2);
+  }
   const ruleFilter = arg("--rule");
   const updateBaseline = has("--update-baseline");
   const noJudge = has("--no-judge");
