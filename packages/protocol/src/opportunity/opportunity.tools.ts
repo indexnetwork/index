@@ -12,7 +12,7 @@ import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
-import { selectByComposition } from "./opportunity.utils.js";
+import { selectByComposition, deduplicateByPerson } from "./opportunity.utils.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
 import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 
@@ -1302,12 +1302,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return me?.role === "introducer";
       });
 
+      // Deduplicate so each counterpart appears at most once — keeps the
+      // highest-confidence opportunity per person across discovery runs.
+      const deduped = deduplicateByPerson(visible, context.userId);
+
       // Compose-balance across feed categories so the digest/ambient prompt
       // can fill both Section A (connection) and Section B (connector-flow).
       // Falls back to the unbalanced view when the helper has nothing to do.
-      const opportunities = visible.length > 0
-        ? selectByComposition(visible, context.userId)
-        : visible;
+      const opportunities = deduped.length > 0
+        ? selectByComposition(deduped, context.userId)
+        : deduped;
 
       if (!opportunities || opportunities.length === 0) {
         return success({
