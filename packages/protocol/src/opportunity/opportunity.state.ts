@@ -58,7 +58,7 @@ export interface CandidateMatch {
   candidateSummary?: string;
   /** How this candidate was found: 'query' (HyDE from search text), 'premise-similarity', or 'context-to-intent'. */
   discoverySource?: 'query' | 'premise-similarity' | 'context-to-intent';
-  /** All strategies that found this candidate (set during merge/dedup). */
+  /** Which discovery strategies found this candidate (set by mergeStrategyCandidates). */
   matchedStrategies?: string[];
 }
 
@@ -353,7 +353,7 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** User contexts per network (from prep). Used for context-to-intent discovery. */
+  /** User context embeddings per network (from prep). Used for context-to-intent discovery. */
   sourceContexts: Annotation<Array<{ networkId: Id<'networks'>; embedding: number[] }>>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],

@@ -296,14 +296,22 @@ export class OpportunityGraphFactory {
                 premiseId: p.id as Id<'premises'>,
                 embedding: p.embedding!,
               }));
+            const rawContexts = await this.database.getUserContexts(discoveryUserId);
+            const sourceContexts = rawContexts
+              .filter((c: { networkId: string; embedding: number[] | null }) => c.embedding && c.embedding.length > 0 && userNetworkIds.includes(c.networkId as Id<'networks'>))
+              .map((c: { networkId: string; embedding: number[] | null }) => ({
+                networkId: c.networkId as Id<'networks'>,
+                embedding: c.embedding!,
+              }));
             return {
               userNetworks: userNetworkIds,
               indexedIntents,
               sourceProfile,
               sourcePremises,
+              sourceContexts,
               trace: [{
                 node: "prep",
-                detail: `${userNetworkIds.length} network(s), ${intents.length} intent(s), ${sourcePremises.length} premise(s), ${profile ? 'profile loaded' : 'no profile'}`,
+                detail: `${userNetworkIds.length} network(s), ${intents.length} intent(s), ${sourcePremises.length} premise(s), ${sourceContexts.length} context(s), ${profile ? 'profile loaded' : 'no profile'}`,
               }],
             };
           },
@@ -787,21 +795,39 @@ export class OpportunityGraphFactory {
                 },
               });
 
-              const premiseCands = await runPremiseDiscovery();
-              const withPremises = mergePremiseCandidates(queryCandidates, premiseCands);
+              const [premiseCands, contextCands] = await Promise.all([
+                runPremiseDiscovery(),
+                runContextToIntentDiscovery(),
+              ]);
+              const withPremisesAndContext = mergeStrategyCandidates(queryCandidates, premiseCands, contextCands);
               if (premiseCands.length > 0) {
-                traceEntries.push({ node: "discovery", detail: `+ Premise search → ${premiseCands.length} candidate(s), merged to ${withPremises.length}` });
+                traceEntries.push({ node: "strategy", detail: `premise-to-premise → ${premiseCands.length} candidate(s)` });
               }
-              return { candidates: filterByTarget(withPremises), trace: traceEntries };
+              if (contextCands.length > 0) {
+                traceEntries.push({ node: "strategy", detail: `context-to-intent → ${contextCands.length} candidate(s)` });
+              }
+              return { candidates: filterByTarget(withPremisesAndContext), trace: traceEntries };
             }
 
-            // No search query — premise-to-premise discovery only
-            const premiseCands = await runPremiseDiscovery();
-            if (premiseCands.length > 0) {
-              return {
-                candidates: filterByTarget(premiseCands),
-                trace: [{ node: "discovery", detail: `No search query; premise search → ${premiseCands.length} candidate(s)` }],
-              };
+            // No search query — premise-to-premise + context-to-intent discovery
+            const [premiseCands, contextCands] = await Promise.all([
+              runPremiseDiscovery(),
+              runContextToIntentDiscovery(),
+            ]);
+            if (premiseCands.length > 0 || contextCands.length > 0) {
+              const merged = mergeStrategyCandidates(premiseCands, contextCands);
+              const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
+              if (premiseCands.length > 0) {
+                traceEntries.push({ node: "strategy", detail: `premise-to-premise → ${premiseCands.length} candidate(s)` });
+              }
+              if (contextCands.length > 0) {
+                traceEntries.push({ node: "strategy", detail: `context-to-intent → ${contextCands.length} candidate(s)` });
+              }
+              traceEntries.push({
+                node: "discovery",
+                detail: `${[premiseCands.length > 0 && 'premise-to-premise', contextCands.length > 0 && 'context-to-intent'].filter(Boolean).length} strategies → ${premiseCands.length + contextCands.length} raw, ${merged.length} after dedup`,
+              });
+              return { candidates: filterByTarget(merged), trace: traceEntries };
             }
             return { candidates: [] };
           }
@@ -971,6 +997,100 @@ export class OpportunityGraphFactory {
               }
             }
             return Array.from(merged.values());
+          }
+
+          /**
+           * Context-to-intent discovery: searches intents using user context embeddings.
+           * Restores the profile->intent cross-search deleted when Path B was removed.
+           */
+          async function runContextToIntentDiscovery(): Promise<CandidateMatch[]> {
+            if (!state.sourceContexts?.length) return [];
+            const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
+            if (!contextToIntentEnabled) return [];
+
+            const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
+            if (targetNetworkIds.length === 0) return [];
+
+            logger.verbose('[Graph:Discovery] runContextToIntentDiscovery start', {
+              contextCount: state.sourceContexts.length,
+              targetNetworks: targetNetworkIds.length,
+            });
+
+            const searchResults = await Promise.all(
+              state.sourceContexts
+                .filter(ctx => targetNetworkIds.includes(ctx.networkId))
+                .map(ctx =>
+                  self.database.searchIntentsByContextEmbedding({
+                    embedding: ctx.embedding,
+                    networkIds: [ctx.networkId],
+                    excludeUserId: discoveryUserId,
+                    limit: 20,
+                    minScore: minScore,
+                  })
+                )
+            );
+
+            const contextCandidates: CandidateMatch[] = [];
+            for (const results of searchResults) {
+              for (const r of results) {
+                contextCandidates.push({
+                  candidateUserId: r.userId as Id<'users'>,
+                  candidateIntentId: r.intentId as Id<'intents'>,
+                  networkId: r.networkId as Id<'networks'>,
+                  similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
+                  lens: 'context_match',
+                  candidatePayload: r.payload ?? '',
+                  candidateSummary: r.summary ?? undefined,
+                  discoverySource: 'context-to-intent',
+                });
+              }
+            }
+
+            const byKey = new Map<string, CandidateMatch>();
+            for (const c of contextCandidates) {
+              const key = `${c.candidateUserId}:${c.candidateIntentId ?? 'none'}:${c.networkId}`;
+              if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
+                byKey.set(key, c);
+              }
+            }
+            const deduped = Array.from(byKey.values());
+            logger.verbose('[Graph:Discovery] runContextToIntentDiscovery complete', {
+              rawCount: contextCandidates.length,
+              dedupedCount: deduped.length,
+            });
+            return deduped;
+          }
+
+          /**
+           * Merge candidates from multiple strategies. Deduplicates by userId + networkId + entityId,
+           * keeps the highest similarity, tracks which strategies found each candidate,
+           * and applies a multi-strategy boost (+0.05 per additional strategy, capped at 1.0).
+           */
+          function mergeStrategyCandidates(...groups: CandidateMatch[][]): CandidateMatch[] {
+            const merged = new Map<string, CandidateMatch & { _strategies: Set<string> }>();
+            for (const group of groups) {
+              for (const c of group) {
+                const entityId = c.candidateIntentId ?? c.candidatePremiseId ?? 'none';
+                const key = `${c.candidateUserId}:${c.networkId}:${entityId}`;
+                const existing = merged.get(key);
+                if (!existing) {
+                  merged.set(key, { ...c, _strategies: new Set([c.discoverySource ?? 'unknown']) });
+                } else {
+                  existing._strategies.add(c.discoverySource ?? 'unknown');
+                  if (c.similarity > existing.similarity) {
+                    Object.assign(existing, c);
+                  }
+                }
+              }
+            }
+            return Array.from(merged.values()).map(({ _strategies, ...c }) => {
+              const boost = Math.min((_strategies.size - 1) * 0.05, 0.15);
+              return {
+                ...c,
+                similarity: Math.min(c.similarity + boost, 1.0),
+                matchedStrategies: Array.from(_strategies),
+              };
+            });
           }
 
           const resolvedIntent = state.resolvedTriggerIntentId

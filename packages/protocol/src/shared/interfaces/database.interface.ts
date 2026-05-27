@@ -1991,7 +1991,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getPremisesForUser'
   // Premise-to-premise discovery (path D) in OpportunityGraph
   | 'searchPremisesBySimilarity'
-  // User context → intent cross-search (profile→intent path) in OpportunityGraph
+  // User context methods (context-to-intent discovery) in OpportunityGraph
   | 'getUserContext'
   | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
@@ -2037,7 +2037,7 @@ export type OpportunityGraphDatabase = Pick<
   // Premise-to-premise discovery (path D)
   | 'getPremisesForUser'
   | 'searchPremisesBySimilarity'
-  // User context → intent cross-search (profile→intent path)
+  // User context methods (context-to-intent discovery)
   | 'getUserContext'
   | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
