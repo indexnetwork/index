@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { authClient } from '@/lib/auth-client';
-import { X, ArrowLeft } from 'lucide-react';
+import { ensureLandingV5Fonts } from '@/app/landing-v5/Nav';
+import './AuthModal.css';
 
 const PROTOCOL_BASE = import.meta.env.VITE_PROTOCOL_URL || '';
 const API_BASE = `${PROTOCOL_BASE}/api`;
@@ -27,6 +28,7 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
 
   useEffect(() => {
     if (!isOpen) return;
+    ensureLandingV5Fonts();
     fetch(`${API_BASE}/auth/providers`)
       .then((r) => r.json())
       .then((data: { providers?: string[]; emailPassword?: boolean }) => {
@@ -124,36 +126,41 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative bg-white w-full max-w-md mx-4 p-8 shadow-xl">
+    <div
+      className="auth-v5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-modal-title"
+      onClick={() => !loading && onClose()}
+    >
+      <div className="av-backdrop" aria-hidden="true" />
+      <div className="av-card" onClick={(e) => e.stopPropagation()}>
         <button
+          type="button"
+          className="av-close"
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+          aria-label="Close"
         >
-          <X size={20} />
+          ×
         </button>
 
         {view === 'magic-link-sent' && (
           <>
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 font-ibm-plex-mono uppercase tracking-wider">
-                Check Your Email
+            <div className="av-head">
+              <h2 id="auth-modal-title" className="av-title">
+                Check your email
               </h2>
             </div>
-            <p className="text-sm text-gray-600 mb-2">
-              We sent a sign-in link to
+            <p className="av-lede">
+              We sent a sign-in link to <strong>{email}</strong>.
             </p>
-            <p className="text-sm font-medium text-gray-900 mb-6">{email}</p>
-            <p className="text-sm text-gray-500 mb-6">
-              Click the link in the email to sign in. The link expires in 10 minutes.
+            <p className="av-note">
+              Click the link in the email to sign in. It expires in 10 minutes.
             </p>
             <button
+              type="button"
+              className="av-submit ghost"
               onClick={resetForm}
-              className="w-full border border-gray-300 text-gray-700 py-3 text-sm font-medium hover:bg-gray-50 transition-colors"
             >
               Back to sign in
             </button>
@@ -162,17 +169,21 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
 
         {view === 'main' && (
           <>
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 font-ibm-plex-mono uppercase tracking-wider">
-                Sign In
+            <div className="av-head">
+              <h2 id="auth-modal-title" className="av-title">
+                Sign in to the Index Network
               </h2>
             </div>
+            <p className="av-lede">
+              Write what you want — let the network bring people to you.
+            </p>
 
             {hasGoogle && (
               <button
+                type="button"
+                className="av-oauth"
                 onClick={handleGoogleSignIn}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                   <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
@@ -184,48 +195,37 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
               </button>
             )}
 
-            {hasGoogle && (
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-2 text-gray-400 tracking-wider">or</span>
-                </div>
-              </div>
-            )}
+            {hasGoogle && <div className="av-divider">or</div>}
 
-            <form onSubmit={handleMagicLink} className="space-y-4">
+            <form onSubmit={handleMagicLink} className="av-form">
+              <label htmlFor="auth-email" className="av-label">Email</label>
               <input
+                id="auth-email"
                 type="email"
-                placeholder="Email"
+                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-gray-300 text-sm text-black focus:outline-none focus:border-gray-900 transition-colors"
+                autoFocus
+                className="av-input"
               />
 
-              {error && (
-                <p className="text-red-600 text-sm">{error}</p>
-              )}
+              {error && <p className="av-error">{error}</p>}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#041729] text-white py-3 text-sm font-semibold uppercase tracking-wider hover:bg-[#0a2d4a] transition-colors disabled:opacity-50"
-              >
-                {loading ? 'Sending...' : 'Send Sign-In Link'}
+              <button type="submit" disabled={loading} className="av-submit">
+                {loading ? 'Sending…' : 'Send sign-in link'}
               </button>
             </form>
 
             {emailPasswordEnabled && (
-              <p className="mt-6 text-center text-sm text-gray-500">
-                Or{' '}
+              <p className="av-alt">
+                or{' '}
                 <button
+                  type="button"
+                  className="av-link"
                   onClick={() => setView('email-password')}
-                  className="text-gray-900 font-medium hover:underline"
                 >
-                  sign in with password
+                  sign in with a password
                 </button>
               </p>
             )}
@@ -234,66 +234,71 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
 
         {view === 'email-password' && emailPasswordEnabled && (
           <>
-            <div className="mb-6 flex items-center gap-3">
+            <div className="av-head">
               <button
+                type="button"
+                className="av-back"
                 onClick={() => { setView('main'); setError(null); }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Back"
               >
-                <ArrowLeft size={20} />
+                ←
               </button>
-              <h2 className="text-xl font-semibold text-gray-900 font-ibm-plex-mono uppercase tracking-wider">
-                {isSignUp ? 'Create Account' : 'Sign In'}
+              <h2 id="auth-modal-title" className="av-title">
+                {isSignUp ? 'Create an account' : 'Sign in with a password'}
               </h2>
             </div>
 
-            <form onSubmit={handleEmailPassword} className="space-y-4">
+            <form onSubmit={handleEmailPassword} className="av-form">
               {isSignUp && (
-                <input
-                  type="text"
-                  placeholder="Name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 text-sm text-black focus:outline-none focus:border-gray-900 transition-colors"
-                />
+                <>
+                  <label htmlFor="auth-name" className="av-label">Name</label>
+                  <input
+                    id="auth-name"
+                    type="text"
+                    placeholder="Your name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="av-input"
+                  />
+                </>
               )}
+              <label htmlFor="auth-email-pw" className="av-label">Email</label>
               <input
+                id="auth-email-pw"
                 type="email"
-                placeholder="Email"
+                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-gray-300 text-sm text-black focus:outline-none focus:border-gray-900 transition-colors"
+                className="av-input"
               />
+              <label htmlFor="auth-password" className="av-label">Password</label>
               <input
+                id="auth-password"
                 type="password"
-                placeholder="Password"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
-                className="w-full px-4 py-3 border border-gray-300 text-sm text-black focus:outline-none focus:border-gray-900 transition-colors"
+                className="av-input"
               />
 
-              {error && (
-                <p className="text-red-600 text-sm">{error}</p>
-              )}
+              {error && <p className="av-error">{error}</p>}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#041729] text-white py-3 text-sm font-semibold uppercase tracking-wider hover:bg-[#0a2d4a] transition-colors disabled:opacity-50"
-              >
-                {loading ? 'Loading...' : isSignUp ? 'Create Account' : 'Sign In'}
+              <button type="submit" disabled={loading} className="av-submit">
+                {loading ? 'Loading…' : isSignUp ? 'Create account' : 'Sign in'}
               </button>
             </form>
 
-            <p className="mt-6 text-center text-sm text-gray-500">
+            <p className="av-alt">
               {isSignUp ? (
                 <>
                   Already have an account?{' '}
                   <button
+                    type="button"
+                    className="av-link"
                     onClick={() => { setIsSignUp(false); setError(null); }}
-                    className="text-gray-900 font-medium hover:underline"
                   >
                     Sign in
                   </button>
@@ -302,8 +307,9 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
                 <>
                   Don&apos;t have an account?{' '}
                   <button
+                    type="button"
+                    className="av-link"
                     onClick={() => { setIsSignUp(true); setError(null); }}
-                    className="text-gray-900 font-medium hover:underline"
                   >
                     Sign up
                   </button>

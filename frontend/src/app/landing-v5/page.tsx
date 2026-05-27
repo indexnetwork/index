@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { apiUrl } from "@/lib/api";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { getAllPosts, type BlogPost } from "@/lib/blog";
 import Nav, { GithubStar, ensureLandingV5Fonts } from "./Nav";
 import Footer from "./Footer";
@@ -138,7 +139,7 @@ type SurfaceTab = {
   blurb: string;
   steps: { num?: string; title?: string; cmd?: string | string[]; soon?: boolean }[];
   docs?: { href: string; label: string };
-  cta?: { href: string; label: string };
+  cta?: { href?: string; label: string; login?: boolean };
 };
 
 const SURFACE_TABS: SurfaceTab[] = [
@@ -183,8 +184,8 @@ const SURFACE_TABS: SurfaceTab[] = [
     blurb: "Sign in, write what you want, and let the network bring people to you.",
     steps: [],
     cta: {
-      href: "https://index.network",
       label: "Sign in",
+      login: true,
     },
   },
   {
@@ -202,6 +203,7 @@ const SURFACE_TABS: SurfaceTab[] = [
 ];
 
 function Hero() {
+  const { openLoginModal } = useAuthContext();
   const [activeId, setActiveId] = useState<string>(SURFACE_TABS[0].id);
   const [copied, setCopied] = useState<string | null>(null);
   const active = SURFACE_TABS.find((t) => t.id === activeId) ?? SURFACE_TABS[0];
@@ -292,14 +294,24 @@ function Hero() {
                   );
                 })}
                 {active.cta ? (
-                  <a
-                    className="cta hero-cli-cta"
-                    href={active.cta.href}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {active.cta.label}
-                  </a>
+                  active.cta.login ? (
+                    <button
+                      type="button"
+                      className="cta hero-cli-cta"
+                      onClick={() => openLoginModal()}
+                    >
+                      {active.cta.label}
+                    </button>
+                  ) : (
+                    <a
+                      className="cta hero-cli-cta"
+                      href={active.cta.href}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {active.cta.label}
+                    </a>
+                  )
                 ) : null}
                 {active.docs ? (
                   <a
@@ -316,7 +328,7 @@ function Hero() {
           </div>
           <div className="hero-image">
             <video
-              src="/landing-v5/hero-index.mp4"
+              src="/landing-v5/hero-index-bg.mp4"
               autoPlay
               loop
               muted
@@ -658,7 +670,7 @@ function SubscribeModal() {
               subscribed
             </h3>
             <p className="lv5-modal-lede">
-              You&rsquo;re on the list — we&rsquo;ll let you know when we&rsquo;re live.
+              You&rsquo;re in — we&rsquo;ll keep you posted on what&rsquo;s new.
             </p>
             <button
               type="button"
