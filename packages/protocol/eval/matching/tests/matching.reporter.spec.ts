@@ -1,6 +1,16 @@
 import { describe, it, expect } from "bun:test";
-import { buildScorecard, diffBaseline, formatConsole } from "../matching.reporter.js";
-import type { CaseResult } from "../matching.types.js";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { unlink } from "node:fs/promises";
+import {
+  buildScorecard,
+  diffBaseline,
+  formatConsole,
+  writeBaseline,
+  writeRunReport,
+  readBaseline,
+} from "../matching.reporter.js";
+import type { CaseResult, Scorecard } from "../matching.types.js";
 
 const caseResult = (caseId: string, rule: CaseResult["rule"], passRate: number): CaseResult => ({
   caseId,
@@ -78,5 +88,44 @@ describe("formatConsole", () => {
     expect(output).toContain("is_a_identity");
     expect(output).toContain("aggregate pass-rate");
     expect(output).toContain("⚠");
+  });
+});
+
+describe("baseline vs run-report reasoning handling", () => {
+  const scWithReasoning = (): Scorecard => {
+    const cr: CaseResult = {
+      caseId: "a",
+      rule: "is_a_identity",
+      runs: 1,
+      passes: 1,
+      passRate: 1,
+      flaky: false,
+      runResults: [
+        {
+          passed: true,
+          assertions: [],
+          candidates: [
+            { candidateId: "c", matched: true, score: 90, role: "agent", reasoning: "because X" },
+          ],
+        },
+      ],
+    };
+    return buildScorecard([cr], { model: "m", runs: 1 });
+  };
+
+  it("strips candidate reasoning from the committed baseline", async () => {
+    const p = join(tmpdir(), `matching-baseline-${Date.now()}.json`);
+    await writeBaseline(p, scWithReasoning());
+    const back = await readBaseline(p);
+    expect(back!.cases[0].runResults[0].candidates).toBeUndefined();
+    await unlink(p);
+  });
+
+  it("keeps candidate reasoning verbatim in the run report", async () => {
+    const p = join(tmpdir(), `matching-report-${Date.now()}.json`);
+    await writeRunReport(p, scWithReasoning());
+    const back = JSON.parse(await Bun.file(p).text()) as Scorecard;
+    expect(back.cases[0].runResults[0].candidates![0].reasoning).toBe("because X");
+    await unlink(p);
   });
 });

@@ -13,10 +13,20 @@ bun run eval:matching -- --runs 5             # more runs = less noise
 bun run eval:matching -- --rule is_a_identity # one rule
 bun run eval:matching -- --no-judge           # skip LLM reasoning checks (free)
 bun run eval:matching -- --update-baseline    # overwrite the committed baseline
+bun run eval:matching -- --report             # write a full run report incl. evaluator reasoning
+bun run eval:matching -- --report out.json    # ...to a specific path
 ```
 
 Requires `OPENROUTER_API_KEY` (loaded via `.env.test`). Exits non-zero on a regression
 versus `baselines/matching.baseline.json`.
+
+## Run reports (`--report`)
+
+`--report` writes the full scorecard — including each candidate's **actual score, role,
+and the evaluator's own verbatim `reasoning`** — to `runs/<timestamp>.json` (gitignored),
+or to a path you pass. The committed baseline deliberately omits this reasoning to keep
+diffs lean; the run report is where the "why" lives. This artifact is the input the
+matching-eval report skill reads to explain *why* the evaluator scored as it did.
 
 ## Layout
 

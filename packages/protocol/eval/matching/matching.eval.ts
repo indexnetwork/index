@@ -8,6 +8,8 @@
  *   bun run eval:matching -- --rule is_a_identity
  *   bun run eval:matching -- --no-judge         # skip assertLLM checks (free)
  *   bun run eval:matching -- --update-baseline  # overwrite the committed baseline
+ *   bun run eval:matching -- --report           # write a full run report (incl. evaluator reasoning)
+ *   bun run eval:matching -- --report path.json # ...to a specific path
  *
  * Requires OPENROUTER_API_KEY (loaded via --env-file=.env.test in the package script).
  * Exits non-zero when a regression vs the committed baseline is detected.
@@ -25,6 +27,7 @@ import {
   formatConsole,
   readBaseline,
   writeBaseline,
+  writeRunReport,
 } from "./matching.reporter.js";
 import type { CaseResult } from "./matching.types.js";
 
@@ -38,6 +41,11 @@ function arg(flag: string): string | undefined {
 function has(flag: string): boolean {
   return process.argv.includes(flag);
 }
+/** A flag's value only when it's a real value, not the next flag (e.g. `--report --runs`). */
+function flagValue(flag: string): string | undefined {
+  const v = arg(flag);
+  return v && !v.startsWith("--") ? v : undefined;
+}
 
 async function main(): Promise<void> {
   const runs = Number(arg("--runs") ?? 3);
@@ -48,6 +56,7 @@ async function main(): Promise<void> {
   const ruleFilter = arg("--rule");
   const updateBaseline = has("--update-baseline");
   const noJudge = has("--no-judge");
+  const report = has("--report");
 
   const judge: Judge = noJudge
     ? async () => true
@@ -88,6 +97,14 @@ async function main(): Promise<void> {
   if (updateBaseline) {
     await writeBaseline(BASELINE_PATH, scorecard);
     console.log(`\nBaseline updated at ${BASELINE_PATH}`);
+  }
+
+  if (report) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const reportPath =
+      flagValue("--report") ?? path.resolve(import.meta.dir, "runs", `${stamp}.json`);
+    await writeRunReport(reportPath, scorecard);
+    console.log(`\nRun report written to ${reportPath}`);
   }
 
   process.exit(regressions.length > 0 ? 1 : 0);

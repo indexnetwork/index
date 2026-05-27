@@ -126,9 +126,33 @@ export async function readBaseline(path: string): Promise<Scorecard | null> {
 /**
  * Writes a scorecard to disk as a formatted JSON baseline file.
  *
+ * Per-candidate `reasoning` is stripped from each run before writing: the baseline
+ * is a diff target, and verbose model reasoning would make every `--update-baseline`
+ * a noisy diff. The full reasoning lives in the run report instead ({@link writeRunReport}).
+ *
  * @param path - Absolute or relative path to write to (created or overwritten).
  * @param sc - The scorecard to persist.
  */
 export async function writeBaseline(path: string, sc: Scorecard): Promise<void> {
+  const lean: Scorecard = {
+    ...sc,
+    cases: sc.cases.map((c) => ({
+      ...c,
+      runResults: c.runResults.map(({ candidates: _candidates, ...rest }) => rest),
+    })),
+  };
+  await Bun.write(path, JSON.stringify(lean, null, 2) + "\n");
+}
+
+/**
+ * Writes a full run report to disk: the scorecard *including* each run's
+ * per-candidate `reasoning`. This is the explanatory artifact a reviewer or the
+ * matching-eval report skill reads to see the evaluator's own justification for
+ * every score. Written on demand via the `--report` flag; never committed.
+ *
+ * @param path - Absolute or relative path to write to. Parent dirs are created.
+ * @param sc - The scorecard to persist, with candidate reasoning intact.
+ */
+export async function writeRunReport(path: string, sc: Scorecard): Promise<void> {
   await Bun.write(path, JSON.stringify(sc, null, 2) + "\n");
 }

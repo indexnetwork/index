@@ -57,3 +57,8 @@ node_modules/
 # Generated skills (local workspace dev output)
 # ===================
 /skills/**/SKILL.md
+
+# ===================
+# Matching eval run reports (ephemeral; --report output)
+# ===================
+packages/protocol/eval/matching/runs/

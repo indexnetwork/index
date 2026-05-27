@@ -45,9 +45,32 @@ export interface AssertionResult {
   detail: string;
 }
 
+/**
+ * The evaluator's actual output for one expected candidate in one run, including
+ * the model's own verbatim reasoning. This is the raw "why" behind a score —
+ * the fuel for explanatory run reports. Captured per run; omitted from the
+ * committed baseline (see {@link RunResult.candidates}).
+ */
+export interface CandidateOutcome {
+  candidateId: string;
+  /** Did an opportunity for this candidate surface with a score > 0? */
+  matched: boolean;
+  score: number;
+  /** Valency role assigned to this candidate when matched. */
+  role?: Role;
+  /** The evaluator's own natural-language justification for this candidate, verbatim. */
+  reasoning: string;
+}
+
 export interface RunResult {
   passed: boolean;
   assertions: AssertionResult[];
+  /**
+   * The evaluator's per-candidate output incl. reasoning. Present in run reports
+   * (written via `--report`), stripped from the committed baseline to keep diffs
+   * lean. Optional so a baseline loaded without it remains a valid RunResult.
+   */
+  candidates?: CandidateOutcome[];
 }
 
 export interface CaseResult {

@@ -4,6 +4,7 @@ import type {
   MatchingCase,
   CandidateExpectation,
   AssertionResult,
+  CandidateOutcome,
   RunResult,
   CaseResult,
 } from "./matching.types.js";
@@ -24,11 +25,20 @@ async function scoreExpectation(
   exp: CandidateExpectation,
   opportunities: EvaluatedOpportunityWithActors[],
   judge: Judge,
-): Promise<AssertionResult[]> {
+): Promise<{ assertions: AssertionResult[]; outcome: CandidateOutcome }> {
   const out: AssertionResult[] = [];
   const opp = findOpportunity(exp.candidateId, opportunities);
   const matched = opp !== undefined && opp.score > 0;
   const effectiveScore = opp ? opp.score : 0;
+  const role =
+    opp && opp.score > 0 ? opp.actors.find((a) => a.userId === exp.candidateId)?.role : undefined;
+  const outcome: CandidateOutcome = {
+    candidateId: exp.candidateId,
+    matched,
+    score: effectiveScore,
+    ...(role ? { role } : {}),
+    reasoning: opp?.reasoning ?? "",
+  };
 
   out.push({
     kind: "match",
@@ -70,7 +80,7 @@ async function scoreExpectation(
     });
   }
 
-  return out;
+  return { assertions: out, outcome };
 }
 
 /**
@@ -86,9 +96,10 @@ export async function scoreRun(
   opportunities: EvaluatedOpportunityWithActors[],
   judge: Judge,
 ): Promise<RunResult> {
-  const nested = await Promise.all(c.expect.map((exp) => scoreExpectation(exp, opportunities, judge)));
-  const assertions = nested.flat();
-  return { passed: assertions.every((a) => a.passed), assertions };
+  const graded = await Promise.all(c.expect.map((exp) => scoreExpectation(exp, opportunities, judge)));
+  const assertions = graded.flatMap((g) => g.assertions);
+  const candidates = graded.map((g) => g.outcome);
+  return { passed: assertions.every((a) => a.passed), assertions, candidates };
 }
 
 /**

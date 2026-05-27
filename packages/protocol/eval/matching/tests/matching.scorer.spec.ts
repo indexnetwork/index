@@ -78,6 +78,36 @@ describe("scoreRun", () => {
     const res = await scoreRun(noCriteria, [opp("cand", 90)], failJudge);
     expect(res.assertions.some((a) => a.kind === "reasoning")).toBe(false);
   });
+
+  it("captures each candidate's outcome with the evaluator's verbatim reasoning", async () => {
+    const c = baseCase([{ candidateId: "cand", match: true, scoreBand: [70, 100], role: "agent" }]);
+    const evaluated: EvaluatedOpportunityWithActors = {
+      reasoning: "Strong complementary fit on ML infrastructure.",
+      score: 88,
+      actors: [
+        { userId: "src", role: "patient", intentId: null },
+        { userId: "cand", role: "agent", intentId: null },
+      ],
+    };
+    const res = await scoreRun(c, [evaluated], passJudge);
+    expect(res.candidates).toHaveLength(1);
+    const outcome = res.candidates![0];
+    expect(outcome.candidateId).toBe("cand");
+    expect(outcome.matched).toBe(true);
+    expect(outcome.score).toBe(88);
+    expect(outcome.role).toBe("agent");
+    expect(outcome.reasoning).toBe("Strong complementary fit on ML infrastructure.");
+  });
+
+  it("records an absent candidate as not matched, no role, empty reasoning", async () => {
+    const c = baseCase([{ candidateId: "cand", match: false, scoreBand: [0, 30] }]);
+    const res = await scoreRun(c, [], passJudge);
+    const outcome = res.candidates![0];
+    expect(outcome.matched).toBe(false);
+    expect(outcome.score).toBe(0);
+    expect(outcome.role).toBeUndefined();
+    expect(outcome.reasoning).toBe("");
+  });
 });
 
 describe("scoreCase", () => {
