@@ -415,7 +415,7 @@ export interface UpdateIndexSettingsData {
 // HYDE DOCUMENT TYPES (Opportunity Redesign)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type HydeSourceType = 'intent' | 'profile' | 'query';
+export type HydeSourceType = 'intent' | 'profile' | 'query' | 'context';
 
 export interface HydeDocument {
   id: string;
@@ -2041,6 +2041,8 @@ export type OpportunityGraphDatabase = Pick<
   | 'getUserContext'
   | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
+  // HyDE documents for context-to-intent HyDE search
+  | 'getHydeDocumentsForSource'
 > & Pick<
   NegotiationQueries,
   // Orphan heal: check if a prior negotiating opportunity has a stale task

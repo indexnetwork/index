@@ -301,8 +301,9 @@ export class OpportunityGraphFactory {
               ? await this.database.getUserContexts(discoveryUserId)
               : [];
             const sourceContexts = rawContexts
-              .filter((c: { networkId: string; embedding: number[] | null }) => c.embedding && c.embedding.length > 0 && userNetworkIds.includes(c.networkId as Id<'networks'>))
-              .map((c: { networkId: string; embedding: number[] | null }) => ({
+              .filter((c: { id: string; networkId: string; embedding: number[] | null }) => c.embedding && c.embedding.length > 0 && userNetworkIds.includes(c.networkId as Id<'networks'>))
+              .map((c: { id: string; networkId: string; embedding: number[] | null }) => ({
+                contextId: c.id,
                 networkId: c.networkId as Id<'networks'>,
                 embedding: c.embedding!,
               }));
@@ -984,8 +985,10 @@ export class OpportunityGraphFactory {
           }
 
           /**
-           * Context-to-intent discovery: searches intents using user context embeddings.
-           * Restores the profile->intent cross-search deleted when Path B was removed.
+           * Context-to-intent discovery: searches intents using context HyDE embeddings.
+           * When HyDE documents exist for a context, uses optimised hypothetical-document
+           * embeddings via searchWithHydeEmbeddings. Falls back to raw context embedding
+           * via searchIntentsByContextEmbedding when no HyDE docs are available.
            */
           async function runContextToIntentDiscovery(): Promise<CandidateMatch[]> {
             if (!state.sourceContexts?.length) return [];
@@ -1000,33 +1003,61 @@ export class OpportunityGraphFactory {
               targetNetworks: targetNetworkIds.length,
             });
 
-            const searchResults = await Promise.all(
-              state.sourceContexts
-                .filter(ctx => targetNetworkIds.includes(ctx.networkId))
-                .map(ctx =>
-                  self.database.searchIntentsByContextEmbedding({
-                    embedding: ctx.embedding,
-                    networkIds: [ctx.networkId],
-                    excludeUserId: discoveryUserId,
-                    limit: 20,
-                    minScore: minScore,
-                  })
-                )
-            );
-
             const contextCandidates: CandidateMatch[] = [];
-            for (const results of searchResults) {
-              for (const r of results) {
-                contextCandidates.push({
-                  candidateUserId: r.userId as Id<'users'>,
-                  candidateIntentId: r.intentId as Id<'intents'>,
-                  networkId: r.networkId as Id<'networks'>,
-                  similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
-                  lens: 'context_match',
-                  candidatePayload: r.payload ?? '',
-                  candidateSummary: r.summary ?? undefined,
-                  discoverySource: 'context-to-intent',
+
+            for (const ctx of state.sourceContexts.filter(c => targetNetworkIds.includes(c.networkId))) {
+              // Attempt HyDE-enhanced search first
+              const hydeDocs = await self.database.getHydeDocumentsForSource('context', ctx.contextId);
+              const lensEmbeddings: LensEmbedding[] = hydeDocs
+                .filter(d => d.hydeEmbedding?.length > 0)
+                .map(d => ({
+                  lens: d.strategy,
+                  corpus: (d.targetCorpus === 'intents' ? 'intents' : d.targetCorpus === 'premises' ? 'premises' : 'intents') as 'intents' | 'premises' | 'profiles',
+                  embedding: d.hydeEmbedding,
+                }));
+
+              if (lensEmbeddings.length > 0) {
+                // HyDE-enhanced search: same path as query HyDE, scoped to this context's network
+                const results = await self.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
+                  indexScope: [ctx.networkId],
+                  excludeUserId: discoveryUserId,
+                  limitPerStrategy: limitPerStrategy,
+                  limit: 20,
+                  minScore,
                 });
+                for (const r of results.filter(r => r.type === 'intent')) {
+                  contextCandidates.push({
+                    candidateUserId: r.userId as Id<'users'>,
+                    candidateIntentId: r.id as Id<'intents'>,
+                    networkId: ctx.networkId,
+                    similarity: r.score,
+                    lens: r.matchedVia,
+                    candidatePayload: '',
+                    candidateSummary: undefined,
+                    discoverySource: 'context-to-intent',
+                  });
+                }
+              } else {
+                // Fallback: raw context embedding search (no HyDE docs yet)
+                const results = await self.database.searchIntentsByContextEmbedding({
+                  embedding: ctx.embedding,
+                  networkIds: [ctx.networkId],
+                  excludeUserId: discoveryUserId,
+                  limit: 20,
+                  minScore: minScore,
+                });
+                for (const r of results) {
+                  contextCandidates.push({
+                    candidateUserId: r.userId as Id<'users'>,
+                    candidateIntentId: r.intentId as Id<'intents'>,
+                    networkId: r.networkId as Id<'networks'>,
+                    similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
+                    lens: 'context_match',
+                    candidatePayload: r.payload ?? '',
+                    candidateSummary: r.summary ?? undefined,
+                    discoverySource: 'context-to-intent',
+                  });
+                }
               }
             }
 

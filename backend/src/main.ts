@@ -74,9 +74,11 @@ import { premiseQueue } from './queues/premise.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { NegotiationGraphFactory, UserContextGenerator } from '@indexnetwork/protocol';
+import { NegotiationGraphFactory, UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
-import { embedderAdapter } from './adapters/embedder.adapter';
+import { EmbedderAdapter, embedderAdapter } from './adapters/embedder.adapter';
+import { RedisCacheAdapter } from './adapters/cache.adapter';
 import { agentService } from './services/agent.service';
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 
@@ -199,13 +201,34 @@ async function generateUserContexts(userId: string): Promise<void> {
         networkTitle: network.title,
       });
 
-      await chatDatabaseAdapter.upsertUserContext({
+      const upserted = await chatDatabaseAdapter.upsertUserContext({
         userId,
         networkId,
         text: result.text,
         embedding: result.embedding,
         premiseHash,
       });
+
+      // Generate HyDE documents for the context so context-to-intent discovery
+      // uses optimised hypothetical-document embeddings rather than raw paragraph vectors.
+      try {
+        const hydeEmbedder = new EmbedderAdapter();
+        const hydeCache = new RedisCacheAdapter();
+        const inferrer = new LensInferrer();
+        const generator = new HydeGenerator();
+        const graphDb = chatDatabaseAdapter as unknown as HydeGraphDatabase;
+        const hydeGraph = new HydeGraphFactory(graphDb, hydeEmbedder, hydeCache, inferrer, generator).createGraph();
+        await hydeGraph.invoke({
+          sourceType: 'context' as const,
+          sourceId: upserted.id,
+          sourceText: result.text,
+          forceRegenerate: false,
+          maxLenses: 3,
+        });
+        log.job.from('UserContext').verbose('Generated context HyDE documents', { userId, networkId, contextId: upserted.id });
+      } catch (hydeErr) {
+        log.job.from('UserContext').error('Failed to generate context HyDE', { userId, networkId, error: hydeErr });
+      }
 
       log.job.from('UserContext').verbose('Generated user context', { userId, networkId });
     } catch (err) {

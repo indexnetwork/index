@@ -193,7 +193,7 @@ interface NetworkMembershipRow {
 const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions, userSocials, userContexts } = schema;
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
-type HydeSourceTypeLocal = 'intent' | 'profile' | 'query';
+type HydeSourceTypeLocal = 'intent' | 'profile' | 'query' | 'context';
 interface HydeDocumentRow {
   id: string;
   sourceType: HydeSourceTypeLocal;

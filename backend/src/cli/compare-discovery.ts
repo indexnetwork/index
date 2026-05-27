@@ -130,10 +130,11 @@ async function getProfileEmbedding(userId: string): Promise<number[] | null> {
   return Array.isArray(emb) ? emb as number[] : null;
 }
 
-/** Get context embedding for a user in a specific network. */
+/** Get context HyDE embedding for a user in a specific network (falls back to raw context embedding). */
 async function getContextEmbedding(userId: string, networkId: string): Promise<number[] | null> {
-  const rows = await db
-    .select({ embedding: schema.userContexts.embedding })
+  // First, get the context record to find its ID
+  const contextRows = await db
+    .select({ id: schema.userContexts.id, embedding: schema.userContexts.embedding })
     .from(schema.userContexts)
     .where(and(
       eq(schema.userContexts.userId, userId),
@@ -141,9 +142,27 @@ async function getContextEmbedding(userId: string, networkId: string): Promise<n
     ))
     .limit(1);
 
-  if (rows.length === 0 || !rows[0].embedding) return null;
-  const emb = rows[0].embedding;
-  return Array.isArray(emb) ? emb as number[] : null;
+  if (contextRows.length === 0) return null;
+  const contextId = contextRows[0].id;
+
+  // Try to get a HyDE embedding for this context (optimised hypothetical-document vector)
+  const hydeRows = await db
+    .select({ hydeEmbedding: schema.hydeDocuments.hydeEmbedding })
+    .from(schema.hydeDocuments)
+    .where(and(
+      eq(schema.hydeDocuments.sourceType, 'context'),
+      eq(schema.hydeDocuments.sourceId, contextId),
+    ))
+    .limit(1);
+
+  if (hydeRows.length > 0 && hydeRows[0].hydeEmbedding) {
+    const emb = hydeRows[0].hydeEmbedding;
+    return Array.isArray(emb) ? emb as number[] : null;
+  }
+
+  // Fallback to raw context embedding
+  const emb = contextRows[0].embedding;
+  return emb && Array.isArray(emb) ? emb as number[] : null;
 }
 
 // ---------------------------------------------------------------------------
