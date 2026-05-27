@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
-import Footer from "@/app/landing-v5/Footer";
-import "@/app/landing-v5/landing-v5.css";
-import "./about-v5.css";
+import Nav, { ensureLandingFonts } from "@/app/landing/Nav";
+import Footer from "@/app/landing/Footer";
+import "@/app/landing/landing.css";
+import "./about.css";
 
 type Person = { name: string; href: string };
 
@@ -55,11 +55,11 @@ function PersonList({ kind, items }: { kind: string; items: Person[] }) {
 
 function AboutPage() {
   useEffect(() => {
-    ensureLandingV5Fonts();
+    ensureLandingFonts();
   }, []);
 
   return (
-    <div className="landing-v5 about-v5">
+    <div className="landing about">
       <div className="hero h1 page-hero">
         <div className="canvas-area">
           <Nav />

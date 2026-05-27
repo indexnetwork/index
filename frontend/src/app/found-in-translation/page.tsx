@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import Nav, { ensureLandingV5Fonts } from '@/app/landing-v5/Nav';
-import Footer from '@/app/landing-v5/Footer';
-import '@/app/landing-v5/landing-v5.css';
+import Nav, { ensureLandingFonts } from '@/app/landing/Nav';
+import Footer from '@/app/landing/Footer';
+import '@/app/landing/landing.css';
 import { apiUrl } from '@/lib/api';
 
 // ── Found in Translation -1: Superstudio / Continuous Monument ──
@@ -847,25 +847,25 @@ export default function FoundInTranslationPage() {
   const WRAP: React.CSSProperties = { maxWidth: 720, margin: '0 auto', padding: '0 2rem' };
 
   useEffect(() => {
-    ensureLandingV5Fonts();
+    ensureLandingFonts();
   }, []);
 
   return (
-    <div ref={pageRef} className="landing-v5" style={{ background: PALETTE.bg, color: PALETTE.cream, minHeight: '100vh', overflowX: 'hidden', fontFamily: SANS }}>
+    <div ref={pageRef} className="landing" style={{ background: PALETTE.bg, color: PALETTE.cream, minHeight: '100vh', overflowX: 'hidden', fontFamily: SANS }}>
       <style>{KF}</style>
 
       {isWaitlistOpen && (
         <div
-          className="lv5-modal"
+          className="landing-modal"
           role="dialog"
           aria-modal="true"
           onClick={() => waitlistStatus !== 'loading' && setIsWaitlistOpen(false)}
         >
-          <div className="lv5-modal-backdrop" aria-hidden="true" />
-          <div className="lv5-modal-card" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+          <div className="landing-modal-backdrop" aria-hidden="true" />
+          <div className="landing-modal-card" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              className="lv5-modal-close"
+              className="landing-modal-close"
               onClick={() => setIsWaitlistOpen(false)}
               disabled={waitlistStatus === 'loading'}
               aria-label="Close"
@@ -873,12 +873,12 @@ export default function FoundInTranslationPage() {
               ×
             </button>
             {waitlistStatus === 'success' ? (
-              <div className="lv5-modal-success">
-                <h3 className="lv5-modal-title">you&apos;re on the list</h3>
-                <p className="lv5-modal-lede">Check your inbox for your welcome email.</p>
+              <div className="landing-modal-success">
+                <h3 className="landing-modal-title">you&apos;re on the list</h3>
+                <p className="landing-modal-lede">Check your inbox for your welcome email.</p>
                 <button
                   type="button"
-                  className="lv5-modal-submit"
+                  className="landing-modal-submit"
                   onClick={() => { setIsWaitlistOpen(false); setWaitlistStatus('idle'); setWaitlistForm({ name: '', email: '', whatYouDo: '', whoToMeet: '' }); }}
                 >
                   Close
@@ -886,55 +886,55 @@ export default function FoundInTranslationPage() {
               </div>
             ) : (
               <>
-                <h3 className="lv5-modal-title">join the waitlist</h3>
-                <p className="lv5-modal-lede">
+                <h3 className="landing-modal-title">join the waitlist</h3>
+                <p className="landing-modal-lede">
                   Tell us a bit about yourself — we&rsquo;ll let you know when we&rsquo;re live and keep you posted on updates.
                 </p>
-                <form onSubmit={handleWaitlistSubmit} className="lv5-modal-form">
-                  <label className="lv5-modal-label" htmlFor="fit-waitlist-name">
-                    Name<span className="lv5-modal-req">*</span>
+                <form onSubmit={handleWaitlistSubmit} className="landing-modal-form">
+                  <label className="landing-modal-label" htmlFor="fit-waitlist-name">
+                    Name<span className="landing-modal-req">*</span>
                   </label>
                   <input
                     type="text"
                     id="fit-waitlist-name"
-                    className="lv5-modal-input"
+                    className="landing-modal-input"
                     value={waitlistForm.name}
                     onChange={(e) => setWaitlistForm({ ...waitlistForm, name: e.target.value })}
                     required
                     disabled={waitlistStatus === 'loading'}
                   />
 
-                  <label className="lv5-modal-label" htmlFor="fit-waitlist-email" style={{ marginTop: 10 }}>
-                    Email<span className="lv5-modal-req">*</span>
+                  <label className="landing-modal-label" htmlFor="fit-waitlist-email" style={{ marginTop: 10 }}>
+                    Email<span className="landing-modal-req">*</span>
                   </label>
                   <input
                     type="email"
                     id="fit-waitlist-email"
-                    className="lv5-modal-input"
+                    className="landing-modal-input"
                     value={waitlistForm.email}
                     onChange={(e) => setWaitlistForm({ ...waitlistForm, email: e.target.value })}
                     required
                     disabled={waitlistStatus === 'loading'}
                   />
 
-                  <label className="lv5-modal-label" htmlFor="fit-waitlist-whatYouDo" style={{ marginTop: 10 }}>
+                  <label className="landing-modal-label" htmlFor="fit-waitlist-whatYouDo" style={{ marginTop: 10 }}>
                     What do you do?
                   </label>
                   <input
                     type="text"
                     id="fit-waitlist-whatYouDo"
-                    className="lv5-modal-input"
+                    className="landing-modal-input"
                     value={waitlistForm.whatYouDo}
                     onChange={(e) => setWaitlistForm({ ...waitlistForm, whatYouDo: e.target.value })}
                     disabled={waitlistStatus === 'loading'}
                   />
 
-                  <label className="lv5-modal-label" htmlFor="fit-waitlist-whoToMeet" style={{ marginTop: 10 }}>
+                  <label className="landing-modal-label" htmlFor="fit-waitlist-whoToMeet" style={{ marginTop: 10 }}>
                     Who do you want to meet?
                   </label>
                   <textarea
                     id="fit-waitlist-whoToMeet"
-                    className="lv5-modal-input"
+                    className="landing-modal-input"
                     style={{ resize: 'vertical', minHeight: 80 }}
                     value={waitlistForm.whoToMeet}
                     onChange={(e) => setWaitlistForm({ ...waitlistForm, whoToMeet: e.target.value })}
@@ -943,12 +943,12 @@ export default function FoundInTranslationPage() {
                   />
 
                   {waitlistStatus === 'error' && (
-                    <p className="lv5-modal-error">Something went wrong. Please try again.</p>
+                    <p className="landing-modal-error">Something went wrong. Please try again.</p>
                   )}
 
                   <button
                     type="submit"
-                    className="lv5-modal-submit"
+                    className="landing-modal-submit"
                     disabled={waitlistStatus === 'loading'}
                   >
                     {waitlistStatus === 'loading' ? 'Submitting…' : 'Join the waitlist'}

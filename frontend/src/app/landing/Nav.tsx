@@ -99,7 +99,7 @@ export default function Nav() {
   return (
     <nav className="nav" aria-label="primary">
       <Link className="logo" to="/" aria-label="Index Network">
-        <img src="/landing-v5/index-wordmark.svg" alt="Index Network" />
+        <img src="/landing/index-wordmark.svg" alt="Index Network" />
       </Link>
       <div className="right">
         <Link className="link" to="/blog">Blog</Link>
@@ -117,7 +117,7 @@ export default function Nav() {
   );
 }
 
-export function ensureLandingV5Fonts() {
+export function ensureLandingFonts() {
   if (typeof document === "undefined") return;
   const fontHref =
     "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Public+Sans:wght@300;400;500;600&display=swap";

@@ -30,38 +30,38 @@ export default function Footer() {
   };
 
   return (
-    <footer className="lv5-footer" aria-label="footer">
-      <div className="lv5-footer-inner">
-        <div className="lv5-footer-left">
-          <nav className="lv5-footer-nav" aria-label="footer nav">
+    <footer className="landing-footer" aria-label="footer">
+      <div className="landing-footer-inner">
+        <div className="landing-footer-left">
+          <nav className="landing-footer-nav" aria-label="footer nav">
             <Link to="/">Home</Link>
             <Link to="/blog">Blog</Link>
             <Link to="/about">About</Link>
             <Link to="/pages/privacy-policy">Privacy</Link>
             <Link to="/pages/terms-of-use">Terms</Link>
           </nav>
-          <p className="lv5-footer-copy">
+          <p className="landing-footer-copy">
             © Index Network Inc. {new Date().getFullYear()}
           </p>
         </div>
 
-        <div className="lv5-footer-right">
-          <div className="lv5-footer-subscribe-wrap">
+        <div className="landing-footer-right">
+          <div className="landing-footer-subscribe-wrap">
             {status === "success" ? (
-              <p className="lv5-footer-status is-success">
+              <p className="landing-footer-status is-success">
                 You&rsquo;re in — we&rsquo;ll keep you posted on what&rsquo;s new.
               </p>
             ) : (
               <>
                 <form
                   id="subscribe"
-                  className="lv5-footer-form"
+                  className="landing-footer-form"
                   onSubmit={handleSubmit}
                   noValidate
                 >
                   <input
                     type="email"
-                    className="lv5-footer-input"
+                    className="landing-footer-input"
                     placeholder="Enter your email"
                     value={email}
                     onChange={(e) => {
@@ -74,14 +74,14 @@ export default function Footer() {
                   />
                   <button
                     type="submit"
-                    className="lv5-footer-subscribe"
+                    className="landing-footer-subscribe"
                     disabled={status === "loading"}
                   >
                     {status === "loading" ? "…" : "Subscribe"}
                   </button>
                 </form>
                 {status === "error" && (
-                  <p className="lv5-footer-status is-error">
+                  <p className="landing-footer-status is-error">
                     Something went wrong. Please try again.
                   </p>
                 )}
@@ -89,7 +89,7 @@ export default function Footer() {
             )}
           </div>
 
-          <div className="lv5-footer-social" aria-label="social links">
+          <div className="landing-footer-social" aria-label="social links">
             <a
               href="https://x.com/indexnetwork_"
               target="_blank"

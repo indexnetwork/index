@@ -1,11 +1,11 @@
 import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
 import ChatContent from "@/components/ChatContent";
-import LandingV5Page from "@/app/landing-v5/page";
+import LandingPage from "@/app/landing/page";
 
 /**
  * Root route. Renders the chat/discovery app for authenticated users and the
- * public landing page (landing-v5) for guests.
+ * public landing page (landing) for guests.
  *
  * AuthContext only mounts route children once auth has settled (it shows a
  * loading screen while pending) and already redirects authenticated-but-not-
@@ -22,7 +22,7 @@ function RootPage() {
     );
   }
 
-  return <LandingV5Page />;
+  return <LandingPage />;
 }
 
 export default RootPage;

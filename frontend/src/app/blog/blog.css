@@ -1,11 +1,11 @@
-/* blog-v5 — list + post styling on the landing-v5 palette */
+/* blog — list + post styling on the landing palette */
 
-.landing-v5.blog-v5 { min-height: 100vh; background: var(--bg); }
+.landing.blog { min-height: 100vh; background: var(--bg); }
 
 /* Blog hero — text only, text takes 2/3 width, no divider */
-.landing-v5.blog-v5 .h1 .hero-split { grid-template-columns: 2fr 1fr; }
-.landing-v5.blog-v5 .h1 .well { border-right: 0; }
-.landing-v5.blog-v5 .h1 .display { max-width: none; }
+.landing.blog .h1 .hero-split { grid-template-columns: 2fr 1fr; }
+.landing.blog .h1 .well { border-right: 0; }
+.landing.blog .h1 .display { max-width: none; }
 
 .blog-list-section { border-top: 0; padding-top: 80px; }
 

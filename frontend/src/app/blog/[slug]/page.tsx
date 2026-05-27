@@ -3,11 +3,11 @@ import { Link, useParams } from "react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { visit } from "unist-util-visit";
 import type { Root } from "hast";
-import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
-import Footer from "@/app/landing-v5/Footer";
+import Nav, { ensureLandingFonts } from "@/app/landing/Nav";
+import Footer from "@/app/landing/Footer";
 import { type BlogPost, getPostBySlug } from "@/lib/blog";
-import "@/app/landing-v5/landing-v5.css";
-import "../blog-v5.css";
+import "@/app/landing/landing.css";
+import "../blog.css";
 
 function getAudioType(src: string): string {
   const ext = src.split(".").pop()?.toLowerCase();
@@ -103,7 +103,7 @@ function BlogPostPage() {
   const [state, setState] = useState<PostState>({ kind: "loading" });
 
   useEffect(() => {
-    ensureLandingV5Fonts();
+    ensureLandingFonts();
   }, []);
 
   useEffect(() => {
@@ -119,7 +119,7 @@ function BlogPostPage() {
   }, [slug]);
 
   return (
-    <div className="landing-v5 blog-v5 blog-post">
+    <div className="landing blog blog-post">
       <div className="hero h1 page-hero post-nav-only">
         <div className="canvas-area">
           <Nav />
