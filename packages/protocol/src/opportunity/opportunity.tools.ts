@@ -377,7 +377,7 @@ export function buildOpportunityPresentation(
       ? `For each card that has an acceptUrl, embed it on a short verb phrase (e.g. "message [Name]" for connection, "make intro" for connector-flow). For each card that has a profileUrl, link the person's name to it. Some cards may have neither — render those as plain text and never fabricate URLs for them. The acceptUrl is opaque and self-contained — embed it verbatim. Do NOT append, encode, or modify any part of any URL. Never render link strips or tables — weave URLs into prose. `
       : "";
     const idInstructions = hasOpportunityIds
-      ? `Use opportunityId values only when calling update_opportunity (send/accept/reject).`
+      ? `Use opportunityId values only when calling update_opportunity (send/accept/reject) or confirm_opportunity_delivery.`
       : "";
     return (
       `${opts.leadIn}\n\n${prose}\n\n` +
