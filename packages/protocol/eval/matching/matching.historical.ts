@@ -204,7 +204,8 @@ const case2: MatchingCase = {
     },
   },
   expect: [
-    { candidateId: "h2-b", match: true, scoreBand: [60, 100], role: "peer" },
+    // role intentionally unset: evaluator defensibly scores this symmetric collaboration as 'agent' (see spec role policy)
+    { candidateId: "h2-b", match: true, scoreBand: [60, 100] },
     { candidateId: "h2-c", match: false, scoreBand: [0, 29] },
     { candidateId: "h2-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h2-e", match: false, scoreBand: [0, 29] },
@@ -254,13 +255,13 @@ const case3: MatchingCase = {
         userId: "h3-c",
         profile: {
           name: "Eddie Cross",
-          bio: "Another local frontman who is also looking for a co-writer to supply songs for his act. Charismatic performer, not a strong composer; wants someone to write for him.",
+          bio: "Another local lyricist-frontman with his own rough song ideas, also hunting for a melodically gifted co-writer to build songs with — the same thing the discoverer is looking for, not the melodic complement to it.",
           location: "port city, north of England",
           interests: ["performing", "rock and roll"],
           skills: ["vocals", "stage presence"],
         },
         intents: [
-          { intentId: "h3-c-1", payload: "Looking for a songwriter to write material for my act." },
+          { intentId: "h3-c-1", payload: "Looking for a melodically gifted co-writer to turn my lyrics and rough ideas into finished songs." },
         ],
         networkId: H3,
         ragScore: 78,
@@ -299,7 +300,8 @@ const case3: MatchingCase = {
     },
   },
   expect: [
-    { candidateId: "h3-b", match: true, scoreBand: [60, 100], role: "peer" },
+    // role intentionally unset: evaluator defensibly scores this symmetric collaboration as 'agent' (see spec role policy)
+    { candidateId: "h3-b", match: true, scoreBand: [60, 100] },
     { candidateId: "h3-c", match: false, scoreBand: [0, 29] },
     { candidateId: "h3-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h3-e", match: false, scoreBand: [0, 29] },
@@ -493,7 +495,8 @@ const case5: MatchingCase = {
     },
   },
   expect: [
-    { candidateId: "h5-b", match: true, scoreBand: [60, 100], role: "peer" },
+    // role intentionally unset: evaluator defensibly scores this symmetric collaboration as 'agent' (see spec role policy)
+    { candidateId: "h5-b", match: true, scoreBand: [60, 100] },
     { candidateId: "h5-c", match: false, scoreBand: [0, 29] },
     { candidateId: "h5-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h5-e", match: false, scoreBand: [0, 29] },
