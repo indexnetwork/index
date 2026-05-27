@@ -1,48 +1,118 @@
-import ClientLayout from "@/components/ClientLayout";
-import Footer from "@/components/Footer";
+import { useEffect } from "react";
+import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
+import Footer from "@/app/landing-v5/Footer";
+import "@/app/landing-v5/landing-v5.css";
+import "./about-v5.css";
 
-export default function AboutPage() {
+type Person = { name: string; href: string };
+
+const TEAM: Person[] = [
+  { name: "Seref Yarar", href: "https://x.com/hyperseref" },
+  { name: "Seren Sandikci", href: "https://x.com/serensandikci" },
+  { name: "Yanki Ekin Yuksel", href: "https://linkedin.com/in/yanekyuk" },
+  { name: "Vicky Gu", href: "https://linkedin.com/in/vickygu" },
+];
+
+const INVESTORS: Person[] = [
+  { name: "Frachtis", href: "https://frachtis.com" },
+  { name: "dlab", href: "https://dlab.vc" },
+  { name: "Blueyard", href: "https://blueyard.com" },
+  { name: "Consensys Mesh", href: "https://mesh.xyz" },
+  { name: "imToken", href: "https://imtoken.ventures/" },
+  { name: "SunDAO", href: "https://sundao.ventures/" },
+  { name: "Oak", href: "https://x.com/tannedoaksprout" },
+  { name: "Billy Luedtke", href: "https://x.com/0xbilly" },
+  {
+    name: "Kobby Chen",
+    href: "https://www.linkedin.com/in/zhehao-kobby-chen-8b6a92a5",
+  },
+];
+
+function PersonList({ kind, items }: { kind: string; items: Person[] }) {
   return (
-    <ClientLayout hideFeedback>
-      <div className="flex flex-col min-h-[calc(100vh-76px)]">
-        <main className="flex-1 flex flex-col justify-end px-6 lg:px-12 pb-[80px] font-sans text-[15px] text-black">
-          <div className="max-w-[960px] w-full mx-auto">
-          <div className="max-w-[560px]">
-            <h1 className="font-garamond text-3xl font-medium text-black mb-6">About us</h1>
-
-            <p className="leading-relaxed mb-2">
-              What if you could trust that the right opportunities will find you?
-            </p>
-            <p className="leading-relaxed mb-6">
-              We&apos;re building the protocol for it. Index is where agents match people based on mutual intents—or, shared dreams and schemes. We believe in an internet where your next move isn&apos;t dependent on having a polished brand, and where you can be ambiently optimistic about social discovery.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-4">
-            <div>
-              <h2 className="font-garamond text-xl font-medium text-black mb-1">Team</h2>
-              <p><a href="https://x.com/hyperseref" target="_blank" rel="noopener noreferrer" className="underline">Seref Yarar</a>, <a href="https://x.com/serensandikci" target="_blank" rel="noopener noreferrer" className="underline">Seren Sandikci</a>, <a href="https://linkedin.com/in/yanekyuk" target="_blank" rel="noopener noreferrer" className="underline">Yanki Ekin Yuksel</a>, <a href="https://linkedin.com/in/vickygu" target="_blank" rel="noopener noreferrer" className="underline">Vicky Gu</a></p>
-            </div>
-
-            <div>
-              <h2 className="font-garamond text-xl font-medium text-black mb-1">Investors</h2>
-              <p><a href="https://frachtis.com" target="_blank" rel="noopener noreferrer" className="underline">Frachtis</a>, <a href="https://dlab.vc" target="_blank" rel="noopener noreferrer" className="underline">dlab</a>, <a href="https://blueyard.com" target="_blank" rel="noopener noreferrer" className="underline">Blueyard</a>, <a href="https://mesh.xyz" target="_blank" rel="noopener noreferrer" className="underline">Consensys Mesh</a>, <a href="https://imtoken.ventures/" target="_blank" rel="noopener noreferrer" className="underline">imToken</a>, <a href="https://sundao.ventures/" target="_blank" rel="noopener noreferrer" className="underline">SunDAO</a>, <a href="https://x.com/tannedoaksprout" target="_blank" rel="noopener noreferrer" className="underline">Oak</a>, <a href="https://x.com/0xbilly" target="_blank" rel="noopener noreferrer" className="underline">Billy Luedtke</a>, <a href="https://www.linkedin.com/in/zhehao-kobby-chen-8b6a92a5" target="_blank" rel="noopener noreferrer" className="underline">Kobby Chen</a></p>
-            </div>
-
-            <div>
-              <h2 className="font-garamond text-xl font-medium text-black mb-1">Join us</h2>
-              <p>
-                Email us at{" "}
-                <a href="mailto:hello@index.network" className="underline">hello@index.network</a>
-              </p>
-            </div>
-          </div>
-          </div>
-        </main>
-        <Footer />
+    <div className="about-roster-block">
+      <div className="about-roster-head">
+        <span className="about-roster-label">{kind}</span>
       </div>
-    </ClientLayout>
+      <p className="about-roster-line">
+        {items.map((p, i) => (
+          <span key={p.href}>
+            <a
+              className="about-link"
+              href={p.href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {p.name}
+            </a>
+            {i < items.length - 1 && <span className="about-roster-sep">, </span>}
+          </span>
+        ))}
+      </p>
+    </div>
   );
 }
 
+function AboutPage() {
+  useEffect(() => {
+    ensureLandingV5Fonts();
+  }, []);
+
+  return (
+    <div className="landing-v5 about-v5">
+      <div className="hero h1 page-hero">
+        <div className="canvas-area">
+          <Nav />
+          <div className="hero-split">
+            <div className="well">
+              <h1 className="display">
+                What if you could trust that the right opportunities will find
+                you?
+              </h1>
+              <p className="body-italic">
+                We&rsquo;re building the protocol for it. Index is where agents
+                match people based on mutual intents — or, shared dreams and
+                schemes. We believe in an internet where your next move
+                isn&rsquo;t dependent on having a polished brand, and where you
+                can be ambiently optimistic about social discovery.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section className="how about-roster">
+        <div className="how-inner">
+          <div className="about-roster-stack">
+            <PersonList kind="team" items={TEAM} />
+            <PersonList kind="investors" items={INVESTORS} />
+          </div>
+        </div>
+      </section>
+
+      <section className="how about-join">
+        <div className="how-inner">
+          <div className="how-head">
+            <span className="title">
+              <span className="arrow">›</span>say hello
+            </span>
+          </div>
+
+          <div className="about-join-body">
+            <p className="about-join-line">
+              <a className="acc" href="mailto:hello@index.network">
+                hello@index.network
+              </a>
+              <span className="cursor" aria-hidden="true" />
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <Footer />
+    </div>
+  );
+}
+
+export default AboutPage;
 export const Component = AboutPage;
