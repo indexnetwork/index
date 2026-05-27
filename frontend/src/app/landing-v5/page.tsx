@@ -315,7 +315,14 @@ function Hero() {
             </div>
           </div>
           <div className="hero-image">
-            <img src="/landing-v5/hero-index-v2.png" alt="" />
+            <video
+              src="/landing-v5/hero-index.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+              aria-hidden="true"
+            />
             <span className="scan" aria-hidden="true" />
           </div>
         </div>

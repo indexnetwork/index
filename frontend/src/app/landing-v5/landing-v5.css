@@ -30,7 +30,7 @@
 ============================================================ */
 .landing-v5 .hero {
   width: 100%;
-  min-height: 84vh;
+  min-height: 92vh;
   position: relative;
   overflow: hidden;
   background: var(--bg);
@@ -284,7 +284,7 @@
   border-bottom: 1px solid var(--rule);
 }
 .landing-v5 .h1 .well {
-  padding: 44px 56px;
+  padding: 80px 56px 44px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -313,7 +313,7 @@
   position: sticky;
   top: 0;
   align-self: start;
-  height: 84vh;
+  height: 92vh;
   overflow: hidden;
   background: var(--bg-deep);
 }
@@ -335,7 +335,8 @@
 
 .landing-v5 .post-nav-only .hero-split { display: none; }
 .landing-v5 .post-nav-only .canvas-area { display: block; }
-.landing-v5 .h1 .hero-image img {
+.landing-v5 .h1 .hero-image img,
+.landing-v5 .h1 .hero-image video {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -347,8 +348,8 @@
   will-change: transform;
 }
 @keyframes lv5-pan {
-  from { transform: scale(1.18) translate3d(0, -1%, 0); }
-  to   { transform: scale(1.22) translate3d(0, 1%, 0); }
+  from { transform: scale(0.86) translate3d(0, -1%, 0); }
+  to   { transform: scale(0.9) translate3d(0, 1%, 0); }
 }
 .landing-v5 .h1 .hero-image .scan {
   position: absolute;
