@@ -16,7 +16,8 @@
     "dev": "tsc --watch",
     "test": "bun test",
     "test:isolated": "bun scripts/test.ts",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "eval:matching": "bun --env-file=.env.test ./eval/matching/matching.eval.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.17",
