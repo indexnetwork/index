@@ -30,7 +30,8 @@ matching-eval report skill reads to explain *why* the evaluator scored as it did
 
 ## Layout
 
-- `matching.cases.ts` — the golden corpus (Tier 1 surgical, Tier 2 realistic). Add cases here.
+- `matching.cases.ts` — the golden corpus (Tier 1 surgical, Tier 2 realistic). Add Tier 1/2 cases here; it also spreads in the Tier 3 cases.
+- `matching.historical.ts` — Tier 3 historical-collaboration cases (see below). Add Tier 3 cases here.
 - `matching.personas.ts` — shared Tier-2 persona pool.
 - `matching.scorer.ts` / `matching.runner.ts` / `matching.reporter.ts` — pure-ish units, unit-tested in `tests/`.
 - `matching.eval.ts` — CLI.
