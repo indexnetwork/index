@@ -42,8 +42,13 @@ Append a `MatchingCase` to `CASES`. Set `match`, optional `scoreBand`, optional 
 best authored as minimal-pair perturbations of a positive. Re-run with `--update-baseline`
 after an intentional change.
 
-## Future (Tier 3)
+## Tier 3 — historical collaborations
 
-Recreate profiles for real successful collaborations (companies, papers) as they looked
-before the connection, and assert the protocol would have surfaced them. Additive — same
-`MatchingCase` schema.
+`matching.historical.ts` holds five anonymized real collaborations (e.g. complementary
+cofounders, co-researchers on a landmark paper, a songwriting duo, a first-check
+investor + founder, a cross-disciplinary expert + ML researcher), recreated as the people
+looked *before* they connected. Each case places the discoverer, the eventual partner, and
+three plausible contemporary distractors in one shared index, and asserts the evaluator
+surfaces the partner (band `[60, 100]`) while the distractors do not (`[0, 29]`). Names are
+anonymized so the model judges on fit, not fame; provenance lives in code comments. Run with
+`bun run eval:matching -- --rule historical`.
