@@ -10,7 +10,8 @@ export type Rule =
   | "query_primary"
   | "valency_role"
   | "score_calibration"
-  | "event_network";
+  | "event_network"
+  | "historical";
 
 export type Role = "agent" | "patient" | "peer";
 
@@ -30,7 +31,7 @@ export interface CandidateExpectation {
 export interface MatchingCase {
   id: string;
   rule: Rule;
-  tier: 1 | 2;
+  tier: 1 | 2 | 3;
   description: string;
   input: EvaluatorInput;
   expect: CandidateExpectation[];
