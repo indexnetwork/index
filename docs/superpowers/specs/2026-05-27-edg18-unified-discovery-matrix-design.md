@@ -11,7 +11,51 @@ Two root causes:
 
 1. **Missing premise graph injection.** `ProfileQueue.invokeProfileGraph()` creates `ProfileGraphFactory` without the premise graph dependency. The profile graph falls back to the legacy path (direct LLM generation) instead of decomposing enriched input into premises. Without premises, users have no embeddings and are invisible to discovery.
 
-2. **Profile-only discovery is limited to premise-to-premise.** Even after fixing the premise graph injection, the `FromProfile` discovery path only runs `runPremiseDiscovery()` — premise embeddings searching the premise corpus. It never searches the intent corpus. Users with premises but no intents can only be discovered by other users who also have premises, missing connections to existing members who have intents.
+2. **Profile-only discovery lost the intent search path when Path B was removed.** On May 25, the old `searchWithProfileEmbedding` (Path B) was removed. That method searched **two** corpora — profiles and intents — using a single profile embedding vector. It was replaced by premise-to-premise discovery, which searches only the premise corpus. The profile→intent cross-search was deleted with no premise-based equivalent, leaving a gap: users with premises but no intents cannot be matched against other users' intents.
+
+## Historical context
+
+### What Path B did (removed in `d7e7178`)
+
+The old profile-only discovery path used `searchWithProfileEmbedding()`, which ran two parallel searches:
+
+```
+searchWithProfileEmbedding(profileVector):
+  → searchProfilesByProfileEmbedding()  — profile embedding vs profile HyDE embeddings (cosine)
+  → searchIntentsByProfileEmbedding()   — profile embedding vs intent embeddings (cosine)
+  → mergeAndRankCandidates()            — dedup by user, boost multi-match, rank by score
+```
+
+One dense profile vector searched both profiles and intents. Fast (no LLM calls), broad recall. The `mergeAndRankCandidates` function boosted users found via multiple matches (+0.1 per additional match, capped at 1.0).
+
+### What replaced it
+
+- `searchIntentsByProfileEmbedding` → **deleted, no replacement.** This is the gap.
+- `searchProfilesByProfileEmbedding` → replaced by `runPremiseDiscovery()` (premise-to-premise cosine similarity via `searchPremisesBySimilarity`). Premises are the decomposed, atomic equivalent of what profile embeddings represented as a single vector.
+
+### What the HyDE path already covers
+
+The intent-triggered and query-triggered paths use `searchWithHydeEmbeddings`, which already searches both intents and premises for every lens:
+
+```
+searchWithHydeEmbeddings(lensEmbeddings):
+  → searchIntentsForHyde()    — HyDE embedding vs intent embeddings
+  → searchPremisesForHyde()   — HyDE embedding vs premise embeddings
+  → mergeAndRankCandidates()
+```
+
+The corpus hint from the LensInferrer routes limit allocation (preferred corpus gets full limit, others get half). `profiles` hints are remapped to `premises` (line 163 of embedder adapter: `le.corpus === 'profiles' ? 'premises' : le.corpus`).
+
+### The parity gap
+
+| Search path | Old system | Current system | Status |
+|---|---|---|---|
+| Profile → profiles | `searchProfilesByProfileEmbedding` | `runPremiseDiscovery` (premise→premise) | Replaced |
+| Profile → intents | `searchIntentsByProfileEmbedding` | *(nothing)* | **Missing** |
+| Intent/query → intents | `searchWithHydeEmbeddings` | `searchWithHydeEmbeddings` | Unchanged |
+| Intent/query → premises | *(didn't exist)* | `searchWithHydeEmbeddings` + `runPremiseDiscovery` | Improved |
+
+The new `premise-to-intent` strategy fills the missing row — using each premise embedding to search the intent corpus directly, restoring the cross-entity matching that `searchIntentsByProfileEmbedding` provided.
 
 ## Design
 
@@ -44,7 +88,9 @@ Two root causes:
 
 ### Phase 2: New database method — `searchIntentsByEmbedding`
 
-**Goal:** Enable direct cosine similarity search of intent embeddings using a raw embedding vector (no HyDE required).
+**Goal:** Restore the profile→intent cross-search that was lost when Path B was removed, using premise embeddings instead of the old profile embedding.
+
+**Precedent:** The old `searchIntentsByProfileEmbedding` (deleted in `ad8bd318a`) did exactly this — cosine similarity of a source embedding against the `intents` table, scoped by network via `intent_networks`, excluding the source user. The new method follows the same SQL pattern but lives on the `OpportunityGraphDatabase` interface (not the `Embedder`), consistent with where `searchPremisesBySimilarity` lives.
 
 **Interface addition** on `OpportunityGraphDatabase` (`packages/protocol/src/shared/interfaces/database.interface.ts`):
 
@@ -68,9 +114,9 @@ searchIntentsByEmbedding(params: {
 **Implementation** in `backend/src/adapters/database.adapter.ts`:
 - pgvector cosine similarity (`1 - (embedding <=> $1)`) against the `intents` table
 - Scoped to intents assigned to the given networks via `intent_networks`
-- Filter: `intents.status = 'ACTIVE'`, `intents.embedding IS NOT NULL`, `intents.user_id != excludeUserId`
-- Default `minScore`: 0.30 (same as existing HyDE search threshold)
-- Mirrors the existing `searchPremisesBySimilarity` pattern
+- Filter: `intents.status = 'ACTIVE'`, `intents.embedding IS NOT NULL`, `intents.user_id != excludeUserId`, `users.deletedAt IS NULL`
+- Default `minScore`: 0.30 (same as existing premise similarity and HyDE thresholds)
+- SQL pattern mirrors the existing `searchPremisesBySimilarity` and the deleted `searchIntentsByProfileEmbedding`
 
 ### Phase 3: Unified discovery matrix
 
@@ -89,8 +135,10 @@ The HyDE strategies (`hyde-to-intent`, `hyde-to-premise`) are controlled by the 
 #### Premise fan-out mode
 
 Controlled by `DISCOVERY_PREMISE_SEARCH_MODE` env var:
-- `individual` (default) — each premise embedding runs a separate search query. N premises = N searches against each target corpus. Higher recall, captures all facets.
-- `aggregate` — pool premise embeddings into a single representative vector (mean of all premise embeddings), then search once per target corpus. Fewer queries, lower recall.
+- `individual` (default) — each premise embedding runs a separate search query. N premises = N searches against each target corpus. Higher recall, captures all facets of the user's identity.
+- `aggregate` — pool premise embeddings into a single representative vector (mean of all premise embeddings), then search once per target corpus. Fewer queries, lower recall. Closer to the old single-profile-vector behavior.
+
+The `aggregate` mode is the direct analog of the old Path B: one vector, two corpora. The `individual` mode is strictly more powerful — it searches with each atomic assertion independently, capturing nuances that a single averaged vector would smooth out.
 
 #### Execution flow
 
@@ -116,6 +164,8 @@ discoveryNode:
      - Key: candidateUserId + networkId + entityId (intentId or premiseId)
      - Keep highest similarity per key
      - Track all matched strategies in matchedStrategies[] on the candidate
+     - Apply multi-strategy boost: +0.05 per additional strategy that found the same
+       candidate (mirrors the old mergeAndRankCandidates lens bonus, capped at 1.0)
 
   5. Return unified candidate pool → evaluation node
 ```
@@ -124,15 +174,15 @@ discoveryNode:
 
 - The `resolve` node still determines whether a trigger intent exists and loads intent context for the prep node.
 - The discovery node no longer branches on `discoverySource`. It checks what source vectors are available and runs all applicable strategies.
-- The `discoverySource` field on `CandidateMatch` is replaced with a more specific strategy tag (e.g., `'premise-to-premise'`, `'premise-to-intent'`, `'hyde'`).
+- The `discoverySource` field on `CandidateMatch` changes to a strategy tag (e.g., `'premise-to-premise'`, `'premise-to-intent'`, `'hyde'`).
 - The direct-connection fast path (when `targetUserId` is set) remains unchanged — it bypasses vector search entirely.
 
-#### Deduplication
+#### Deduplication and ranking
 
 When the same candidate entity (user + intent/premise + network) is found via multiple strategies:
 - Keep the match with the highest similarity score
 - Store all strategies that found this candidate in `matchedStrategies: string[]`
-- This is useful for evaluation context — a candidate found via both premise-to-premise AND premise-to-intent is a stronger signal
+- Apply a multi-strategy boost (+0.05 per additional strategy, capped at 1.0) — a candidate found via both premise-to-premise AND premise-to-intent is a stronger signal, similar to the old `mergeAndRankCandidates` lens bonus of +0.1
 
 #### Trace instrumentation
 
@@ -143,7 +193,7 @@ Each strategy emits a trace entry:
 
 The merged result emits a summary:
 ```
-{ node: "discovery", detail: "4 strategies → 28 raw, 19 after dedup" }
+{ node: "discovery", detail: "3 strategies → 28 raw, 19 after dedup" }
 ```
 
 ### Phase 4: Backfill and verification
@@ -154,8 +204,9 @@ The merged result emits a summary:
 4. Verify in the dev DB:
    - All 207 members have premises with embeddings
    - New opportunities exist between imported users and existing members (especially those with active intents: Seref 6, Vicky 5, Timour 3, Yankı 3, Cooper 2, Seren 1)
+   - Premise-to-intent matches restore the cross-entity discovery that Path B provided
    - Trace entries in Railway logs show all strategies executing
-5. Review opportunity quality — check that premise-to-intent matches are semantically meaningful, not just high-cosine noise
+5. Review opportunity quality — check that premise-to-intent matches are semantically meaningful, not just high-cosine noise. Compare against the old Path B behavior: the old system found ~81 opportunities on this network; the new system should match or exceed that count with comparable quality.
 
 ## Files affected
 
