@@ -14,7 +14,6 @@ import type { Opportunity, OpportunityStatus } from "../shared/interfaces/databa
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
 import { selectByComposition, deduplicateByPerson } from "./opportunity.utils.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
-import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
@@ -74,26 +73,13 @@ export function resolveActionableLinkKind(input: {
  * Trailing slashes on frontendUrl are stripped before concatenation.
  */
 export function buildProfileUrl(
-  counterpartUser:
-    | { socials?: Array<{ label?: string | null; value?: string | null }> | null }
-    | null
-    | undefined,
   counterpartUserId: string,
   frontendUrl: string | undefined,
-  preferredSurface?: 'telegram' | 'web',
 ): string | undefined {
-  // When the viewer is on Telegram and the counterpart has a Telegram handle,
-  // link directly to t.me/{handle} so the user stays in Telegram (EDG-5).
-  if (preferredSurface === 'telegram' && counterpartUser?.socials) {
-    const tgSocial = counterpartUser.socials.find(
-      (s) => s.label?.toLowerCase() === 'telegram' && s.value,
-    );
-    if (tgSocial?.value) {
-      const handle = normalizeTelegramHandle(tgSocial.value);
-      if (handle) return `https://t.me/${handle}`;
-    }
-  }
-
+  // The profile link is always the Index web profile, regardless of the
+  // counterpart's socials or the viewer's surface. Surface-aware Telegram
+  // deep-linking lives on the connect URL (`/c/:code`) — the connect-link
+  // controller resolves that to a pre-messaged t.me link — never here.
   if (!frontendUrl) return undefined;
   const base = frontendUrl.replace(/\/+$/, "");
   return `${base}/u/${counterpartUserId}?link_preview=false`;
@@ -116,10 +102,6 @@ export async function attachActionableLinks(
   opts: {
     viewerId: string;
     viewerApproved?: boolean;
-    counterpartUser:
-      | { socials?: Array<{ label?: string | null; value?: string | null }> | null }
-      | null
-      | undefined;
     counterpartUserId: string;
     mintConnectLink: NonNullable<ToolDeps["mintConnectLink"]>;
     frontendUrl: string | undefined;
@@ -133,7 +115,7 @@ export async function attachActionableLinks(
   // (e.g. draft + party in `discover_opportunities` direct mode) still carry
   // the profile link the agent needs to render. Without this, the agent gets
   // a name with no URL attached and tends to fabricate one.
-  const profileUrl = buildProfileUrl(opts.counterpartUser, opts.counterpartUserId, opts.frontendUrl, opts.preferredSurface);
+  const profileUrl = buildProfileUrl(opts.counterpartUserId, opts.frontendUrl);
   if (profileUrl) card.profileUrl = profileUrl;
 
   const kind = resolveActionableLinkKind({
@@ -804,7 +786,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           }, {
             viewerId: context.userId,
             viewerApproved: false,
-            counterpartUser,
             counterpartUserId: firstPartyId,
             mintConnectLink: deps.mintConnectLink,
             frontendUrl: deps.frontendUrl,
@@ -1143,7 +1124,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             }, {
               viewerId: context.userId,
               viewerApproved: source?.viewerApproved,
-              counterpartUser: source?.candidateUser ?? null,
               counterpartUserId: source?.userId ?? card.userId,
               mintConnectLink,
               frontendUrl: deps.frontendUrl,
@@ -1442,7 +1422,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             }, {
               viewerId: context.userId,
               viewerApproved,
-              counterpartUser,
               counterpartUserId,
               mintConnectLink: deps.mintConnectLink,
               frontendUrl: deps.frontendUrl,
