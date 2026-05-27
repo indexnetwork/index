@@ -16,7 +16,7 @@ export default function Footer() {
       const res = await fetch(apiUrl("/api/subscribe"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, type: "newsletter" }),
+        body: JSON.stringify({ email, type: "waitlist" }),
       });
       if (res.ok) {
         setStatus("success");
@@ -46,35 +46,48 @@ export default function Footer() {
         </div>
 
         <div className="lv5-footer-right">
-          <form
-            id="subscribe"
-            className="lv5-footer-form"
-            onSubmit={handleSubmit}
-            noValidate
-          >
-            <input
-              type="email"
-              className="lv5-footer-input"
-              placeholder={
-                status === "success" ? "subscribed ✓" : "Enter your email"
-              }
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                if (status !== "idle") setStatus("idle");
-              }}
-              aria-label="email address"
-              disabled={status === "loading"}
-              required
-            />
-            <button
-              type="submit"
-              className="lv5-footer-subscribe"
-              disabled={status === "loading"}
-            >
-              {status === "loading" ? "…" : "Subscribe"}
-            </button>
-          </form>
+          <div className="lv5-footer-subscribe-wrap">
+            {status === "success" ? (
+              <p className="lv5-footer-status is-success">
+                You&rsquo;re in — we&rsquo;ll keep you posted on what&rsquo;s new.
+              </p>
+            ) : (
+              <>
+                <form
+                  id="subscribe"
+                  className="lv5-footer-form"
+                  onSubmit={handleSubmit}
+                  noValidate
+                >
+                  <input
+                    type="email"
+                    className="lv5-footer-input"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (status !== "idle") setStatus("idle");
+                    }}
+                    aria-label="email address"
+                    disabled={status === "loading"}
+                    required
+                  />
+                  <button
+                    type="submit"
+                    className="lv5-footer-subscribe"
+                    disabled={status === "loading"}
+                  >
+                    {status === "loading" ? "…" : "Subscribe"}
+                  </button>
+                </form>
+                {status === "error" && (
+                  <p className="lv5-footer-status is-error">
+                    Something went wrong. Please try again.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
 
           <div className="lv5-footer-social" aria-label="social links">
             <a
