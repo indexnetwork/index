@@ -4,6 +4,7 @@ config({ path: ".env.test", override: true });
 import { describe, expect, it, test } from "bun:test";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
 import { buildMinimalOpportunityCard } from "../opportunity.tools.js";
+import { deduplicateByPerson } from "../opportunity.utils.js";
 
 describe("buildMinimalOpportunityCard - IND-113", () => {
   const mockOpportunity = {
@@ -652,231 +653,104 @@ describe("buildOpportunityPresentation — MCP opportunityId omission", () => {
   });
 });
 
-describe("buildOpportunityPresentation — per-person grouping (MCP)", () => {
-  test("groups multiple cards for the same person into one entry", () => {
-    const out = buildOpportunityPresentation(
-      [
-        {
-          opportunityId: "opp-1",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "Generative software and programmable organizations.",
-          status: "pending",
-          acceptUrl: "https://api.test/c/link1",
-          profileUrl: "https://app.test/u/ashish-id",
-          feedCategory: "connection",
-        },
-        {
-          opportunityId: "opp-2",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "AI in creativity and design.",
-          status: "pending",
-          acceptUrl: "https://api.test/c/link2",
-          profileUrl: "https://app.test/u/ashish-id",
-          feedCategory: "connection",
-        },
-        {
-          opportunityId: "opp-3",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "AI infrastructure and deployment workflows.",
-          status: "pending",
-          acceptUrl: "https://api.test/c/link3",
-          profileUrl: "https://app.test/u/ashish-id",
-          feedCategory: "connection",
-        },
+
+// ---------------------------------------------------------------------------
+// deduplicateByPerson — per-person dedup in the selection layer
+// ---------------------------------------------------------------------------
+
+describe("deduplicateByPerson", () => {
+  function makeOpp(id: string, counterpartId: string, viewerId: string, confidence?: number) {
+    return {
+      id,
+      status: "pending",
+      actors: [
+        { userId: viewerId, role: "party" },
+        { userId: counterpartId, role: "party" },
       ],
-      { isMcp: true, leadIn: "You have 1 opportunity(ies)." },
-    );
+      interpretation: confidence != null ? { confidence } : null,
+    };
+  }
 
-    // Should appear as ONE top-level entry, not three
-    expect(out).toContain("1. Ashish");
-    expect(out).not.toContain("2. Ashish");
-    expect(out).not.toContain("3. Ashish");
+  const VIEWER = "viewer-1";
 
-    // All three acceptUrls must be present
-    expect(out).toContain("acceptUrl: https://api.test/c/link1");
-    expect(out).toContain("acceptUrl: https://api.test/c/link2");
-    expect(out).toContain("acceptUrl: https://api.test/c/link3");
-
-    // All three opportunityIds must be present (for confirm_opportunity_delivery)
-    expect(out).toContain("opportunityId: opp-1");
-    expect(out).toContain("opportunityId: opp-2");
-    expect(out).toContain("opportunityId: opp-3");
-
-    // profileUrl appears once
-    const profileMatches = out.match(/profileUrl: https:\/\/app\.test\/u\/ashish-id/g);
-    expect(profileMatches?.length).toBe(1);
-
-    // Sub-entries labeled with letters
-    expect(out).toContain("a.");
-    expect(out).toContain("b.");
-    expect(out).toContain("c.");
-
-    // Grouped instruction present
-    expect(out).toContain("grouped entries");
+  it("keeps only the highest-confidence opportunity per counterpart", () => {
+    const opps = [
+      makeOpp("opp-low", "ashish", VIEWER, 0.6),
+      makeOpp("opp-high", "ashish", VIEWER, 0.9),
+      makeOpp("opp-mid", "ashish", VIEWER, 0.75),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("opp-high");
   });
 
-  test("single-card person renders exactly as before (no grouping)", () => {
-    const out = buildOpportunityPresentation(
-      [
-        {
-          opportunityId: "opp-solo",
-          userId: "solo-id",
-          name: "Maya",
-          mainText: "Agent memory layer for long-running workflows.",
-          status: "pending",
-          acceptUrl: "https://api.test/c/solo-link",
-          profileUrl: "https://app.test/u/solo-id",
-          feedCategory: "connection",
-        },
-      ],
-      { isMcp: true, leadIn: "You have 1 opportunity(ies)." },
-    );
-
-    // Renders as a flat entry, not grouped
-    expect(out).toContain("1. Maya");
-    expect(out).toContain("Agent memory layer");
-    expect(out).toContain("acceptUrl: https://api.test/c/solo-link");
-    // No sub-entry letters
-    expect(out).not.toMatch(/\n\s+a\./);
+  it("passes through single-opportunity counterparts unchanged", () => {
+    const opps = [
+      makeOpp("opp-a", "alice", VIEWER, 0.8),
+      makeOpp("opp-b", "bob", VIEWER, 0.7),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe("opp-a");
+    expect(result[1].id).toBe("opp-b");
   });
 
-  test("different feedCategory for same userId stays separate", () => {
-    const out = buildOpportunityPresentation(
-      [
-        {
-          opportunityId: "opp-conn",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "Direct connection reason.",
-          status: "pending",
-          acceptUrl: "https://api.test/c/conn-link",
-          profileUrl: "https://app.test/u/ashish-id",
-          feedCategory: "connection",
-        },
-        {
-          opportunityId: "opp-intro",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "Introducer reason.",
-          status: "latent",
-          profileUrl: "https://app.test/u/ashish-id",
-          feedCategory: "connector-flow",
-        },
-      ],
-      { isMcp: true, leadIn: "Found 2." },
-    );
-
-    // Two separate top-level entries because feedCategory differs
-    expect(out).toContain("1. Ashish");
-    expect(out).toContain("2. Ashish");
+  it("deduplicates per person while preserving different counterparts", () => {
+    const opps = [
+      makeOpp("opp-a1", "ashish", VIEWER, 0.6),
+      makeOpp("opp-m1", "maya", VIEWER, 0.8),
+      makeOpp("opp-a2", "ashish", VIEWER, 0.9),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(2);
+    expect(result.map((o) => o.id)).toEqual(["opp-m1", "opp-a2"]);
   });
 
-  test("mixed: one grouped person + one solo person", () => {
-    const out = buildOpportunityPresentation(
-      [
-        {
-          opportunityId: "opp-a1",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "Reason A.",
-          status: "pending",
-          acceptUrl: "https://api.test/c/a1",
-          profileUrl: "https://app.test/u/ashish-id",
-          feedCategory: "connection",
-        },
-        {
-          opportunityId: "opp-a2",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "Reason B.",
-          status: "pending",
-          acceptUrl: "https://api.test/c/a2",
-          profileUrl: "https://app.test/u/ashish-id",
-          feedCategory: "connection",
-        },
-        {
-          opportunityId: "opp-m1",
-          userId: "maya-id",
-          name: "Maya",
-          mainText: "Solo reason.",
-          status: "pending",
-          acceptUrl: "https://api.test/c/m1",
-          profileUrl: "https://app.test/u/maya-id",
-          feedCategory: "connection",
-        },
-      ],
-      { isMcp: true, leadIn: "Found 2." },
-    );
-
-    // Ashish grouped as entry 1, Maya as entry 2
-    expect(out).toContain("1. Ashish");
-    expect(out).toContain("2. Maya");
-    expect(out).not.toContain("3.");
-    // Ashish has sub-entries
-    expect(out).toContain("a.");
-    expect(out).toContain("b.");
-    // Maya rendered flat (solo)
-    expect(out).toContain("Solo reason.");
+  it("prefers the opportunity with a score over one without", () => {
+    const opps = [
+      makeOpp("opp-no-score", "ashish", VIEWER),       // interpretation: null
+      makeOpp("opp-has-score", "ashish", VIEWER, 0.5),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("opp-has-score");
   });
 
-  test("web UI (isMcp=false) is unaffected — no grouping", () => {
-    const out = buildOpportunityPresentation(
-      [
-        {
-          opportunityId: "opp-1",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "Reason A.",
-          status: "pending",
-          feedCategory: "connection",
-        },
-        {
-          opportunityId: "opp-2",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "Reason B.",
-          status: "pending",
-          feedCategory: "connection",
-        },
-      ],
-      { isMcp: false, leadIn: "Found 2." },
-    );
-
-    // Web path emits code fences, one per card — both present
-    const fenceCount = (out.match(/```opportunity/g) || []).length;
-    expect(fenceCount).toBe(2);
+  it("on equal confidence, keeps the first encountered (stable)", () => {
+    const opps = [
+      makeOpp("opp-first", "ashish", VIEWER, 0.8),
+      makeOpp("opp-second", "ashish", VIEWER, 0.8),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("opp-first");
   });
 
-  test("grouped entry without acceptUrl shows opportunityId per sub-entry", () => {
-    const out = buildOpportunityPresentation(
-      [
-        {
-          opportunityId: "opp-d1",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "Draft reason A.",
-          status: "draft",
-          profileUrl: "https://app.test/u/ashish-id",
-          feedCategory: "connection",
-        },
-        {
-          opportunityId: "opp-d2",
-          userId: "ashish-id",
-          name: "Ashish",
-          mainText: "Draft reason B.",
-          status: "draft",
-          profileUrl: "https://app.test/u/ashish-id",
-          feedCategory: "connection",
-        },
+  it("passes through opportunities with no derivable counterpart", () => {
+    const oppNoCounterpart = {
+      id: "opp-edge",
+      status: "latent",
+      actors: [
+        { userId: VIEWER, role: "introducer" },
+        { userId: "intro-target", role: "introducer" },
       ],
-      { isMcp: true, leadIn: "Found 1." },
-    );
+      interpretation: { confidence: 0.7 },
+    };
+    const opps = [oppNoCounterpart, makeOpp("opp-normal", "bob", VIEWER, 0.8)];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe("opp-edge");
+    expect(result[1].id).toBe("opp-normal");
+  });
 
-    expect(out).toContain("1. Ashish");
-    expect(out).toContain("opportunityId: opp-d1");
-    expect(out).toContain("opportunityId: opp-d2");
+  it("preserves original input order among winners", () => {
+    const opps = [
+      makeOpp("opp-c1", "charlie", VIEWER, 0.5),
+      makeOpp("opp-a1", "ashish", VIEWER, 0.6),
+      makeOpp("opp-b1", "bob", VIEWER, 0.7),
+      makeOpp("opp-a2", "ashish", VIEWER, 0.9),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result.map((o) => o.id)).toEqual(["opp-c1", "opp-b1", "opp-a2"]);
   });
 });

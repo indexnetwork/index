@@ -256,3 +256,60 @@ export function selectByComposition<T extends { actors: Array<{ userId: string; 
     ...selected.expired,
   ];
 }
+
+/**
+ * Deduplicate opportunities so each counterpart appears at most once.
+ * Keeps the opportunity with the highest interpretation.confidence per
+ * counterpart userId. On ties, the first encountered wins (stable).
+ *
+ * Counterpart = first actor whose userId !== viewerId and role !== 'introducer'.
+ * Opportunities without a derivable counterpart pass through undeduped.
+ *
+ * @param opportunities - Pre-sorted opportunities (e.g. by confidence/recency)
+ * @param viewerId - The viewing user's ID
+ * @returns Deduped subset preserving original input order among winners
+ */
+export function deduplicateByPerson<T extends {
+  actors: Array<{ userId: string; role: string }>;
+  interpretation?: { confidence?: number } | null;
+}>(opportunities: T[], viewerId: string): T[] {
+  const bestByCounterpart = new Map<string, { opp: T; index: number }>();
+  const noCounterpart: Array<{ opp: T; index: number }> = [];
+
+  for (let i = 0; i < opportunities.length; i++) {
+    const opp = opportunities[i];
+    const counterpart = opp.actors.find(
+      (a) => a.userId !== viewerId && a.role !== 'introducer',
+    );
+
+    if (!counterpart) {
+      noCounterpart.push({ opp, index: i });
+      continue;
+    }
+
+    const key = counterpart.userId;
+    const existing = bestByCounterpart.get(key);
+
+    if (!existing) {
+      bestByCounterpart.set(key, { opp, index: i });
+      continue;
+    }
+
+    const newConf = opp.interpretation?.confidence ?? -1;
+    const oldConf = existing.opp.interpretation?.confidence ?? -1;
+    if (newConf > oldConf) {
+      bestByCounterpart.set(key, { opp, index: i });
+    }
+  }
+
+  const all = [...bestByCounterpart.values(), ...noCounterpart];
+  all.sort((a, b) => a.index - b.index);
+
+  const result = all.map((entry) => entry.opp);
+  if (result.length < opportunities.length) {
+    logger.info(
+      `[deduplicateByPerson] deduped ${opportunities.length} → ${result.length} opportunities`,
+    );
+  }
+  return result;
+}
