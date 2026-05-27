@@ -14,6 +14,11 @@ import type { MatchingCase } from "./matching.types.js";
  *
  * Distractor RAG scores are kept competitive so the test is "the evaluator rejects a
  * plausible RAG hit", not "RAG never surfaced it".
+ *
+ * Convention: every real partner uses the band `[60, 100]` and every distractor uses
+ * `[0, 29]`. The partner band is deliberately lenient (the floor is 60, not 70) so the
+ * first baseline absorbs model variance; a partner landing in 60–69 is itself a mild
+ * finding. Keep this convention for new cases.
  */
 
 // ── Case 1: hardware builder + commercial operator → cofounders ──────────────
