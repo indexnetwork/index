@@ -1,7 +1,7 @@
 {
   "name": "agentvillage",
-  "description": "Edge Esmeralda 2026 — popup knowledge, EdgeOS calendar & directory, and Index Network discovery skills for the Agent Village.",
-  "version": "1.3.0",
+  "description": "Edge Esmeralda 2026 — popup knowledge, EdgeOS calendar & directory, Geo knowledge graph access, and Index Network discovery skills for the Agent Village.",
+  "version": "1.4.0",
   "skills": "./",
   "author": {
     "name": "Edge City",
@@ -17,7 +17,7 @@
     "edgeosToken": {
       "type": "string",
       "title": "EdgeOS Bearer Token",
-      "description": "Human session JWT for EdgeOS directory and profile access.",
+      "description": "Human session JWT for Geo knowledge graph access, content writes, EdgeOS directory, and own profile.",
       "sensitive": true
     },
     "edgeosApiKey": {
