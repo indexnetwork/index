@@ -1099,11 +1099,15 @@ export class OpportunityGraphFactory {
           const searchText = state.searchQuery ?? resolvedIntent?.payload ?? '';
           if (!searchText) {
             logger.warn('[Graph:Discovery] No search text available for intent path');
-            const premiseCands = await runPremiseDiscovery();
-            if (premiseCands.length > 0) {
+            const [premiseCands, contextCands] = await Promise.all([
+              runPremiseDiscovery(),
+              runContextToIntentDiscovery(),
+            ]);
+            const merged = mergeStrategyCandidates(premiseCands, contextCands);
+            if (merged.length > 0) {
               return {
-                candidates: filterByTarget(premiseCands),
-                trace: [{ node: "discovery", detail: `No search text; premise search → ${premiseCands.length} candidate(s)` }],
+                candidates: filterByTarget(merged),
+                trace: [{ node: "discovery", detail: `No search text; premise → ${premiseCands.length}, context → ${contextCands.length}, merged → ${merged.length} candidate(s)` }],
               };
             }
             return { candidates: [] };
@@ -1123,12 +1127,16 @@ export class OpportunityGraphFactory {
           const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
           const lenses = hydeResult.lenses ?? [];
           if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) {
-            const premiseCands = await runPremiseDiscovery();
-            if (premiseCands.length > 0) {
+            const [premiseCands, contextCands] = await Promise.all([
+              runPremiseDiscovery(),
+              runContextToIntentDiscovery(),
+            ]);
+            const merged = mergeStrategyCandidates(premiseCands, contextCands);
+            if (merged.length > 0) {
               return {
                 hydeEmbeddings: {} as Record<string, number[]>,
-                candidates: filterByTarget(premiseCands),
-                trace: [{ node: "discovery", detail: `No HyDE embeddings; premise search → ${premiseCands.length} candidate(s)` }],
+                candidates: filterByTarget(merged),
+                trace: [{ node: "discovery", detail: `No HyDE embeddings; premise → ${premiseCands.length}, context → ${contextCands.length}, merged → ${merged.length} candidate(s)` }],
               };
             }
             return { hydeEmbeddings: {} as Record<string, number[]>, candidates: [] };
@@ -1267,14 +1275,20 @@ export class OpportunityGraphFactory {
             });
           }
 
-          const premiseCands = await runPremiseDiscovery();
-          const withPremises = mergePremiseCandidates(candidates, premiseCands);
-          if (premiseCands.length > 0) {
-            traceEntries.push({ node: "discovery", detail: `+ Premise search → ${premiseCands.length} candidate(s), merged to ${withPremises.length}` });
+          const [premiseCands, contextCands] = await Promise.all([
+            runPremiseDiscovery(),
+            runContextToIntentDiscovery(),
+          ]);
+          const allStrategies = mergeStrategyCandidates(candidates, premiseCands, contextCands);
+          if (premiseCands.length > 0 || contextCands.length > 0) {
+            traceEntries.push({
+              node: "discovery",
+              detail: `+ Premise → ${premiseCands.length}, Context → ${contextCands.length}, merged to ${allStrategies.length} candidate(s)`,
+            });
           }
           return {
             hydeEmbeddings: hydeEmbeddings as Record<string, number[]>,
-            candidates: filterByTarget(withPremises),
+            candidates: filterByTarget(allStrategies),
             trace: traceEntries,
           };
         } catch (error) {
