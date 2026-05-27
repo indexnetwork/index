@@ -2,6 +2,13 @@ import type { CaseResult, RuleResult, Scorecard, Rule } from "./matching.types.j
 
 const mean = (xs: number[]): number => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
 
+/**
+ * Aggregates raw case results into a scorecard with per-rule and aggregate pass-rates.
+ *
+ * @param results - The individual case results to aggregate.
+ * @param meta - Run metadata: the model name and number of runs per case.
+ * @returns A scorecard with per-rule breakdowns, aggregate pass-rate, and generation timestamp.
+ */
 export function buildScorecard(
   results: CaseResult[],
   meta: { model: string; runs: number },
@@ -35,8 +42,17 @@ export interface Regression {
 }
 
 /**
+ * Compares a current scorecard against a baseline and returns any regressions.
+ *
  * A regression is a case or rule whose pass-rate dropped by at least `threshold`
  * versus the baseline. New cases (absent from baseline) are never regressions.
+ * The drop is rounded to 9 decimal places before comparison to avoid floating-point
+ * subtraction errors (e.g. `1.0 - 0.66` yielding `0.33999…` instead of `0.34`).
+ *
+ * @param current - The scorecard produced by the current run.
+ * @param baseline - The previously saved baseline scorecard, or `null` if none exists.
+ * @param threshold - Minimum pass-rate drop (inclusive) to be considered a regression.
+ * @returns An object containing the list of detected regressions.
  */
 export function diffBaseline(
   current: Scorecard,
@@ -50,7 +66,8 @@ export function diffBaseline(
   for (const c of current.cases) {
     const before = baseCases.get(c.caseId);
     if (before === undefined) continue;
-    if (before - c.passRate >= threshold) {
+    const drop = Math.round((before - c.passRate) * 1e9) / 1e9;
+    if (drop >= threshold) {
       regressions.push({ id: c.caseId, kind: "case", before, after: c.passRate });
     }
   }
@@ -59,7 +76,8 @@ export function diffBaseline(
   for (const r of current.rules) {
     const before = baseRules.get(r.rule);
     if (before === undefined) continue;
-    if (before - r.passRate >= threshold) {
+    const drop = Math.round((before - r.passRate) * 1e9) / 1e9;
+    if (drop >= threshold) {
       regressions.push({ id: r.rule, kind: "rule", before, after: r.passRate });
     }
   }
@@ -93,12 +111,24 @@ export function formatConsole(sc: Scorecard, regressions: Regression[]): string 
   return lines.join("\n");
 }
 
+/**
+ * Reads a baseline scorecard from a JSON file on disk.
+ *
+ * @param path - Absolute or relative path to the baseline JSON file.
+ * @returns The parsed scorecard, or `null` if the file does not exist.
+ */
 export async function readBaseline(path: string): Promise<Scorecard | null> {
   const file = Bun.file(path);
   if (!(await file.exists())) return null;
   return (await file.json()) as Scorecard;
 }
 
+/**
+ * Writes a scorecard to disk as a formatted JSON baseline file.
+ *
+ * @param path - Absolute or relative path to write to (created or overwritten).
+ * @param sc - The scorecard to persist.
+ */
 export async function writeBaseline(path: string, sc: Scorecard): Promise<void> {
   await Bun.write(path, JSON.stringify(sc, null, 2) + "\n");
 }
