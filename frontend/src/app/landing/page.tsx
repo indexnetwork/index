@@ -364,7 +364,6 @@ function HowItWorks() {
                   <span className="spacer" aria-hidden="true" />
                 </div>
                 <div className="comment">
-                  <span className="hash">#</span>
                   {s.line}
                 </div>
               </div>

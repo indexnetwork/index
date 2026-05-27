@@ -593,7 +593,8 @@
 
 .landing .comment {
   color: var(--cream-soft);
-  padding-left: 56px;
+  /* Align with the step title (.cmd): width of the "[NN]" num (4ch) + step-row gap */
+  padding-left: calc(4ch + 14px);
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .landing .comment .hash { color: var(--cream-faint); margin-right: 10px; }
@@ -1436,7 +1437,6 @@
   .landing .h1 .hero-terminal { font-size: 12px; padding: 14px 16px; }
   .landing .h1 .ch-1 { display: none; }
   .landing .how { padding: 80px 22px 96px; }
-  .landing .comment { padding-left: 24px; }
   .landing .how-inner { max-width: none; }
   .landing .how-block { grid-template-columns: 1fr; gap: 18px; }
   .landing .how-block-text,
