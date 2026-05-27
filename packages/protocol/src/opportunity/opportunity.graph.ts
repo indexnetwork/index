@@ -981,10 +981,6 @@ export class OpportunityGraphFactory {
           }
 
           /**
-           * Merge premise candidates into an existing candidate list.
-           * Deduplicates by userId + networkId + discoverySource + entityId.
-           */
-          /**
            * Context-to-intent discovery: searches intents using user context embeddings.
            * Restores the profile->intent cross-search deleted when Path B was removed.
            */

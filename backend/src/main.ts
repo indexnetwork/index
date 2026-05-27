@@ -167,6 +167,7 @@ async function generateUserContexts(userId: string): Promise<void> {
     .innerJoin(networks, eq(networkMembers.networkId, networks.id))
     .where(and(
       eq(networkMembers.userId, userId),
+      isNull(networkMembers.deletedAt),
       isNull(networks.deletedAt),
       eq(networks.isPersonal, false),
     ));

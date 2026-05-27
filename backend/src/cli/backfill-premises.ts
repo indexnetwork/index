@@ -59,6 +59,7 @@ async function main(): Promise<void> {
     .innerJoin(users, eq(networkMembers.userId, users.id))
     .where(and(
       eq(networkMembers.networkId, networkId),
+      isNull(networkMembers.deletedAt),
       isNull(users.deletedAt),
     ));
 

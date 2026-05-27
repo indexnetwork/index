@@ -7,10 +7,10 @@
  * Returns { text, embedding } for storage in the user_contexts table.
  */
 
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-import { createModel } from '../shared/agent/model.config.js';
-import type { EmbeddingGenerator } from '../shared/interfaces/embedder.interface.js';
+import { createModel } from "../shared/agent/model.config.js";
+import type { EmbeddingGenerator } from "../shared/interfaces/embedder.interface.js";
 
 /** Input for cold-start context generation from a full set of premises. */
 export interface UserContextInput {
