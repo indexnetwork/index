@@ -19,10 +19,12 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const bareRoutes = ['/', '/onboarding', '/oauth/callback', '/found-in-translation', '/blog', '/about', '/pages'];
 
   const isBareRoute = useMemo(() => {
+    // Root is bare (landing) only for guests; authenticated users get the app shell.
+    if (pathname === '/') return !isAuthenticated;
     return bareRoutes.some(route =>
       pathname === route || pathname?.startsWith(route + '/')
     );
-  }, [pathname]);
+  }, [pathname, isAuthenticated]);
 
   const isAppRoute = useMemo(() => {
     if (!isAuthenticated) return false;

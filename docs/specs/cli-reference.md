@@ -165,9 +165,10 @@ The `index intent` command exposes subcommands for managing intents (user-facing
 
 ### `index intent create <content>`
 
-1. Calls `create_intent` tool via Tool HTTP API with `{ description }`.
-2. Prints the processing result summary.
-3. Content is the remaining positional arguments joined with spaces.
+1. Calls `create_intent` tool via Tool HTTP API with `{ description }`. The tool returns one or more `intent_proposal` blocks (each with a `proposalId` and `description`) rather than a persisted intent.
+2. Confirms each proposal via `POST /api/intents/confirm` with `{ proposalId, description }`, which persists the active signal.
+3. Prints "Signal created." with the confirmed description.
+4. Content is the remaining positional arguments joined with spaces.
 
 ### `index intent update <id> <content>`
 
@@ -183,18 +184,15 @@ The `index intent` command exposes subcommands for managing intents (user-facing
 
 ### `index intent link <id> <network-id>`
 
-1. Calls `create_intent_index` tool via Tool HTTP API with `{ intentId, networkId }`.
-2. Prints "Signal linked to network." on success, error on failure.
+1. Resolves short ID to full UUID via `GET /api/intents/:id` (the tool rejects non-UUID intent IDs).
+2. Calls `create_intent_index` tool via Tool HTTP API with `{ intentId, networkId }`.
+3. Prints "Signal linked to network." on success, error on failure.
 
 ### `index intent unlink <id> <network-id>`
 
-1. Calls `delete_intent_index` tool via Tool HTTP API with `{ intentId, networkId }`.
-2. Prints "Signal unlinked from network." on success, error on failure.
-
-### `index intent links <id>`
-
-1. Calls `read_intent_indexes` tool via Tool HTTP API with `{ intentId }`.
-2. Renders a table of linked networks (title, ID). Prints "No linked networks." if none.
+1. Resolves short ID to full UUID via `GET /api/intents/:id` (the tool rejects non-UUID intent IDs).
+2. Calls `delete_intent_index` tool via Tool HTTP API with `{ intentId, networkId }`.
+3. Prints "Signal unlinked from network." on success, error on failure.
 
 ---
 
@@ -270,37 +268,37 @@ The `index network` command manages networks (the user-facing term for indexes) 
 
 ### `index network list`
 
-Lists networks the authenticated user is a member of. Calls `GET /api/indexes`. Renders a table with columns: title, member count, role (owner/admin/member), join policy, created date. Personal indexes (`isPersonal: true`) are filtered from the display.
+Lists networks the authenticated user is a member of. Calls `GET /api/networks`. Renders a table with columns: title, member count, role (owner/admin/member), join policy, created date. Personal indexes (`isPersonal: true`) are filtered from the display.
 
 ### `index network create <name>`
 
-Creates a new network. Calls `POST /api/indexes` with `{ title }`. Supports optional `--prompt <text>` flag for the network description/prompt. Prints the created network summary (title, ID, join policy).
+Creates a new network. Calls `POST /api/networks` with `{ title }`. Supports optional `--prompt <text>` flag for the network description/prompt. Prints the created network summary (title, ID, join policy).
 
 ### `index network show <id>`
 
-Shows detailed network information. Calls `GET /api/indexes/:id` for the network, then `GET /api/indexes/:id/members` for the member list. Renders a detail card with: title, prompt, join policy, member count, owner. Below the card, renders a member table with: name, email, role, joined date.
+Shows detailed network information. Calls `GET /api/networks/:id` for the network, then `GET /api/networks/:id/members` for the member list. Renders a detail card with: title, prompt, join policy, member count, owner. Below the card, renders a member table with: name, email, role, joined date.
 
 ### `index network join <id>`
 
-Joins a public network. Calls `POST /api/indexes/:id/join`. Prints confirmation with the network title. Returns an error for invite-only networks (403).
+Joins a public network. Calls `POST /api/networks/:id/join`. Prints confirmation with the network title. Returns an error for invite-only networks (403).
 
 ### `index network leave <id>`
 
-Leaves a network. Calls `POST /api/indexes/:id/leave`. Prints confirmation. Returns an error if the user is the owner (cannot leave own network).
+Leaves a network. Calls `POST /api/networks/:id/leave`. Prints confirmation. Returns an error if the user is the owner (cannot leave own network).
 
 ### `index network update <id> [--title <t>] [--prompt <p>]`
 
-Updates network settings. Calls the `update_index` MCP tool via the Tool HTTP API with `{ networkId, settings: { title?, prompt? } }`, populating only the fields supplied as flags. Prints confirmation with the updated network title.
+Updates network settings. Calls the `update_network` MCP tool via the Tool HTTP API with `{ networkId, settings: { title?, prompt? } }`, populating only the fields supplied as flags. Prints confirmation with the updated network title.
 
 ### `index network delete <id>`
 
-Deletes a network. Calls the `delete_index` MCP tool via the Tool HTTP API. Prints confirmation on success.
+Deletes a network. Calls the `delete_network` MCP tool via the Tool HTTP API. Prints confirmation on success.
 
 ### `index network invite <id> <email>`
 
 Invites a user to a network by email. Two-step process:
-1. Search for the user: `GET /api/indexes/search-users?q=<email>&indexId=<id>`
-2. If found, add them: `POST /api/indexes/:id/members` with `{ userId }`
+1. Search for the user: `GET /api/networks/search-users?q=<email>&networkId=<id>`
+2. If found, add them: `POST /api/networks/:id/members` with `{ userId }`
 Prints confirmation or "User not found" if the search returns no results.
 
 ---

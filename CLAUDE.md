@@ -45,6 +45,9 @@ bun run maintenance:import-slack-export     # Import Slack export files
 bun run maintenance:reset-brokers           # Reset context brokers
 bun run maintenance:update:embeddings       # Regenerate embeddings
 bun run maintenance:decompose-profiles      # Backfill: decompose profiles into premises
+bun run maintenance:backfill-premises       # Backfill: enqueue enrichment for users in a network
+bun run maintenance:backfill-context-hyde   # Backfill: generate HyDE docs for user contexts
+bun run maintenance:compare-discovery       # Compare profile-HyDE vs context discovery strategies
 
 # Background workers
 bun run integration-worker                  # Start integration sync worker
@@ -253,11 +256,15 @@ Indexes and members have `prompt` fields used by LLM agents to evaluate intent m
 
 ### Queue-Based Processing
 
-Intent creation is synchronous; complex processing (indexing, generation) is async via BullMQ queues. Default: 3 retries with exponential backoff, completed jobs removed after 24h.
+Intent creation is synchronous; complex processing (indexing, generation) is async via BullMQ queues. Default: 3 retries with exponential backoff, completed jobs removed after 24h. The `EnrichmentQueue` (formerly `ProfileQueue`) handles profile generation, premise decomposition, and user context generation as a unified enrichment pipeline. On enrichment completion, `generateUserContexts(userId)` synthesizes network-scoped context paragraphs from the user's premise graph via `UserContextGenerator`.
+
+### User Contexts & Discovery
+
+Each user has network-scoped **user contexts** (`user_contexts` table) — synthetic paragraph representations generated from their premise graph by `UserContextGenerator`. Contexts are generated during enrichment (after profile + premise processing completes) and stored with their embeddings. The opportunity graph uses contexts for **context-to-intent discovery**: it loads a user's contexts, then searches for matching intents via `searchIntentsByContextEmbedding()`. This runs alongside profile-HyDE discovery as a complementary strategy, with results merged via `mergeStrategyCandidates()`. Context discovery candidates carry `discoverySource: 'context-to-intent'`.
 
 ### Event-Driven Broker System
 
-Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `network_membership.event.ts`. Premise lifecycle events in `premise.event.ts`: `PremiseEvents.onCreated/onUpdated/onRetracted/onExpired` — each enqueues cascade and profile regeneration jobs via `PremiseQueue`. Question lifecycle events in `question.event.ts`: `QuestionEvents.onCreated/onAnswered` — `onAnswered` dispatches to mode-specific handlers (`question.answer.handler.ts`): profile→premise creation, intent→description refinement + HyDE regen, negotiation→opportunity metadata enrichment (read back during continuation via `NegotiationQueries.getOpportunityUserAnswers`), discovery→no-op. Questions have an optional `conversationId` column linking them to the chat session that triggered them, and `detection.messageId` for anchoring to a specific assistant message. `tool.factory.ts` wraps `questionerEnqueue` in `sessionAwareEnqueue` to default `conversationId` from the active session context. The frontend renders conversation-linked questions inline via `InjectedQuestions`; sidebar badge uses `noConversation=true` to exclude them. Services emit events after DB transactions; other services/graphs react independently.
+Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `network_membership.event.ts`. Premise lifecycle events in `premise.event.ts`: `PremiseEvents.onCreated/onUpdated/onRetracted/onExpired` — each enqueues cascade and profile regeneration jobs via `EnrichmentQueue`. Question lifecycle events in `question.event.ts`: `QuestionEvents.onCreated/onAnswered` — `onAnswered` dispatches to mode-specific handlers (`question.answer.handler.ts`): profile→premise creation, intent→description refinement + HyDE regen, negotiation→opportunity metadata enrichment (read back during continuation via `NegotiationQueries.getOpportunityUserAnswers`), discovery→no-op. Questions have an optional `conversationId` column linking them to the chat session that triggered them, and `detection.messageId` for anchoring to a specific assistant message. `tool.factory.ts` wraps `questionerEnqueue` in `sessionAwareEnqueue` to default `conversationId` from the active session context. The frontend renders conversation-linked questions inline via `InjectedQuestions`; sidebar badge uses `noConversation=true` to exclude them. Services emit events after DB transactions; other services/graphs react independently.
 
 ### Agent Registry
 

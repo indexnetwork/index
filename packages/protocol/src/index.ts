@@ -107,6 +107,8 @@ export { PremiseGraphFactory } from "./premise/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
+export { UserContextGenerator } from "./context/context.generator.js";
+export type { UserContextInput, IncrementalContextInput, UserContextResult } from "./context/context.generator.js";
 export { ChatTitleGenerator } from "./chat/chat.title.generator.js";
 export { ChatSummarizer } from "./chat/chat.summarizer.js";
 export type { ChatSummarizerInput, ChatSummarizerMessage } from "./chat/chat.summarizer.js";

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { authClient } from '@/lib/auth-client';
-import { ensureLandingV5Fonts } from '@/app/landing-v5/Nav';
+import { ensureLandingFonts } from '@/app/landing/Nav';
 import './AuthModal.css';
 
 const PROTOCOL_BASE = import.meta.env.VITE_PROTOCOL_URL || '';
@@ -28,7 +28,7 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
 
   useEffect(() => {
     if (!isOpen) return;
-    ensureLandingV5Fonts();
+    ensureLandingFonts();
     fetch(`${API_BASE}/auth/providers`)
       .then((r) => r.json())
       .then((data: { providers?: string[]; emailPassword?: boolean }) => {
@@ -127,7 +127,7 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
 
   return (
     <div
-      className="auth-v5"
+      className="auth"
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"

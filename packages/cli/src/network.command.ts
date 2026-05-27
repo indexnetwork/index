@@ -2,8 +2,7 @@
  * Network command handlers for the Index CLI.
  *
  * Implements: list, create, show, join, leave, invite subcommands.
- * All user-facing copy uses "network" terminology even though the
- * backend API currently uses /api/indexes/*.
+ * Backed by the /api/networks/* endpoints.
  */
 
 import type { ApiClient } from "./api.client";

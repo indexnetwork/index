@@ -1,8 +1,8 @@
 import { useEffect, type ReactNode } from "react";
-import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
-import Footer from "@/app/landing-v5/Footer";
-import "@/app/landing-v5/landing-v5.css";
-import "@/app/pages/privacy-policy/legal-v5.css";
+import Nav, { ensureLandingFonts } from "@/app/landing/Nav";
+import Footer from "@/app/landing/Footer";
+import "@/app/landing/landing.css";
+import "@/app/pages/privacy-policy/legal.css";
 
 type Section = {
   id: string;
@@ -187,11 +187,11 @@ const SECTIONS: Section[] = [
 
 export default function TermsOfUsePage() {
   useEffect(() => {
-    ensureLandingV5Fonts();
+    ensureLandingFonts();
   }, []);
 
   return (
-    <div className="landing-v5 legal-v5">
+    <div className="landing legal">
       <div className="hero h1 page-hero">
         <div className="canvas-area">
           <Nav />

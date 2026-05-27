@@ -3,9 +3,9 @@ import { Link } from "react-router";
 import { apiUrl } from "@/lib/api";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { getAllPosts, type BlogPost } from "@/lib/blog";
-import Nav, { GithubStar, ensureLandingV5Fonts } from "./Nav";
+import Nav, { GithubStar, ensureLandingFonts } from "./Nav";
 import Footer from "./Footer";
-import "./landing-v5.css";
+import "./landing.css";
 
 type Step = {
   num: string;
@@ -328,7 +328,7 @@ function Hero() {
           </div>
           <div className="hero-image">
             <video
-              src="/landing-v5/hero-index-bg.mp4"
+              src="/landing/hero-index-bg.mp4"
               autoPlay
               loop
               muted
@@ -646,17 +646,17 @@ function SubscribeModal() {
 
   return (
     <div
-      className="lv5-modal"
+      className="landing-modal"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="lv5-subscribe-title"
+      aria-labelledby="landing-subscribe-title"
       onClick={() => status !== "loading" && setOpen(false)}
     >
-      <div className="lv5-modal-backdrop" aria-hidden="true" />
-      <div className="lv5-modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className="landing-modal-backdrop" aria-hidden="true" />
+      <div className="landing-modal-card" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
-          className="lv5-modal-close"
+          className="landing-modal-close"
           onClick={() => setOpen(false)}
           disabled={status === "loading"}
           aria-label="Close"
@@ -665,11 +665,11 @@ function SubscribeModal() {
         </button>
 
         {status === "success" ? (
-          <div className="lv5-modal-success">
-            <h3 id="lv5-subscribe-title" className="lv5-modal-title">
+          <div className="landing-modal-success">
+            <h3 id="landing-subscribe-title" className="landing-modal-title">
               subscribed
             </h3>
-            <p className="lv5-modal-lede">
+            <p className="landing-modal-lede">
               You&rsquo;re in — we&rsquo;ll keep you posted on what&rsquo;s new.
             </p>
             <button
@@ -682,34 +682,34 @@ function SubscribeModal() {
           </div>
         ) : (
           <>
-            <h3 id="lv5-subscribe-title" className="lv5-modal-title">
+            <h3 id="landing-subscribe-title" className="landing-modal-title">
               subscribe
             </h3>
-            <p className="lv5-modal-lede">
+            <p className="landing-modal-lede">
               Drop your email — we&rsquo;ll keep you posted on updates.
             </p>
-            <form onSubmit={submit} className="lv5-modal-form">
-              <label htmlFor="lv5-subscribe-email" className="lv5-modal-label">
-                Email <span className="lv5-modal-req">*</span>
+            <form onSubmit={submit} className="landing-modal-form">
+              <label htmlFor="landing-subscribe-email" className="landing-modal-label">
+                Email <span className="landing-modal-req">*</span>
               </label>
               <input
-                id="lv5-subscribe-email"
+                id="landing-subscribe-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="lv5-modal-input"
+                className="landing-modal-input"
                 required
                 disabled={status === "loading"}
                 autoFocus
               />
               {status === "error" && (
-                <p className="lv5-modal-error">
+                <p className="landing-modal-error">
                   Something went wrong. Please try again.
                 </p>
               )}
               <button
                 type="submit"
-                className="lv5-modal-submit"
+                className="landing-modal-submit"
                 disabled={status === "loading"}
               >
                 {status === "loading" ? "Submitting…" : "Subscribe"}
@@ -722,13 +722,13 @@ function SubscribeModal() {
   );
 }
 
-function LandingV5Page() {
+function LandingPage() {
   useEffect(() => {
-    ensureLandingV5Fonts();
+    ensureLandingFonts();
   }, []);
 
   return (
-    <div className="landing-v5">
+    <div className="landing">
       <Hero />
       <HowItWorks />
       <LatestPosts />
@@ -739,5 +739,5 @@ function LandingV5Page() {
   );
 }
 
-export default LandingV5Page;
-export const Component = LandingV5Page;
+export default LandingPage;
+export const Component = LandingPage;

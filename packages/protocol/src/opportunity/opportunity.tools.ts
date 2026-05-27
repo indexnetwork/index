@@ -12,7 +12,7 @@ import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
-import { selectByComposition } from "./opportunity.utils.js";
+import { selectByComposition, deduplicateByPerson } from "./opportunity.utils.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
 import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 
@@ -354,95 +354,35 @@ export function buildOpportunityPresentation(
   if (cards.length === 0) return opts.leadIn;
 
   if (opts.isMcp) {
-    // Group cards by (userId, feedCategory) so the same person appears once
-    // with multiple conversation entry points. Cards without userId fall
-    // through ungrouped (each gets its own top-level entry).
-    const groupKey = (card: OpportunityCardLike) =>
-      card.userId && card.feedCategory
-        ? `${card.userId}::${card.feedCategory}`
-        : null;
-
-    type CardGroup = { cards: OpportunityCardLike[]; key: string | null };
-    const groups: CardGroup[] = [];
-    const keyToGroup = new Map<string, CardGroup>();
-
-    for (const card of cards) {
-      const k = groupKey(card);
-      if (k && keyToGroup.has(k)) {
-        keyToGroup.get(k)!.cards.push(card);
-      } else {
-        const group: CardGroup = { cards: [card], key: k };
-        groups.push(group);
-        if (k) keyToGroup.set(k, group);
-      }
-    }
-
-    let hasLinks = false;
-    let hasOpportunityIds = false;
-    let hasGroupedEntries = false;
-
-    const prose = groups
-      .map((group, gi) => {
-        const first = group.cards[0];
-        const entryNum = gi + 1;
-
-        if (group.cards.length === 1) {
-          // Single-card group: render exactly as before
-          const lines: string[] = [`${entryNum}. ${first.name ?? "Unknown"}`];
-          if (first.mainText) lines.push(`   ${first.mainText}`);
-          if (first.status) lines.push(`   status: ${first.status}`);
-          if (first.profileUrl) lines.push(`   profileUrl: ${first.profileUrl}`);
-          if (first.acceptUrl) {
-            lines.push(`   acceptUrl: ${first.acceptUrl}`);
-            hasLinks = true;
-          }
-          if (first.feedCategory) lines.push(`   feedCategory: ${first.feedCategory}`);
-          if (!first.acceptUrl) {
-            lines.push(`   opportunityId: ${first.opportunityId}`);
-            hasOpportunityIds = true;
-          }
-          return lines.join("\n");
+    const prose = cards
+      .map((card, i) => {
+        const lines: string[] = [`${i + 1}. ${card.name ?? "Unknown"}`];
+        if (card.mainText) lines.push(`   ${card.mainText}`);
+        if (card.status) lines.push(`   status: ${card.status}`);
+        if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
+        if (card.acceptUrl) lines.push(`   acceptUrl: ${card.acceptUrl}`);
+        if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
+        // Only surface opportunityId when there's no acceptUrl. Exposing the
+        // UUID alongside an actionable link gives the LLM a foothold to
+        // hallucinate bare `/api/opportunities/<id>/connect` URLs.
+        if (!card.acceptUrl) {
+          lines.push(`   opportunityId: ${card.opportunityId}`);
         }
-
-        // Multi-card group: one header, sub-entries per opportunity
-        hasGroupedEntries = true;
-        const lines: string[] = [`${entryNum}. ${first.name ?? "Unknown"}`];
-        if (first.profileUrl) lines.push(`   profileUrl: ${first.profileUrl}`);
-        if (first.feedCategory) lines.push(`   feedCategory: ${first.feedCategory}`);
-        if (first.status) lines.push(`   status: ${first.status}`);
-        lines.push(`   This person connects with you in multiple ways:`);
-
-        const subLabels = "abcdefghijklmnopqrstuvwxyz";
-        for (let si = 0; si < group.cards.length; si++) {
-          const card = group.cards[si];
-          const label = subLabels[si] ?? `${si + 1}`;
-          lines.push(`   ${label}. ${card.mainText ?? "Connection opportunity"}`);
-          if (card.acceptUrl) {
-            lines.push(`      acceptUrl: ${card.acceptUrl}`);
-            hasLinks = true;
-          }
-          lines.push(`      opportunityId: ${card.opportunityId}`);
-          hasOpportunityIds = true;
-        }
-
         return lines.join("\n");
       })
       .join("\n\n");
-
+    const hasLinks = cards.some((c) => c.acceptUrl);
+    const hasOpportunityIds = cards.some((c) => !c.acceptUrl);
     const linkInstructions = hasLinks
       ? `For each card that has an acceptUrl, embed it on a short verb phrase (e.g. "message [Name]" for connection, "make intro" for connector-flow). For each card that has a profileUrl, link the person's name to it. Some cards may have neither — render those as plain text and never fabricate URLs for them. The acceptUrl is opaque and self-contained — embed it verbatim. Do NOT append, encode, or modify any part of any URL. Never render link strips or tables — weave URLs into prose. `
       : "";
     const idInstructions = hasOpportunityIds
-      ? `Use opportunityId values only when calling update_opportunity (send/accept/reject) or confirm_opportunity_delivery. `
-      : "";
-    const groupedInstructions = hasGroupedEntries
-      ? `For grouped entries (one person with multiple connections), link the person's name to their profileUrl once, then embed each sub-entry's acceptUrl on a distinct topic phrase so the user can start a conversation about that specific area. Call confirm_opportunity_delivery for every opportunityId in the group. The count of "conversations" in section headers should reflect unique people, not raw opportunity count. `
+      ? `Use opportunityId values only when calling update_opportunity (send/accept/reject) or confirm_opportunity_delivery.`
       : "";
     return (
       `${opts.leadIn}\n\n${prose}\n\n` +
       `Summarize these for the user in natural prose — mention first names and a brief match reason per connection. ` +
       `${linkInstructions}` +
-      `${groupedInstructions}` +
       `Do NOT print raw JSON, field labels, opportunityIds, or confidence scores. ` +
       `${idInstructions}`
     );
@@ -1362,12 +1302,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return me?.role === "introducer";
       });
 
+      // Deduplicate so each counterpart appears at most once — keeps the
+      // highest-confidence opportunity per person across discovery runs.
+      const deduped = deduplicateByPerson(visible, context.userId);
+
       // Compose-balance across feed categories so the digest/ambient prompt
       // can fill both Section A (connection) and Section B (connector-flow).
       // Falls back to the unbalanced view when the helper has nothing to do.
-      const opportunities = visible.length > 0
-        ? selectByComposition(visible, context.userId)
-        : visible;
+      const opportunities = deduped.length > 0
+        ? selectByComposition(deduped, context.userId)
+        : deduped;
 
       if (!opportunities || opportunities.length === 0) {
         return success({

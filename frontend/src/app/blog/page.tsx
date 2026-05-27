@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import Nav, { ensureLandingV5Fonts } from "@/app/landing-v5/Nav";
-import Footer from "@/app/landing-v5/Footer";
+import Nav, { ensureLandingFonts } from "@/app/landing/Nav";
+import Footer from "@/app/landing/Footer";
 import { type BlogPost, getAllPosts } from "@/lib/blog";
-import "@/app/landing-v5/landing-v5.css";
-import "./blog-v5.css";
+import "@/app/landing/landing.css";
+import "./blog.css";
 
 function formatPostDate(iso: string) {
   const d = new Date(iso);
@@ -46,7 +46,7 @@ function BlogIndexPage() {
   const [posts, setPosts] = useState<BlogPost[] | null>(null);
 
   useEffect(() => {
-    ensureLandingV5Fonts();
+    ensureLandingFonts();
   }, []);
 
   useEffect(() => {
@@ -64,7 +64,7 @@ function BlogIndexPage() {
   }, []);
 
   return (
-    <div className="landing-v5 blog-v5">
+    <div className="landing blog">
       <div className="hero h1 page-hero">
         <div className="canvas-area">
           <Nav />

@@ -1,12 +1,12 @@
-/* about-v5 — uses landing-v5 palette and shell */
+/* about — uses landing palette and shell */
 
-.landing-v5.about-v5 { min-height: 100vh; background: var(--bg); }
+.landing.about { min-height: 100vh; background: var(--bg); }
 
 /* About hero — text only, text takes 2/3 width, no divider */
-.landing-v5.about-v5 .h1 .hero-split { grid-template-columns: 2fr 1fr; }
-.landing-v5.about-v5 .h1 .well { border-right: 0; }
-.landing-v5.about-v5 .h1 .display { max-width: none; }
-.landing-v5.about-v5 .h1 .body-italic { max-width: 64ch; }
+.landing.about .h1 .hero-split { grid-template-columns: 2fr 1fr; }
+.landing.about .h1 .well { border-right: 0; }
+.landing.about .h1 .display { max-width: none; }
+.landing.about .h1 .body-italic { max-width: 64ch; }
 
 .about-link {
   color: var(--cream);

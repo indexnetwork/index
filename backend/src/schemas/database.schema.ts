@@ -316,7 +316,22 @@ export const premiseNetworks = pgTable('premise_networks', {
   networkIdIdx: index('premise_networks_network_id_idx').on(t.networkId),
 }));
 
-export type HydeSourceType = 'intent' | 'profile' | 'query';
+export const userContexts = pgTable('user_contexts', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  text: text('text').notNull(),
+  embedding: vector('embedding', { dimensions: 2000 }),
+  premiseHash: text('premise_hash'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userNetworkUniq: uniqueIndex('user_contexts_user_network_uniq').on(table.userId, table.networkId),
+  embeddingIdx: index('user_contexts_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
+  userIdIdx: index('user_contexts_user_id_idx').on(table.userId),
+  networkIdIdx: index('user_contexts_network_id_idx').on(table.networkId),
+}));
+
+export type HydeSourceType = 'intent' | 'profile' | 'query' | 'context';
 
 export const hydeDocuments = pgTable('hyde_documents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -880,5 +895,7 @@ export type Premise = typeof premises.$inferSelect;
 export type NewPremise = typeof premises.$inferInsert;
 export type PremiseNetwork = typeof premiseNetworks.$inferSelect;
 export type NewPremiseNetwork = typeof premiseNetworks.$inferInsert;
+export type UserContext = typeof userContexts.$inferSelect;
+export type NewUserContext = typeof userContexts.$inferInsert;
 
 export * from './conversation.schema';

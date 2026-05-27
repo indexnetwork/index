@@ -3,8 +3,10 @@ import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ProfileDatabaseAdapter } from '../adapters/database.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
-import { ProfileGraphFactory } from '@indexnetwork/protocol';
+import { ProfileGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
+import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
 export const QUEUE_NAME = 'profile-hyde-queue';
@@ -14,48 +16,48 @@ export interface EnsureProfileHydeData {
   userId: string;
 }
 
-/** Payload for profile.enrich jobs. */
+/** Payload for enrich.user jobs. */
 export interface EnrichUserData {
   userId: string;
 }
 
-/** Union of all job payloads accepted by the profile queue. */
-export type ProfileJobPayload = EnsureProfileHydeData | EnrichUserData;
+/** Union of all job payloads accepted by the enrichment queue. */
+export type EnrichmentJobPayload = EnsureProfileHydeData | EnrichUserData;
 
 /**
  * Optional dependencies for testing.
  */
-export interface ProfileQueueDeps {
+export interface EnrichmentQueueDeps {
   invokeProfileWrite?: (userId: string) => Promise<void>;
   invokeEnrichUser?: (userId: string) => Promise<void>;
 }
 
 /**
- * Profile HyDE queue: BullMQ queue plus worker and job handlers.
+ * Enrichment queue: BullMQ queue plus worker and job handlers.
  *
  * Handles `ensure_profile_hyde`: invokes the profile graph in write mode so the user has
  * a profile and HyDE documents for discovery (index members can be found).
  *
- * Handles `profile.enrich`: enriches users (ghost or real) via Chat API enrichment
+ * Handles `enrich.user`: enriches users (ghost or real) via Chat API enrichment
  * inside the profile graph, then generates profile + HyDE documents.
  *
  * @remarks
- * Workers are started only by the protocol server via {@link ProfileQueue.startWorker}.
+ * Workers are started only by the protocol server via {@link EnrichmentQueue.startWorker}.
  */
-export class ProfileQueue {
+export class EnrichmentQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
-  readonly queue = QueueFactory.createQueue<ProfileJobPayload>(QUEUE_NAME);
+  readonly queue = QueueFactory.createQueue<EnrichmentJobPayload>(QUEUE_NAME);
 
-  private readonly logger = log.job.from('ProfileHydeJob');
-  private readonly queueLogger = log.queue.from('ProfileQueue');
-  private readonly deps: ProfileQueueDeps | undefined;
-  private worker: ReturnType<typeof QueueFactory.createWorker<ProfileJobPayload>> | null = null;
+  private readonly logger = log.job.from('EnrichmentJob');
+  private readonly queueLogger = log.queue.from('EnrichmentQueue');
+  private readonly deps: EnrichmentQueueDeps | undefined;
+  private worker: ReturnType<typeof QueueFactory.createWorker<EnrichmentJobPayload>> | null = null;
 
   /** Set by main.ts to trigger opportunity discovery after enrichment completes. */
   onEnrichmentComplete: ((userId: string) => void) | null = null;
 
-  constructor(deps?: ProfileQueueDeps) {
+  constructor(deps?: EnrichmentQueueDeps) {
     this.deps = deps;
   }
 
@@ -64,7 +66,7 @@ export class ProfileQueue {
    * @param data - userId
    * @returns The BullMQ job
    */
-  addEnsureProfileHydeJob(data: { userId: string }): Promise<Job<ProfileJobPayload>> {
+  addEnsureProfileHydeJob(data: { userId: string }): Promise<Job<EnrichmentJobPayload>> {
     return this.addJob('ensure_profile_hyde', data);
   }
 
@@ -74,9 +76,9 @@ export class ProfileQueue {
    * @param data - userId to enrich
    * @returns The BullMQ job
    */
-  addEnrichUserJob(data: { userId: string }): Promise<Job<ProfileJobPayload>> {
-    return this.addJob('profile.enrich', data, {
-      jobId: `profile.enrich.${data.userId}.${Date.now()}`,
+  addEnrichUserJob(data: { userId: string }): Promise<Job<EnrichmentJobPayload>> {
+    return this.addJob('enrich.user', data, {
+      jobId: `enrich.user.${data.userId}.${Date.now()}`,
     });
   }
 
@@ -85,15 +87,15 @@ export class ProfileQueue {
    * @param items - Array of { userId } to enrich
    * @returns Array of BullMQ jobs
    */
-  addEnrichUserJobBulk(items: Array<{ userId: string }>): Promise<Job<ProfileJobPayload>[]> {
+  addEnrichUserJobBulk(items: Array<{ userId: string }>): Promise<Job<EnrichmentJobPayload>[]> {
     if (items.length === 0) return Promise.resolve([]);
     const now = Date.now();
     return this.queue.addBulk(
       items.map((item, i) => ({
-        name: 'profile.enrich' as const,
+        name: 'enrich.user' as const,
         data: { userId: item.userId },
         opts: {
-          jobId: `profile.enrich.${item.userId}.${now}.${i}`,
+          jobId: `enrich.user.${item.userId}.${now}.${i}`,
           attempts: 3,
           backoff: { type: 'exponential' as const, delay: 1000 },
           removeOnComplete: { age: 24 * 60 * 60 },
@@ -104,17 +106,17 @@ export class ProfileQueue {
   }
 
   /**
-   * Add a job to the profile HyDE queue.
-   * @param name - Job type: `ensure_profile_hyde`
+   * Add a job to the enrichment queue.
+   * @param name - Job type: `ensure_profile_hyde` or `enrich.user`
    * @param data - Payload for the job
    * @param options - Optional jobId and priority
    * @returns The BullMQ job
    */
   async addJob(
-    name: 'ensure_profile_hyde' | 'profile.enrich',
-    data: ProfileJobPayload,
+    name: 'ensure_profile_hyde' | 'enrich.user',
+    data: EnrichmentJobPayload,
     options?: { jobId?: string; priority?: number }
-  ): Promise<Job<ProfileJobPayload>> {
+  ): Promise<Job<EnrichmentJobPayload>> {
     return this.queue.add(name, data, {
       jobId: options?.jobId,
       priority: options?.priority,
@@ -127,19 +129,19 @@ export class ProfileQueue {
 
   /**
    * Run the job handler for a given job name and payload. Used by the worker and by tests with injected deps.
-   * @param name - Job name (`ensure_profile_hyde`)
+   * @param name - Job name (`ensure_profile_hyde` or `enrich.user`)
    * @param data - Job payload
    */
-  async processJob(name: string, data: ProfileJobPayload): Promise<void> {
+  async processJob(name: string, data: EnrichmentJobPayload): Promise<void> {
     switch (name) {
       case 'ensure_profile_hyde':
         await this.handleEnsureProfileHyde(data);
         break;
-      case 'profile.enrich':
+      case 'enrich.user':
         await this.handleEnrichUser(data);
         break;
       default:
-        this.queueLogger.warn(`[ProfileProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn(`[EnrichmentProcessor] Unknown job name: ${name}`);
     }
   }
 
@@ -148,14 +150,14 @@ export class ProfileQueue {
    */
   startWorker(): void {
     if (this.worker) return;
-    const processor = async (job: Job<ProfileJobPayload>) => {
-      this.queueLogger.info(`[ProfileProcessor] Processing job ${job.id} (${job.name})`, {
+    const processor = async (job: Job<EnrichmentJobPayload>) => {
+      this.queueLogger.info(`[EnrichmentProcessor] Processing job ${job.id} (${job.name})`, {
         userId: (job.data as EnsureProfileHydeData).userId,
       });
       await this.processJob(job.name, job.data);
     };
     // Parallel Chat API allows 300 req/min. Rate-limit at queue level to prevent bursts.
-    this.worker = QueueFactory.createWorker<ProfileJobPayload>(QUEUE_NAME, processor, {
+    this.worker = QueueFactory.createWorker<EnrichmentJobPayload>(QUEUE_NAME, processor, {
       concurrency: 50,
       limiter: { max: 4, duration: 1000 },
     });
@@ -223,11 +225,16 @@ export class ProfileQueue {
   private async invokeProfileGraph(userId: string, operationMode: 'write' | 'generate') {
     const database = new ProfileDatabaseAdapter();
     const scraper = new ScraperAdapter();
-    const factory = new ProfileGraphFactory(database, scraper, { enrichUserProfile });
+    const embedder = new EmbedderAdapter();
+    const premiseGraph = new PremiseGraphFactory(
+      database as unknown as PremiseGraphDatabase,
+      embedder,
+    ).createGraph();
+    const factory = new ProfileGraphFactory(database, scraper, { enrichUserProfile }, undefined, premiseGraph);
     const graph = factory.createGraph();
     return graph.invoke({ userId, operationMode });
   }
 }
 
-/** Singleton profile HyDE queue instance. Use for adding jobs and starting the worker. */
-export const profileQueue = new ProfileQueue();
+/** Singleton enrichment queue instance. Use for adding jobs and starting the worker. */
+export const enrichmentQueue = new EnrichmentQueue();
