@@ -20,10 +20,10 @@
     "publish:all": "bun scripts/publish.ts"
   },
   "optionalDependencies": {
-    "@indexnetwork/cli-linux-x64": "0.10.5",
-    "@indexnetwork/cli-linux-arm64": "0.10.5",
-    "@indexnetwork/cli-darwin-x64": "0.10.5",
-    "@indexnetwork/cli-darwin-arm64": "0.10.5"
+    "@indexnetwork/cli-linux-x64": "0.10.6",
+    "@indexnetwork/cli-linux-arm64": "0.10.6",
+    "@indexnetwork/cli-darwin-x64": "0.10.6",
+    "@indexnetwork/cli-darwin-arm64": "0.10.6"
   },
   "devDependencies": {
     "@types/bun": "latest"
