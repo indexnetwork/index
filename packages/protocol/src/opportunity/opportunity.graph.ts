@@ -296,7 +296,10 @@ export class OpportunityGraphFactory {
                 premiseId: p.id as Id<'premises'>,
                 embedding: p.embedding!,
               }));
-            const rawContexts = await this.database.getUserContexts(discoveryUserId);
+            const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
+            const rawContexts = contextToIntentEnabled
+              ? await this.database.getUserContexts(discoveryUserId)
+              : [];
             const sourceContexts = rawContexts
               .filter((c: { networkId: string; embedding: number[] | null }) => c.embedding && c.embedding.length > 0 && userNetworkIds.includes(c.networkId as Id<'networks'>))
               .map((c: { networkId: string; embedding: number[] | null }) => ({
