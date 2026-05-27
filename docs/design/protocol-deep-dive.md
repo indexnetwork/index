@@ -175,9 +175,12 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 **Flow:** `START -> prep -> scope -> resolve -> discovery -> evaluation -> ranking -> persist -> negotiate -> END`
 
 The graph supports multiple discovery paths, searching across intents and premises corpora:
-- **Intent-based (Path A):** Trigger intent is assigned to an index -- use its HyDE documents for search
+- **Intent-based (Path A):** Trigger intent is assigned to an index — use its HyDE documents for search
 - **Query-based (Path B):** Query-generated HyDE documents for search
+- **Context-to-intent (Path C):** User contexts (network-scoped paragraph representations from the premise graph) are embedded and used to search for matching intents via `searchIntentsByContextEmbedding()`. Candidates carry `discoverySource: 'context-to-intent'`.
 - **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared indexes
+
+All discovery strategies are merged via `mergeStrategyCandidates()`, which deduplicates by `userId:networkId:entityId` and applies a multi-strategy boost (+0.05 per additional strategy, capped at 0.15).
 
 Premise-based candidates carry `candidatePremiseId` in the persist node for actor tracking, regardless of discovery source.
 
