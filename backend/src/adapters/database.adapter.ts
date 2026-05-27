@@ -190,7 +190,7 @@ interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions, userSocials } = schema;
+const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions, userSocials, userContexts } = schema;
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query';
@@ -4066,6 +4066,135 @@ export class ChatDatabaseAdapter {
         )
       );
     return rows.map((r) => ({ id: r.id, userId: r.userId }));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // User Context Methods — CRUD for per-user-per-network context summaries
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Upsert a user context summary for a given user+network pair.
+   * Creates a new row or updates an existing one based on the (userId, networkId) unique constraint.
+   */
+  async upsertUserContext(params: {
+    userId: string;
+    networkId: string;
+    text: string;
+    embedding: number[];
+    premiseHash: string;
+  }): Promise<{ id: string }> {
+    const vectorStr = `[${params.embedding.join(',')}]`;
+    const rows = await db.insert(userContexts)
+      .values({
+        userId: params.userId,
+        networkId: params.networkId,
+        text: params.text,
+        embedding: sql`${vectorStr}::vector` as unknown as number[],
+        premiseHash: params.premiseHash,
+        generatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [userContexts.userId, userContexts.networkId],
+        set: {
+          text: params.text,
+          embedding: sql`${vectorStr}::vector` as unknown as number[],
+          premiseHash: params.premiseHash,
+          generatedAt: new Date(),
+        },
+      })
+      .returning({ id: userContexts.id });
+    return { id: rows[0].id };
+  }
+
+  /**
+   * Retrieve a single user context for a user+network pair.
+   */
+  async getUserContext(userId: string, networkId: string) {
+    const rows = await db.select()
+      .from(userContexts)
+      .where(and(
+        eq(userContexts.userId, userId),
+        eq(userContexts.networkId, networkId),
+      ))
+      .limit(1);
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      text: r.text,
+      embedding: r.embedding as unknown as number[],
+      premiseHash: r.premiseHash ?? '',
+      generatedAt: r.generatedAt,
+    };
+  }
+
+  /**
+   * Retrieve all user contexts for a given user.
+   */
+  async getUserContexts(userId: string) {
+    const rows = await db.select()
+      .from(userContexts)
+      .where(eq(userContexts.userId, userId));
+    return rows.map(r => ({
+      id: r.id,
+      networkId: r.networkId,
+      text: r.text,
+      embedding: r.embedding as unknown as number[],
+      premiseHash: r.premiseHash ?? '',
+      generatedAt: r.generatedAt,
+    }));
+  }
+
+  /**
+   * Cosine similarity search against intent embeddings using a user context embedding.
+   * Restores the profile→intent cross-search deleted when Path B was removed.
+   */
+  async searchIntentsByContextEmbedding(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+    minScore?: number;
+  }) {
+    const { embedding, networkIds, excludeUserId, limit, minScore = 0.30 } = params;
+    const vectorStr = `[${embedding.join(',')}]`;
+
+    const rows = await db.execute<{
+      intentId: string;
+      userId: string;
+      networkId: string;
+      payload: string;
+      summary: string | null;
+      similarity: number;
+    }>(sql`
+      SELECT
+        i.id AS "intentId",
+        i.user_id AS "userId",
+        ine.network_id AS "networkId",
+        i.payload,
+        i.summary,
+        1 - (i.embedding <=> ${vectorStr}::vector) AS similarity
+      FROM ${schema.intents} i
+      JOIN ${schema.intentNetworks} ine ON i.id = ine.intent_id
+      JOIN ${schema.users} u ON i.user_id = u.id
+      WHERE ine.network_id IN ${networkIds}
+        AND i.user_id != ${excludeUserId}
+        AND i.status = 'ACTIVE'
+        AND i.embedding IS NOT NULL
+        AND u.deleted_at IS NULL
+        AND 1 - (i.embedding <=> ${vectorStr}::vector) >= ${minScore}
+      ORDER BY i.embedding <=> ${vectorStr}::vector
+      LIMIT ${limit}
+    `);
+
+    return rows as Array<{
+      intentId: string;
+      userId: string;
+      networkId: string;
+      payload: string;
+      summary: string | null;
+      similarity: number;
+    }>;
   }
 
 }
