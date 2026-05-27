@@ -57,6 +57,18 @@ describe("scoreRun", () => {
     expect(res.assertions.find((a) => a.kind === "role")?.passed).toBe(false);
   });
 
+  it("treats a score-0 candidate as not matched (reject expectation passes)", async () => {
+    const c = baseCase([{ candidateId: "cand", match: false, scoreBand: [0, 30] }]);
+    const res = await scoreRun(c, [opp("cand", 0)], passJudge);
+    expect(res.passed).toBe(true);
+  });
+
+  it("treats a score-0 candidate as not matched (accept expectation fails on match)", async () => {
+    const c = baseCase([{ candidateId: "cand", match: true, scoreBand: [70, 100] }]);
+    const res = await scoreRun(c, [opp("cand", 0)], passJudge);
+    expect(res.assertions.find((a) => a.kind === "match")?.passed).toBe(false);
+  });
+
   it("runs the judge only when reasoningCriteria is set", async () => {
     const withCriteria = baseCase([{ candidateId: "cand", match: true, reasoningCriteria: "must be strong" }]);
     const failed = await scoreRun(withCriteria, [opp("cand", 90)], failJudge);
