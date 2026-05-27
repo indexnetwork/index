@@ -104,6 +104,16 @@
         "vitest": "^4.0.18",
       },
     },
+    "packages/agentvillage": {
+      "name": "@edge-city/agentvillage",
+      "version": "0.1.0",
+      "bin": {
+        "agentvillage": "./install/install.ts",
+      },
+      "dependencies": {
+        "yaml": "^2.8.0",
+      },
+    },
     "packages/claude-plugin": {
       "name": "@indexnetwork/claude-plugin",
       "version": "0.1.5",
@@ -124,26 +134,9 @@
         "@indexnetwork/cli-linux-x64": "0.10.5",
       },
     },
-    "packages/edge-hermes": {
-      "name": "@edge-city/edge-hermes",
-      "version": "0.1.0",
-      "bin": {
-        "edge-hermes": "./install/install.ts",
-      },
-      "dependencies": {
-        "yaml": "^2.8.0",
-      },
-    },
-    "packages/edgeclaw": {
-      "name": "@edge-city/edgeclaw",
-      "version": "0.11.0",
-      "bin": {
-        "edgeclaw": "./install/install.ts",
-      },
-    },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "1.12.2",
+      "version": "1.17.0",
       "dependencies": {
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",
@@ -317,9 +310,7 @@
 
     "@drizzle-team/brocli": ["@drizzle-team/brocli@0.10.2", "", {}, "sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w=="],
 
-    "@edge-city/edge-hermes": ["@edge-city/edge-hermes@workspace:packages/edge-hermes"],
-
-    "@edge-city/edgeclaw": ["@edge-city/edgeclaw@workspace:packages/edgeclaw"],
+    "@edge-city/agentvillage": ["@edge-city/agentvillage@workspace:packages/agentvillage"],
 
     "@emnapi/core": ["@emnapi/core@1.10.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw=="],
 
