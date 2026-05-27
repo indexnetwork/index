@@ -4,6 +4,7 @@ config({ path: ".env.test", override: true });
 import { describe, expect, it, test } from "bun:test";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
 import { buildMinimalOpportunityCard } from "../opportunity.tools.js";
+import { deduplicateByPerson } from "../opportunity.utils.js";
 
 describe("buildMinimalOpportunityCard - IND-113", () => {
   const mockOpportunity = {
@@ -878,5 +879,106 @@ describe("buildOpportunityPresentation — per-person grouping (MCP)", () => {
     expect(out).toContain("1. Ashish");
     expect(out).toContain("opportunityId: opp-d1");
     expect(out).toContain("opportunityId: opp-d2");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deduplicateByPerson — per-person dedup in the selection layer
+// ---------------------------------------------------------------------------
+
+describe("deduplicateByPerson", () => {
+  function makeOpp(id: string, counterpartId: string, viewerId: string, confidence?: number) {
+    return {
+      id,
+      status: "pending",
+      actors: [
+        { userId: viewerId, role: "party" },
+        { userId: counterpartId, role: "party" },
+      ],
+      interpretation: confidence != null ? { confidence } : null,
+    };
+  }
+
+  const VIEWER = "viewer-1";
+
+  it("keeps only the highest-confidence opportunity per counterpart", () => {
+    const opps = [
+      makeOpp("opp-low", "ashish", VIEWER, 0.6),
+      makeOpp("opp-high", "ashish", VIEWER, 0.9),
+      makeOpp("opp-mid", "ashish", VIEWER, 0.75),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("opp-high");
+  });
+
+  it("passes through single-opportunity counterparts unchanged", () => {
+    const opps = [
+      makeOpp("opp-a", "alice", VIEWER, 0.8),
+      makeOpp("opp-b", "bob", VIEWER, 0.7),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe("opp-a");
+    expect(result[1].id).toBe("opp-b");
+  });
+
+  it("deduplicates per person while preserving different counterparts", () => {
+    const opps = [
+      makeOpp("opp-a1", "ashish", VIEWER, 0.6),
+      makeOpp("opp-m1", "maya", VIEWER, 0.8),
+      makeOpp("opp-a2", "ashish", VIEWER, 0.9),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(2);
+    expect(result.map((o) => o.id)).toEqual(["opp-m1", "opp-a2"]);
+  });
+
+  it("prefers the opportunity with a score over one without", () => {
+    const opps = [
+      makeOpp("opp-no-score", "ashish", VIEWER),       // interpretation: null
+      makeOpp("opp-has-score", "ashish", VIEWER, 0.5),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("opp-has-score");
+  });
+
+  it("on equal confidence, keeps the first encountered (stable)", () => {
+    const opps = [
+      makeOpp("opp-first", "ashish", VIEWER, 0.8),
+      makeOpp("opp-second", "ashish", VIEWER, 0.8),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("opp-first");
+  });
+
+  it("passes through opportunities with no derivable counterpart", () => {
+    const oppNoCounterpart = {
+      id: "opp-edge",
+      status: "latent",
+      actors: [
+        { userId: VIEWER, role: "introducer" },
+        { userId: "intro-target", role: "introducer" },
+      ],
+      interpretation: { confidence: 0.7 },
+    };
+    const opps = [oppNoCounterpart, makeOpp("opp-normal", "bob", VIEWER, 0.8)];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe("opp-edge");
+    expect(result[1].id).toBe("opp-normal");
+  });
+
+  it("preserves original input order among winners", () => {
+    const opps = [
+      makeOpp("opp-c1", "charlie", VIEWER, 0.5),
+      makeOpp("opp-a1", "ashish", VIEWER, 0.6),
+      makeOpp("opp-b1", "bob", VIEWER, 0.7),
+      makeOpp("opp-a2", "ashish", VIEWER, 0.9),
+    ];
+    const result = deduplicateByPerson(opps, VIEWER);
+    expect(result.map((o) => o.id)).toEqual(["opp-c1", "opp-b1", "opp-a2"]);
   });
 });
