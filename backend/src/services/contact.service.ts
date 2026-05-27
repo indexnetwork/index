@@ -1,6 +1,6 @@
 import { log } from '../lib/log';
 import { ContactDatabaseAdapter } from '../adapters/contact.database.adapter';
-import { profileQueue } from '../queues/profile.queue';
+import { enrichmentQueue } from '../queues/enrichment.queue';
 import { deduplicateContacts, getPreset } from '../lib/dedup/dedup';
 
 const logger = log.service.from('ContactService');
@@ -150,7 +150,7 @@ export class ContactService {
 
     // Enqueue enrichment for new ghosts
     if (isNew && isGhost) {
-      await profileQueue.addEnrichUserJob({ userId: user.id });
+      await enrichmentQueue.addEnrichUserJob({ userId: user.id });
       logger.info('[ContactService] Enrichment job enqueued for new ghost', { userId: user.id });
     }
 
@@ -273,7 +273,7 @@ export class ContactService {
       .filter(d => d.isNew && resolved.newGhostIds.includes(d.userId))
       .map(d => d.userId);
     if (newGhostIdsToEnrich.length > 0) {
-      await profileQueue.addEnrichUserJobBulk(newGhostIdsToEnrich.map(id => ({ userId: id })));
+      await enrichmentQueue.addEnrichUserJobBulk(newGhostIdsToEnrich.map(id => ({ userId: id })));
       logger.info('[ContactService] Enrichment jobs enqueued for new ghosts', { count: newGhostIdsToEnrich.length });
     }
 

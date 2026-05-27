@@ -6,7 +6,7 @@ import { experimentImportCredentialsTemplate } from '../lib/email/templates/expe
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { buildMcpServerConfig } from '../lib/mcp/mcp-config';
 import * as schema from '../schemas/database.schema';
-import { profileQueue } from '../queues/profile.queue';
+import { enrichmentQueue } from '../queues/enrichment.queue';
 
 /**
  * Experiment is a thin facade over the network-invitation flow: signup uses
@@ -93,7 +93,7 @@ class ExperimentService {
 
     // Enqueue profile enrichment so the user gets a profile + HyDE.
     try {
-      await profileQueue.addEnrichUserJob({ userId: result.user.id });
+      await enrichmentQueue.addEnrichUserJob({ userId: result.user.id });
     } catch (err) {
       logger.warn('[ExperimentService] Failed to enqueue profile enrichment (non-fatal)', { error: err });
     }
@@ -193,7 +193,7 @@ class ExperimentService {
     // above), then generates a full profile with premises and HyDE documents.
     if (importedUserIds.length > 0) {
       try {
-        await profileQueue.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id })));
+        await enrichmentQueue.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id })));
         logger.info('[ExperimentService] Enqueued profile enrichment', { count: importedUserIds.length });
       } catch (err) {
         logger.warn('[ExperimentService] Failed to enqueue profile enrichment (non-fatal)', { error: err });

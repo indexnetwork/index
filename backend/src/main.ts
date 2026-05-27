@@ -50,7 +50,7 @@ import { opportunityExpirationCron } from './queues/opportunity/expiration.queue
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
-import { profileQueue } from './queues/profile.queue';
+import { enrichmentQueue } from './queues/enrichment.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { integrationSyncQueue } from './queues/integration.queue';
@@ -106,12 +106,12 @@ negotiationRunExistingQueue.setRuntimeDeps({
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
 NetworkMembershipEvents.onMemberAdded = (userId: string) => {
-  profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
+  enrichmentQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
     log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, error: err });
   });
 };
 
-profileQueue.onEnrichmentComplete = (userId: string) => {
+enrichmentQueue.onEnrichmentComplete = (userId: string) => {
   fromProfileQueue.addJob(
     { userId },
     { priority: 20, jobId: `profile-discovery-${userId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
@@ -206,7 +206,7 @@ fromProfileQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 opportunityExpirationCron.start();
 notificationQueue.startWorker();
-profileQueue.startWorker();
+enrichmentQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
@@ -551,7 +551,7 @@ logger.info('Server running', { port: PORT });
 const shutdown = async () => {
   logger.info('Shutting down workers...');
   await Promise.allSettled([
-    profileQueue.close(),
+    enrichmentQueue.close(),
     intentQueue.close(),
     fromIntentQueue.close(),
     fromIntroducerQueue.close(),

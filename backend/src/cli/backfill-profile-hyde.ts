@@ -16,7 +16,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { hydeDocuments, networkMembers, userProfiles } from '../schemas/database.schema';
-import { profileQueue } from '../queues/profile.queue';
+import { enrichmentQueue } from '../queues/enrichment.queue';
 
 const DEFAULT_LIMIT = 500;
 
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
 
   let enqueued = 0;
   for (const { userId } of users) {
-    await profileQueue.addEnsureProfileHydeJob({ userId });
+    await enrichmentQueue.addEnsureProfileHydeJob({ userId });
     enqueued++;
   }
 
@@ -67,14 +67,14 @@ async function main(): Promise<void> {
 
 main()
   .then(async () => {
-    await Promise.all([closeDb(), profileQueue.queue.close()]);
+    await Promise.all([closeDb(), enrichmentQueue.queue.close()]);
   })
   .catch(async (e: unknown) => {
     const msg = e instanceof Error ? e.message : `${e}`;
     console.error('backfill-profile-hyde error:', msg);
     await Promise.all([
       closeDb().catch(() => {}),
-      profileQueue.queue.close().catch(() => {}),
+      enrichmentQueue.queue.close().catch(() => {}),
     ]);
     process.exit(1);
   });
