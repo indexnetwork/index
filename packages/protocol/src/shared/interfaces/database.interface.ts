@@ -1445,6 +1445,62 @@ export interface Database {
     assertionText: string;
     similarity: number;
   }>>;
+
+  // ─── User Context Methods ───
+
+  /**
+   * Upsert a user context for a specific network.
+   * Creates or updates the synthesized context paragraph + embedding.
+   */
+  upsertUserContext(params: {
+    userId: string;
+    networkId: string;
+    text: string;
+    embedding: number[];
+    premiseHash: string;
+  }): Promise<{ id: string }>;
+
+  /**
+   * Get the user context for a specific user+network pair.
+   */
+  getUserContext(userId: string, networkId: string): Promise<{
+    id: string;
+    text: string;
+    embedding: number[];
+    premiseHash: string;
+    generatedAt: Date;
+  } | null>;
+
+  /**
+   * Get user contexts for a user across all their networks.
+   */
+  getUserContexts(userId: string): Promise<Array<{
+    id: string;
+    networkId: string;
+    text: string;
+    embedding: number[];
+    premiseHash: string;
+    generatedAt: Date;
+  }>>;
+
+  /**
+   * Cosine similarity search against intent embeddings using a context embedding.
+   * Restores the profile→intent cross-search deleted when Path B was removed.
+   */
+  searchIntentsByContextEmbedding(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+    minScore?: number;
+  }): Promise<Array<{
+    intentId: string;
+    userId: string;
+    networkId: string;
+    payload: string;
+    summary: string | null;
+    similarity: number;
+  }>>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1935,6 +1991,10 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getPremisesForUser'
   // Premise-to-premise discovery (path D) in OpportunityGraph
   | 'searchPremisesBySimilarity'
+  // User context → intent cross-search (profile→intent path) in OpportunityGraph
+  | 'getUserContext'
+  | 'getUserContexts'
+  | 'searchIntentsByContextEmbedding'
 > & Pick<
   NegotiationQueries,
   // Orphan heal in OpportunityGraph persist node
@@ -1977,6 +2037,10 @@ export type OpportunityGraphDatabase = Pick<
   // Premise-to-premise discovery (path D)
   | 'getPremisesForUser'
   | 'searchPremisesBySimilarity'
+  // User context → intent cross-search (profile→intent path)
+  | 'getUserContext'
+  | 'getUserContexts'
+  | 'searchIntentsByContextEmbedding'
 > & Pick<
   NegotiationQueries,
   // Orphan heal: check if a prior negotiating opportunity has a stale task
