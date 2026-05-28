@@ -23,13 +23,15 @@ bun run eval:matching -- --html out.html     # ...to a specific path
 bun run eval:matching -- --rolling-baseline  # compare against trailing 7-day run average
 bun run eval:matching -- --rolling-baseline 14 # compare against trailing 14 days
 bun run eval:matching -- --alpha 0.01        # stricter regression significance threshold
+bun run eval:matching -- --no-save           # do not auto-save full-corpus run JSON
 ```
 
 Requires `OPENROUTER_API_KEY` (loaded via `.env.test`). Exits non-zero on a regression
 versus `baselines/matching.baseline.json`, or versus the rolling window when
 `--rolling-baseline` is set. Regression significance defaults to α=0.05; override with
 `--alpha`. Full-corpus runs are automatically written to
-`runs/<timestamp>.json` (gitignored) so future rolling windows have data.
+`runs/<timestamp>.json` (gitignored) so future rolling windows have data; use
+`--no-save` for exploratory full-corpus runs that should not feed rolling baselines.
 
 ## HTML reports (`--html`)
 

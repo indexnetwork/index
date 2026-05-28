@@ -62,6 +62,7 @@ Execution:
   --runs <n>                Runs per case (default: 3)
   --no-judge                Skip LLM reasoning checks
   --alpha <p>               Regression significance threshold (default: ${DEFAULT_ALPHA})
+  --no-save                 Do not auto-save full-corpus run JSON for rolling baseline fuel
 
 Baselines/reports:
   --update-baseline         Overwrite committed baseline (full corpus only)
@@ -116,6 +117,7 @@ async function main(): Promise<void> {
   const noJudge = has("--no-judge");
   const report = has("--report");
   const html = has("--html");
+  const noSave = has("--no-save");
   const alpha = Number(arg("--alpha") ?? DEFAULT_ALPHA);
   if (!Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) {
     console.error(`--alpha must be a number between 0 and 1 (got "${arg("--alpha")}")`);
@@ -190,7 +192,7 @@ async function main(): Promise<void> {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
-  if (fullCorpus) {
+  if (fullCorpus && !noSave) {
     await writeRunReport(autoRunPath, scorecard);
   }
 
