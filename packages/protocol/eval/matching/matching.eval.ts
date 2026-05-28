@@ -101,12 +101,17 @@ async function main(): Promise<void> {
       };
 
   const selected = selectCases(CASES, { rule: ruleFilter, caseId: caseFilter, tier: tierFilter });
+  const fullCorpus = !ruleFilter && !caseFilter && tierFilter === undefined;
   if (listCases) {
     console.log(formatCaseList(selected));
     process.exit(0);
   }
   if (selected.length === 0) {
     console.error(`No cases match selected filters`);
+    process.exit(2);
+  }
+  if (updateBaseline && !fullCorpus) {
+    console.error(`--update-baseline requires a full-corpus run (remove --rule/--case/--tier filters)`);
     process.exit(2);
   }
 
@@ -124,11 +129,9 @@ async function main(): Promise<void> {
   }
 
   const scorecard = buildScorecard(results, { model, runs });
-  const baseline = ruleFilter
-    ? null
-    : rollingBaselineDays !== null
-      ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays)
-      : await readBaseline(BASELINE_PATH);
+  const baseline = rollingBaselineDays !== null
+    ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays)
+    : await readBaseline(BASELINE_PATH);
   const { regressions } = diffBaseline(scorecard, baseline, ALPHA);
 
   if (rollingBaselineDays !== null) {
@@ -148,7 +151,7 @@ async function main(): Promise<void> {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
-  if (!ruleFilter) {
+  if (fullCorpus) {
     await writeRunReport(autoRunPath, scorecard);
   }
 
