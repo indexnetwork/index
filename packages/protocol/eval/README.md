@@ -30,6 +30,7 @@ bun run eval:matching -- --report               # Write full run report (incl. e
 bun run eval:matching -- --report out.json      # …to a specific path
 bun run eval:matching -- --html                 # Write standalone HTML scorecard
 bun run eval:matching -- --rolling-baseline     # Compare against recent run reports (7d)
+bun run eval:matching -- --alpha 0.01           # Stricter regression gate
 ```
 
 ## Anatomy of a harness

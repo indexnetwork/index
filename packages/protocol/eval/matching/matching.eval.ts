@@ -17,6 +17,7 @@
  *   bun run eval:matching -- --html path.html   # ...to a specific path
  *   bun run eval:matching -- --rolling-baseline # compare against recent runs (default 7d)
  *   bun run eval:matching -- --rolling-baseline 14 # compare against a 14-day window
+ *   bun run eval:matching -- --alpha 0.01      # stricter regression significance threshold
  *
  * Requires OPENROUTER_API_KEY (loaded via --env-file=.env.test in the package script).
  * Exits non-zero when a regression vs the committed baseline is detected.
@@ -41,7 +42,7 @@ import {
 } from "./matching.reporter.js";
 import type { CaseResult } from "./matching.types.js";
 
-const ALPHA = 0.05;
+const DEFAULT_ALPHA = 0.05;
 const BASELINE_PATH = path.resolve(import.meta.dir, "baselines/matching.baseline.json");
 const RUNS_DIR = path.resolve(import.meta.dir, "runs");
 
@@ -82,6 +83,11 @@ async function main(): Promise<void> {
   const noJudge = has("--no-judge");
   const report = has("--report");
   const html = has("--html");
+  const alpha = Number(arg("--alpha") ?? DEFAULT_ALPHA);
+  if (!Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) {
+    console.error(`--alpha must be a number between 0 and 1 (got "${arg("--alpha")}")`);
+    process.exit(2);
+  }
   const rollingBaseline = has("--rolling-baseline");
   const rollingBaselineDays = rollingBaseline ? Number(flagValue("--rolling-baseline") ?? 7) : null;
   if (rollingBaselineDays !== null && (!Number.isFinite(rollingBaselineDays) || rollingBaselineDays <= 0)) {
@@ -132,12 +138,12 @@ async function main(): Promise<void> {
   const baseline = rollingBaselineDays !== null
     ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays)
     : await readBaseline(BASELINE_PATH);
-  const { regressions } = diffBaseline(scorecard, baseline, ALPHA);
+  const { regressions } = diffBaseline(scorecard, baseline, alpha);
 
   if (rollingBaselineDays !== null) {
     console.log(
       baseline
-        ? `\nComparing against rolling ${rollingBaselineDays}-day baseline (${baseline.model}).`
+        ? `\nComparing against rolling ${rollingBaselineDays}-day baseline (${baseline.model}, α=${alpha}).`
         : `\nNo rolling ${rollingBaselineDays}-day baseline found; skipping regression comparison.`,
     );
   }
