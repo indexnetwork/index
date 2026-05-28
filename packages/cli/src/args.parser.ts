@@ -316,7 +316,7 @@ export function parseArgs(args: string[]): ParsedCommand {
   return result;
 }
 
-const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive", "update", "link", "unlink", "links"]);
+const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive", "update", "link", "unlink"]);
 
 /**
  * Parse intent-specific positional arguments into subcommand, ID, or content.
@@ -336,7 +336,6 @@ function parseIntentArgs(positionals: string[], result: ParsedCommand): void {
   switch (result.subcommand) {
     case "show":
     case "archive":
-    case "links":
       result.intentId = rest[0];
       break;
     case "create":

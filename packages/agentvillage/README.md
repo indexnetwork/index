@@ -30,6 +30,7 @@ See the project hub for the full diagram and decisions.
   - `skills/index-network/` — Index Network MCP procedural knowledge (onboarding ritual, voice exemplars, cron prompts, heartbeat tasks)
   - `skills/edgeos/` — backend-generic EdgeOS API recipes (events, RSVPs, venues, attendee directory, own profile). Reads `EDGEOS_BEARER_TOKEN` and `EDGEOS_API_KEY` from env; popup id is supplied by the active operator skill.
   - `skills/edge-esmeralda/` — Edge Esmeralda 2026 popup knowledge: popup constants (popup id, week dates, themes), attendee field semantics, the curated wiki/website/newsletter references (vendored from `Edge-City/agentvillage-skills`; refreshed by upstream CI every 15 min), and the onboarding pointer for obtaining EdgeOS tokens.
+  - `skills/geo-esmeralda/` — Geo knowledge graph recipes and write guidance for attendee-authored content, relations, ontology, and media.
 - `install/` — bootstrap scripts for plugging AgentVillage into a runtime
 
 ## Getting an agent connected
@@ -174,6 +175,7 @@ See `skills/README.md` for the full per-host reference.
 - [OpenClaw](https://openclaw.dev) installed and configured (`openclaw onboard --mode local` or `openclaw setup`).
 - An API key for the Index protocol. Generate one on your agents page at [index.network](https://index.network) (or your community-branded node).
 - [Bun](https://bun.sh) — the installer is a Bun script (Node 20+ also works if you swap the shebang).
+- Node 20+ with npm/npx available to run the Geo CLI recipes.
 - *(Optional)* EdgeOS tokens, if you want live event/attendee recipes to work without per-query prompting:
   - `EDGEOS_API_KEY` — long-lived `eos_live_…` automation key, minted via the EdgeCity onboarding flow (see the "EdgeOS tokens" section above). Unlocks the calendar/RSVPs/venues recipes in `skills/edgeos/SKILL.md`.
   - `EDGEOS_BEARER_TOKEN` — human session JWT obtained via the same email-OTP flow. Unlocks the directory, own-profile, and OpenAPI-spec recipes.
@@ -205,17 +207,18 @@ bun install/install.ts \
   --edgeos-bearer-token eyJ…
 ```
 
-The installer writes any tokens it finds into `env.vars.*` in `~/.openclaw/openclaw.json`; on the next gateway start they become process-env on the gateway and inherit into the agent's shell tool, so `curl -H "Authorization: Bearer $EDGEOS_API_KEY"` recipes work without further plumbing.
+The installer writes any tokens it finds into `env.vars.*` in `~/.openclaw/openclaw.json`; on the next gateway start they become process-env on the gateway and inherit into the agent's shell tool, so `curl -H "Authorization: Bearer $EDGEOS_API_KEY"` recipes and Geo CLI commands work without further plumbing.
 
 The installer:
 
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at `https://protocol.index.network/mcp` with your API key in `x-api-key`.
 2. If `--edgeos-api-key` and/or `--edgeos-bearer-token` are passed, writes each to `env.vars.<NAME>` so the gateway exposes them to the agent's subprocesses on its next start.
-3. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
-4. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds the lived notes the active skill's bootstrap ritual populated for you); pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated `MEMORY.md`, OpenClaw's `workspace-state.json` first-run marker, and the local onboarding/welcome/cron-preference markers under `memory/` so the next session re-onboards from scratch.
-5. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/` so OpenClaw registers them as workspace skills.
-6. Installs one cron job by default: the daily digest (`0 8 * * *`). The afternoon (`0 14 * * *`) and evening (`0 20 * * *`) ambient passes are opt-in — the user enables them through the schedule sub-dialog at session start or any time later.
-7. Restarts the gateway so all config changes take effect.
+3. Leaves Geo CLI execution to the skill recipes, which run the public package through `npx`.
+4. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
+5. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds the lived notes the active skill's bootstrap ritual populated for you); pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated `MEMORY.md`, OpenClaw's `workspace-state.json` first-run marker, and the local onboarding/welcome/cron-preference markers under `memory/` so the next session re-onboards from scratch.
+6. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/` so OpenClaw registers them as workspace skills.
+7. Installs one cron job by default: the daily digest (`0 8 * * *`). The afternoon (`0 14 * * *`) and evening (`0 20 * * *`) ambient passes are opt-in — the user enables them through the schedule sub-dialog at session start or any time later.
+8. Restarts the gateway so all config changes take effect.
 
 Send any message in your chat to bring AgentVillage online. AgentVillage has two independent onboarding gates that run at session start:
 
@@ -265,6 +268,7 @@ Accepted-opportunity notifications, freshness audits, memory curation, and any o
 | `HEARTBEAT.md` | Generic heartbeat tick rules + the cross-backend `memory-curation` task. Backend-specific tasks live in each active skill's `heartbeat.md`. |
 | `skills/index-network/SKILL.md` | Index Network skill bundle entry point. Registered with OpenClaw on install; gates on `mcp.servers.index`. Body points at the bundle's sibling reference files. |
 | `skills/edgeos/SKILL.md` | EdgeOS-API skill: events + attendee directory + curated wiki/website/newsletter references. Currently scoped to Edge Esmeralda 2026. Loaded by OpenClaw alongside index-network. Vendored from `Edge-City/agentvillage-skills`. |
+| `skills/geo-esmeralda/SKILL.md` | Geo knowledge graph skill: community content, relations, ontology, and attendee-authored writes through the Geo CLI package. |
 
 ## Configuration guide
 
@@ -316,8 +320,8 @@ AgentVillage's behaviour is markdown-driven. Almost everything you'd want to cha
 
 | You want to… | Edit | Notes |
 |---|---|---|
-| Wire a brand-new backend (e.g. Geo today, others later) | new `install/install_<name>.ts` (modeled on `install_index.ts` for MCP+cron wiring or `install_edgeos.ts` for env-token wiring) + new `skills/<name>/` bundle with `SKILL.md` + register in `workspace/AGENTS.md` "Active skills" | The orchestrator (`install/install.ts`) already calls `installIndex()`, `installEdgeos()`, `installGeo()` in sequence — add your `install_<name>()` call alongside. |
-| Extend an existing backend (Index, EdgeOS, Geo when wired) | The matching `install/install_<name>.ts` and `skills/<name>/` bundle | Runtime config (env vars, MCP entries, cron jobs) lives in `install_<name>.ts`; agent-facing instructions live in the skill bundle's `SKILL.md` and siblings. |
+| Wire a brand-new backend | new `install/install_<name>.ts` (modeled on `install_index.ts` for MCP+cron wiring, `install_edgeos.ts` for env-token wiring, or `install_geo.ts` for CLI runtime guidance) + new `skills/<name>/` bundle with `SKILL.md` + register in `workspace/AGENTS.md` "Active skills" | Add the installer call to `install/install.ts` and include the skill in `EDGE_SKILL_NAMES` so it is copied into the runtime workspace. |
+| Extend an existing backend (Index, EdgeOS, Geo) | The matching `install/install_<name>.ts` and `skills/<name>/` bundle | Runtime config (env vars, MCP entries, cron jobs, CLI commands) lives in `install_<name>.ts`; agent-facing instructions live in the skill bundle's `SKILL.md` and siblings. |
 | Wire optional env vars an existing backend needs | `install/install_<name>.ts` + the Prerequisites section of this README | The installer writes `env.vars.<NAME>`; the gateway exposes those to the agent's shell tools on next start. `install_edgeos.ts` is the worked example. |
 | Change which skills the agent loads | `workspace/AGENTS.md` "Active skills" section | Mark a skill as eager (gates fire at session start) or reactive (only consulted when needed). |
 | Update the vendored `edgeos` reference data (events, attendee directory, wiki snapshots) | Don't — it's auto-refreshed from upstream | Upstream CI in `Edge-City/agentvillage-skills` regenerates `skills/edgeos/references/` every 15 minutes; the change propagates through the nested subtree chain. See the monorepo's `CLAUDE.md` for the sync flow. The recipes in `SKILL.md` are hand-edited — see the "Content" section above. |
@@ -327,8 +331,8 @@ AgentVillage's behaviour is markdown-driven. Almost everything you'd want to cha
 Skills in this repo are public. Each backend gates access with its own per-user credential, wired in by the matching per-backend installer:
 
 - **Index Network (today's wired backend)** — per-user API key returned by `POST /api/networks/:id/signup` (see [Integration API: Authentication](#authentication) above). `install/install_index.ts` writes it into `mcp.servers.index` as the `x-api-key` header.
-- **EdgeOS** — per-user token issued via OTP through the EdgeOS portal. Lands in `install/install_edgeos.ts` once that backend is wired.
-- **Geo** — per-user credential, mechanism TBD. Lands in `install/install_geo.ts` once that backend is wired.
+- **EdgeOS** — per-user tokens issued via OTP through the EdgeOS portal. `install/install_edgeos.ts` writes `EDGEOS_API_KEY` and `EDGEOS_BEARER_TOKEN` into the runtime environment when provided.
+- **Geo** — uses the attendee's `EDGEOS_BEARER_TOKEN` and the Geo CLI package. Skill recipes run it through `npx`.
 
 The skill files describe HOW to call each backend's APIs; the per-backend credential is what unlocks them.
 

@@ -19,6 +19,18 @@ Canonical user-facing renderings for Edge Esmeralda's Index Network flows. Mimic
 > - [Kai]({profileUrl}) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm open conversation, make intro
 > - [Celia]({profileUrl}) — Designing governance tooling for popup communities. Coordination, consent, collective decision-making. Point her at the right people, make intro
 
+### Grouped: same person, multiple connections
+
+When `list_opportunities` returns multiple opportunities for the same person (grouped entry), render as a single bullet with multiple conversation entry points:
+
+> 🌞 Good morning from Edge Esmeralda
+>
+> It's Tuesday, May 26. Here's what's worth your attention right now.
+>
+> **2 conversations await you**
+> - [Ashish]({profileUrl}) — An experienced technologist spanning [generative software]({acceptUrl1}), [AI infrastructure]({acceptUrl2}), [creative AI design]({acceptUrl3}), and [deep learning research]({acceptUrl4}). Several angles worth exploring.
+> - [Priya]({profileUrl}) — Building community-owned data infrastructure. Aligned on the ownership layer and complementary on discovery, could be interesting to [explore overlaps]({acceptUrl})
+
 ## Ambient update (fires twice daily at 14:00 and 20:00 host-local)
 
 Two sections are possible: direct (the user is a party — link the name to `profileUrl`, embed `acceptUrl` + `&msg=` greeting) and introducer (the user is the introducer — render community intents, still link the name to `profileUrl`, but no `acceptUrl` and no `&msg=`). Skip a section that has no qualifying candidates. Per-pass cap: max 3 direct + 3 introducer.
@@ -34,6 +46,11 @@ Two sections are possible: direct (the user is a party — link the name to `pro
 > - [Kai]({profileUrl}) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
 >
 > There are 5 more conversations waiting for you, let me know if you want to see them.
+
+### Grouped: same person, multiple connections (ambient)
+
+> **New conversations worth starting**
+> - [Ashish]({profileUrl}) — An experienced technologist whose work spans [generative software]({acceptUrl1}), [AI infrastructure]({acceptUrl2}), and [deep learning research]({acceptUrl3}). Multiple overlapping connections with your interests.
 
 ## Greeting drafts (the `&msg=` payload appended to Telegram links)
 

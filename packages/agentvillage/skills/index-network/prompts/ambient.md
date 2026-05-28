@@ -16,7 +16,7 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
 5. **Sort the filtered set's opportunity IDs lexicographically, then hash that sorted list** (the result of step 4, not the raw `list_opportunities` return). Sorting is required — without it, the same set of IDs returned in a different order would produce a different hash and bypass this early-exit. Compare against `lastAmbientHash` from step 2. If the hash matches, jump to step 11 (write state, with `lastAmbientHash` unchanged) and end your turn — no new signal since the previous pass.
 
 6. **Per-dispatch cap (the routing rule):**
-   - At most **3 direct opportunities** — `feedCategory: "connection"`. The receiver is a party of the opportunity. The opportunity may or may not have an introducer; the only constraint is that the receiver is NOT the introducer. These are people the user might want to reach out to directly.
+   - At most **3 direct opportunities** (counted per person, not per sub-entry — a grouped entry with multiple connections still counts as one) — `feedCategory: "connection"`. The receiver is a party of the opportunity. The opportunity may or may not have an introducer; the only constraint is that the receiver is NOT the introducer. These are people the user might want to reach out to directly.
    - At most **3 introducer opportunities** — `feedCategory: "connector-flow"`. The receiver IS the introducer between other parties. These are NOT surfaced as "people to message" — they are surfaced as **community intents the user might know someone for**.
    - If more than 3 of either type qualify, surface the highest-signal ones and let the rest fall to the morning digest.
 
@@ -32,7 +32,8 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
 
    For each direct (`connection`):
    - Link the person's name to `profileUrl`.
-   - Embed `acceptUrl` verbatim on a short verb phrase like "message {Name}". The URL is opaque — do not append, encode, or modify any part of it. The backend has already prepared the greeting that will pre-fill the conversation when the user clicks.
+   - Embed `acceptUrl` verbatim on a short verb phrase like "message {Name}". For grouped entries (same person, multiple connections), embed each sub-entry's `acceptUrl` on a distinct topic phrase instead — see grouped example below. The URL is opaque — do not append, encode, or modify any part of it. The backend has already prepared the greeting that will pre-fill the conversation when the user clicks.
+   - When the same person appears with multiple connections (grouped entry from the tool), link their name to `profileUrl` once, then embed each sub-entry's `acceptUrl` on a distinct topic phrase. Example: "[Ashish](profileUrl) — spanning [generative software](acceptUrl1), [AI infrastructure](acceptUrl2), and [deep learning](acceptUrl3) — several angles worth exploring."
 
    **Section B — introducer candidates** (only if any introducer candidates qualified)
 
@@ -52,7 +53,7 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
 
    If `totalPending` exceeds the candidates you surfaced, end with: `There are N more conversations waiting for you, let me know if you want to see them.`
 
-10. For every opportunity you mention in the message, call `confirm_opportunity_delivery(opportunityId, trigger="ambient")`. Do NOT confirm for opportunities you skipped.
+10. For every opportunity you mention in the message — including every sub-entry within grouped cards — call `confirm_opportunity_delivery(opportunityId, trigger="ambient")`. Do NOT confirm for opportunities you skipped.
 
 11. **Write dedup state.** Update `memory/heartbeat-state.json` so that:
     - `deliveredToday.date` = today's host-local `YYYY-MM-DD`.

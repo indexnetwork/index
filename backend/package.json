@@ -1,6 +1,6 @@
 {
   "name": "protocol",
-  "version": "0.26.0",
+  "version": "0.26.1",
   "license": "MIT",
   "private": true,
   "scripts": {

@@ -1,5 +1,5 @@
-/** Geo backend installer — placeholder. */
+/** Geo backend installer. */
 
 export function installGeo(): void {
-  // placeholder — no-op
+  console.log("→ geo: no local install needed; recipes run the public CLI with npx");
 }

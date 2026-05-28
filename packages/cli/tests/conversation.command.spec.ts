@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
 import { parseArgs } from "../src/args.parser";
 import { ApiClient } from "../src/api.client";
@@ -69,13 +69,13 @@ describe("ApiClient — conversation methods", () => {
   let mock: ReturnType<typeof createMockServer>;
   let client: ApiClient;
 
-  beforeAll(async () => {
-    mock = await createMockServer();
+  beforeEach(() => {
+    mock = createMockServer();
     client = new ApiClient(mock.url, "test-token");
   });
 
-  afterAll(async () => {
-    await mock.stop();
+  afterEach(() => {
+    mock.stop();
   });
 
   it("listConversations returns conversations array", async () => {
@@ -154,13 +154,13 @@ describe("handleConversation", () => {
   let mock: ReturnType<typeof createMockServer>;
   let client: ApiClient;
 
-  beforeAll(async () => {
-    mock = await createMockServer();
+  beforeEach(() => {
+    mock = createMockServer();
     client = new ApiClient(mock.url, "test-token");
   });
 
-  afterAll(async () => {
-    await mock.stop();
+  afterEach(() => {
+    mock.stop();
   });
 
   it("lists conversations", async () => {

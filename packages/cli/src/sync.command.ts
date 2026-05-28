@@ -26,7 +26,7 @@ export async function handleSync(
 
   const [profile, networks, intents, contacts] = await Promise.all([
     client.callTool("read_user_profiles", {}),
-    client.callTool("read_indexes", {}),
+    client.callTool("read_networks", {}),
     client.callTool("read_intents", {}),
     client.callTool("list_contacts", {}),
   ]);

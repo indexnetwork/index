@@ -207,11 +207,14 @@ describe("CLI tool call contracts", () => {
       });
     });
 
-    it("link calls create_intent_index with intentId and networkId", async () => {
+    it("link resolves the intent ID then calls create_intent_index", async () => {
+      mock.onRest("GET", "/api/intents/abc123", () =>
+        Response.json({ intent: { id: "full-uuid-abc123", payload: "test", status: "active" } }),
+      );
       mock.setToolResponse("create_intent_index", { success: true, data: {} });
 
       await handleIntent(client, "link", {
-        intentId: "intent-123",
+        intentId: "abc123",
         targetId: "index-456",
         json: true,
       });
@@ -219,16 +222,19 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls).toHaveLength(1);
       expect(mock.toolCalls[0].toolName).toBe("create_intent_index");
       expect(mock.toolCalls[0].query).toEqual({
-        intentId: "intent-123",
+        intentId: "full-uuid-abc123",
         networkId: "index-456",
       });
     });
 
-    it("unlink calls delete_intent_index with intentId and networkId", async () => {
+    it("unlink resolves the intent ID then calls delete_intent_index", async () => {
+      mock.onRest("GET", "/api/intents/abc123", () =>
+        Response.json({ intent: { id: "full-uuid-abc123", payload: "test", status: "active" } }),
+      );
       mock.setToolResponse("delete_intent_index", { success: true, data: {} });
 
       await handleIntent(client, "unlink", {
-        intentId: "intent-123",
+        intentId: "abc123",
         targetId: "index-456",
         json: true,
       });
@@ -236,25 +242,9 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls).toHaveLength(1);
       expect(mock.toolCalls[0].toolName).toBe("delete_intent_index");
       expect(mock.toolCalls[0].query).toEqual({
-        intentId: "intent-123",
+        intentId: "full-uuid-abc123",
         networkId: "index-456",
       });
-    });
-
-    it("links calls read_intent_indexes with intentId", async () => {
-      mock.setToolResponse("read_intent_indexes", {
-        success: true,
-        data: { indexes: [] },
-      });
-
-      await handleIntent(client, "links", {
-        intentId: "intent-123",
-        json: true,
-      });
-
-      expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("read_intent_indexes");
-      expect(mock.toolCalls[0].query).toEqual({ intentId: "intent-123" });
     });
 
     it("archive calls delete_intent with intentId (CLI: intent archive)", async () => {
@@ -567,16 +557,16 @@ describe("CLI tool call contracts", () => {
   // ── Sync ─────────────────────────────────────────────────────────
 
   describe("sync", () => {
-    it("calls 4 tools in parallel: read_user_profiles, read_indexes, read_intents, list_contacts", async () => {
+    it("calls 4 tools in parallel: read_user_profiles, read_networks, read_intents, list_contacts", async () => {
       mock.setToolResponse("read_user_profiles", { success: true, data: { profile: {} } });
-      mock.setToolResponse("read_indexes", { success: true, data: { indexes: [] } });
+      mock.setToolResponse("read_networks", { success: true, data: { networks: [] } });
       mock.setToolResponse("read_intents", { success: true, data: { intents: [] } });
       mock.setToolResponse("list_contacts", { success: true, data: { contacts: [] } });
 
       await handleSync(client, { json: true });
 
       const toolNames = mock.toolCalls.map((c) => c.toolName).sort();
-      expect(toolNames).toEqual(["list_contacts", "read_indexes", "read_intents", "read_user_profiles"]);
+      expect(toolNames).toEqual(["list_contacts", "read_intents", "read_networks", "read_user_profiles"]);
 
       // All should send empty queries
       for (const call of mock.toolCalls) {

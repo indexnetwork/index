@@ -16,6 +16,11 @@ export function skillsDir(): string {
 }
 
 /** Skill bundles shipped by this repo (installed into `$HERMES_HOME/skills/<name>/`). */
-export const EDGE_SKILL_NAMES = ["index-network", "edgeos", "edge-esmeralda"] as const;
+export const EDGE_SKILL_NAMES = [
+  "index-network",
+  "edgeos",
+  "edge-esmeralda",
+  "geo-esmeralda",
+] as const;
 
 export const CRON_NAME_PREFIX = "Edge —";

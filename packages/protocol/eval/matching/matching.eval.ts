@@ -10,6 +10,8 @@
  *   bun run eval:matching -- --update-baseline  # overwrite the committed baseline
  *   bun run eval:matching -- --report           # write a full run report (incl. evaluator reasoning)
  *   bun run eval:matching -- --report path.json # ...to a specific path
+ *   bun run eval:matching -- --html             # write a standalone HTML scorecard
+ *   bun run eval:matching -- --html path.html   # ...to a specific path
  *
  * Requires OPENROUTER_API_KEY (loaded via --env-file=.env.test in the package script).
  * Exits non-zero when a regression vs the committed baseline is detected.
@@ -27,11 +29,12 @@ import {
   formatConsole,
   readBaseline,
   writeBaseline,
+  writeHtmlReport,
   writeRunReport,
 } from "./matching.reporter.js";
 import type { CaseResult } from "./matching.types.js";
 
-const REGRESSION_THRESHOLD = 0.34;
+const ALPHA = 0.05;
 const BASELINE_PATH = path.resolve(import.meta.dir, "baselines/matching.baseline.json");
 
 function arg(flag: string): string | undefined {
@@ -57,6 +60,7 @@ async function main(): Promise<void> {
   const updateBaseline = has("--update-baseline");
   const noJudge = has("--no-judge");
   const report = has("--report");
+  const html = has("--html");
 
   const judge: Judge = noJudge
     ? async () => true
@@ -90,7 +94,7 @@ async function main(): Promise<void> {
 
   const scorecard = buildScorecard(results, { model, runs });
   const baseline = ruleFilter ? null : await readBaseline(BASELINE_PATH);
-  const { regressions } = diffBaseline(scorecard, baseline, REGRESSION_THRESHOLD);
+  const { regressions } = diffBaseline(scorecard, baseline, ALPHA);
 
   console.log(formatConsole(scorecard, regressions));
 
@@ -105,6 +109,14 @@ async function main(): Promise<void> {
       flagValue("--report") ?? path.resolve(import.meta.dir, "runs", `${stamp}.json`);
     await writeRunReport(reportPath, scorecard);
     console.log(`\nRun report written to ${reportPath}`);
+  }
+
+  if (html) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const htmlPath =
+      flagValue("--html") ?? path.resolve(import.meta.dir, "runs", `${stamp}.html`);
+    await writeHtmlReport(htmlPath, scorecard, regressions, CASES);
+    console.log(`\nHTML report written to ${htmlPath}`);
   }
 
   process.exit(regressions.length > 0 ? 1 : 0);

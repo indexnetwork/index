@@ -4,6 +4,9 @@ import { eq } from 'drizzle-orm';
 import db from '../lib/drizzle/drizzle';
 import { apikeys, users } from '../schemas/database.schema';
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
+import { log } from '../lib/log';
+
+const logger = log.server.from('auth-guard');
 
 export interface AuthenticatedUser {
   id: string;
@@ -106,15 +109,21 @@ export const AuthOrApiKeyGuard = async (req: Request): Promise<AuthenticatedUser
     .where(eq(apikeys.key, hashed))
     .limit(1);
 
+  const keyPrefix = apiKey.slice(0, 6);
+  const ua = req.headers.get('user-agent') ?? 'unknown';
+
   if (!row || !row.enabled) {
+    logger.warn('API key rejected', { reason: row ? 'disabled' : 'not_found', keyPrefix, ua });
     throw new Error('Invalid API key');
   }
   if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+    logger.warn('API key rejected', { reason: 'expired', keyPrefix, ua });
     throw new Error('Invalid API key');
   }
 
   const userId = row.referenceId ?? row.userId;
   if (!userId) {
+    logger.warn('API key rejected', { reason: 'no_user_ref', keyPrefix, ua });
     throw new Error('Invalid API key');
   }
 
@@ -125,6 +134,7 @@ export const AuthOrApiKeyGuard = async (req: Request): Promise<AuthenticatedUser
     .limit(1);
 
   if (!user) {
+    logger.warn('API key rejected', { reason: 'user_not_found', keyPrefix, ua });
     throw new Error('Invalid API key');
   }
 

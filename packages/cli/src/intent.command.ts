@@ -18,7 +18,6 @@ Usage:
   index intent archive <id>                     Archive a signal (accepts short ID)
   index intent link <id> <network-id>           Link a signal to a network
   index intent unlink <id> <network-id>         Unlink a signal from a network
-  index intent links <id>                       Show linked networks for a signal
 `;
 
 /**
@@ -58,9 +57,9 @@ export async function handleIntent(
       if (options.json) { console.log(JSON.stringify(result)); return; }
       output.heading("Signals");
       output.intentTable(result.intents);
-      if (result.pagination.total > 0) {
+      if (result.pagination.totalCount > 0) {
         output.dim(
-          `\n  Page ${result.pagination.page} of ${result.pagination.totalPages} (${result.pagination.total} total)`,
+          `\n  Page ${result.pagination.current} of ${result.pagination.total} (${result.pagination.totalCount} total)`,
         );
       }
       console.log();
@@ -89,9 +88,19 @@ export async function handleIntent(
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
       if (!result.success) { output.error(result.error ?? "Failed to create signal", 1); return; }
-      output.success("Signal created.");
-      const data = result.data as { message?: string };
-      if (data?.message) output.dim(`  ${data.message}`);
+
+      // `create_intent` returns a proposal (for interactive approval), not a
+      // persisted intent. Confirm it so the CLI actually creates the signal.
+      const proposals = parseIntentProposals((result.data as { message?: string })?.message);
+      if (proposals.length === 0) {
+        output.error("Signal proposal could not be parsed from the response.", 1);
+        return;
+      }
+      for (const proposal of proposals) {
+        await client.confirmIntent(proposal.proposalId, proposal.description);
+        output.success("Signal created.");
+        output.dim(`  ${proposal.description}`);
+      }
       return;
     }
 
@@ -134,8 +143,10 @@ export async function handleIntent(
         output.error("Usage: index intent link <intent-id> <network-id>", 1);
         return;
       }
+      // Resolve short ID to full UUID — the tool rejects non-UUID intent IDs.
+      const intent = await client.getIntent(options.intentId);
       const result = await client.callTool("create_intent_index", {
-        intentId: options.intentId,
+        intentId: intent.id,
         networkId: options.targetId,
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
@@ -149,8 +160,10 @@ export async function handleIntent(
         output.error("Usage: index intent unlink <intent-id> <network-id>", 1);
         return;
       }
+      // Resolve short ID to full UUID — the tool rejects non-UUID intent IDs.
+      const intent = await client.getIntent(options.intentId);
       const result = await client.callTool("delete_intent_index", {
-        intentId: options.intentId,
+        intentId: intent.id,
         networkId: options.targetId,
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
@@ -158,29 +171,35 @@ export async function handleIntent(
       output.success("Signal unlinked from network.");
       return;
     }
+  }
+}
 
-    case "links": {
-      if (!options.intentId) {
-        output.error("Missing signal ID. Usage: index intent links <id>", 1);
-        return;
+/**
+ * Extract intent proposals from a `create_intent` tool message.
+ *
+ * The tool embeds one or more ```intent_proposal fenced JSON blocks (each with
+ * a `proposalId` and `description`) in its message. This pulls them out so the
+ * CLI can confirm them into real signals.
+ *
+ * @param message - The `message` field of the create_intent tool result.
+ * @returns Parsed proposals (empty if none found).
+ */
+function parseIntentProposals(
+  message: string | undefined,
+): Array<{ proposalId: string; description: string }> {
+  if (!message) return [];
+  const proposals: Array<{ proposalId: string; description: string }> = [];
+  const blockRegex = /```intent_proposal\s*\n([\s\S]*?)\n```/g;
+  let match: RegExpExecArray | null;
+  while ((match = blockRegex.exec(message)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1]) as { proposalId?: string; description?: string };
+      if (parsed.proposalId && parsed.description) {
+        proposals.push({ proposalId: parsed.proposalId, description: parsed.description });
       }
-      const result = await client.callTool("read_intent_indexes", {
-        intentId: options.intentId,
-      });
-      if (options.json) { console.log(JSON.stringify(result)); return; }
-      if (!result.success) { output.error(result.error ?? "Failed to read linked networks", 1); return; }
-      const data = result.data as { indexes: Array<{ networkId: string; title: string; relevancyScore?: number }> };
-      output.heading("Linked Networks");
-      if (!data.indexes?.length) {
-        output.dim("  No linked networks.");
-      } else {
-        for (const idx of data.indexes) {
-          const score = idx.relevancyScore !== undefined ? ` (${idx.relevancyScore.toFixed(2)})` : "";
-          console.log(`  ${idx.title} ${output.DIM}${idx.networkId.slice(0, 8)}${score}${output.RESET}`);
-        }
-      }
-      console.log();
-      return;
+    } catch {
+      // Skip blocks whose body is not valid JSON.
     }
   }
+  return proposals;
 }

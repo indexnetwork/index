@@ -35,4 +35,9 @@ describe("matching corpus", () => {
       }
     }
   });
+
+  it("includes the tier-3 historical cases", () => {
+    expect(CASES.some((c) => c.rule === "historical")).toBe(true);
+    expect(CASES.filter((c) => c.tier === 3).length).toBe(5);
+  });
 });
