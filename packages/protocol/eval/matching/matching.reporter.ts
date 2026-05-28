@@ -34,32 +34,54 @@ function lnChoose(n: number, k: number): number {
   return lnFactorial(n) - lnFactorial(k) - lnFactorial(n - k);
 }
 
+function lnBetaInt(a: number, b: number): number {
+  return lnFactorial(a - 1) + lnFactorial(b - 1) - lnFactorial(a + b - 1);
+}
+
 /**
- * One-sided binomial p-value (exact up to 30 trials; z-test beyond).
+ * One-sided binomial point-null p-value.
  * H₀: true pass-rate = nullRate; Ha: true pass-rate < nullRate (regression).
  */
 export function binomialPValue(observedPasses: number, total: number, nullRate: number): number {
   if (total === 0) return 1;
   if (nullRate <= 0) return 1;
   if (nullRate >= 1) return observedPasses < total ? 0 : 1;
-  // Exact test when n fits within limits; z-test otherwise.
-  if (total <= 30) {
-    let cumulative = 0;
-    for (let k = 0; k <= observedPasses; k++) {
-      const logP = lnChoose(total, k) + k * Math.log(nullRate) + (total - k) * Math.log1p(-nullRate);
-      cumulative += Math.exp(logP);
-    }
-    return Math.min(1, Math.max(0, cumulative));
+  let cumulative = 0;
+  for (let k = 0; k <= observedPasses; k++) {
+    const logP = lnChoose(total, k) + k * Math.log(nullRate) + (total - k) * Math.log1p(-nullRate);
+    cumulative += Math.exp(logP);
   }
-  // Normal approximation: z = (p̂ - nullRate) / SE
-  const p̂ = observedPasses / total;
-  const se = Math.sqrt(nullRate * (1 - nullRate) / total);
-  const z = (p̂ - nullRate) / se;
-  // One-sided: P(Z ≤ z)
-  return Math.min(1, Math.max(0, 0.5 * (1 + erf(z / Math.sqrt(2)))));
+  return Math.min(1, Math.max(0, cumulative));
 }
 
-/** True when the one-sided binomial p-value is at or below alpha. */
+/**
+ * One-sided beta-binomial posterior-predictive p-value.
+ *
+ * This treats the committed baseline as observed evidence rather than a perfect
+ * point estimate. With a uniform Beta(1,1) prior, baseline x/n gives posterior
+ * Beta(x+1, n-x+1), and we ask how likely the current pass count or lower is
+ * under that posterior predictive distribution. This prevents 7/7 baselines
+ * from making a single future miss mathematically impossible.
+ */
+export function predictivePValue(
+  observedPasses: number,
+  observedRuns: number,
+  baselinePasses: number,
+  baselineRuns: number,
+): number {
+  if (observedRuns === 0 || baselineRuns === 0) return 1;
+  const a = baselinePasses + 1;
+  const b = baselineRuns - baselinePasses + 1;
+  const base = lnBetaInt(a, b);
+  let cumulative = 0;
+  for (let k = 0; k <= observedPasses; k++) {
+    const logP = lnChoose(observedRuns, k) + lnBetaInt(k + a, observedRuns - k + b) - base;
+    cumulative += Math.exp(logP);
+  }
+  return Math.min(1, Math.max(0, cumulative));
+}
+
+/** True when the posterior-predictive p-value is at or below alpha. */
 export function binomialSignificance(observedPasses: number, total: number, nullRate: number, alpha = 0.05): boolean {
   return binomialPValue(observedPasses, total, nullRate) <= alpha;
 }
@@ -130,16 +152,17 @@ export interface Regression {
   kind: "case" | "rule";
   before: number;
   after: number;
-  /** One-sided binomial p-value for observing the current pass count or lower under the baseline rate. */
+  /** One-sided posterior-predictive p-value for observing the current pass count or lower under the baseline evidence. */
   pValue: number;
 }
 
 /**
  * Compares a current scorecard against a baseline and returns any regressions.
  *
- * A regression is a case or rule where the current pass-rate is significantly
- * lower than the baseline pass-rate (one-sided binomial test at significance
- * level alpha). New cases (absent from baseline) are never regressions.
+ * A regression is a case or rule where the current pass count is significantly
+ * lower than expected from the baseline evidence (one-sided beta-binomial
+ * posterior-predictive test at significance level alpha). New cases (absent from
+ * baseline) are never regressions.
  *
  * @param current - The scorecard produced by the current run.
  * @param baseline - The previously saved baseline scorecard, or `null` if none exists.
@@ -155,20 +178,26 @@ export function diffBaseline(
   const regressions: Regression[] = [];
   const skippedCaseIds: string[] = [];
 
-  const baseCases = new Map(baseline.cases.map((c) => [c.caseId, c.passRate]));
+  const baseCases = new Map(baseline.cases.map((c) => [c.caseId, c]));
   for (const c of current.cases) {
-    const nullRate = baseCases.get(c.caseId);
-    if (nullRate === undefined) {
+    const base = baseCases.get(c.caseId);
+    if (base === undefined) {
       skippedCaseIds.push(c.caseId);
       continue;
     }
-    const pValue = binomialPValue(c.passes, c.runs, nullRate);
+    const pValue = predictivePValue(c.passes, c.runs, base.passes, base.runs);
     if (pValue <= alpha) {
-      regressions.push({ id: c.caseId, kind: "case", before: nullRate, after: c.passRate, pValue });
+      regressions.push({ id: c.caseId, kind: "case", before: base.passRate, after: c.passRate, pValue });
     }
   }
 
-  const baseRules = new Map(baseline.rules.map((r) => [r.rule, r.passRate]));
+  const baseByRule = new Map<Rule, { passes: number; runs: number }>();
+  for (const c of baseline.cases) {
+    const acc = baseByRule.get(c.rule) ?? { passes: 0, runs: 0 };
+    acc.passes += c.passes;
+    acc.runs += c.runs;
+    baseByRule.set(c.rule, acc);
+  }
   const comparableByRule = new Map<Rule, { passes: number; runs: number }>();
   for (const c of current.cases) {
     if (!baseCases.has(c.caseId)) continue;
@@ -178,12 +207,13 @@ export function diffBaseline(
     comparableByRule.set(c.rule, acc);
   }
   for (const [rule, acc] of comparableByRule.entries()) {
-    const nullRate = baseRules.get(rule);
-    if (nullRate === undefined || acc.runs === 0) continue;
+    const base = baseByRule.get(rule);
+    if (base === undefined || acc.runs === 0 || base.runs === 0) continue;
+    const before = base.passes / base.runs;
     const after = acc.passes / acc.runs;
-    const pValue = binomialPValue(acc.passes, acc.runs, nullRate);
+    const pValue = predictivePValue(acc.passes, acc.runs, base.passes, base.runs);
     if (pValue <= alpha) {
-      regressions.push({ id: rule, kind: "rule", before: nullRate, after, pValue });
+      regressions.push({ id: rule, kind: "rule", before, after, pValue });
     }
   }
 

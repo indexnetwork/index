@@ -125,5 +125,7 @@ types, scoring logic, runner wiring, reporter math, and baseline handling are co
   behavior. Default window is 7 days.
 
 - **Regression detection**: run → scorecard → `diffBaseline()` → exit code 1 if any case
-  or rule is significantly below the baseline by one-sided binomial test (default
-  α=0.05). New cases never count as regressions.
+  or rule is significantly below the baseline by one-sided beta-binomial posterior
+  predictive test (default α=0.05). The baseline is treated as finite evidence, not a
+  perfect point estimate, so e.g. 6/7 after a 7/7 baseline is not automatically a hard
+  regression. New cases never count as regressions.

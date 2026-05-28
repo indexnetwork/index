@@ -29,9 +29,12 @@ bun run eval:matching -- --no-save           # do not auto-save full-corpus run 
 Requires `OPENROUTER_API_KEY` (loaded via `.env.test`). Exits non-zero on a regression
 versus `baselines/matching.baseline.json`, or versus the rolling window when
 `--rolling-baseline` is set. Regression significance defaults to α=0.05; override with
-`--alpha`. Full-corpus runs are automatically written to
-`runs/<timestamp>.json` (gitignored) so future rolling windows have data; use
-`--no-save` for exploratory full-corpus runs that should not feed rolling baselines.
+`--alpha`. The significance test is one-sided beta-binomial posterior predictive:
+the baseline is treated as finite evidence rather than a perfect point estimate, so
+single misses after perfect 7/7 baselines are not automatically hard regressions.
+Full-corpus runs are automatically written to `runs/<timestamp>.json` (gitignored) so
+future rolling windows have data; use `--no-save` for exploratory full-corpus runs that
+should not feed rolling baselines.
 
 ## HTML reports (`--html`)
 

@@ -6,6 +6,7 @@ import {
   binomialCI,
   binomialPValue,
   binomialSignificance,
+  predictivePValue,
   buildScorecard,
   computeRollingBaseline,
   diffBaseline,
@@ -79,6 +80,13 @@ describe("binomialSignificance", () => {
   it("does not flag perfect current performance against a perfect baseline", () => {
     expect(binomialSignificance(7, 7, 1, 0.05)).toBe(false);
   });
+
+  it("posterior predictive p-value accounts for baseline uncertainty", () => {
+    // A point-null test treats 6/7 after a 7/7 baseline as impossible; the
+    // posterior-predictive test correctly treats it as plausible finite-sample noise.
+    expect(binomialPValue(6, 7, 1)).toBe(0);
+    expect(predictivePValue(6, 7, 7, 7)).toBeGreaterThan(0.05);
+  });
 });
 
 describe("buildScorecard", () => {
@@ -109,7 +117,7 @@ const s = (caseId: string, rule: CaseResult["rule"], passRate: number): CaseResu
 
 describe("diffBaseline", () => {
   it("flags a severe drop", () => {
-    // 0 passes out of 7 is extremely unlikely under null BS=0.8 (p ≈ 1e-4).
+    // 0 passes out of 7 is extremely unlikely after a 6/7 baseline.
     const current = buildScorecard([s("a", "is_a_identity", 0)], { model: "m", runs: R });
     const baseline = buildScorecard([s("a", "is_a_identity", BS)], { model: "m", runs: R });
     const { regressions } = diffBaseline(current, baseline, 0.05);
@@ -140,7 +148,7 @@ describe("diffBaseline", () => {
   });
 
   it("ignores typical-performance variance", () => {
-    // 5/7 (rate=0.71) vs baseline BS=0.8: P(X≤5 | 7, 0.8) ≈ 0.42, not significant at α=0.05.
+    // 5/7 (rate=0.71) vs 6/7 baseline is plausible finite-sample variance.
     const current = buildScorecard([s("a", "is_a_identity", 0.71)], { model: "m", runs: R });
     const baseline = buildScorecard([s("a", "is_a_identity", BS)], { model: "m", runs: R });
     const { regressions } = diffBaseline(current, baseline, 0.05);
@@ -148,7 +156,7 @@ describe("diffBaseline", () => {
   });
 
   it("flags case-level regression that is clearly worse than baseline", () => {
-    // 2/7 (rate=0.29) vs baseline BS=0.8: P(X≤2 | 7, 0.8) ≈ 0.004 → significant.
+    // 2/7 (rate=0.29) vs 6/7 baseline is clearly worse.
     const current = buildScorecard([s("a", "is_a_identity", 0.29)], { model: "m", runs: R });
     const baseline = buildScorecard([s("a", "is_a_identity", BS)], { model: "m", runs: R });
     const { regressions } = diffBaseline(current, baseline, 0.05);
@@ -156,7 +164,7 @@ describe("diffBaseline", () => {
   });
 
   it("flags rule-level regression when combined evidence is strong", () => {
-    // two cases, each 3/7=0.43 → combined 6/14 vs baseline BS=0.8: P(X≤6 | 14, 0.8) ≈ 0.0047 → significant.
+    // two cases, each 3/7=0.43 → combined 6/14 vs two 6/7 baselines is significant.
     const current = buildScorecard([
       s("a", "same_side", 0.43),
       s("b", "same_side", 0.43),
