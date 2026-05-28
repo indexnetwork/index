@@ -46,6 +46,34 @@ const DEFAULT_ALPHA = 0.05;
 const BASELINE_PATH = path.resolve(import.meta.dir, "baselines/matching.baseline.json");
 const RUNS_DIR = path.resolve(import.meta.dir, "runs");
 
+function usage(): string {
+  return `Matching quality eval harness
+
+Usage (from packages/protocol):
+  bun run eval:matching [-- options]
+
+Selection:
+  --rule <rule>             Run one rule
+  --case <id-or-prefix>     Run one case or id prefix
+  --tier <1|2|3|4>          Run one tier
+  --list-cases              Print selected cases and exit
+
+Execution:
+  --runs <n>                Runs per case (default: 3)
+  --no-judge                Skip LLM reasoning checks
+  --alpha <p>               Regression significance threshold (default: ${DEFAULT_ALPHA})
+
+Baselines/reports:
+  --update-baseline         Overwrite committed baseline (full corpus only)
+  --rolling-baseline [days] Compare against recent run reports (default: 7)
+  --report [path]           Write JSON scorecard
+  --html [path]             Write standalone HTML scorecard
+
+Other:
+  --help, -h                Show this help
+`;
+}
+
 function arg(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
   return i >= 0 ? process.argv[i + 1] : undefined;
@@ -60,6 +88,11 @@ function flagValue(flag: string): string | undefined {
 }
 
 async function main(): Promise<void> {
+  if (has("--help") || has("-h")) {
+    console.log(usage());
+    process.exit(0);
+  }
+
   const runs = Number(arg("--runs") ?? 3);
   if (!Number.isInteger(runs) || runs < 1) {
     console.error(`--runs must be a positive integer (got "${arg("--runs")}")`);
