@@ -256,9 +256,9 @@ describe("renderHtml", () => {
     expect(html).toContain("because &lt;fit&gt;");
     expect(html).toContain("CI₉₅");
     expect(html).toContain("p=0.001");
-    // Synthetic profile names are not used as report display names by default.
-    expect(html).toContain("<strong>cand</strong>");
-    expect(html).not.toContain("<strong>Candidate</strong>");
+    // HTML report display names use corpus profile names for readability.
+    expect(html).toContain("<strong>Candidate</strong>");
+    expect(html).toContain("cand</span>");
   });
 
   it("uses reportNames when present", () => {
