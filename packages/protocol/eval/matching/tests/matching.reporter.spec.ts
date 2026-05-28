@@ -256,6 +256,50 @@ describe("renderHtml", () => {
     expect(html).toContain("because &lt;fit&gt;");
     expect(html).toContain("CI₉₅");
     expect(html).toContain("p=0.001");
+    // Synthetic profile names are not used as report display names by default.
+    expect(html).toContain("<strong>cand</strong>");
+    expect(html).not.toContain("<strong>Candidate</strong>");
+  });
+
+  it("uses reportNames when present", () => {
+    const c: CaseResult = {
+      caseId: "html/real-name-case",
+      rule: "historical",
+      runs: 1,
+      passes: 1,
+      passRate: 1,
+      flaky: false,
+      runResults: [
+        {
+          passed: true,
+          assertions: [],
+          candidates: [
+            { candidateId: "historical-partner", matched: true, score: 90, role: "agent", reasoning: "strong fit" },
+          ],
+        },
+      ],
+    };
+    const sc = buildScorecard([c], { model: "m", runs: 1 });
+    const corpus: MatchingCase[] = [
+      {
+        id: "html/real-name-case",
+        rule: "historical",
+        tier: 3,
+        description: "Report-only names should show real referents.",
+        input: {
+          discovererId: "historical-source",
+          entities: [
+            { userId: "historical-source", profile: { name: "(source user)", bio: "b" }, networkId: "n" },
+            { userId: "historical-partner", profile: { name: "Synthetic Placeholder", bio: "b" }, networkId: "n" },
+          ],
+        },
+        expect: [{ candidateId: "historical-partner", match: true, scoreBand: [60, 100] }],
+        reportNames: { "historical-partner": "Real Partner" },
+      },
+    ];
+    const html = renderHtml(sc, [], corpus);
+    expect(html).toContain("<strong>Real Partner</strong>");
+    expect(html).not.toContain("Synthetic Placeholder");
   });
 });
 

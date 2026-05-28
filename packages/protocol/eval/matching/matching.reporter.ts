@@ -441,7 +441,10 @@ function indexCases(cases: MatchingCase[]): Map<string, CaseMeta> {
     const nameById = new Map<string, string>();
     for (const e of c.input.entities) {
       const reportName = c.reportNames?.[e.userId];
-      nameById.set(e.userId, reportName?.trim() || e.profile.name?.trim() || e.userId);
+      // Only report-only names are allowed to override IDs. Most corpus names
+      // are synthetic personas used by the evaluator input; displaying userIds
+      // by default avoids implying those synthetic names are real people.
+      nameById.set(e.userId, reportName?.trim() || e.userId);
     }
     const expectById = new Map<string, CandidateExpectation>();
     for (const exp of c.expect) expectById.set(exp.candidateId, exp);
