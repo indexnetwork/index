@@ -11,6 +11,9 @@ matching judgments, against a curated golden set. Standalone and opt-in — NOT 
 bun run eval:matching                         # all cases, 3 runs, judge on, diff baseline
 bun run eval:matching -- --runs 5             # more runs = less noise
 bun run eval:matching -- --rule is_a_identity # one rule
+bun run eval:matching -- --case location/known-mismatch-penalized # one case/prefix
+bun run eval:matching -- --tier 4             # one tier
+bun run eval:matching -- --list-cases         # print selected cases and exit
 bun run eval:matching -- --no-judge           # skip LLM reasoning checks (free)
 bun run eval:matching -- --update-baseline    # overwrite the committed baseline
 bun run eval:matching -- --report             # write a full run report incl. evaluator reasoning
@@ -58,6 +61,12 @@ pass a number to change it, e.g. `--rolling-baseline 14`.
 - `matching.personas.ts` — shared Tier-2 persona pool.
 - `matching.scorer.ts` / `matching.runner.ts` / `matching.reporter.ts` — pure-ish units, unit-tested in `tests/`.
 - `matching.eval.ts` — CLI.
+
+## Selecting cases
+
+Use `--rule`, `--case`, and `--tier` to narrow an eval run. `--case` accepts an exact
+case id or an id prefix, so `--case location/` runs all location cases. Add
+`--list-cases` to inspect the selected set without invoking the evaluator.
 
 ## Adding a case
 

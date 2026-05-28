@@ -6,6 +6,9 @@
  *   bun run eval:matching                       # all cases, 3 runs, judge on, diff baseline
  *   bun run eval:matching -- --runs 1           # faster, noisier
  *   bun run eval:matching -- --rule is_a_identity
+ *   bun run eval:matching -- --case location/known-mismatch-penalized
+ *   bun run eval:matching -- --tier 4
+ *   bun run eval:matching -- --list-cases       # list selected cases and exit
  *   bun run eval:matching -- --no-judge         # skip assertLLM checks (free)
  *   bun run eval:matching -- --update-baseline  # overwrite the committed baseline
  *   bun run eval:matching -- --report           # write a full run report (incl. evaluator reasoning)
@@ -25,6 +28,7 @@ import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
 import { CASES } from "./matching.cases.js";
 import { runCase } from "./matching.runner.js";
 import { scoreCase, type Judge } from "./matching.scorer.js";
+import { formatCaseList, hasRule, parseTier, selectCases } from "./matching.selection.js";
 import {
   buildScorecard,
   computeRollingBaseline,
@@ -61,6 +65,19 @@ async function main(): Promise<void> {
     process.exit(2);
   }
   const ruleFilter = arg("--rule");
+  if (ruleFilter && !hasRule(CASES, ruleFilter)) {
+    console.error(`No cases match --rule ${ruleFilter}`);
+    process.exit(2);
+  }
+  const caseFilter = arg("--case");
+  let tierFilter: 1 | 2 | 3 | 4 | undefined;
+  try {
+    tierFilter = parseTier(arg("--tier"));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(2);
+  }
+  const listCases = has("--list-cases");
   const updateBaseline = has("--update-baseline");
   const noJudge = has("--no-judge");
   const report = has("--report");
@@ -83,9 +100,13 @@ async function main(): Promise<void> {
         }
       };
 
-  const selected = ruleFilter ? CASES.filter((c) => c.rule === ruleFilter) : CASES;
+  const selected = selectCases(CASES, { rule: ruleFilter, caseId: caseFilter, tier: tierFilter });
+  if (listCases) {
+    console.log(formatCaseList(selected));
+    process.exit(0);
+  }
   if (selected.length === 0) {
-    console.error(`No cases match --rule ${ruleFilter}`);
+    console.error(`No cases match selected filters`);
     process.exit(2);
   }
 
