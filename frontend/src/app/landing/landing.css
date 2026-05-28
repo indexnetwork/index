@@ -7,11 +7,11 @@
 .landing {
   --bg: #14241f;
   --bg-deep: #0b1612;
-  --cream: #ece3cf;
-  --cream-soft: rgba(236, 227, 207, 0.78);
-  --cream-faint: rgba(236, 227, 207, 0.5);
-  --rule: rgba(236, 227, 207, 0.22);
-  --rule-strong: rgba(236, 227, 207, 0.45);
+  --cream: #F4FBF6;
+  --cream-soft: rgba(244, 251, 246, 0.78);
+  --cream-faint: rgba(244, 251, 246, 0.5);
+  --rule: rgba(244, 251, 246, 0.22);
+  --rule-strong: rgba(244, 251, 246, 0.45);
   --ink: #14241f;
   --ink-soft: rgba(20, 36, 31, 0.66);
 
@@ -997,7 +997,7 @@
   transition: background 120ms ease, padding 120ms ease;
 }
 .landing .blog-row:hover {
-  background: rgba(236, 227, 207, 0.04);
+  background: rgba(244, 251, 246, 0.04);
   padding-left: 12px;
   padding-right: 12px;
 }

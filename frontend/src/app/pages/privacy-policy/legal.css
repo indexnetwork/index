@@ -34,7 +34,7 @@
   transition: background 120ms ease;
 }
 .landing.legal .legal-toc-list a:hover {
-  background: rgba(236, 227, 207, 0.04);
+  background: rgba(244, 251, 246, 0.04);
 }
 .landing.legal .legal-toc-num {
   color: var(--cream-faint);
