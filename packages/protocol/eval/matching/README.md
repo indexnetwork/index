@@ -60,9 +60,10 @@ pass a number to change it, e.g. `--rolling-baseline 14`.
 
 ## Layout
 
-- `matching.cases.ts` — the golden corpus (Tier 1 surgical, Tier 2 realistic). Add Tier 1/2 cases here; it also spreads in the Tier 3 cases.
+- `matching.cases.ts` — the golden corpus entry point (Tier 1 surgical, Tier 2 realistic). Add new hand-authored Tier 1/2 cases here; it also spreads in Tier 3 and Tier 4.
 - `matching.historical.ts` — Tier 3 historical-collaboration cases (see below). Add Tier 3 cases here.
-- `matching.personas.ts` — shared Tier-2 persona pool.
+- `matching.cases-tier4.ts` — Tier 4 deterministic corpus augmentation cases (see below). Add minimal-pair paraphrases here.
+- `matching.personas.ts` — shared Tier-2/Tier-4 persona pool.
 - `matching.scorer.ts` / `matching.runner.ts` / `matching.reporter.ts` — pure-ish units, unit-tested in `tests/`.
 - `matching.eval.ts` — CLI.
 
@@ -78,6 +79,13 @@ Append a `MatchingCase` to `CASES`. Set `match`, optional `scoreBand`, optional 
 `reasoningCriteria` only when a code check can't express the expectation. Negative cases are
 best authored as minimal-pair perturbations of a positive. Re-run with `--update-baseline`
 after an intentional change.
+
+## Tier 4 — deterministic augmentation
+
+`matching.cases-tier4.ts` contains deterministic, hand-reviewable paraphrases of Tier 1/2
+cases. These vary names, bios, locations, interests, and intents while preserving the rule
+semantics and expected outcome. Use Tier 4 for corpus breadth / tighter confidence intervals;
+use Tier 1 when introducing a new surgical behavior or minimal-pair rule.
 
 ## Tier 3 — historical collaborations
 
