@@ -593,7 +593,7 @@ const _cal_2: MatchingCase = {
     ],
   },
   expect: [
-    { candidateId: "p-tech-cofounder", match: true, scoreBand: [70, 100], role: "agent" },
+    { candidateId: "p-tech-cofounder", match: true, scoreBand: [70, 100] },
     { candidateId: "p-researcher", match: false, scoreBand: [0, 29] },
     { candidateId: "p-operator", match: false, scoreBand: [0, 29] },
   ],

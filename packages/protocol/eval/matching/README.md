@@ -88,7 +88,9 @@ Append a `MatchingCase` to `CASES`. Every case must declare one or more broad `d
 (`technology`, `research`, `arts`, `funding`, `location`, `community`, `sports`) so the
 report can show whether failures cluster by domain rather than only by evaluator rule. Set
 `match`, optional `scoreBand`, optional `role`, and `reasoningCriteria` only when a code
-check can't express the expectation. Negative cases are best authored as minimal-pair
+check can't express the expectation. Only assert `role` when the case is explicitly about
+valency; query-primary and score-calibration cases should usually avoid role assertions so
+component metrics stay isolated. Negative cases are best authored as minimal-pair
 perturbations of a positive. Re-run with `--update-baseline` after an intentional change.
 
 The eval runner uses `returnAll: true` to capture diagnostic low scores, but the scorer only

@@ -232,7 +232,7 @@ export const CASES: MatchingCase[] = [
       ],
       discoveryQuery: "founders raising seed",
     },
-    expect: [{ candidateId: "c-sam", match: true, scoreBand: [70, 100], role: "patient" }],
+    expect: [{ candidateId: "c-sam", match: true, scoreBand: [70, 100] }],
   },
   {
     id: "query_primary/location-query-rejects-wrong-city",
@@ -601,7 +601,7 @@ export const CASES: MatchingCase[] = [
       ],
     },
     expect: [
-      { candidateId: "p-tech-cofounder", match: true, scoreBand: [70, 100], role: "agent" },
+      { candidateId: "p-tech-cofounder", match: true, scoreBand: [70, 100] },
       { candidateId: "p-vc", match: false, scoreBand: [0, 29] },
       { candidateId: "p-designer", match: false, scoreBand: [0, 29] },
     ],
