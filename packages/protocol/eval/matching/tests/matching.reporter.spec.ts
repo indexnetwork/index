@@ -118,8 +118,17 @@ describe("diffBaseline", () => {
 
   it("returns no regressions when there is no baseline", () => {
     const current = buildScorecard([s("a", "is_a_identity", 0.71)], { model: "m", runs: R });
-    const { regressions } = diffBaseline(current, null, 0.05);
+    const { regressions, skippedCaseIds } = diffBaseline(current, null, 0.05);
     expect(regressions).toHaveLength(0);
+    expect(skippedCaseIds).toHaveLength(0);
+  });
+
+  it("reports current cases absent from the baseline", () => {
+    const current = buildScorecard([s("new-case", "is_a_identity", 0)], { model: "m", runs: R });
+    const baseline = buildScorecard([s("old-case", "is_a_identity", BS)], { model: "m", runs: R });
+    const { regressions, skippedCaseIds } = diffBaseline(current, baseline, 0.05);
+    expect(regressions).toHaveLength(0);
+    expect(skippedCaseIds).toEqual(["new-case"]);
   });
 
   it("ignores small fluctuations (same or above baseline)", () => {
@@ -188,11 +197,12 @@ describe("formatConsole", () => {
     const regressions = [
       { id: "is_a_identity", kind: "rule" as const, before: 1, after: 0.5, pValue: 0.001 },
     ];
-    const output = formatConsole(sc, regressions);
+    const output = formatConsole(sc, regressions, ["new/case"]);
     expect(output).toContain("is_a_identity");
     expect(output).toContain("aggregate pass-rate");
     expect(output).toContain("⚠");
     expect(output).toContain("p=");
+    expect(output).toContain("absent from baseline");
   });
 });
 

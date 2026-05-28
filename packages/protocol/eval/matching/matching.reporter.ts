@@ -150,14 +150,18 @@ export function diffBaseline(
   current: Scorecard,
   baseline: Scorecard | null,
   alpha = 0.05,
-): { regressions: Regression[] } {
-  if (!baseline) return { regressions: [] };
+): { regressions: Regression[]; skippedCaseIds: string[] } {
+  if (!baseline) return { regressions: [], skippedCaseIds: [] };
   const regressions: Regression[] = [];
+  const skippedCaseIds: string[] = [];
 
   const baseCases = new Map(baseline.cases.map((c) => [c.caseId, c.passRate]));
   for (const c of current.cases) {
     const nullRate = baseCases.get(c.caseId);
-    if (nullRate === undefined) continue;
+    if (nullRate === undefined) {
+      skippedCaseIds.push(c.caseId);
+      continue;
+    }
     const pValue = binomialPValue(c.passes, c.runs, nullRate);
     if (pValue <= alpha) {
       regressions.push({ id: c.caseId, kind: "case", before: nullRate, after: c.passRate, pValue });
@@ -165,18 +169,25 @@ export function diffBaseline(
   }
 
   const baseRules = new Map(baseline.rules.map((r) => [r.rule, r.passRate]));
-  for (const r of current.rules) {
-    const nullRate = baseRules.get(r.rule);
-    if (nullRate === undefined) continue;
-    const n = r.caseCount * current.runs;
-    const passes = Math.round(r.passRate * n);
-    const pValue = binomialPValue(passes, n, nullRate);
+  const comparableByRule = new Map<Rule, { passes: number; runs: number }>();
+  for (const c of current.cases) {
+    if (!baseCases.has(c.caseId)) continue;
+    const acc = comparableByRule.get(c.rule) ?? { passes: 0, runs: 0 };
+    acc.passes += c.passes;
+    acc.runs += c.runs;
+    comparableByRule.set(c.rule, acc);
+  }
+  for (const [rule, acc] of comparableByRule.entries()) {
+    const nullRate = baseRules.get(rule);
+    if (nullRate === undefined || acc.runs === 0) continue;
+    const after = acc.passes / acc.runs;
+    const pValue = binomialPValue(acc.passes, acc.runs, nullRate);
     if (pValue <= alpha) {
-      regressions.push({ id: r.rule, kind: "rule", before: nullRate, after: r.passRate, pValue });
+      regressions.push({ id: rule, kind: "rule", before: nullRate, after, pValue });
     }
   }
 
-  return { regressions };
+  return { regressions, skippedCaseIds };
 }
 
 const pct = (n: number): string => `${Math.round(n * 100)}%`;
@@ -188,7 +199,7 @@ function fmtRate(passes: number, total: number): string {
 }
 
 /** Human-readable scorecard for the console. */
-export function formatConsole(sc: Scorecard, regressions: Regression[]): string {
+export function formatConsole(sc: Scorecard, regressions: Regression[], skippedCaseIds: string[] = []): string {
   const lines: string[] = [];
   lines.push(`\n=== Matching Quality Scorecard ===`);
   lines.push(`model=${sc.model}  runs=${sc.runs}  cases=${sc.cases.length}`);
@@ -210,6 +221,11 @@ export function formatConsole(sc: Scorecard, regressions: Regression[]): string 
     for (const r of regressions) {
       lines.push(`  [${r.kind}] ${r.id}: ${pct(r.before)} → ${pct(r.after)} (${fmtPValue(r.pValue)})`);
     }
+  }
+  if (skippedCaseIds.length > 0) {
+    lines.push(`\nℹ ${skippedCaseIds.length} case(s) absent from baseline; not regression-checked:`);
+    for (const id of skippedCaseIds.slice(0, 10)) lines.push(`  ${id}`);
+    if (skippedCaseIds.length > 10) lines.push(`  …and ${skippedCaseIds.length - 10} more`);
   }
   return lines.join("\n");
 }

@@ -138,7 +138,7 @@ async function main(): Promise<void> {
   const baseline = rollingBaselineDays !== null
     ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays)
     : await readBaseline(BASELINE_PATH);
-  const { regressions } = diffBaseline(scorecard, baseline, alpha);
+  const { regressions, skippedCaseIds } = diffBaseline(scorecard, baseline, alpha);
 
   if (rollingBaselineDays !== null) {
     console.log(
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log(formatConsole(scorecard, regressions));
+  console.log(formatConsole(scorecard, regressions, skippedCaseIds));
 
   if (updateBaseline) {
     await writeBaseline(BASELINE_PATH, scorecard);
