@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { CASES } from "../matching.cases.js";
+import type { Scorecard } from "../matching.types.js";
 
 describe("matching corpus", () => {
   it("has unique case ids", () => {
@@ -39,5 +40,12 @@ describe("matching corpus", () => {
   it("includes the tier-3 historical cases", () => {
     expect(CASES.some((c) => c.rule === "historical")).toBe(true);
     expect(CASES.filter((c) => c.tier === 3).length).toBe(5);
+  });
+
+  it("committed baseline covers every corpus case", async () => {
+    const baseline = (await Bun.file(new URL("../baselines/matching.baseline.json", import.meta.url)).json()) as Scorecard;
+    const baselineIds = new Set(baseline.cases.map((c) => c.caseId));
+    const missing = CASES.map((c) => c.id).filter((id) => !baselineIds.has(id));
+    expect(missing).toEqual([]);
   });
 });
