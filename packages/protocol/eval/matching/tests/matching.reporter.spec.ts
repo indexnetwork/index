@@ -226,9 +226,17 @@ describe("renderHtml", () => {
       runResults: [
         {
           passed: false,
-          assertions: [],
+          assertions: [
+            {
+              kind: "band",
+              candidateId: "cand",
+              passed: false,
+              detail: "expected score in [0,29], got 80",
+            },
+          ],
           candidates: [
             { candidateId: "cand", matched: true, score: 80, role: "peer", reasoning: "because <fit>" },
+            { candidateId: "absent", matched: false, score: 0, reasoning: "" },
           ],
         },
       ],
@@ -245,9 +253,13 @@ describe("renderHtml", () => {
           entities: [
             { userId: "src", profile: { name: "Source", bio: "b" }, networkId: "n" },
             { userId: "cand", profile: { name: "Candidate", bio: "b" }, networkId: "n" },
+            { userId: "absent", profile: { name: "Absent Candidate", bio: "b" }, networkId: "n" },
           ],
         },
-        expect: [{ candidateId: "cand", match: false, scoreBand: [0, 29] }],
+        expect: [
+          { candidateId: "cand", match: false, scoreBand: [0, 29] },
+          { candidateId: "absent", match: false, scoreBand: [0, 29] },
+        ],
       },
     ];
     const html = renderHtml(sc, [{ id: "html/test-case", kind: "case", before: 1, after: 0, pValue: 0.001 }], corpus);
@@ -256,9 +268,15 @@ describe("renderHtml", () => {
     expect(html).toContain("because &lt;fit&gt;");
     expect(html).toContain("CI₉₅");
     expect(html).toContain("p=0.001");
+    expect(html).toContain("What this report is measuring");
+    expect(html).toContain("By protocol component");
+    expect(html).toContain("Score calibration");
+    expect(html).toContain("failed checks");
     // HTML report display names use corpus profile names for readability.
     expect(html).toContain("<strong>Candidate</strong>");
     expect(html).toContain("cand</span>");
+    expect(html).toContain("Not returned by the evaluator. No opportunity object existed");
+    expect(html).not.toContain("(no reasoning captured)");
   });
 
   it("uses reportNames when present", () => {

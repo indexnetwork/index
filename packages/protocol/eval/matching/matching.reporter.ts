@@ -8,6 +8,7 @@ import type {
   MatchingCase,
   CandidateExpectation,
   CandidateOutcome,
+  AssertionKind,
 } from "./matching.types.js";
 
 // ── Statistical helpers ─────────────────────────────────────────────────────
@@ -505,10 +506,14 @@ function candidateRow(
     })
     .join("");
   const reasoning = outcomes
-    .map(
-      (o, i) =>
-        `<div class="reason"><span class="muted">run ${i + 1} · score ${o.score}${o.role ? " · " + esc(o.role) : ""}</span><p>${esc(o.reasoning || "(no reasoning captured)")}</p></div>`,
-    )
+    .map((o, i) => {
+      const text = o.reasoning.trim()
+        ? o.reasoning
+        : o.matched
+          ? "Returned by the evaluator, but the opportunity reasoning field was empty."
+          : "Not returned by the evaluator. No opportunity object existed, so there is no evaluator reasoning for this candidate in this run.";
+      return `<div class="reason"><span class="muted">run ${i + 1} · score ${o.score}${o.role ? " · " + esc(o.role) : ""}</span><p>${esc(text)}</p></div>`;
+    })
     .join("");
   return `
     <tr>
@@ -517,6 +522,20 @@ function candidateRow(
       <td class="chips">${chips || "<span class='muted'>—</span>"}</td>
     </tr>
     <tr class="reasons"><td colspan="3"><details><summary>evaluator reasoning (${outcomes.length} run${outcomes.length === 1 ? "" : "s"})</summary>${reasoning}</details></td></tr>`;
+}
+
+/** Render failed assertions so reviewers can see which protocol component broke. */
+function failedChecks(c: CaseResult): string {
+  const failed = c.runResults.flatMap((rr, i) =>
+    rr.assertions
+      .filter((a) => !a.passed)
+      .map(
+        (a) =>
+          `<li><span class="muted">run ${i + 1}</span> <span class="component">${esc(componentLabel(a.kind))}</span> <code>${esc(a.candidateId)}</code>: ${esc(a.detail)}</li>`,
+      ),
+  );
+  if (failed.length === 0) return "";
+  return `<details class="failures" open><summary>failed checks (${failed.length})</summary><ul>${failed.join("")}</ul></details>`;
 }
 
 /** Render one case card: header verdict, description, query, and the candidate table. */
@@ -543,11 +562,82 @@ function caseCard(c: CaseResult, meta: CaseMeta | undefined): string {
       ${tier}${flaky}
     </header>
     ${desc}${query}
+    ${failedChecks(c)}
     <table>
       <thead><tr><th>candidate</th><th>expected</th><th>actual per run (score · role)</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </article>`;
+}
+
+interface ComponentSummary {
+  key: string;
+  label: string;
+  explanation: string;
+  passed: number;
+  total: number;
+}
+
+function componentLabel(kind: AssertionKind): string {
+  switch (kind) {
+    case "match":
+      return "Surfacing";
+    case "band":
+      return "Score calibration";
+    case "role":
+      return "Valency role";
+    case "reasoning":
+      return "Reasoning quality";
+  }
+}
+
+function componentExplanation(kind: AssertionKind): string {
+  switch (kind) {
+    case "match":
+      return "Did protocol surface candidates that should match, and suppress candidates that should not?";
+    case "band":
+      return "Did the numeric opportunity score land inside the expected range?";
+    case "role":
+      return "Did protocol assign the expected agent/patient/peer valency role?";
+    case "reasoning":
+      return "Did the evaluator's natural-language justification satisfy the case-specific rubric?";
+  }
+}
+
+function componentSummaries(sc: Scorecard): ComponentSummary[] {
+  const order: AssertionKind[] = ["match", "band", "role", "reasoning"];
+  const byKind = new Map<AssertionKind, { passed: number; total: number }>();
+  for (const c of sc.cases) {
+    for (const rr of c.runResults) {
+      for (const a of rr.assertions) {
+        const acc = byKind.get(a.kind) ?? { passed: 0, total: 0 };
+        acc.total += 1;
+        if (a.passed) acc.passed += 1;
+        byKind.set(a.kind, acc);
+      }
+    }
+  }
+  return order
+    .filter((kind) => byKind.has(kind))
+    .map((kind) => {
+      const acc = byKind.get(kind)!;
+      return {
+        key: kind,
+        label: componentLabel(kind),
+        explanation: componentExplanation(kind),
+        passed: acc.passed,
+        total: acc.total,
+      };
+    });
+}
+
+function componentRows(sc: Scorecard): string {
+  return componentSummaries(sc)
+    .map((s) => {
+      const rate = s.total === 0 ? 0 : s.passed / s.total;
+      return `<tr><td><strong>${esc(s.label)}</strong><br><span class="muted">${esc(s.explanation)}</span></td><td>${s.passed}/${s.total}</td><td class="${rateClass(rate)}">${htmlRateCI(rate, s.passed, s.total)}</td></tr>`;
+    })
+    .join("");
 }
 
 /**
@@ -591,6 +681,8 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
     )
     .join("");
 
+  const components = componentRows(sc);
+
   const regressionBlock =
     regressions.length > 0
       ? `<section class="regressions"><h2>⚠ Regressions vs baseline</h2><ul>${regressions
@@ -631,8 +723,13 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
   table{width:100%;border-collapse:collapse;margin:6px 0}
   th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
   th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
-  .summary{display:flex;gap:24px;flex-wrap:wrap}
-  .summary table{max-width:420px}
+  .summary{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+  .summary>div{flex:1 1 300px}
+  .summary table{max-width:100%}
+  .explain{background:rgba(30,41,59,.72);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:14px 0}
+  .explain h2{margin-top:0}
+  .explain p,.explain ol{color:var(--muted);margin:8px 0}
+  .explain strong{color:var(--fg)}
   .case{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:14px 16px;margin:12px 0}
   .case.good{border-left-color:var(--good)} .case.ok{border-left-color:var(--ok)} .case.bad{border-left-color:var(--bad)}
   .case header{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -645,6 +742,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
   .tag{font-size:11px;padding:1px 6px;border-radius:5px}
   .tag.yes{background:rgba(22,163,74,.18);color:#4ade80} .tag.no{background:rgba(220,38,38,.18);color:#f87171}
   .role{font-size:11px;color:#a5b4fc}
+  .component{font-size:11px;color:#a5b4fc;text-transform:uppercase;letter-spacing:.04em}
   .chips{display:flex;flex-wrap:wrap;gap:4px}
   .chip{font-size:12px;padding:1px 7px;border-radius:5px;border:1px solid var(--line)}
   .chip.good{background:rgba(22,163,74,.15);border-color:rgba(22,163,74,.5)}
@@ -654,6 +752,9 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
   details summary{cursor:pointer;color:var(--muted);font-size:12px;padding:4px 0}
   .reason{padding:6px 0;border-top:1px dashed var(--line)}
   .reason p{margin:4px 0 0;white-space:pre-wrap}
+  .failures{margin:8px 0;padding:8px 10px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.45);border-radius:8px}
+  .failures ul{margin:6px 0 0;padding-left:18px}
+  .failures li{margin:3px 0}
   .regressions{background:rgba(220,38,38,.08);border:1px solid var(--bad);border-radius:10px;padding:8px 16px}
   .ci{font-size:11px;color:var(--muted)}
 </style></head>
@@ -667,13 +768,29 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
       <div>${regressions.length} regression${regressions.length === 1 ? "" : "s"} vs baseline</div>
     </div>
   </div>
+  <section class="explain">
+    <h2>What this report is measuring</h2>
+    <p>This is a repeatability test for the matching evaluator. Each corpus case describes a discovery situation, a source user, and several candidate people. The protocol runs the same case ${sc.runs} time${sc.runs === 1 ? "" : "s"}; a run passes only when every expected candidate check passes.</p>
+    <ol>
+      <li><strong>Surfacing</strong>: should this candidate become an opportunity at all?</li>
+      <li><strong>Score calibration</strong>: did the score land in the expected band?</li>
+      <li><strong>Valency role</strong>: when asserted, did the candidate get the expected agent/patient/peer role?</li>
+      <li><strong>Reasoning quality</strong>: when asserted, did the evaluator explanation satisfy the rubric?</li>
+    </ol>
+    <p>The aggregate score is the mean pass-rate across cases. Rule and tier tables identify which behavior family is weak. Component performance below identifies which part of protocol/scoring broke inside those cases.</p>
+  </section>
   ${regressionBlock}
   <section class="summary">
+    <div><h2>By protocol component</h2><table><thead><tr><th>component</th><th>checks</th><th>pass</th></tr></thead><tbody>${components}</tbody></table></div>
     <div><h2>By rule</h2><table><thead><tr><th>rule</th><th>cases</th><th>pass</th></tr></thead><tbody>${ruleRows}</tbody></table></div>
     <div><h2>By tier</h2><table><thead><tr><th>tier</th><th>cases</th><th>pass</th></tr></thead><tbody>${tierRows}</tbody></table></div>
   </section>
+  <section class="explain">
+    <h2>How to read case cards</h2>
+    <p>Each card is one test case. The percentage is how many repeated runs passed all checks. Candidate rows show the expected behavior and one chip per run: score plus role when present. Green chips mean that candidate's surfaced/rejected decision and score band were correct; red chips identify the failing candidate/run. Open “evaluator reasoning” to inspect the model's explanation for surfaced opportunities. If a candidate was not returned, the report says that explicitly instead of pretending reasoning was missing.</p>
+  </section>
   ${caseSections}
-  <p class="meta">Chip color is an at-a-glance indicator (surfaced-ness + band); the authoritative verdict is each case's pass-rate from the scorer. Hover over pass-rates for 95% Wilson confidence intervals.</p>
+  <p class="meta">Chip color is an at-a-glance indicator (surfaced-ness + band); failed-check details and each case's pass-rate are authoritative. Hover over pass-rates for 95% Wilson confidence intervals.</p>
 </div></body></html>`;
 }
 

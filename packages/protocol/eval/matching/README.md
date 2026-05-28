@@ -39,13 +39,16 @@ should not feed rolling baselines.
 ## HTML reports (`--html`)
 
 `--html` renders a standalone, self-contained HTML scorecard with no external assets or
-JavaScript — openable directly from a file browser. Each case card shows every
-candidate's expected vs. actual outcomes per run, with the evaluator's verbatim
-reasoning behind collapsible blocks. HTML display names come from a report-only mapping:
-`reportNames` overrides profile names for historical real-world labels, otherwise corpus
-profile names are used for readability with stable entity ids shown underneath. Pass-rates
-carry 95% Wilson confidence intervals on hover. Regressions vs baseline are surfaced in a
-red alert section.
+JavaScript — openable directly from a file browser. The report includes explanatory copy,
+component-level performance, rule/tier rollups, failed-check details, and one case card per
+corpus case. Each case card shows every candidate's expected vs. actual outcomes per run,
+with the evaluator's verbatim reasoning behind collapsible blocks when an opportunity was
+returned. When a candidate was not returned, the report says that explicitly instead of
+showing a vague missing-reasoning placeholder. HTML display names come from a report-only
+mapping: `reportNames` overrides profile names for historical real-world labels, otherwise
+corpus profile names are used for readability with stable entity ids shown underneath.
+Pass-rates carry 95% Wilson confidence intervals on hover. Regressions vs baseline are
+surfaced in a red alert section.
 
 ## Run reports (`--report`)
 
