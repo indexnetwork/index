@@ -20,6 +20,58 @@ export function binomialCI(passes: number, total: number, z = 1.96): [number, nu
   return [Math.max(0, centre - margin), Math.min(1, centre + margin)];
 }
 
+/** ln(n!) via Stirling approximation for exact binomial CDF. */
+function lnFactorial(n: number): number {
+  if (n <= 1) return 0;
+  // Stirling: ln(n!) ≈ n ln n - n + (ln(2π n) / 2)
+  return n * Math.log(n) - n + Math.log(2 * Math.PI * n) / 2;
+}
+
+/** Natural log of binomial coefficient C(n, k). */
+function lnChoose(n: number, k: number): number {
+  return lnFactorial(n) - lnFactorial(k) - lnFactorial(n - k);
+}
+
+/**
+ * One-sided exact binomial p-value (up to 30 trials; falls back to z-test beyond).
+ * H₀: true pass-rate = nullRate; Ha: true pass-rate < nullRate (regression).
+ */
+export function binomialSignificance(observedPasses: number, total: number, nullRate: number, alpha = 0.05): boolean {
+  if (total === 0) return false;
+  // Exact test when n fits within limits; z-test otherwise.
+  if (total <= 30) {
+    let cumulative = 0;
+    for (let k = 0; k <= observedPasses; k++) {
+      const logP = lnChoose(total, k) + k * Math.log(nullRate) + (total - k) * Math.log1p(-nullRate);
+      cumulative += Math.exp(logP);
+      // Stop when already above alpha to avoid irrelevant probability mass at the tail.
+      if (cumulative > alpha) break;
+    }
+    return cumulative <= alpha;
+  }
+  // Normal approximation: z = (p̂ - nullRate) / SE
+  const p̂ = observedPasses / total;
+  const se = Math.sqrt(nullRate * (1 - nullRate) / total);
+  const z = (p̂ - nullRate) / se;
+  // One-sided: P(Z ≤ z)
+  return 0.5 * (1 + erf(z / Math.sqrt(2))) <= alpha;
+}
+
+/** Analytical error function (Abramowitz & Stegun 7.1.26). */
+function erf(x: number): number {
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  const p = 0.3275911;
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const t = 1 / (1 + p * x);
+  const y = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return sign * y;
+}
+
 /** Rate string with 95% confidence — only call this when n ≤ 1 cases (D2NPFN). */
 function rateWithCI(passes: number, total: number): string {
   const [lo, hi] = binomialCI(passes, total);
@@ -70,41 +122,42 @@ export interface Regression {
 /**
  * Compares a current scorecard against a baseline and returns any regressions.
  *
- * A regression is a case or rule whose pass-rate dropped by at least `threshold`
- * versus the baseline. New cases (absent from baseline) are never regressions.
- * The drop is rounded to 9 decimal places before comparison to avoid floating-point
- * subtraction errors (e.g. `1.0 - 0.66` yielding `0.33999…` instead of `0.34`).
+ * A regression is a case or rule where the current pass-rate is significantly
+ * lower than the baseline pass-rate (one-sided binomial test at significance
+ * level alpha). New cases (absent from baseline) are never regressions.
  *
  * @param current - The scorecard produced by the current run.
  * @param baseline - The previously saved baseline scorecard, or `null` if none exists.
- * @param threshold - Minimum pass-rate drop (inclusive) to be considered a regression.
+ * @param alpha - Significance level for the one-sided binomial test.
  * @returns An object containing the list of detected regressions.
  */
 export function diffBaseline(
   current: Scorecard,
   baseline: Scorecard | null,
-  threshold: number,
+  alpha = 0.05,
 ): { regressions: Regression[] } {
   if (!baseline) return { regressions: [] };
   const regressions: Regression[] = [];
 
   const baseCases = new Map(baseline.cases.map((c) => [c.caseId, c.passRate]));
   for (const c of current.cases) {
-    const before = baseCases.get(c.caseId);
-    if (before === undefined) continue;
-    const drop = Math.round((before - c.passRate) * 1e9) / 1e9;
-    if (drop >= threshold) {
-      regressions.push({ id: c.caseId, kind: "case", before, after: c.passRate });
+    const nullRate = baseCases.get(c.caseId);
+    if (nullRate === undefined) continue;
+    const sig = binomialSignificance(c.passes, c.runs, nullRate, alpha);
+    if (sig) {
+      regressions.push({ id: c.caseId, kind: "case", before: nullRate, after: c.passRate });
     }
   }
 
   const baseRules = new Map(baseline.rules.map((r) => [r.rule, r.passRate]));
   for (const r of current.rules) {
-    const before = baseRules.get(r.rule);
-    if (before === undefined) continue;
-    const drop = Math.round((before - r.passRate) * 1e9) / 1e9;
-    if (drop >= threshold) {
-      regressions.push({ id: r.rule, kind: "rule", before, after: r.passRate });
+    const nullRate = baseRules.get(r.rule);
+    if (nullRate === undefined) continue;
+    const n = r.caseCount * current.runs;
+    const passes = Math.round(r.passRate * n);
+    const sig = binomialSignificance(passes, n, nullRate, alpha);
+    if (sig) {
+      regressions.push({ id: r.rule, kind: "rule", before: nullRate, after: r.passRate });
     }
   }
 

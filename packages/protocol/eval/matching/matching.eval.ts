@@ -34,7 +34,7 @@ import {
 } from "./matching.reporter.js";
 import type { CaseResult } from "./matching.types.js";
 
-const REGRESSION_THRESHOLD = 0.34;
+const ALPHA = 0.05;
 const BASELINE_PATH = path.resolve(import.meta.dir, "baselines/matching.baseline.json");
 
 function arg(flag: string): string | undefined {
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
 
   const scorecard = buildScorecard(results, { model, runs });
   const baseline = ruleFilter ? null : await readBaseline(BASELINE_PATH);
-  const { regressions } = diffBaseline(scorecard, baseline, REGRESSION_THRESHOLD);
+  const { regressions } = diffBaseline(scorecard, baseline, ALPHA);
 
   console.log(formatConsole(scorecard, regressions));
 
