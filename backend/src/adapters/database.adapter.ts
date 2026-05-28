@@ -1344,8 +1344,12 @@ export class ChatDatabaseAdapter {
       )
       .orderBy(desc(schema.networks.isPersonal), desc(schema.networks.createdAt));
 
+    // Deduplicate: ownerMembers join can produce multiple rows per network
+    // when a network has multiple owners. Keep the first encounter only.
+    const uniqueRows = [...new Map(rows.map(r => [r.id, r])).values()];
+
     const indexesWithCounts = await Promise.all(
-      rows.map(async (row) => {
+      uniqueRows.map(async (row) => {
         const [memberCount] = await db
           .select({ count: count() })
           .from(schema.networkMembers)
