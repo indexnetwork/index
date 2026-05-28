@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { mkdir, rm, unlink } from "node:fs/promises";
 import {
   binomialCI,
+  binomialPValue,
   binomialSignificance,
   buildScorecard,
   computeRollingBaseline,
@@ -59,11 +60,18 @@ describe("binomialCI", () => {
 });
 
 describe("binomialSignificance", () => {
+  it("returns interpretable p-values", () => {
+    expect(binomialPValue(2, 7, 0.8)).toBeCloseTo(0.00467, 3);
+    expect(binomialPValue(5, 7, 0.8)).toBeGreaterThan(0.4);
+  });
+
   it("does not flag when the baseline is zero", () => {
+    expect(binomialPValue(0, 7, 0)).toBe(1);
     expect(binomialSignificance(0, 7, 0, 0.05)).toBe(false);
   });
 
   it("flags any miss against a perfect baseline", () => {
+    expect(binomialPValue(6, 7, 1)).toBe(0);
     expect(binomialSignificance(6, 7, 1, 0.05)).toBe(true);
   });
 
@@ -177,12 +185,13 @@ describe("formatConsole", () => {
       { model: "test-model", runs: 3 },
     );
     const regressions = [
-      { id: "is_a_identity", kind: "rule" as const, before: 1, after: 0.5 },
+      { id: "is_a_identity", kind: "rule" as const, before: 1, after: 0.5, pValue: 0.001 },
     ];
     const output = formatConsole(sc, regressions);
     expect(output).toContain("is_a_identity");
     expect(output).toContain("aggregate pass-rate");
     expect(output).toContain("⚠");
+    expect(output).toContain("p=");
   });
 });
 

@@ -35,30 +35,33 @@ function lnChoose(n: number, k: number): number {
 }
 
 /**
- * One-sided exact binomial p-value (up to 30 trials; falls back to z-test beyond).
+ * One-sided binomial p-value (exact up to 30 trials; z-test beyond).
  * H₀: true pass-rate = nullRate; Ha: true pass-rate < nullRate (regression).
  */
-export function binomialSignificance(observedPasses: number, total: number, nullRate: number, alpha = 0.05): boolean {
-  if (total === 0) return false;
-  if (nullRate <= 0) return false;
-  if (nullRate >= 1) return observedPasses < total;
+export function binomialPValue(observedPasses: number, total: number, nullRate: number): number {
+  if (total === 0) return 1;
+  if (nullRate <= 0) return 1;
+  if (nullRate >= 1) return observedPasses < total ? 0 : 1;
   // Exact test when n fits within limits; z-test otherwise.
   if (total <= 30) {
     let cumulative = 0;
     for (let k = 0; k <= observedPasses; k++) {
       const logP = lnChoose(total, k) + k * Math.log(nullRate) + (total - k) * Math.log1p(-nullRate);
       cumulative += Math.exp(logP);
-      // Stop when already above alpha to avoid irrelevant probability mass at the tail.
-      if (cumulative > alpha) break;
     }
-    return cumulative <= alpha;
+    return Math.min(1, Math.max(0, cumulative));
   }
   // Normal approximation: z = (p̂ - nullRate) / SE
   const p̂ = observedPasses / total;
   const se = Math.sqrt(nullRate * (1 - nullRate) / total);
   const z = (p̂ - nullRate) / se;
   // One-sided: P(Z ≤ z)
-  return 0.5 * (1 + erf(z / Math.sqrt(2))) <= alpha;
+  return Math.min(1, Math.max(0, 0.5 * (1 + erf(z / Math.sqrt(2)))));
+}
+
+/** True when the one-sided binomial p-value is at or below alpha. */
+export function binomialSignificance(observedPasses: number, total: number, nullRate: number, alpha = 0.05): boolean {
+  return binomialPValue(observedPasses, total, nullRate) <= alpha;
 }
 
 /** Analytical error function (Abramowitz & Stegun 7.1.26). */
@@ -127,6 +130,8 @@ export interface Regression {
   kind: "case" | "rule";
   before: number;
   after: number;
+  /** One-sided binomial p-value for observing the current pass count or lower under the baseline rate. */
+  pValue: number;
 }
 
 /**
@@ -153,9 +158,9 @@ export function diffBaseline(
   for (const c of current.cases) {
     const nullRate = baseCases.get(c.caseId);
     if (nullRate === undefined) continue;
-    const sig = binomialSignificance(c.passes, c.runs, nullRate, alpha);
-    if (sig) {
-      regressions.push({ id: c.caseId, kind: "case", before: nullRate, after: c.passRate });
+    const pValue = binomialPValue(c.passes, c.runs, nullRate);
+    if (pValue <= alpha) {
+      regressions.push({ id: c.caseId, kind: "case", before: nullRate, after: c.passRate, pValue });
     }
   }
 
@@ -165,9 +170,9 @@ export function diffBaseline(
     if (nullRate === undefined) continue;
     const n = r.caseCount * current.runs;
     const passes = Math.round(r.passRate * n);
-    const sig = binomialSignificance(passes, n, nullRate, alpha);
-    if (sig) {
-      regressions.push({ id: r.rule, kind: "rule", before: nullRate, after: r.passRate });
+    const pValue = binomialPValue(passes, n, nullRate);
+    if (pValue <= alpha) {
+      regressions.push({ id: r.rule, kind: "rule", before: nullRate, after: r.passRate, pValue });
     }
   }
 
@@ -175,6 +180,7 @@ export function diffBaseline(
 }
 
 const pct = (n: number): string => `${Math.round(n * 100)}%`;
+const fmtPValue = (p: number): string => (p < 0.001 ? "p<0.001" : `p=${p.toFixed(3)}`);
 
 /** Format a pass-rate with 95% confidence for console display. */
 function fmtRate(passes: number, total: number): string {
@@ -202,7 +208,7 @@ export function formatConsole(sc: Scorecard, regressions: Regression[]): string 
   if (regressions.length > 0) {
     lines.push(`\n⚠ Regressions vs baseline:`);
     for (const r of regressions) {
-      lines.push(`  [${r.kind}] ${r.id}: ${pct(r.before)} → ${pct(r.after)}`);
+      lines.push(`  [${r.kind}] ${r.id}: ${pct(r.before)} → ${pct(r.after)} (${fmtPValue(r.pValue)})`);
     }
   }
   return lines.join("\n");
@@ -536,7 +542,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
   const regressionBlock =
     regressions.length > 0
       ? `<section class="regressions"><h2>⚠ Regressions vs baseline</h2><ul>${regressions
-          .map((r) => `<li>[${r.kind}] <code>${esc(r.id)}</code>: ${pctText(r.before)} → ${pctText(r.after)}</li>`)
+          .map((r) => `<li>[${r.kind}] <code>${esc(r.id)}</code>: ${pctText(r.before)} → ${pctText(r.after)} <span class="muted">(${fmtPValue(r.pValue)})</span></li>`)
           .join("")}</ul></section>`
       : "";
 
