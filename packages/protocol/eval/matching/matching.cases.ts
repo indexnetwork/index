@@ -2,6 +2,7 @@ import type { EvaluatorEntity } from "../../src/opportunity/opportunity.evaluato
 import type { MatchingCase } from "./matching.types.js";
 import { POOL } from "./matching.personas.js";
 import { HISTORICAL_CASES } from "./matching.historical.js";
+import { TIER4_CASES } from "./matching.cases-tier4.js";
 
 const NETWORK = "idx-commons";
 
@@ -415,4 +416,5 @@ export const CASES: MatchingCase[] = [
     ],
   },
   ...HISTORICAL_CASES,
+  ...TIER4_CASES,
 ];
