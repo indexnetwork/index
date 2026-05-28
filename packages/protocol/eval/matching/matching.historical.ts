@@ -4,8 +4,9 @@ import type { MatchingCase } from "./matching.types.js";
  * Tier 3 — Historical collaborations.
  *
  * Each case recreates a documented, demonstrably-successful collaboration as the two
- * people looked BEFORE they connected, anonymized so the evaluator judges on fit rather
- * than fame. The discoverer (`*-a`) is the seeker; the real partner (`*-b`) is the match;
+ * people looked BEFORE they connected. The evaluator input stays anonymized so the model
+ * judges on fit rather than fame; report-only `reportNames` reveal the real-world
+ * referents in generated reports. The discoverer (`*-a`) is the seeker; the real partner (`*-b`) is the match;
  * `*-c/d/e` are plausible contemporaries who were around but were not the right fit, each
  * chosen to fall into a genuine reject category: same-side (both seeking the same thing),
  * complementary/non-substitutive role (enables the relation from outside it), or misaligned
@@ -114,6 +115,10 @@ const case1: MatchingCase = {
     { candidateId: "h1-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h1-e", match: false, scoreBand: [0, 29] },
   ],
+  reportNames: {
+    "h1-a": "Steve Jobs",
+    "h1-b": "Steve Wozniak",
+  },
 };
 
 // ── Case 2: two co-researchers cracking a molecular structure → landmark paper ──
@@ -210,6 +215,10 @@ const case2: MatchingCase = {
     { candidateId: "h2-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h2-e", match: false, scoreBand: [0, 29] },
   ],
+  reportNames: {
+    "h2-a": "James Watson",
+    "h2-b": "Francis Crick",
+  },
 };
 
 // ── Case 3: songwriting duo, same scene, complementary styles → creative partnership ──
@@ -306,6 +315,10 @@ const case3: MatchingCase = {
     { candidateId: "h3-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h3-e", match: false, scoreBand: [0, 29] },
   ],
+  reportNames: {
+    "h3-a": "John Lennon",
+    "h3-b": "Paul McCartney",
+  },
 };
 
 // ── Case 4: first-check investor + technical founder → backed company ──
@@ -401,6 +414,10 @@ const case4: MatchingCase = {
     { candidateId: "h4-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h4-e", match: false, scoreBand: [0, 29] },
   ],
+  reportNames: {
+    "h4-a": "Larry Page / Sergey Brin",
+    "h4-b": "Andy Bechtolsheim",
+  },
 };
 
 // ── Case 5: domain expert + ML researcher → cross-disciplinary breakthrough ──
@@ -501,6 +518,10 @@ const case5: MatchingCase = {
     { candidateId: "h5-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h5-e", match: false, scoreBand: [0, 29] },
   ],
+  reportNames: {
+    "h5-a": "Demis Hassabis",
+    "h5-b": "John Jumper",
+  },
 };
 
 export const HISTORICAL_CASES: MatchingCase[] = [case1, case2, case3, case4, case5];

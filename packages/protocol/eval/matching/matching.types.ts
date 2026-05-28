@@ -31,10 +31,16 @@ export interface CandidateExpectation {
 export interface MatchingCase {
   id: string;
   rule: Rule;
-  tier: 1 | 2 | 3;
+  tier: 1 | 2 | 3 | 4;
   description: string;
   input: EvaluatorInput;
   expect: CandidateExpectation[];
+  /**
+   * Optional report-only display names keyed by entity id. Use when evaluator input
+   * should remain anonymized (e.g. historical cases) but reports may reveal the
+   * real-world referents. Never sent to the protocol evaluator.
+   */
+  reportNames?: Record<string, string>;
 }
 
 export type AssertionKind = "match" | "band" | "role" | "reasoning";

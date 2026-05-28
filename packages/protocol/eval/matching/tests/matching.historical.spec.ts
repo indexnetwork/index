@@ -42,6 +42,15 @@ describe("tier-3 historical corpus", () => {
     }
   });
 
+  it("uses report-only real names while keeping protocol input anonymized", () => {
+    for (const c of HISTORICAL_CASES) {
+      expect(c.reportNames).toBeDefined();
+      const discovererName = c.reportNames![c.input.discovererId];
+      expect(discovererName).toBeTruthy();
+      expect(c.input.entities.find((e) => e.userId === c.input.discovererId)?.profile.name).toBe("(source user)");
+    }
+  });
+
   it("uses at most two indexes per case, and every index used has a context entry", () => {
     for (const c of HISTORICAL_CASES) {
       const nets = new Set(c.input.entities.map((e) => e.networkId));

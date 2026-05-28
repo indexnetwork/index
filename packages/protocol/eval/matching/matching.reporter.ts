@@ -427,7 +427,7 @@ function htmlRateCI(rate: number, passes: number, total: number): string {
 
 /** Per-case metadata derived from the corpus, keyed by candidate id. */
 interface CaseMeta {
-  tier: 1 | 2 | 3;
+  tier: 1 | 2 | 3 | 4;
   description: string;
   discoveryQuery?: string;
   nameById: Map<string, string>;
@@ -439,7 +439,10 @@ function indexCases(cases: MatchingCase[]): Map<string, CaseMeta> {
   const m = new Map<string, CaseMeta>();
   for (const c of cases) {
     const nameById = new Map<string, string>();
-    for (const e of c.input.entities) nameById.set(e.userId, e.profile.name?.trim() || e.userId);
+    for (const e of c.input.entities) {
+      const reportName = c.reportNames?.[e.userId];
+      nameById.set(e.userId, reportName?.trim() || e.profile.name?.trim() || e.userId);
+    }
     const expectById = new Map<string, CandidateExpectation>();
     for (const exp of c.expect) expectById.set(exp.candidateId, exp);
     m.set(c.id, { tier: c.tier, description: c.description, discoveryQuery: c.input.discoveryQuery, nameById, expectById });
