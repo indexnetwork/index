@@ -10,11 +10,12 @@ import {
   computeRollingBaseline,
   diffBaseline,
   formatConsole,
+  renderHtml,
   writeBaseline,
   writeRunReport,
   readBaseline,
 } from "../matching.reporter.js";
-import type { CaseResult, Scorecard } from "../matching.types.js";
+import type { CaseResult, MatchingCase, Scorecard } from "../matching.types.js";
 
 const caseResult = (caseId: string, rule: CaseResult["rule"], passRate: number): CaseResult => ({
   caseId,
@@ -192,6 +193,51 @@ describe("formatConsole", () => {
     expect(output).toContain("aggregate pass-rate");
     expect(output).toContain("⚠");
     expect(output).toContain("p=");
+  });
+});
+
+describe("renderHtml", () => {
+  it("renders case metadata, CI hints, reasoning, and p-values", () => {
+    const c: CaseResult = {
+      caseId: "html/test-case",
+      rule: "same_side",
+      runs: 1,
+      passes: 0,
+      passRate: 0,
+      flaky: false,
+      runResults: [
+        {
+          passed: false,
+          assertions: [],
+          candidates: [
+            { candidateId: "cand", matched: true, score: 80, role: "peer", reasoning: "because <fit>" },
+          ],
+        },
+      ],
+    };
+    const sc = buildScorecard([c], { model: "m", runs: 1 });
+    const corpus: MatchingCase[] = [
+      {
+        id: "html/test-case",
+        rule: "same_side",
+        tier: 1,
+        description: "HTML renderer should escape <tags> and show detail.",
+        input: {
+          discovererId: "src",
+          entities: [
+            { userId: "src", profile: { name: "Source", bio: "b" }, networkId: "n" },
+            { userId: "cand", profile: { name: "Candidate", bio: "b" }, networkId: "n" },
+          ],
+        },
+        expect: [{ candidateId: "cand", match: false, scoreBand: [0, 29] }],
+      },
+    ];
+    const html = renderHtml(sc, [{ id: "html/test-case", kind: "case", before: 1, after: 0, pValue: 0.001 }], corpus);
+    expect(html).toContain("<!doctype html>");
+    expect(html).toContain("HTML renderer should escape &lt;tags&gt;");
+    expect(html).toContain("because &lt;fit&gt;");
+    expect(html).toContain("CI₉₅");
+    expect(html).toContain("p=0.001");
   });
 });
 
