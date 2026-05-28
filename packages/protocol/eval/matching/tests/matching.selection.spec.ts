@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { CASES } from "../matching.cases.js";
-import { formatCaseList, hasRule, parseTier, selectCases } from "../matching.selection.js";
+import { formatCaseList, formatCaseSummary, hasRule, parseTier, selectCases } from "../matching.selection.js";
 
 describe("parseTier", () => {
   it("accepts supported tiers", () => {
@@ -42,10 +42,20 @@ describe("selectCases", () => {
   });
 });
 
+describe("formatCaseSummary", () => {
+  it("renders total, tier counts, and rule counts", () => {
+    const summary = formatCaseSummary(selectCases(CASES, { rule: "same_side" }));
+    expect(summary).toContain("total:");
+    expect(summary).toContain("by tier:");
+    expect(summary).toContain("same_side:");
+  });
+});
+
 describe("formatCaseList", () => {
-  it("renders case ids and tiers", () => {
+  it("renders summary, case ids, and tiers", () => {
     const output = formatCaseList(selectCases(CASES, { rule: "same_side" }));
     expect(output).toContain("Matching eval cases");
+    expect(output).toContain("by rule:");
     expect(output).toContain("same_side");
     expect(output).toContain("[t");
   });

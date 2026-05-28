@@ -27,9 +27,28 @@ export function selectCases(cases: MatchingCase[], filters: CaseFilters): Matchi
   });
 }
 
+function countBy<T extends string | number>(values: T[]): Map<T, number> {
+  const out = new Map<T, number>();
+  for (const v of values) out.set(v, (out.get(v) ?? 0) + 1);
+  return out;
+}
+
+/** Format corpus counts by tier and rule. */
+export function formatCaseSummary(cases: MatchingCase[]): string {
+  const byTier = [...countBy(cases.map((c) => c.tier)).entries()]
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([tier, count]) => `t${tier}:${count}`)
+    .join("  ");
+  const byRule = [...countBy(cases.map((c) => c.rule)).entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([rule, count]) => `${rule}:${count}`)
+    .join("  ");
+  return `total:${cases.length}${byTier ? `\nby tier: ${byTier}` : ""}${byRule ? `\nby rule: ${byRule}` : ""}`;
+}
+
 /** Format a case inventory for --list-cases. */
 export function formatCaseList(cases: MatchingCase[]): string {
-  const lines = ["Matching eval cases:"];
+  const lines = ["Matching eval cases:", formatCaseSummary(cases), ""];
   for (const c of [...cases].sort((a, b) => a.rule.localeCompare(b.rule) || a.id.localeCompare(b.id))) {
     lines.push(`  [t${c.tier}] ${c.rule.padEnd(20)} ${c.id}`);
   }
