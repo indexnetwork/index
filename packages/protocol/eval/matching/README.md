@@ -17,10 +17,14 @@ bun run eval:matching -- --report             # write a full run report incl. ev
 bun run eval:matching -- --report out.json    # ...to a specific path
 bun run eval:matching -- --html              # write a standalone HTML scorecard
 bun run eval:matching -- --html out.html     # ...to a specific path
+bun run eval:matching -- --rolling-baseline  # compare against trailing 7-day run average
+bun run eval:matching -- --rolling-baseline 14 # compare against trailing 14 days
 ```
 
 Requires `OPENROUTER_API_KEY` (loaded via `.env.test`). Exits non-zero on a regression
-versus `baselines/matching.baseline.json`.
+versus `baselines/matching.baseline.json`, or versus the rolling window when
+`--rolling-baseline` is set. Full-corpus runs are automatically written to
+`runs/<timestamp>.json` (gitignored) so future rolling windows have data.
 
 ## HTML reports (`--html`)
 
@@ -30,11 +34,22 @@ candidate's expected vs. actual outcomes per run, with the evaluator's verbatim
 reasoning behind collapsible blocks. Pass-rates carry 95% Wilson confidence intervals
 on hover. Regressions vs baseline are surfaced in a red alert section.
 
+## Run reports (`--report`)
+
 `--report` writes the full scorecard — including each candidate's **actual score, role,
 and the evaluator's own verbatim `reasoning`** — to `runs/<timestamp>.json` (gitignored),
 or to a path you pass. The committed baseline deliberately omits this reasoning to keep
 diffs lean; the run report is where the "why" lives. This artifact is the input the
 matching-eval report skill reads to explain *why* the evaluator scored as it did.
+
+## Rolling baseline (`--rolling-baseline`)
+
+By default, regressions are checked against the committed baseline in
+`baselines/matching.baseline.json`. With `--rolling-baseline` the harness instead reads
+recent JSON reports in `runs/`, builds a synthetic pass-weighted baseline per case/rule,
+and compares against that. This catches drift relative to recent behavior while preserving
+the committed baseline as the canonical release checkpoint. The default window is 7 days;
+pass a number to change it, e.g. `--rolling-baseline 14`.
 
 ## Layout
 

@@ -28,6 +28,8 @@ bun run eval:matching -- --no-judge             # Skip LLM reasoning checks (fre
 bun run eval:matching -- --update-baseline      # Overwrite the committed baseline
 bun run eval:matching -- --report               # Write full run report (incl. evaluator reasoning)
 bun run eval:matching -- --report out.json      # …to a specific path
+bun run eval:matching -- --html                 # Write standalone HTML scorecard
+bun run eval:matching -- --rolling-baseline     # Compare against recent run reports (7d)
 ```
 
 ## Anatomy of a harness
@@ -73,12 +75,13 @@ eval/<name>/
    assertions. Aggregate multiple runs into a `CaseResult` with pass-rate.
 
 6. **Report results** in `<name>.reporter.ts`. Build a scorecard, diff against the
-   committed baseline, detect regressions (pass-rate drop ≥ 0.34), and format console
-   output.
+   committed or rolling baseline with a one-sided binomial significance test, and format
+   console/HTML output.
 
 7. **Write the CLI entry point** in `<name>.eval.ts`. Parse --runs, --rule, --no-judge,
-   --update-baseline, and --report from process.argv. Drive the flow:
-   cases → runner → scorer → baseline → console + optional report.
+   --update-baseline, --report, --html, and optional rolling-baseline flags from
+   process.argv. Drive the flow: cases → runner → scorer → baseline → console + optional
+   report.
 
 8. **Add a package.json script** in the protocol root:
    ```json
@@ -113,9 +116,13 @@ types, scoring logic, runner wiring, reporter math, and baseline handling are co
   `--update-baseline` after intentional eval changes.
 
 - **Run report** (`runs/<timestamp>.json`): the full scorecard with evaluator reasoning
-  verbatim, written on demand with `--report`. gitignored — for human review, not
-  diffing.
+  verbatim, written by full-corpus runs and on demand with `--report`. gitignored — for
+  human review and rolling-baseline computation, not diffing.
+
+- **Rolling baseline** (`--rolling-baseline [days]`): a synthetic baseline computed from
+  recent JSON reports in `runs/`. Useful for drift detection relative to current model
+  behavior. Default window is 7 days.
 
 - **Regression detection**: run → scorecard → `diffBaseline()` → exit code 1 if any case
-  or rule pass-rate dropped by ≥ 0.34 versus the committed baseline. New cases never
-  count as regressions.
+  or rule is significantly below the baseline by one-sided binomial test (default
+  α=0.05). New cases never count as regressions.

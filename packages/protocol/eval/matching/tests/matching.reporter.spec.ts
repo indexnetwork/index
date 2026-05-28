@@ -1,10 +1,11 @@
 import { describe, it, expect } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { unlink } from "node:fs/promises";
+import { mkdir, rm, unlink } from "node:fs/promises";
 import {
   binomialCI,
   buildScorecard,
+  computeRollingBaseline,
   diffBaseline,
   formatConsole,
   writeBaseline,
@@ -167,6 +168,47 @@ describe("formatConsole", () => {
     expect(output).toContain("is_a_identity");
     expect(output).toContain("aggregate pass-rate");
     expect(output).toContain("⚠");
+  });
+});
+
+describe("computeRollingBaseline", () => {
+  it("returns null when the run directory is missing or empty", async () => {
+    const missing = join(tmpdir(), `missing-rolling-${Date.now()}`);
+    const rolling = await computeRollingBaseline(missing, 7, new Date("2026-05-28T00:00:00.000Z"));
+    expect(rolling).toBeNull();
+  });
+
+  it("averages recent run reports and ignores old ones", async () => {
+    const dir = join(tmpdir(), `matching-rolling-${Date.now()}`);
+    await mkdir(dir);
+    const now = new Date("2026-05-28T00:00:00.000Z");
+
+    const recentPerfect: Scorecard = {
+      ...buildScorecard([caseResult("a", "same_side", 1)], { model: "m", runs: 3 }),
+      generatedAt: "2026-05-27T00:00:00.000Z",
+    };
+    const recentPartial: Scorecard = {
+      ...buildScorecard([caseResult("a", "same_side", 0.33)], { model: "m", runs: 3 }),
+      generatedAt: "2026-05-26T00:00:00.000Z",
+    };
+    const oldRun: Scorecard = {
+      ...buildScorecard([caseResult("a", "same_side", 0)], { model: "m", runs: 3 }),
+      generatedAt: "2026-05-01T00:00:00.000Z",
+    };
+
+    await writeRunReport(join(dir, "recent-perfect.json"), recentPerfect);
+    await writeRunReport(join(dir, "recent-partial.json"), recentPartial);
+    await writeRunReport(join(dir, "old.json"), oldRun);
+
+    const rolling = await computeRollingBaseline(dir, 7, now);
+    expect(rolling).not.toBeNull();
+    expect(rolling!.model).toContain("rolling:7d:2runs");
+    expect(rolling!.cases).toHaveLength(1);
+    // recentPerfect contributes 3/3, recentPartial contributes 1/3 → 4/6.
+    expect(rolling!.cases[0].passRate).toBeCloseTo(4 / 6, 5);
+    expect(rolling!.rules[0].passRate).toBeCloseTo(4 / 6, 5);
+
+    await rm(dir, { recursive: true, force: true });
   });
 });
 

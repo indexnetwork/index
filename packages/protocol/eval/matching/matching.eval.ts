@@ -12,6 +12,8 @@
  *   bun run eval:matching -- --report path.json # ...to a specific path
  *   bun run eval:matching -- --html             # write a standalone HTML scorecard
  *   bun run eval:matching -- --html path.html   # ...to a specific path
+ *   bun run eval:matching -- --rolling-baseline # compare against recent runs (default 7d)
+ *   bun run eval:matching -- --rolling-baseline 14 # compare against a 14-day window
  *
  * Requires OPENROUTER_API_KEY (loaded via --env-file=.env.test in the package script).
  * Exits non-zero when a regression vs the committed baseline is detected.
@@ -25,6 +27,7 @@ import { runCase } from "./matching.runner.js";
 import { scoreCase, type Judge } from "./matching.scorer.js";
 import {
   buildScorecard,
+  computeRollingBaseline,
   diffBaseline,
   formatConsole,
   readBaseline,
@@ -36,6 +39,7 @@ import type { CaseResult } from "./matching.types.js";
 
 const ALPHA = 0.05;
 const BASELINE_PATH = path.resolve(import.meta.dir, "baselines/matching.baseline.json");
+const RUNS_DIR = path.resolve(import.meta.dir, "runs");
 
 function arg(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
@@ -61,6 +65,12 @@ async function main(): Promise<void> {
   const noJudge = has("--no-judge");
   const report = has("--report");
   const html = has("--html");
+  const rollingBaseline = has("--rolling-baseline");
+  const rollingBaselineDays = rollingBaseline ? Number(flagValue("--rolling-baseline") ?? 7) : null;
+  if (rollingBaselineDays !== null && (!Number.isFinite(rollingBaselineDays) || rollingBaselineDays <= 0)) {
+    console.error(`--rolling-baseline must be a positive number of days (got "${flagValue("--rolling-baseline")}")`);
+    process.exit(2);
+  }
 
   const judge: Judge = noJudge
     ? async () => true
@@ -93,8 +103,20 @@ async function main(): Promise<void> {
   }
 
   const scorecard = buildScorecard(results, { model, runs });
-  const baseline = ruleFilter ? null : await readBaseline(BASELINE_PATH);
+  const baseline = ruleFilter
+    ? null
+    : rollingBaselineDays !== null
+      ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays)
+      : await readBaseline(BASELINE_PATH);
   const { regressions } = diffBaseline(scorecard, baseline, ALPHA);
+
+  if (rollingBaselineDays !== null) {
+    console.log(
+      baseline
+        ? `\nComparing against rolling ${rollingBaselineDays}-day baseline (${baseline.model}).`
+        : `\nNo rolling ${rollingBaselineDays}-day baseline found; skipping regression comparison.`,
+    );
+  }
 
   console.log(formatConsole(scorecard, regressions));
 
@@ -103,18 +125,20 @@ async function main(): Promise<void> {
     console.log(`\nBaseline updated at ${BASELINE_PATH}`);
   }
 
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
+  if (!ruleFilter) {
+    await writeRunReport(autoRunPath, scorecard);
+  }
+
   if (report) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const reportPath =
-      flagValue("--report") ?? path.resolve(import.meta.dir, "runs", `${stamp}.json`);
-    await writeRunReport(reportPath, scorecard);
+    const reportPath = flagValue("--report") ?? autoRunPath;
+    if (reportPath !== autoRunPath) await writeRunReport(reportPath, scorecard);
     console.log(`\nRun report written to ${reportPath}`);
   }
 
   if (html) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const htmlPath =
-      flagValue("--html") ?? path.resolve(import.meta.dir, "runs", `${stamp}.html`);
+    const htmlPath = flagValue("--html") ?? path.resolve(RUNS_DIR, `${stamp}.html`);
     await writeHtmlReport(htmlPath, scorecard, regressions, CASES);
     console.log(`\nHTML report written to ${htmlPath}`);
   }
