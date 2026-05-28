@@ -72,12 +72,12 @@ eval/<name>/
    The runner calls the agent N times and collects its outputs.
 
 5. **Score each run** in `<name>.scorer.ts`. The scorer compares agent output to
-   expectations (match, band, role, LLM-checked reasoning) and returns per-run
+   expectations (match/surfacing threshold, band, role, LLM-checked reasoning) and returns per-run
    assertions. Aggregate multiple runs into a `CaseResult` with pass-rate.
 
 6. **Report results** in `<name>.reporter.ts`. Build a scorecard, diff against the
-   committed or rolling baseline with a one-sided binomial significance test, and format
-   console/HTML output.
+   committed or rolling baseline with the posterior-predictive regression test, and format
+   console/HTML output. Prefer domain/rule/tier/component breakdowns for interpretable failures.
 
 7. **Write the CLI entry point** in `<name>.eval.ts`. Parse --runs, --rule, --no-judge,
    --update-baseline, --report, --html, and optional rolling-baseline flags from

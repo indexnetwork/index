@@ -412,7 +412,7 @@ CRITICAL REASONING INSTRUCTIONS FOR INTRODUCTIONS:
 
 CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
 
-0. QUERY IS PRIMARY: The DISCOVERY REQUEST above is the primary evaluation criterion. The source user's stored INTENTS (if listed below) are background context — use them ONLY to fill in blanks when the query is too broad or vague to evaluate on its own. If the query is specific enough to score candidates, score strictly against the query and IGNORE stored intents. Never let a stored intent override or replace the query as the basis for scoring.
+0. QUERY IS PRIMARY: The DISCOVERY REQUEST above is the primary evaluation criterion. The source user's stored INTENTS (if listed below) are background context — use them ONLY to fill in blanks when the query is too broad or vague to evaluate on its own. If the query is specific enough to score candidates, score strictly against the query and IGNORE stored intents. Never let a stored intent override or replace the query as the basis for scoring. When a specific query imposes a hard identity, role, capability, or location constraint, candidates that only match background context or thematic adjacency must score strictly below 30 and be omitted.
 
 1. CLASSIFY THE QUERY TYPE — determine the predication type before scoring:
 
@@ -430,8 +430,8 @@ CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
    For IDENTITY/ROLE queries — apply a categorical gate:
    - First, make a binary IS-A judgment for each candidate: does this person's PRIMARY professional identity or self-description place them within the extension of the query term?
    - IS-A = TRUE → score 75-100 (modulated by intent alignment and profile richness)
-   - IS-A = FALSE → score ≤ 35. Hard ceiling. Do NOT award partial credit for subject-matter adjacency, thematic association, or creative output involving the query term.
-   - Do NOT rescue a failed IS-A judgment with background intents. If the user searched "samurai" and the candidate is a visual artist (IS-A = false), the candidate's alignment with a background intent like "connect with visual artists" does not matter — the explicit query takes priority.
+   - IS-A = FALSE → score <30. Hard ceiling. Return no opportunity. Do NOT award surfacing credit for subject-matter adjacency, thematic association, creative output involving the query term, having received the thing, or being adjacent to people who are the thing.
+   - Do NOT rescue a failed IS-A judgment with background intents. If the user searched "samurai" and the candidate is a visual artist (IS-A = false), the candidate's alignment with a background intent like "connect with visual artists" does not matter — the explicit query takes priority. If the user searched "investors" and the candidate merely raised money, score <30. If the user searched "scouts" and the candidate was scouted, score <30.
 
    For TOPICAL/DOMAIN queries — apply gradient scoring:
    - 90-100: Deep expertise, primary focus area
@@ -447,8 +447,8 @@ CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
 3. SAME-SIDE CHECK: If the candidate's intents show they are ALSO SEEKING what the discoverer is seeking (e.g., both looking for investors, both looking for co-founders), this is a same-side match. Score <30 regardless of keyword overlap in bios. The candidate must BE or OFFER what the discoverer is looking for, not also be looking for it.
 
 4. LOCATION ENFORCEMENT: If the discovery request mentions a specific location (e.g., "in SF", "based in London", "Istanbul"), check each candidate's profile.location:
-   - KNOWN MISMATCH (e.g., request says "SF" but candidate is "New York"): Score ≤ 40. State the mismatch in reasoning.
-   - UNKNOWN/EMPTY location: Do not penalize. Note that location is unverified.
+   - KNOWN MISMATCH (e.g., request says "SF" but candidate is "New York"): Score <30 and return no opportunity. State the mismatch in reasoning if returning diagnostic output. A known location mismatch is a hard query failure, even when the candidate otherwise matches the source's background interests.
+   - UNKNOWN/EMPTY location: Do not penalize, and do NOT reject solely because the query contains a location. Treat location as unverified/missing evidence, then score on the non-location parts of the query. If the candidate strongly satisfies the requested role/domain (e.g., query "Unreal Engine developers in SF" and candidate is clearly an Unreal Engine developer with empty location), score normally enough to surface (typically 60-89) and note that location is unverified.
    - MATCH or COMPATIBLE (e.g., "Bay Area" ≈ "SF", "Remote" ≈ any): Score normally.
 `
       : '';

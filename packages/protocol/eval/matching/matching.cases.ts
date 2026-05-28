@@ -29,6 +29,7 @@ export const CASES: MatchingCase[] = [
     id: "is_a_identity/samurai-vs-character-designer",
     rule: "is_a_identity",
     tier: 1,
+    domains: ["arts"],
     description: "'samurai' identity query must reject a character-design artist (subject-matter ≠ identity).",
     input: {
       discovererId: "src-yanki",
@@ -56,6 +57,7 @@ export const CASES: MatchingCase[] = [
     id: "is_a_identity/investor-vs-funded-engineer",
     rule: "is_a_identity",
     tier: 1,
+    domains: ["funding", "technology"],
     description: "'investors' identity query must reject an engineer who raised funding (raising ≠ investing).",
     input: {
       discovererId: "src-yanki",
@@ -84,6 +86,7 @@ export const CASES: MatchingCase[] = [
     id: "is_a_identity/investor-vs-real-investor",
     rule: "is_a_identity",
     tier: 1,
+    domains: ["funding", "technology"],
     description: "'investors' identity query must accept an actual angel investor.",
     input: {
       discovererId: "src-yanki",
@@ -112,6 +115,7 @@ export const CASES: MatchingCase[] = [
     id: "query_primary/background-intent-does-not-rescue",
     rule: "query_primary",
     tier: 1,
+    domains: ["arts"],
     description: "Explicit 'samurai' query must override the source's 'visual artists' background intent.",
     input: {
       discovererId: "src-yanki",
@@ -143,12 +147,190 @@ export const CASES: MatchingCase[] = [
       },
     ],
   },
+  {
+    id: "query_primary/specific-art-query-accepts-illustrator",
+    rule: "query_primary",
+    tier: 1,
+    domains: ["arts"],
+    description: "Minimal pair: when the explicit query asks for a samurai character illustrator, the same visual artist should be accepted.",
+    input: {
+      discovererId: "src-yanki",
+      entities: [
+        creativeTechSource,
+        {
+          userId: "c-yuki",
+          profile: {
+            name: "Yuki Tanaka",
+            bio: "Visual artist and illustrator, focus on character design for historical and fantasy games.",
+            location: "Tokyo, JP",
+            interests: ["illustration", "character design", "historical costume"],
+            skills: ["illustration", "character design", "digital painting"],
+          },
+          intents: [{ intentId: "yuki-1", payload: "Open to collaborating on game character illustration and visual development." }],
+          networkId: NETWORK,
+          ragScore: 100,
+          matchedVia: "visual artists",
+        },
+      ],
+      discoveryQuery: "samurai character illustrator",
+    },
+    expect: [{ candidateId: "c-yuki", match: true, scoreBand: [70, 100], role: "agent" }],
+  },
+  {
+    id: "query_primary/investors-query-rejects-funded-founder",
+    rule: "query_primary",
+    tier: 1,
+    domains: ["funding", "technology"],
+    description: "Explicit 'investors' query must reject a founder/engineer who has raised money but does not invest.",
+    input: {
+      discovererId: "src-yanki",
+      entities: [
+        creativeTechSource,
+        {
+          userId: "c-sam",
+          profile: {
+            name: "Sam Rivera",
+            bio: "ML engineer and founder. Raised a $500K pre-seed for a side project; does not write checks into other startups.",
+            location: "Austin, TX",
+            interests: ["machine learning", "NLP", "startups"],
+            skills: ["Python", "PyTorch", "MLOps"],
+          },
+          intents: [{ intentId: "sam-1", payload: "Find investors and product collaborators for an LLM B2B tool." }],
+          networkId: NETWORK,
+          ragScore: 75,
+          matchedVia: "startup funding and investment",
+        },
+      ],
+      discoveryQuery: "investors",
+    },
+    expect: [{ candidateId: "c-sam", match: false, scoreBand: [0, 29] }],
+  },
+  {
+    id: "query_primary/founders-raising-seed-accepts-founder",
+    rule: "query_primary",
+    tier: 1,
+    domains: ["funding", "technology"],
+    description: "Minimal pair: when the explicit query asks for founders raising seed, the funded founder should be accepted.",
+    input: {
+      discovererId: "src-yanki",
+      entities: [
+        creativeTechSource,
+        {
+          userId: "c-sam",
+          profile: {
+            name: "Sam Rivera",
+            bio: "ML engineer and founder building an LLM B2B tool. Recently raised a small pre-seed and is preparing a larger seed round.",
+            location: "Austin, TX",
+            interests: ["machine learning", "NLP", "startups"],
+            skills: ["Python", "PyTorch", "MLOps"],
+          },
+          intents: [{ intentId: "sam-2", payload: "Meet investors and design partners before raising a seed round." }],
+          networkId: NETWORK,
+          ragScore: 75,
+          matchedVia: "startup funding and investment",
+        },
+      ],
+      discoveryQuery: "founders raising seed",
+    },
+    expect: [{ candidateId: "c-sam", match: true, scoreBand: [70, 100], role: "patient" }],
+  },
+  {
+    id: "query_primary/location-query-rejects-wrong-city",
+    rule: "query_primary",
+    tier: 1,
+    domains: ["location", "technology"],
+    description: "Explicit London query must reject a Berlin candidate even when their technical profile matches the background intent.",
+    input: {
+      discovererId: "src-yanki",
+      entities: [
+        creativeTechSource,
+        {
+          userId: "c-berlin-unreal",
+          profile: {
+            name: "Marta Vogel",
+            bio: "Senior Unreal Engine developer building interactive installations and game prototypes.",
+            location: "Berlin, DE",
+            interests: ["Unreal Engine", "interactive media", "games"],
+            skills: ["Unreal Engine", "C++", "real-time rendering"],
+          },
+          networkId: NETWORK,
+          ragScore: 91,
+          matchedVia: "Unreal Engine developers",
+        },
+      ],
+      discoveryQuery: "London Unreal Engine developers",
+    },
+    expect: [{ candidateId: "c-berlin-unreal", match: false, scoreBand: [0, 29] }],
+  },
+  {
+    id: "query_primary/vague-query-can-use-background-intent",
+    rule: "query_primary",
+    tier: 1,
+    domains: ["arts"],
+    description: "When the explicit query is vague, the source's background visual-artist intent may fill in the blanks.",
+    input: {
+      discovererId: "src-yanki",
+      entities: [
+        creativeTechSource,
+        {
+          userId: "c-yuki",
+          profile: {
+            name: "Yuki Tanaka",
+            bio: "Visual artist and illustrator, focus on character design for interactive media.",
+            location: "Tokyo, JP",
+            interests: ["illustration", "character design", "interactive art"],
+            skills: ["illustration", "character design", "digital painting"],
+          },
+          intents: [{ intentId: "yuki-2", payload: "Interested in collaborations with creative technologists and game teams." }],
+          networkId: NETWORK,
+          ragScore: 88,
+          matchedVia: "visual artists",
+        },
+      ],
+      discoveryQuery: "collaborators",
+    },
+    expect: [{ candidateId: "c-yuki", match: true, scoreBand: [70, 100] }],
+  },
+  {
+    id: "query_primary/scouts-query-rejects-scouted-athlete",
+    rule: "query_primary",
+    tier: 1,
+    domains: ["sports"],
+    description: "Explicit 'scouts' query must reject an athlete who was scouted; being scouted is not being a scout.",
+    input: {
+      discovererId: "src-sports",
+      entities: [
+        {
+          userId: "src-sports",
+          profile: { name: "(source user)", bio: "Community organizer building youth sports programs.", location: "Remote", interests: ["basketball", "youth programs"], skills: ["program design"] },
+          intents: [{ intentId: "sports-src-1", payload: "Find youth basketball scouts who can identify emerging talent for a camp." }],
+          networkId: NETWORK,
+        },
+        {
+          userId: "c-athlete",
+          profile: {
+            name: "Andre Mills",
+            bio: "High-school basketball guard recently discovered by a regional scout and invited to a development camp. He plays, but does not evaluate other athletes.",
+            location: "Chicago, IL",
+            interests: ["basketball", "training"],
+            skills: ["ball handling", "shooting"],
+          },
+          networkId: NETWORK,
+          ragScore: 86,
+          matchedVia: "basketball scouting and talent",
+        },
+      ],
+      discoveryQuery: "scouts",
+    },
+    expect: [{ candidateId: "c-athlete", match: false, scoreBand: [0, 29] }],
+  },
 
   // ── Tier 1: complementary role ──────────────────────────────────────────
   {
     id: "complementary_role/vc-for-cofounder-intent",
     rule: "complementary_role",
     tier: 1,
+    domains: ["funding", "technology"],
     description: "A VC cannot fill a 'co-founder' open argument — complementary role, cap ≤30.",
     input: {
       discovererId: "src-founder",
@@ -168,6 +350,7 @@ export const CASES: MatchingCase[] = [
     id: "complementary_role/engineer-for-cofounder-intent",
     rule: "complementary_role",
     tier: 1,
+    domains: ["technology"],
     description: "Minimal pair: an engineer who wants to co-found CAN fill the open argument — substitutive, accept.",
     input: {
       discovererId: "src-founder",
@@ -189,6 +372,7 @@ export const CASES: MatchingCase[] = [
     id: "same_side/both-seeking-investors",
     rule: "same_side",
     tier: 1,
+    domains: ["funding", "technology"],
     description: "Two founders both seeking investors are same-side — no opportunity.",
     input: {
       discovererId: "src-raising",
@@ -217,6 +401,7 @@ export const CASES: MatchingCase[] = [
     id: "already_known/same-company-cofounders",
     rule: "already_known",
     tier: 1,
+    domains: ["technology"],
     description: "Two people who are co-founders of the same company already know each other — no opportunity.",
     input: {
       discovererId: "src-acme",
@@ -244,6 +429,7 @@ export const CASES: MatchingCase[] = [
     id: "location/known-mismatch-penalized",
     rule: "location",
     tier: 1,
+    domains: ["location", "technology"],
     description: "Query asks for SF; a New York candidate with otherwise strong fit is penalized (≤40).",
     input: {
       discovererId: "src-yanki",
@@ -271,6 +457,7 @@ export const CASES: MatchingCase[] = [
     id: "location/unknown-not-penalized",
     rule: "location",
     tier: 1,
+    domains: ["location", "technology"],
     description: "Minimal pair: same candidate with UNKNOWN location must not be penalized for location.",
     input: {
       discovererId: "src-yanki",
@@ -300,6 +487,7 @@ export const CASES: MatchingCase[] = [
     id: "valency_role/seeker-gets-patient-provider-gets-agent",
     rule: "valency_role",
     tier: 1,
+    domains: ["technology"],
     description: "Source needs ML help; candidate offers ML expertise — candidate is the agent (provider).",
     input: {
       discovererId: "src-needs-ml",
@@ -328,6 +516,7 @@ export const CASES: MatchingCase[] = [
     id: "score_calibration/must-meet-primary-role",
     rule: "score_calibration",
     tier: 1,
+    domains: ["technology"],
     description: "A candidate whose PRIMARY role is exactly what the source seeks should land must-meet (≥85).",
     input: {
       discovererId: "src-seek-aiml",
@@ -356,6 +545,7 @@ export const CASES: MatchingCase[] = [
     id: "event_network/co-attendance-theme-lift",
     rule: "event_network",
     tier: 1,
+    domains: ["community", "technology"],
     description: "Two attendees of the same themed event with aligned interests get a co-attendance lift.",
     input: {
       discovererId: "src-attendee",
@@ -387,6 +577,7 @@ export const CASES: MatchingCase[] = [
     id: "score_calibration/tier2-cofounder-pool",
     rule: "score_calibration",
     tier: 2,
+    domains: ["technology", "funding"],
     description:
       "Commercial founder seeks a technical co-founder against the persona pool. The technical co-founder should be must/should-meet; the VC is complementary (reject); the designer is at most worth-considering.",
     input: {

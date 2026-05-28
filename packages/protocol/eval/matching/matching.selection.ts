@@ -43,14 +43,18 @@ export function formatCaseSummary(cases: MatchingCase[]): string {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([rule, count]) => `${rule}:${count}`)
     .join("  ");
-  return `total:${cases.length}${byTier ? `\nby tier: ${byTier}` : ""}${byRule ? `\nby rule: ${byRule}` : ""}`;
+  const byDomain = [...countBy(cases.flatMap((c) => c.domains)).entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([domain, count]) => `${domain}:${count}`)
+    .join("  ");
+  return `total:${cases.length}${byTier ? `\nby tier: ${byTier}` : ""}${byRule ? `\nby rule: ${byRule}` : ""}${byDomain ? `\nby domain: ${byDomain}` : ""}`;
 }
 
 /** Format a case inventory for --list-cases. */
 export function formatCaseList(cases: MatchingCase[]): string {
   const lines = ["Matching eval cases:", formatCaseSummary(cases), ""];
   for (const c of [...cases].sort((a, b) => a.rule.localeCompare(b.rule) || a.id.localeCompare(b.id))) {
-    lines.push(`  [t${c.tier}] ${c.rule.padEnd(20)} ${c.id}`);
+    lines.push(`  [t${c.tier}] [${c.domains.join(",")}] ${c.rule.padEnd(20)} ${c.id}`);
   }
   return lines.join("\n");
 }

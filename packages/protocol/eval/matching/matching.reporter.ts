@@ -429,6 +429,7 @@ function htmlRateCI(rate: number, passes: number, total: number): string {
 /** Per-case metadata derived from the corpus, keyed by candidate id. */
 interface CaseMeta {
   tier: 1 | 2 | 3 | 4;
+  domains: string[];
   description: string;
   discoveryQuery?: string;
   nameById: Map<string, string>;
@@ -449,7 +450,7 @@ function indexCases(cases: MatchingCase[]): Map<string, CaseMeta> {
     }
     const expectById = new Map<string, CandidateExpectation>();
     for (const exp of c.expect) expectById.set(exp.candidateId, exp);
-    m.set(c.id, { tier: c.tier, description: c.description, discoveryQuery: c.input.discoveryQuery, nameById, expectById });
+    m.set(c.id, { tier: c.tier, domains: c.domains, description: c.description, discoveryQuery: c.input.discoveryQuery, nameById, expectById });
   }
   return m;
 }
@@ -502,14 +503,17 @@ function candidateRow(
     .map((o) => {
       const ok = outcomeOk(exp, o);
       const roleTxt = o.role ? ` ${esc(o.role)}` : "";
-      return `<span class="chip ${ok ? "good" : "bad"}" title="${o.matched ? "surfaced" : "not surfaced"}">${o.score}${roleTxt}</span>`;
+      const returned = o.returned ?? o.score > 0;
+      const title = o.matched ? "surfaced" : returned ? "returned below surfacing threshold" : "not returned";
+      return `<span class="chip ${ok ? "good" : "bad"}" title="${title}">${o.score}${roleTxt}</span>`;
     })
     .join("");
   const reasoning = outcomes
     .map((o, i) => {
+      const returned = o.returned ?? o.score > 0;
       const text = o.reasoning.trim()
         ? o.reasoning
-        : o.matched
+        : returned
           ? "Returned by the evaluator, but the opportunity reasoning field was empty."
           : "Not returned by the evaluator. No opportunity object existed, so there is no evaluator reasoning for this candidate in this run.";
       return `<div class="reason"><span class="muted">run ${i + 1} · score ${o.score}${o.role ? " · " + esc(o.role) : ""}</span><p>${esc(text)}</p></div>`;
@@ -548,6 +552,7 @@ function caseCard(c: CaseResult, meta: CaseMeta | undefined): string {
   ];
   const rows = ordered.map((id) => candidateRow(id, meta, outcomes.get(id) ?? [])).join("");
   const tier = meta ? `<span class="badge tier">tier ${meta.tier}</span>` : "";
+  const domains = meta?.domains.map((d) => `<span class="badge domain">${esc(d)}</span>`).join("") ?? "";
   const flaky = c.flaky ? `<span class="badge flaky">flaky</span>` : "";
   const query = meta?.discoveryQuery
     ? `<p class="query">query: <code>${esc(meta.discoveryQuery)}</code></p>`
@@ -559,7 +564,7 @@ function caseCard(c: CaseResult, meta: CaseMeta | undefined): string {
     <header>
       <code class="cid">${esc(c.caseId)}</code>
       <span class="verdict ${rateClass(c.passRate)}" title="${c.passes}/${c.runs} runs">${ci}</span>
-      ${tier}${flaky}
+      ${tier}${domains}${flaky}
     </header>
     ${desc}${query}
     ${failedChecks(c)}
@@ -651,22 +656,41 @@ function componentRows(sc: Scorecard): string {
 export function renderHtml(sc: Scorecard, regressions: Regression[], cases: MatchingCase[]): string {
   const meta = indexCases(cases);
 
-  // Per-tier aggregate, derived from the corpus join (RuleResult carries no tier).
+  // Per-tier and per-domain aggregates, derived from the corpus join.
   const tierAgg = new Map<number, { count: number; sum: number; passes: number; runs: number }>();
+  const domainAgg = new Map<string, { count: number; sum: number; passes: number; runs: number }>();
   for (const c of sc.cases) {
-    const t = meta.get(c.caseId)?.tier ?? 0;
+    const caseMeta = meta.get(c.caseId);
+    const t = caseMeta?.tier ?? 0;
     const a = tierAgg.get(t) ?? { count: 0, sum: 0, passes: 0, runs: 0 };
     a.count += 1;
     a.sum += c.passRate;
     a.passes += c.passes;
     a.runs += c.runs;
     tierAgg.set(t, a);
+
+    for (const d of caseMeta?.domains ?? ["unknown"]) {
+      const da = domainAgg.get(d) ?? { count: 0, sum: 0, passes: 0, runs: 0 };
+      da.count += 1;
+      da.sum += c.passRate;
+      da.passes += c.passes;
+      da.runs += c.runs;
+      domainAgg.set(d, da);
+    }
   }
   const tierRows = [...tierAgg.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([t, a]) => {
       const rate = a.sum / a.count;
       return `<tr><td>tier ${t || "?"}</td><td>${a.count}</td><td class="${rateClass(rate)}">${htmlRateCI(rate, a.passes, a.runs)}</td></tr>`;
+    })
+    .join("");
+
+  const domainRows = [...domainAgg.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([domain, a]) => {
+      const rate = a.sum / a.count;
+      return `<tr><td>${esc(domain)}</td><td>${a.count}</td><td class="${rateClass(rate)}">${htmlRateCI(rate, a.passes, a.runs)}</td></tr>`;
     })
     .join("");
 
@@ -777,11 +801,12 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
       <li><strong>Valency role</strong>: when asserted, did the candidate get the expected agent/patient/peer role?</li>
       <li><strong>Reasoning quality</strong>: when asserted, did the evaluator explanation satisfy the rubric?</li>
     </ol>
-    <p>The aggregate score is the mean pass-rate across cases. Rule and tier tables identify which behavior family is weak. Component performance below identifies which part of protocol/scoring broke inside those cases.</p>
+    <p>The aggregate score is the mean pass-rate across cases. Domain, rule, and tier tables identify where quality is weak. Component performance below identifies which part of protocol/scoring broke inside those cases.</p>
   </section>
   ${regressionBlock}
   <section class="summary">
     <div><h2>By protocol component</h2><table><thead><tr><th>component</th><th>checks</th><th>pass</th></tr></thead><tbody>${components}</tbody></table></div>
+    <div><h2>By domain</h2><table><thead><tr><th>domain</th><th>cases</th><th>pass</th></tr></thead><tbody>${domainRows}</tbody></table></div>
     <div><h2>By rule</h2><table><thead><tr><th>rule</th><th>cases</th><th>pass</th></tr></thead><tbody>${ruleRows}</tbody></table></div>
     <div><h2>By tier</h2><table><thead><tr><th>tier</th><th>cases</th><th>pass</th></tr></thead><tbody>${tierRows}</tbody></table></div>
   </section>

@@ -40,7 +40,7 @@ should not feed rolling baselines.
 
 `--html` renders a standalone, self-contained HTML scorecard with no external assets or
 JavaScript — openable directly from a file browser. The report includes explanatory copy,
-component-level performance, rule/tier rollups, failed-check details, and one case card per
+component-level performance, domain/rule/tier rollups, failed-check details, and one case card per
 corpus case. Each case card shows every candidate's expected vs. actual outcomes per run,
 with the evaluator's verbatim reasoning behind collapsible blocks when an opportunity was
 returned. When a candidate was not returned, the report says that explicitly instead of
@@ -84,10 +84,17 @@ case id or an id prefix, so `--case location/` runs all location cases. Add
 
 ## Adding a case
 
-Append a `MatchingCase` to `CASES`. Set `match`, optional `scoreBand`, optional `role`, and
-`reasoningCriteria` only when a code check can't express the expectation. Negative cases are
-best authored as minimal-pair perturbations of a positive. Re-run with `--update-baseline`
-after an intentional change.
+Append a `MatchingCase` to `CASES`. Every case must declare one or more broad `domains`
+(`technology`, `research`, `arts`, `funding`, `location`, `community`, `sports`) so the
+report can show whether failures cluster by domain rather than only by evaluator rule. Set
+`match`, optional `scoreBand`, optional `role`, and `reasoningCriteria` only when a code
+check can't express the expectation. Negative cases are best authored as minimal-pair
+perturbations of a positive. Re-run with `--update-baseline` after an intentional change.
+
+The eval runner uses `returnAll: true` to capture diagnostic low scores, but the scorer only
+counts a candidate as surfaced when `score >= MATCHING_MIN_SCORE` (currently 30). A returned
+candidate with score 1–29 is visible in reports as "returned below surfacing threshold" but
+does not satisfy `match: true`.
 
 ## Tier 4 — deterministic augmentation
 
@@ -100,7 +107,7 @@ use Tier 1 when introducing a new surgical behavior or minimal-pair rule.
 
 `matching.historical.ts` holds five real collaborations (e.g. complementary cofounders,
 co-researchers on a landmark paper, a songwriting duo, a first-check investor + founder,
-a cross-disciplinary expert + ML researcher), recreated as the people looked *before* they
+a cross-disciplinary biomedical research pair), recreated as the people looked *before* they
 connected. Each case places the discoverer, the eventual partner, and three plausible
 contemporary distractors in one shared index, and asserts the evaluator surfaces the partner
 (band `[60, 100]`) while the distractors do not (`[0, 29]`). Evaluator input names stay

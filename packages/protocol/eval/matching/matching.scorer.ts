@@ -1,5 +1,6 @@
 import type { EvaluatedOpportunityWithActors } from "../../src/opportunity/opportunity.evaluator.js";
 
+import { MATCHING_MIN_SCORE } from "./matching.constants.js";
 import type {
   MatchingCase,
   CandidateExpectation,
@@ -25,15 +26,18 @@ async function scoreExpectation(
   exp: CandidateExpectation,
   opportunities: EvaluatedOpportunityWithActors[],
   judge: Judge,
+  surfacingThreshold = MATCHING_MIN_SCORE,
 ): Promise<{ assertions: AssertionResult[]; outcome: CandidateOutcome }> {
   const out: AssertionResult[] = [];
   const opp = findOpportunity(exp.candidateId, opportunities);
-  const matched = opp !== undefined && opp.score > 0;
+  const returned = opp !== undefined;
   const effectiveScore = opp ? opp.score : 0;
+  const matched = returned && effectiveScore >= surfacingThreshold;
   const role =
-    opp && opp.score > 0 ? opp.actors.find((a) => a.userId === exp.candidateId)?.role : undefined;
+    returned && effectiveScore > 0 ? opp.actors.find((a) => a.userId === exp.candidateId)?.role : undefined;
   const outcome: CandidateOutcome = {
     candidateId: exp.candidateId,
+    returned,
     matched,
     score: effectiveScore,
     ...(role ? { role } : {}),
@@ -44,7 +48,7 @@ async function scoreExpectation(
     kind: "match",
     candidateId: exp.candidateId,
     passed: matched === exp.match,
-    detail: `expected match=${exp.match}, got matched=${matched} (score ${effectiveScore})`,
+    detail: `expected match=${exp.match}, got surfaced=${matched} (score ${effectiveScore}, threshold ${surfacingThreshold})`,
   });
 
   if (exp.scoreBand) {
@@ -95,8 +99,9 @@ export async function scoreRun(
   c: MatchingCase,
   opportunities: EvaluatedOpportunityWithActors[],
   judge: Judge,
+  surfacingThreshold = MATCHING_MIN_SCORE,
 ): Promise<RunResult> {
-  const graded = await Promise.all(c.expect.map((exp) => scoreExpectation(exp, opportunities, judge)));
+  const graded = await Promise.all(c.expect.map((exp) => scoreExpectation(exp, opportunities, judge, surfacingThreshold)));
   const assertions = graded.flatMap((g) => g.assertions);
   const candidates = graded.map((g) => g.outcome);
   return { passed: assertions.every((a) => a.passed), assertions, candidates };
@@ -113,8 +118,9 @@ export async function scoreCase(
   c: MatchingCase,
   runs: EvaluatedOpportunityWithActors[][],
   judge: Judge,
+  surfacingThreshold = MATCHING_MIN_SCORE,
 ): Promise<CaseResult> {
-  const runResults = await Promise.all(runs.map((r) => scoreRun(c, r, judge)));
+  const runResults = await Promise.all(runs.map((r) => scoreRun(c, r, judge, surfacingThreshold)));
   const passes = runResults.filter((r) => r.passed).length;
   const total = runResults.length;
   return {

@@ -43,21 +43,24 @@ describe("selectCases", () => {
 });
 
 describe("formatCaseSummary", () => {
-  it("renders total, tier counts, and rule counts", () => {
+  it("renders total, tier counts, rule counts, and domain counts", () => {
     const summary = formatCaseSummary(selectCases(CASES, { rule: "same_side" }));
     expect(summary).toContain("total:");
     expect(summary).toContain("by tier:");
     expect(summary).toContain("same_side:");
+    expect(summary).toContain("by domain:");
   });
 });
 
 describe("formatCaseList", () => {
-  it("renders summary, case ids, and tiers", () => {
+  it("renders summary, case ids, tiers, and domains", () => {
     const output = formatCaseList(selectCases(CASES, { rule: "same_side" }));
     expect(output).toContain("Matching eval cases");
     expect(output).toContain("by rule:");
+    expect(output).toContain("by domain:");
     expect(output).toContain("same_side");
     expect(output).toContain("[t");
+    expect(output).toContain("] [");
   });
 });
 

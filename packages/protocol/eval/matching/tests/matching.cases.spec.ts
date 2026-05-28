@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { CASES } from "../matching.cases.js";
-import type { Scorecard } from "../matching.types.js";
+import type { Domain, Scorecard } from "../matching.types.js";
 
 describe("matching corpus", () => {
   it("has unique case ids", () => {
@@ -25,6 +25,14 @@ describe("matching corpus", () => {
     }
   });
 
+  it("every case has at least one explicit domain category", () => {
+    const allowed = new Set<Domain>(["technology", "research", "arts", "funding", "location", "community", "sports"]);
+    for (const c of CASES) {
+      expect(c.domains.length).toBeGreaterThan(0);
+      for (const domain of c.domains) expect(allowed.has(domain)).toBe(true);
+    }
+  });
+
   it("score bands are well-formed (min<=max, within 0..100)", () => {
     for (const c of CASES) {
       for (const exp of c.expect) {
@@ -35,6 +43,12 @@ describe("matching corpus", () => {
         expect(min).toBeLessThanOrEqual(max);
       }
     }
+  });
+
+  it("has enough query_primary coverage to make rule metrics meaningful", () => {
+    const queryCases = CASES.filter((c) => c.rule === "query_primary");
+    expect(queryCases.length).toBeGreaterThanOrEqual(7);
+    expect(new Set(queryCases.flatMap((c) => c.domains)).size).toBeGreaterThanOrEqual(4);
   });
 
   it("includes the tier-3 historical cases", () => {

@@ -48,6 +48,7 @@ const _isA_1: MatchingCase = {
   id: "is_a_identity/startup-funder-vs-funded-bootstrapper",
   rule: "is_a_identity",
   tier: 4,
+    domains: ["funding", "technology"],
   description: "'startup funders' identity query must reject a bootstrapper who self-funded (bootstrapping ≠ funding others). Minimal-pair variant of investor-vs-funded-engineer.",
   input: {
     discovererId: "src-yanki",
@@ -79,6 +80,7 @@ const _isA_2: MatchingCase = {
   id: "is_a_identity/art-director-vs-illustrator",
   rule: "is_a_identity",
   tier: 4,
+    domains: ["arts"],
   description: "'art director' identity query must reject an illustrator who directs art for no one. Minimal-pair of samurai-vs-character-designer.",
   input: {
     discovererId: "src-yanki",
@@ -109,6 +111,7 @@ const _isA_3: MatchingCase = {
   id: "is_a_identity/scout-vs-scouted-athlete",
   rule: "is_a_identity",
   tier: 4,
+    domains: ["sports"],
   description: "'scouts' identity query must accept a talent scout and reject a recently-signed athlete (being signed ≠ scouting).",
   input: {
     discovererId: "src-yanki",
@@ -165,6 +168,7 @@ const _isA_4: MatchingCase = {
   id: "is_a_identity/investor-vs-grant-recipient",
   rule: "is_a_identity",
   tier: 4,
+    domains: ["funding", "research"],
   description: "'investors' identity query must reject an academic who received a research grant (receiving a grant ≠ investing). Minimal-pair variant.",
   input: {
     discovererId: "src-yanki",
@@ -198,6 +202,7 @@ const _comp_1: MatchingCase = {
   id: "complementary_role/design-cofounder-for-tech-founder",
   rule: "complementary_role",
   tier: 4,
+    domains: ["technology", "arts"],
   description: "Technical founder seeking a design co-founder should surface the designer, not the VC who enables but does NOT fill the design role.",
   input: {
     discovererId: "src-tech-seek",
@@ -241,6 +246,7 @@ const _comp_2: MatchingCase = {
   id: "complementary_role/marketing-cofounder-for-ai-engineer",
   rule: "complementary_role",
   tier: 4,
+    domains: ["technology"],
   description: "AI engineer seeking a GTM co-founder should surface the marketing expert, who complements rather than mirrors.",
   input: {
     discovererId: "src-ai-engineer",
@@ -286,6 +292,7 @@ const _same_1: MatchingCase = {
   id: "same_side/both-seeking-cofounders",
   rule: "same_side",
   tier: 4,
+    domains: ["technology"],
   description: "Two founders both seeking co-founders (not looking to BE a co-founder for each other) are same-side. Synonym of both-seeking-investors.",
   input: {
     discovererId: "src-seek-cof",
@@ -327,6 +334,7 @@ const _same_2: MatchingCase = {
   id: "same_side/both-hiring-engineers",
   rule: "same_side",
   tier: 4,
+    domains: ["technology"],
   description: "Two hiring managers both recruiting senior engineers are same-side — neither is the hire the other needs.",
   input: {
     discovererId: "src-hiring",
@@ -370,6 +378,7 @@ const _loc_1: MatchingCase = {
   id: "location/berlin-mismatch-vs-london-query",
   rule: "location",
   tier: 4,
+    domains: ["location", "technology"],
   description: "Query asks for London; a Berlin candidate with strong fit is penalized (≤40). Synonym of known-mismatch-penalized.",
   input: {
     discovererId: "src-yanki",
@@ -400,7 +409,8 @@ const _loc_2: MatchingCase = {
   id: "location/unknown-city-not-penalized-variant",
   rule: "location",
   tier: 4,
-  description: "Query asks for Tokyo; a candidate with empty location must not be penalized. Synonym of unknown-not-penalized.",
+  domains: ["location", "technology"],
+  description: "Query asks for Tokyo technical artists; a candidate with empty location must not be penalized. Synonym of unknown-not-penalized.",
   input: {
     discovererId: "src-yanki",
     entities: [
@@ -419,7 +429,7 @@ const _loc_2: MatchingCase = {
         matchedVia: "game industry technical artists",
       },
     ],
-    discoveryQuery: "game developers in Tokyo",
+    discoveryQuery: "technical artists in Tokyo",
   },
   expect: [
     { candidateId: "c-empty-loc", match: true, scoreBand: [60, 100] },
@@ -432,6 +442,7 @@ const _role_1: MatchingCase = {
   id: "valency_role/seeker-needs-design-provider-offers-design",
   rule: "valency_role",
   tier: 4,
+    domains: ["arts", "technology"],
   description: "Source needs design help; candidate offers design services — candidate is the provider (agent). Synonym of seeker-gets-patient-provider-gets-agent.",
   input: {
     discovererId: "src-needs-design",
@@ -473,6 +484,7 @@ const _role_2: MatchingCase = {
   id: "valency_role/seeker-offers-capacity-provider-needs-capacity",
   rule: "valency_role",
   tier: 4,
+    domains: ["technology"],
   description: "Source has spare compute capacity; candidate needs compute. The source is the provider (agent) and the candidate is the seeker (patient). Role reversal variant.",
   input: {
     discovererId: "src-has-gpu",
@@ -516,6 +528,7 @@ const _cal_1: MatchingCase = {
   id: "score_calibration/must-meet-sales-cofounder",
   rule: "score_calibration",
   tier: 4,
+    domains: ["technology"],
   description: "Technical founder seeking a GTM co-founder should score a candidate whose primary role IS GTM co-founder at ≥85. Synonym of must-meet-primary-role.",
   input: {
     discovererId: "src-seek-sales",
@@ -557,6 +570,7 @@ const _cal_2: MatchingCase = {
   id: "score_calibration/tier2-researcher-pool-variant",
   rule: "score_calibration",
   tier: 4,
+    domains: ["technology", "research"],
   description: "Commercial founder seeks a technical co-founder against a reshuffled persona pool. The technical co-founder must-meet; researcher and operator are below-threshold.",
   input: {
     discovererId: "src-commercial-2",

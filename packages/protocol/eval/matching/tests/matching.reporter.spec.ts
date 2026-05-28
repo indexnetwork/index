@@ -247,6 +247,7 @@ describe("renderHtml", () => {
         id: "html/test-case",
         rule: "same_side",
         tier: 1,
+        domains: ["technology"],
         description: "HTML renderer should escape <tags> and show detail.",
         input: {
           discovererId: "src",
@@ -303,6 +304,7 @@ describe("renderHtml", () => {
         id: "html/real-name-case",
         rule: "historical",
         tier: 3,
+        domains: ["research"],
         description: "Report-only names should show real referents.",
         input: {
           discovererId: "historical-source",
