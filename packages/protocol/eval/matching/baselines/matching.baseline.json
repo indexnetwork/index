@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-05-27T17:41:39.126Z",
+  "generatedAt": "2026-05-28T11:29:15.082Z",
   "model": "google/gemini-2.5-flash",
   "runs": 7,
-  "aggregatePassRate": 0.9323308270676692,
+  "aggregatePassRate": 0.9047619047619048,
   "rules": [
     {
       "rule": "is_a_identity",
-      "caseCount": 3,
-      "passRate": 0.9047619047619048
+      "caseCount": 7,
+      "passRate": 0.8163265306122448
     },
     {
       "rule": "query_primary",
@@ -16,12 +16,12 @@
     },
     {
       "rule": "complementary_role",
-      "caseCount": 2,
-      "passRate": 0.8571428571428572
+      "caseCount": 4,
+      "passRate": 0.9285714285714286
     },
     {
       "rule": "same_side",
-      "caseCount": 1,
+      "caseCount": 3,
       "passRate": 1
     },
     {
@@ -31,18 +31,18 @@
     },
     {
       "rule": "location",
-      "caseCount": 2,
+      "caseCount": 4,
       "passRate": 1
     },
     {
       "rule": "valency_role",
-      "caseCount": 1,
+      "caseCount": 3,
       "passRate": 1
     },
     {
       "rule": "score_calibration",
-      "caseCount": 2,
-      "passRate": 1
+      "caseCount": 4,
+      "passRate": 0.8928571428571428
     },
     {
       "rule": "event_network",
@@ -52,7 +52,7 @@
     {
       "rule": "historical",
       "caseCount": 5,
-      "passRate": 0.9428571428571428
+      "passRate": 0.8571428571428573
     }
   ],
   "cases": [
@@ -60,75 +60,41 @@
       "caseId": "is_a_identity/samurai-vs-character-designer",
       "rule": "is_a_identity",
       "runs": 7,
-      "passes": 5,
-      "passRate": 0.7142857142857143,
+      "passes": 4,
+      "passRate": 0.5714285714285714,
       "flaky": true,
       "runResults": [
         {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-yuki",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-yuki",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
           "passed": false,
           "assertions": [
             {
               "kind": "match",
               "candidateId": "c-yuki",
               "passed": false,
-              "detail": "expected match=false, got matched=true (score 75)"
+              "detail": "expected match=false, got matched=true (score 85)"
             },
             {
               "kind": "band",
               "candidateId": "c-yuki",
               "passed": false,
-              "detail": "expected score in [0,29], got 75"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "c-yuki",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "c-yuki",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "c-yuki",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "c-yuki",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "c-yuki",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "c-yuki",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
+              "detail": "expected score in [0,29], got 85"
             }
           ]
         },
@@ -173,13 +139,47 @@
               "kind": "match",
               "candidateId": "c-yuki",
               "passed": false,
-              "detail": "expected match=false, got matched=true (score 30)"
+              "detail": "expected match=false, got matched=true (score 25)"
             },
             {
               "kind": "band",
               "candidateId": "c-yuki",
+              "passed": true,
+              "detail": "expected score in [0,29], got 25"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-yuki",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-yuki",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-yuki",
               "passed": false,
-              "detail": "expected score in [0,29], got 30"
+              "detail": "expected match=false, got matched=true (score 25)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-yuki",
+              "passed": true,
+              "detail": "expected score in [0,29], got 25"
             }
           ]
         }
@@ -458,59 +458,13 @@
               "kind": "match",
               "candidateId": "c-yuki",
               "passed": false,
-              "detail": "expected match=false, got matched=true (score 35)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "c-yuki",
-              "passed": false,
-              "detail": "expected score in [0,29], got 35"
-            },
-            {
-              "kind": "reasoning",
-              "candidateId": "c-yuki",
-              "passed": true,
-              "detail": "judge passed"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "c-yuki",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
+              "detail": "expected match=false, got matched=true (score 25)"
             },
             {
               "kind": "band",
               "candidateId": "c-yuki",
               "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            },
-            {
-              "kind": "reasoning",
-              "candidateId": "c-yuki",
-              "passed": true,
-              "detail": "judge passed"
-            }
-          ]
-        },
-        {
-          "passed": false,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "c-yuki",
-              "passed": false,
-              "detail": "expected match=false, got matched=true (score 30)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "c-yuki",
-              "passed": false,
-              "detail": "expected score in [0,29], got 30"
+              "detail": "expected score in [0,29], got 25"
             },
             {
               "kind": "reasoning",
@@ -557,6 +511,52 @@
               "candidateId": "c-yuki",
               "passed": false,
               "detail": "expected score in [0,29], got 35"
+            },
+            {
+              "kind": "reasoning",
+              "candidateId": "c-yuki",
+              "passed": true,
+              "detail": "judge passed"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-yuki",
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 35)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-yuki",
+              "passed": false,
+              "detail": "expected score in [0,29], got 35"
+            },
+            {
+              "kind": "reasoning",
+              "candidateId": "c-yuki",
+              "passed": true,
+              "detail": "judge passed"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-yuki",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-yuki",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
             },
             {
               "kind": "reasoning",
@@ -618,24 +618,24 @@
       "caseId": "complementary_role/vc-for-cofounder-intent",
       "rule": "complementary_role",
       "runs": 7,
-      "passes": 7,
-      "passRate": 1,
-      "flaky": false,
+      "passes": 6,
+      "passRate": 0.8571428571428571,
+      "flaky": true,
       "runResults": [
         {
-          "passed": true,
+          "passed": false,
           "assertions": [
             {
               "kind": "match",
               "candidateId": "p-vc",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 75)"
             },
             {
               "kind": "band",
               "candidateId": "p-vc",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
+              "passed": false,
+              "detail": "expected score in [0,29], got 75"
             }
           ]
         },
@@ -747,8 +747,8 @@
       "caseId": "complementary_role/engineer-for-cofounder-intent",
       "rule": "complementary_role",
       "runs": 7,
-      "passes": 5,
-      "passRate": 0.7142857142857143,
+      "passes": 6,
+      "passRate": 0.8571428571428571,
       "flaky": true,
       "runResults": [
         {
@@ -798,6 +798,98 @@
           ]
         },
         {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
           "passed": false,
           "assertions": [
             {
@@ -817,98 +909,6 @@
               "candidateId": "p-tech-cofounder",
               "passed": false,
               "detail": "expected role=agent, got peer"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected score in [70,100], got 98"
-            },
-            {
-              "kind": "role",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected role=agent, got agent"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected score in [70,100], got 98"
-            },
-            {
-              "kind": "role",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected role=agent, got agent"
-            }
-          ]
-        },
-        {
-          "passed": false,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected score in [70,100], got 98"
-            },
-            {
-              "kind": "role",
-              "candidateId": "p-tech-cofounder",
-              "passed": false,
-              "detail": "expected role=agent, got peer"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected score in [70,100], got 98"
-            },
-            {
-              "kind": "role",
-              "candidateId": "p-tech-cofounder",
-              "passed": true,
-              "detail": "expected role=agent, got agent"
             }
           ]
         }
@@ -1316,23 +1316,6 @@
               "kind": "match",
               "candidateId": "c-unknown",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 90)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "c-unknown",
-              "passed": true,
-              "detail": "expected score in [60,100], got 90"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "c-unknown",
-              "passed": true,
               "detail": "expected match=true, got matched=true (score 95)"
             },
             {
@@ -1367,13 +1350,13 @@
               "kind": "match",
               "candidateId": "c-unknown",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 90)"
+              "detail": "expected match=true, got matched=true (score 95)"
             },
             {
               "kind": "band",
               "candidateId": "c-unknown",
               "passed": true,
-              "detail": "expected score in [60,100], got 90"
+              "detail": "expected score in [60,100], got 95"
             }
           ]
         },
@@ -1384,13 +1367,30 @@
               "kind": "match",
               "candidateId": "c-unknown",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 85)"
+              "detail": "expected match=true, got matched=true (score 95)"
             },
             {
               "kind": "band",
               "candidateId": "c-unknown",
               "passed": true,
-              "detail": "expected score in [60,100], got 85"
+              "detail": "expected score in [60,100], got 95"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-unknown",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 90)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-unknown",
+              "passed": true,
+              "detail": "expected score in [60,100], got 90"
             }
           ]
         },
@@ -1468,6 +1468,75 @@
               "kind": "match",
               "candidateId": "c-ml",
               "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-ml",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-ml",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-ml",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-ml",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-ml",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-ml",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-ml",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-ml",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-ml",
+              "passed": true,
               "detail": "expected match=true, got matched=true (score 95)"
             },
             {
@@ -1475,75 +1544,6 @@
               "candidateId": "c-ml",
               "passed": true,
               "detail": "expected score in [70,100], got 95"
-            },
-            {
-              "kind": "role",
-              "candidateId": "c-ml",
-              "passed": true,
-              "detail": "expected role=agent, got agent"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "c-ml",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "c-ml",
-              "passed": true,
-              "detail": "expected score in [70,100], got 98"
-            },
-            {
-              "kind": "role",
-              "candidateId": "c-ml",
-              "passed": true,
-              "detail": "expected role=agent, got agent"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "c-ml",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "c-ml",
-              "passed": true,
-              "detail": "expected score in [70,100], got 98"
-            },
-            {
-              "kind": "role",
-              "candidateId": "c-ml",
-              "passed": true,
-              "detail": "expected role=agent, got agent"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "c-ml",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "c-ml",
-              "passed": true,
-              "detail": "expected score in [70,100], got 98"
             },
             {
               "kind": "role",
@@ -1745,13 +1745,13 @@
               "kind": "match",
               "candidateId": "c-attendee",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
+              "detail": "expected match=true, got matched=true (score 95)"
             },
             {
               "kind": "band",
               "candidateId": "c-attendee",
               "passed": true,
-              "detail": "expected score in [70,100], got 98"
+              "detail": "expected score in [70,100], got 95"
             },
             {
               "kind": "role",
@@ -1814,13 +1814,13 @@
               "kind": "match",
               "candidateId": "c-attendee",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 95)"
+              "detail": "expected match=true, got matched=true (score 98)"
             },
             {
               "kind": "band",
               "candidateId": "c-attendee",
               "passed": true,
-              "detail": "expected score in [70,100], got 95"
+              "detail": "expected score in [70,100], got 98"
             },
             {
               "kind": "role",
@@ -2104,13 +2104,13 @@
               "kind": "match",
               "candidateId": "p-tech-cofounder",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
+              "detail": "expected match=true, got matched=true (score 95)"
             },
             {
               "kind": "band",
               "candidateId": "p-tech-cofounder",
               "passed": true,
-              "detail": "expected score in [70,100], got 98"
+              "detail": "expected score in [70,100], got 95"
             },
             {
               "kind": "role",
@@ -2255,6 +2255,183 @@
               "kind": "match",
               "candidateId": "h1-b",
               "passed": true,
+              "detail": "expected match=true, got matched=true (score 92)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-b",
+              "passed": true,
+              "detail": "expected score in [60,100], got 92"
+            },
+            {
+              "kind": "role",
+              "candidateId": "h1-b",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h1-c",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-c",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h1-d",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-d",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h1-e",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-e",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "h1-b",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-b",
+              "passed": true,
+              "detail": "expected score in [60,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "h1-b",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h1-c",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-c",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h1-d",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-d",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h1-e",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-e",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "h1-b",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-b",
+              "passed": true,
+              "detail": "expected score in [60,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "h1-b",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h1-c",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-c",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h1-d",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-d",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h1-e",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h1-e",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "h1-b",
+              "passed": true,
               "detail": "expected match=true, got matched=true (score 95)"
             },
             {
@@ -2380,183 +2557,6 @@
               "candidateId": "h1-b",
               "passed": true,
               "detail": "expected score in [60,100], got 98"
-            },
-            {
-              "kind": "role",
-              "candidateId": "h1-b",
-              "passed": true,
-              "detail": "expected role=agent, got agent"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h1-c",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-c",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h1-d",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-d",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h1-e",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-e",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "h1-b",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 92)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-b",
-              "passed": true,
-              "detail": "expected score in [60,100], got 92"
-            },
-            {
-              "kind": "role",
-              "candidateId": "h1-b",
-              "passed": true,
-              "detail": "expected role=agent, got agent"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h1-c",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-c",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h1-d",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-d",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h1-e",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-e",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "h1-b",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 95)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-b",
-              "passed": true,
-              "detail": "expected score in [60,100], got 95"
-            },
-            {
-              "kind": "role",
-              "candidateId": "h1-b",
-              "passed": true,
-              "detail": "expected role=agent, got agent"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h1-c",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-c",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h1-d",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-d",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h1-e",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-e",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "h1-b",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 95)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h1-b",
-              "passed": true,
-              "detail": "expected score in [60,100], got 95"
             },
             {
               "kind": "role",
@@ -2667,10 +2667,63 @@
       "caseId": "historical/co-researchers-structure",
       "rule": "historical",
       "runs": 7,
-      "passes": 6,
-      "passRate": 0.8571428571428571,
+      "passes": 3,
+      "passRate": 0.42857142857142855,
       "flaky": true,
       "runResults": [
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "h2-b",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h2-b",
+              "passed": true,
+              "detail": "expected score in [60,100], got 95"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h2-c",
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 60)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h2-c",
+              "passed": false,
+              "detail": "expected score in [0,29], got 60"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h2-d",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h2-d",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "h2-e",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "h2-e",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
         {
           "passed": false,
           "assertions": [
@@ -2690,13 +2743,13 @@
               "kind": "match",
               "candidateId": "h2-c",
               "passed": false,
-              "detail": "expected match=false, got matched=true (score 75)"
+              "detail": "expected match=false, got matched=true (score 65)"
             },
             {
               "kind": "band",
               "candidateId": "h2-c",
               "passed": false,
-              "detail": "expected score in [0,29], got 75"
+              "detail": "expected score in [0,29], got 65"
             },
             {
               "kind": "match",
@@ -2778,31 +2831,31 @@
           ]
         },
         {
-          "passed": true,
+          "passed": false,
           "assertions": [
             {
               "kind": "match",
               "candidateId": "h2-b",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
+              "detail": "expected match=true, got matched=true (score 95)"
             },
             {
               "kind": "band",
               "candidateId": "h2-b",
               "passed": true,
-              "detail": "expected score in [60,100], got 98"
+              "detail": "expected score in [60,100], got 95"
             },
             {
               "kind": "match",
               "candidateId": "h2-c",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 65)"
             },
             {
               "kind": "band",
               "candidateId": "h2-c",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
+              "passed": false,
+              "detail": "expected score in [0,29], got 65"
             },
             {
               "kind": "match",
@@ -2890,13 +2943,13 @@
               "kind": "match",
               "candidateId": "h2-b",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
+              "detail": "expected match=true, got matched=true (score 95)"
             },
             {
               "kind": "band",
               "candidateId": "h2-b",
               "passed": true,
-              "detail": "expected score in [60,100], got 98"
+              "detail": "expected score in [60,100], got 95"
             },
             {
               "kind": "match",
@@ -2937,7 +2990,7 @@
           ]
         },
         {
-          "passed": true,
+          "passed": false,
           "assertions": [
             {
               "kind": "match",
@@ -2954,67 +3007,14 @@
             {
               "kind": "match",
               "candidateId": "h2-c",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 55)"
             },
             {
               "kind": "band",
               "candidateId": "h2-c",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h2-d",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h2-d",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h2-e",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h2-e",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "assertions": [
-            {
-              "kind": "match",
-              "candidateId": "h2-b",
-              "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h2-b",
-              "passed": true,
-              "detail": "expected score in [60,100], got 98"
-            },
-            {
-              "kind": "match",
-              "candidateId": "h2-c",
-              "passed": true,
-              "detail": "expected match=false, got matched=false (score 0)"
-            },
-            {
-              "kind": "band",
-              "candidateId": "h2-c",
-              "passed": true,
-              "detail": "expected score in [0,29], got 0"
+              "passed": false,
+              "detail": "expected score in [0,29], got 55"
             },
             {
               "kind": "match",
@@ -3165,13 +3165,13 @@
               "kind": "match",
               "candidateId": "h3-b",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
+              "detail": "expected match=true, got matched=true (score 95)"
             },
             {
               "kind": "band",
               "candidateId": "h3-b",
               "passed": true,
-              "detail": "expected score in [60,100], got 98"
+              "detail": "expected score in [60,100], got 95"
             },
             {
               "kind": "match",
@@ -3218,13 +3218,13 @@
               "kind": "match",
               "candidateId": "h3-b",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
+              "detail": "expected match=true, got matched=true (score 95)"
             },
             {
               "kind": "band",
               "candidateId": "h3-b",
               "passed": true,
-              "detail": "expected score in [60,100], got 98"
+              "detail": "expected score in [60,100], got 95"
             },
             {
               "kind": "match",
@@ -3694,13 +3694,13 @@
               "kind": "match",
               "candidateId": "h4-c",
               "passed": false,
-              "detail": "expected match=false, got matched=true (score 40)"
+              "detail": "expected match=false, got matched=true (score 75)"
             },
             {
               "kind": "band",
               "candidateId": "h4-c",
               "passed": false,
-              "detail": "expected score in [0,29], got 40"
+              "detail": "expected score in [0,29], got 75"
             },
             {
               "kind": "match",
@@ -3863,13 +3863,13 @@
               "kind": "match",
               "candidateId": "h5-b",
               "passed": true,
-              "detail": "expected match=true, got matched=true (score 98)"
+              "detail": "expected match=true, got matched=true (score 95)"
             },
             {
               "kind": "band",
               "candidateId": "h5-b",
               "passed": true,
-              "detail": "expected score in [60,100], got 98"
+              "detail": "expected score in [60,100], got 95"
             },
             {
               "kind": "match",
@@ -4222,6 +4222,2442 @@
             {
               "kind": "band",
               "candidateId": "h5-e",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "is_a_identity/startup-funder-vs-funded-bootstrapper",
+      "rule": "is_a_identity",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-bootstrap",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "is_a_identity/art-director-vs-illustrator",
+      "rule": "is_a_identity",
+      "runs": 7,
+      "passes": 1,
+      "passRate": 0.14285714285714285,
+      "flaky": true,
+      "runResults": [
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 85)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected score in [0,29], got 85"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 85)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected score in [0,29], got 85"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 78)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected score in [0,29], got 78"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 78)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected score in [0,29], got 78"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 65)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected score in [0,29], got 65"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected match=false, got matched=true (score 75)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-lucia",
+              "passed": false,
+              "detail": "expected score in [0,29], got 75"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-lucia",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-lucia",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "is_a_identity/scout-vs-scouted-athlete",
+      "rule": "is_a_identity",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "match",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "match",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "match",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "match",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "match",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "match",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-scout",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "match",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-athlete",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "is_a_identity/investor-vs-grant-recipient",
+      "rule": "is_a_identity",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-grant",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "complementary_role/design-cofounder-for-tech-founder",
+      "rule": "complementary_role",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 85)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 85"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 85)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 85"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-vc",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "complementary_role/marketing-cofounder-for-ai-engineer",
+      "rule": "complementary_role",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 85)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [70,100], got 85"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 85)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [70,100], got 85"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 85)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [70,100], got 85"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 85)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [70,100], got 85"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-alt",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "same_side/both-seeking-cofounders",
+      "rule": "same_side",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-seek-cof",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "same_side/both-hiring-engineers",
+      "rule": "same_side",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-recruiting",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "location/berlin-mismatch-vs-london-query",
+      "rule": "location",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-berlin",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "location/unknown-city-not-penalized-variant",
+      "rule": "location",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 75)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected score in [60,100], got 75"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 75)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected score in [60,100], got 75"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 75)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected score in [60,100], got 75"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 75)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected score in [60,100], got 75"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 75)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected score in [60,100], got 75"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 75)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected score in [60,100], got 75"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 85)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-empty-loc",
+              "passed": true,
+              "detail": "expected score in [60,100], got 85"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "valency_role/seeker-needs-design-provider-offers-design",
+      "rule": "valency_role",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-designer-alt",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "valency_role/seeker-offers-capacity-provider-needs-capacity",
+      "rule": "valency_role",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected role=patient, got patient"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected role=patient, got patient"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected role=patient, got patient"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected role=patient, got patient"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected role=patient, got patient"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected role=patient, got patient"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "c-needs-gpu",
+              "passed": true,
+              "detail": "expected role=patient, got patient"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "score_calibration/must-meet-sales-cofounder",
+      "rule": "score_calibration",
+      "runs": 7,
+      "passes": 7,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected score in [85,100], got 95"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected score in [85,100], got 98"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 93)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected score in [85,100], got 93"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected score in [85,100], got 95"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected score in [85,100], got 98"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected score in [85,100], got 98"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "c-sales-cof",
+              "passed": true,
+              "detail": "expected score in [85,100], got 98"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "score_calibration/tier2-researcher-pool-variant",
+      "rule": "score_calibration",
+      "runs": 7,
+      "passes": 4,
+      "passRate": 0.5714285714285714,
+      "flaky": true,
+      "runResults": [
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": false,
+              "detail": "expected role=agent, got peer"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": false,
+              "detail": "expected role=agent, got peer"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 98)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 98"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": false,
+              "detail": "expected role=agent, got peer"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "match",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected match=true, got matched=true (score 95)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected score in [70,100], got 95"
+            },
+            {
+              "kind": "role",
+              "candidateId": "p-tech-cofounder",
+              "passed": true,
+              "detail": "expected role=agent, got agent"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-researcher",
+              "passed": true,
+              "detail": "expected score in [0,29], got 0"
+            },
+            {
+              "kind": "match",
+              "candidateId": "p-operator",
+              "passed": true,
+              "detail": "expected match=false, got matched=false (score 0)"
+            },
+            {
+              "kind": "band",
+              "candidateId": "p-operator",
               "passed": true,
               "detail": "expected score in [0,29], got 0"
             }

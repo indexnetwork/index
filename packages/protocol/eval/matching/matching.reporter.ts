@@ -195,7 +195,7 @@ const fmtPValue = (p: number): string => (p < 0.001 ? "p<0.001" : `p=${p.toFixed
 
 /** Format a pass-rate with 95% confidence for console display. */
 function fmtRate(passes: number, total: number): string {
-  return `${Math.round((passes / total) * 100)}% (${rateWithCI(passes, total)})`;
+  return rateWithCI(passes, total);
 }
 
 /** Human-readable scorecard for the console. */
