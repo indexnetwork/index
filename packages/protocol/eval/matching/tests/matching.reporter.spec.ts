@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { unlink } from "node:fs/promises";
 import {
+  binomialCI,
   buildScorecard,
   diffBaseline,
   formatConsole,
@@ -20,6 +21,39 @@ const caseResult = (caseId: string, rule: CaseResult["rule"], passRate: number):
   passRate,
   flaky: passRate > 0 && passRate < 1,
   runResults: [],
+});
+
+describe("binomialCI", () => {
+  it("returns [0,1] when total is zero", () => {
+    const [lo, hi] = binomialCI(0, 0);
+    expect(lo).toBe(0);
+    expect(hi).toBe(1);
+  });
+
+  it("centres on 0.5 for 1/2 with wide CI", () => {
+    const [lo, _hi] = binomialCI(1, 2);
+    // 1/2 → ~50% with very wide error: lo should be around 0.09–0.15
+    expect(lo).toBeLessThan(0.16);
+    expect(lo).toBeGreaterThan(0);
+  });
+
+  it("tightens dramatically as n grows — lower bound lifts", () => {
+    const [lo3, hi3] = binomialCI(3, 3);
+    const [lo7, hi7] = binomialCI(7, 7);
+    // Both hit 100% upper bound (Wilson preserves 1.0 for perfect scores), but
+    // the lower bound tightens substantially: 3/3 → ~0.44, 7/7 → ~0.65.
+    expect(hi3).toBe(1);
+    expect(hi7).toBe(1);
+    expect(lo7).toBeGreaterThan(lo3);
+    expect(lo3).toBeLessThan(0.5);
+  });
+
+  it("is symmetric within rounding for moderate p", () => {
+    const [lo, hi] = binomialCI(21, 30); // 70%
+    const spread = hi - lo;
+    expect(spread).toBeGreaterThan(0.20); // n=30 still wide
+    expect(spread).toBeLessThan(0.50);
+  });
 });
 
 describe("buildScorecard", () => {

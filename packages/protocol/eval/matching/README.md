@@ -15,12 +15,20 @@ bun run eval:matching -- --no-judge           # skip LLM reasoning checks (free)
 bun run eval:matching -- --update-baseline    # overwrite the committed baseline
 bun run eval:matching -- --report             # write a full run report incl. evaluator reasoning
 bun run eval:matching -- --report out.json    # ...to a specific path
+bun run eval:matching -- --html              # write a standalone HTML scorecard
+bun run eval:matching -- --html out.html     # ...to a specific path
 ```
 
 Requires `OPENROUTER_API_KEY` (loaded via `.env.test`). Exits non-zero on a regression
 versus `baselines/matching.baseline.json`.
 
-## Run reports (`--report`)
+## HTML reports (`--html`)
+
+`--html` renders a standalone, self-contained HTML scorecard with no external assets or
+JavaScript — openable directly from a file browser. Each case card shows every
+candidate's expected vs. actual outcomes per run, with the evaluator's verbatim
+reasoning behind collapsible blocks. Pass-rates carry 95% Wilson confidence intervals
+on hover. Regressions vs baseline are surfaced in a red alert section.
 
 `--report` writes the full scorecard — including each candidate's **actual score, role,
 and the evaluator's own verbatim `reasoning`** — to `runs/<timestamp>.json` (gitignored),
