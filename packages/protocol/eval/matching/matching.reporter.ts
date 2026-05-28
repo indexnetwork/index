@@ -22,11 +22,11 @@ export function binomialCI(passes: number, total: number, z = 1.96): [number, nu
   return [Math.max(0, centre - margin), Math.min(1, centre + margin)];
 }
 
-/** ln(n!) via Stirling approximation for exact binomial CDF. */
+/** ln(n!) computed exactly enough for the small-n exact binomial CDF path. */
 function lnFactorial(n: number): number {
-  if (n <= 1) return 0;
-  // Stirling: ln(n!) ≈ n ln n - n + (ln(2π n) / 2)
-  return n * Math.log(n) - n + Math.log(2 * Math.PI * n) / 2;
+  let out = 0;
+  for (let i = 2; i <= n; i++) out += Math.log(i);
+  return out;
 }
 
 /** Natural log of binomial coefficient C(n, k). */
@@ -40,6 +40,8 @@ function lnChoose(n: number, k: number): number {
  */
 export function binomialSignificance(observedPasses: number, total: number, nullRate: number, alpha = 0.05): boolean {
   if (total === 0) return false;
+  if (nullRate <= 0) return false;
+  if (nullRate >= 1) return observedPasses < total;
   // Exact test when n fits within limits; z-test otherwise.
   if (total <= 30) {
     let cumulative = 0;

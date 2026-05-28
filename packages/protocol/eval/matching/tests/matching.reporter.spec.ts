@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { mkdir, rm, unlink } from "node:fs/promises";
 import {
   binomialCI,
+  binomialSignificance,
   buildScorecard,
   computeRollingBaseline,
   diffBaseline,
@@ -54,6 +55,20 @@ describe("binomialCI", () => {
     const spread = hi - lo;
     expect(spread).toBeGreaterThan(0.20); // n=30 still wide
     expect(spread).toBeLessThan(0.50);
+  });
+});
+
+describe("binomialSignificance", () => {
+  it("does not flag when the baseline is zero", () => {
+    expect(binomialSignificance(0, 7, 0, 0.05)).toBe(false);
+  });
+
+  it("flags any miss against a perfect baseline", () => {
+    expect(binomialSignificance(6, 7, 1, 0.05)).toBe(true);
+  });
+
+  it("does not flag perfect current performance against a perfect baseline", () => {
+    expect(binomialSignificance(7, 7, 1, 0.05)).toBe(false);
   });
 });
 
