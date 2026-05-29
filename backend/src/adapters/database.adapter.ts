@@ -4865,14 +4865,30 @@ export class OpportunityDatabaseAdapter {
     }
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.networkId) {
-      // Strict per-actor scope: the requesting user's own actor entry must be
-      // anchored on the bound network. The looser pre-fix check (any actor or
-      // context.networkId matching) leaked cross-network opps to scoped readers
-      // when a counterpart was on the bound network but the viewer wasn't.
+      // Network scope gate (two clauses):
+      // 1. The viewer's own actor must be anchored on the bound network. This
+      //    alone (the previous fix) closed the case where the viewer wasn't on
+      //    the network but a counterpart was.
+      // 2. EVERY participant must also be anchored on the bound network —
+      //    otherwise a cross-network opportunity (viewer in scope, counterpart
+      //    only on another network) passes clause 1 and leaks that counterpart's
+      //    user/profile/intent across the network boundary via the card.
+      // We key clause 2 on "every participant (distinct actor user) has an
+      // in-network anchor" rather than "every actor row is in-network" so that
+      // opportunities with redundant actor rows on other networks (same users,
+      // duplicate stamps) are not falsely hidden from a scoped reader.
       conditions.push(sql`EXISTS (
         SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
         WHERE actor->>'userId' = ${userId}
           AND actor->>'networkId' = ${options.networkId}
+      )`);
+      conditions.push(sql`NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS a_out
+        WHERE NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS a_in
+          WHERE a_in->>'userId' = a_out->>'userId'
+            AND a_in->>'networkId' = ${options.networkId}
+        )
       )`);
     }
     if (options?.statuses?.length) {
