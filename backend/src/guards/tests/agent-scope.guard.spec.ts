@@ -95,6 +95,18 @@ describe('agent-scope.guard', () => {
     expect(await resolveAgentNetworkScopeById(scopedAgentId)).toBe(networkId);
   });
 
+  test('network scope wins when a stale global permission row also exists', async () => {
+    await agentDatabaseAdapter.grantPermission({
+      agentId: scopedAgentId,
+      userId,
+      scope: 'global',
+      actions: ['manage:profile'],
+    });
+
+    expect(await resolveAgentNetworkScopeById(scopedAgentId)).toBe(networkId);
+    expect(await resolveAgentNetworkScope(reqWithKey(scopedKey))).toBe(networkId);
+  });
+
   test('resolveAgentNetworkScopeById returns null for unknown agent id', async () => {
     expect(await resolveAgentNetworkScopeById('00000000-0000-0000-0000-000000000000')).toBeNull();
   });

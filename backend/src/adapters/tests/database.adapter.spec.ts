@@ -826,9 +826,10 @@ describe('OpportunityDatabaseAdapter', () => {
         const scopedToFixture = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
         expect(scopedToFixture.some((o) => o.id === created.id)).toBe(false);
 
-        // Sanity: with the correct scope the opp is visible to userA.
+        // Even with the viewer's own actor scope, the strict gate excludes the
+        // row because the counterpart is not also anchored on that network.
         const scopedToActual = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: otherNetworkId });
-        expect(scopedToActual.some((o) => o.id === created.id)).toBe(true);
+        expect(scopedToActual.some((o) => o.id === created.id)).toBe(false);
       } finally {
         // Opp's context.networkId is otherNetworkId, so the afterAll cleanup
         // (which filters by fixture.networkId) won't touch it — clean explicitly.

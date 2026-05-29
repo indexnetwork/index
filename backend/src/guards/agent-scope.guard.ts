@@ -22,16 +22,18 @@ export class ScopeViolationError extends Error {
 /**
  * Resolve the network the given agent's network-level access is restricted to.
  *
- * Returns `null` (no network restriction) when any of:
- *  - the agent has any `scope='global'` permission, OR
- *  - the agent has no `scope='network'` permissions, OR
- *  - the agent doesn't exist.
+ * Returns `null` (no network restriction) when either:
+ *  - the agent has only `scope='global'` permissions, OR
+ *  - the agent has no `scope='network'` permissions / doesn't exist.
  *
  * If the agent has at least one `scope='network'` permission, returns the
- * single shared `scopeId`. Other non-global permissions (e.g. `scope='node'`)
- * are ignored here because they don't constrain network-level access. Throws
- * if the agent's network-scoped permissions disagree on `scopeId` (defensive —
- * should never happen for imported agents).
+ * single shared `scopeId` even if a stale/global permission row is also present.
+ * This intentionally fails closed for mixed-permission agents: a key that was
+ * ever bound to a network must not silently become global because an unrelated
+ * global row exists. Other non-global permissions (e.g. `scope='node'`) are
+ * ignored here because they don't constrain network-level access. Throws if the
+ * agent's network-scoped permissions disagree on `scopeId` (defensive — should
+ * never happen for imported agents).
  *
  * @param agentId - The agent UUID whose permissions are inspected
  * @returns The bound network id, or `null` if the agent has no network restriction
@@ -44,7 +46,6 @@ export const resolveAgentNetworkScopeById = async (agentId: string): Promise<str
     .where(eq(agentPermissions.agentId, agentId));
 
   if (rows.length === 0) return null;
-  if (rows.some((r) => r.scope === 'global')) return null;
 
   const networkScoped = rows.filter((r) => r.scope === 'network' && r.scopeId);
   if (networkScoped.length === 0) return null;
@@ -59,11 +60,12 @@ export const resolveAgentNetworkScopeById = async (agentId: string): Promise<str
 /**
  * Resolve the network the current request's agent is restricted to, or null
  * if the request is JWT-authenticated, has no API key, the key carries no
- * `metadata.agentId`, or the agent has any `scope='global'` permission.
+ * `metadata.agentId`, or the agent has no network-scoped permissions.
  *
- * If the agent has *only* network-scoped permissions, returns the single
- * `scopeId` they share. Throws if the agent's network-scoped permissions
- * disagree on `scopeId` (defensive — should never happen for imported agents).
+ * If the agent has any network-scoped permissions, returns the single `scopeId`
+ * they share, even when a stale/global permission row is also present. Throws if
+ * the agent's network-scoped permissions disagree on `scopeId` (defensive —
+ * should never happen for imported agents).
  *
  * @param req - The incoming request whose `x-api-key` header is inspected
  * @returns The bound network id, or `null` if the agent is not network-scoped
