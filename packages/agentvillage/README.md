@@ -206,6 +206,26 @@ bun install/install.ts \
   --edgeos-bearer-token eyJ…
 ```
 
+### Overriding the digest cron times
+
+The morning digest runs as two fixed crons — **prepare at `0 2 * * *`** and **send at `0 8 * * *`** (host-local). To install them at different times (a different timezone, a test window, etc.), pass full 5-field cron expressions. A flag wins over the matching env var; an invalid expression is ignored with a warning and the default is kept.
+
+```bash
+# via flags
+bun install/install.ts --index-api-key <YOUR_API_KEY> \
+  --digest-prepare-cron "0 3 * * *" \
+  --digest-send-cron    "0 9 * * *"
+
+# or via environment
+DIGEST_PREPARE_CRON="0 3 * * *" DIGEST_SEND_CRON="0 9 * * *" \
+  bun install/install.ts --index-api-key <YOUR_API_KEY>
+```
+
+| Cron | Flag | Env var | Default |
+|---|---|---|---|
+| Prepare pass | `--digest-prepare-cron "<expr>"` | `DIGEST_PREPARE_CRON` | `0 2 * * *` |
+| Send pass | `--digest-send-cron "<expr>"` | `DIGEST_SEND_CRON` | `0 8 * * *` |
+
 The installer writes any tokens it finds into `env.vars.*` in `~/.openclaw/openclaw.json`; on the next gateway start they become process-env on the gateway and inherit into the agent's shell tool, so `curl -H "Authorization: Bearer $EDGEOS_API_KEY"` recipes and Geo CLI commands work without further plumbing.
 
 The installer:
@@ -216,7 +236,7 @@ The installer:
 4. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
 5. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds the lived notes the active skill's bootstrap ritual populated for you); pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated `MEMORY.md`, OpenClaw's `workspace-state.json` first-run marker, and the local onboarding/welcome/cron-preference markers under `memory/` so the next session re-onboards from scratch.
 6. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/` so OpenClaw registers them as workspace skills.
-7. Installs the two digest cron jobs: a prepare pass (`0 2 * * *`) that composes the morning brief and stages it as an editable Kanban task, and a send pass (`0 8 * * *`) that delivers the staged brief. The schedule is fixed and not user-configurable.
+7. Installs the two digest cron jobs: a prepare pass (`0 2 * * *`) that composes the morning brief and stages it as an editable Kanban task, and a send pass (`0 8 * * *`) that delivers the staged brief. The end user can't change the schedule from chat, but the installer can override both times via `--digest-prepare-cron` / `--digest-send-cron` (or `DIGEST_PREPARE_CRON` / `DIGEST_SEND_CRON`) — see "Overriding the digest cron times" above.
 8. Restarts the gateway so all config changes take effect.
 
 Send any message in your chat to bring AgentVillage online. AgentVillage has two independent onboarding gates that run at session start:
@@ -307,11 +327,12 @@ AgentVillage's behaviour is markdown-driven. Almost everything you'd want to cha
 
 ### Schedule & cron
 
-The digest schedule is fixed (prepare 02:00, send 08:00 host-local) and not user-configurable.
+The digest runs as a fixed prepare/send pair — **prepare `0 2 * * *`, send `0 8 * * *`** (host-local) — and the end user can't change it from chat. The installer can override either time (see "Overriding the digest cron times" under **Install**).
 
 | You want to… | Edit | Notes |
 |---|---|---|
-| Change the digest schedule (prepare/send times) | `install/install_index.ts` (`DIGEST_CRON_SPECS`) | The installer writes the cron entries from this table. Existing installs pick up changes on the next `install.ts` run. |
+| Override the digest times for one install | `--digest-prepare-cron` / `--digest-send-cron` (or `DIGEST_PREPARE_CRON` / `DIGEST_SEND_CRON`) | Optional, full 5-field cron expressions. Flag wins over env; invalid values fall back to the default. |
+| Change the default digest schedule for everyone | `install/install_index.ts` (`DIGEST_CRON_SPECS`) | The installer writes the cron entries from this table. Existing installs pick up changes on the next `install.ts` run. |
 | Change a cron prompt without changing the schedule | the matching `skills/index-network/prompts/<name>.md` | The installer references prompt files by name via `DIGEST_CRON_SPECS`; rename only if you also rename there. |
 
 ### Backends & skills
