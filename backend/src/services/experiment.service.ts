@@ -74,10 +74,13 @@ class ExperimentService {
     const result = await networkInvitationService.ensureMembership({
       networkId,
       email: normalizedEmail,
-      rotateKey: true,
+      mintKey: true,
     });
 
-    // rotateKey=true guarantees apiKey is non-null
+    // New users get their first key; existing users get an additional key.
+    // We deliberately do not revoke prior keys here: signup may be retried by
+    // portals/installers, and invalidating a just-installed Hermes key creates
+    // a setup race. Explicit rotation paths remain responsible for revocation.
     const apiKey = result.apiKey!;
 
     await this.stageProfileSeed(result.user.id, networkId, {

@@ -63,17 +63,23 @@ class NetworkInvitationService {
    * Used by the headless signup path. invite() wraps this and adds email delivery.
    *
    * @param params.rotateKey - When true and a scoped agent already exists, revokes
-   *   its tokens and mints a fresh one (returns new key). When false, returns
-   *   apiKey=null for users who already have a scoped agent.
+   *   its tokens and mints a fresh one (returns new key).
+   * @param params.mintKey - When true and a scoped agent already exists, mints
+   *   an additional key without revoking existing tokens. Use for headless
+   *   self-serve signup where retries must not break already-running agents.
+   *   When both flags are false, returns apiKey=null for users who already have
+   *   a scoped agent.
    */
   async ensureMembership(params: {
     networkId: string;
     email: string;
     name?: string;
     rotateKey?: boolean;
+    mintKey?: boolean;
   }): Promise<EnsureMembershipResult> {
     const email = params.email.toLowerCase().trim();
     const rotateKey = params.rotateKey ?? false;
+    const mintKey = params.mintKey ?? false;
 
     const { user, created } = await this.findOrCreateUser(email, params.name);
     await ensurePersonalNetwork(user.id);
@@ -83,6 +89,13 @@ class NetworkInvitationService {
     if (agentId) {
       if (rotateKey) {
         await agentTokenAdapter.revokeAllForAgent(agentId);
+        const token = await agentTokenAdapter.create(user.id, {
+          name: 'Personal Agent API Key',
+          agentId,
+        });
+        return { user, apiKey: token.key, created, alreadyMember };
+      }
+      if (mintKey) {
         const token = await agentTokenAdapter.create(user.id, {
           name: 'Personal Agent API Key',
           agentId,
