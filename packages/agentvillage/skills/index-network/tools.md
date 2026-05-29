@@ -38,7 +38,7 @@ Call `scrape_url(url, objective)` whenever the user shares a URL and you need it
 
 Always pass an `objective` describing why you're scraping — it guides extraction. Example: `scrape_url(url="linkedin.com/in/alex", objective="Update user profile from LinkedIn page")`.
 
-During AgentVillage onboarding, do not scrape or run public profile lookup until `record_onboarding_privacy_consent(publicProfileLookupGranted=true)` has succeeded. Use `preview_user_profile` for drafts and `confirm_user_profile` only after the user has seen and approved/corrected the draft. Do not use legacy `create_user_profile` for the AgentVillage onboarding ritual.
+During AgentVillage onboarding, privacy questions are hard turn boundaries. After asking a consent question, stop and wait for the user's next message; do not record consent in the same turn as the question. Do not scrape or run public profile lookup until the user explicitly answers yes and `record_onboarding_privacy_consent(publicProfileLookupGranted=true)` has succeeded. Do not use EdgeOS/import data until the user explicitly answers yes and `record_onboarding_privacy_consent(edgeosImportGranted=true)` has succeeded. Use `preview_user_profile` for drafts only after both consent questions have explicit answers, and use `confirm_user_profile` only after the user has seen and approved/corrected the draft. Do not use legacy `create_user_profile` for the AgentVillage onboarding ritual.
 
 ## Output translation
 

@@ -360,7 +360,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   const recordOnboardingPrivacyConsent = defineTool({
     name: "record_onboarding_privacy_consent",
     description:
-      "Records the authenticated user's onboarding privacy choices. Use this during AgentVillage/Hermes onboarding before using event-provided EdgeOS profile data or public web/profile lookup. " +
+      "Records exactly one authenticated-user onboarding privacy choice. Use this during AgentVillage/Hermes onboarding only after the user explicitly answers the matching consent question in a prior message. " +
+      "Do not call this in the same assistant turn as the consent question, and do not combine EdgeOS import and public lookup decisions in one call. " +
       "This only records consent; it does not mark onboarding complete and does not create or update a profile.",
     querySchema: z.object({
       edgeosImportGranted: z.boolean().optional().describe("Whether the user grants permission to use EdgeOS/event-provided profile data for onboarding."),
@@ -372,8 +373,13 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       if (user?.isGhost) {
         return error("Ghost users cannot record onboarding consent. The user must authenticate as a real account first.");
       }
-      if (query.edgeosImportGranted === undefined && query.publicProfileLookupGranted === undefined) {
-        return error("Provide at least one consent decision to record.");
+      const hasEdgeosDecision = query.edgeosImportGranted !== undefined;
+      const hasPublicLookupDecision = query.publicProfileLookupGranted !== undefined;
+      if (!hasEdgeosDecision && !hasPublicLookupDecision) {
+        return error("Provide exactly one consent decision to record.");
+      }
+      if (hasEdgeosDecision && hasPublicLookupDecision) {
+        return error("Record EdgeOS import consent and public-profile lookup consent separately, after each explicit user answer. Do not combine them in one call.");
       }
 
       const currentOnboarding = user?.onboarding ?? context.user.onboarding ?? {};

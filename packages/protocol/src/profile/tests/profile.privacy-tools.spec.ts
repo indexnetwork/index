@@ -91,15 +91,24 @@ describe("onboarding privacy profile tools", () => {
     } as unknown as ToolDeps);
   });
 
-  it("records onboarding privacy consent without completing onboarding", async () => {
+  it("records one onboarding privacy consent decision without completing onboarding", async () => {
     const tool = tools.find((t) => t.name === "record_onboarding_privacy_consent")!;
-    const result = parseToolResult(await tool.handler({ context: context(), query: { edgeosImportGranted: true, publicProfileLookupGranted: false, source: "agentvillage_onboarding" } }));
+    const result = parseToolResult(await tool.handler({ context: context(), query: { edgeosImportGranted: true, source: "agentvillage_onboarding" } }));
 
     expect(result.success).toBe(true);
     expect(updateUser).toHaveBeenCalledTimes(1);
     expect(onboarding?.completedAt).toBeUndefined();
     expect(onboarding?.privacy?.edgeosImport?.granted).toBe(true);
-    expect(onboarding?.privacy?.publicProfileLookup?.granted).toBe(false);
+    expect(onboarding?.privacy?.publicProfileLookup).toBeUndefined();
+  });
+
+  it("rejects combined EdgeOS and public lookup consent decisions", async () => {
+    const tool = tools.find((t) => t.name === "record_onboarding_privacy_consent")!;
+    const result = parseToolResult(await tool.handler({ context: context(), query: { edgeosImportGranted: true, publicProfileLookupGranted: false, source: "agentvillage_onboarding" } }));
+
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain("separately");
+    expect(updateUser).not.toHaveBeenCalled();
   });
 
   it("records onboarding privacy consent without dropping persisted onboarding fields", async () => {

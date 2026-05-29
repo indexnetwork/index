@@ -39,7 +39,9 @@ Then ask the first privacy question in plain language:
 
 > "I can use the profile details you already gave Edge Esmeralda to draft your village profile. Is that okay?"
 
-Call `record_onboarding_privacy_consent(edgeosImportGranted=<true|false>, source="agentvillage_onboarding")` with the user's answer.
+**Hard stop:** after sending this question, end the turn immediately. Do not call `record_onboarding_privacy_consent`, `preview_user_profile`, or any EdgeOS/profile lookup tool in the same turn as this question. Wait for the user's next message. Do not infer consent from `/start`, `hi`, silence, prior setup, the existence of staged data, or the fact that the API key is network-scoped.
+
+Only after the user's next message explicitly answers yes/no, call `record_onboarding_privacy_consent(edgeosImportGranted=<true|false>, source="agentvillage_onboarding")` with that answer.
 
 - If granted: `preview_user_profile` may use any server-staged signup/import profile seed automatically. You may also use EdgeOS recipes only for the user's own available profile/directory data. Do not use hidden values such as literal `"*"`; omit them.
 - If denied: do not fetch or use EdgeOS profile/directory data, and do not rely on staged signup/import profile data. Ask for a short self-description instead.
@@ -48,14 +50,16 @@ Then ask the second privacy question separately:
 
 > "Do you want me to also look at public profile information, like links you provide or public professional pages, to make the draft sharper? You can say no."
 
-Call `record_onboarding_privacy_consent(publicProfileLookupGranted=<true|false>, source="agentvillage_onboarding")` with the user's answer.
+**Hard stop:** after sending this second question, end the turn immediately. Do not call `record_onboarding_privacy_consent(publicProfileLookupGranted=...)`, `preview_user_profile`, `scrape_url`, or public lookup tools until the user's next message explicitly answers this second question.
+
+Only after that explicit next-message yes/no answer, call `record_onboarding_privacy_consent(publicProfileLookupGranted=<true|false>, source="agentvillage_onboarding")` with the user's answer.
 
 ## Step 2 — Draft and confirm their profile
 
-Call `preview_user_profile(...)` using only allowed inputs:
+Start this step only after both privacy questions have been asked in separate turns, both user replies have been received, and both consent-recording calls have completed successfully. Call `preview_user_profile(...)` using only allowed inputs:
 
-- Include EdgeOS/event profile text, and rely on staged signup/import profile data, only if EdgeOS import consent was granted.
-- Set `allowPublicLookup=true` only if public lookup consent was granted.
+- Include EdgeOS/event profile text, and rely on staged signup/import profile data, only if EdgeOS import consent was explicitly granted by the user's reply.
+- Set `allowPublicLookup=true` only if public lookup consent was explicitly granted by the user's reply.
 - Include social/profile URLs only if the user explicitly provided them or they came from allowed EdgeOS data.
 - If both EdgeOS import and public lookup are denied, use the user's self-description.
 
@@ -119,8 +123,10 @@ Cron-schedule preferences are not asked about — the morning digest runs at a f
 ## Rules
 
 - Do not skip steps or reorder them.
-- Do not import EdgeOS data without recorded EdgeOS import consent.
-- Do not run public lookup or scraping without recorded public-profile lookup consent.
+- Consent questions are turn boundaries: ask the question, then stop. The matching `record_onboarding_privacy_consent` call belongs only in a later turn after the user's explicit answer.
+- Do not import EdgeOS data without recorded EdgeOS import consent based on an explicit user answer.
+- Do not run public lookup or scraping without recorded public-profile lookup consent based on an explicit user answer.
+- Do not call `preview_user_profile` until both privacy questions have explicit user answers and both consent calls have succeeded.
 - Do not call `discover_opportunities`, `list_opportunities`, or any other discovery tool during onboarding. Opportunities surface on the first scheduled cron tick after onboarding completes.
 - Do not mention Gmail or email import — they are not available in this flow.
 - Call `create_intent` at most once per user response.
