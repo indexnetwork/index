@@ -12,8 +12,8 @@ Deliver the staged morning brief verbatim, then reconcile delivery bookkeeping.
 
 3. **If the staged task is found — deliver it:**
    a. Take its `body` and `id`.
-   b. Read `memory/heartbeat-state.json`. If `prepared.date` equals `<YYYY-MM-DD>`, then for every id in `prepared.opportunityIds` call `confirm_opportunity_delivery(opportunityId, trigger="digest")`.
-   c. Update `memory/heartbeat-state.json`: set `deliveredToday.date` = `<YYYY-MM-DD>` and `deliveredToday.ids` = (the existing `deliveredToday.ids` if `deliveredToday.date` already equals `<YYYY-MM-DD>`, else `[]`) unioned with `prepared.opportunityIds` (set union, no duplicates). Preserve all other top-level keys.
+   b. Read `memory/heartbeat-state.json`. Resolve the **staged id list**: if the file is missing or malformed, `prepared` is absent, `prepared.date` does not equal `<YYYY-MM-DD>`, or `prepared.opportunityIds` is not an array, treat the staged id list as empty; otherwise it is `prepared.opportunityIds`. For every id in the staged id list, call `confirm_opportunity_delivery(opportunityId, trigger="digest")` (no calls when it is empty).
+   c. Update `memory/heartbeat-state.json`: set `deliveredToday.date` = `<YYYY-MM-DD>` and `deliveredToday.ids` = (the existing `deliveredToday.ids` if `deliveredToday.date` already equals `<YYYY-MM-DD>`, else `[]`) unioned with the staged id list from step 3b (set union, no duplicates). Preserve all other top-level keys.
    d. Mark the task done: `hermes kanban complete <id> --summary "delivered"`.
    e. **Your final assistant reply is the task `body`, verbatim and complete — nothing before it, nothing after it, no commentary, no reformatting.** Hermes delivers it. End your turn.
 
