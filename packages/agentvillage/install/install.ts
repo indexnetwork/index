@@ -5,7 +5,7 @@
  * Installs into Hermes defaults (flat under `$HERMES_HOME`):
  *
  *   - `SOUL.md` → `$HERMES_HOME/SOUL.md` (identity; overwrites generic Hermes soul)
- *   - `AGENTS.md`, `SCHEDULE.md`, `USER.md` → `$HERMES_HOME/`
+ *   - `AGENTS.md`, `USER.md` → `$HERMES_HOME/`
  *   - Edge skill bundles → `$HERMES_HOME/skills/{index-network,edgeos,edge-esmeralda,geo-esmeralda}/`
  *   - `terminal.cwd` in config.yaml → `$HERMES_HOME`
  *   - Index MCP + morning digest cron (`install_index.ts`)
@@ -65,6 +65,15 @@ function removeLegacyWorkspaceEdge(): void {
   if (!existsSync(legacy)) return;
   rmSync(legacy, { recursive: true, force: true });
   console.log(`→ removed legacy ${legacy}`);
+}
+
+function removeRetiredFiles(): void {
+  // SCHEDULE.md is no longer shipped; clear stale copies from prior installs.
+  const stale = join(hermesHome(), "SCHEDULE.md");
+  if (existsSync(stale)) {
+    rmSync(stale, { force: true });
+    console.log(`→ removed retired ${stale}`);
+  }
 }
 
 function copySoulFile(): void {
@@ -179,6 +188,7 @@ function main(): void {
   console.log("");
 
   removeLegacyWorkspaceEdge();
+  removeRetiredFiles();
   copySoulFile();
   copyWorkspaceFiles(wipeUser);
   copySkillFiles();
