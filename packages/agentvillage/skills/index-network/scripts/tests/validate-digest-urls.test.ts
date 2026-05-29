@@ -1,6 +1,10 @@
 import { test, expect, describe } from "bun:test";
 
-import { sanitizeDigestUrls } from "../validate-digest-urls";
+import {
+  extractDigestOpportunityIds,
+  sanitizeDigestUrls,
+  stripDigestMetadata,
+} from "../validate-digest-urls";
 
 describe("sanitizeDigestUrls", () => {
   test("strips a fabricated /accept/<n> link, keeping the link text as plain prose", () => {
@@ -105,5 +109,39 @@ describe("sanitizeDigestUrls", () => {
 
     expect(stripped).toEqual([]);
     expect(output).toBe(md);
+  });
+
+  test("preserves digest metadata markers by default so Kanban drafts remain editable", () => {
+    const md = "- <!-- digest-opportunity:id=opp-1 -->[Maya](https://index.network/u/55555555-5555-5555-5555-555555555555) — relevant";
+
+    const { output, stripped } = sanitizeDigestUrls(md);
+
+    expect(output).toBe(md);
+    expect(stripped).toEqual([]);
+  });
+
+  test("strips digest metadata markers when requested for final delivery", () => {
+    const md = "- <!-- digest-opportunity:id=opp-1 -->[Maya](https://index.network/u/55555555-5555-5555-5555-555555555555) — relevant";
+
+    const { output, stripped } = sanitizeDigestUrls(md, { stripDigestMetadata: true });
+
+    expect(output).toBe("- [Maya](https://index.network/u/55555555-5555-5555-5555-555555555555) — relevant");
+    expect(stripped).toEqual([]);
+  });
+
+  test("extracts unique opportunity ids from remaining digest markers in order", () => {
+    const md = [
+      "- <!-- digest-opportunity:id=opp-1 -->Maya — relevant",
+      "- <!-- digest-opportunity:id=opp-2 -->Alex — useful",
+      "- <!-- digest-opportunity:id=opp-1 -->Maya duplicate",
+    ].join("\n");
+
+    expect(extractDigestOpportunityIds(md)).toEqual(["opp-1", "opp-2"]);
+  });
+
+  test("stripDigestMetadata removes only digest markers", () => {
+    const md = "<!-- keep-me -->\n- <!-- digest-opportunity:id=opp-1 -->Maya";
+
+    expect(stripDigestMetadata(md)).toBe("<!-- keep-me -->\n- Maya");
   });
 });
