@@ -8,7 +8,7 @@ This file is the Index Network onboarding ritual. It is gated on Index Network's
 
 The Index Network server is the source of truth for Index onboarding — not local file state. At session start, call `read_user_profiles()` (no args) and check `onboardingComplete`:
 
-- **If `onboardingComplete` is `false`:** run this ritual immediately. Do not offer a way to skip onboarding entirely. Start with the welcome message in Step 1 and proceed in order, but ask the data-use consent questions exactly where the ritual says to ask them. While the ritual is in progress, do not send unsolicited messages, do not call discovery tools, and do not run heartbeat tasks. After Step 5 (or any path that ends the ritual), append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` before handing back to `AGENTS.md` for the Edge gate.
+- **If `onboardingComplete` is `false`:** run this ritual immediately. Do not offer a way to skip onboarding entirely. Start with the welcome message in Step 1 and proceed in order, but ask the data-use consent question exactly where the ritual says to ask it. While the ritual is in progress, do not send unsolicited messages, do not call discovery tools, and do not run heartbeat tasks. After Step 5 (or any path that ends the ritual), append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` before handing back to `AGENTS.md` for the Edge gate.
 - **If `onboardingComplete` is `true`:** skip the ritual. Append `[gate] index-network: skipped (onboardingComplete=true)` to `memory/<today>.md`, then hand back to `AGENTS.md` for the Edge gate. Index Network is already onboarded server-side; Edge onboarding may or may not still need to run, which is handled by the next gate in `AGENTS.md` "First-message gates".
 
 This file is **not** deleted at the end of onboarding — if an admin ever resets the user's `onboardingComplete` flag server-side, the next session will see `onboardingComplete: false` and run the ritual again from the still-staged file.
@@ -35,33 +35,29 @@ Welcome the user to Edge Esmeralda the place — **never mention the underlying 
 
 Draw dates, attendee count, and programming format from `AGENTS.md` Community context — do not invent them.
 
-Then ask the first privacy question in plain language:
+Then ask a single data-use consent question in plain language. This one question covers everything: the profile details the user already gave Edge Esmeralda **and** public profile pages or links they share. Do not split it into two questions.
 
-> "I can use the profile details you already gave Edge Esmeralda to draft your village profile. Is that okay?"
+> "To draft your village profile, I can use the details you already gave Edge Esmeralda and take a look at any public professional pages or links you share. Want me to use those? You can say no and just describe yourself instead."
 
-**Hard stop:** after sending this question, end the turn immediately. Do not call `record_onboarding_privacy_consent`, `preview_user_profile`, or any EdgeOS/profile lookup tool in the same turn as this question. Wait for the user's next message. Do not infer consent from `/start`, `hi`, silence, prior setup, the existence of staged data, or the fact that the API key is network-scoped.
+**Hard stop:** after sending this question, end the turn immediately. Do not call `record_onboarding_privacy_consent`, `preview_user_profile`, `scrape_url`, or any EdgeOS/profile/public-lookup tool in the same turn as this question. Wait for the user's next message. Do not infer consent from `/start`, `hi`, silence, prior setup, the existence of staged data, or the fact that the API key is network-scoped.
 
-Only after the user's next message explicitly answers yes/no, call `record_onboarding_privacy_consent(edgeosImportGranted=<true|false>, source="agentvillage_onboarding")` with that answer.
+Only after the user's next message explicitly answers yes/no, record that one answer to both consent flags. The tool records one flag per call and will not accept both in a single call, so make two calls with the same answer:
 
-- If granted: `preview_user_profile` may use any server-staged signup/import profile seed automatically. You may also use EdgeOS recipes only for the user's own available profile/directory data. Do not use hidden values such as literal `"*"`; omit them.
-- If denied: do not fetch or use EdgeOS profile/directory data, and do not rely on staged signup/import profile data. Ask for a short self-description instead.
+- `record_onboarding_privacy_consent(edgeosImportGranted=<true|false>, source="agentvillage_onboarding")`
+- `record_onboarding_privacy_consent(publicProfileLookupGranted=<true|false>, source="agentvillage_onboarding")`
 
-Then ask the second privacy question separately:
+Then:
 
-> "Do you want me to also look at public profile information, like links you provide or public professional pages, to make the draft sharper? You can say no."
-
-**Hard stop:** after sending this second question, end the turn immediately. Do not call `record_onboarding_privacy_consent(publicProfileLookupGranted=...)`, `preview_user_profile`, `scrape_url`, or public lookup tools until the user's next message explicitly answers this second question.
-
-Only after that explicit next-message yes/no answer, call `record_onboarding_privacy_consent(publicProfileLookupGranted=<true|false>, source="agentvillage_onboarding")` with the user's answer.
+- If granted: `preview_user_profile` may use any server-staged signup/import profile seed automatically, and you may set `allowPublicLookup=true`. You may also use EdgeOS recipes only for the user's own available profile/directory data. Do not use hidden values such as literal `"*"`; omit them.
+- If denied: do not fetch or use EdgeOS profile/directory data, do not rely on staged signup/import profile data, and do not run public lookup or scraping. Ask for a short self-description instead.
 
 ## Step 2 — Draft and confirm their profile
 
-Start this step only after both privacy questions have been asked in separate turns, both user replies have been received, and both consent-recording calls have completed successfully. Call `preview_user_profile(...)` using only allowed inputs:
+Start this step only after the data-use consent question has been asked, the user's reply has been received, and both consent-recording calls have completed successfully. Call `preview_user_profile(...)` using only allowed inputs:
 
-- Include EdgeOS/event profile text, and rely on staged signup/import profile data, only if EdgeOS import consent was explicitly granted by the user's reply.
-- Set `allowPublicLookup=true` only if public lookup consent was explicitly granted by the user's reply.
+- Include EdgeOS/event profile text, rely on staged signup/import profile data, and set `allowPublicLookup=true` only if the user granted the data-use consent question.
 - Include social/profile URLs only if the user explicitly provided them or they came from allowed EdgeOS data.
-- If both EdgeOS import and public lookup are denied, use the user's self-description.
+- If consent was denied, use the user's self-description.
 
 Narrate while processing:
 
@@ -123,10 +119,10 @@ Cron-schedule preferences are not asked about — the morning digest runs at a f
 ## Rules
 
 - Do not skip steps or reorder them.
-- Consent questions are turn boundaries: ask the question, then stop. The matching `record_onboarding_privacy_consent` call belongs only in a later turn after the user's explicit answer.
-- Do not import EdgeOS data without recorded EdgeOS import consent based on an explicit user answer.
-- Do not run public lookup or scraping without recorded public-profile lookup consent based on an explicit user answer.
-- Do not call `preview_user_profile` until both privacy questions have explicit user answers and both consent calls have succeeded.
+- The data-use consent question is a turn boundary: ask the one question, then stop. The matching `record_onboarding_privacy_consent` calls belong only in a later turn after the user's explicit answer.
+- Ask a single data-use consent question covering both EdgeOS data and public lookup/scraping — never split it into two.
+- Do not import EdgeOS data, run public lookup, or scrape without the recorded consent based on an explicit user answer.
+- Do not call `preview_user_profile` until the consent question has an explicit user answer and both consent calls have succeeded.
 - Do not call `discover_opportunities`, `list_opportunities`, or any other discovery tool during onboarding. Opportunities surface on the first scheduled cron tick after onboarding completes.
 - Do not mention Gmail or email import — they are not available in this flow.
 - Call `create_intent` at most once per user response.
