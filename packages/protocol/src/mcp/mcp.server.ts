@@ -252,6 +252,9 @@ export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
   'register_agent',
   'read_docs',
   'scrape_url',
+  'record_onboarding_privacy_consent',
+  'preview_user_profile',
+  'confirm_user_profile',
   'create_user_profile',
   'complete_onboarding',
   'import_gmail_contacts',
@@ -269,10 +272,8 @@ export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
  */
 export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
   const nameStep = ctx.hasName
-    ? `1. Greet the user and confirm their name ("You're ${ctx.userName}, right?"). ` +
-      `Then call create_user_profile() with no arguments to look them up.`
-    : `1. Ask the user for their name (and optionally LinkedIn/Twitter/GitHub). ` +
-      `Call create_user_profile(name="...", linkedinUrl="...", ...) with whatever they provide.`;
+    ? `1. Greet the user and confirm their name ("You're ${ctx.userName}, right?").`
+    : `1. Ask the user for their name and a short self-description.`;
 
   const communityStep = ctx.networkId
     ? `5. (Skipped — user is already in "${ctx.indexName ?? 'their community'}".)`
@@ -286,12 +287,13 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     `${allowedList}.\n\n` +
     `Onboarding flow:\n` +
     `${nameStep}\n` +
-    `2. Present the profile summary and ask "Does that sound right?"\n` +
-    `3. On confirmation, call create_user_profile(confirm=true) to save.\n` +
-    `4. Call import_gmail_contacts() for Gmail connect (user may skip).\n` +
+    `2. Ask whether the user allows use of event/EdgeOS profile data, then call record_onboarding_privacy_consent(edgeosImportGranted=...).\n` +
+    `3. Ask separately whether the user allows public internet/profile lookup, then call record_onboarding_privacy_consent(publicProfileLookupGranted=...).\n` +
+    `4. Call preview_user_profile(...) using only allowed inputs; do not run public lookup unless consent was granted.\n` +
+    `5. Present the profile draft and ask "Does that look right?" On approval/correction, call confirm_user_profile(...).\n` +
     `${communityStep}\n` +
     `6. Ask what the user is looking for and call create_intent(description="...").\n` +
-    `7. Call discover_opportunities(searchQuery="...") then call complete_onboarding() to finish setup.`
+    `7. Call complete_onboarding() to finish setup. Gmail/contact import and discovery are optional after onboarding, never mandatory.`
   );
 }
 

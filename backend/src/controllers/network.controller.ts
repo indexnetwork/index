@@ -63,6 +63,7 @@ export class NetworkController {
       imageUrl?: string | null;
       joinPolicy?: 'anyone' | 'invite_only';
       allowGuestVibeCheck?: boolean;
+      profileEnrichment?: 'auto' | 'consent_required' | 'disabled';
       isExperiment?: boolean;
       type?: 'community' | 'event';
       metadata?: Record<string, unknown>;
@@ -92,6 +93,7 @@ export class NetworkController {
         imageUrl: body.imageUrl,
         joinPolicy: body.joinPolicy,
         allowGuestVibeCheck: body.allowGuestVibeCheck,
+        profileEnrichment: body.profileEnrichment,
         type: body.type,
         metadata: body.metadata,
       });
@@ -772,6 +774,7 @@ export class NetworkController {
         imageUrl?: string | null;
         joinPolicy?: 'anyone' | 'invite_only';
         allowGuestVibeCheck?: boolean;
+        profileEnrichment?: 'auto' | 'consent_required' | 'disabled';
         type?: 'community' | 'event';
         metadata?: Record<string, unknown>;
         contextInjection?: { discovery: boolean };
@@ -816,7 +819,7 @@ export class NetworkController {
   async updatePermissions(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
-      const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean };
+      const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; contextInjection?: { discovery: boolean }; profileEnrichment?: 'auto' | 'consent_required' | 'disabled' };
 
       if ('isExperiment' in body || 'experimentMasterKeyHash' in body) {
         return new Response(JSON.stringify({ error: 'Cannot modify experiment settings after creation' }), {

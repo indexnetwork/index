@@ -5,6 +5,29 @@ import { ProfileDocument } from '../../profile/profile.generator.js';
 /** Branded string ID for type-safe entity references (keyed by Drizzle table name). */
 export type Id<T extends string = string> = string & { readonly __table?: T };
 
+export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
+
+export interface PrivacyConsentDecision {
+  granted: boolean;
+  decidedAt: string;
+  source: PrivacyConsentSource;
+}
+
+export interface OnboardingPrivacyState {
+  edgeosImport?: PrivacyConsentDecision;
+  publicProfileLookup?: PrivacyConsentDecision;
+}
+
+export interface OnboardingProfileSeed {
+  source: 'experiment_signup' | 'experiment_csv_import';
+  networkId: string;
+  capturedAt: string;
+  name?: string;
+  bio?: string;
+  location?: string;
+  socials?: { label: string; value: string }[];
+}
+
 /** Onboarding flow state stored as JSON on the user record. */
 export interface OnboardingState {
   completedAt?: string;
@@ -12,6 +35,8 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks';
   networkId?: string;
   invitationCode?: string;
+  privacy?: OnboardingPrivacyState;
+  profileSeeds?: OnboardingProfileSeed[];
 }
 
 /** Single social-link row from the user_socials table. */

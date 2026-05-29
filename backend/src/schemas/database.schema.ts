@@ -17,12 +17,47 @@ export const networkTypeEnum = pgEnum('network_type', ['community', 'event']);
 export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 
+export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
+
+export interface PrivacyConsentDecision {
+  granted: boolean;
+  decidedAt: string;
+  source: PrivacyConsentSource;
+}
+
+export interface OnboardingPrivacyState {
+  edgeosImport?: PrivacyConsentDecision;
+  publicProfileLookup?: PrivacyConsentDecision;
+}
+
+export interface OnboardingProfileSeed {
+  source: 'experiment_signup' | 'experiment_csv_import';
+  networkId: string;
+  capturedAt: string;
+  name?: string;
+  bio?: string;
+  location?: string;
+  socials?: { label: string; value: string }[];
+}
+
 export interface OnboardingState {
   completedAt?: string;
   flow?: 1 | 2 | 3;
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks';
   networkId?: string;
   invitationCode?: string;
+  privacy?: OnboardingPrivacyState;
+  profileSeeds?: OnboardingProfileSeed[];
+}
+
+export type ProfileEnrichmentPolicy = 'auto' | 'consent_required' | 'disabled';
+
+export interface NetworkPermissionsState {
+  joinPolicy: 'anyone' | 'invite_only';
+  invitationLink: { code: string } | null;
+  allowGuestVibeCheck: boolean;
+  contextInjection?: { discovery: boolean };
+  profileEnrichment?: ProfileEnrichmentPolicy;
 }
 
 export interface TelegramPrefs {
@@ -494,12 +529,7 @@ export const networks = pgTable('networks', {
   experimentMasterKeyHash: text('experiment_master_key_hash'),
   type: networkTypeEnum('type').default('community').notNull(),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
-  permissions: json('permissions').$type<{
-    joinPolicy: 'anyone' | 'invite_only';
-    invitationLink: { code: string } | null;
-    allowGuestVibeCheck: boolean;
-    contextInjection?: { discovery: boolean };
-  }>().default({
+  permissions: json('permissions').$type<NetworkPermissionsState>().default({
     joinPolicy: 'invite_only',
     invitationLink: null,
     allowGuestVibeCheck: false,

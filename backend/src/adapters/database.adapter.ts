@@ -1246,7 +1246,8 @@ export class ChatDatabaseAdapter {
       .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
       .limit(1);
     const row = rows[0];
-    return row ?? null;
+    if (!row) return null;
+    return { ...row, permissions: row.permissions as unknown as Record<string, unknown> | null };
   }
 
   /**
@@ -2099,7 +2100,7 @@ export class ChatDatabaseAdapter {
   async updateIndexSettings(
     networkId: string,
     requestingUserId: string,
-    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; type?: 'community' | 'event'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
+    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; type?: 'community' | 'event'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
   ) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
@@ -2116,8 +2117,13 @@ export class ChatDatabaseAdapter {
     if (data.prompt !== undefined) updateData.prompt = data.prompt;
     if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
     if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
-      const currentPerms = (existing.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
+      const currentPerms = (existing.permissions as schema.NetworkPermissionsState | null) ?? {
+        joinPolicy: 'invite_only',
+        invitationLink: null,
+        allowGuestVibeCheck: false,
+      };
       updateData.permissions = {
+        ...currentPerms,
         joinPolicy: data.joinPolicy ?? currentPerms.joinPolicy ?? 'invite_only',
         invitationLink: currentPerms.invitationLink ?? { code: crypto.randomUUID() },
         allowGuestVibeCheck: data.allowGuestVibeCheck ?? currentPerms.allowGuestVibeCheck ?? false,
@@ -2125,11 +2131,13 @@ export class ChatDatabaseAdapter {
     }
     if (data.type !== undefined) updateData.type = data.type;
     if (data.metadata !== undefined) updateData.metadata = data.metadata;
-    if (data.contextInjection !== undefined) {
-      const currentPerms = (existing.permissions as Record<string, unknown>) ?? {};
+    if (data.contextInjection !== undefined || data.profileEnrichment !== undefined) {
+      const currentPerms = (existing.permissions as unknown as Record<string, unknown> | null) ?? {};
       updateData.permissions = {
-        ...((updateData.permissions as Record<string, unknown>) ?? currentPerms),
-        contextInjection: data.contextInjection,
+        ...currentPerms,
+        ...((updateData.permissions as Record<string, unknown>) ?? {}),
+        ...(data.contextInjection !== undefined && { contextInjection: data.contextInjection }),
+        ...(data.profileEnrichment !== undefined && { profileEnrichment: data.profileEnrichment }),
       };
     }
 
@@ -2170,7 +2178,11 @@ export class ChatDatabaseAdapter {
       db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt))),
       db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, networkId)),
     ]);
-    const perms = (updatedRow.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean; contextInjection?: { discovery: boolean } }) ?? {};
+    const perms = (updatedRow.permissions as schema.NetworkPermissionsState | null) ?? {
+      joinPolicy: 'invite_only',
+      invitationLink: null,
+      allowGuestVibeCheck: false,
+    };
     const memberCount = Number(memberCountResult[0]?.count ?? 0);
     return {
       id: updatedRow.id,
@@ -2184,6 +2196,7 @@ export class ChatDatabaseAdapter {
         allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
         invitationLink: perms.invitationLink ?? null,
         ...(perms.contextInjection !== undefined && { contextInjection: perms.contextInjection }),
+        ...(perms.profileEnrichment !== undefined && { profileEnrichment: perms.profileEnrichment }),
       },
       isPersonal: updatedRow.isPersonal,
       createdAt: updatedRow.createdAt,
@@ -2359,6 +2372,8 @@ export class ChatDatabaseAdapter {
     prompt?: string | null;
     imageUrl?: string | null;
     joinPolicy?: 'anyone' | 'invite_only';
+    allowGuestVibeCheck?: boolean;
+    profileEnrichment?: schema.ProfileEnrichmentPolicy;
     type?: 'community' | 'event';
     metadata?: Record<string, unknown>;
   }): Promise<{
@@ -2366,15 +2381,16 @@ export class ChatDatabaseAdapter {
     title: string;
     prompt: string | null;
     imageUrl: string | null;
-    permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
+    permissions: schema.NetworkPermissionsState;
     type: 'community' | 'event';
     metadata: Record<string, unknown>;
   }> {
     const finalJoinPolicy = data.joinPolicy ?? 'invite_only';
-    const permissions = {
+    const permissions: schema.NetworkPermissionsState = {
       joinPolicy: finalJoinPolicy,
       invitationLink: { code: crypto.randomUUID() },
-      allowGuestVibeCheck: false,
+      allowGuestVibeCheck: data.allowGuestVibeCheck ?? false,
+      ...(data.profileEnrichment !== undefined && { profileEnrichment: data.profileEnrichment }),
     };
     const [row] = await db
       .insert(networks)
@@ -2396,7 +2412,11 @@ export class ChatDatabaseAdapter {
         metadata: networks.metadata,
       });
     if (!row) throw new Error('Failed to create index');
-    const perms = (row.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
+    const perms = (row.permissions as schema.NetworkPermissionsState | null) ?? {
+      joinPolicy: 'invite_only',
+      invitationLink: null,
+      allowGuestVibeCheck: false,
+    };
     return {
       id: row.id,
       title: row.title,
@@ -2406,6 +2426,7 @@ export class ChatDatabaseAdapter {
         joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
         invitationLink: perms.invitationLink ?? null,
         allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
+        ...(perms.profileEnrichment !== undefined && { profileEnrichment: perms.profileEnrichment }),
       },
       type: row.type ?? 'community',
       metadata: (row.metadata ?? {}) as Record<string, unknown>,

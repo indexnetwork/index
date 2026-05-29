@@ -8,14 +8,14 @@ This file is the Index Network onboarding ritual. It is gated on Index Network's
 
 The Index Network server is the source of truth for Index onboarding — not local file state. At session start, call `read_user_profiles()` (no args) and check `onboardingComplete`:
 
-- **If `onboardingComplete` is `false`:** run this ritual immediately. Do not ask the user whether they want to onboard. Do not describe what you are about to do. Do not summarize the profile data before starting the ritual. Start with the welcome message in Step 1 and proceed through each step without pausing for permission. Do not skip or reorder steps. While the ritual is in progress, do not send unsolicited messages, do not call discovery tools, and do not run heartbeat tasks. After Step 5 (or any path that ends the ritual), append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` before handing back to `AGENTS.md` for the Edge gate.
+- **If `onboardingComplete` is `false`:** run this ritual immediately. Do not offer a way to skip onboarding entirely. Start with the welcome message in Step 1 and proceed in order, but ask the data-use consent questions exactly where the ritual says to ask them. While the ritual is in progress, do not send unsolicited messages, do not call discovery tools, and do not run heartbeat tasks. After Step 5 (or any path that ends the ritual), append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` before handing back to `AGENTS.md` for the Edge gate.
 - **If `onboardingComplete` is `true`:** skip the ritual. Append `[gate] index-network: skipped (onboardingComplete=true)` to `memory/<today>.md`, then hand back to `AGENTS.md` for the Edge gate. Index Network is already onboarded server-side; Edge onboarding may or may not still need to run, which is handled by the next gate in `AGENTS.md` "First-message gates".
 
 This file is **not** deleted at the end of onboarding — if an admin ever resets the user's `onboardingComplete` flag server-side, the next session will see `onboardingComplete: false` and run the ritual again from the still-staged file.
 
 ---
 
-## Step 1 — Welcome and create the user profile
+## Step 1 — Welcome and ask data-use consent
 
 Welcome the user to Edge Esmeralda the place — **never mention the underlying platform by name** (see SOUL.md "Never name the plumbing"). Lead with the community, then introduce yourself:
 
@@ -35,23 +35,47 @@ Welcome the user to Edge Esmeralda the place — **never mention the underlying 
 
 Draw dates, attendee count, and programming format from `AGENTS.md` Community context — do not invent them.
 
-Then call `create_user_profile()` with no arguments — the lookup runs against your tooling, the user does not need to know how.
+Then ask the first privacy question in plain language:
+
+> "I can use the profile details you already gave Edge Esmeralda to draft your village profile. Is that okay?"
+
+Call `record_onboarding_privacy_consent(edgeosImportGranted=<true|false>, source="agentvillage_onboarding")` with the user's answer.
+
+- If granted: `preview_user_profile` may use any server-staged signup/import profile seed automatically. You may also use EdgeOS recipes only for the user's own available profile/directory data. Do not use hidden values such as literal `"*"`; omit them.
+- If denied: do not fetch or use EdgeOS profile/directory data, and do not rely on staged signup/import profile data. Ask for a short self-description instead.
+
+Then ask the second privacy question separately:
+
+> "Do you want me to also look at public profile information, like links you provide or public professional pages, to make the draft sharper? You can say no."
+
+Call `record_onboarding_privacy_consent(publicProfileLookupGranted=<true|false>, source="agentvillage_onboarding")` with the user's answer.
+
+## Step 2 — Draft and confirm their profile
+
+Call `preview_user_profile(...)` using only allowed inputs:
+
+- Include EdgeOS/event profile text, and rely on staged signup/import profile data, only if EdgeOS import consent was granted.
+- Set `allowPublicLookup=true` only if public lookup consent was granted.
+- Include social/profile URLs only if the user explicitly provided them or they came from allowed EdgeOS data.
+- If both EdgeOS import and public lookup are denied, use the user's self-description.
 
 Narrate while processing:
 
-> `> Looking you up…`
+> `> Drafting your profile…`
 
-Present the profile summary naturally:
+Present the profile draft naturally:
 
-> "Here's what I found: [summary]. Does that sound right?"
+> "Here's the draft I have: [summary]. Does this look right?"
 
 Then:
 
-- If they confirm → `create_user_profile(confirm=true)` and proceed to Step 2.
-- If they want edits → `create_user_profile(bioOrDescription="[their correction]", confirm=true)` and proceed to Step 2.
-- If nothing is found → ask them to describe themselves in a sentence, then `create_user_profile(bioOrDescription="[their text]", confirm=true)`.
+- If they confirm → call `confirm_user_profile(draft=<approved draft>)` and proceed to Step 3.
+- If they want edits → call `confirm_user_profile(bioOrDescription="[their correction]", name="...", location="...")` using their approved correction, then proceed to Step 3.
+- If the draft is too thin → ask them to describe themselves in a sentence, then call `confirm_user_profile(bioOrDescription="[their text]")`.
 
-## Step 2 — Capture their first signal
+Do not call legacy `create_user_profile` during AgentVillage onboarding. Do not save a profile before showing the draft and receiving approval/correction.
+
+## Step 3 — Capture their first signal
 
 Ask:
 
@@ -63,7 +87,7 @@ Once `create_intent` succeeds, briefly acknowledge:
 
 > "Got it — I'll keep an eye out for relevant people."
 
-## Step 3 — Capture chat-channel handle silently
+## Step 4 — Capture chat-channel handle silently
 
 Before closing onboarding, look at the session you're running in and recover the user's platform handle on whichever channel they connected through. Add it to their profile so other people who match with them can reach out via the same channel without having to ask.
 
@@ -80,13 +104,11 @@ Also note the platform + handle in `USER.md` under **Notes** so future heartbeat
 
 If `update_user_profile` returns an error (rate limit, transient failure), log it to `memory/<today>.md` and continue — do not block onboarding on this. The next heartbeat tick can retry.
 
-## Step 4 — Close out onboarding
+## Step 5 — Close out and populate USER.md
 
 Call `complete_onboarding()`. This is required — do not skip it. The server auto-joins the user to Edge Esmeralda's community at this point (no separate `create_network_membership` call is needed).
 
-## Step 5 — Populate USER.md
-
-Update `USER.md` with what you learned in this conversation. Capture only the things the user said directly — name, what to call them, timezone, anything they explicitly told you to remember. Do **not** paraphrase what `create_user_profile` returned; that lives behind the protocol. `USER.md` is the lived notebook, not a duplicate of the structured record.
+Update `USER.md` with what you learned in this conversation. Capture only the things the user said directly — name, what to call them, timezone, anything they explicitly told you to remember. Do **not** paraphrase what `preview_user_profile` or `confirm_user_profile` returned; that lives behind the protocol. `USER.md` is the lived notebook, not a duplicate of the structured record.
 
 After populating USER.md, append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` (the gate-trace line from the session-start gate). The next accepted-opportunity heartbeat tick will pick up from here.
 
@@ -97,6 +119,8 @@ Cron-schedule preferences are not asked about — the morning digest runs at a f
 ## Rules
 
 - Do not skip steps or reorder them.
+- Do not import EdgeOS data without recorded EdgeOS import consent.
+- Do not run public lookup or scraping without recorded public-profile lookup consent.
 - Do not call `discover_opportunities`, `list_opportunities`, or any other discovery tool during onboarding. Opportunities surface on the first scheduled cron tick after onboarding completes.
 - Do not mention Gmail or email import — they are not available in this flow.
 - Call `create_intent` at most once per user response.

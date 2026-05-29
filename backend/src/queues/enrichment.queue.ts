@@ -1,4 +1,6 @@
 import { Job } from 'bullmq';
+import { and, eq, isNull } from 'drizzle-orm';
+
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ProfileDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
@@ -7,6 +9,10 @@ import { ProfileGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import db from '../lib/drizzle/drizzle';
+import { canRunPublicProfileEnrichment, getProfileEnrichmentPolicy } from '../lib/privacy/profile-enrichment-policy';
+import { networks, userProfiles, users } from '../schemas/database.schema';
+import type { OnboardingState, ProfileEnrichmentPolicy } from '../schemas/database.schema';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
 export const QUEUE_NAME = 'profile-hyde-queue';
@@ -14,11 +20,15 @@ export const QUEUE_NAME = 'profile-hyde-queue';
 /** Payload for ensure_profile_hyde job. */
 export interface EnsureProfileHydeData {
   userId: string;
+  networkId?: string;
+  reason?: string;
 }
 
 /** Payload for enrich.user jobs. */
 export interface EnrichUserData {
   userId: string;
+  networkId?: string;
+  reason?: string;
 }
 
 /** Union of all job payloads accepted by the enrichment queue. */
@@ -27,9 +37,17 @@ export type EnrichmentJobPayload = EnsureProfileHydeData | EnrichUserData;
 /**
  * Optional dependencies for testing.
  */
+export interface EnrichmentPrivacyDecision {
+  allowed: boolean;
+  policy: ProfileEnrichmentPolicy;
+  reason: string;
+  hasExistingProfile: boolean;
+}
+
 export interface EnrichmentQueueDeps {
   invokeProfileWrite?: (userId: string) => Promise<void>;
   invokeEnrichUser?: (userId: string) => Promise<void>;
+  checkPrivacy?: (input: { jobName: 'ensure_profile_hyde' | 'enrich.user'; userId: string; networkId?: string; reason?: string }) => Promise<EnrichmentPrivacyDecision>;
 }
 
 /**
@@ -66,7 +84,7 @@ export class EnrichmentQueue {
    * @param data - userId
    * @returns The BullMQ job
    */
-  addEnsureProfileHydeJob(data: { userId: string }): Promise<Job<EnrichmentJobPayload>> {
+  addEnsureProfileHydeJob(data: EnsureProfileHydeData): Promise<Job<EnrichmentJobPayload>> {
     return this.addJob('ensure_profile_hyde', data);
   }
 
@@ -76,7 +94,7 @@ export class EnrichmentQueue {
    * @param data - userId to enrich
    * @returns The BullMQ job
    */
-  addEnrichUserJob(data: { userId: string }): Promise<Job<EnrichmentJobPayload>> {
+  addEnrichUserJob(data: EnrichUserData): Promise<Job<EnrichmentJobPayload>> {
     return this.addJob('enrich.user', data, {
       jobId: `enrich.user.${data.userId}.${Date.now()}`,
     });
@@ -87,13 +105,13 @@ export class EnrichmentQueue {
    * @param items - Array of { userId } to enrich
    * @returns Array of BullMQ jobs
    */
-  addEnrichUserJobBulk(items: Array<{ userId: string }>): Promise<Job<EnrichmentJobPayload>[]> {
+  addEnrichUserJobBulk(items: EnrichUserData[]): Promise<Job<EnrichmentJobPayload>[]> {
     if (items.length === 0) return Promise.resolve([]);
     const now = Date.now();
     return this.queue.addBulk(
       items.map((item, i) => ({
         name: 'enrich.user' as const,
-        data: { userId: item.userId },
+        data: item,
         opts: {
           jobId: `enrich.user.${item.userId}.${now}.${i}`,
           attempts: 3,
@@ -153,6 +171,8 @@ export class EnrichmentQueue {
     const processor = async (job: Job<EnrichmentJobPayload>) => {
       this.queueLogger.info(`[EnrichmentProcessor] Processing job ${job.id} (${job.name})`, {
         userId: (job.data as EnsureProfileHydeData).userId,
+        networkId: (job.data as EnsureProfileHydeData).networkId,
+        reason: (job.data as EnsureProfileHydeData).reason,
       });
       await this.processJob(job.name, job.data);
     };
@@ -177,21 +197,43 @@ export class EnrichmentQueue {
 
   private async handleEnsureProfileHyde(data: EnsureProfileHydeData): Promise<void> {
     const { userId } = data;
+    const privacy = await this.resolvePrivacyDecision('ensure_profile_hyde', data);
+    if (!privacy.allowed) {
+      this.queueLogger.info('[ProfileHyde] Skipped by profile enrichment policy', {
+        userId,
+        networkId: data.networkId,
+        reason: data.reason,
+        policy: privacy.policy,
+        skipReason: privacy.reason,
+      });
+      return;
+    }
     if (this.deps?.invokeProfileWrite) {
       await this.deps.invokeProfileWrite(userId);
       return;
     }
     try {
       await this.invokeProfileGraph(userId, 'write');
-      this.logger.verbose('[ProfileHyde] Ensured profile HyDE for user', { userId });
+      this.logger.verbose('[ProfileHyde] Ensured profile HyDE for user', { userId, networkId: data.networkId, reason: data.reason });
     } catch (err) {
-      this.logger.error('[ProfileHyde] Failed to ensure profile HyDE', { userId, error: err });
+      this.logger.error('[ProfileHyde] Failed to ensure profile HyDE', { userId, networkId: data.networkId, reason: data.reason, error: err });
       throw err;
     }
   }
 
   private async handleEnrichUser(data: EnrichUserData): Promise<void> {
     const { userId } = data;
+    const privacy = await this.resolvePrivacyDecision('enrich.user', data);
+    if (!privacy.allowed) {
+      this.queueLogger.info('[EnrichUser] Skipped by profile enrichment policy', {
+        userId,
+        networkId: data.networkId,
+        reason: data.reason,
+        policy: privacy.policy,
+        skipReason: privacy.reason,
+      });
+      return;
+    }
     if (this.deps?.invokeEnrichUser) {
       await this.deps.invokeEnrichUser(userId);
       this.fireEnrichmentComplete(userId);
@@ -199,15 +241,78 @@ export class EnrichmentQueue {
     }
     try {
       await this.invokeProfileGraph(userId, 'generate');
-      this.queueLogger.info('[EnrichUser] Profile enrichment completed', { userId });
+      this.queueLogger.info('[EnrichUser] Profile enrichment completed', { userId, networkId: data.networkId, reason: data.reason });
       this.fireEnrichmentComplete(userId);
     } catch (err) {
       this.queueLogger.error('[EnrichUser] Failed to enrich user', {
         userId,
+        networkId: data.networkId,
+        reason: data.reason,
         error: err instanceof Error ? err.message : String(err),
       });
       throw err;
     }
+  }
+
+  private async resolvePrivacyDecision(
+    jobName: 'ensure_profile_hyde' | 'enrich.user',
+    data: EnrichmentJobPayload,
+  ): Promise<EnrichmentPrivacyDecision> {
+    if (this.deps?.checkPrivacy) {
+      return this.deps.checkPrivacy({ jobName, userId: data.userId, networkId: data.networkId, reason: data.reason });
+    }
+
+    if (!data.networkId) {
+      return { allowed: true, policy: 'auto', reason: 'no_network_policy', hasExistingProfile: false };
+    }
+
+    const [[user], [network], [profile]] = await Promise.all([
+      db
+        .select({ onboarding: users.onboarding, isGhost: users.isGhost })
+        .from(users)
+        .where(and(eq(users.id, data.userId), isNull(users.deletedAt)))
+        .limit(1),
+      db
+        .select({ permissions: networks.permissions })
+        .from(networks)
+        .where(and(eq(networks.id, data.networkId), isNull(networks.deletedAt)))
+        .limit(1),
+      db
+        .select({ id: userProfiles.id })
+        .from(userProfiles)
+        .where(eq(userProfiles.userId, data.userId))
+        .limit(1),
+    ]);
+
+    const hasExistingProfile = !!profile;
+    if (!network) {
+      return { allowed: false, policy: 'disabled', reason: 'network_not_found', hasExistingProfile };
+    }
+
+    const policy = getProfileEnrichmentPolicy(network.permissions);
+    if (!user) {
+      return { allowed: false, policy, reason: 'user_not_found', hasExistingProfile };
+    }
+
+    if (jobName === 'ensure_profile_hyde' && hasExistingProfile) {
+      return { allowed: true, policy, reason: 'existing_profile_no_public_enrichment_needed', hasExistingProfile };
+    }
+
+    const allowed = canRunPublicProfileEnrichment({
+      policy,
+      onboarding: user.onboarding as OnboardingState | null | undefined,
+      isGhost: user.isGhost,
+    });
+
+    const reason = allowed
+      ? 'policy_allows_public_enrichment'
+      : policy === 'disabled'
+        ? 'profile_enrichment_disabled'
+        : user.isGhost
+          ? 'ghost_user_cannot_consent'
+          : 'public_profile_lookup_consent_missing';
+
+    return { allowed, policy, reason, hasExistingProfile };
   }
 
   /** Best-effort callback invocation — never fails the enrichment job. */

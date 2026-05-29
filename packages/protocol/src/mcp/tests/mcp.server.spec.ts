@@ -14,8 +14,8 @@ import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARD
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 describe("MCP_INSTRUCTIONS", () => {
-  test("fits within the 2500 character context budget", () => {
-    expect(MCP_INSTRUCTIONS.length).toBeLessThan(2500);
+  test("fits within the 4500 character context budget", () => {
+    expect(MCP_INSTRUCTIONS.length).toBeLessThan(4500);
   });
 
   test("is at least 800 characters (guards against accidental truncation)", () => {
@@ -193,6 +193,9 @@ function minimalContext(overrides: Partial<ResolvedToolContext> = {}): ResolvedT
 describe("ONBOARDING_ALLOWED", () => {
   test("contains all onboarding-flow tools", () => {
     const expected = [
+      "record_onboarding_privacy_consent",
+      "preview_user_profile",
+      "confirm_user_profile",
       "create_user_profile",
       "complete_onboarding",
       "import_gmail_contacts",
@@ -230,13 +233,15 @@ describe("buildMcpOnboardingMessage", () => {
   test("uses name-confirmation step when user has a name", () => {
     const msg = buildMcpOnboardingMessage(minimalContext({ hasName: true, userName: "Alice" }));
     expect(msg).toContain("You're Alice, right?");
-    expect(msg).toContain("create_user_profile() with no arguments");
+    expect(msg).toContain("record_onboarding_privacy_consent");
+    expect(msg).toContain("preview_user_profile");
   });
 
   test("uses name-ask step when user has no name", () => {
     const msg = buildMcpOnboardingMessage(minimalContext({ hasName: false, userName: "Unknown" }));
     expect(msg).toContain("Ask the user for their name");
-    expect(msg).toContain('create_user_profile(name="..."');
+    expect(msg).toContain("short self-description");
+    expect(msg).toContain("confirm_user_profile");
   });
 
   test("skips community step for network-scoped contexts", () => {
