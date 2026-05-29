@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 
 import { experimentService } from '../src/services/experiment.service';
+import { AuthOrApiKeyGuard } from '../src/guards/auth.guard';
 import db from '../src/lib/drizzle/drizzle';
 import {
   agentPermissions,
@@ -80,7 +81,7 @@ describe('experimentService.signup', () => {
     expect(result.created).toBe(true);
   }, 15_000);
 
-  it('stores name, bio, location, and socials from rich payload', async () => {
+  it('stages name, bio, location, and socials from rich payload for consented onboarding', async () => {
     const { networkId } = await setupExperimentNetwork();
     const email = `rich-${randomUUID()}@example.com`;
 
@@ -98,27 +99,26 @@ describe('experimentService.signup', () => {
     cleanup.push(() => cleanupUser(result.user.id));
 
     const [u] = await db
-      .select({ name: users.name })
+      .select({ name: users.name, onboarding: users.onboarding })
       .from(users)
       .where(eq(users.id, result.user.id));
-    expect(u.name).toBe('Alice Test');
+    expect(u.name).not.toBe('Alice Test');
 
-    const [profile] = await db
-      .select({ identity: userProfiles.identity })
-      .from(userProfiles)
-      .where(eq(userProfiles.userId, result.user.id));
-    expect((profile.identity as { bio?: string }).bio).toBe('Independent researcher.');
-    expect((profile.identity as { location?: string }).location).toBe('Healdsburg, CA');
-
-    const socials = await db
-      .select({ label: userSocials.label, value: userSocials.value })
-      .from(userSocials)
-      .where(eq(userSocials.userId, result.user.id));
-    expect(socials).toContainEqual({ label: 'telegram', value: '@alice_test' });
-    expect(socials).toContainEqual({ label: 'twitter',  value: 'alice_test' });
+    const seed = u.onboarding.profileSeeds?.find(
+      (item) => item.networkId === networkId && item.source === 'experiment_signup',
+    );
+    expect(seed).toMatchObject({
+      name: 'Alice Test',
+      bio: 'Independent researcher.',
+      location: 'Healdsburg, CA',
+      socials: [
+        { label: 'telegram', value: '@alice_test' },
+        { label: 'twitter', value: 'alice_test' },
+      ],
+    });
   }, 15_000);
 
-  it('re-signup rotates the key on the SAME agent — no orphan agent records', async () => {
+  it('re-signup mints a new key on the SAME agent without revoking the old key', async () => {
     const { networkId } = await setupExperimentNetwork();
     const email = `resig-${randomUUID()}@example.com`;
 
@@ -143,11 +143,14 @@ describe('experimentService.signup', () => {
       );
     expect(scopedAgents.length).toBe(1);
 
-    const oldKeyRow = await db
-      .select({ id: apikeys.id })
-      .from(apikeys)
-      .where(and(eq(apikeys.userId, first.user.id), eq(apikeys.start, first.apiKey.slice(0, 4))));
-    expect(oldKeyRow.length).toBe(0);
+    const firstAuth = await AuthOrApiKeyGuard(new Request('http://localhost/test', {
+      headers: { 'x-api-key': first.apiKey },
+    }));
+    const secondAuth = await AuthOrApiKeyGuard(new Request('http://localhost/test', {
+      headers: { 'x-api-key': second.apiKey },
+    }));
+    expect(firstAuth.id).toBe(first.user.id);
+    expect(secondAuth.id).toBe(first.user.id);
   }, 15_000);
 
   it('returns created=false for an existing user', async () => {
