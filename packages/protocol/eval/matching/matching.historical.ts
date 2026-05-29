@@ -4,8 +4,9 @@ import type { MatchingCase } from "./matching.types.js";
  * Tier 3 — Historical collaborations.
  *
  * Each case recreates a documented, demonstrably-successful collaboration as the two
- * people looked BEFORE they connected, anonymized so the evaluator judges on fit rather
- * than fame. The discoverer (`*-a`) is the seeker; the real partner (`*-b`) is the match;
+ * people looked BEFORE they connected. The evaluator input stays anonymized so the model
+ * judges on fit rather than fame; report-only `reportNames` reveal the real-world
+ * referents in generated reports. The discoverer (`*-a`) is the seeker; the real partner (`*-b`) is the match;
  * `*-c/d/e` are plausible contemporaries who were around but were not the right fit, each
  * chosen to fall into a genuine reject category: same-side (both seeking the same thing),
  * complementary/non-substitutive role (enables the relation from outside it), or misaligned
@@ -28,6 +29,7 @@ const case1: MatchingCase = {
   id: "historical/builder-and-operator",
   rule: "historical",
   tier: 3,
+    domains: ["technology"],
   description:
     "Operator seeking a hardware builder to commercialize a personal computer should surface the gifted board designer over a same-side promoter, a parts supplier, and a non-committal hobbyist.",
   input: {
@@ -114,6 +116,10 @@ const case1: MatchingCase = {
     { candidateId: "h1-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h1-e", match: false, scoreBand: [0, 29] },
   ],
+  reportNames: {
+    "h1-a": "Steve Jobs",
+    "h1-b": "Steve Wozniak",
+  },
 };
 
 // ── Case 2: two co-researchers cracking a molecular structure → landmark paper ──
@@ -123,6 +129,7 @@ const case2: MatchingCase = {
   id: "historical/co-researchers-structure",
   rule: "historical",
   tier: 3,
+    domains: ["research"],
   description:
     "Biologist with diffraction data seeking a structural model-builder should surface the physics-trained modeler over a same-side data biologist, a lab administrator, and an unrelated chemist.",
   input: {
@@ -210,6 +217,10 @@ const case2: MatchingCase = {
     { candidateId: "h2-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h2-e", match: false, scoreBand: [0, 29] },
   ],
+  reportNames: {
+    "h2-a": "James Watson",
+    "h2-b": "Francis Crick",
+  },
 };
 
 // ── Case 3: songwriting duo, same scene, complementary styles → creative partnership ──
@@ -219,6 +230,7 @@ const case3: MatchingCase = {
   id: "historical/songwriting-duo",
   rule: "historical",
   tier: 3,
+    domains: ["arts"],
   description:
     "Edgy young musician with half-finished songs seeking a co-writer should surface the melodically gifted writer over a same-side frontman, a club promoter, and a classical musician.",
   input: {
@@ -306,6 +318,10 @@ const case3: MatchingCase = {
     { candidateId: "h3-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h3-e", match: false, scoreBand: [0, 29] },
   ],
+  reportNames: {
+    "h3-a": "John Lennon",
+    "h3-b": "Paul McCartney",
+  },
 };
 
 // ── Case 4: first-check investor + technical founder → backed company ──
@@ -315,6 +331,7 @@ const case4: MatchingCase = {
   id: "historical/first-check-investor",
   rule: "historical",
   tier: 3,
+    domains: ["technology", "funding"],
   description:
     "Technical founder with a prototype seeking a first check and guidance should surface the matched-stage first-check angel over a same-side founder, a wrong-stage growth investor, and an unrelated-sector angel.",
   input: {
@@ -401,19 +418,25 @@ const case4: MatchingCase = {
     { candidateId: "h4-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h4-e", match: false, scoreBand: [0, 29] },
   ],
+  reportNames: {
+    "h4-a": "Larry Page / Sergey Brin",
+    "h4-b": "Andy Bechtolsheim",
+  },
 };
 
-// ── Case 5: domain expert + ML researcher → cross-disciplinary breakthrough ──
-// Real: a structural-biology domain expert (h5-b) + a deep-learning researcher (h5-a), AlphaFold-style. Anonymized.
+// ── Case 5: RNA biochemist + immunologist → cross-disciplinary breakthrough ──
+// Real: Katalin Karikó (RNA biochemist, h5-a) + Drew Weissman (immunologist, h5-b),
+// before their late-1990s collaboration on modified mRNA. Anonymized in evaluator input.
 // Note: h5-e is an ADJACENT-INDEX distractor (different, less-relevant index) — see spec §"Shared community context".
-const H5 = "h5-consortium";
+const H5 = "h5-biomed";
 const H5_ADJ = "h5-generic-data";
 const case5: MatchingCase = {
   id: "historical/domain-expert-and-ml",
   rule: "historical",
   tier: 3,
+    domains: ["research"],
   description:
-    "ML researcher seeking a domain expert to ground a model on a hard scientific problem should surface the complementary structural-science expert over a same-side ML researcher, an unrelated-science expert, and a generalist analyst from a less-relevant index.",
+    "RNA researcher seeking an immunology collaborator to make therapeutic messenger RNA practical should surface the complementary immune-cell expert over a same-side RNA scientist, an unrelated-science expert, and a generalist analyst from a less-relevant index.",
   input: {
     discovererId: "h5-a",
     entities: [
@@ -421,13 +444,13 @@ const case5: MatchingCase = {
         userId: "h5-a",
         profile: {
           name: "(source user)",
-          bio: "Deep-learning researcher with a powerful, general modeling approach looking for a hard, well-characterized scientific problem and a domain expert to ground it in reality. Strong on models, light on the science itself.",
-          location: "London",
-          interests: ["deep learning", "scientific problems", "representation learning"],
-          skills: ["machine learning", "neural networks", "large-scale training"],
+          bio: "Persistent RNA biochemist trying to turn synthetic messenger RNA into a therapeutic platform. Strong on RNA preparation and delivery ideas, but needs an immunology collaborator to understand and control the immune reaction that blocks the work.",
+          location: "Philadelphia",
+          interests: ["messenger RNA", "therapeutics", "RNA delivery"],
+          skills: ["RNA biochemistry", "synthetic RNA preparation", "persistence on translational problems"],
         },
         intents: [
-          { intentId: "h5-a-1", payload: "Find a domain scientist with a hard, well-defined structural problem and curated data, to jointly apply my deep-learning models to it." },
+          { intentId: "h5-a-1", payload: "Find an immunology collaborator with relevant immune-cell assays to understand why synthetic mRNA triggers immune reactions and how to make it usable therapeutically." },
         ],
         networkId: H5,
       },
@@ -435,50 +458,50 @@ const case5: MatchingCase = {
         userId: "h5-b",
         profile: {
           name: "Ravi Sundaram",
-          bio: "Structural-science domain expert with deep knowledge of a long-standing prediction problem and years of curated experimental data. Lacks modeling firepower in-house and wants a serious computational collaborator.",
-          location: "London",
-          interests: ["structural biology", "prediction problems", "curated datasets"],
-          skills: ["domain expertise", "experimental data curation", "structure determination"],
+          bio: "Immunologist studying dendritic cells and vaccine responses. Has assays and domain knowledge for measuring innate immune activation, and is looking for a molecular collaborator with a promising therapeutic payload.",
+          location: "Philadelphia",
+          interests: ["immunology", "dendritic cells", "vaccines"],
+          skills: ["immune-cell assays", "innate immune response", "vaccine immunology"],
         },
         networkId: H5,
         ragScore: 90,
-        matchedVia: "domain expert with a hard structural prediction problem",
+        matchedVia: "immunology collaborator for therapeutic RNA work",
       },
       {
         userId: "h5-c",
         profile: {
           name: "Lena Fischer",
-          bio: "Another deep-learning researcher with a similar modeling toolkit, also looking for a scientific problem to apply it to. A mirror of the discoverer — same side, not a complementary domain partner.",
-          location: "London",
-          interests: ["deep learning", "representation learning", "scientific ML"],
-          skills: ["machine learning", "neural networks"],
+          bio: "Another RNA biochemist with similar delivery ambitions, also looking for immunology expertise to test synthetic RNA constructs. A mirror of the discoverer — same side, not the complementary immune collaborator.",
+          location: "Philadelphia",
+          interests: ["messenger RNA", "RNA delivery", "therapeutics"],
+          skills: ["RNA preparation", "molecular biology"],
         },
         intents: [
-          { intentId: "h5-c-1", payload: "Looking for a scientific problem and dataset to apply my deep-learning models to." },
+          { intentId: "h5-c-1", payload: "Looking for an immunologist to help test immune response to my synthetic RNA constructs." },
         ],
         networkId: H5,
         ragScore: 81,
-        matchedVia: "deep-learning researcher seeking scientific problems",
+        matchedVia: "RNA scientist seeking immunology help",
       },
       {
         userId: "h5-d",
         profile: {
           name: "Tobias Lindgren",
-          bio: "Domain expert in observational astronomy, an entirely different science with no connection to the structural problem at hand. Eminent in his field, but the wrong domain for this collaboration.",
-          location: "London",
+          bio: "Domain expert in observational astronomy, an entirely different science with no connection to RNA therapeutics or immune-cell assays. Eminent in his field, but the wrong domain for this collaboration.",
+          location: "Philadelphia",
           interests: ["astronomy", "observational data"],
           skills: ["astrophysics", "telescope data analysis"],
         },
         networkId: H5,
         ragScore: 64,
-        matchedVia: "scientist in the interdisciplinary consortium",
+        matchedVia: "scientist in the interdisciplinary research community",
       },
       {
         userId: "h5-e",
         profile: {
           name: "Bianca Rossi",
-          bio: "Generalist data analyst who builds business dashboards and reports. Competent with spreadsheets and BI tools, but does no scientific research and was surfaced through a general analytics group, not the science consortium.",
-          location: "London",
+          bio: "Generalist data analyst who builds business dashboards and reports. Competent with spreadsheets and BI tools, but does no biomedical research and was surfaced through a general analytics group, not the biomedical research community.",
+          location: "Philadelphia",
           interests: ["business intelligence", "dashboards", "reporting"],
           skills: ["SQL", "data visualization", "spreadsheets"],
         },
@@ -489,9 +512,9 @@ const case5: MatchingCase = {
     ],
     networkContexts: {
       [H5]:
-        "An interdisciplinary consortium applying machine learning to a hard, long-standing scientific problem, bringing together domain scientists with curated data and computational researchers.",
+        "A biomedical research community where RNA biochemists, immunologists, and vaccine researchers exchange experimental methods before any therapeutic platform is proven.",
       [H5_ADJ]:
-        "A general business-analytics community for people who build dashboards and reports across industries — broad and not tied to any scientific domain.",
+        "A general business-analytics community for people who build dashboards and reports across industries — broad and not tied to biomedical research.",
     },
   },
   expect: [
@@ -501,6 +524,10 @@ const case5: MatchingCase = {
     { candidateId: "h5-d", match: false, scoreBand: [0, 29] },
     { candidateId: "h5-e", match: false, scoreBand: [0, 29] },
   ],
+  reportNames: {
+    "h5-a": "Katalin Karikó",
+    "h5-b": "Drew Weissman",
+  },
 };
 
 export const HISTORICAL_CASES: MatchingCase[] = [case1, case2, case3, case4, case5];

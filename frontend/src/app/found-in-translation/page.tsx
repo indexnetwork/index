@@ -30,11 +30,11 @@ const MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 const PALETTE = {
   bg: '#0b1612',
-  cream: '#ece3cf',
-  creamSoft: 'rgba(236, 227, 207, 0.78)',
-  creamFaint: 'rgba(236, 227, 207, 0.5)',
-  rule: 'rgba(236, 227, 207, 0.22)',
-  ruleStrong: 'rgba(236, 227, 207, 0.45)',
+  cream: '#F4FBF6',
+  creamSoft: 'rgba(244, 251, 246, 0.78)',
+  creamFaint: 'rgba(244, 251, 246, 0.5)',
+  rule: 'rgba(244, 251, 246, 0.22)',
+  ruleStrong: 'rgba(244, 251, 246, 0.45)',
 };
 
 function useScrollProgress() {
@@ -386,7 +386,7 @@ function ArchCallout({ children }: { children: React.ReactNode }) {
 // Architectural elevation of two humans with intent lattice between them
 function ConversationFig() {
   return (
-    <figure data-fade style={{ margin: '3rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', position: 'relative', background: '#fff', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '3rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', position: 'relative', background: '#fff', overflow: 'hidden' }}>
       <svg viewBox="0 0 960 340" width="100%" style={{ display: 'block' }} aria-label="Fig. 01 — Two humans. Intent: latent.">
         {[{ x: 8, y: 8, r: true, b: false }, { x: 952, y: 8, r: false, b: false }, { x: 8, y: 332, r: true, b: true }, { x: 952, y: 332, r: false, b: true }].map(({ x, y, r, b }, i) => (
           <g key={i}>
@@ -467,7 +467,7 @@ function SearchFrustrationFig() {
   }
 
   return (
-    <figure data-fade style={{ margin: '3rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', background: '#fff', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '3rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', background: '#fff', overflow: 'hidden' }}>
       <svg viewBox="0 0 980 320" width="100%" style={{ display: 'block' }} aria-label="Fig. 02 — The futility of search.">
         {[{ x: 8, y: 8 }, { x: 972, y: 8 }, { x: 8, y: 312 }, { x: 972, y: 312 }].map(({ x, y }, i) => (
           <g key={i}>
@@ -592,7 +592,7 @@ function MonumentElevation({ label }: { label: string }) {
 // ── FIG 03: CLI ERA ──────────────────────────────────────────────
 function InterfaceEvolutionFig() {
   return (
-    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', overflow: 'hidden' }}>
       <img src="/found-in-translation/CLI.png" alt="CLI era terminal" style={{ display: 'block', width: '100%', height: 'auto' }} />
     </figure>
   );
@@ -601,7 +601,7 @@ function InterfaceEvolutionFig() {
 // ── FIG 04: GUI ERA ──────────────────────────────────────────────
 function GuiEraFig() {
   return (
-    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', overflow: 'hidden' }}>
       <img src="/found-in-translation/GUI.jpg" alt="GUI era interface" style={{ display: 'block', width: '100%', height: 'auto' }} />
     </figure>
   );
@@ -610,11 +610,11 @@ function GuiEraFig() {
 // ── FIG 05: BEFORE / AFTER ──────────────────────────────────────
 function BeforeAfterFig() {
   return (
-    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', background: '#f5f4f0', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', background: '#fff', overflow: 'hidden' }}>
       <svg viewBox="0 0 800 260" width="100%" style={{ display: 'block' }} aria-label="Before and after: keyword search vs expressive intent">
         {/* backgrounds first */}
-        <rect x="0" y="0" width="400" height="260" fill="#f5f4f0" />
-        <rect x="400" y="0" width="400" height="260" fill="#f5f4f0" />
+        <rect x="0" y="0" width="400" height="260" fill="#fff" />
+        <rect x="400" y="0" width="400" height="260" fill="#fff" />
 
         {/* left content */}
         <text x="40" y="52" fontFamily="'JetBrains Mono', ui-monospace, monospace" fontSize="9" letterSpacing="2" fill="#aaa">BEFORE</text>
@@ -672,7 +672,7 @@ function AgentNetworkPlan() {
   ];
 
   return (
-    <figure data-fade style={{ margin: '3rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', background: '#fff', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '3rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', background: '#fff', overflow: 'hidden' }}>
       <svg viewBox="0 0 800 490" width="100%" style={{ display: 'block' }} aria-label="Agent network — plan view">
         {Array.from({ length: 26 }, (_, row) =>
           Array.from({ length: 17 }, (_, col) => (
@@ -744,7 +744,7 @@ function AgentNetworkPlan() {
 // ── STRUCTURE CARD ──────────────────────────────────────────────
 function StructureCard({ title, sub, body }: { title: string; sub: string; body: string }) {
   return (
-    <div data-fade style={{ border: '1px solid rgba(236, 227, 207, 0.22)', padding: '2rem', background: '#fff', position: 'relative' }}>
+    <div data-fade style={{ border: '1px solid rgba(244, 251, 246, 0.22)', padding: '2rem', background: '#fff', position: 'relative' }}>
       <div style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: '0.55rem', letterSpacing: '0.25em', textTransform: 'uppercase', marginBottom: '1rem', color: '#666' }}>{sub}</div>
       <div style={{ fontFamily: SANS, fontWeight: 900, fontSize: 'clamp(1.6rem,3vw,2.2rem)', letterSpacing: '-0.02em', textTransform: 'uppercase', marginBottom: '1rem', color: '#000', lineHeight: 1 }}>{title}</div>
       <p style={{ fontFamily: SANS, fontSize: '0.85rem', lineHeight: 1.7, color: '#333', margin: 0 }}>{body}</p>
@@ -1009,7 +1009,7 @@ export default function FoundInTranslationPage() {
       </div>
 
       <div style={{ ...WRAP, padding: '0 2rem' }}>
-        <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(236, 227, 207, 0.22)', background: '#fff', overflow: 'hidden' }}>
+        <figure data-fade style={{ margin: '2rem 0', border: '1px solid rgba(244, 251, 246, 0.22)', background: '#fff', overflow: 'hidden' }}>
           <img
             src="/found-in-translation/diagram1.jpeg"
             alt="Two people in conversation diagram"
@@ -1116,7 +1116,7 @@ export default function FoundInTranslationPage() {
       </div>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 4rem' }}>
-        <h2 data-fade style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: '#000', marginBottom: '1.5rem' }}>
+        <h2 data-fade style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: PALETTE.cream, marginBottom: '1.5rem' }}>
           Entering ambient optimism
         </h2>
         <p data-fade style={P}>So that coffee shop moment—when you ask someone at the next table over for the wifi password, who then becomes your next idea partner—becomes possible online.</p>

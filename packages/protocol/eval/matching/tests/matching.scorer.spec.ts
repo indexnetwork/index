@@ -10,6 +10,7 @@ const baseCase = (expectOverrides: MatchingCase["expect"]): MatchingCase => ({
   id: "t/case",
   rule: "is_a_identity",
   tier: 1,
+  domains: ["technology"],
   description: "synthetic",
   input: { discovererId: "src", entities: [] },
   expect: expectOverrides,
@@ -63,6 +64,16 @@ describe("scoreRun", () => {
     expect(res.passed).toBe(true);
   });
 
+  it("treats a returned sub-threshold candidate as not surfaced", async () => {
+    const c = baseCase([{ candidateId: "cand", match: false, scoreBand: [0, 29] }]);
+    const res = await scoreRun(c, [opp("cand", 25)], passJudge);
+    expect(res.passed).toBe(true);
+    expect(res.assertions.find((a) => a.kind === "match")?.passed).toBe(true);
+    expect(res.candidates![0].returned).toBe(true);
+    expect(res.candidates![0].matched).toBe(false);
+    expect(res.candidates![0].score).toBe(25);
+  });
+
   it("treats a score-0 candidate as not matched (accept expectation fails on match)", async () => {
     const c = baseCase([{ candidateId: "cand", match: true, scoreBand: [70, 100] }]);
     const res = await scoreRun(c, [opp("cand", 0)], passJudge);
@@ -93,6 +104,7 @@ describe("scoreRun", () => {
     expect(res.candidates).toHaveLength(1);
     const outcome = res.candidates![0];
     expect(outcome.candidateId).toBe("cand");
+    expect(outcome.returned).toBe(true);
     expect(outcome.matched).toBe(true);
     expect(outcome.score).toBe(88);
     expect(outcome.role).toBe("agent");
@@ -103,6 +115,7 @@ describe("scoreRun", () => {
     const c = baseCase([{ candidateId: "cand", match: false, scoreBand: [0, 30] }]);
     const res = await scoreRun(c, [], passJudge);
     const outcome = res.candidates![0];
+    expect(outcome.returned).toBe(false);
     expect(outcome.matched).toBe(false);
     expect(outcome.score).toBe(0);
     expect(outcome.role).toBeUndefined();

@@ -7,11 +7,11 @@
 .landing {
   --bg: #14241f;
   --bg-deep: #0b1612;
-  --cream: #ece3cf;
-  --cream-soft: rgba(236, 227, 207, 0.78);
-  --cream-faint: rgba(236, 227, 207, 0.5);
-  --rule: rgba(236, 227, 207, 0.22);
-  --rule-strong: rgba(236, 227, 207, 0.45);
+  --cream: #F4FBF6;
+  --cream-soft: rgba(244, 251, 246, 0.78);
+  --cream-faint: rgba(244, 251, 246, 0.5);
+  --rule: rgba(244, 251, 246, 0.22);
+  --rule-strong: rgba(244, 251, 246, 0.45);
   --ink: #14241f;
   --ink-soft: rgba(20, 36, 31, 0.66);
 
@@ -593,7 +593,8 @@
 
 .landing .comment {
   color: var(--cream-soft);
-  padding-left: 56px;
+  /* Align with the step title (.cmd): width of the "[NN]" num (4ch) + step-row gap */
+  padding-left: calc(4ch + 14px);
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .landing .comment .hash { color: var(--cream-faint); margin-right: 10px; }
@@ -996,7 +997,7 @@
   transition: background 120ms ease, padding 120ms ease;
 }
 .landing .blog-row:hover {
-  background: rgba(236, 227, 207, 0.04);
+  background: rgba(244, 251, 246, 0.04);
   padding-left: 12px;
   padding-right: 12px;
 }
@@ -1436,7 +1437,6 @@
   .landing .h1 .hero-terminal { font-size: 12px; padding: 14px 16px; }
   .landing .h1 .ch-1 { display: none; }
   .landing .how { padding: 80px 22px 96px; }
-  .landing .comment { padding-left: 24px; }
   .landing .how-inner { max-width: none; }
   .landing .how-block { grid-template-columns: 1fr; gap: 18px; }
   .landing .how-block-text,

@@ -6,11 +6,11 @@
 ============================================================ */
 .auth {
   --av-bg-deep: #0b1612;
-  --av-cream: #ece3cf;
-  --av-cream-soft: rgba(236, 227, 207, 0.78);
-  --av-cream-faint: rgba(236, 227, 207, 0.5);
-  --av-rule: rgba(236, 227, 207, 0.22);
-  --av-rule-strong: rgba(236, 227, 207, 0.45);
+  --av-cream: #F4FBF6;
+  --av-cream-soft: rgba(244, 251, 246, 0.78);
+  --av-cream-faint: rgba(244, 251, 246, 0.5);
+  --av-rule: rgba(244, 251, 246, 0.22);
+  --av-rule-strong: rgba(244, 251, 246, 0.45);
   --av-ink: #14241f;
 
   position: fixed;
@@ -127,7 +127,7 @@
 }
 .auth .av-oauth:hover {
   border-color: var(--av-rule-strong);
-  background: rgba(236, 227, 207, 0.04);
+  background: rgba(244, 251, 246, 0.04);
 }
 .auth .av-oauth:disabled { opacity: 0.5; cursor: default; }
 

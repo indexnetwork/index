@@ -6,10 +6,18 @@
  *   bun run eval:matching                       # all cases, 3 runs, judge on, diff baseline
  *   bun run eval:matching -- --runs 1           # faster, noisier
  *   bun run eval:matching -- --rule is_a_identity
+ *   bun run eval:matching -- --case location/known-mismatch-penalized
+ *   bun run eval:matching -- --tier 4
+ *   bun run eval:matching -- --list-cases       # list selected cases and exit
  *   bun run eval:matching -- --no-judge         # skip assertLLM checks (free)
  *   bun run eval:matching -- --update-baseline  # overwrite the committed baseline
  *   bun run eval:matching -- --report           # write a full run report (incl. evaluator reasoning)
  *   bun run eval:matching -- --report path.json # ...to a specific path
+ *   bun run eval:matching -- --html             # write a standalone HTML scorecard
+ *   bun run eval:matching -- --html path.html   # ...to a specific path
+ *   bun run eval:matching -- --rolling-baseline # compare against recent runs (default 7d)
+ *   bun run eval:matching -- --rolling-baseline 14 # compare against a 14-day window
+ *   bun run eval:matching -- --alpha 0.01      # stricter regression significance threshold
  *
  * Requires OPENROUTER_API_KEY (loaded via --env-file=.env.test in the package script).
  * Exits non-zero when a regression vs the committed baseline is detected.
@@ -21,18 +29,51 @@ import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
 import { CASES } from "./matching.cases.js";
 import { runCase } from "./matching.runner.js";
 import { scoreCase, type Judge } from "./matching.scorer.js";
+import { formatCaseList, hasRule, parseTier, selectCases } from "./matching.selection.js";
 import {
   buildScorecard,
+  computeRollingBaseline,
   diffBaseline,
   formatConsole,
   readBaseline,
   writeBaseline,
+  writeHtmlReport,
   writeRunReport,
 } from "./matching.reporter.js";
 import type { CaseResult } from "./matching.types.js";
 
-const REGRESSION_THRESHOLD = 0.34;
+const DEFAULT_ALPHA = 0.05;
 const BASELINE_PATH = path.resolve(import.meta.dir, "baselines/matching.baseline.json");
+const RUNS_DIR = path.resolve(import.meta.dir, "runs");
+
+function usage(): string {
+  return `Matching quality eval harness
+
+Usage (from packages/protocol):
+  bun run eval:matching [-- options]
+
+Selection:
+  --rule <rule>             Run one rule
+  --case <id-or-prefix>     Run one case or id prefix
+  --tier <1|2|3|4>          Run one tier
+  --list-cases              Print selected cases and exit
+
+Execution:
+  --runs <n>                Runs per case (default: 3)
+  --no-judge                Skip LLM reasoning checks
+  --alpha <p>               Regression significance threshold (default: ${DEFAULT_ALPHA})
+  --no-save                 Do not auto-save full-corpus run JSON for rolling baseline fuel
+
+Baselines/reports:
+  --update-baseline         Overwrite committed baseline (full corpus only)
+  --rolling-baseline [days] Compare against recent run reports (default: 7)
+  --report [path]           Write JSON scorecard
+  --html [path]             Write standalone HTML scorecard
+
+Other:
+  --help, -h                Show this help
+`;
+}
 
 function arg(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
@@ -48,15 +89,46 @@ function flagValue(flag: string): string | undefined {
 }
 
 async function main(): Promise<void> {
+  if (has("--help") || has("-h")) {
+    console.log(usage());
+    process.exit(0);
+  }
+
   const runs = Number(arg("--runs") ?? 3);
   if (!Number.isInteger(runs) || runs < 1) {
     console.error(`--runs must be a positive integer (got "${arg("--runs")}")`);
     process.exit(2);
   }
   const ruleFilter = arg("--rule");
+  if (ruleFilter && !hasRule(CASES, ruleFilter)) {
+    console.error(`No cases match --rule ${ruleFilter}`);
+    process.exit(2);
+  }
+  const caseFilter = arg("--case");
+  let tierFilter: 1 | 2 | 3 | 4 | undefined;
+  try {
+    tierFilter = parseTier(arg("--tier"));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(2);
+  }
+  const listCases = has("--list-cases");
   const updateBaseline = has("--update-baseline");
   const noJudge = has("--no-judge");
   const report = has("--report");
+  const html = has("--html");
+  const noSave = has("--no-save");
+  const alpha = Number(arg("--alpha") ?? DEFAULT_ALPHA);
+  if (!Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) {
+    console.error(`--alpha must be a number between 0 and 1 (got "${arg("--alpha")}")`);
+    process.exit(2);
+  }
+  const rollingBaseline = has("--rolling-baseline");
+  const rollingBaselineDays = rollingBaseline ? Number(flagValue("--rolling-baseline") ?? 7) : null;
+  if (rollingBaselineDays !== null && (!Number.isFinite(rollingBaselineDays) || rollingBaselineDays <= 0)) {
+    console.error(`--rolling-baseline must be a positive number of days (got "${flagValue("--rolling-baseline")}")`);
+    process.exit(2);
+  }
 
   const judge: Judge = noJudge
     ? async () => true
@@ -69,9 +141,18 @@ async function main(): Promise<void> {
         }
       };
 
-  const selected = ruleFilter ? CASES.filter((c) => c.rule === ruleFilter) : CASES;
+  const selected = selectCases(CASES, { rule: ruleFilter, caseId: caseFilter, tier: tierFilter });
+  const fullCorpus = !ruleFilter && !caseFilter && tierFilter === undefined;
+  if (listCases) {
+    console.log(formatCaseList(selected));
+    process.exit(0);
+  }
   if (selected.length === 0) {
-    console.error(`No cases match --rule ${ruleFilter}`);
+    console.error(`No cases match selected filters`);
+    process.exit(2);
+  }
+  if (updateBaseline && !fullCorpus) {
+    console.error(`--update-baseline requires a full-corpus run (remove --rule/--case/--tier filters)`);
     process.exit(2);
   }
 
@@ -89,22 +170,42 @@ async function main(): Promise<void> {
   }
 
   const scorecard = buildScorecard(results, { model, runs });
-  const baseline = ruleFilter ? null : await readBaseline(BASELINE_PATH);
-  const { regressions } = diffBaseline(scorecard, baseline, REGRESSION_THRESHOLD);
+  const baseline = rollingBaselineDays !== null
+    ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays)
+    : await readBaseline(BASELINE_PATH);
+  const { regressions, skippedCaseIds } = diffBaseline(scorecard, baseline, alpha);
 
-  console.log(formatConsole(scorecard, regressions));
+  if (rollingBaselineDays !== null) {
+    console.log(
+      baseline
+        ? `\nComparing against rolling ${rollingBaselineDays}-day baseline (${baseline.model}, α=${alpha}).`
+        : `\nNo rolling ${rollingBaselineDays}-day baseline found; skipping regression comparison.`,
+    );
+  }
+
+  console.log(formatConsole(scorecard, regressions, skippedCaseIds));
 
   if (updateBaseline) {
     await writeBaseline(BASELINE_PATH, scorecard);
     console.log(`\nBaseline updated at ${BASELINE_PATH}`);
   }
 
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
+  if (fullCorpus && !noSave) {
+    await writeRunReport(autoRunPath, scorecard);
+  }
+
   if (report) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const reportPath =
-      flagValue("--report") ?? path.resolve(import.meta.dir, "runs", `${stamp}.json`);
-    await writeRunReport(reportPath, scorecard);
+    const reportPath = flagValue("--report") ?? autoRunPath;
+    if (reportPath !== autoRunPath) await writeRunReport(reportPath, scorecard);
     console.log(`\nRun report written to ${reportPath}`);
+  }
+
+  if (html) {
+    const htmlPath = flagValue("--html") ?? path.resolve(RUNS_DIR, `${stamp}.html`);
+    await writeHtmlReport(htmlPath, scorecard, regressions, CASES);
+    console.log(`\nHTML report written to ${htmlPath}`);
   }
 
   process.exit(regressions.length > 0 ? 1 : 0);

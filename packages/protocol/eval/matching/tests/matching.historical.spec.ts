@@ -7,6 +7,7 @@ describe("tier-3 historical corpus", () => {
     for (const c of HISTORICAL_CASES) {
       expect(c.tier).toBe(3);
       expect(c.rule).toBe("historical");
+      expect(c.domains.length).toBeGreaterThan(0);
     }
   });
 
@@ -39,6 +40,23 @@ describe("tier-3 historical corpus", () => {
     for (const c of HISTORICAL_CASES) {
       const ids = new Set(c.input.entities.map((e) => e.userId));
       for (const exp of c.expect) expect(ids.has(exp.candidateId)).toBe(true);
+    }
+  });
+
+  it("uses report-only real names while keeping protocol input anonymized", () => {
+    for (const c of HISTORICAL_CASES) {
+      expect(c.reportNames).toBeDefined();
+      const discovererName = c.reportNames![c.input.discovererId];
+      expect(discovererName).toBeTruthy();
+      expect(c.input.entities.find((e) => e.userId === c.input.discovererId)?.profile.name).toBe("(source user)");
+    }
+  });
+
+  it("keeps historical inputs scoped to pre-opportunity profiles", () => {
+    const forbidden = /cofounder of apple|apple computer|beatles|google|alphafold|nobel|lasker|mrna vaccine|covid/i;
+    for (const c of HISTORICAL_CASES) {
+      const text = JSON.stringify(c.input);
+      expect(text).not.toMatch(forbidden);
     }
   });
 

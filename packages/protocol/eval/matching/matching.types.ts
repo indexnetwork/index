@@ -15,6 +15,9 @@ export type Rule =
 
 export type Role = "agent" | "patient" | "peer";
 
+/** Broad domain(s) the case exercises for coverage and reporting. */
+export type Domain = "technology" | "research" | "arts" | "funding" | "location" | "community" | "sports";
+
 /** Expectation for a single candidate within a case. */
 export interface CandidateExpectation {
   candidateId: string;
@@ -31,10 +34,17 @@ export interface CandidateExpectation {
 export interface MatchingCase {
   id: string;
   rule: Rule;
-  tier: 1 | 2 | 3;
+  tier: 1 | 2 | 3 | 4;
+  domains: Domain[];
   description: string;
   input: EvaluatorInput;
   expect: CandidateExpectation[];
+  /**
+   * Optional report-only display names keyed by entity id. Use when evaluator input
+   * should remain anonymized (e.g. historical cases) but reports may reveal the
+   * real-world referents. Never sent to the protocol evaluator.
+   */
+  reportNames?: Record<string, string>;
 }
 
 export type AssertionKind = "match" | "band" | "role" | "reasoning";
@@ -54,7 +64,9 @@ export interface AssertionResult {
  */
 export interface CandidateOutcome {
   candidateId: string;
-  /** Did an opportunity for this candidate surface with a score > 0? */
+  /** Did the evaluator return an opportunity object for this candidate, even below the surfacing threshold? */
+  returned?: boolean;
+  /** Did an opportunity for this candidate surface at or above the eval surfacing threshold? */
   matched: boolean;
   score: number;
   /** Valency role assigned to this candidate when matched. */
