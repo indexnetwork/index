@@ -167,12 +167,27 @@ export function resolveCronSchedule(
   return override;
 }
 
+/**
+ * Probe whether the Hermes CLI can actually run. `hermesBin()` falls back to the
+ * bare name `"hermes"` when it finds no fixed-path binary, but that name still
+ * resolves on PATH (the augmented env adds ~/.local/bin etc.). So test by
+ * executing `hermes --version` rather than string-comparing the resolved name.
+ */
+function hermesAvailable(bin: string): boolean {
+  try {
+    execFileSync(bin, ["--version"], { stdio: "ignore", env: hermesExecEnv() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function installCronJobs(env: NodeJS.ProcessEnv): void {
   const home = hermesHome();
   const promptsDir = join(home, "skills/index-network/prompts");
 
   const bin = hermesBin();
-  if (bin === "hermes") {
+  if (!hermesAvailable(bin)) {
     console.warn("  warning: hermes CLI not found — skipping digest crons");
     return;
   }
