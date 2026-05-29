@@ -110,7 +110,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (authenticated && !user && !userFetchAttempted) return;
 
     const isHomePage = pathname === '/';
-    const isOnboardingPage = pathname === '/onboarding';
     const publicPrefixes = [
       '/simulation', '/l', '/index/', '/blog', '/pages', '/about',
       '/login', '/s/', '/oauth/', '/found-in-translation', '/cli-auth', '/u/',
@@ -125,12 +124,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Force redirect to /onboarding when onboarding is not complete
-    if (authenticated && user && !user.onboarding?.completedAt) {
-      if (!isOnboardingPage && !isPublicPage) {
-        navigate('/onboarding', { replace: true });
-        return;
-      }
+    // Force redirect to /onboarding only from the authenticated home page.
+    if (authenticated && user && !user.onboarding?.completedAt && isHomePage) {
+      navigate('/onboarding', { replace: true });
+      return;
     }
 
     setIsLoading(false);
