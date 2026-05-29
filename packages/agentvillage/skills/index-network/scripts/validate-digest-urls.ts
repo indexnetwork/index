@@ -26,7 +26,15 @@ const CONNECT_PATH = /^\/c\/[A-Za-z0-9_-]+\/?$/;
 /** Profile link: `/u/<uuid>`, optional trailing slash. */
 const PROFILE_PATH = /^\/u\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/?$/;
 
-/** A markdown inline link: `[label](url)`. Label is non-greedy; url runs to the next `)`. */
+/**
+ * A markdown inline link: `[label](url)`. Label runs to the first `]`; url to the next `)`.
+ *
+ * Scope is deliberately limited to inline markdown links — the only link shape the
+ * digest prompts ever emit. Autolinks (`<https://…>`), bare URLs in prose, and labels
+ * containing nested `]` are NOT covered; if the model ever emits one of those it is out
+ * of this guard's reach (see the "known non-target" tests). Legitimate connect/profile
+ * URLs contain no `(`/`)`/`]`, so this never truncates a real link.
+ */
 const MARKDOWN_LINK = /\[([^\]]*)\]\(([^)]*)\)/g;
 
 /**

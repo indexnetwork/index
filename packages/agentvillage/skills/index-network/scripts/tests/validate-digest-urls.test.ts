@@ -75,6 +75,29 @@ describe("sanitizeDigestUrls", () => {
     expect(stripped).toEqual([]);
   });
 
+  test("on one bullet, keeps the legitimate /c/ link and strips the fabricated one beside it", () => {
+    // The grouped-card shape from prepare.md step 8: one real connect link and one
+    // fabricated link on the same line. Only the fabricated one must be demoted.
+    const md = "- [Maya](https://protocol.index.network/c/Abc1234567?link_preview=false) on memory, and [more](https://index.network/accept/901)";
+
+    const { output, stripped } = sanitizeDigestUrls(md);
+
+    expect(output).toBe("- [Maya](https://protocol.index.network/c/Abc1234567?link_preview=false) on memory, and more");
+    expect(stripped).toEqual(["https://index.network/accept/901"]);
+  });
+
+  test("known non-target: bare URLs and autolinks pass through unstripped (out of guard scope)", () => {
+    // Documents a deliberate limitation: the guard only covers inline `[label](url)`
+    // links — the only shape the digest prompts emit. A bare or autolinked fabricated
+    // URL is NOT caught. If the prompts ever start emitting these, this test should flip.
+    const md = "See https://index.network/accept/901 or <https://index.network/accept/901>";
+
+    const { output, stripped } = sanitizeDigestUrls(md);
+
+    expect(output).toBe(md);
+    expect(stripped).toEqual([]);
+  });
+
   test("does not treat a trailing-slash /c/ or /u/ path as fabricated", () => {
     const md = "[a](https://index.network/c/Abc1234567/) [b](https://index.network/u/44444444-4444-4444-4444-444444444444/)";
 
