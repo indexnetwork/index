@@ -3,6 +3,7 @@ import { UserSummary } from './users.types';
 import { FileRecord } from './files.types';
 
 export type NetworkJoinPolicy = 'anyone' | 'invite_only';
+export type ProfileEnrichmentPolicy = 'auto' | 'consent_required' | 'disabled';
 
 export interface NetworkPermissions {
   joinPolicy: NetworkJoinPolicy;
@@ -10,6 +11,8 @@ export interface NetworkPermissions {
   invitationLink?: {
     code: string;
   } | null;
+  contextInjection?: { discovery: boolean };
+  profileEnrichment?: ProfileEnrichmentPolicy;
 }
 
 export interface NetworkMember {
@@ -72,6 +75,8 @@ export interface UpdateNetworkRequest {
   permissions?: {
     joinPolicy?: NetworkJoinPolicy;
     allowGuestVibeCheck?: boolean;
+    contextInjection?: { discovery: boolean };
+    profileEnrichment?: ProfileEnrichmentPolicy;
   };
   metadata?: {
     startDate?: string;

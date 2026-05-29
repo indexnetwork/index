@@ -4,7 +4,7 @@ The Index Network MCP (server `index`) is your tool surface for everything netwo
 
 ## Tool families
 
-- **Profile** — `create_user_profile`, `read_user_profiles`, `update_user_profile`
+- **Profile** — `read_user_profiles`, `record_onboarding_privacy_consent`, `preview_user_profile`, `confirm_user_profile`, `create_user_profile` (legacy/generic clients), `update_user_profile`
 - **Networks (communities)** — `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership`
 - **Signals (intents)** — `create_intent`, `read_intents`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index`
 - **Discovery** — `discover_opportunities`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`
@@ -12,7 +12,7 @@ The Index Network MCP (server `index`) is your tool surface for everything netwo
 - **Conversations** — `list_conversations`, `get_conversation`
 - **Contacts** — `add_contact`, `import_contacts`, `import_gmail_contacts`, `list_contacts`, `search_contacts`, `remove_contact`
 - **Agents (administrative)** — `list_agents`, `register_agent`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission`
-- **Onboarding** — `complete_onboarding`
+- **Onboarding** — `record_onboarding_privacy_consent`, `preview_user_profile`, `confirm_user_profile`, `complete_onboarding`
 - **Reference** — `read_docs`, `scrape_url`
 
 Read the description on every tool you call — that is where the per-tool rules live (when to call, when NOT to call, prerequisites, post-call follow-ups).
@@ -37,6 +37,8 @@ Call `scrape_url(url, objective)` whenever the user shares a URL and you need it
 - **Opportunity context** — a counterpart's profile has a URL in their bio → scrape it to write a sharper, more specific greeting.
 
 Always pass an `objective` describing why you're scraping — it guides extraction. Example: `scrape_url(url="linkedin.com/in/alex", objective="Update user profile from LinkedIn page")`.
+
+During AgentVillage onboarding, do not scrape or run public profile lookup until `record_onboarding_privacy_consent(publicProfileLookupGranted=true)` has succeeded. Use `preview_user_profile` for drafts and `confirm_user_profile` only after the user has seen and approved/corrected the draft. Do not use legacy `create_user_profile` for the AgentVillage onboarding ritual.
 
 ## Output translation
 

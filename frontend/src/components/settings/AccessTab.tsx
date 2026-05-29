@@ -18,6 +18,30 @@ import UserAvatar from '@/components/UserAvatar';
 import GhostBadge from '@/components/GhostBadge';
 import { useNavigate } from 'react-router';
 
+type ProfileEnrichmentPolicy = 'auto' | 'consent_required' | 'disabled';
+
+const PROFILE_ENRICHMENT_OPTIONS: Array<{
+  value: ProfileEnrichmentPolicy;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'auto',
+    label: 'Automatic',
+    description: 'Allow automatic member enrichment jobs without an extra consent gate.',
+  },
+  {
+    value: 'consent_required',
+    label: 'Require consent',
+    description: 'Ask members before automatic public lookup or enrichment runs.',
+  },
+  {
+    value: 'disabled',
+    label: 'Disabled',
+    description: 'Do not run automatic public lookup or enrichment for this network.',
+  },
+];
+
 interface AccessTabProps {
   network: Network;
   networkId: string;
@@ -43,6 +67,7 @@ export default function AccessTab({
   const usersService = createUsersService(api);
 
   const [anyoneCanJoin, setAnyoneCanJoin] = useState(network.permissions?.joinPolicy === 'anyone');
+  const [isUpdatingProfilePolicy, setIsUpdatingProfilePolicy] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
@@ -146,6 +171,21 @@ export default function AccessTab({
     } catch (err) {
       console.error('Error updating permissions:', err);
       error('Failed to update permissions');
+    }
+  };
+
+  const handleUpdateProfileEnrichment = async (profileEnrichment: ProfileEnrichmentPolicy) => {
+    if (isUpdatingProfilePolicy) return;
+    setIsUpdatingProfilePolicy(true);
+    try {
+      const updatedNetwork = await networkService.updatePermissions(networkId, { profileEnrichment });
+      onUpdated(updatedNetwork);
+      success('Automatic member enrichment policy updated');
+    } catch (err) {
+      console.error('Error updating profile enrichment policy:', err);
+      error('Failed to update profile enrichment policy');
+    } finally {
+      setIsUpdatingProfilePolicy(false);
     }
   };
 
@@ -314,6 +354,7 @@ export default function AccessTab({
     safePage * CONTACTS_PAGE_SIZE
   );
   const noResults = searchHasQueried && filteredSuggestions.length === 0 && filteredMembers.length === 0;
+  const profileEnrichmentPolicy = ((network.permissions as { profileEnrichment?: ProfileEnrichmentPolicy } | undefined)?.profileEnrichment ?? 'auto');
 
   return (
     <>
@@ -347,6 +388,38 @@ export default function AccessTab({
                 </div>
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Profile enrichment policy */}
+        {!network.isPersonal && (
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Automatic Member Enrichment</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {PROFILE_ENRICHMENT_OPTIONS.map((option) => {
+                const selected = profileEnrichmentPolicy === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={isUpdatingProfilePolicy}
+                    onClick={() => handleUpdateProfileEnrichment(option.value)}
+                    className={`flex items-start gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 disabled:opacity-60 disabled:cursor-not-allowed ${selected ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
+                  >
+                    <Shield className={`h-4 w-4 flex-shrink-0 mt-0.5 ${selected ? 'text-black' : 'text-gray-400'}`} />
+                    <div>
+                      <p className="text-sm font-medium text-black">{option.label}</p>
+                      <p className="text-xs text-gray-400">{option.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {network.isExperiment && profileEnrichmentPolicy !== 'consent_required' && (
+              <p className="text-xs text-amber-600 mt-2">
+                Consent is recommended for experiment signup networks so attendee profile data is staged until members verify it.
+              </p>
+            )}
           </div>
         )}
 
@@ -642,7 +715,7 @@ export default function AccessTab({
             </div>
             <div className="px-6 py-5 space-y-4">
               <p className="text-sm text-gray-600">
-                Upload a CSV file with member data. The file must have an <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">email</code> column. Optional columns: <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">name</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">bio</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">location</code>, and any social links (e.g. <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">linkedin</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">github</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">twitter</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">website</code>).
+                Upload a CSV file with member data. The file must have an <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">email</code> column. Optional profile columns are staged for onboarding until each member grants import consent and verifies their profile: <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">name</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">bio</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">location</code>, and social links (e.g. <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">linkedin</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">github</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">twitter</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">website</code>).
               </p>
               <button
                 type="button"

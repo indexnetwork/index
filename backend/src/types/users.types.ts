@@ -12,12 +12,37 @@ export interface NotificationPreferences {
   weeklyNewsletter: boolean;
 }
 
+export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
+
+export interface PrivacyConsentDecision {
+  granted: boolean;
+  decidedAt: ISODateString;
+  source: PrivacyConsentSource;
+}
+
+export interface OnboardingPrivacyState {
+  edgeosImport?: PrivacyConsentDecision;
+  publicProfileLookup?: PrivacyConsentDecision;
+}
+
+export interface OnboardingProfileSeed {
+  source: 'experiment_signup' | 'experiment_csv_import';
+  networkId: UUID;
+  capturedAt: ISODateString;
+  name?: string;
+  bio?: string;
+  location?: string;
+  socials?: { label: string; value: string }[];
+}
+
 export interface OnboardingState {
   completedAt?: ISODateString | null;
   flow?: 1 | 2 | 3;
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks';
   networkId?: UUID | null;
   invitationCode?: string;
+  privacy?: OnboardingPrivacyState;
+  profileSeeds?: OnboardingProfileSeed[];
 }
 
 export interface User {
