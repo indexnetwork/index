@@ -3,7 +3,8 @@
  *
  *   - Merges `mcp_servers.index` into `$HERMES_HOME/config.yaml`
  *   - Writes `INDEX_API_KEY` to `$HERMES_HOME/.env`
- *   - Installs the morning digest cron (`Edge — daily digest`, 08:00 host-local)
+ *   - Installs the digest crons: prepare (`Edge — digest prepare`, 02:00) and
+ *     send (`Edge — daily digest`, 08:00) — both host-local
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -87,36 +88,69 @@ function removeEdgeCronJobs(env: NodeJS.ProcessEnv): void {
   }
 }
 
+export interface DigestCronSpec {
+  schedule: string;
+  /** Prompt file under skills/index-network/prompts/. */
+  promptFile: string;
+  /** Full Hermes cron name (kept under the CRON_NAME_PREFIX). */
+  name: string;
+  /** Whether to attach --deliver telegram. */
+  deliver: boolean;
+}
+
+/**
+ * The morning digest runs as two fixed-time dispatches: a prepare pass that
+ * composes the brief and stages it on the Kanban board (no delivery), and a
+ * send pass that delivers the staged brief.
+ */
+export const DIGEST_CRON_SPECS: DigestCronSpec[] = [
+  { schedule: "0 2 * * *", promptFile: "prepare.md", name: "Edge — digest prepare", deliver: false },
+  { schedule: "0 8 * * *", promptFile: "send.md", name: "Edge — daily digest", deliver: true },
+];
+
+/** Build the argv for `hermes cron create` from a spec + resolved prompt body. */
+export function cronCreateArgs(spec: DigestCronSpec, promptBody: string, home: string): string[] {
+  const args = ["cron", "create", spec.schedule, promptBody, "--name", spec.name];
+  if (spec.deliver) args.push("--deliver", "telegram");
+  args.push("--workdir", home);
+  return args;
+}
+
 function installCronJobs(env: NodeJS.ProcessEnv): void {
   const home = hermesHome();
-  const digestPath = join(home, "skills/index-network/prompts/digest.md");
-  if (!existsSync(digestPath)) {
-    console.error(`error: digest prompt missing at ${digestPath} — run install.ts first`);
-    process.exit(1);
+  const promptsDir = join(home, "skills/index-network/prompts");
+
+  const bin = hermesBin();
+  if (bin === "hermes") {
+    console.warn("  warning: hermes CLI not found — skipping digest crons");
+    return;
   }
 
   removeEdgeCronJobs(env);
 
-  const digestMessage = readFileSync(digestPath, "utf8");
-  console.log("→ installing morning digest cron");
-
-  const bin = hermesBin();
-  if (bin === "hermes") {
-    console.warn("  warning: hermes CLI not found — skipping digest cron");
-    return;
+  // Ensure the Kanban store exists (idempotent; prepare/send stage tasks on it).
+  try {
+    execFileSync(bin, ["kanban", "init"], { stdio: "ignore", env: hermesExecEnv() });
+  } catch {
+    console.warn("  warning: could not run `hermes kanban init` — board may auto-init on first use");
   }
 
-  // Always use --deliver telegram. Hermes reloads .env on every cron tick,
-  // so TELEGRAM_HOME_CHANNEL set after pairing is picked up automatically.
-  try {
-    execFileSync(
-      bin,
-      ["cron", "create", "0 8 * * *", digestMessage,
-        "--name", "Edge — daily digest", "--deliver", "telegram", "--workdir", home],
-      { stdio: ["ignore", "ignore", "inherit"], env: hermesExecEnv() },
-    );
-  } catch {
-    console.warn("  warning: could not install digest cron — gateway may still run");
+  for (const spec of DIGEST_CRON_SPECS) {
+    const promptPath = join(promptsDir, spec.promptFile);
+    if (!existsSync(promptPath)) {
+      console.error(`error: prompt missing at ${promptPath} — run install.ts first`);
+      process.exit(1);
+    }
+    const promptBody = readFileSync(promptPath, "utf8");
+    console.log(`→ installing cron "${spec.name}" (${spec.schedule})`);
+    try {
+      execFileSync(bin, cronCreateArgs(spec, promptBody, home), {
+        stdio: ["ignore", "ignore", "inherit"],
+        env: hermesExecEnv(),
+      });
+    } catch {
+      console.warn(`  warning: could not install cron "${spec.name}" — gateway may still run`);
+    }
   }
 }
 
