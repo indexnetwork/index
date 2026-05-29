@@ -24,3 +24,5 @@ Cron prompts in `prompts/` (`prepare.md`, `send.md`) are loaded by the cron runn
 ## Handoff
 
 The MCP server's own instructions carry the protocol-level rules (voice, vocabulary, entity model, output translation). Tool descriptions are authoritative; read them before calling. This skill adds only Edge Esmeralda-specific framing on top — never duplicate the MCP's behavioural guidance here.
+
+When this shared skill says to reply silently or use a no-reply marker, use the marker for the host you are running in: Hermes → `[SILENT]`; OpenClaw → `NO_REPLY`; Claude Code → produce no user-facing text if the host supports a silent turn, otherwise stop without commentary.

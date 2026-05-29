@@ -102,9 +102,9 @@ The morning digest is delivered at 08:00 host-local. It runs as two background d
 
 You don't poll. The gateway pings you (~30m); decide if anything warrants a turn.
 
-**If `read_user_profiles()` reports `onboardingComplete: false`:** reply `NO_REPLY` and stop.
+**If `read_user_profiles()` reports `onboardingComplete: false`:** reply `[SILENT]` and stop.
 
-**`NO_REPLY` discipline.** Hermes delivers nothing when the turn is exactly `NO_REPLY` (matched `^\s*NO_REPLY\s*$`, case-insensitive) or `{"action":"NO_REPLY"}`. Anything else is delivered verbatim. Never: `textNO_REPLY`, JSON envelopes with extra keys, `NO_REPLY` in quotes/fences/tool calls. If you output to a tool first, that output delivers before `NO_REPLY` suppresses the rest.
+**`[SILENT]` discipline.** Hermes delivers nothing when the final assistant reply is exactly `[SILENT]`. Anything else is delivered verbatim. Never: `text[SILENT]`, JSON envelopes, `[SILENT]` in quotes/fences/tool calls, or extra words before/after the marker. If you output to a tool first, that output delivers before `[SILENT]` suppresses the rest.
 
 Track state in `memory/heartbeat-state.json`. Skip tasks not due.
 
@@ -119,13 +119,13 @@ The morning digest is composed and delivered by separate cron dispatches (prepar
     1. Read the last 3 days of `memory/YYYY-MM-DD.md`.
     2. Distill worth keeping into `MEMORY.md` (one short line per topic).
     3. Remove outdated `MEMORY.md` entries.
-    Reply `NO_REPLY` when done.
+    Reply `[SILENT]` when done.
 
 - Backend-specific tasks: each active skill's `heartbeat.md` — walk on each tick.
 - Short alerts; quality over volume. No "checking in" filler.
 - 23:00–08:00 host-local: defer non-urgent items to the morning digest unless time-sensitive.
-- **Group/shared sessions:** reply `NO_REPLY`; no discovery or `MEMORY.md`.
-- MCP unreachable: `NO_REPLY`, one line in `memory/<today>.md`, don't surface failures from heartbeat.
+- **Group/shared sessions:** reply `[SILENT]`; no discovery or `MEMORY.md`.
+- MCP unreachable: `[SILENT]`, one line in `memory/<today>.md`, don't surface failures from heartbeat.
 
 ## Group chats
 

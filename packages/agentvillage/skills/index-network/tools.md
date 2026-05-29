@@ -1,6 +1,6 @@
 # Index Network — Tools
 
-The Index Network MCP (server `index`) is your tool surface for everything network-related. The MCP entry was registered by `install_index.ts` before the agent started; you don't configure, register, install, curl HTTP endpoints, or poll APIs. Every capability is a tool call on `index`. If a tool errors, retry it or `NO_REPLY`; do not try to "fix" the connection.
+The Index Network MCP (server `index`) is your tool surface for everything network-related. The MCP entry was registered by `install_index.ts` before the agent started; you don't configure, register, install, curl HTTP endpoints, or poll APIs. Every capability is a tool call on `index`. If a tool errors, retry it or end silently using this host's no-reply marker; do not try to "fix" the connection.
 
 ## Tool families
 

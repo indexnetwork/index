@@ -13,6 +13,18 @@ Four skill bundles that give your agent Edge Esmeralda knowledge and live API ac
 
 The skills cross-reference each other. `edge-esmeralda` supplies the popup id that `edgeos` recipes need. `geo-esmeralda` handles Geo knowledge graph-backed knowledge and attendee-authored writes, and `index-network` handles discovery and intent-based matching. Install all four together.
 
+## Host-specific silence
+
+Some background prompts need to complete without sending a chat message. Use the no-reply marker for the host you are running in:
+
+| Host | Silent final reply |
+| --- | --- |
+| Hermes / Nous Research Hermes | `[SILENT]` |
+| OpenClaw | `NO_REPLY` |
+| Claude Code | No user-facing text if the host supports a silent turn; otherwise stop without commentary |
+
+Shared skill files use host-neutral language like "reply silently" so the same skill bundle can run on Hermes, OpenClaw, Claude Code, and other MCP hosts.
+
 ## Install
 
 ### Environment variables

@@ -2,6 +2,6 @@
   "id": "agentvillage-skills",
   "name": "AgentVillage Skills",
   "description": "Edge Esmeralda 2026 skills — popup knowledge, EdgeOS calendar & directory, Geo knowledge graph access, and Index Network discovery.",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "skills": ["."]
 }

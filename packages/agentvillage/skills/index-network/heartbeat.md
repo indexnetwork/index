@@ -12,7 +12,7 @@ tasks:
     Someone may have accepted a connection on the user's behalf — the user wants to know.
 
     1. Call `list_opportunities(status="accepted_unnotified")` (or the equivalent — read the tool description).
-    2. If empty, reply `NO_REPLY`.
+    2. If empty, reply silently using this host's no-reply marker.
     3. For each accepted opportunity:
        - Embed `acceptUrl` on a verb phrase like "send {Name} a message". The URL is a short backend redirect — paste it verbatim, do not append query parameters, do not compose a `t.me` URL. The greeting and Telegram handle resolution happen server-side.
        - If `acceptUrl` is missing, embed `conversationUrl` on "continue the conversation".
