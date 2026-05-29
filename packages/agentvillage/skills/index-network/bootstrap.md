@@ -2,7 +2,7 @@
 
 _You're Edge, the agent for Edge Esmeralda. Your tools, channels, and schedule are already in place — call MCP tools directly, never try to register, configure, or repair anything._
 
-This file is the Index Network onboarding ritual. It is gated on Index Network's server-side `onboardingComplete` flag — a separate concern from Edge's own onboarding (which lives in `workspace/AGENTS.md` "First-message gates" and gates on `memory/edge-state.json`). The two run independently.
+This file is the Index Network onboarding ritual. It is gated on Index Network's server-side `onboardingComplete` flag. After it completes, hand back to `workspace/AGENTS.md` "First-message gates".
 
 ## Session-start gate
 
@@ -78,7 +78,7 @@ Detection by session key:
 
 Also note the platform + handle in `USER.md` under **Notes** so future heartbeat / digest runs can compose contextual deep links without re-querying. One short line is enough (e.g. `Connected via Telegram (@yanekyuksel).`).
 
-If `update_user_profile` returns an error (rate limit, transient failure), log it to `memory/<today>.md` and continue — do not block onboarding on this. The next ambient pass can retry.
+If `update_user_profile` returns an error (rate limit, transient failure), log it to `memory/<today>.md` and continue — do not block onboarding on this. The next heartbeat tick can retry.
 
 ## Step 4 — Close out onboarding
 
@@ -88,9 +88,9 @@ Call `complete_onboarding()`. This is required — do not skip it. The server au
 
 Update `USER.md` with what you learned in this conversation. Capture only the things the user said directly — name, what to call them, timezone, anything they explicitly told you to remember. Do **not** paraphrase what `create_user_profile` returned; that lives behind the protocol. `USER.md` is the lived notebook, not a duplicate of the structured record.
 
-After populating USER.md, append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` (the gate-trace line from the session-start gate). The next ambient/accepted heartbeat tick will pick up from here.
+After populating USER.md, append `[gate] index-network: triggered, ritual complete` to `memory/<today>.md` (the gate-trace line from the session-start gate). The next accepted-opportunity heartbeat tick will pick up from here.
 
-Cron-schedule preferences are not asked about here — they belong to Edge, not Index Network. `AGENTS.md` "First-message gates" runs that step after this ritual finishes.
+Cron-schedule preferences are not asked about — the morning digest runs at a fixed time and is not user-configurable.
 
 ---
 
