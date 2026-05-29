@@ -206,7 +206,9 @@ describe('IntentQueue', () => {
       expect(assignedNetworkIds.sort()).toEqual(['personal-net', 'scope-net']);
       expect(assignedNetworkIds).not.toContain('other-net');
       expect(invokeHyde).toHaveBeenCalled();
-      expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1' });
+      // Discovery must inherit the agent's network scope — otherwise a network-scoped
+      // agent's intent gets matched against every network the user belongs to.
+      expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1', networkIds: ['scope-net'] });
     });
 
     it('generate_hyde: no networkScopeId leaves all user index IDs eligible', async () => {

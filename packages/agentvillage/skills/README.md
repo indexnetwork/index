@@ -9,9 +9,21 @@ Four skill bundles that give your agent Edge Esmeralda knowledge and live API ac
 - **edge-esmeralda** — popup constants (popup id, week dates, themes), attendee directory field semantics, curated wiki/website/newsletter knowledge base, and the onboarding pointer for obtaining EdgeOS tokens.
 - **edgeos** — backend-generic EdgeOS API recipes: events, RSVPs, venues, attendee directory, and your own profile lookup.
 - **geo-esmeralda** — Geo knowledge graph access through the Geo CLI package: ontology, fixed graph tools, guarded native read-only queries, and attendee-authored content/photo creation.
-- **index-network** — Index Network discovery: onboarding ritual, opportunity surfacing, voice exemplars, cron prompts for welcome/digest/ambient flows, and heartbeat tasks.
+- **index-network** — Index Network discovery: onboarding ritual, opportunity surfacing, voice exemplars, cron prompts for welcome/digest flows, and heartbeat tasks.
 
 The skills cross-reference each other. `edge-esmeralda` supplies the popup id that `edgeos` recipes need. `geo-esmeralda` handles Geo knowledge graph-backed knowledge and attendee-authored writes, and `index-network` handles discovery and intent-based matching. Install all four together.
+
+## Host-specific silence
+
+Some background prompts need to complete without sending a chat message. Use the no-reply marker for the host you are running in:
+
+| Host | Silent final reply |
+| --- | --- |
+| Hermes / Nous Research Hermes | `[SILENT]` |
+| OpenClaw | `NO_REPLY` |
+| Claude Code | No user-facing text if the host supports a silent turn; otherwise stop without commentary |
+
+Shared skill files use host-neutral language like "reply silently" so the same skill bundle can run on Hermes, OpenClaw, Claude Code, and other MCP hosts.
 
 ## Install
 

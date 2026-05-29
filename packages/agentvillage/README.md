@@ -2,15 +2,14 @@
 
 The Agent Village experience for **Edge Esmeralda 2026** (May 30 – Jun 27, Healdsburg, CA).
 
-AgentVillage is the public skills package and onboarding scripts that an agent (running Hermes, OpenClaw, or Claude) loads to participate in the Edge Esmeralda Agent Village. It's a multi-backend package: ambient discovery and intent negotiation through Index Network, knowledge graph through Geo, calendar and directory through EdgeOS. AgentVillage defines what an agent knows, how it authenticates with each backend, and how it interacts with attendees.
+AgentVillage is the public skills package and onboarding scripts that an agent (running Hermes, OpenClaw, or Claude) loads to participate in the Edge Esmeralda Agent Village. It's a multi-backend package: discovery and intent negotiation through Index Network, knowledge graph through Geo, calendar and directory through EdgeOS. AgentVillage defines what an agent knows, how it authenticates with each backend, and how it interacts with attendees.
 
 ## What you get
 
-Today, capabilities come from **Index Network** (ambient discovery + intent negotiation). **Geo** (knowledge graph) and **EdgeOS** (calendar + directory) are also in scope. Once installed, AgentVillage:
+Today, capabilities come from **Index Network** (discovery + intent negotiation). **Geo** (knowledge graph) and **EdgeOS** (calendar + directory) are also in scope. Once installed, AgentVillage:
 
 - **Runs onboarding** the first time you message it (greet → profile lookup → community discovery → first signal → `complete_onboarding` → silent capture of your platform handle).
 - **Sends a morning digest at 08:00 host-local time** with the connections worth your attention and the asks where you can help.
-- **Surfaces ambient discoveries twice daily at 14:00 and 20:00 host-local** — selective per pass: max 3 direct (you're a party) + 3 introducer (you'd make the intro), quality-bar gated. Anything skipped lands in tomorrow's digest.
 - **Notifies you when someone accepts** a connection on your behalf.
 - **Curates memory** every few days — distills daily notes into long-term `MEMORY.md`.
 
@@ -18,7 +17,7 @@ AgentVillage never names the plumbing in chat. You see AgentVillage and (when re
 
 ## Architecture
 
-AgentVillage plugs into the EdgeOS portal (the identity + spine), with Portal as the recommended runtime for non-technical attendees. Backends the agent calls: Geo (knowledge graph), Index (negotiation + ambient discovery), and EdgeOS APIs (calendar, directory).
+AgentVillage plugs into the EdgeOS portal (the identity + spine), with Portal as the recommended runtime for non-technical attendees. Backends the agent calls: Geo (knowledge graph), Index (negotiation + discovery), and EdgeOS APIs (calendar, directory).
 
 See the project hub for the full diagram and decisions.
 
@@ -207,6 +206,26 @@ bun install/install.ts \
   --edgeos-bearer-token eyJ…
 ```
 
+### Overriding the digest cron times
+
+The morning digest runs as two fixed crons — **prepare at `0 2 * * *`** and **send at `0 8 * * *`** (host-local). To install them at different times (a different timezone, a test window, etc.), pass full 5-field cron expressions. A flag wins over the matching env var; an invalid expression is ignored with a warning and the default is kept.
+
+```bash
+# via flags
+bun install/install.ts --index-api-key <YOUR_API_KEY> \
+  --digest-prepare-cron "0 3 * * *" \
+  --digest-send-cron    "0 9 * * *"
+
+# or via environment
+DIGEST_PREPARE_CRON="0 3 * * *" DIGEST_SEND_CRON="0 9 * * *" \
+  bun install/install.ts --index-api-key <YOUR_API_KEY>
+```
+
+| Cron | Flag | Env var | Default |
+|---|---|---|---|
+| Prepare pass | `--digest-prepare-cron "<expr>"` | `DIGEST_PREPARE_CRON` | `0 2 * * *` |
+| Send pass | `--digest-send-cron "<expr>"` | `DIGEST_SEND_CRON` | `0 8 * * *` |
+
 The installer writes any tokens it finds into `env.vars.*` in `~/.openclaw/openclaw.json`; on the next gateway start they become process-env on the gateway and inherit into the agent's shell tool, so `curl -H "Authorization: Bearer $EDGEOS_API_KEY"` recipes and Geo CLI commands work without further plumbing.
 
 The installer:
@@ -217,15 +236,15 @@ The installer:
 4. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
 5. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds the lived notes the active skill's bootstrap ritual populated for you); pass `--wipe-user` to overwrite `USER.md` and delete the agent-curated `MEMORY.md`, OpenClaw's `workspace-state.json` first-run marker, and the local onboarding/welcome/cron-preference markers under `memory/` so the next session re-onboards from scratch.
 6. Copies backend skill bundles from `skills/` into `~/.openclaw/workspace/skills/` so OpenClaw registers them as workspace skills.
-7. Installs one cron job by default: the daily digest (`0 8 * * *`). The afternoon (`0 14 * * *`) and evening (`0 20 * * *`) ambient passes are opt-in — the user enables them through the schedule sub-dialog at session start or any time later.
+7. Installs the two digest cron jobs: a prepare pass (`0 2 * * *`) that composes the morning brief and stages it as an editable Kanban task, and a send pass (`0 8 * * *`) that delivers the staged brief. The end user can't change the schedule from chat, but the installer can override both times via `--digest-prepare-cron` / `--digest-send-cron` (or `DIGEST_PREPARE_CRON` / `DIGEST_SEND_CRON`) — see "Overriding the digest cron times" above.
 8. Restarts the gateway so all config changes take effect.
 
 Send any message in your chat to bring AgentVillage online. AgentVillage has two independent onboarding gates that run at session start:
 
 - **Index Network onboarding** — gated on the server-side `onboardingComplete` flag returned by `read_user_profiles()`. Owned by `skills/index-network/bootstrap.md`. If `false`, the six-step ritual runs (greet → create profile → capture intent → capture handle → `complete_onboarding()` → populate `USER.md` → welcome).
-- **AgentVillage onboarding** — gated on the local marker `memory/agentvillage-state.json` (`agentvillageOnboardingCompletedAt`). Owned by `workspace/AGENTS.md` under "Session startup". Today's only step is the schedule-preferences dialog (which crons you want firing, and at what times). It runs after the active skill bootstraps complete. (AGENTS.md hosts this gate rather than BOOTSTRAP.md because OpenClaw deletes BOOTSTRAP.md after first-run setup, so the file is not reliably injected on subsequent sessions.)
+- **AgentVillage framing** — owned by `workspace/AGENTS.md` "First-message gates". There is no schedule-preferences dialog; the morning digest runs at a fixed time. The only first-message work beyond the Index ritual is a one-line welcome for returning users on a fresh workspace.
 
-The two states are decoupled. A user can be onboarded to Index Network from another surface (CLI, web) and still need AgentVillage's schedule dialog. Conversely, an admin resetting `onboardingComplete` server-side re-triggers only the Index ritual, not the schedule prompt. Wiping local state via `install/install.ts --wipe-user` resets the AgentVillage side without touching Index's flag.
+An admin resetting `onboardingComplete` server-side re-triggers the Index ritual. Wiping local state via `install/install.ts --wipe-user` resets local markers without touching Index's flag.
 
 ## Reset
 
@@ -249,7 +268,7 @@ bun install/reset.ts --wipe-user
 
 ## How it runs
 
-Time-sensitive prompts (today: the daily digest at 08:00 and the two ambient passes at 14:00 and 20:00 — host-local) run as **OpenClaw cron jobs**, not heartbeat tasks. Cron has its own scheduler and runs in isolated sessions with `--light-context` so each tick is cheap. Cron jobs are installed by `install/install.ts` and restart with the gateway. Future per-backend skills can add their own cron prompts the same way.
+Time-sensitive prompts (the morning digest's prepare pass at 02:00 and send pass at 08:00 — host-local) run as **OpenClaw cron jobs**, not heartbeat tasks. Cron has its own scheduler and runs in isolated sessions with `--light-context` so each tick is cheap. Cron jobs are installed by `install/install.ts` and restart with the gateway. Future per-backend skills can add their own cron prompts the same way.
 
 Accepted-opportunity notifications, freshness audits, memory curation, and any other latency-tolerant background work stay on the heartbeat tick because 30-minute latency is acceptable for those flows.
 
@@ -259,7 +278,6 @@ Accepted-opportunity notifications, freshness audits, memory curation, and any o
 | --- | --- |
 | `AGENTS.md` | Canonical session-start instructions plus operating rules. Hosts the dual onboarding gates (skill-side + AgentVillage-side), the cron-schedule trigger, memory contract, opportunity-quality bar, red lines, and group-chat rules. Always injected by OpenClaw. |
 | `BOOTSTRAP.md` | OpenClaw convention for the first-run file. AgentVillage ships only a stub pointing to `AGENTS.md` here, because OpenClaw deletes BOOTSTRAP.md after first-run setup — anything stored in it is not durable. |
-| `SCHEDULE.md` | Cron toggle + reschedule sub-dialog. Used from `BOOTSTRAP.md` during onboarding and any time the user later asks to enable, disable, or move a cron. Operates directly on OpenClaw's cron list (`openclaw cron list/enable/disable/edit`); no separate preferences file. |
 | `COMMUNITY.md` | Edge Esmeralda context — dates, attendee count, programming format, design principles. The agent reads this when composing welcomes and digests. |
 | `SOUL.md` | Voice, banned vocabulary, "never name the plumbing", boundaries, continuity. |
 | `IDENTITY.md` | AgentVillage identity — role, context, tone. |
@@ -282,17 +300,16 @@ AgentVillage's behaviour is markdown-driven. Almost everything you'd want to cha
 |---|---|---|
 | Tighten or loosen overall voice (more analytical / more playful) | `workspace/SOUL.md` | The "voice" rules apply to every message the agent composes. Voice exemplars in skill bundles inherit from here. |
 | Change banned vocabulary (e.g. drop a word, ban a new one) | `workspace/SOUL.md` | Bans propagate to all skill prompts via SOUL.md. |
-| Change the canonical look of welcome / digest / ambient messages | `skills/index-network/exemplars.md` | These exemplars are the bar the agent imitates. Edit the literal sample messages, not abstract rules. |
+| Change the canonical look of welcome / digest messages | `skills/index-network/exemplars.md` | These exemplars are the bar the agent imitates. Edit the literal sample messages, not abstract rules. |
 | Rename the agent (rebrand for another event) | `workspace/IDENTITY.md` + every `prompts/*.md` and `bootstrap.md` referring to "AgentVillage" | Grep `AgentVillage` under `workspace/` and `skills/`. Also update `COMMUNITY.md` and `package.json` `name` if forking. |
-| Add or change emoji conventions | `skills/index-network/exemplars.md` and `skills/index-network/prompts/*.md` | Exemplars set the look; prompts set the time-of-day greeting table in `digest.md`. |
+| Add or change emoji conventions | `skills/index-network/exemplars.md` and `skills/index-network/prompts/*.md` | Exemplars set the look; the morning greeting is fixed in `prepare.md` / `send.md`. |
 
 ### Content
 
 | You want to… | Edit | Notes |
 |---|---|---|
 | Update community facts (dates, headcount, venue, programming format) | `workspace/COMMUNITY.md` | This is the only authoritative source the agent reads for community context. Don't duplicate the facts into prompts. |
-| Change what the daily digest says or how it's structured | `skills/index-network/prompts/digest.md` | Time-aware greeting lookup table lives here. Renumber steps if you add or drop one. |
-| Change what an ambient pass surfaces (quality bar, cap, framing) | `skills/index-network/prompts/ambient.md` | The cap (3 direct + 3 introducer) is in this prompt, not in code. |
+| Change what the morning digest says or how it's structured | `skills/index-network/prompts/prepare.md` (compose) and `skills/index-network/prompts/send.md` (deliver + fallback) | The morning greeting is fixed in both. Keep the two-section structure in sync between them. |
 | Change the one-time welcome message | `skills/index-network/prompts/welcome.md` + `skills/index-network/bootstrap.md` | `welcome.md` is the post-onboarding welcome run; `bootstrap.md` is the onboarding ritual that precedes it. |
 | Change the AgentVillage welcome line for returning users on fresh workspaces | `workspace/AGENTS.md` (first-message gates section) | Two branches: when Index gate triggered → "By the way..." opener; when Index gate skipped → full Edge Esmeralda welcome opener. |
 | Change the lived-notebook (`USER.md`) template | `skills/index-network/bootstrap.md` | The bootstrap ritual writes `USER.md`. Editing the file in `workspace/` only affects the empty stub copied in by `--wipe-user`. |
@@ -304,17 +321,19 @@ AgentVillage's behaviour is markdown-driven. Almost everything you'd want to cha
 |---|---|---|
 | Add, remove, or reorder operating rules (memory contract, opportunity quality bar, red lines, group-chat rules) | `workspace/AGENTS.md` | This file is always injected by OpenClaw on every session — durable, unlike `BOOTSTRAP.md`. |
 | Add a new first-message gate (e.g. another skill needs onboarding) | `workspace/AGENTS.md` "Active skills" section + the new `skills/<name>/bootstrap.md` | Gates loop over the active-skills registry. Add the skill row first, then point its bootstrap at the trigger condition (server flag, local marker, …). |
-| Change the AgentVillage onboarding gate (currently just the schedule dialog) | `workspace/AGENTS.md` "Session startup" + `workspace/SCHEDULE.md` | The local marker is `memory/agentvillage-state.json` (`agentvillageOnboardingCompletedAt`). |
+| Change the returning-user first-message framing | `workspace/AGENTS.md` "First-message gates" | The digest schedule is fixed (set in `install/install_index.ts`) and not adjustable from chat. |
 | Change heartbeat tick behaviour (what tasks fire, dedup rules) | `workspace/HEARTBEAT.md` for cross-backend rules; `skills/<backend>/heartbeat.md` for backend-specific tasks | The tick cadence itself (default ~30 min) is an OpenClaw-side setting, configured through `openclaw config` — not a file in this repo. |
 | Change how URLs / formatting render per channel (Telegram, WhatsApp, Discord) | `workspace/TOOLS.md` | Cross-backend rule: Telegram is Markdown, not HTML — raw `<…>` tags get escaped. |
 
 ### Schedule & cron
 
+The digest runs as a fixed prepare/send pair — **prepare `0 2 * * *`, send `0 8 * * *`** (host-local) — and the end user can't change it from chat. The installer can override either time (see "Overriding the digest cron times" under **Install**).
+
 | You want to… | Edit | Notes |
 |---|---|---|
-| Add, remove, or move a cron job (e.g. add a midday check) | `install/install_index.ts` (cron install block) + `workspace/SCHEDULE.md` | The installer is what actually writes the cron entries; `SCHEDULE.md` is the user-facing dialog for enabling/disabling/rescheduling existing ones via `openclaw cron …`. Both must agree. |
-| Change a cron prompt without changing the schedule | the matching `skills/index-network/prompts/<name>.md` | The installer references prompt files by path; rename only if you also rename in the installer. |
-| Change the user-facing schedule-change wording | `workspace/SCHEDULE.md` | Operates on `openclaw cron list/enable/disable/edit` directly — no preferences file to keep in sync. |
+| Override the digest times for one install | `--digest-prepare-cron` / `--digest-send-cron` (or `DIGEST_PREPARE_CRON` / `DIGEST_SEND_CRON`) | Optional, full 5-field cron expressions. Flag wins over env; invalid values fall back to the default. |
+| Change the default digest schedule for everyone | `install/install_index.ts` (`DIGEST_CRON_SPECS`) | The installer writes the cron entries from this table. Existing installs pick up changes on the next `install.ts` run. |
+| Change a cron prompt without changing the schedule | the matching `skills/index-network/prompts/<name>.md` | The installer references prompt files by name via `DIGEST_CRON_SPECS`; rename only if you also rename there. |
 
 ### Backends & skills
 

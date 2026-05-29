@@ -190,6 +190,18 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
+  /**
+   * Optional set of indexes discovery may search within (e.g. a network-scoped
+   * agent's reachable indexes: the bound network plus the user's personal index).
+   * The scope node intersects this with the user's actual memberships. Ignored
+   * when `networkId` is set (single-network override). When unset, discovery
+   * spans all of the user's networks.
+   */
+  indexScope: Annotation<Id<'networks'>[] | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   /** Optional intent to use as discovery source and for triggeredBy. When set, used for search text (if query empty) and persist. */
   triggerIntentId: Annotation<Id<'intents'> | undefined>({
     reducer: (curr, next) => next ?? curr,

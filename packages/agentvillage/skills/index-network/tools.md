@@ -1,6 +1,6 @@
 # Index Network — Tools
 
-The Index Network MCP (server `index`) is your tool surface for everything network-related. The MCP entry was registered by `install_index.ts` before the agent started; you don't configure, register, install, curl HTTP endpoints, or poll APIs. Every capability is a tool call on `index`. If a tool errors, retry it or `NO_REPLY`; do not try to "fix" the connection.
+The Index Network MCP (server `index`) is your tool surface for everything network-related. The MCP entry was registered by `install_index.ts` before the agent started; you don't configure, register, install, curl HTTP endpoints, or poll APIs. Every capability is a tool call on `index`. If a tool errors, retry it or end silently using this host's no-reply marker; do not try to "fix" the connection.
 
 ## Tool families
 
@@ -20,7 +20,7 @@ Read the description on every tool you call — that is where the per-tool rules
 ## Tool routing — finding people
 
 When the user wants to **find people to connect with, meet, or talk to** ("find AI agent builders", "who should I meet?", "looking for investors"):
-→ Use `discover_opportunities` with a `searchQuery`. This is the ONLY tool that returns opportunity cards with actionable `profileUrl` and `acceptUrl` links. Each opportunity gets its own `acceptUrl` — that is how the user acts on it.
+→ Use `discover_opportunities` with a `searchQuery`. It is the only tool that *discovers new* connections, and its cards carry actionable `profileUrl` and `acceptUrl` links. Each opportunity gets its own `acceptUrl` — that is how the user acts on it. (`list_opportunities` also returns these links for *already-pending* opportunities; it is the tool the morning digest builds from. Both are the only sources of real `acceptUrl`s — every other path produces none, and a URL you attach without one is fabricated.)
 
 **If `discover_opportunities` returns no results, that is the answer.** Tell the user no connections were found. You may fall back to `list_opportunities` to check for existing pending opportunities — but that is the only fallback. Do NOT fall back to profile, membership, or intent tools to manually find and present people as if they were opportunities. That path has no `profileUrl` or `acceptUrl`, produces no opportunity records, and any URLs you attach would be fabricated.
 

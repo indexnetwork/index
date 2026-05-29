@@ -702,7 +702,12 @@ export async function runDiscoverFromQuery(
       const result = await opportunityGraph.invoke({
         userId,
         searchQuery: queryOrEmpty || undefined,
+        // A single index resolves to the strict networkId override (membership-
+        // validated in the scope node). Multiple indexes (e.g. a network-scoped
+        // agent's bound network + personal index) pass through as indexScope so
+        // the graph stays bounded instead of falling back to all networks.
         networkId: indexScope.length === 1 ? indexScope[0] : undefined,
+        ...(indexScope.length > 1 ? { indexScope } : {}),
         triggerIntentId,
         targetUserId,
         onBehalfOfUserId,

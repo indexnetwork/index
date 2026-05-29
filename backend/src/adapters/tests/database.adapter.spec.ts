@@ -838,6 +838,71 @@ describe('OpportunityDatabaseAdapter', () => {
       }
     });
 
+    it('does not leak when the viewer is on the scoped network but a counterpart actor is on another network', async () => {
+      // The viewer (userA) IS anchored on fixture.networkId, so the per-viewer
+      // check passes — but a counterpart (userB) is anchored ONLY on
+      // otherNetworkId. Returning this opp to a reader scoped to fixture.networkId
+      // leaks userB's user/profile/intent across the network boundary via the
+      // card. The scope gate must require every participant to be on the network.
+      const otherNetworkId = uuidv4();
+      await db.insert(networks).values({
+        id: otherNetworkId,
+        title: TEST_PREFIX + 'Counterpart Network',
+        prompt: 'Counterpart network prompt',
+      });
+
+      const leaky = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: otherNetworkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Counterpart out of scope', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      // Control: a wholly in-scope opp (both participants on fixture.networkId)
+      // must still be returned — the gate must not over-exclude.
+      const clean = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Wholly in scope', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      // A participant present on BOTH the scoped network and another network is
+      // in-scope — duplicate actor rows on other networks must not hide the opp.
+      const duplicate = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+          { networkId: otherNetworkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Duplicate stamp', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      try {
+        const scoped = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+        expect(scoped.some((o) => o.id === leaky.id)).toBe(false);
+        expect(scoped.some((o) => o.id === clean.id)).toBe(true);
+        expect(scoped.some((o) => o.id === duplicate.id)).toBe(true);
+      } finally {
+        await db.delete(opportunities).where(inArray(opportunities.id, [leaky.id, clean.id, duplicate.id]));
+        await db.delete(networks).where(eq(networks.id, otherNetworkId));
+      }
+    });
+
     it('getOpportunitiesForNetwork keys on actor.networkId, not context.networkId', async () => {
       // Opp's `context.networkId` points at fixture.networkId, but no actor is
       // anchored there — both actors live on otherNetworkId. The old context-

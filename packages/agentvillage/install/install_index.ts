@@ -3,7 +3,10 @@
  *
  *   - Merges `mcp_servers.index` into `$HERMES_HOME/config.yaml`
  *   - Writes `INDEX_API_KEY` to `$HERMES_HOME/.env`
- *   - Installs the morning digest cron (`Edge — daily digest`, 08:00 host-local)
+ *   - Installs the digest crons: prepare (`Edge — digest prepare`, 02:00) and
+ *     send (`Edge — daily digest`, 08:00) — both host-local; times overridable
+ *     via --digest-prepare-cron / --digest-send-cron (or DIGEST_PREPARE_CRON /
+ *     DIGEST_SEND_CRON)
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -87,36 +90,136 @@ function removeEdgeCronJobs(env: NodeJS.ProcessEnv): void {
   }
 }
 
+export interface DigestCronSpec {
+  /** Default cron schedule (overridable at install time). */
+  schedule: string;
+  /** Prompt file under skills/index-network/prompts/. */
+  promptFile: string;
+  /** Full Hermes cron name (kept under the CRON_NAME_PREFIX). */
+  name: string;
+  /** Whether to attach --deliver telegram. */
+  deliver: boolean;
+  /** CLI flag that overrides `schedule` at install time. */
+  overrideFlag: string;
+  /** Env var that overrides `schedule` at install time (flag wins). */
+  overrideEnv: string;
+}
+
+/**
+ * The morning digest runs as two fixed-time dispatches: a prepare pass that
+ * composes the brief and stages it on the Kanban board (no delivery), and a
+ * send pass that delivers the staged brief.
+ */
+export const DIGEST_CRON_SPECS: DigestCronSpec[] = [
+  {
+    schedule: "0 2 * * *",
+    promptFile: "prepare.md",
+    name: "Edge — digest prepare",
+    deliver: false,
+    overrideFlag: "--digest-prepare-cron",
+    overrideEnv: "DIGEST_PREPARE_CRON",
+  },
+  {
+    schedule: "0 8 * * *",
+    promptFile: "send.md",
+    name: "Edge — daily digest",
+    deliver: true,
+    overrideFlag: "--digest-send-cron",
+    overrideEnv: "DIGEST_SEND_CRON",
+  },
+];
+
+/** Build the argv for `hermes cron create` from a spec + resolved prompt body. */
+export function cronCreateArgs(spec: DigestCronSpec, promptBody: string, home: string): string[] {
+  const args = ["cron", "create", spec.schedule, promptBody, "--name", spec.name];
+  if (spec.deliver) args.push("--deliver", "telegram");
+  args.push("--workdir", home);
+  return args;
+}
+
+/** True for a standard 5-field cron expression (minute hour day-of-month month day-of-week). */
+export function isValidCron(expr: string): boolean {
+  const fields = expr.trim().split(/\s+/);
+  return fields.length === 5 && fields.every((f) => /^[\d*,/-]+$/.test(f));
+}
+
+/**
+ * Resolve a spec's cron schedule, honoring an optional install-time override.
+ * Precedence: CLI flag (`<overrideFlag> <expr>`) > env var (`overrideEnv`) > the
+ * spec default. An override that is not a valid 5-field cron expression is
+ * ignored (with a warning) and the default is used.
+ */
+export function resolveCronSchedule(
+  spec: DigestCronSpec,
+  argv: string[] = process.argv,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const flagIdx = argv.indexOf(spec.overrideFlag);
+  const fromFlag = flagIdx >= 0 ? argv[flagIdx + 1]?.trim() : undefined;
+  const override = fromFlag || env[spec.overrideEnv]?.trim();
+  if (!override) return spec.schedule;
+  if (!isValidCron(override)) {
+    console.warn(
+      `  warning: ignoring invalid cron override for "${spec.name}" ("${override}") — using default "${spec.schedule}"`,
+    );
+    return spec.schedule;
+  }
+  return override;
+}
+
+/**
+ * Probe whether the Hermes CLI can actually run. `hermesBin()` falls back to the
+ * bare name `"hermes"` when it finds no fixed-path binary, but that name still
+ * resolves on PATH (the augmented env adds ~/.local/bin etc.). So test by
+ * executing `hermes --version` rather than string-comparing the resolved name.
+ */
+function hermesAvailable(bin: string): boolean {
+  try {
+    execFileSync(bin, ["--version"], { stdio: "ignore", env: hermesExecEnv() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function installCronJobs(env: NodeJS.ProcessEnv): void {
   const home = hermesHome();
-  const digestPath = join(home, "skills/index-network/prompts/digest.md");
-  if (!existsSync(digestPath)) {
-    console.error(`error: digest prompt missing at ${digestPath} — run install.ts first`);
-    process.exit(1);
+  const promptsDir = join(home, "skills/index-network/prompts");
+
+  const bin = hermesBin();
+  if (!hermesAvailable(bin)) {
+    console.warn("  warning: hermes CLI not found — skipping digest crons");
+    return;
   }
 
   removeEdgeCronJobs(env);
 
-  const digestMessage = readFileSync(digestPath, "utf8");
-  console.log("→ installing morning digest cron");
-
-  const bin = hermesBin();
-  if (bin === "hermes") {
-    console.warn("  warning: hermes CLI not found — skipping digest cron");
-    return;
+  // Ensure the Kanban store exists (idempotent; prepare/send stage tasks on it).
+  try {
+    execFileSync(bin, ["kanban", "init"], { stdio: "ignore", env: hermesExecEnv() });
+  } catch {
+    console.warn("  warning: could not run `hermes kanban init` — board may auto-init on first use");
   }
 
-  // Always use --deliver telegram. Hermes reloads .env on every cron tick,
-  // so TELEGRAM_HOME_CHANNEL set after pairing is picked up automatically.
-  try {
-    execFileSync(
-      bin,
-      ["cron", "create", "0 8 * * *", digestMessage,
-        "--name", "Edge — daily digest", "--deliver", "telegram", "--workdir", home],
-      { stdio: ["ignore", "ignore", "inherit"], env: hermesExecEnv() },
-    );
-  } catch {
-    console.warn("  warning: could not install digest cron — gateway may still run");
+  for (const spec of DIGEST_CRON_SPECS) {
+    const promptPath = join(promptsDir, spec.promptFile);
+    if (!existsSync(promptPath)) {
+      console.error(`error: prompt missing at ${promptPath} — run install.ts first`);
+      process.exit(1);
+    }
+    const promptBody = readFileSync(promptPath, "utf8");
+    const schedule = resolveCronSchedule(spec);
+    const resolved = { ...spec, schedule };
+    const suffix = schedule === spec.schedule ? "" : " [overridden]";
+    console.log(`→ installing cron "${spec.name}" (${schedule})${suffix}`);
+    try {
+      execFileSync(bin, cronCreateArgs(resolved, promptBody, home), {
+        stdio: ["ignore", "ignore", "inherit"],
+        env: hermesExecEnv(),
+      });
+    } catch {
+      console.warn(`  warning: could not install cron "${spec.name}" — gateway may still run`);
+    }
   }
 }
 

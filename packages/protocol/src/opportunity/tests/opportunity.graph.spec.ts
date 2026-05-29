@@ -106,6 +106,7 @@ function createMockGraph(deps?: {
     stampOpportunityActorAction: async () => null,
     getPremisesForUser: async () => [],
     searchPremisesBySimilarity: async () => [],
+    getUserContexts: async () => [],
   };
 
   const mockEmbedder: Embedder = {
@@ -201,6 +202,7 @@ function createMockGraphWithFnOverrides(deps?: {
     stampOpportunityActorAction: async () => null,
     getPremisesForUser: async () => [],
     searchPremisesBySimilarity: async () => [],
+    getUserContexts: async () => [],
   };
 
   const mockEmbedder: Embedder = {
@@ -308,6 +310,29 @@ describe('Opportunity Graph', () => {
 
       expect(getIndexSpy).toHaveBeenCalledWith('idx-1');
       expect(getIndexSpy).toHaveBeenCalledWith('idx-2');
+    });
+
+    test('when indexScope provided, the vector search is intersected and networks outside it are excluded', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2', 'idx-3'] as Id<'networks'>[]),
+      });
+      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
+
+      await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        // A network-scoped agent reaches only its bound network + personal index;
+        // idx-3 is another network the user belongs to and must not be searched.
+        indexScope: ['idx-1', 'idx-2'] as Id<'networks'>[],
+        options: { limit: 5 },
+      } as OpportunityGraphInvokeInput);
+
+      expect(searchSpy).toHaveBeenCalled();
+      // Discovery searches one network at a time; collect every network touched.
+      const searchedNetworks = searchSpy.mock.calls
+        .flatMap((c) => c?.[1]?.indexScope ?? []);
+      expect([...new Set(searchedNetworks)].sort()).toEqual(['idx-1', 'idx-2']);
+      expect(searchedNetworks).not.toContain('idx-3');
     });
   });
 
@@ -2588,6 +2613,7 @@ function createTraceMockGraph() {
     stampOpportunityActorAction: async () => null,
     getPremisesForUser: async () => [],
     searchPremisesBySimilarity: async () => [],
+    getUserContexts: async () => [],
   };
 
   const mockEmbedder: Embedder = {

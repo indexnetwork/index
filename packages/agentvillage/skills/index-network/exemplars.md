@@ -1,6 +1,6 @@
 # Index Network — Voice Exemplars
 
-Canonical user-facing renderings for Edge Esmeralda's Index Network flows. Mimic these exactly when composing the daily digest, ambient passes, and greeting drafts. They are the bar for tone, structure, and information density. Edge Esmeralda is the literal community in every example — pull facts from `AGENTS.md` Community context, never invent dates, attendee counts, or programming formats.
+Canonical user-facing renderings for Edge Esmeralda's Index Network flows. Mimic these exactly when composing the morning digest and greeting drafts. They are the bar for tone, structure, and information density. Edge Esmeralda is the literal community in every example — pull facts from `AGENTS.md` Community context, never invent dates, attendee counts, or programming formats.
 
 ## Good morning digest (fires once daily, ~08:00 host local)
 
@@ -30,27 +30,6 @@ When `list_opportunities` returns multiple opportunities for the same person (gr
 > **2 conversations await you**
 > - [Ashish]({profileUrl}) — An experienced technologist spanning [generative software]({acceptUrl1}), [AI infrastructure]({acceptUrl2}), [creative AI design]({acceptUrl3}), and [deep learning research]({acceptUrl4}). Several angles worth exploring.
 > - [Priya]({profileUrl}) — Building community-owned data infrastructure. Aligned on the ownership layer and complementary on discovery, could be interesting to [explore overlaps]({acceptUrl})
-
-## Ambient update (fires twice daily at 14:00 and 20:00 host-local)
-
-Two sections are possible: direct (the user is a party — link the name to `profileUrl`, embed `acceptUrl` + `&msg=` greeting) and introducer (the user is the introducer — render community intents, still link the name to `profileUrl`, but no `acceptUrl` and no `&msg=`). Skip a section that has no qualifying candidates. Per-pass cap: max 3 direct + 3 introducer.
-
-> **New conversations worth starting**
-> - [Erik Leibner]({profileUrl}) — Senior software engineer focused on AI systems. There's a clear overlap with how you're thinking about decentralized search + agents. Feels like a "build together" type conversation, [message Erik]({acceptUrl})
-> - [Tiina]({profileUrl}) — Co-founder at Hopscotch Labs and Sane. Working on creativity and knowledge organization. Different entry point, same underlying problem space — could spark something interesting, [message Tiina]({acceptUrl})
-> - [Xavier Meegan]({profileUrl}) — Founder & CIO at Frachtis. Deep in decentralized infrastructure and AI. Good person to pressure-test ideas and explore where things could connect, [message Xavier]({acceptUrl})
->
-> **Help your community find their opportunities**
-> A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - [Remi]({profileUrl}) — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
-> - [Kai]({profileUrl}) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
->
-> There are 5 more conversations waiting for you, let me know if you want to see them.
-
-### Grouped: same person, multiple connections (ambient)
-
-> **New conversations worth starting**
-> - [Ashish]({profileUrl}) — An experienced technologist whose work spans [generative software]({acceptUrl1}), [AI infrastructure]({acceptUrl2}), and [deep learning research]({acceptUrl3}). Multiple overlapping connections with your interests.
 
 ## Greeting drafts (the `&msg=` payload appended to Telegram links)
 

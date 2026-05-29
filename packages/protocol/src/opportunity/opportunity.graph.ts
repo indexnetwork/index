@@ -374,6 +374,17 @@ export class OpportunityGraphFactory {
               };
             }
             targetIndexIds = [state.networkId];
+          } else if (state.indexScope && state.indexScope.length > 0) {
+            // Bounded scope (e.g. a network-scoped agent's reachable indexes):
+            // intersect with the user's actual memberships so discovery never
+            // reaches networks outside the agent's bound scope.
+            const allowed = new Set(state.indexScope);
+            targetIndexIds = state.userNetworks.filter((n) => allowed.has(n));
+            logger.verbose('[Graph:Scope] Applied indexScope intersection', {
+              indexScopeCount: state.indexScope.length,
+              userNetworksCount: state.userNetworks.length,
+              targetCount: targetIndexIds.length,
+            });
           } else {
             // Search all user's indexes
             targetIndexIds = state.userNetworks;
