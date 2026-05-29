@@ -1807,7 +1807,7 @@ Leave an index. Members (non-owners) can leave.
 
 ### POST /api/networks/:id/signup
 
-Headless experiment-network signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email.
+Headless experiment-network signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are staged under onboarding seed data and are not activated on the user profile until the user grants event/import consent and approves a draft during onboarding. Experiment networks use `profileEnrichment: 'consent_required'` by default, so automatic public enrichment jobs carry `networkId`/reason context and self-skip until the user records public profile lookup consent during onboarding.
 
 **Auth**: `ExperimentMasterKeyGuard` — `x-api-key` header containing the network's master key (issued once at network creation, stored by the caller).
 
@@ -1925,7 +1925,7 @@ Parse a CSV file and validate rows before committing an import. Owner-only, expe
 
 ### POST /api/networks/:id/members/import
 
-Import validated rows (from `/import/parse`) into the network. Owner-only, experiment networks only.
+Import validated rows (from `/import/parse`) into the network. Owner-only, experiment networks only. CSV rows provision users, scoped agents, and memberships immediately, but optional profile columns (`name`, `bio`, `location`, socials) are staged under onboarding seed data and are not activated on the user profile until the member grants event/import consent and approves a draft during onboarding. For consent-required experiment networks, public profile enrichment is skipped until consent is recorded.
 
 **Auth**: `AuthOrApiKeyGuard`; caller must own the network.
 
@@ -1942,7 +1942,7 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, exper
 { "imported": 42, "skipped": 3, "ownersNotified": 1 }
 ```
 
-- `imported` — Number of new accounts provisioned and added as members.
+- `imported` — Number of accounts provisioned and added as members. Rich profile fields are staged, not activated.
 - `skipped` — Number of rows that were skipped (errors).
 - `ownersNotified` — Number of network owners who received a credentials summary email. The email contains an inline CSV with every minted API key (`email,name,api_key`). Per-user invitation emails are not sent for bulk imports — the owner distributes keys out-of-band.
 
@@ -3068,7 +3068,10 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | Tool | Domain | Description |
 |------|--------|-------------|
 | `read_user_profiles` | Profile | Read user profiles (own or by query) |
-| `create_user_profile` | Profile | Generate profile from social links or bio |
+| `record_onboarding_privacy_consent` | Profile | Record onboarding EdgeOS import and public lookup consent decisions without completing onboarding |
+| `preview_user_profile` | Profile | Generate a non-persisted onboarding profile draft from allowed sources |
+| `confirm_user_profile` | Profile | Save an approved profile draft or explicit correction text |
+| `create_user_profile` | Profile | Legacy/generic profile generation from social links or bio |
 | `update_user_profile` | Profile | Update profile details |
 | `complete_onboarding` | Profile | Mark onboarding complete |
 | `read_intents` | Intent | List user's intents with optional filters |

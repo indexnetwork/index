@@ -113,9 +113,9 @@ negotiationRunExistingQueue.setRuntimeDeps({
 });
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
-NetworkMembershipEvents.onMemberAdded = (userId: string) => {
-  enrichmentQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, error: err });
+NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
+  enrichmentQueue.addEnsureProfileHydeJob({ userId, networkId, reason: 'network_membership' }).catch((err) => {
+    log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, networkId, error: err });
   });
 };
 

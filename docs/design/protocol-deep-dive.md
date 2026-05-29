@@ -156,6 +156,9 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 - Write mode detects what needs generation and only runs necessary steps
 - If input is a confirmation phrase ("yes", "go ahead"), it is treated as no input so scraping runs
 - Profile updates merge new information with existing profile data
+- Onboarding-safe profile tools split consent/draft/confirmation: `record_onboarding_privacy_consent` writes `users.onboarding.privacy`, `preview_user_profile` generates a non-persisted draft from allowed sources, and `confirm_user_profile` saves only approved content.
+- Automatic public enrichment is gated by `networks.permissions.profileEnrichment`: missing/`auto` preserves legacy behavior, `consent_required` requires `privacy.publicProfileLookup.granted === true` and never allows ghosts, and `disabled` blocks public enrichment.
+- `EnrichmentQueue` is the execution-time backstop. It carries `networkId` and `reason`, re-reads network policy/user onboarding/profile existence, skips `enrich.user` when disallowed, and lets `ensure_profile_hyde` proceed under consent-required only when a profile already exists.
 - When `premiseGraph` is injected, chat input and scraped content are routed through `PremiseDecomposer` before profile generation. Extracted premises are persisted via the premise graph, then aggregated into the profile input. This ensures atomic facts are captured as premises and the profile is synthesized from structured data.
 - The `decompose_premises` node also handles direct chat input (not just scraped content) — any free-text describing the user is decomposed into premises first.
 

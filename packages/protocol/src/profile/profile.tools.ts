@@ -6,7 +6,9 @@ import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, needsClarification, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { EnrichmentResult, ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
+import type { OnboardingPrivacyState, OnboardingProfileSeed, OnboardingState, PrivacyConsentSource, UserRecord } from "../shared/interfaces/database.interface.js";
 import { socialsToEnrichmentRequest, detectSocialLabel } from "../shared/utils/social-label.js";
+import { ProfileGenerator } from "./profile.generator.js";
 
 const logger = protocolLogger("ChatTools:Profile");
 
@@ -35,6 +37,94 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       telegram: enrichmentSocials.telegram || undefined,
       websites: enrichmentSocials.websites?.length ? enrichmentSocials.websites : undefined,
     });
+  }
+
+  function hasPublicProfileLookupConsent(onboarding: OnboardingState | null | undefined): boolean {
+    return onboarding?.privacy?.publicProfileLookup?.granted === true;
+  }
+
+  function hasEdgeosImportConsent(onboarding: OnboardingState | null | undefined): boolean {
+    return onboarding?.privacy?.edgeosImport?.granted === true;
+  }
+
+  function normalizeConsentSource(source: unknown): PrivacyConsentSource {
+    return source === 'agentvillage_onboarding' || source === 'hermes_setup' || source === 'web_onboarding' || source === 'api'
+      ? source
+      : 'api';
+  }
+
+  function consentDecision(granted: boolean, source: PrivacyConsentSource) {
+    return { granted, decidedAt: new Date().toISOString(), source };
+  }
+
+  function selectProfileSeed(onboarding: OnboardingState | null | undefined, networkId?: string): OnboardingProfileSeed | undefined {
+    const seeds = onboarding?.profileSeeds ?? [];
+    if (seeds.length === 0) return undefined;
+    const scoped = networkId ? seeds.filter((seed) => seed.networkId === networkId) : seeds;
+    return scoped[scoped.length - 1] ?? seeds[seeds.length - 1];
+  }
+
+  async function persistApprovedProfileContext(profile: { identity: { name: string; bio: string; location: string } }, user: UserRecord | null, networkId?: string): Promise<void> {
+    await userDb.updateUser({
+      name: profile.identity.name,
+      intro: profile.identity.bio,
+      location: profile.identity.location,
+    });
+
+    const onboarding = user?.onboarding ?? undefined;
+    if (!hasEdgeosImportConsent(onboarding)) return;
+    const seed = selectProfileSeed(onboarding, networkId);
+    if (!seed?.socials?.length) return;
+
+    const existingSocials = await userDb.getUserSocials();
+    const seededLabels = new Set(seed.socials.map((social) => social.label));
+    const kept = existingSocials
+      .filter((social) => !seededLabels.has(social.label) || social.label === 'custom')
+      .map((social) => ({ label: social.label, value: social.value }));
+    const merged = seededLabels.has('custom')
+      ? [...kept.filter((social) => social.label !== 'custom'), ...seed.socials]
+      : [...kept, ...seed.socials];
+    await userDb.setUserSocials(merged);
+  }
+
+  function buildProfileInput(parts: {
+    name?: string;
+    location?: string;
+    bioOrDescription?: string;
+    edgeosProfileText?: string;
+    enrichment?: EnrichmentResult | null;
+    socials?: Array<{ label: string; value: string }>;
+  }): string {
+    const lines: string[] = [];
+    if (parts.name) lines.push(`Name: ${parts.name}`);
+    if (parts.location) lines.push(`Location: ${parts.location}`);
+    if (parts.bioOrDescription) lines.push(parts.bioOrDescription);
+    if (parts.edgeosProfileText) lines.push(`Event-provided profile information:\n${parts.edgeosProfileText}`);
+    if (parts.socials?.length) {
+      lines.push(`User-provided public links:\n${parts.socials.map((s) => `${s.label}: ${s.value}`).join('\n')}`);
+    }
+    const enrichment = parts.enrichment ?? null;
+    if (isMeaningfulEnrichment(enrichment)) {
+      lines.push([
+        enrichment.identity.name ? `Enriched name: ${enrichment.identity.name}` : '',
+        enrichment.identity.location ? `Enriched location: ${enrichment.identity.location}` : '',
+        enrichment.identity.bio ? `Enriched bio: ${enrichment.identity.bio}` : '',
+        enrichment.narrative.context ? `Enriched context: ${enrichment.narrative.context}` : '',
+        enrichment.attributes.skills.length ? `Skills: ${enrichment.attributes.skills.join(', ')}` : '',
+        enrichment.attributes.interests.length ? `Interests: ${enrichment.attributes.interests.join(', ')}` : '',
+      ].filter(Boolean).join('\n'));
+    }
+    return lines.filter((line) => line.trim().length > 0).join('\n\n');
+  }
+
+  function toProfileSummary(profile: { identity: { name: string; bio: string; location: string }; attributes: { skills: string[]; interests: string[] } }) {
+    return {
+      name: profile.identity.name,
+      bio: profile.identity.bio,
+      location: profile.identity.location,
+      skills: profile.attributes.skills,
+      interests: profile.attributes.interests,
+    };
   }
 
   const readUserProfiles = defineTool({
@@ -267,18 +357,196 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
+  const recordOnboardingPrivacyConsent = defineTool({
+    name: "record_onboarding_privacy_consent",
+    description:
+      "Records the authenticated user's onboarding privacy choices. Use this during AgentVillage/Hermes onboarding before using event-provided EdgeOS profile data or public web/profile lookup. " +
+      "This only records consent; it does not mark onboarding complete and does not create or update a profile.",
+    querySchema: z.object({
+      edgeosImportGranted: z.boolean().optional().describe("Whether the user grants permission to use EdgeOS/event-provided profile data for onboarding."),
+      publicProfileLookupGranted: z.boolean().optional().describe("Whether the user grants permission for public internet/profile lookup during onboarding."),
+      source: z.enum(['agentvillage_onboarding', 'hermes_setup', 'web_onboarding', 'api']).optional().default('api').describe("Where this consent decision was collected."),
+    }),
+    handler: async ({ context, query }) => {
+      const user = await userDb.getUser();
+      if (user?.isGhost) {
+        return error("Ghost users cannot record onboarding consent. The user must authenticate as a real account first.");
+      }
+      if (query.edgeosImportGranted === undefined && query.publicProfileLookupGranted === undefined) {
+        return error("Provide at least one consent decision to record.");
+      }
+
+      const currentOnboarding = user?.onboarding ?? context.user.onboarding ?? {};
+      const currentPrivacy: OnboardingPrivacyState = currentOnboarding.privacy ?? {};
+      const source = normalizeConsentSource(query.source);
+      const privacy: OnboardingPrivacyState = {
+        ...currentPrivacy,
+        ...(query.edgeosImportGranted !== undefined && { edgeosImport: consentDecision(query.edgeosImportGranted, source) }),
+        ...(query.publicProfileLookupGranted !== undefined && { publicProfileLookup: consentDecision(query.publicProfileLookupGranted, source) }),
+      };
+
+      await userDb.updateUser({
+        onboarding: {
+          ...currentOnboarding,
+          privacy,
+        },
+      });
+
+      return success({
+        message: "Privacy choices recorded.",
+        privacy,
+      });
+    },
+  });
+
+  const previewUserProfile = defineTool({
+    name: "preview_user_profile",
+    description:
+      "Builds a structured profile draft for onboarding without saving anything. Use this after recording privacy consent and before asking the user to approve the profile. " +
+      "If allowPublicLookup is false, this tool uses only explicit text, EdgeOS/event data the user allowed, and user-provided social URLs. If allowPublicLookup is true, persisted public lookup consent is required.",
+    querySchema: z.object({
+      name: z.string().optional().describe("Name explicitly provided by the user or already known from the authenticated account."),
+      location: z.string().optional().describe("Location explicitly provided by the user or allowed event data."),
+      bioOrDescription: z.string().optional().describe("Explicit self-description provided by the user."),
+      edgeosProfileText: z.string().optional().describe("EdgeOS/event profile text, only if the user granted EdgeOS import consent."),
+      allowPublicLookup: z.boolean().optional().default(false).describe("Whether to include public profile lookup. Requires previously recorded publicProfileLookup consent."),
+      linkedinUrl: z.string().optional().describe("LinkedIn URL explicitly provided by the user."),
+      githubUrl: z.string().optional().describe("GitHub URL explicitly provided by the user."),
+      twitterUrl: z.string().optional().describe("X/Twitter URL explicitly provided by the user."),
+      websites: z.array(z.string()).optional().describe("Personal/portfolio URLs explicitly provided by the user."),
+    }),
+    handler: async ({ context, query }) => {
+      const user = await userDb.getUser();
+      if (!user) return error("User not found.");
+
+      const onboarding = user.onboarding ?? context.user.onboarding;
+      const hasEdgeosConsent = hasEdgeosImportConsent(onboarding);
+      const seed = hasEdgeosConsent ? selectProfileSeed(onboarding, context.networkId) : undefined;
+      const name = query.name?.trim() || seed?.name || user.name || undefined;
+      const location = query.location?.trim() || seed?.location || user.location || undefined;
+      const bioOrDescription = query.bioOrDescription?.trim() || seed?.bio || user.intro || undefined;
+      const edgeosProfileText = query.edgeosProfileText?.trim() || undefined;
+      const linkedinUrl = query.linkedinUrl?.trim();
+      const githubUrl = query.githubUrl?.trim();
+      const twitterUrl = query.twitterUrl?.trim();
+      const websites = query.websites?.map((url) => url.trim()).filter(Boolean) ?? [];
+      const socials = [
+        ...(seed?.socials ?? []),
+        ...(linkedinUrl ? [{ label: 'linkedin', value: linkedinUrl }] : []),
+        ...(githubUrl ? [{ label: 'github', value: githubUrl }] : []),
+        ...(twitterUrl ? [{ label: 'twitter', value: twitterUrl }] : []),
+        ...websites.map((value) => ({ label: detectSocialLabel(value), value })),
+      ];
+
+      if (edgeosProfileText && !hasEdgeosConsent) {
+        return error("EdgeOS import consent has not been recorded. Ask the user first, then call record_onboarding_privacy_consent(edgeosImportGranted=true) before using event-provided profile data.");
+      }
+
+      let enrichment: EnrichmentResult | null = null;
+      if (query.allowPublicLookup) {
+        if (!hasPublicProfileLookupConsent(user.onboarding ?? context.user.onboarding)) {
+          return error("Public profile lookup consent has not been recorded. Ask the user first, then call record_onboarding_privacy_consent(publicProfileLookupGranted=true).");
+        }
+        enrichment = await enrichFromUserRecord({
+          name,
+          email: user.email,
+          socials: socials.map((social, index) => ({ id: `preview-${index}`, userId: context.userId, ...social })),
+        });
+      }
+
+      const input = buildProfileInput({ name, location, bioOrDescription, edgeosProfileText, enrichment, socials });
+      if (!input.trim()) {
+        return needsClarification({
+          missingFields: ['profile_description'],
+          message: "Please share a short description, allowed EdgeOS profile text, or user-provided profile links so I can draft your profile.",
+        });
+      }
+
+      const generated = await new ProfileGenerator().invoke(input);
+      const profile = { ...generated.output, userId: context.userId };
+      return success({
+        preview: true,
+        persisted: false,
+        message: "Profile draft generated. Show this to the user and ask whether it looks right before calling confirm_user_profile.",
+        profile: toProfileSummary(profile),
+        draft: profile,
+      });
+    },
+  });
+
+  const confirmUserProfile = defineTool({
+    name: "confirm_user_profile",
+    description:
+      "Saves an explicitly approved onboarding profile draft. Call this only after the user has seen the draft from preview_user_profile and approved it or provided corrections. " +
+      "This path uses only the approved draft/explicit correction text and does not scrape or run public lookup.",
+    querySchema: z.object({
+      draft: z.object({
+        identity: z.object({ name: z.string(), bio: z.string(), location: z.string() }),
+        narrative: z.object({ context: z.string() }),
+        attributes: z.object({ interests: z.array(z.string()), skills: z.array(z.string()) }),
+      }).optional().describe("The structured profile draft returned by preview_user_profile after user approval."),
+      bioOrDescription: z.string().optional().describe("Approved correction or explicit profile text if not passing a structured draft."),
+      name: z.string().optional().describe("Approved name correction."),
+      location: z.string().optional().describe("Approved location correction."),
+    }),
+    handler: async ({ context, query }) => {
+      const user = await userDb.getUser();
+      if (query.draft) {
+        const profile = { ...query.draft, userId: context.userId };
+        await userDb.saveProfile(profile);
+        await persistApprovedProfileContext(profile, user, context.networkId);
+        return success({
+          created: true,
+          message: "Profile saved from approved draft.",
+          profile: toProfileSummary(profile),
+        });
+      }
+
+      const description = query.bioOrDescription?.trim();
+      if (!description) {
+        return error("Pass the approved structured draft or explicit approved profile text.");
+      }
+      const input = buildProfileInput({
+        name: query.name?.trim(),
+        location: query.location?.trim(),
+        bioOrDescription: description,
+      });
+      const _confirmGraphStart = Date.now();
+      const _confirmTraceEmitter = requestContext.getStore()?.traceEmitter;
+      _confirmTraceEmitter?.({ type: "graph_start", name: "profile" });
+      const result = await graphs.profile.invoke({
+        userId: context.userId,
+        operationMode: 'write' as const,
+        input,
+        forceUpdate: true,
+      });
+      const _confirmGraphMs = Date.now() - _confirmGraphStart;
+      _confirmTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _confirmGraphMs });
+      if (result.error) return error(result.error);
+      if (!result.profile) return error("Failed to save profile from approved text.");
+      await persistApprovedProfileContext(result.profile, user, context.networkId);
+      return success({
+        created: true,
+        message: "Profile saved from approved text.",
+        profile: toProfileSummary(result.profile),
+        _graphTimings: [{ name: 'profile', durationMs: _confirmGraphMs, agents: result.agentTimings ?? [] }],
+      });
+    },
+  });
+
   const createUserProfile = defineTool({
     name: "create_user_profile",
     description:
-      "Creates or regenerates the authenticated user's profile. Profiles are essential for discovery — they provide the semantic context " +
-      "used to match users with complementary intents. A richer profile means better opportunity matches.\n\n" +
-      "**How it works:** The system enriches profile data from public web sources (LinkedIn, GitHub, Twitter) and/or explicit user input, " +
-      "then generates a structured profile with bio, skills, interests, location, and narrative context.\n\n" +
+      "Legacy/backward-compatible tool that creates or regenerates the authenticated user's profile. AgentVillage/Hermes onboarding must use " +
+      "record_onboarding_privacy_consent → preview_user_profile → confirm_user_profile instead, so consent is recorded and the draft is shown before saving. " +
+      "Profiles are essential for discovery — they provide the semantic context used to match users with complementary intents.\n\n" +
+      "**How it works:** For generic clients, the system can enrich profile data from public web sources (LinkedIn, GitHub, Twitter) and/or explicit user input, " +
+      "then generates a structured profile with bio, skills, interests, location, and narrative context. Do not call with no arguments in consent-required onboarding flows.\n\n" +
       "**Usage patterns:**\n" +
       "- No args: attempts auto-generation from account data. If insufficient info, returns `missingFields` — ask the user for name/social URLs and retry.\n" +
       "- With social URLs (linkedinUrl, githubUrl, etc.): enriches from those specific URLs.\n" +
       "- With bioOrDescription: creates profile from explicit text only (no web scraping).\n" +
-      "- During onboarding: first call returns a preview (not saved). Call again with confirm=true after user approval to persist.\n\n" +
+      "- Legacy onboarding clients: first call returns a preview. AgentVillage/Hermes clients should not use this preview path; use preview_user_profile instead because it does not persist enrichment side effects.\n\n" +
       "**Returns:** The generated profile (name, bio, location, skills, interests) or a `needsClarification` response listing missing fields.\n\n" +
       "**Next steps:** After profile creation, the user can create intents (create_intent) and join indexes (create_network_membership) to start discovering opportunities.",
     querySchema: z.object({
@@ -652,5 +920,5 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [readUserProfiles, createUserProfile, updateUserProfile, completeOnboarding] as const;
+  return [readUserProfiles, recordOnboardingPrivacyConsent, previewUserProfile, confirmUserProfile, createUserProfile, updateUserProfile, completeOnboarding] as const;
 }

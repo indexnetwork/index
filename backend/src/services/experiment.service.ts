@@ -74,26 +74,23 @@ class ExperimentService {
     const result = await networkInvitationService.ensureMembership({
       networkId,
       email: normalizedEmail,
-      name: payload.name,
       rotateKey: true,
     });
 
     // rotateKey=true guarantees apiKey is non-null
     const apiKey = result.apiKey!;
 
-    if (payload.name || payload.bio || payload.location || (payload.socials && payload.socials.length > 0)) {
-      await this.applyProfilePatch(result.user.id, {
-        email: normalizedEmail,
-        name: payload.name,
-        bio: payload.bio,
-        location: payload.location,
-        socials: payload.socials ?? [],
-      });
-    }
+    await this.stageProfileSeed(result.user.id, networkId, {
+      email: normalizedEmail,
+      name: payload.name,
+      bio: payload.bio,
+      location: payload.location,
+      socials: payload.socials ?? [],
+    }, 'experiment_signup');
 
     // Enqueue profile enrichment so the user gets a profile + HyDE.
     try {
-      await enrichmentQueue.addEnrichUserJob({ userId: result.user.id });
+      await enrichmentQueue.addEnrichUserJob({ userId: result.user.id, networkId, reason: 'experiment_signup' });
     } catch (err) {
       logger.warn('[ExperimentService] Failed to enqueue profile enrichment (non-fatal)', { error: err });
     }
@@ -169,10 +166,9 @@ class ExperimentService {
         const result = await networkInvitationService.ensureMembership({
           networkId,
           email,
-          name: row.name,
           rotateKey: true,
         });
-        await this.applyProfilePatch(result.user.id, row);
+        await this.stageProfileSeed(result.user.id, networkId, row, 'experiment_csv_import');
         importedUserIdSet.add(result.user.id);
         credentials.push({
           email: result.user.email,
@@ -193,7 +189,7 @@ class ExperimentService {
     // above), then generates a full profile with premises and HyDE documents.
     if (importedUserIds.length > 0) {
       try {
-        await enrichmentQueue.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id })));
+        await enrichmentQueue.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id, networkId, reason: 'experiment_import' })));
         logger.info('[ExperimentService] Enqueued profile enrichment', { count: importedUserIds.length });
       } catch (err) {
         logger.warn('[ExperimentService] Failed to enqueue profile enrichment (non-fatal)', { error: err });
@@ -269,73 +265,54 @@ class ExperimentService {
   }
 
   /**
-   * Applies the optional profile/socials patch for an imported member onto an
-   * existing user row. Idempotent — safe to call repeatedly.
+   * Stages optional profile/social data from headless experiment signup or CSV
+   * import without activating it on the user/profile tables. The onboarding
+   * profile tools may use this seed only after the user grants EdgeOS/event
+   * import consent and verifies the generated profile draft.
    *
-   * @param userId - User to patch.
-   * @param row - Import row carrying optional name/bio/location/socials.
+   * @param userId - User receiving the staged seed.
+   * @param networkId - Experiment network that supplied the seed.
+   * @param row - Import/signup row carrying optional profile fields.
+   * @param source - Source flow for provenance.
    */
-  private async applyProfilePatch(userId: string, row: ImportRow): Promise<void> {
-    const userPatch: { name?: string; intro?: string; location?: string } = {};
-    if (row.name) userPatch.name = row.name;
-    if (row.bio) userPatch.intro = row.bio;
-    if (row.location) userPatch.location = row.location;
-    if (Object.keys(userPatch).length > 0) {
-      await db.update(schema.users).set(userPatch).where(eq(schema.users.id, userId));
-    }
+  private async stageProfileSeed(
+    userId: string,
+    networkId: string,
+    row: ImportRow,
+    source: schema.OnboardingProfileSeed['source'],
+  ): Promise<void> {
+    const socials = row.socials.filter((social) => social.label.trim() && social.value.trim());
+    const seed: schema.OnboardingProfileSeed = {
+      source,
+      networkId,
+      capturedAt: new Date().toISOString(),
+      ...(row.name?.trim() ? { name: row.name.trim() } : {}),
+      ...(row.bio?.trim() ? { bio: row.bio.trim() } : {}),
+      ...(row.location?.trim() ? { location: row.location.trim() } : {}),
+      ...(socials.length > 0 ? { socials } : {}),
+    };
 
-    if (row.bio || row.location) {
-      const [existing] = await db
-        .select({ id: schema.userProfiles.id, identity: schema.userProfiles.identity })
-        .from(schema.userProfiles)
-        .where(eq(schema.userProfiles.userId, userId))
-        .limit(1);
+    if (!seed.name && !seed.bio && !seed.location && !seed.socials?.length) return;
 
-      const patch: { bio?: string; location?: string } = {};
-      if (row.bio) patch.bio = row.bio;
-      if (row.location) patch.location = row.location;
+    const [user] = await db
+      .select({ onboarding: schema.users.onboarding })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
 
-      if (existing) {
-        const identity = (existing.identity as { name?: string; bio?: string; location?: string } | null) ?? {};
-        await db
-          .update(schema.userProfiles)
-          .set({ identity: { name: identity.name ?? '', bio: identity.bio ?? '', location: identity.location ?? '', ...patch }, updatedAt: new Date() })
-          .where(eq(schema.userProfiles.id, existing.id));
-      } else {
-        await db
-          .insert(schema.userProfiles)
-          .values({
-            userId,
-            identity: {
-              name: row.name || '',
-              bio: row.bio || '',
-              location: row.location || '',
-            },
-          });
-      }
-    }
+    const onboarding = user?.onboarding ?? {};
+    const profileSeeds = (onboarding.profileSeeds ?? [])
+      .filter((existing) => !(existing.networkId === networkId && existing.source === source));
 
-    for (const social of row.socials) {
-      const [existing] = await db
-        .select({ id: schema.userSocials.id })
-        .from(schema.userSocials)
-        .where(and(
-          eq(schema.userSocials.userId, userId),
-          eq(schema.userSocials.label, social.label),
-        ))
-        .limit(1);
-
-      if (existing) {
-        await db
-          .update(schema.userSocials)
-          .set({ value: social.value })
-          .where(eq(schema.userSocials.id, existing.id));
-      } else {
-        await db
-          .insert(schema.userSocials)
-          .values({ userId, label: social.label, value: social.value });
-      }
-    }
+    await db
+      .update(schema.users)
+      .set({
+        onboarding: {
+          ...onboarding,
+          profileSeeds: [...profileSeeds, seed],
+        },
+      })
+      .where(eq(schema.users.id, userId));
   }
 
 }

@@ -8,7 +8,7 @@ AgentVillage is the public skills package and onboarding scripts that an agent (
 
 Today, capabilities come from **Index Network** (discovery + intent negotiation). **Geo** (knowledge graph) and **EdgeOS** (calendar + directory) are also in scope. Once installed, AgentVillage:
 
-- **Runs onboarding** the first time you message it (greet → profile lookup → community discovery → first signal → `complete_onboarding` → silent capture of your platform handle).
+- **Runs privacy-first onboarding** the first time you message it (greet → ask EdgeOS/import consent → ask public lookup consent → profile draft → user approval → first signal → silent handle capture → `complete_onboarding`).
 - **Sends a morning digest at 08:00 host-local time** with the connections worth your attention and the asks where you can help.
 - **Notifies you when someone accepts** a connection on your behalf.
 - **Curates memory** every few days — distills daily notes into long-term `MEMORY.md`.
@@ -241,7 +241,7 @@ The installer:
 
 Send any message in your chat to bring AgentVillage online. AgentVillage has two independent onboarding gates that run at session start:
 
-- **Index Network onboarding** — gated on the server-side `onboardingComplete` flag returned by `read_user_profiles()`. Owned by `skills/index-network/bootstrap.md`. If `false`, the six-step ritual runs (greet → create profile → capture intent → capture handle → `complete_onboarding()` → populate `USER.md` → welcome).
+- **Index Network onboarding** — gated on the server-side `onboardingComplete` flag returned by `read_user_profiles()`. Owned by `skills/index-network/bootstrap.md`. If `false`, the privacy-first ritual runs (greet → ask consent to use EdgeOS/event profile data → ask separate public lookup consent → draft profile with `preview_user_profile` → show it for approval → save with `confirm_user_profile` → capture first signal → capture handle → `complete_onboarding()` → populate `USER.md`).
 - **AgentVillage framing** — owned by `workspace/AGENTS.md` "First-message gates". There is no schedule-preferences dialog; the morning digest runs at a fixed time. The only first-message work beyond the Index ritual is a one-line welcome for returning users on a fresh workspace.
 
 An admin resetting `onboardingComplete` server-side re-triggers the Index ritual. Wiping local state via `install/install.ts --wipe-user` resets local markers without touching Index's flag.
@@ -292,7 +292,7 @@ Accepted-opportunity notifications, freshness audits, memory curation, and any o
 
 AgentVillage's behaviour is markdown-driven. Almost everything you'd want to change lives in `workspace/` or `skills/<backend>/`. This section maps common customizations to the file that owns them.
 
-**Deploy cycle.** All edits go into this repo. The agent only sees them after `install/install.ts` runs again, since the installer copies `workspace/` and `skills/` into `~/.openclaw/workspace/`. Re-running without `--wipe-user` preserves the attendee's `USER.md`, `MEMORY.md`, and onboarding markers — safe for content/tone edits. Use `--wipe-user` only when you want the next session to re-onboard from scratch.
+**Deploy cycle.** All edits go into this repo. The agent only sees them after `install/install.ts` runs again, since the installer copies `workspace/` and `skills/` into `~/.openclaw/workspace/`. Re-running without `--wipe-user` preserves the attendee's `USER.md`, `MEMORY.md`, and onboarding markers — safe for content/tone edits. Use `--wipe-user` only when you want the next session to re-onboard from scratch. Existing installs must reinstall the package to copy updated privacy-first onboarding markdown into the Hermes/OpenClaw workspace.
 
 ### Tone & voice
 

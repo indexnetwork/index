@@ -13,10 +13,10 @@ mock.module('../src/lib/email/transport.helper', () => ({
   executeSendEmail: sendSpy,
 }));
 
-const enrichBulkSpy = mock<(items: Array<{ userId: string }>) => Promise<unknown[]>>(async () => []);
-const enrichSingleSpy = mock<(data: { userId: string }) => Promise<unknown>>(async () => ({}));
-mock.module('../src/queues/profile.queue', () => ({
-  profileQueue: {
+const enrichBulkSpy = mock<(items: Array<{ userId: string; networkId?: string; reason?: string }>) => Promise<unknown[]>>(async () => []);
+const enrichSingleSpy = mock<(data: { userId: string; networkId?: string; reason?: string }) => Promise<unknown>>(async () => ({}));
+mock.module('../src/queues/enrichment.queue', () => ({
+  enrichmentQueue: {
     addEnrichUserJobBulk: enrichBulkSpy,
     addEnrichUserJob: enrichSingleSpy,
   },
@@ -87,11 +87,12 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(result.skipped).toBe(0);
 
     const [user] = await db
-      .select({ id: schema.users.id, name: schema.users.name })
+      .select({ id: schema.users.id, name: schema.users.name, onboarding: schema.users.onboarding })
       .from(schema.users)
       .where(eq(schema.users.email, email));
     expect(user).toBeTruthy();
-    expect(user.name).toBe('CSV Invitee');
+    expect(user.name).toBe(email.split('@')[0]);
+    expect(user.onboarding?.profileSeeds?.[0]?.name).toBe('CSV Invitee');
     cleanupUserIds.push(user.id);
 
     // Membership
@@ -158,25 +159,37 @@ describe('CSV import → network-scoped agent end-to-end', () => {
         eq(schema.agentPermissions.scopeId, networkId),
       ));
     expect(perms.length).toBe(1);
-  });
+  }, 15000);
 
-  test('importMembers writes CSV bio and location to users table columns', async () => {
+  test('importMembers stages CSV profile fields without activating them', async () => {
     const email = `csv-profile-${Date.now()}@test.dev`;
     await experimentService.importMembers(networkId, [
-      { email, name: 'Profile Test', bio: 'AI researcher at MIT', location: 'Cambridge, MA', socials: [] },
+      { email, name: 'Profile Test', bio: 'AI researcher at MIT', location: 'Cambridge, MA', socials: [{ label: 'linkedin', value: 'https://linkedin.com/in/profile-test' }] },
     ]);
 
     const [user] = await db
-      .select({ id: schema.users.id, intro: schema.users.intro, location: schema.users.location })
+      .select({ id: schema.users.id, intro: schema.users.intro, location: schema.users.location, onboarding: schema.users.onboarding })
       .from(schema.users)
       .where(eq(schema.users.email, email));
     cleanupUserIds.push(user.id);
 
-    expect(user.intro).toBe('AI researcher at MIT');
-    expect(user.location).toBe('Cambridge, MA');
+    expect(user.intro).toBeNull();
+    expect(user.location).toBeNull();
+    const seed = user.onboarding?.profileSeeds?.[0];
+    expect(seed).toMatchObject({
+      source: 'experiment_csv_import',
+      networkId,
+      name: 'Profile Test',
+      bio: 'AI researcher at MIT',
+      location: 'Cambridge, MA',
+    });
+    expect(seed?.socials).toEqual([{ label: 'linkedin', value: 'https://linkedin.com/in/profile-test' }]);
+
+    const profiles = await db.select({ id: schema.userProfiles.id }).from(schema.userProfiles).where(eq(schema.userProfiles.userId, user.id));
+    expect(profiles).toHaveLength(0);
   });
 
-  test('importMembers sets onboarding.completedAt on imported users', async () => {
+  test('importMembers leaves onboarding incomplete for imported users', async () => {
     const email = `csv-onboard-${Date.now()}@test.dev`;
     await experimentService.importMembers(networkId, [
       { email, name: 'Onboard Test', socials: [] },
@@ -188,12 +201,10 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       .where(eq(schema.users.email, email));
     cleanupUserIds.push(user.id);
 
-    expect(user.onboarding).toBeTruthy();
-    expect(user.onboarding!.completedAt).toBeTruthy();
-    expect(new Date(user.onboarding!.completedAt!).getTime()).toBeGreaterThan(0);
+    expect(user.onboarding?.completedAt).toBeUndefined();
   });
 
-  test('importMembers preserves existing onboarding fields when setting completedAt', async () => {
+  test('importMembers preserves existing onboarding fields without setting completedAt', async () => {
     const email = `csv-onboard-preserve-${Date.now()}@test.dev`;
 
     // Pre-create user with existing onboarding state
@@ -216,7 +227,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       .from(schema.users)
       .where(eq(schema.users.id, preUser.id));
 
-    expect(user.onboarding!.completedAt).toBeTruthy();
+    expect(user.onboarding!.completedAt).toBeUndefined();
     expect(user.onboarding!.flow).toBe(2);
     expect(user.onboarding!.currentStep).toBe('connections');
   });
@@ -263,7 +274,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
 
     expect(enrichBulkSpy).toHaveBeenCalledTimes(1);
     const call = enrichBulkSpy.mock.calls[0][0];
-    expect(call).toEqual([{ userId: user.id }]);
+    expect(call).toEqual([{ userId: user.id, networkId, reason: 'experiment_import' }]);
   });
 
   test('importMembers deduplicates enrichment jobs for repeated emails', async () => {
@@ -283,10 +294,10 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(enrichBulkSpy).toHaveBeenCalledTimes(1);
     const call = enrichBulkSpy.mock.calls[0][0];
     expect(call).toHaveLength(1);
-    expect(call[0].userId).toBe(user.id);
+    expect(call[0]).toEqual({ userId: user.id, networkId, reason: 'experiment_import' });
   });
 
-  test('signup sets onboarding.completedAt for new users', async () => {
+  test('signup leaves onboarding incomplete for new users', async () => {
     enrichSingleSpy.mockClear();
     const email = `signup-onboard-${Date.now()}@test.dev`;
     const result = await experimentService.signup(networkId, {
@@ -300,9 +311,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       .from(schema.users)
       .where(eq(schema.users.id, result.user.id));
 
-    expect(user.onboarding).toBeTruthy();
-    expect(user.onboarding!.completedAt).toBeTruthy();
-    expect(new Date(user.onboarding!.completedAt!).getTime()).toBeGreaterThan(0);
+    expect(user.onboarding?.completedAt).toBeUndefined();
   });
 
   test('signup does not overwrite existing completedAt on re-signup', async () => {
@@ -330,18 +339,36 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(user.onboarding!.flow).toBe(3);
   });
 
-  test('signup enqueues profile enrichment', async () => {
+  test('signup stages rich profile fields and enqueues profile enrichment', async () => {
     enrichSingleSpy.mockClear();
     const email = `signup-enrich-${Date.now()}@test.dev`;
     const result = await experimentService.signup(networkId, {
       email,
       name: 'Signup Enrich',
       bio: 'ML researcher',
+      location: 'Oakland',
+      socials: [{ label: 'github', value: 'signup-enrich' }],
     });
     cleanupUserIds.push(result.user.id);
 
+    const [user] = await db
+      .select({ name: schema.users.name, intro: schema.users.intro, location: schema.users.location, onboarding: schema.users.onboarding })
+      .from(schema.users)
+      .where(eq(schema.users.id, result.user.id));
+    expect(user.name).toBe(email.split('@')[0]);
+    expect(user.intro).toBeNull();
+    expect(user.location).toBeNull();
+    expect(user.onboarding?.profileSeeds?.[0]).toMatchObject({
+      source: 'experiment_signup',
+      networkId,
+      name: 'Signup Enrich',
+      bio: 'ML researcher',
+      location: 'Oakland',
+      socials: [{ label: 'github', value: 'signup-enrich' }],
+    });
+
     expect(enrichSingleSpy).toHaveBeenCalledTimes(1);
     const call = enrichSingleSpy.mock.calls[0][0];
-    expect(call).toEqual({ userId: result.user.id });
+    expect(call).toEqual({ userId: result.user.id, networkId, reason: 'experiment_signup' });
   });
 });

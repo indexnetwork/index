@@ -147,7 +147,7 @@ export class IntegrationService {
       .filter(d => d.isNew && resolved.newGhostIds.includes(d.userId))
       .map(d => d.userId);
     if (newGhostIdsToEnrich.length > 0) {
-      await enrichmentQueue.addEnrichUserJobBulk(newGhostIdsToEnrich.map(id => ({ userId: id })));
+      await enrichmentQueue.addEnrichUserJobBulk(newGhostIdsToEnrich.map(id => ({ userId: id, networkId, reason: `integration_${toolkit}_import` })));
       logger.info('[IntegrationService] Enrichment jobs enqueued for new ghosts', { count: newGhostIdsToEnrich.length });
     }
 
