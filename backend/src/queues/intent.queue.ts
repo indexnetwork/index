@@ -46,7 +46,7 @@ export interface IntentQueueDeps {
     forceRegenerate: boolean;
     profileContext?: string;
   }) => Promise<void>;
-  addOpportunityJob?: (data: { intentId: string; userId: string }) => Promise<unknown>;
+  addOpportunityJob?: (data: { intentId: string; userId: string; networkIds?: string[] }) => Promise<unknown>;
 }
 
 /**
@@ -154,7 +154,7 @@ export class IntentQueue implements IntentGraphQueue {
   ): Promise<void> {
     const addOpportunityJob = options?.skipOpportunity
       ? async () => {}
-      : (this.deps?.addOpportunityJob ?? ((d: { intentId: string; userId: string }) => fromIntentQueue.addJob(d)));
+      : (this.deps?.addOpportunityJob ?? ((d: { intentId: string; userId: string; networkIds?: string[] }) => fromIntentQueue.addJob(d)));
     await this.handleGenerateHyde(data, { addOpportunityJob });
   }
 
@@ -332,8 +332,16 @@ export class IntentQueue implements IntentGraphQueue {
     const addJob =
       overrides?.addOpportunityJob ??
       this.deps?.addOpportunityJob ??
-      ((d: { intentId: string; userId: string }) => fromIntentQueue.addJob(d));
-    await addJob({ intentId, userId }).catch((err: unknown) =>
+      ((d: { intentId: string; userId: string; networkIds?: string[] }) => fromIntentQueue.addJob(d));
+    // Carry the agent's network scope into discovery. Without this, a network-scoped
+    // agent's intent is matched against every network the user belongs to, leaking
+    // opportunities across networks (e.g. agentvillage setups matching outside their
+    // bound community). The from-intent queue scopes the opportunity graph to networkIds[0].
+    await addJob({
+      intentId,
+      userId,
+      ...(networkScopeId ? { networkIds: [networkScopeId] } : {}),
+    }).catch((err: unknown) =>
       this.logger.error('[IntentHyde] Failed to enqueue opportunity discovery', { intentId, error: err })
     );
   }
