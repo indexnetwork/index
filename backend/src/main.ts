@@ -123,6 +123,12 @@ enrichmentQueue.onEnrichmentComplete = (userId: string) => {
   generateUserContexts(userId)
     .catch(err => log.job.from('UserContext').error('Failed to generate contexts after enrichment', { userId, error: err }));
 
+  // KNOWN RESIDUAL: profile-based discovery runs unscoped (no networkId), so for
+  // a user who belongs to more than one network it can still surface matches across
+  // all of them — the same cross-network leak fixed for intent-triggered discovery.
+  // Enrichment completion carries no network/agent context, so scoping this needs a
+  // separate design (derive scope from the user's network-scoped agent, or thread a
+  // scope through the enrichment pipeline). fromProfileQueue already accepts networkId.
   fromProfileQueue.addJob(
     { userId },
     { priority: 20, jobId: `profile-discovery-${userId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
