@@ -80,8 +80,8 @@ const _isA_2: MatchingCase = {
   id: "is_a_identity/art-director-vs-illustrator",
   rule: "is_a_identity",
   tier: 4,
-    domains: ["arts"],
-  description: "'art director' identity query must reject an illustrator who directs art for no one. Minimal-pair of samurai-vs-character-designer.",
+  domains: ["arts"],
+  description: "'art director' identity query must reject a solo illustrator with no visual-direction ownership. Minimal-pair of samurai-vs-character-designer.",
   input: {
     discovererId: "src-yanki",
     entities: [
@@ -90,14 +90,14 @@ const _isA_2: MatchingCase = {
         userId: "c-lucia",
         profile: {
           name: "Lucia Marchetti",
-          bio: "Illustrator and visual storyteller working on editorial and book-cover commissions.",
+          bio: "Solo illustrator and visual storyteller working on editorial and book-cover commissions. Executes assigned briefs; does not lead visual direction, manage artists, or own brand/art-direction decisions.",
           location: "Barcelona, ES",
           interests: ["editorial illustration", "storytelling", "traditional media"],
           skills: ["illustration", "watercolour", "composition"],
         },
         networkId: NETWORK,
         ragScore: 88,
-        matchedVia: "creative direction and art",
+        matchedVia: "illustration and visual art",
       },
     ],
     discoveryQuery: "art director",
