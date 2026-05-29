@@ -19,7 +19,7 @@ Edge's bundle for surfacing opportunities through Edge Esmeralda's Index Network
 - **`read_user_profiles().onboardingComplete === false`** → [bootstrap.md](bootstrap.md). Five-step Index Network onboarding ritual and the session-start gate.
 - **Heartbeat tick** → [heartbeat.md](heartbeat.md). Accepted-opportunity notifications and signal-freshness pruning.
 
-Cron prompts in `prompts/` (`prepare.md`, `send.md`) are loaded by the cron runner via `--message`; you do not read them yourself. The crons are fixed Edge infrastructure — their schedule is not user-configurable.
+Cron prompts in `prompts/` (`prepare.md`, `send.md`) are loaded by the cron runner via `--message`; you do not read them yourself. The crons are fixed Edge infrastructure — their schedule is not user-configurable. The digest prompts route their body through `scripts/validate-digest-urls.ts` — a deterministic URL guard that strips any link that is not a real connect (`/c/<code>`) or profile (`/u/<id>`) link, so a fabricated action URL can never ship.
 
 ## Handoff
 
