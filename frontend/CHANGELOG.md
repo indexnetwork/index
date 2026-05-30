@@ -9,4 +9,5 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Show experiment networks such as Edge City in shared profile networks and link them to their network pages.
 - Limit automatic onboarding redirects to the home page so signed-in users can open app routes like `/networks` before finishing setup.
