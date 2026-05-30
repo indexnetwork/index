@@ -83,6 +83,13 @@ class ExperimentService {
     // a setup race. Explicit rotation paths remain responsible for revocation.
     const apiKey = result.apiKey!;
 
+    await this.applyProfileData(result.user.id, {
+      name: payload.name,
+      bio: payload.bio,
+      location: payload.location,
+      socials: payload.socials ?? [],
+    });
+
     await this.stageProfileSeed(result.user.id, networkId, {
       email: normalizedEmail,
       name: payload.name,
@@ -171,6 +178,7 @@ class ExperimentService {
           email,
           rotateKey: true,
         });
+        await this.applyProfileData(result.user.id, row);
         await this.stageProfileSeed(result.user.id, networkId, row, 'experiment_csv_import');
         importedUserIdSet.add(result.user.id);
         credentials.push({
@@ -188,8 +196,7 @@ class ExperimentService {
     const importedUserIds = [...importedUserIdSet];
 
     // Enqueue profile enrichment: the profile graph reads name, intro, location,
-    // and socials from the users/user_socials tables (written by applyProfilePatch
-    // above), then generates a full profile with premises and HyDE documents.
+    // and socials from the users/user_socials tables (written by applyProfileData above).
     if (importedUserIds.length > 0) {
       try {
         await enrichmentQueue.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id, networkId, reason: 'experiment_import' })));
@@ -264,6 +271,41 @@ class ExperimentService {
         error: err,
       });
       return 0;
+    }
+  }
+
+  /**
+   * Writes profile fields and socials directly to the `users` and `user_socials`
+   * tables so that the enrichment pipeline and opportunity delivery can read them
+   * immediately. Called for both headless signup and CSV import.
+   *
+   * Existing user fields are overwritten only when the payload supplies a value;
+   * existing socials with the same label are updated in-place.
+   */
+  private async applyProfileData(
+    userId: string,
+    row: { name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] },
+  ): Promise<void> {
+    const updates: Record<string, string> = {};
+    if (row.name?.trim()) updates.name = row.name.trim();
+    if (row.bio?.trim()) updates.intro = row.bio.trim();
+    if (row.location?.trim()) updates.location = row.location.trim();
+
+    if (Object.keys(updates).length > 0) {
+      await db.update(schema.users).set(updates).where(eq(schema.users.id, userId));
+    }
+
+    const socials = row.socials.filter(s => s.label.trim() && s.value.trim());
+    if (socials.length > 0) {
+      const rows = socials.map(s => ({ userId, label: s.label.trim(), value: s.value.trim() }));
+      await db.transaction(async (tx) => {
+        for (const social of rows) {
+          await tx.delete(schema.userSocials).where(
+            and(eq(schema.userSocials.userId, userId), eq(schema.userSocials.label, social.label)),
+          );
+        }
+        await tx.insert(schema.userSocials).values(rows);
+      });
     }
   }
 
