@@ -1393,8 +1393,8 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Get non-personal indexes that both users share membership in.
-   * Returns id, title, and member count for each shared index.
+   * Get non-personal networks that both users share membership in.
+   * Returns id, title, and member count for each shared network.
    */
   async getSharedNetworks(currentUserId: string, targetUserId: string): Promise<{ id: string; title: string; _count: { members: number } }[]> {
     const currentUserIndexIds = db
@@ -1419,7 +1419,6 @@ export class ChatDatabaseAdapter {
         and(
           isNull(schema.networks.deletedAt),
           eq(schema.networks.isPersonal, false),
-          or(eq(schema.networks.isExperiment, false), isNull(schema.networks.isExperiment)),
           inArray(schema.networks.id, currentUserIndexIds),
           inArray(schema.networks.id, targetUserIndexIds),
         )

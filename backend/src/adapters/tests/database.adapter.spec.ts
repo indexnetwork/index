@@ -249,6 +249,31 @@ describe('ChatDatabaseAdapter', () => {
     expect(m!.networkTitle).toContain('Test Index');
   });
 
+  it('should include experiment networks in shared networks', async () => {
+    const experimentNetworkId = uuidv4();
+    await db.insert(networks).values({
+      id: experimentNetworkId,
+      title: TEST_PREFIX + 'Experiment Shared Network',
+      prompt: 'Experiment network prompt',
+      isExperiment: true,
+    });
+    await db.insert(networkMembers).values([
+      { networkId: experimentNetworkId, userId: fixture.userAId, permissions: ['member'], autoAssign: true },
+      { networkId: experimentNetworkId, userId: fixture.userBId, permissions: ['member'], autoAssign: true },
+    ]);
+
+    try {
+      const shared = await adapter.getSharedNetworks(fixture.userAId, fixture.userBId);
+      const experiment = shared.find((network) => network.id === experimentNetworkId);
+      expect(experiment).toBeDefined();
+      expect(experiment!.title).toContain('Experiment Shared Network');
+      expect(experiment!._count.members).toBe(2);
+    } finally {
+      await db.delete(networkMembers).where(eq(networkMembers.networkId, experimentNetworkId));
+      await db.delete(networks).where(eq(networks.id, experimentNetworkId));
+    }
+  });
+
   it('should get user index ids for auto-assign member', async () => {
     const indexIds = await adapter.getUserIndexIds(fixture.userBId);
     expect(indexIds).toContain(fixture.networkId);
