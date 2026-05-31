@@ -517,25 +517,46 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         location: query.location?.trim(),
         bioOrDescription: description,
       });
-      const _confirmGraphStart = Date.now();
+      const rawProfile = {
+        identity: {
+          name: query.name?.trim() ?? user?.name ?? '',
+          bio: description,
+          location: query.location?.trim() ?? '',
+        },
+      };
+      await persistApprovedProfileContext(rawProfile, user, context.networkId);
+
       const _confirmTraceEmitter = requestContext.getStore()?.traceEmitter;
+      const _confirmGraphStart = Date.now();
       _confirmTraceEmitter?.({ type: "graph_start", name: "profile" });
-      const result = await graphs.profile.invoke({
+      graphs.profile.invoke({
         userId: context.userId,
         operationMode: 'write' as const,
         input,
         forceUpdate: true,
-      });
-      const _confirmGraphMs = Date.now() - _confirmGraphStart;
-      _confirmTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _confirmGraphMs });
-      if (result.error) return error(result.error);
-      if (!result.profile) return error("Failed to save profile from approved text.");
-      await persistApprovedProfileContext(result.profile, user, context.networkId);
+      }).then((result) => {
+        const _confirmGraphMs = Date.now() - _confirmGraphStart;
+        _confirmTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _confirmGraphMs });
+        if (result.error || !result.profile) {
+          logger.error('Background profile generation failed', {
+            userId: context.userId,
+            error: result.error ?? 'No profile returned',
+          });
+        }
+      }).catch((err: unknown) =>
+        logger.error('Background profile generation failed', {
+          userId: context.userId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      );
+
       return success({
         created: true,
-        message: "Profile saved from approved text.",
-        profile: toProfileSummary(result.profile),
-        _graphTimings: [{ name: 'profile', durationMs: _confirmGraphMs, agents: result.agentTimings ?? [] }],
+        message: "Profile text accepted. Your profile is being structured in the background.",
+        profile: toProfileSummary({
+          identity: rawProfile.identity,
+          attributes: { skills: [], interests: [] },
+        }),
       });
     },
   });
