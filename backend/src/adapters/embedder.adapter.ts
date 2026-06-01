@@ -11,6 +11,7 @@ import {
   OPENROUTER_EMBEDDING_MODEL,
 } from '../lib/embedder/embedder.config';
 import db from '../lib/drizzle/drizzle';
+import { traceAppOperation } from '../lib/sentry-performance';
 import * as schema from '../schemas/database.schema';
 // ─────────────────────────────────────────────────────────────────────────────
 // Local types (structurally aligned with lib/protocol/interfaces/embedder.interface)
@@ -87,6 +88,27 @@ export class EmbedderAdapter {
     dimensions?: number,
     options?: { signal?: AbortSignal }
   ): Promise<number[] | number[][]> {
+    return traceAppOperation(
+      {
+        name: 'embedding generate',
+        op: 'ai.embedding',
+        attributes: {
+          subsystem: 'embedding',
+          provider: 'openrouter',
+          model: OPENROUTER_EMBEDDING_MODEL,
+          'embedding.input_count': Array.isArray(text) ? text.length : 1,
+          'embedding.dimensions': dimensions ?? this.dimensions,
+        },
+      },
+      () => this.generateInner(text, dimensions, options),
+    );
+  }
+
+  private async generateInner(
+    text: string | string[],
+    dimensions?: number,
+    options?: { signal?: AbortSignal }
+  ): Promise<number[] | number[][]> {
     const texts = Array.isArray(text) ? text : [text];
     const cleanTexts = texts.map((t) => t.replace(/\n/g, ' ').trim()).filter(Boolean);
     if (cleanTexts.length === 0) {
@@ -140,6 +162,28 @@ export class EmbedderAdapter {
   // ─────────────────────────────────────────────────────────────────────────
 
   async searchWithHydeEmbeddings(
+    lensEmbeddings: LensEmbedding[],
+    options: HydeSearchOptions
+  ): Promise<HydeCandidate[]> {
+    return traceAppOperation(
+      {
+        name: 'vector search HyDE embeddings',
+        op: 'db.vector_search',
+        attributes: {
+          subsystem: 'database',
+          'db.system': 'postgresql',
+          'db.operation': 'vector_search',
+          'search.strategy': 'hyde',
+          'search.lens_count': lensEmbeddings.length,
+          'search.index_scope_count': options.indexScope.length,
+          'search.limit': options.limit ?? 80,
+        },
+      },
+      () => this.searchWithHydeEmbeddingsInner(lensEmbeddings, options),
+    );
+  }
+
+  private async searchWithHydeEmbeddingsInner(
     lensEmbeddings: LensEmbedding[],
     options: HydeSearchOptions
   ): Promise<HydeCandidate[]> {

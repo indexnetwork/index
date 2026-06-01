@@ -1,3 +1,4 @@
+import { timed } from "../observability/performance.js";
 import type { TraceEmitter } from "../observability/request-context.js";
 import { requestContext } from "../observability/request-context.js";
 
@@ -152,6 +153,10 @@ function combineSignals(signals: Array<AbortSignal | undefined>): {
 }
 
 export async function invokeToolRuntime(input: ToolInvocationRuntimeInput): Promise<string> {
+  return timed(`ToolRuntime.${input.toolName}`, () => invokeToolRuntimeInner(input));
+}
+
+async function invokeToolRuntimeInner(input: ToolInvocationRuntimeInput): Promise<string> {
   const basePolicy = getToolTimeoutPolicy(input.toolName);
   const policy = {
     ...basePolicy,

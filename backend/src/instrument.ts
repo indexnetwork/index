@@ -21,6 +21,19 @@ const sentryEnvironment =
   'development';
 const sentryDsn = process.env.SENTRY_DSN;
 
+function sampleRateFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(1, Math.max(0, parsed));
+}
+
+const tracesSampleRate = sampleRateFromEnv(
+  'SENTRY_TRACES_SAMPLE_RATE',
+  process.env.NODE_ENV === 'development' ? 1.0 : 0.1,
+);
+
 // Loaded via Bun's --preload flag so Sentry initializes before application imports.
 Sentry.init({
   dsn: sentryDsn,
@@ -31,7 +44,20 @@ Sentry.init({
   sendDefaultPii: true,
 
   // Capture all traces in development and sample production traffic.
-  tracesSampleRate: process.env.NODE_ENV === 'development' ? 1.0 : 0.1,
+  tracesSampleRate,
+
+  integrations: (defaultIntegrations) => [
+    ...defaultIntegrations.filter((integration) => !['LangChain', 'LangGraph', 'PostgresJs'].includes(integration.name)),
+    Sentry.langChainIntegration({
+      recordInputs: false,
+      recordOutputs: false,
+    }),
+    Sentry.langGraphIntegration({
+      recordInputs: false,
+      recordOutputs: false,
+    }),
+    Sentry.postgresJsIntegration(),
+  ],
 
   // Enable Sentry Logs.
   enableLogs: true,
@@ -41,4 +67,5 @@ Sentry.setTags({
   service: 'backend',
   runtime: 'bun',
   'app.environment': sentryEnvironment,
+  'sentry.traces_sample_rate': tracesSampleRate,
 });
