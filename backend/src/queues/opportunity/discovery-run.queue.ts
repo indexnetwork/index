@@ -24,6 +24,7 @@ import type {
 } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
+import { captureAppException } from '../../lib/sentry';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { chatDatabaseAdapter, createSystemDatabase, createUserDatabase } from '../../adapters/database.adapter';
 import { embedderAdapter } from '../../adapters/embedder.adapter';
@@ -175,6 +176,16 @@ export class DiscoveryRunQueue {
       }
       await discoveryRunAdapter.markFailed(runId, message);
       this.logger.error('[DiscoveryRun] Failed', { runId, userId: run.userId, error: message });
+      captureAppException(err, {
+        subsystem: 'protocol',
+        operation: 'discovery-run.queue',
+        tags: {
+          queue: QUEUE_NAME,
+          runId,
+        },
+        context: { runId, userId: run.userId },
+        userId: run.userId,
+      });
       throw err;
     } finally {
       clearInterval(cancelPoll);

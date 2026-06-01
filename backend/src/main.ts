@@ -2,6 +2,7 @@ import './startup.env';
 
 import crypto from 'crypto';
 
+import * as Sentry from '@sentry/bun';
 import { and, eq, isNull } from 'drizzle-orm';
 
 import db from './lib/drizzle/drizzle';
@@ -41,6 +42,7 @@ import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
 import { log } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
+import { captureAppException } from './lib/sentry';
 import { adminQueuesApp } from './controllers/queues.controller';
 import { mcpHandler, chatFactory } from './controllers/mcp.controller';
 import { chatSessionService } from './services/chat.service';
@@ -436,6 +438,17 @@ controllerInstances.set(QuestionController, new QuestionController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
+function classifyRequestSubsystem(pathname: string): string {
+  if (pathname === '/throw-error') return 'sentry-test';
+  if (pathname === '/mcp' || pathname.startsWith('/mcp/')) return 'mcp';
+  if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
+  if (pathname.startsWith('/api/tools')) return 'protocol';
+  if (pathname.startsWith('/dev/queues')) return 'queue-admin';
+  if (pathname.startsWith('/dev/performance')) return 'performance';
+  if (pathname.startsWith('/api/')) return 'controller';
+  return 'server';
+}
+
 // Cron jobs (newsletter, opportunity finder, HyDE) are registered in index.ts (runs with queue workers).
 const server = Bun.serve({
   port: PORT,
@@ -447,6 +460,17 @@ const server = Bun.serve({
     const corsHeaders = getCorsHeaders(req);
 
     logger.verbose('Request', { method, path: url.pathname });
+
+    try {
+    // Sentry smoke-test endpoint. Intentionally throws so the top-level request
+    // boundary captures and reports the error. Disabled in production unless
+    // explicitly enabled for a short operational smoke test.
+    if (url.pathname === '/throw-error') {
+      if (IS_PRODUCTION && process.env.ENABLE_SENTRY_TEST_ENDPOINT !== 'true') {
+        return new Response('Not Found', { status: 404, headers: corsHeaders });
+      }
+      throw new Error('Sentry test error from /throw-error');
+    }
 
     // Handle OPTIONS preflight requests
     if (method === 'OPTIONS') {
@@ -632,6 +656,20 @@ const server = Bun.serve({
               return new Response(JSON.stringify({ error: message }), { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
 
+            captureAppException(error, {
+              subsystem: fullPath.startsWith('/api/tools') ? 'protocol' : 'controller',
+              operation: 'controller.route',
+              tags: {
+                'http.method': method,
+                'http.route': fullPath,
+                controller: target.name,
+                handler: String(route.methodName),
+              },
+              context: {
+                path: url.pathname,
+                params: routeParams,
+              },
+            });
             return new Response(JSON.stringify({ error: message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
           }
         }
@@ -640,6 +678,29 @@ const server = Bun.serve({
 
     logger.verbose('No match found', { path: url.pathname });
     return new Response('Not Found', { status: 404, headers: corsHeaders });
+    } catch (error: unknown) {
+      logger.error('Unhandled request error', {
+        method,
+        path: url.pathname,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const eventId = captureAppException(error, {
+        subsystem: classifyRequestSubsystem(url.pathname),
+        operation: 'http.fetch',
+        tags: {
+          'http.method': method,
+          'http.path': url.pathname,
+        },
+        context: { path: url.pathname },
+      });
+      if (url.pathname === '/throw-error') {
+        await Sentry.flush(5000);
+      }
+      return new Response(
+        JSON.stringify({ error: 'Internal Server Error', eventId }),
+        { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+      );
+    }
   },
 });
 
@@ -668,6 +729,7 @@ const shutdown = async () => {
     premiseQueue.close(),
   ]);
   logger.info('Workers closed');
+  await Sentry.close(2000);
   process.exit(0);
 };
 process.on('SIGINT', shutdown);
