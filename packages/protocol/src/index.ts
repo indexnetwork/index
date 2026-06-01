@@ -6,6 +6,7 @@ export type { ChatTools } from "./shared/agent/tool.factory.js";
 export type { ModelConfig, ModelSettings } from "./shared/agent/model.config.js";
 export type {
   ToolContext,
+  ToolErrorReport,
   ResolvedToolContext,
   ToolDeps,
   ProtocolDeps,

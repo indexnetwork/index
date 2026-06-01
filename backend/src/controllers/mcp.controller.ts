@@ -51,6 +51,7 @@ import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver
 
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
+import { captureAppException } from '../lib/sentry';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 import { PremiseEvents } from '../events/premise.event';
 
@@ -408,6 +409,16 @@ function getOrCreateMcpServer(): McpServer {
     questionGenerator: protocolDeps.questionGenerator,
     chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
+    reportToolError: (error, report) => captureAppException(error, {
+      subsystem: report.subsystem ?? 'protocol',
+      operation: report.operation,
+      tags: {
+        ...report.tags,
+        ...(report.toolName ? { toolName: report.toolName } : {}),
+      },
+      context: report.context,
+      userId: report.userId,
+    }),
     discoveryRuns: protocolDeps.discoveryRuns,
     discoveryRunQueue: protocolDeps.discoveryRunQueue,
     mintConnectToken: protocolDeps.mintConnectToken,
@@ -603,6 +614,19 @@ export async function mcpHandler(
       message.includes('fetch failed');
 
     const status = isAuthError ? 401 : isVerifierError ? 503 : 500;
+
+    if (!isAuthError) {
+      captureAppException(err, {
+        subsystem: 'mcp',
+        operation: 'mcp.http',
+        tags: {
+          'http.method': req.method,
+          'http.status_code': status,
+          mcp_error_type: isVerifierError ? 'verifier' : 'handler',
+        },
+        context: { path: new URL(req.url).pathname },
+      });
+    }
 
     if (isAuthError) {
       return new Response(

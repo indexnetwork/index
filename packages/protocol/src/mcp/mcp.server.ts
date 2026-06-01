@@ -421,6 +421,10 @@ export function createMcpServer(
         inputSchema: mcpSchema,
       },
       async (args: unknown, ctx: ServerContext) => {
+        let reportDeps = deps;
+        let reportUserId: string | undefined;
+        let reportContext: ResolvedToolContext | undefined;
+
         try {
           // Extract the original HTTP request from the MCP server context
           const httpReq = ctx.http?.req;
@@ -433,9 +437,11 @@ export function createMcpServer(
 
           // Resolve authenticated identity (userId + optional agentId + optional network scope + optional surface)
           const { userId, agentId, isSessionAuth, networkScopeId, clientSurface } = await authResolver.resolveIdentity(httpReq);
+          reportUserId = userId;
 
           // Resolve chat context for the user (mark as MCP — no interactive UI available)
           const context = await resolveChatContext({ database: deps.database, userId });
+          reportContext = context;
           context.isMcp = true;
           if (agentId) {
             context.agentId = agentId;
@@ -499,6 +505,7 @@ export function createMcpServer(
 
           // Override deps with per-request scoped databases
           const requestDeps: ToolDeps = { ...deps, ...scopedDbs };
+          reportDeps = requestDeps;
 
           // Re-create registry with per-request deps for scoped database access
           const requestRegistry = createToolRegistry(requestDeps);
@@ -581,6 +588,21 @@ export function createMcpServer(
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logger.error(`MCP tool "${toolName}" failed`, { error: message });
+          reportDeps.reportToolError?.(err, {
+            subsystem: 'mcp',
+            operation: 'mcp.tool',
+            toolName,
+            userId: reportUserId,
+            tags: {
+              transport: 'mcp',
+              toolName,
+            },
+            context: {
+              agentId: reportContext?.agentId,
+              networkId: reportContext?.networkId,
+              indexScope: reportContext?.indexScope,
+            },
+          });
           const runtimeResult = toolRuntimeErrorToResult(err);
           return {
             content: [{ type: 'text' as const, text: runtimeResult ?? JSON.stringify({ error: message }) }],

@@ -12,6 +12,7 @@ import { RateLimit } from '../guards/limiter.guard';
 import { ToolService } from '../services/tool.service';
 import { ChatContextAccessError } from '@indexnetwork/protocol';
 import { log } from '../lib/log';
+import { captureAppException } from '../lib/sentry';
 
 const logger = log.controller.from('tool');
 
@@ -84,6 +85,14 @@ export class ToolController {
         );
       }
 
+      captureAppException(err, {
+        subsystem: 'protocol',
+        operation: 'tool.invoke',
+        tags: { toolName },
+        context: { userId: user.id, toolName },
+        userId: user.id,
+      });
+
       return new Response(
         JSON.stringify({ error: 'Internal server error' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } },
@@ -106,6 +115,10 @@ export class ToolController {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('Tool list failed', { error: message });
+      captureAppException(err, {
+        subsystem: 'protocol',
+        operation: 'tool.list',
+      });
       return new Response(
         JSON.stringify({ error: 'Internal server error' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } },
