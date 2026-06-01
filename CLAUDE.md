@@ -97,7 +97,7 @@ git push <indexnetwork-remote> main
 
 ### Subtrees
 
-The following packages are git subtrees tracked to external repos. **Syncing is automatic** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). The workflow also exposes `workflow_dispatch` for manual reruns. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
+The following packages are git subtrees tracked to external repos. **Syncing is automatic for Index-owned subtrees** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). AgentVillage is Edge-City-owned and is synced manually via the Edge-City subtree commands below; once it lands in `Edge-City/agentvillage`, that repo's workflow splits `skills/` to `Edge-City/agentvillage-skills`. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
 
 #### packages/protocol/ → indexnetwork/protocol
 
@@ -137,7 +137,7 @@ git subtree pull --squash --prefix=packages/claude-plugin https://github.com/ind
 
 #### packages/agentvillage/ → Edge-City/agentvillage
 
-The `@edge-city/agentvillage` Agent Village workspace, skills, and installer. Includes skills for edge-esmeralda, index-network, edgeos, and geo-esmeralda. The nested `skills/` directory syncs from `Edge-City/agentvillage` to `Edge-City/agentvillage-skills` via that repo's workflow.
+The `@edge-city/agentvillage` Agent Village workspace, skills, and installer. Includes skills for edge-esmeralda, index-network, edgeos, and geo-esmeralda. This subtree is Edge-City-owned and is not part of `.github/workflows/sync-subtrees.yml`. Push/pull it manually when updating from this monorepo or from Edge-City. The nested `skills/` directory syncs from `Edge-City/agentvillage` to `Edge-City/agentvillage-skills` via that repo's workflow.
 
 ```bash
 # Manual push if the hook failed (use dev or main)
