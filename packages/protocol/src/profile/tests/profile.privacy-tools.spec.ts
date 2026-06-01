@@ -53,6 +53,7 @@ describe("onboarding privacy profile tools", () => {
   let profileGraphInvoke: ReturnType<typeof mock>;
   let tools: CapturedTool[];
   let onboarding: ResolvedToolContext["user"]["onboarding"];
+  let currentUser: ResolvedToolContext["user"];
 
   const context = (): ResolvedToolContext => ({
     userId: "u1",
@@ -62,9 +63,11 @@ describe("onboarding privacy profile tools", () => {
   beforeEach(() => {
     generatedInputs = [];
     onboarding = {};
+    currentUser = { id: "u1", name: "Alice", email: "alice@example.com", location: "Healdsburg", intro: null, socials: [], onboarding };
     updateUser = mock(async (data: { onboarding?: typeof onboarding }) => {
       if (data.onboarding) onboarding = data.onboarding;
-      return { id: "u1", name: "Alice", email: "alice@example.com", socials: [], onboarding };
+      currentUser = { ...currentUser, ...data, onboarding };
+      return currentUser;
     });
     saveProfile = mock(async () => {});
     setUserSocials = mock(async () => {});
@@ -80,7 +83,7 @@ describe("onboarding privacy profile tools", () => {
 
     tools = captureTools({
       userDb: {
-        getUser: async () => ({ id: "u1", name: "Alice", email: "alice@example.com", location: "Healdsburg", intro: null, socials: [], onboarding }),
+        getUser: async () => ({ ...currentUser, onboarding }),
         updateUser,
         getProfile: async () => null,
         saveProfile,
@@ -162,6 +165,29 @@ describe("onboarding privacy profile tools", () => {
 
     expect(result.success).toBe(false);
     expect(enricher).not.toHaveBeenCalled();
+    expect(saveProfile).not.toHaveBeenCalled();
+  });
+
+  it("preview with public lookup prefers authenticated identity over agent-supplied name", async () => {
+    onboarding = {
+      privacy: {
+        publicProfileLookup: {
+          granted: true,
+          decidedAt: "2026-05-29T00:00:00.000Z",
+          source: "agentvillage_onboarding",
+        },
+      },
+    };
+    currentUser = { ...currentUser, name: "Steven Paul Jobs", email: "steve@apple.com" };
+    const tool = tools.find((t) => t.name === "preview_user_profile")!;
+    const result = parseToolResult(await tool.handler({ context: context(), query: { name: "Steve", allowPublicLookup: true } }));
+
+    expect(result.success).toBe(true);
+    expect(enricher).toHaveBeenCalledTimes(1);
+    const enrichmentRequest = enricher.mock.calls[0][0] as Record<string, unknown>;
+    expect(enrichmentRequest.name).toBe("Steven Paul Jobs");
+    expect(enrichmentRequest.email).toBe("steve@apple.com");
+    expect(generatedInputs[0]).toContain("Name: Steven Paul Jobs");
     expect(saveProfile).not.toHaveBeenCalled();
   });
 

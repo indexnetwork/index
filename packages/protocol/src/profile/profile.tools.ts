@@ -27,11 +27,29 @@ function isMeaningfulEnrichment(enrichment: EnrichmentResult | null): enrichment
 export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   const { userDb, systemDb, database, graphs, enricher, grantDefaultSystemPermissions } = deps;
 
+  function trimToUndefined(value: string | null | undefined): string | undefined {
+    const trimmed = value?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  function isPlaceholderName(value: string): boolean {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'unknown' || normalized === 'user';
+  }
+
+  function resolveAuthenticatedLookupIdentity(user: UserRecord, context: { userName?: string; userEmail?: string }) {
+    const userName = trimToUndefined(user.name);
+    const contextName = trimToUndefined(context.userName);
+    const name = [userName, contextName].find((candidate) => candidate !== undefined && !isPlaceholderName(candidate));
+    const email = trimToUndefined(user.email) ?? trimToUndefined(context.userEmail);
+    return { name, email };
+  }
+
   async function enrichFromUserRecord(user: { name?: string | null; email?: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }> }) {
     const enrichmentSocials = socialsToEnrichmentRequest(user.socials);
     return enricher.enrichUserProfile({
-      name: user.name || undefined,
-      email: user.email || undefined,
+      name: trimToUndefined(user.name),
+      email: trimToUndefined(user.email),
       linkedin: enrichmentSocials.linkedin || undefined,
       twitter: enrichmentSocials.twitter || undefined,
       github: enrichmentSocials.github || undefined,
@@ -412,7 +430,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       "Builds a structured profile draft for onboarding without saving anything. Use this after recording privacy consent and before asking the user to approve the profile. " +
       "If allowPublicLookup is false, this tool uses only explicit text, EdgeOS/event data the user allowed, and user-provided social URLs. If allowPublicLookup is true, persisted public lookup consent is required.",
     querySchema: z.object({
-      name: z.string().optional().describe("Name explicitly provided by the user or already known from the authenticated account."),
+      name: z.string().optional().describe("Name explicitly provided by the user. For authenticated public lookup, the account identity is used first and this is only a fallback."),
       location: z.string().optional().describe("Location explicitly provided by the user or allowed event data."),
       bioOrDescription: z.string().optional().describe("Explicit self-description provided by the user."),
       edgeosProfileText: z.string().optional().describe("EdgeOS/event profile text, only if the user granted EdgeOS import consent."),
@@ -429,7 +447,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       const onboarding = user.onboarding ?? context.user.onboarding;
       const hasEdgeosConsent = hasEdgeosImportConsent(onboarding);
       const seed = hasEdgeosConsent ? selectProfileSeed(onboarding, context.networkId) : undefined;
-      const name = query.name?.trim() || seed?.name || user.name || undefined;
+      const authenticatedIdentity = resolveAuthenticatedLookupIdentity(user, context);
+      const name = seed?.name || authenticatedIdentity.name || query.name?.trim() || undefined;
       const location = query.location?.trim() || seed?.location || user.location || undefined;
       const bioOrDescription = query.bioOrDescription?.trim() || seed?.bio || user.intro || undefined;
       const edgeosProfileText = query.edgeosProfileText?.trim() || undefined;
@@ -454,9 +473,10 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         if (!hasPublicProfileLookupConsent(user.onboarding ?? context.user.onboarding)) {
           return error("Public profile lookup consent has not been recorded. Ask the user first, then call record_onboarding_privacy_consent(publicProfileLookupGranted=true).");
         }
+        const hasAuthenticatedIdentity = authenticatedIdentity.name !== undefined || authenticatedIdentity.email !== undefined;
         enrichment = await enrichFromUserRecord({
-          name,
-          email: user.email,
+          name: authenticatedIdentity.name ?? (hasAuthenticatedIdentity ? undefined : name),
+          email: authenticatedIdentity.email,
           socials: socials.map((social, index) => ({ id: `preview-${index}`, userId: context.userId, ...social })),
         });
       }
