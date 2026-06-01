@@ -8,6 +8,8 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "inlineSources": true,
+    "sourceRoot": "/",
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,

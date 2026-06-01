@@ -17,6 +17,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "sourceMap": true,
+    "inlineSources": true,
+    "sourceRoot": "/",
     "outDir": "./dist",
     "rootDir": "./src",
     "removeComments": true,
