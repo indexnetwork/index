@@ -12,6 +12,8 @@ import { mintConnectLink, resolveConnectLink, buildConnectShortUrl } from '../co
 const USER_ID = `cl-svc-user-${Date.now()}`;
 const OPP_ID = `cl-svc-opp-${Date.now()}`;
 const EXPIRED_OPP_ID = `cl-svc-expired-opp-${Date.now()}`;
+const SUPERSEDED_OPP_ID = `cl-svc-superseded-opp-${Date.now()}`;
+const REPLACEMENT_OPP_ID = `cl-svc-replacement-opp-${Date.now()}`;
 
 describe('connect-link service', () => {
   beforeAll(async () => {
@@ -38,12 +40,32 @@ describe('connect-link service', () => {
       confidence: '0.9',
       status: 'expired',
     });
+    await db.insert(opportunities).values({
+      id: SUPERSEDED_OPP_ID,
+      actors: [{ userId: USER_ID, networkId: 'n/a', role: 'seeker' }],
+      detection: { source: 'test', timestamp: new Date().toISOString(), createdBy: USER_ID },
+      interpretation: { category: 'test', reasoning: 'test', confidence: 0.9 },
+      context: { networkId: 'n/a' },
+      confidence: '0.9',
+      status: 'expired',
+    });
+    await db.insert(opportunities).values({
+      id: REPLACEMENT_OPP_ID,
+      actors: [{ userId: USER_ID, networkId: 'n/a', role: 'peer' }],
+      detection: { source: 'enrichment', timestamp: new Date().toISOString(), enrichedFrom: [SUPERSEDED_OPP_ID] },
+      interpretation: { category: 'test', reasoning: 'replacement', confidence: 0.9 },
+      context: { networkId: 'n/a' },
+      confidence: '0.9',
+      status: 'pending',
+    });
   });
 
   afterAll(async () => {
     await db.delete(connectLinks).where(eq(connectLinks.userId, USER_ID));
     await db.delete(opportunities).where(eq(opportunities.id, OPP_ID));
     await db.delete(opportunities).where(eq(opportunities.id, EXPIRED_OPP_ID));
+    await db.delete(opportunities).where(eq(opportunities.id, REPLACEMENT_OPP_ID));
+    await db.delete(opportunities).where(eq(opportunities.id, SUPERSEDED_OPP_ID));
     await db.delete(users).where(eq(users.id, USER_ID));
   });
 
@@ -151,7 +173,48 @@ describe('connect-link service', () => {
     expect(row.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
-  test('resolve returns null for expired code when opportunity is terminal', async () => {
+  test('resolve returns replacement opportunity for fresh code when original opportunity is expired', async () => {
+    const r = await mintConnectLink({
+      userId: USER_ID,
+      opportunityId: SUPERSEDED_OPP_ID,
+      kind: 'connect',
+      greeting: 'replacement please',
+    });
+
+    const resolved = await resolveConnectLink(r.code);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.opportunityId).toBe(REPLACEMENT_OPP_ID);
+    expect(resolved!.greeting).toBe('replacement please');
+  });
+
+  test('resolve self-heals an expired code when original opportunity has actionable replacement', async () => {
+    const r = await mintConnectLink({
+      userId: USER_ID,
+      opportunityId: SUPERSEDED_OPP_ID,
+      kind: 'send_direct',
+      greeting: 'replacement heal',
+    });
+
+    const past = new Date(Date.now() - 60 * 1000);
+    await db
+      .update(connectLinks)
+      .set({ expiresAt: past })
+      .where(eq(connectLinks.code, r.code));
+
+    const resolved = await resolveConnectLink(r.code);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.opportunityId).toBe(REPLACEMENT_OPP_ID);
+    expect(resolved!.kind).toBe('send_direct');
+
+    const [row] = await db
+      .select()
+      .from(connectLinks)
+      .where(eq(connectLinks.code, r.code))
+      .limit(1);
+    expect(row.expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  test('resolve returns null for expired code when opportunity is terminal with no replacement', async () => {
     const r = await mintConnectLink({
       userId: USER_ID,
       opportunityId: EXPIRED_OPP_ID,

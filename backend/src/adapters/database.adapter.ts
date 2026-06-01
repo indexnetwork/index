@@ -8,6 +8,7 @@ import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inAr
 
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
+import { traceAppOperation } from '../lib/sentry-performance';
 import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
 import type {
   Conversation,
@@ -2997,6 +2998,9 @@ export class ChatDatabaseAdapter {
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.getOpportunity(id);
   }
+  async findEnrichedReplacementOpportunities(opportunityId: string): Promise<OpportunityRow[]> {
+    return this.opportunityAdapter.findEnrichedReplacementOpportunities(opportunityId);
+  }
   async getOpportunitiesByIds(ids: string[]): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesByIds(ids);
   }
@@ -4180,6 +4184,20 @@ export class ChatDatabaseAdapter {
     limit: number;
     minScore?: number;
   }) {
+    return traceAppOperation(
+      {
+        name: 'vector search context intents',
+        op: 'db.vector_search',
+        attributes: {
+          subsystem: 'database',
+          'db.system': 'postgresql',
+          'db.operation': 'vector_search',
+          'search.strategy': 'context-to-intent',
+          'search.index_scope_count': params.networkIds.length,
+          'search.limit': params.limit,
+        },
+      },
+      async () => {
     const { embedding, networkIds, excludeUserId, limit, minScore = 0.30 } = params;
     if (networkIds.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
@@ -4220,6 +4238,8 @@ export class ChatDatabaseAdapter {
       summary: string | null;
       similarity: number;
     }>;
+      },
+    );
   }
 
 }
@@ -4816,6 +4836,17 @@ export class OpportunityDatabaseAdapter {
     return row ? toOpportunityRow(row) : null;
   }
 
+  async findEnrichedReplacementOpportunities(opportunityId: string): Promise<OpportunityRow[]> {
+    const rows = await db
+      .select()
+      .from(opportunities)
+      .where(
+        sql`${opportunities.detection} @> ${JSON.stringify({ enrichedFrom: [opportunityId] })}::jsonb`,
+      )
+      .orderBy(desc(opportunities.createdAt));
+    return rows.map(toOpportunityRow);
+  }
+
   async getOpportunitiesByIds(ids: string[]): Promise<OpportunityRow[]> {
     if (ids.length === 0) return [];
     const rows = await db.select().from(opportunities).where(inArray(opportunities.id, ids));
@@ -5046,7 +5077,18 @@ export class OpportunityDatabaseAdapter {
     data: CreateOpportunityInput,
     expireIds: string[]
   ): Promise<{ created: OpportunityRow; expired: OpportunityRow[] }> {
-    return db.transaction(async (tx) => {
+    return traceAppOperation(
+      {
+        name: 'db create opportunity and expire ids',
+        op: 'db.transaction',
+        attributes: {
+          subsystem: 'database',
+          'db.system': 'postgresql',
+          'db.operation': 'transaction',
+          'opportunity.expire_count': expireIds.length,
+        },
+      },
+      () => db.transaction(async (tx) => {
       const [inserted] = await tx
         .insert(opportunities)
         .values({
@@ -5072,7 +5114,8 @@ export class OpportunityDatabaseAdapter {
         if (row) expired.push(toOpportunityRow(row));
       }
       return { created, expired };
-    });
+    }),
+    );
   }
 
   /** Condition: opportunity actors contain both userId and counterpartUserId. */
@@ -5277,6 +5320,20 @@ export class OpportunityDatabaseAdapter {
     excludeUserId: string;
     limit: number;
   }) {
+    return traceAppOperation(
+      {
+        name: 'vector search premises by similarity',
+        op: 'db.vector_search',
+        attributes: {
+          subsystem: 'database',
+          'db.system': 'postgresql',
+          'db.operation': 'vector_search',
+          'search.strategy': 'premise-similarity',
+          'search.index_scope_count': params.networkIds.length,
+          'search.limit': params.limit,
+        },
+      },
+      async () => {
     const { embedding, networkIds, excludeUserId, limit } = params;
     const vectorStr = `[${embedding.join(',')}]`;
 
@@ -5311,6 +5368,8 @@ export class OpportunityDatabaseAdapter {
       assertionText: string;
       similarity: number;
     }>;
+      },
+    );
   }
 }
 
@@ -6683,6 +6742,7 @@ export function createSystemDatabase(
      * tools that need cross-actor access during the discovery pipeline.
      */
     getOpportunity: (id: string) => db.getOpportunity(id),
+    findEnrichedReplacementOpportunities: (opportunityId: string) => db.findEnrichedReplacementOpportunities(opportunityId),
     getOpportunitiesForNetwork: async (networkId: string, options?: Parameters<ChatDatabaseAdapter['getOpportunitiesForNetwork']>[1]) => {
       verifyScope(networkId);
       return db.getOpportunitiesForNetwork(networkId, options);

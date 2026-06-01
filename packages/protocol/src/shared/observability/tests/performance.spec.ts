@@ -2,14 +2,16 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { timed, setTimingCallback, Timed } from "../performance.js";
+import { timed, setTimingCallback, setTimingWrapper, Timed } from "../performance.js";
 
 beforeEach(() => {
   setTimingCallback(undefined);
+  setTimingWrapper(undefined);
 });
 
 afterEach(() => {
   setTimingCallback(undefined);
+  setTimingWrapper(undefined);
 });
 
 describe("timed()", () => {
@@ -53,6 +55,19 @@ describe("timed()", () => {
     await timed("silent-op", async () => "ok");
 
     expect(calls).toHaveLength(0);
+  });
+
+  it("runs through the timing wrapper when configured", async () => {
+    const wrapped: string[] = [];
+    setTimingWrapper(async (name, fn) => {
+      wrapped.push(name);
+      return fn();
+    });
+
+    const result = await timed("wrapped-op", async () => "ok");
+
+    expect(result).toBe("ok");
+    expect(wrapped).toEqual(["wrapped-op"]);
   });
 });
 

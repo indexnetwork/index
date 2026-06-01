@@ -6,6 +6,7 @@ export type { ChatTools } from "./shared/agent/tool.factory.js";
 export type { ModelConfig, ModelSettings } from "./shared/agent/model.config.js";
 export type {
   ToolContext,
+  ToolErrorReport,
   ResolvedToolContext,
   ToolDeps,
   ProtocolDeps,
@@ -16,6 +17,7 @@ export type {
 } from "./shared/agent/tool.helpers.js";
 export { ChatContextAccessError, resolveChatContext } from "./shared/agent/tool.helpers.js";
 export { requestContext } from "./shared/observability/request-context.js";
+export { setTimingWrapper } from "./shared/observability/performance.js";
 export {
   ToolRuntimeError,
   getToolTimeoutPolicy,

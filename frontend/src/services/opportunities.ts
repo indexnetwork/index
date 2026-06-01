@@ -105,6 +105,8 @@ export interface OpportunityDetailResponse {
   confidence?: number;
   network?: { id: string; title: string };
   introducedBy?: { id: string; name: string; avatar?: string | null };
+  /** Present when the requested opportunity was superseded by this enriched opportunity. */
+  resolvedFromOpportunityId?: string;
 }
 
 /** Single opportunity entry returned by GET /opportunities/chat-context. */

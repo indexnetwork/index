@@ -1,4 +1,4 @@
-import { and, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { connectLinks, opportunities } from '../schemas/database.schema';
@@ -17,6 +17,29 @@ function generateCode(): string {
   let out = '';
   for (let i = 0; i < CODE_LENGTH; i++) out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
   return out;
+}
+
+function canUserSeeConnectOpportunity(
+  actors: Array<{ userId: string; role: string }>,
+  status: string,
+  userId: string,
+): boolean {
+  const hasIntroducer = actors.some((a) => a.role === 'introducer');
+  const userRoles = actors.filter((a) => a.userId === userId).map((a) => a.role);
+  if (userRoles.length === 0) return false;
+
+  return userRoles.some((role) => {
+    if (role === 'introducer') return true;
+    if (role === 'peer') return true;
+    if (role === 'patient' || role === 'party') return status !== 'latent' || !hasIntroducer;
+    if (role === 'agent') {
+      return (
+        ['accepted', 'rejected', 'expired'].includes(status) ||
+        (status !== 'latent' && !hasIntroducer)
+      );
+    }
+    return false;
+  });
 }
 
 /**
@@ -157,11 +180,11 @@ export interface ResolvedLink {
   preferredSurface: 'telegram' | 'web' | null;
 }
 
-function toResolvedLink(row: typeof connectLinks.$inferSelect): ResolvedLink {
+function toResolvedLink(row: typeof connectLinks.$inferSelect, opportunityId: string = row.opportunityId): ResolvedLink {
   return {
     code: row.code,
     userId: row.userId,
-    opportunityId: row.opportunityId,
+    opportunityId,
     kind: row.kind as ConnectLinkKind,
     greeting: row.greeting,
     preferredSurface:
@@ -169,6 +192,47 @@ function toResolvedLink(row: typeof connectLinks.$inferSelect): ResolvedLink {
         ? row.preferredSurface
         : null,
   };
+}
+
+async function resolveOpportunityForLink(
+  opportunityId: string,
+  userId: string,
+): Promise<{ id: string; status: typeof opportunities.$inferSelect.status } | null> {
+  const seenIds = new Set<string>();
+  let currentId = opportunityId;
+  let current: { id: string; status: typeof opportunities.$inferSelect.status } | null = null;
+
+  for (let depth = 0; depth < 5; depth++) {
+    if (seenIds.has(currentId)) break;
+    seenIds.add(currentId);
+
+    const [opp] = await db
+      .select({ id: opportunities.id, status: opportunities.status, actors: opportunities.actors })
+      .from(opportunities)
+      .where(eq(opportunities.id, currentId))
+      .limit(1);
+    if (!opp) return current;
+    current = { id: opp.id, status: opp.status };
+
+    if (opp.status !== 'expired') return current;
+
+    const replacements = await db
+      .select({ id: opportunities.id, status: opportunities.status, actors: opportunities.actors })
+      .from(opportunities)
+      .where(
+        sql`${opportunities.detection} @> ${JSON.stringify({ enrichedFrom: [opp.id] })}::jsonb`,
+      )
+      .orderBy(desc(opportunities.createdAt));
+    const visibleReplacement = replacements.find((replacement) => {
+      if (seenIds.has(replacement.id)) return false;
+      return canUserSeeConnectOpportunity(replacement.actors, replacement.status, userId);
+    });
+
+    if (!visibleReplacement) return current;
+    currentId = visibleReplacement.id;
+  }
+
+  return current;
 }
 
 /**
@@ -188,19 +252,16 @@ export async function resolveConnectLink(code: string): Promise<ResolvedLink | n
   if (!row) return null;
 
   const now = new Date();
+  const opp = await resolveOpportunityForLink(row.opportunityId, row.userId);
+  if (!opp) return null;
 
+  const resolvedLink = toResolvedLink(row, opp.id);
   if (row.expiresAt > now) {
-    return toResolvedLink(row);
+    return resolvedLink;
   }
 
   // Expired — check if the opportunity is still actionable.
-  const [opp] = await db
-    .select({ status: opportunities.status })
-    .from(opportunities)
-    .where(eq(opportunities.id, row.opportunityId))
-    .limit(1);
-
-  if (!opp || TERMINAL_STATUSES.has(opp.status)) return null;
+  if (TERMINAL_STATUSES.has(opp.status)) return null;
 
   // Extend TTL.
   const expiresAt = new Date(now.getTime() + TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -209,6 +270,6 @@ export async function resolveConnectLink(code: string): Promise<ResolvedLink | n
     .set({ expiresAt })
     .where(eq(connectLinks.code, code));
 
-  return toResolvedLink(row);
+  return resolvedLink;
 }
 

@@ -2547,14 +2547,14 @@ Discover opportunities via HyDE graph.
 
 ### GET /api/opportunities/:id
 
-Get one opportunity with presentation for the viewer.
+Get one opportunity with presentation for the viewer. If the requested opportunity was expired because it was superseded by an enriched opportunity, the endpoint returns the newest visible replacement using the existing `detection.enrichedFrom` link.
 
 **Auth**: AuthGuard
 
 **Path params**:
 - `id` — Opportunity ID
 
-**Response**: JSON with opportunity details and presentation.
+**Response**: JSON with opportunity details and presentation. When a replacement was returned, `id` is the replacement opportunity ID and `resolvedFromOpportunityId` contains the originally requested ID.
 
 ### GET /api/opportunities/:id/invite-message
 

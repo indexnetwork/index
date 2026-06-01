@@ -1,6 +1,7 @@
 import { Queue, Worker, QueueEvents, Job, Processor, WorkerOptions, QueueOptions, JobsOptions } from 'bullmq';
 import type { RedisOptions } from 'ioredis';
 
+import { traceAppOperation } from '../sentry-performance';
 import { log } from '../log';
 
 const logger = log.lib.from("bullmq");
@@ -107,7 +108,23 @@ export class QueueFactory {
    */
   static createWorker<T = any>(name: string, processor: Processor<T>, options?: Omit<WorkerOptions, 'connection'>): Worker<T> {
     logger.info(`[QueueFactory] Initializing Worker: ${name}`);
-    return new Worker<T>(name, processor, {
+    const tracedProcessor: Processor<T> = (job, token) => traceAppOperation(
+      {
+        name: `queue ${name} ${job.name}`,
+        op: 'queue.process',
+        forceTransaction: true,
+        attributes: {
+          subsystem: 'queue',
+          queue: name,
+          'messaging.destination.name': name,
+          'messaging.message.id': String(job.id ?? ''),
+          'messaging.message.receive_count': job.attemptsMade + 1,
+          'job.name': job.name,
+        },
+      },
+      () => processor(job, token),
+    );
+    return new Worker<T>(name, tracedProcessor, {
       connection: SHARED_REDIS_OPTS,
       concurrency: 1, // Default to sequential processing
       ...options,
