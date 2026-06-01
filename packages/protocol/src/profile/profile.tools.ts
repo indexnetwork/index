@@ -512,16 +512,18 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       if (!description) {
         return error("Pass the approved structured draft or explicit approved profile text.");
       }
+      const approvedName = query.name?.trim();
+      const approvedLocation = query.location?.trim();
       const input = buildProfileInput({
-        name: query.name?.trim(),
-        location: query.location?.trim(),
+        name: approvedName,
+        location: approvedLocation,
         bioOrDescription: description,
       });
       const rawProfile = {
         identity: {
-          name: query.name?.trim() ?? user?.name ?? '',
+          name: approvedName && approvedName.length > 0 ? approvedName : user?.name ?? '',
           bio: description,
-          location: query.location?.trim() ?? '',
+          location: approvedLocation && approvedLocation.length > 0 ? approvedLocation : user?.location ?? '',
         },
       };
       await persistApprovedProfileContext(rawProfile, user, context.networkId);
@@ -535,8 +537,6 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         input,
         forceUpdate: true,
       }).then((result) => {
-        const _confirmGraphMs = Date.now() - _confirmGraphStart;
-        _confirmTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _confirmGraphMs });
         if (result.error || !result.profile) {
           logger.error('Background profile generation failed', {
             userId: context.userId,
@@ -548,7 +548,10 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           userId: context.userId,
           error: err instanceof Error ? err.message : String(err),
         })
-      );
+      ).finally(() => {
+        const _confirmGraphMs = Date.now() - _confirmGraphStart;
+        _confirmTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _confirmGraphMs });
+      });
 
       return success({
         created: true,
