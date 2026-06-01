@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
 import { z } from "zod";
 
+import { requestContext } from "../../shared/observability/request-context.js";
+
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 let generatedInputs: string[] = [];
@@ -48,6 +50,7 @@ describe("onboarding privacy profile tools", () => {
   let saveProfile: ReturnType<typeof mock>;
   let setUserSocials: ReturnType<typeof mock>;
   let enricher: ReturnType<typeof mock>;
+  let profileGraphInvoke: ReturnType<typeof mock>;
   let tools: CapturedTool[];
   let onboarding: ResolvedToolContext["user"]["onboarding"];
 
@@ -73,10 +76,11 @@ describe("onboarding privacy profile tools", () => {
       attributes: { skills: ["AI"], interests: ["coordination"] },
       socials: {},
     }));
+    profileGraphInvoke = mock(async () => ({}));
 
     tools = captureTools({
       userDb: {
-        getUser: async () => ({ id: "u1", name: "Alice", email: "alice@example.com", location: null, intro: null, socials: [], onboarding }),
+        getUser: async () => ({ id: "u1", name: "Alice", email: "alice@example.com", location: "Healdsburg", intro: null, socials: [], onboarding }),
         updateUser,
         getProfile: async () => null,
         saveProfile,
@@ -85,7 +89,7 @@ describe("onboarding privacy profile tools", () => {
       },
       systemDb: {},
       database: {},
-      graphs: { profile: { invoke: async () => ({}) } },
+      graphs: { profile: { invoke: profileGraphInvoke } },
       enricher: { enrichUserProfile: enricher },
       grantDefaultSystemPermissions: async () => undefined,
     } as unknown as ToolDeps);
@@ -222,5 +226,40 @@ describe("onboarding privacy profile tools", () => {
     expect(result.success).toBe(true);
     expect(saveProfile).toHaveBeenCalledWith({ ...draft, userId: "u1" });
     expect(enricher).not.toHaveBeenCalled();
+  });
+
+  it("confirming approved text preserves existing location when no correction is supplied", async () => {
+    const tool = tools.find((t) => t.name === "confirm_user_profile")!;
+    const result = parseToolResult(await tool.handler({
+      context: context(),
+      query: { bioOrDescription: "I build agent tools.", name: "Alice" },
+    }));
+
+    expect(result.success).toBe(true);
+    expect(updateUser).toHaveBeenCalledWith({
+      name: "Alice",
+      intro: "I build agent tools.",
+      location: "Healdsburg",
+    });
+  });
+
+  it("emits graph_end when background profile generation rejects", async () => {
+    const tool = tools.find((t) => t.name === "confirm_user_profile")!;
+    const events: Array<{ type: string; name: string }> = [];
+    profileGraphInvoke.mockImplementation(async () => {
+      throw new Error("profile timeout");
+    });
+
+    const result = parseToolResult(await requestContext.run(
+      { traceEmitter: (event) => events.push({ type: event.type, name: event.name }) },
+      () => tool.handler({ context: context(), query: { bioOrDescription: "I build agent tools." } }),
+    ));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(result.success).toBe(true);
+    expect(events).toEqual([
+      { type: "graph_start", name: "profile" },
+      { type: "graph_end", name: "profile" },
+    ]);
   });
 });

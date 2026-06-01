@@ -36,6 +36,51 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
   return toolDefs;
 }
 
+describe("create_intent", () => {
+  test("falls back to approved user intro when structured profile is still pending", async () => {
+    const capturedProfiles: string[] = [];
+    const tools = captureTools({
+      userDb: {
+        getUser: async () => ({
+          id: "alice",
+          name: "Alice",
+          email: "alice@example.com",
+          intro: "I build agent tools.",
+          location: "Healdsburg",
+          socials: [],
+        }),
+      },
+      systemDb: {},
+      graphs: {
+        profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
+        intent: {
+          invoke: async (input: { userProfile?: string; operationMode?: string }) => {
+            capturedProfiles.push(input.userProfile ?? "");
+            if (input.operationMode === "propose") {
+              return {
+                verifiedIntents: [{ description: "Find agent builders", score: 0.91, verification: { classification: "request" } }],
+                agentTimings: [],
+                trace: [],
+              };
+            }
+            return { executionResults: [{ success: true }], agentTimings: [] };
+          },
+        },
+      },
+    } as unknown as ToolDeps);
+    const tool = tools.find((t) => t.name === "create_intent")!;
+
+    const result = JSON.parse(await tool.handler({
+      context: makeContext("alice"),
+      query: { description: "Find agent builders", autoApprove: true },
+    }));
+
+    expect(result.success).toBe(true);
+    expect(capturedProfiles[0]).toContain("I build agent tools.");
+    expect(capturedProfiles[0]).toContain("Healdsburg");
+  });
+});
+
 describe("update_intent", () => {
   test("accepts description and rejects legacy newDescription", () => {
     const tools = captureTools({

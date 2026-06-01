@@ -6,6 +6,7 @@ import { requestContext } from "../shared/observability/request-context.js";
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
+import type { UserRecord } from "../shared/interfaces/database.interface.js";
 
 const logger = protocolLogger("ChatTools:Intent");
 
@@ -28,6 +29,22 @@ async function ensureScopedMembership(
     return `This chat is scoped to ${context.indexName ?? 'this index'}. You are no longer a member of this community.`;
   }
   return null;
+}
+
+function buildApprovedProfileFallback(user: UserRecord | null | undefined): string {
+  const bio = user?.intro?.trim();
+  if (!user || !bio) return "";
+
+  return JSON.stringify({
+    userId: user.id,
+    identity: {
+      name: user.name ?? "",
+      bio,
+      location: user.location?.trim() ?? "",
+    },
+    narrative: { context: bio },
+    attributes: { skills: [], interests: [] },
+  });
 }
 
 export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
@@ -223,7 +240,9 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
       const _profileGraphMs1 = Date.now() - _profileGraphStart1;
       _createIntentProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _profileGraphMs1 });
-      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : "";
+      const latestUser = profileResult.profile ? undefined : typeof userDb.getUser === "function" ? await userDb.getUser() : context.user;
+      const approvedProfileFallback = profileResult.profile ? "" : buildApprovedProfileFallback(latestUser);
+      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : approvedProfileFallback;
 
       // Run inference + verification only (propose mode — no DB persistence)
       const _intentGraphStart1 = Date.now();
@@ -409,7 +428,9 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
       const _profileGraphMs2 = Date.now() - _profileGraphStart2;
       _updateIntentProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _profileGraphMs2 });
-      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : "";
+      const latestUser = profileResult.profile ? undefined : typeof userDb.getUser === "function" ? await userDb.getUser() : context.user;
+      const approvedProfileFallback = profileResult.profile ? "" : buildApprovedProfileFallback(latestUser);
+      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : approvedProfileFallback;
 
       const _intentGraphStart2 = Date.now();
       const _updateIntentTraceEmitter = requestContext.getStore()?.traceEmitter;
