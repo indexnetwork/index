@@ -14,7 +14,7 @@ import {
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry, invokeToolRuntime } from '@indexnetwork/protocol';
+import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
@@ -125,12 +125,19 @@ export class ToolService {
 
     // Execute handler through the shared runtime so direct REST tool calls use
     // the same timeout and requestContext cancellation plumbing as MCP.
-    const rawResult = await invokeToolRuntime({
-      toolName,
-      tool,
-      context,
-      query: parseResult.data,
-    });
+    let rawResult: string;
+    try {
+      rawResult = await invokeToolRuntime({
+        toolName,
+        tool,
+        context,
+        query: parseResult.data,
+      });
+    } catch (err) {
+      const runtimeResult = toolRuntimeErrorToResult(err);
+      if (!runtimeResult) throw err;
+      rawResult = runtimeResult;
+    }
 
     // Parse JSON result
     try {

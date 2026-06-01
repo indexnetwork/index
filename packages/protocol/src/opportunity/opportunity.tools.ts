@@ -1311,13 +1311,19 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         await deps.discoveryRuns.markCancelled(run.id, "cancelled before worker start");
       }
       const updated = await deps.discoveryRuns.get(run.id, context.userId);
+      const status = updated?.status ?? (removed ? "cancelled" : run.status);
+      const message = removed
+        ? "Discovery run cancelled."
+        : status === "queued"
+          ? "Cancellation requested while the discovery run is still queued. It will be skipped or cancelled before work starts."
+          : status === "running"
+            ? "Cancellation requested. The running worker will stop at the next cancellation check."
+            : `Cancellation requested. Discovery run is now ${status}.`;
       return success({
         discoveryRunId: run.id,
-        status: updated?.status ?? (removed ? "cancelled" : "running"),
-        cancelled: removed,
-        message: removed
-          ? "Discovery run cancelled."
-          : "Cancellation requested. The running worker will stop at the next cancellation check.",
+        status,
+        cancelled: removed || status === "cancelled",
+        message,
       });
     },
   });

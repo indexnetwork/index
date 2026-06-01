@@ -26,12 +26,20 @@ function getRateLimitDelayMs(response: Response): number {
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.reject(createAbortError(signal));
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(resolve, ms);
+    let removeAbortListener = () => {};
+    const timeout = setTimeout(() => {
+      removeAbortListener();
+      resolve();
+    }, ms);
     const onAbort = () => {
       clearTimeout(timeout);
+      removeAbortListener();
       reject(createAbortError(signal));
     };
-    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true });
+      removeAbortListener = () => signal.removeEventListener('abort', onAbort);
+    }
   });
 }
 
@@ -50,12 +58,19 @@ function throwIfAborted(signal?: AbortSignal): void {
 async function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   throwIfAborted(signal);
   if (!signal) return promise;
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) => {
-      signal.addEventListener('abort', () => reject(createAbortError(signal)), { once: true });
-    }),
-  ]);
+
+  let removeAbortListener = () => {};
+  const abortPromise = new Promise<never>((_, reject) => {
+    const onAbort = () => reject(createAbortError(signal));
+    signal.addEventListener('abort', onAbort, { once: true });
+    removeAbortListener = () => signal.removeEventListener('abort', onAbort);
+  });
+
+  try {
+    return await Promise.race([promise, abortPromise]);
+  } finally {
+    removeAbortListener();
+  }
 }
 
 function isRateLimitError(error: unknown): boolean {
