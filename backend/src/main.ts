@@ -43,6 +43,7 @@ import { bindLimiterServer } from './lib/limiter/identifier';
 import { log } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
+import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
 import { adminQueuesApp } from './controllers/queues.controller';
 import { mcpHandler, chatFactory } from './controllers/mcp.controller';
 import { chatSessionService } from './services/chat.service';
@@ -77,7 +78,7 @@ import { premiseQueue } from './queues/premise.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { NegotiationGraphFactory, UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
+import { NegotiationGraphFactory, UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer, setTimingWrapper } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { EmbedderAdapter, embedderAdapter } from './adapters/embedder.adapter';
@@ -87,6 +88,18 @@ import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 
 // Wire ChatGraphFactory into chat service at startup
 chatSessionService.setFactory(chatFactory);
+
+setTimingWrapper((name, fn) => traceAppOperation(
+  {
+    name,
+    op: 'protocol.phase',
+    attributes: {
+      subsystem: 'protocol',
+      'code.function': name,
+    },
+  },
+  fn,
+));
 
 // Wire negotiation into the background discovery queue so latent opportunities
 // from the IntentEvents.onCreated path are negotiated, matching the chat/MCP paths.
@@ -461,6 +474,18 @@ const server = Bun.serve({
 
     logger.verbose('Request', { method, path: url.pathname });
 
+    return traceAppOperation(
+      {
+        name: `${method} ${classifyRequestSubsystem(url.pathname)}`,
+        op: 'http.server',
+        forceTransaction: true,
+        attributes: {
+          subsystem: classifyRequestSubsystem(url.pathname),
+          'http.request.method': method,
+          'url.path': url.pathname,
+        },
+      },
+      async () => {
     try {
     // Sentry smoke-test endpoint. Intentionally throws so the top-level request
     // boundary captures and reports the error. Disabled in production unless
@@ -571,7 +596,18 @@ const server = Bun.serve({
 
         if (isMatch) {
           const routeParams = params ?? {} as Record<string, string>;
-          logger.verbose('Matched route', { path: fullPath, handler: `${target.name}.${String(route.methodName)}`, params: routeParams });
+          const handlerName = `${target.name}.${String(route.methodName)}`;
+          const activeSpan = Sentry.getActiveSpan();
+          if (activeSpan) {
+            Sentry.updateSpanName(activeSpan, `${method} ${fullPath}`);
+          }
+          setSpanAttributes({
+            'http.route': fullPath,
+            controller: target.name,
+            handler: handlerName,
+            subsystem: fullPath.startsWith('/api/tools') ? 'protocol' : 'controller',
+          });
+          logger.verbose('Matched route', { path: fullPath, handler: handlerName, params: routeParams });
           try {
             const instance = controllerInstances.get(target);
             if (!instance) {
@@ -608,6 +644,7 @@ const server = Bun.serve({
 
             // If result is a Response object, add CORS headers and return it.
             if (result instanceof Response) {
+              setSpanHttpStatus(result.status);
               // Clone the response with CORS headers added
               const newHeaders = new Headers(result.headers);
               Object.entries(corsHeaders).forEach(([key, value]) => {
@@ -623,6 +660,7 @@ const server = Bun.serve({
               });
             }
             // Otherwise assume JSON
+            setSpanHttpStatus(200);
             return Response.json(result, { headers: { ...corsHeaders, ...limiterHeaders } });
 
           } catch (error: unknown) {
@@ -635,9 +673,11 @@ const server = Bun.serve({
             // Map agent-scope violations to 403 (network-scoped API keys hitting
             // a network they aren't bound to)
             if (error instanceof ScopeViolationError) {
+              setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             if (error instanceof RateLimiterError) {
+              setSpanHttpStatus(429);
               return new Response(error.toBody(), error.toResponseInit(corsHeaders));
             }
             // Map common auth errors
@@ -647,12 +687,15 @@ const server = Bun.serve({
               message === 'Invalid or expired access token' ||
               message === 'Invalid API key'
             ) {
+              setSpanHttpStatus(401);
               return new Response(JSON.stringify({ error: message }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             if (message === 'User not found' || message === 'Account deactivated') {
+              setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             if (message === 'Not found') {
+              setSpanHttpStatus(404);
               return new Response(JSON.stringify({ error: message }), { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
 
@@ -670,6 +713,7 @@ const server = Bun.serve({
                 params: routeParams,
               },
             });
+            setSpanHttpStatus(500);
             return new Response(JSON.stringify({ error: message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
           }
         }
@@ -677,6 +721,7 @@ const server = Bun.serve({
     }
 
     logger.verbose('No match found', { path: url.pathname });
+    setSpanHttpStatus(404);
     return new Response('Not Found', { status: 404, headers: corsHeaders });
     } catch (error: unknown) {
       logger.error('Unhandled request error', {
@@ -696,11 +741,14 @@ const server = Bun.serve({
       if (url.pathname === '/throw-error') {
         await Sentry.flush(5000);
       }
+      setSpanHttpStatus(500);
       return new Response(
         JSON.stringify({ error: 'Internal Server Error', eventId }),
         { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
       );
     }
+      },
+    );
   },
 });
 

@@ -4,8 +4,10 @@
  */
 
 type TimingCallback = (name: string, durationMs: number) => void;
+type TimingWrapper = <T>(name: string, fn: () => Promise<T>) => Promise<T>;
 
 let onTiming: TimingCallback | undefined;
+let timingWrapper: TimingWrapper | undefined;
 
 /** Set a global callback for timing events (e.g. for aggregation/logging). */
 export function setTimingCallback(cb: TimingCallback | undefined) {
@@ -13,19 +15,32 @@ export function setTimingCallback(cb: TimingCallback | undefined) {
 }
 
 /**
+ * Set a global wrapper around timed operations.
+ * Host applications can use this to attach protocol timings to their tracing backend
+ * without coupling the protocol package to any observability vendor.
+ */
+export function setTimingWrapper(wrapper: TimingWrapper | undefined) {
+  timingWrapper = wrapper;
+}
+
+/**
  * Wraps an async function with timing measurement.
  * Reports duration to the global timing callback if set.
  */
 export async function timed<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  const start = performance.now();
-  try {
-    const result = await fn();
-    onTiming?.(name, performance.now() - start);
-    return result;
-  } catch (err) {
-    onTiming?.(name, performance.now() - start);
-    throw err;
-  }
+  const run = async () => {
+    const start = performance.now();
+    try {
+      const result = await fn();
+      onTiming?.(name, performance.now() - start);
+      return result;
+    } catch (err) {
+      onTiming?.(name, performance.now() - start);
+      throw err;
+    }
+  };
+
+  return timingWrapper ? timingWrapper(name, run) : run();
 }
 
 /**
