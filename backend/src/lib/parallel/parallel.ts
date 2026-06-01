@@ -23,8 +23,39 @@ function getRateLimitDelayMs(response: Response): number {
   return RATE_LIMIT_DEFAULT_DELAY_MS;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(createAbortError(signal));
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(resolve, ms);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(createAbortError(signal));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function createAbortError(signal?: AbortSignal): Error {
+  const reason = signal?.reason;
+  if (reason instanceof Error) return reason;
+  const err = new Error('Operation aborted');
+  err.name = 'AbortError';
+  return err;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw createAbortError(signal);
+}
+
+async function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  throwIfAborted(signal);
+  if (!signal) return promise;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      signal.addEventListener('abort', () => reject(createAbortError(signal)), { once: true });
+    }),
+  ]);
 }
 
 function isRateLimitError(error: unknown): boolean {
@@ -71,7 +102,7 @@ export interface ParallelSearchRequestStruct {
  * Searches for a user using Parallel.ai API.
  * @param objective The specific query, e.g. 'seren sandikci, "seren@index.network"'
  */
-export async function searchUser(request: ParallelSearchRequest): Promise<ParallelSearchResponse> {
+export async function searchUser(request: ParallelSearchRequest, options?: { signal?: AbortSignal }): Promise<ParallelSearchResponse> {
   const apiKey = process.env.PARALLELS_API_KEY;
   if (!apiKey) {
     throw new Error('PARALLELS_API_KEY is not defined');
@@ -111,6 +142,7 @@ export async function searchUser(request: ParallelSearchRequest): Promise<Parall
   logger.info('Parallel Search request', { url: PARALLEL_API_URL, body: requestBody });
 
   for (let attempt = 1; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
+    throwIfAborted(options?.signal);
     const response = await fetch(PARALLEL_API_URL, {
       method: 'POST',
       headers: {
@@ -118,7 +150,8 @@ export async function searchUser(request: ParallelSearchRequest): Promise<Parall
         'x-api-key': apiKey,
         'parallel-beta': 'search-extract-2025-10-10'
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: options?.signal,
     });
 
     if (response.status === 429) {
@@ -132,7 +165,7 @@ export async function searchUser(request: ParallelSearchRequest): Promise<Parall
         maxRetries: RATE_LIMIT_MAX_RETRIES,
         delayMs,
       });
-      await sleep(delayMs);
+      await sleep(delayMs, options?.signal);
       continue;
     }
 
@@ -156,6 +189,8 @@ export interface ExtractUrlContentOptions {
    * "update my profile from this page"). When provided, the extract API may tailor content.
    */
   objective?: string;
+  /** Optional cancellation signal for caller/client disconnect or runtime deadline. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -175,8 +210,9 @@ export async function extractUrlContent(url: string, options?: ExtractUrlContent
     logger.verbose('Extracting URL content', { url, hasObjective: !!options?.objective });
 
     for (let attempt = 1; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
+      throwIfAborted(options?.signal);
       try {
-        const extract = await parallelClient.beta.extract({
+        const extract = await withAbort(parallelClient.beta.extract({
           urls: [url],
           excerpts: true,
           full_content: true,
@@ -186,7 +222,7 @@ export async function extractUrlContent(url: string, options?: ExtractUrlContent
             max_age_seconds: 5184000, // 60 days
             timeout_seconds: 30,
           },
-        });
+        }), options?.signal);
 
         logger.verbose('Parallel extract response received', { url, resultsCount: extract.results?.length || 0 });
 
@@ -210,7 +246,7 @@ export async function extractUrlContent(url: string, options?: ExtractUrlContent
             maxRetries: RATE_LIMIT_MAX_RETRIES,
             delayMs,
           });
-          await sleep(delayMs);
+          await sleep(delayMs, options?.signal);
           continue;
         }
         throw extractError;

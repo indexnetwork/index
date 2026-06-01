@@ -25,6 +25,7 @@ import {
   resolveChatContext,
 } from "./tool.helpers.js";
 import { error, redactSensitiveFields } from "./tool.helpers.js";
+import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createProfileTools } from "../../profile/profile.tools.js";
 import { createIntentTools } from "../../intent/intent.tools.js";
 import { createNetworkTools } from "../../network/network.tools.js";
@@ -101,11 +102,18 @@ export async function createChatTools(
           query: redactSensitiveFields(query),
         });
         try {
-          return await opts.handler({ context: resolvedContext, query });
+          return await invokeToolRuntime({
+            toolName: opts.name,
+            tool: { handler: async ({ context, query }) => opts.handler({ context, query: query as z.infer<T> }) },
+            context: resolvedContext,
+            query,
+          });
         } catch (err) {
           logger.error(`${opts.name} failed`, {
             error: err instanceof Error ? err.message : String(err),
           });
+          const runtimeResult = toolRuntimeErrorToResult(err);
+          if (runtimeResult) return runtimeResult;
           const reason = err instanceof Error ? err.message : String(err);
           return error(`Failed to execute ${opts.name}: ${reason}`);
         }

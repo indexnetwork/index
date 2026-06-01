@@ -473,6 +473,13 @@ function getOrCreateTransport(): Promise<WebStandardStreamableHTTPServerTranspor
 // HTTP HANDLER
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const DEFAULT_MCP_MAX_REQUEST_BYTES = 1_000_000;
+
+function getMcpMaxRequestBytes(): number {
+  const parsed = Number.parseInt(process.env.MCP_MAX_REQUEST_BYTES ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MCP_MAX_REQUEST_BYTES;
+}
+
 /**
  * Handles an incoming MCP HTTP request.
  *
@@ -484,6 +491,15 @@ export async function mcpHandler(
   req: Request,
   corsHeaders: Record<string, string>,
 ): Promise<Response> {
+  const contentLength = req.headers.get('content-length');
+  const maxRequestBytes = getMcpMaxRequestBytes();
+  if (contentLength && Number.parseInt(contentLength, 10) > maxRequestBytes) {
+    return new Response(
+      JSON.stringify({ error: `MCP request too large. Max ${maxRequestBytes} bytes.` }),
+      { status: 413, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+    );
+  }
+
   // Reject unauthenticated requests at the HTTP level before they reach the MCP transport.
   // The transport catches errors and wraps them as HTTP 200 isError responses, which means
   // Claude Code never sees a 401 and never triggers OAuth. By checking here, we return a

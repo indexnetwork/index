@@ -16,6 +16,8 @@ import type { Question } from '../shared/schemas/question.schema.js';
 import { QuestionSchema } from '../shared/schemas/question.schema.js';
 import { dispatchElicitations } from './elicitation.dispatcher.js';
 import { createToolRegistry } from '../shared/agent/tool.registry.js';
+import { invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
+import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('McpServer');
@@ -306,6 +308,35 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
  * @param scopedDepsFactory - Factory for creating per-request scoped databases
  * @returns A configured McpServer ready to be connected to a transport
  */
+function createMcpTraceEmitter(toolName: string, ctx: ServerContext): TraceEmitter | undefined {
+  const token = ctx.mcpReq._meta?.progressToken;
+  if (typeof token !== 'string' && typeof token !== 'number') return undefined;
+
+  let progress = 0;
+  return (event) => {
+    progress += 1;
+    const message = (() => {
+      if (event.type === 'graph_start') return `${toolName}: ${event.name} started`;
+      if (event.type === 'graph_end') return `${toolName}: ${event.name} finished${event.durationMs != null ? ` in ${event.durationMs}ms` : ''}`;
+      if (event.type === 'agent_start') return `${toolName}: ${event.name} agent started`;
+      if (event.type === 'agent_end') return `${toolName}: ${event.name} agent finished${event.durationMs != null ? ` in ${event.durationMs}ms` : ''}`;
+      if (event.type === 'opportunity_draft_ready') return `${toolName}: opportunity draft ready`;
+      return `${toolName}: progress`;
+    })();
+
+    const notification: Parameters<ServerContext['mcpReq']['notify']>[0] = {
+      method: 'notifications/progress',
+      params: { progressToken: token, progress, message },
+    };
+    void ctx.mcpReq.notify(notification).catch((err) => {
+      logger.debug('Failed to send MCP progress notification', {
+        toolName,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  };
+}
+
 export const MCP_INSTRUCTIONS = `
 Index Network is a private, intent-driven discovery protocol. You help users find the right people and help the right people find them, via Index Network MCP tools.
 
@@ -491,8 +522,16 @@ export function createMcpServer(
           }
           const validatedArgs = parseResult.data;
 
-          // Execute the tool handler
-          const result = await requestTool.handler({ context, query: validatedArgs });
+          // Execute the tool handler through the shared runtime so MCP calls have
+          // consistent timeout, cancellation, progress, and requestContext plumbing.
+          const result = await invokeToolRuntime({
+            toolName,
+            tool: requestTool,
+            context,
+            query: validatedArgs,
+            signal: ctx.mcpReq.signal,
+            traceEmitter: createMcpTraceEmitter(toolName, ctx),
+          });
 
           const { text: sanitizedText, isError: toolIsError } = sanitizeMcpResult(result);
 
@@ -542,8 +581,9 @@ export function createMcpServer(
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logger.error(`MCP tool "${toolName}" failed`, { error: message });
+          const runtimeResult = toolRuntimeErrorToResult(err);
           return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: message }) }],
+            content: [{ type: 'text' as const, text: runtimeResult ?? JSON.stringify({ error: message }) }],
             isError: true,
           };
         }

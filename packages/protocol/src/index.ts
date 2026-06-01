@@ -14,6 +14,13 @@ export type {
   ToolRegistry,
 } from "./shared/agent/tool.helpers.js";
 export { ChatContextAccessError, resolveChatContext } from "./shared/agent/tool.helpers.js";
+export {
+  ToolRuntimeError,
+  getToolTimeoutPolicy,
+  invokeToolRuntime,
+  toolRuntimeErrorToResult,
+} from "./shared/agent/tool.runtime.js";
+export type { ToolRuntimeErrorCode, ToolTimeoutClass, ToolTimeoutPolicy } from "./shared/agent/tool.runtime.js";
 
 // ─── Interfaces (implement these to wire up your infrastructure) ───────────────
 

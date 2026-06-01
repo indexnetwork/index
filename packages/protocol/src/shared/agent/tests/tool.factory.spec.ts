@@ -964,10 +964,10 @@ describe("scrape_url tool", () => {
 
   test("invoke calls scraper.extractUrlContent with url and objective when provided", async () => {
     let capturedUrl: string | null = null;
-    let capturedOptions: { objective?: string } | undefined = undefined;
+    let capturedOptions: { objective?: string; signal?: AbortSignal } | undefined = undefined;
     const scraperWithSpy = {
       scrape: async () => "",
-      extractUrlContent: async (url: string, options?: { objective?: string }) => {
+      extractUrlContent: async (url: string, options?: { objective?: string; signal?: AbortSignal }) => {
         capturedUrl = url;
         capturedOptions = options;
         return "Intent-focused content";
@@ -981,6 +981,8 @@ describe("scrape_url tool", () => {
     await tool.invoke({ url: "https://github.com/org/repo", objective });
     expect(capturedUrl as unknown as string).toBe("https://github.com/org/repo");
     expect((capturedOptions as { objective?: string } | undefined)?.objective).toBe(objective);
+    expect(capturedOptions?.signal).toBeInstanceOf(AbortSignal);
+    expect(capturedOptions?.signal?.aborted).toBe(false);
   });
 
   test("invoke returns success with content when scraper returns content", async () => {

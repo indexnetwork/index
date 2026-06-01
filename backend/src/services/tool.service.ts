@@ -14,7 +14,7 @@ import {
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry } from '@indexnetwork/protocol';
+import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry, invokeToolRuntime } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
@@ -123,8 +123,14 @@ export class ToolService {
       throw new Error(`Invalid query for tool "${toolName}": ${issues}`);
     }
 
-    // Execute handler
-    const rawResult = await tool.handler({ context, query: parseResult.data });
+    // Execute handler through the shared runtime so direct REST tool calls use
+    // the same timeout and requestContext cancellation plumbing as MCP.
+    const rawResult = await invokeToolRuntime({
+      toolName,
+      tool,
+      context,
+      query: parseResult.data,
+    });
 
     // Parse JSON result
     try {
