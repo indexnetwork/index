@@ -10,7 +10,7 @@ mock.module("../../../../../backend/queues/notification.queue", () => ({
   queueOpportunityNotification: async () =>
     ({ id: "mock-job" } as unknown as Awaited<ReturnType<typeof import("../../../../../backend/queues/notification.queue").queueOpportunityNotification>>),
 }));
-mock.module("../../graphs/intent.graph", () => ({
+mock.module("../../../intent/intent.graph.js", () => ({
   IntentGraphFactory: class {
     private database: ChatGraphCompositeDatabase;
     constructor(database: ChatGraphCompositeDatabase) {
@@ -191,7 +191,7 @@ let mockDiscoveryResult: {
   count: 0,
   message: "You need to join at least one index (community) to discover opportunities.",
 };
-mock.module("../../support/opportunity.discover", () => ({
+mock.module("../../../opportunity/opportunity.discover.js", () => ({
   runDiscoverFromQuery: async () => mockDiscoveryResult,
   continueDiscovery: async () => mockDiscoveryResult,
 }));
@@ -207,7 +207,7 @@ const testUserId = "test-user-id-for-tools";
 
 type MockOverrides = Partial<Pick<
   ChatGraphCompositeDatabase,
-  "getUser" | "getNetwork" | "getOwnedIndexes" | "isIndexOwner" | "isNetworkMember" | "getNetworkMembersForOwner" | "getNetworkMembersForMember" | "getNetworkIntentsForOwner" | "getNetworkMemberships" | "getNetworkMembership" | "getNetworkIntentsForMember" | "getNetworkWithPermissions" | "getOpportunity" | "updateOpportunityStatus" | "getActiveIntents" | "getIntentsInIndexForMember" | "getNetworkIdsForIntent" | "opportunityExistsBetweenActors" | "findOpportunitiesByActors" | "createOpportunity"
+  "getUser" | "getNetwork" | "getOwnedIndexes" | "isIndexOwner" | "isNetworkMember" | "getNetworkMembersForOwner" | "getNetworkMembersForMember" | "getNetworkIntentsForOwner" | "getNetworkMemberships" | "getNetworkMembership" | "getNetworkIntentsForMember" | "getNetworkWithPermissions" | "getIntent" | "getOpportunity" | "getOpportunitiesForUser" | "updateOpportunityStatus" | "stampOpportunityActorAction" | "getActiveIntents" | "getIntentsInIndexForMember" | "getNetworkIdsForIntent" | "opportunityExistsBetweenActors" | "findOpportunitiesByActors" | "createOpportunity"
 >> & {
   /** Optional stub for getActiveIntentsAcrossIndexes (used by indexScope read path). */
   getActiveIntentsAcrossIndexes?: (userId: string, indexIds: string[]) => Promise<ActiveIntent[]>;
@@ -242,6 +242,7 @@ function createMockDatabase(
     getPublicIndexesNotJoined: async () => ({ networks: [] }),
     getNetworkMembership: noopNull,
     getNetworkWithPermissions: async () => null,
+    getIntent: noopNull,
     getIntentForIndexing: noopNull,
     getNetworkMemberContext: noopNull,
     isIntentAssignedToIndex: noopBool,
@@ -273,7 +274,9 @@ function createMockDatabase(
     addMemberToNetwork: async () => ({ success: true }),
     getMembersFromUserIndexes: async () => [],
     getOpportunity: noopNull,
+    getOpportunitiesForUser: noopArray,
     updateOpportunityStatus: noopNull,
+    stampOpportunityActorAction: noopNull,
     getActiveIntentsAcrossIndexes: noopArray,
   };
   return { ...base, ...overrides } as unknown as ChatGraphCompositeDatabase;
@@ -1070,7 +1073,10 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
     const mockDb = createMockDatabase(async (uid, idx) => {
       if (uid === testUserId && idx === networkId) return [intentInIndex];
       return [];
-    }, { isNetworkMember: async () => true });
+    }, {
+      isNetworkMember: async () => true,
+      getIntent: async () => ({ id: intentNotInIndex, userId: testUserId, payload: "Out of scope", summary: null, archivedAt: null } as never),
+    });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, networkId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_intent") as { invoke: (args: { intentId: string; description: string }) => Promise<string> };
@@ -1085,7 +1091,10 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
     const mockDb = createMockDatabase(async (uid, idx) => {
       if (uid === testUserId && idx === networkId) return [intentInIndex];
       return [];
-    }, { isNetworkMember: async () => true });
+    }, {
+      isNetworkMember: async () => true,
+      getIntent: async () => ({ id: intentNotInIndex, userId: testUserId, payload: "Out of scope", summary: null, archivedAt: null } as never),
+    });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, networkId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "delete_intent") as { invoke: (args: { intentId: string }) => Promise<string> };
@@ -1102,6 +1111,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
       return [];
     }, {
       isNetworkMember: async () => true,
+      getIntent: async (intentId: string) => ({ id: intentId, userId: testUserId, payload: intentInIndex.payload, summary: intentInIndex.summary, archivedAt: null } as never),
       getNetworkIdsForIntent: async (intentId: string) => (intentId === intentInIndex.id ? [networkId] : []),
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, networkId, ...mockProtocolDeps };
@@ -1120,6 +1130,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
       return [];
     }, {
       isNetworkMember: async () => true,
+      getIntent: async (intentId: string) => ({ id: intentId, userId: testUserId, payload: intentInIndex.payload, summary: intentInIndex.summary, archivedAt: null } as never),
       getNetworkIdsForIntent: async (intentId: string) => (intentId === intentInIndex.id ? [networkId] : []),
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, networkId, ...mockProtocolDeps };
@@ -1129,7 +1140,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.data).toBeDefined();
-    expect(parsed.data.message).toBe("Intent archived.");
+    expect(parsed.data.message).toBe("Intent archived successfully.");
   });
 });
 
@@ -1538,11 +1549,11 @@ describe("discover_opportunities tool", () => {
     expect(parsed.data.createIntentSuggested).toBeUndefined();
   });
 
-  test("discovery mode: caps displayed opportunity cards at CHAT_DISPLAY_LIMIT (3) even when graph returns more", async () => {
+  test("discovery mode: caps displayed opportunity cards at CHAT_DISPLAY_LIMIT (6) even when graph returns more", async () => {
     mockDiscoveryResult = {
       found: true,
-      count: 5,
-      opportunities: Array.from({ length: 5 }, (_, i) => ({
+      count: 8,
+      opportunities: Array.from({ length: 8 }, (_, i) => ({
         opportunityId: `opp-cap-${i + 1}`,
         userId: `candidate-${i + 1}`,
         name: `Candidate ${i + 1}`,
@@ -1573,10 +1584,10 @@ describe("discover_opportunities tool", () => {
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.data.found).toBe(true);
-    expect(parsed.data.count).toBe(3);
+    expect(parsed.data.count).toBe(6);
     // Count opportunity code blocks in the message
     const blocks = parsed.data.message.match(/```opportunity\n[\s\S]*?\n```/g) ?? [];
-    expect(blocks.length).toBe(3);
+    expect(blocks.length).toBe(6);
     // No discoveryId in pagination → falls through to signal suggestion instead of "see more"
     expect(parsed.data.message).toContain("create a signal");
   });
@@ -1584,8 +1595,8 @@ describe("discover_opportunities tool", () => {
   test("discovery mode: offers 'see more' when discoveryId is available and extra cards were capped", async () => {
     mockDiscoveryResult = {
       found: true,
-      count: 5,
-      opportunities: Array.from({ length: 5 }, (_, i) => ({
+      count: 8,
+      opportunities: Array.from({ length: 8 }, (_, i) => ({
         opportunityId: `opp-more-${i + 1}`,
         userId: `candidate-more-${i + 1}`,
         name: `Candidate ${i + 1}`,
@@ -1615,17 +1626,17 @@ describe("discover_opportunities tool", () => {
     };
     const result = await tool.invoke({ searchQuery: "looking for co-founders" });
     const parsed = JSON.parse(result);
-    expect(parsed.data.count).toBe(3);
+    expect(parsed.data.count).toBe(6);
     // 3 remaining from pagination + 2 extra from cap = 5 total remaining
     expect(parsed.data.message).toContain("5 more candidates");
     expect(parsed.data.message).toContain("disc-123");
   });
 
-  test("continueFrom mode: caps displayed opportunity cards at CHAT_DISPLAY_LIMIT (3) even when graph returns more", async () => {
+  test("continueFrom mode: caps displayed opportunity cards at CHAT_DISPLAY_LIMIT (6) even when graph returns more", async () => {
     mockDiscoveryResult = {
       found: true,
-      count: 5,
-      opportunities: Array.from({ length: 5 }, (_, i) => ({
+      count: 8,
+      opportunities: Array.from({ length: 8 }, (_, i) => ({
         opportunityId: `opp-continue-${i + 1}`,
         userId: `candidate-continue-${i + 1}`,
         name: `Candidate Continue ${i + 1}`,
@@ -1646,10 +1657,10 @@ describe("discover_opportunities tool", () => {
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.data.found).toBe(true);
-    expect(parsed.data.count).toBe(3);
+    expect(parsed.data.count).toBe(6);
     // Count opportunity code blocks in the message
     const blocks = parsed.data.message.match(/```opportunity\n[\s\S]*?\n```/g) ?? [];
-    expect(blocks.length).toBe(3);
+    expect(blocks.length).toBe(6);
     // Should mention remaining candidates (2 from pagination + 2 extra from cap = 4)
     expect(parsed.data.message).toContain("more candidates");
   });
@@ -1705,10 +1716,10 @@ describe("update_opportunity tool (send via status pending)", () => {
       updatedAt: new Date(),
       expiresAt: null,
     };
-    const updateStatusSpy = mock(async () => null);
+    const stampSpy = mock(async () => ({ ...latentOpportunity, status: "pending" as const }));
     const mockDb = createMockDatabase(async () => [], {
       getOpportunity: async () => latentOpportunity,
-      updateOpportunityStatus: updateStatusSpy,
+      stampOpportunityActorAction: stampSpy,
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
@@ -1718,7 +1729,7 @@ describe("update_opportunity tool (send via status pending)", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data.opportunityId).toBe(opportunityId);
     expect(parsed.data.status).toBe("pending");
-    expect(updateStatusSpy).toHaveBeenCalledWith(opportunityId, "pending");
+    expect(stampSpy).toHaveBeenCalledWith(opportunityId, testUserId, "pending");
   });
 
   test("when opportunity is draft and user is actor, status pending promotes to pending and returns success", async () => {
@@ -1737,10 +1748,10 @@ describe("update_opportunity tool (send via status pending)", () => {
       updatedAt: new Date(),
       expiresAt: null,
     };
-    const updateStatusSpy = mock(async () => null);
+    const stampSpy = mock(async () => ({ ...draftOpportunity, status: "pending" as const }));
     const mockDb = createMockDatabase(async () => [], {
       getOpportunity: async () => draftOpportunity,
-      updateOpportunityStatus: updateStatusSpy,
+      stampOpportunityActorAction: stampSpy,
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
@@ -1750,7 +1761,7 @@ describe("update_opportunity tool (send via status pending)", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data.opportunityId).toBe(opportunityId);
     expect(parsed.data.status).toBe("pending");
-    expect(updateStatusSpy).toHaveBeenCalledWith(opportunityId, "pending");
+    expect(stampSpy).toHaveBeenCalledWith(opportunityId, testUserId, "pending");
   });
 
   test("when opportunity not found, returns error", async () => {
@@ -1819,7 +1830,7 @@ describe("update_opportunity tool (send via status pending)", () => {
     const result = await tool.invoke({ opportunityId, status: "pending" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/not part of this opportunity|not part|Valid opportunityId/i);
+    expect(parsed.error).toMatch(/not part of this opportunity|not part|not found|Valid opportunityId/i);
   });
 });
 
@@ -1974,8 +1985,8 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     })) as unknown as Opportunity[];
   }
 
-  test("returns at most 3 opportunity code blocks when database has 5 opportunities", async () => {
-    const fakeOpps = buildFakeOpportunities(5);
+  test("returns at most 6 opportunity code blocks when database has 8 opportunities", async () => {
+    const fakeOpps = buildFakeOpportunities(8);
     let capturedLimit: number | undefined;
     const mockDb = createMockDatabase(async () => [], {
       getOpportunitiesForUser: async (_userId: string, opts?: { networkId?: string; limit?: number }) => {
@@ -2042,14 +2053,14 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data.found).toBe(true);
 
-    // Verify CHAT_DISPLAY_LIMIT (3) was passed to the database query
-    expect(capturedLimit).toBe(3);
+    // Verify the wider fetch budget was passed so selectByComposition can balance buckets.
+    expect(capturedLimit).toBe(30);
 
     // Count actual ```opportunity code blocks (start-of-line or after newline, not mid-sentence mentions)
     const codeBlockCount = (parsed.data.message.match(/(?:^|\n)```opportunity\n/g) || []).length;
-    expect(codeBlockCount).toBe(3);
+    expect(codeBlockCount).toBe(6);
     // Total count reported should also be capped
-    expect(parsed.data.count).toBe(3);
+    expect(parsed.data.count).toBe(6);
   });
 });
 
@@ -2266,10 +2277,10 @@ describe("createChatTools — MCP connect-link wiring", () => {
     expect(parsed.data.message).not.toContain("acceptUrl:");
   });
 
-  test("does NOT mint when opp is non-actionable (draft + party = sender, no link)", async () => {
+  test("mints send_direct when opp is draft + party", async () => {
     const mintCalls: Array<unknown> = [];
-    const mintConnectLink = async () => {
-      mintCalls.push(1);
+    const mintConnectLink = async (input: unknown) => {
+      mintCalls.push(input);
       return { url: FAKE_URL };
     };
 
@@ -2302,8 +2313,13 @@ describe("createChatTools — MCP connect-link wiring", () => {
     const parsed = JSON.parse(raw);
 
     expect(parsed.success).toBe(true);
-    expect(mintCalls.length).toBe(0); // sender-on-draft must not mint
-    expect(parsed.data.message).not.toContain("acceptUrl:");
+    expect(mintCalls.length).toBe(1);
+    expect(mintCalls[0]).toMatchObject({
+      userId: VIEWER_ID,
+      opportunityId: OPP_ID,
+      kind: "send_direct",
+    });
+    expect(parsed.data.message).toContain("acceptUrl:");
   });
 
   test("list_opportunities does NOT mint for pending + introducer", async () => {

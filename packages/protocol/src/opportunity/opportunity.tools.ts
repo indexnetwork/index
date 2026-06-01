@@ -1290,9 +1290,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // Compose-balance across feed categories so the digest/ambient prompt
       // can fill both Section A (connection) and Section B (connector-flow).
       // Falls back to the unbalanced view when the helper has nothing to do.
-      const opportunities = deduped.length > 0
+      const selected = deduped.length > 0
         ? selectByComposition(deduped, context.userId)
         : deduped;
+      const opportunities = selected.slice(0, CHAT_DISPLAY_LIMIT);
 
       if (!opportunities || opportunities.length === 0) {
         return success({
