@@ -117,11 +117,6 @@ export class ToolRuntimeError extends Error {
   }
 }
 
-function isAbortErrorLike(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  return err.name === "AbortError" || err.name === "TimeoutError" || /abort|cancel/i.test(err.message);
-}
-
 function combineSignals(signals: Array<AbortSignal | undefined>): {
   signal: AbortSignal;
   abort: (reason?: unknown) => void;
@@ -169,6 +164,7 @@ export async function invokeToolRuntime(input: ToolInvocationRuntimeInput): Prom
     combined.abort(new Error(`Tool ${input.toolName} timed out after ${policy.timeoutMs}ms`));
   }, policy.timeoutMs);
 
+  let removeAbortListener = () => {};
   const abortPromise = new Promise<never>((_, reject) => {
     const onAbort = () => {
       const code: ToolRuntimeErrorCode = timedOut ? "TOOL_TIMEOUT" : "TOOL_CANCELLED";
@@ -182,6 +178,7 @@ export async function invokeToolRuntime(input: ToolInvocationRuntimeInput): Prom
       ));
     };
     combined.signal.addEventListener("abort", onAbort, { once: true });
+    removeAbortListener = () => combined.signal.removeEventListener("abort", onAbort);
   });
 
   try {
@@ -207,7 +204,7 @@ export async function invokeToolRuntime(input: ToolInvocationRuntimeInput): Prom
     return result;
   } catch (err) {
     if (err instanceof ToolRuntimeError) throw err;
-    if (combined.signal.aborted && isAbortErrorLike(err)) {
+    if (combined.signal.aborted) {
       const code: ToolRuntimeErrorCode = timedOut ? "TOOL_TIMEOUT" : "TOOL_CANCELLED";
       throw new ToolRuntimeError(
         code,
@@ -221,6 +218,7 @@ export async function invokeToolRuntime(input: ToolInvocationRuntimeInput): Prom
     throw err;
   } finally {
     clearTimeout(timer);
+    removeAbortListener();
     combined.cleanup();
   }
 }

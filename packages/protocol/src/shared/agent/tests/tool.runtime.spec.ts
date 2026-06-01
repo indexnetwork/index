@@ -74,6 +74,26 @@ describe("tool runtime", () => {
     await expect(promise).rejects.toMatchObject({ code: "TOOL_CANCELLED" });
   });
 
+  test("normalizes string abort reasons into typed cancellation errors", async () => {
+    const controller = new AbortController();
+    const promise = invokeToolRuntime({
+      toolName: "create_premise",
+      tool: {
+        handler: async () => {
+          await Promise.resolve();
+          throw "local client cancelled";
+        },
+      },
+      context,
+      query: {},
+      signal: controller.signal,
+      timeoutMs: 1_000,
+    });
+
+    controller.abort("local client cancelled");
+    await expect(promise).rejects.toMatchObject({ code: "TOOL_CANCELLED" });
+  });
+
   test("rejects with a typed output-too-large error", async () => {
     await expect(invokeToolRuntime({
       toolName: "read_docs",
