@@ -1,5 +1,4 @@
-# Splits skills/ and pushes to indexnetwork/agentvillage-skills (dev + main)
-# and Edge-City/agentvillage-skills (main only, upstream fork sync).
+# Splits skills/ and pushes to Edge-City/agentvillage-skills (matching branch).
 #
 # The skills/ directory IS the repo root in the target repos, so plugin
 # manifests (.claude-plugin/, .codex-plugin/, openclaw.plugin.json) land
@@ -45,16 +44,7 @@ jobs:
           SPLIT_SHA=$(git subtree split --prefix=skills "$BRANCH")
           echo "Split SHA: $SPLIT_SHA"
 
-          # Always push to indexnetwork/agentvillage-skills (matching branch)
           git push --force \
-            "https://x-access-token:${GH_PAT}@github.com/indexnetwork/agentvillage-skills.git" \
+            "https://x-access-token:${GH_PAT}@github.com/Edge-City/agentvillage-skills.git" \
             "${SPLIT_SHA}:refs/heads/${BRANCH}"
-          echo "✓ pushed to indexnetwork/agentvillage-skills ($BRANCH)"
-
-          # On main, also sync upstream fork
-          if [ "$BRANCH" = "main" ]; then
-            git push --force \
-              "https://x-access-token:${GH_PAT}@github.com/Edge-City/agentvillage-skills.git" \
-              "${SPLIT_SHA}:refs/heads/main"
-            echo "✓ pushed to Edge-City/agentvillage-skills (main)"
-          fi
+          echo "✓ pushed to Edge-City/agentvillage-skills ($BRANCH)"
