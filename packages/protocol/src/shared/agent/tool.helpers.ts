@@ -30,6 +30,7 @@ import type { MintConnectLink } from "../interfaces/connect-link.interface.js";
 import type { QuestionerDatabase } from "../interfaces/questioner.interface.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
+import type { DiscoveryRunQueue, DiscoveryRunStore } from "../interfaces/discovery-run.interface.js";
 
 export type ProfileContext = ProfileDocument | null;
 
@@ -193,6 +194,10 @@ export interface ToolContext {
   queueNegotiateExisting?: (opportunityId: string, userId: string) => Promise<void>;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
+  /** Persistence for async MCP discovery runs (optional — absent in non-MCP/test contexts). */
+  discoveryRuns?: DiscoveryRunStore;
+  /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
+  discoveryRunQueue?: DiscoveryRunQueue;
   /** Mints a short-lived connect token for opportunity accept links (optional — absent in non-MCP contexts). */
   mintConnectToken?: (userId: string, opportunityId: string) => Promise<string>;
   /** Mints (or reuses) a short connect link, snapshotting the greeting (optional — absent in non-MCP contexts). */
@@ -444,6 +449,10 @@ export interface ToolDeps {
   agentDispatcher?: AgentDispatcher;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
+  /** Persistence for async MCP discovery runs (optional — absent in non-MCP/test contexts). */
+  discoveryRuns?: DiscoveryRunStore;
+  /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
+  discoveryRunQueue?: DiscoveryRunQueue;
   /** Mints a short-lived connect token for opportunity accept links (optional — absent in non-MCP contexts). */
   mintConnectToken?: (userId: string, opportunityId: string) => Promise<string>;
   /** Mints (or reuses) a short connect link, snapshotting the greeting (optional — absent in non-MCP contexts). */

@@ -14,6 +14,7 @@ import { createNegotiationTools } from '../../negotiation/negotiation.tools.js';
 import { createChatTools } from '../../chat/chat.tools.js';
 import { createPremiseTools } from '../../premise/premise.tools.js';
 import { protocolLogger } from '../observability/protocol.logger.js';
+import { requestContext } from '../observability/request-context.js';
 
 const logger = protocolLogger('ToolRegistry');
 
@@ -48,6 +49,10 @@ export function createToolRegistry(deps: ToolDeps): ToolRegistry {
         try {
           return await opts.handler({ context: input.context, query: input.query as z.infer<T> });
         } catch (err) {
+          const abortSignal = requestContext.getStore()?.abortSignal;
+          if (abortSignal?.aborted) {
+            throw err;
+          }
           logger.error(`${opts.name} failed`, {
             error: err instanceof Error ? err.message : String(err),
           });

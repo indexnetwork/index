@@ -5,6 +5,7 @@ import type { ChatSuggestion } from "./chat-streaming.types.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("SuggestionGenerator");
 
@@ -72,7 +73,7 @@ export class SuggestionGenerator {
       : `Conversation:\n\n${excerpt}\n\nGenerate 3-5 follow-up suggestions.`;
 
     try {
-      const result = await this.model.invoke([
+      const result = await invokeWithAbortSignal(this.model, [
         new SystemMessage(SYSTEM_PROMPT),
         new HumanMessage(userContent),
       ]);

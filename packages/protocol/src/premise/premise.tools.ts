@@ -4,6 +4,7 @@ import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { PremiseGraphDatabase, PremiseRecord, PremiseValidity } from "../shared/interfaces/database.interface.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ChatTools:Premise");
 
@@ -46,7 +47,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
 
       logger.verbose(`[createPremise] Creating premise for user ${context.userId}: "${query.text.substring(0, 60)}..."`);
 
-      const result = await premiseGraph.invoke({
+      const result = await invokeWithAbortSignal(premiseGraph, {
         userId: context.userId,
         assertionText: query.text,
         tier: query.tier,
@@ -209,7 +210,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Premise graph not available.");
       }
 
-      const result = await premiseGraph.invoke({
+      const result = await invokeWithAbortSignal(premiseGraph, {
         userId: context.userId,
         assertionText: query.text,
         tier: existing.assertion.tier,

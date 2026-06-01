@@ -18,6 +18,7 @@ import {
   type QuestionWithStrategy,
 } from "../shared/schemas/question.schema.js";
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
 import { getPreset } from "./questioner.presets.js";
@@ -67,9 +68,10 @@ export class QuestionerAgent {
 
     let raw: unknown;
     try {
-      raw = await this.model.invoke(
+      raw = await invokeWithAbortSignal(
+        this.model,
         [new SystemMessage(preset.systemPrompt), new HumanMessage(userMessage)],
-        options?.signal ? { signal: options.signal } : undefined,
+        options?.signal,
       );
     } catch (err) {
       const aborted = options?.signal?.aborted ?? false;

@@ -15,6 +15,7 @@ import {
   type ChatContextDigest,
 } from "../shared/schemas/chat-context.schema.js";
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
 
@@ -87,7 +88,7 @@ export class ChatSummarizer {
     ].join("\n");
 
     try {
-      const response = await this.model.invoke([
+      const response = await invokeWithAbortSignal(this.model, [
         new SystemMessage(SYSTEM_PROMPT),
         new HumanMessage(user),
       ]);

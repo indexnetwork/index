@@ -13,6 +13,7 @@ import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import {
   DiscoveryNegotiationDigestSchema,
@@ -71,9 +72,10 @@ export class NegotiationSummarizer {
     const user = buildUserPrompt(negotiation);
     let raw: unknown;
     try {
-      raw = await this.model.invoke(
+      raw = await invokeWithAbortSignal(
+        this.model,
         [new SystemMessage(SYSTEM_PROMPT), new HumanMessage(user)],
-        options?.signal ? { signal: options.signal } : undefined,
+        options?.signal,
       );
     } catch (err) {
       const aborted = options?.signal?.aborted ?? false;

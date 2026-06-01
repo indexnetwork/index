@@ -16,6 +16,7 @@ export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node',
 export const networkTypeEnum = pgEnum('network_type', ['community', 'event']);
 export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
+export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled']);
 
 export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
 
@@ -449,6 +450,27 @@ export const opportunities = pgTable('opportunities', {
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
 }, (table) => ({
   statusIdx: index('opportunities_status_idx').on(table.status),
+}));
+
+export const opportunityDiscoveryRuns = pgTable('opportunity_discovery_runs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  agentId: text('agent_id').references(() => agents.id, { onDelete: 'set null' }),
+  status: discoveryRunStatusEnum('status').notNull().default('queued'),
+  input: jsonb('input').$type<Record<string, unknown>>().notNull(),
+  context: jsonb('context').$type<Record<string, unknown>>().notNull(),
+  progress: jsonb('progress').$type<Record<string, unknown>>(),
+  result: jsonb('result').$type<unknown>(),
+  error: text('error'),
+  cancelRequestedAt: timestamp('cancel_requested_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+}, (table) => ({
+  userCreatedIdx: index('opportunity_discovery_runs_user_created_idx').on(table.userId, table.createdAt),
+  statusCreatedIdx: index('opportunity_discovery_runs_status_created_idx').on(table.status, table.createdAt),
+  expiresAtIdx: index('opportunity_discovery_runs_expires_at_idx').on(table.expiresAt),
 }));
 
 export interface QuestionDetection {

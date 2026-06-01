@@ -12,6 +12,7 @@ import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
 import { PremiseDecomposer } from "../premise/premise.decomposer.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 /**
  * Compiled premise graph interface. Matches the invoke signature of a compiled LangGraph.
@@ -773,7 +774,7 @@ export class ProfileGraphFactory {
           let created = 0;
           for (const p of result.premises) {
             try {
-              const premiseResult = await this.premiseGraph.invoke({
+              const premiseResult = await invokeWithAbortSignal(this.premiseGraph, {
                 userId: state.userId,
                 assertionText: p.text,
                 tier: p.tier,

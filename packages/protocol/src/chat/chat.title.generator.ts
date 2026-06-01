@@ -5,6 +5,7 @@ import { log } from "../shared/observability/log.js";
 import { Timed } from "../shared/observability/performance.js";
 
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = log.lib.from("ChatTitleGenerator");
 
@@ -46,7 +47,7 @@ export class ChatTitleGenerator {
       .join("\n");
 
     try {
-      const response = await this.model.invoke([
+      const response = await invokeWithAbortSignal(this.model, [
         new SystemMessage(SYSTEM_PROMPT),
         new HumanMessage(`Conversation:\n${excerpt}\n\nSuggested title:`),
       ]);

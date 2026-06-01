@@ -24,6 +24,7 @@ import {
   type QuestionWithStrategy,
 } from "../shared/schemas/question.schema.js";
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
 import {
@@ -68,9 +69,10 @@ export class QuestionGenerator {
 
     let raw: unknown;
     try {
-      raw = await this.model.invoke(
+      raw = await invokeWithAbortSignal(
+        this.model,
         [new SystemMessage(SYSTEM_PROMPT), new HumanMessage(user)],
-        options?.signal ? { signal: options.signal } : undefined,
+        options?.signal,
       );
     } catch (err) {
       // AbortError is the expected outcome under deadline pressure — caller

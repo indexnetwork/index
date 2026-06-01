@@ -84,7 +84,8 @@ export class EmbedderAdapter {
 
   async generate(
     text: string | string[],
-    dimensions?: number
+    dimensions?: number,
+    options?: { signal?: AbortSignal }
   ): Promise<number[] | number[][]> {
     const texts = Array.isArray(text) ? text : [text];
     const cleanTexts = texts.map((t) => t.replace(/\n/g, ' ').trim()).filter(Boolean);
@@ -98,7 +99,7 @@ export class EmbedderAdapter {
       input: cleanTexts,
       dimensions: dim,
       encoding_format: 'float',
-    });
+    }, options?.signal ? { signal: options.signal } : undefined);
 
     if (!response.data?.length) {
       throw new Error('No embedding data returned');
