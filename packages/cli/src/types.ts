@@ -167,6 +167,8 @@ export interface OpportunityDetail {
   isGhost?: boolean;
   primaryActionLabel?: string;
   createdAt?: string;
+  /** Present when the requested opportunity was superseded by this enriched opportunity. */
+  resolvedFromOpportunityId?: string;
 }
 
 // ── Network types ───────────────────────────────────────────────────

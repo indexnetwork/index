@@ -2998,6 +2998,9 @@ export class ChatDatabaseAdapter {
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.getOpportunity(id);
   }
+  async findEnrichedReplacementOpportunities(opportunityId: string): Promise<OpportunityRow[]> {
+    return this.opportunityAdapter.findEnrichedReplacementOpportunities(opportunityId);
+  }
   async getOpportunitiesByIds(ids: string[]): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesByIds(ids);
   }
@@ -4831,6 +4834,17 @@ export class OpportunityDatabaseAdapter {
     const rows = await db.select().from(opportunities).where(eq(opportunities.id, id)).limit(1);
     const row = rows[0];
     return row ? toOpportunityRow(row) : null;
+  }
+
+  async findEnrichedReplacementOpportunities(opportunityId: string): Promise<OpportunityRow[]> {
+    const rows = await db
+      .select()
+      .from(opportunities)
+      .where(
+        sql`${opportunities.detection} @> ${JSON.stringify({ enrichedFrom: [opportunityId] })}::jsonb`,
+      )
+      .orderBy(desc(opportunities.createdAt));
+    return rows.map(toOpportunityRow);
   }
 
   async getOpportunitiesByIds(ids: string[]): Promise<OpportunityRow[]> {
@@ -6728,6 +6742,7 @@ export function createSystemDatabase(
      * tools that need cross-actor access during the discovery pipeline.
      */
     getOpportunity: (id: string) => db.getOpportunity(id),
+    findEnrichedReplacementOpportunities: (opportunityId: string) => db.findEnrichedReplacementOpportunities(opportunityId),
     getOpportunitiesForNetwork: async (networkId: string, options?: Parameters<ChatDatabaseAdapter['getOpportunitiesForNetwork']>[1]) => {
       verifyScope(networkId);
       return db.getOpportunitiesForNetwork(networkId, options);

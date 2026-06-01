@@ -1208,6 +1208,16 @@ export interface Database {
   getOpportunitiesByIds(ids: string[]): Promise<Opportunity[]>;
 
   /**
+   * Find opportunities that superseded a previous opportunity through enrichment.
+   * Uses the existing JSONB `detection.enrichedFrom` array, so no schema-level relation is required.
+   * Results are newest-first so callers can choose the newest visible replacement.
+   *
+   * @param opportunityId - Superseded opportunity ID
+   * @returns Replacement opportunities, newest first
+   */
+  findEnrichedReplacementOpportunities(opportunityId: string): Promise<Opportunity[]>;
+
+  /**
    * Resolve an opportunity identifier (full UUID or short prefix) to a full UUID.
    * @param idOrPrefix - Full UUID or short hex prefix
    * @param userId - The user ID (for visibility scoping)
@@ -2205,6 +2215,7 @@ export type OpportunityControllerDatabase = Pick<
   Database,
   | 'getOpportunity'
   | 'getOpportunitiesByIds'
+  | 'findEnrichedReplacementOpportunities'
   | 'getOpportunitiesForUser'
   | 'getOpportunitiesForNetwork'
   | 'resolveOpportunityId'
