@@ -117,7 +117,19 @@ On every tool call the server:
 1. Extracts the HTTP request from the MCP `ServerContext`.
 2. Calls `authResolver.resolveIdentity(req)` to get `{ userId, agentId }`.
 3. Gates access: MCP callers without a resolved `agentId` are blocked from every tool except `register_agent`, `read_docs`, and `scrape_url` until they register.
-4. Builds per-request scoped databases via `scopedDepsFactory` and invokes the tool handler.
+4. Builds per-request scoped databases via `scopedDepsFactory` and invokes the tool handler through the shared runtime.
+
+### Runtime controls
+
+MCP tools are bounded by `ToolInvocationRuntime`:
+
+| Class | Default | Class override |
+|---|---:|---|
+| `fast` | 10 s | `MCP_TOOL_TIMEOUT_FAST_MS` |
+| `bounded_slow` | 45 s | `MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS` |
+| `async_candidate` | 50 s | `MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS` |
+
+Per-tool timeout overrides use `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, such as `MCP_TOOL_TIMEOUT_DISCOVER_OPPORTUNITIES_MS`. Tool outputs are capped by `MCP_TOOL_MAX_OUTPUT_BYTES` (default `1000000`) or `MCP_TOOL_MAX_OUTPUT_<TOOL_NAME>_BYTES`; inbound MCP request bodies are capped by the backend with `MCP_MAX_REQUEST_BYTES` (default `1000000`). Runtime failures return JSON text envelopes with stable `code` values: `TOOL_TIMEOUT`, `TOOL_CANCELLED`, or `TOOL_OUTPUT_TOO_LARGE`.
 
 ### `MCP_INSTRUCTIONS`
 

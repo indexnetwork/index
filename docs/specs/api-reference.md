@@ -146,6 +146,56 @@ The surface is snapshotted onto each minted `connect_links` row at MCP-call time
 
 Today only the Telegram-bot MCP surface sends `telegram`. Every other caller — Claude Desktop, the web app, Claude Code, the CLI — omits the header and gets the web fallback.
 
+### MCP runtime limits and error envelopes
+
+Every MCP `tools/call` runs under the shared tool runtime. The runtime applies a timeout class, request cancellation signal, progress bridge, and output cap before returning a text block to the client.
+
+**Timeout classes:**
+
+| Class | Default deadline | Override |
+|---|---:|---|
+| `fast` | 10 seconds | `MCP_TOOL_TIMEOUT_FAST_MS` |
+| `bounded_slow` | 45 seconds | `MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS` |
+| `async_candidate` | 50 seconds | `MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS` |
+
+A single tool can be overridden with `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where `<TOOL_NAME>` is uppercased and non-alphanumeric characters are replaced with `_`; for example, `MCP_TOOL_TIMEOUT_CREATE_INTENT_MS` or `MCP_TOOL_TIMEOUT_DISCOVER_OPPORTUNITIES_MS`.
+
+**Size limits:**
+
+- `MCP_MAX_REQUEST_BYTES` rejects oversized HTTP request bodies before JSON-RPC handling. Default: `1000000` bytes.
+- `MCP_TOOL_MAX_OUTPUT_BYTES` caps encoded tool output. Default: `1000000` bytes.
+- `MCP_TOOL_MAX_OUTPUT_<TOOL_NAME>_BYTES` overrides one tool, for example `MCP_TOOL_MAX_OUTPUT_READ_DOCS_BYTES`.
+
+Invalid or non-positive numeric values are ignored and the default is used.
+
+**Cancellation:**
+
+Clients may cancel in-flight MCP calls with `notifications/cancelled`. HTTP request aborts exposed by the MCP SDK are treated the same way. The runtime propagates the abort signal into graph, LLM, scraper, and embedding paths where supported.
+
+**Runtime error envelope:**
+
+When the runtime rejects a tool call, the MCP text content contains a stable JSON envelope:
+
+```json
+{
+  "success": false,
+  "code": "TOOL_TIMEOUT",
+  "error": "Tool create_intent timed out after 50000ms.",
+  "data": {
+    "tool": "create_intent",
+    "timeoutClass": "async_candidate",
+    "timeoutMs": 50000,
+    "maxOutputBytes": 1000000
+  }
+}
+```
+
+`code` is one of:
+
+- `TOOL_TIMEOUT` — the server-side deadline expired.
+- `TOOL_CANCELLED` — the client cancelled before completion.
+- `TOOL_OUTPUT_TOO_LARGE` — the encoded result exceeded the configured output cap.
+
 ### Performance Stats (Dev Only)
 
 ```

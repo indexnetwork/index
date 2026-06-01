@@ -570,10 +570,54 @@ Every registered tool goes through the same lifecycle on every call:
 4. Run the agent-registration gate: unless the tool is on the exempt list (`register_agent`, `read_docs`, `scrape_url`), a missing `agentId` produces an `Agent not registered` error that tells the caller to register first.
 5. Build per-request scoped databases via `scopedDepsFactory` and rebuild the tool registry with them.
 6. Validate arguments against the tool's original Zod schema.
-7. Invoke the raw tool handler with `{ context, query: validatedArgs }`.
+7. Invoke the raw tool handler through `ToolInvocationRuntime`, which attaches a shared `AbortSignal`, wall-clock deadline, trace/progress bridge, and output-size cap.
 8. Return the handler's formatted string as an MCP text content block.
 
-Errors are trapped and returned as MCP error responses so a single failing tool never breaks the server session.
+Errors are trapped and returned as MCP error responses so a single failing tool never breaks the server session. Runtime failures use JSON envelopes with stable codes: `TOOL_TIMEOUT`, `TOOL_CANCELLED`, and `TOOL_OUTPUT_TOO_LARGE`.
+
+### Runtime deadlines, cancellation, and output caps
+
+Every MCP tool call is bounded by `packages/protocol/src/shared/agent/tool.runtime.ts` instead of per-tool ad hoc timers. The runtime classifies tools into three timeout classes:
+
+| Class | Default | Intended tools |
+|---|---:|---|
+| `fast` | 10 s | Metadata reads, lightweight CRUD, onboarding, delivery confirmation, docs |
+| `bounded_slow` | 45 s | Normal multi-step calls that may touch storage or a small graph path |
+| `async_candidate` | 50 s | Calls that are currently synchronous but are candidates for future job/status/result/cancel flows, such as imports and discovery |
+
+Timeouts can be tuned globally by class or per tool:
+
+- `MCP_TOOL_TIMEOUT_FAST_MS`
+- `MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS`
+- `MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS`
+- `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where the tool name is uppercased and non-alphanumeric characters become `_` (for example, `MCP_TOOL_TIMEOUT_DISCOVER_OPPORTUNITIES_MS`).
+
+The runtime also enforces response size limits before a tool result is returned to MCP or the REST-safe tool path:
+
+- `MCP_TOOL_MAX_OUTPUT_BYTES` defaults to `1000000`.
+- `MCP_TOOL_MAX_OUTPUT_<TOOL_NAME>_BYTES` overrides a single tool.
+
+The MCP HTTP controller rejects oversized inbound JSON-RPC bodies before they reach the transport via `MCP_MAX_REQUEST_BYTES`, also defaulting to `1000000`.
+
+Cancellation propagates through the same signal. MCP `notifications/cancelled`, client-side HTTP aborts exposed by the SDK, and runtime timeouts abort the active request context. Graph invocations, LangChain model calls, scraper calls, and embedding generation read that signal via the shared helpers so downstream work stops as close to the provider boundary as possible. Trace events emitted during a tool call are bridged to MCP `notifications/progress`, so capable clients can surface long-running graph/agent progress before either a result or cancellation.
+
+Runtime error envelopes are JSON text payloads shaped as:
+
+```json
+{
+  "success": false,
+  "code": "TOOL_TIMEOUT",
+  "error": "Tool discover_opportunities timed out after 50000ms.",
+  "data": {
+    "tool": "discover_opportunities",
+    "timeoutClass": "async_candidate",
+    "timeoutMs": 50000,
+    "maxOutputBytes": 1000000
+  }
+}
+```
+
+Use `TOOL_TIMEOUT` when the server deadline fired, `TOOL_CANCELLED` when the client cancelled first, and `TOOL_OUTPUT_TOO_LARGE` when the handler returned more than its configured output budget.
 
 ### MCP_INSTRUCTIONS — the canonical behavioral contract
 
