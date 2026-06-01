@@ -63,35 +63,37 @@ In every curl example below, `<EDGEOS_API_KEY>` and `<EDGEOS_BEARER_TOKEN>` are 
 
 All event-read recipes use `Authorization: Bearer <EDGEOS_API_KEY>`.
 
+**REQUIRED parameters for all event list queries:** `popup_id={popup_id}` and `event_status=published`. Without `popup_id`, the API filters by `created_at` instead of `start_time`, returning wrong results. `{popup_id}` is the popup UUID from the active popup skill (e.g. `edge-esmeralda` §1).
+
 **List upcoming events (next 30 days):**
 ```bash
 curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
-  "https://api.edgeos.world/api/v1/events/portal/events?start_after={current_iso_timestamp}&limit=50"
+  "https://api.edgeos.world/api/v1/events/portal/events?popup_id={popup_id}&event_status=published&start_after={current_iso_timestamp}&limit=50"
 ```
 `{current_iso_timestamp}` must be a literal ISO-8601 UTC string (e.g. `2026-05-26T21:00:00Z`) — compute it in code or via the agent's date tools, not via shell substitution.
 
 **List events in a date range:**
 ```bash
 curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
-  "https://api.edgeos.world/api/v1/events/portal/events?start_after={start_iso}&start_before={end_iso}&limit=100"
+  "https://api.edgeos.world/api/v1/events/portal/events?popup_id={popup_id}&event_status=published&start_after={start_iso}&start_before={end_iso}&limit=100"
 ```
 
 **Search events by title:**
 ```bash
 curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
-  "https://api.edgeos.world/api/v1/events/portal/events?search=KEYWORD&start_after={start_iso}&limit=50"
+  "https://api.edgeos.world/api/v1/events/portal/events?popup_id={popup_id}&event_status=published&search=KEYWORD&start_after={start_iso}&limit=50"
 ```
 
 **Filter by tag, kind, venue, or track:**
 ```bash
 curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
-  "https://api.edgeos.world/api/v1/events/portal/events?tags=AI&tags=Privacy&limit=50"
+  "https://api.edgeos.world/api/v1/events/portal/events?popup_id={popup_id}&event_status=published&tags=AI&tags=Privacy&limit=50"
 ```
 
 **Only events you've RSVPed to:**
 ```bash
 curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
-  "https://api.edgeos.world/api/v1/events/portal/events?rsvped_only=true&limit=50"
+  "https://api.edgeos.world/api/v1/events/portal/events?popup_id={popup_id}&event_status=published&rsvped_only=true&limit=50"
 ```
 
 **Fetch a single event (includes caller's RSVP status):**
@@ -183,7 +185,7 @@ curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
 **List active venues for a popup (`popup_id` is required, must be a UUID — the active popup skill supplies it):**
 ```bash
 curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
-  "https://api.edgeos.world/api/v1/event-venues/portal/venues?popup_id={popup_uuid}&limit=100"
+  "https://api.edgeos.world/api/v1/event-venues/portal/venues?popup_id={popup_id}&limit=100"
 ```
 
 **Create a venue (`venues:write`; may land in `PENDING` if the popup requires approval, and may be disabled by the popup's `humans_can_create_venues` setting):**
@@ -191,7 +193,7 @@ curl -s -H "Authorization: Bearer <EDGEOS_API_KEY>" \
 curl -s -X POST -H "Authorization: Bearer <EDGEOS_API_KEY>" \
   -H "Content-Type: application/json" \
   "https://api.edgeos.world/api/v1/event-venues/portal/venues" \
-  -d '{"popup_id":"{popup_uuid}","title":"Workshop Room","description":"...","location":"...","formatted_address":"...","capacity":30,"booking_mode":"free"}'
+  -d '{"popup_id":"{popup_id}","title":"Workshop Room","description":"...","location":"...","formatted_address":"...","capacity":30,"booking_mode":"free"}'
 ```
 
 `booking_mode` is one of `free` | `approval_required` | `unbookable`.

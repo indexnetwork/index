@@ -1,0 +1,64 @@
+name: Sync Edge Esmeralda References
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Ref to pull from aromeoes/edge-agent-skill
+        required: false
+        default: main
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sync-edge-esmeralda-references
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout AgentVillage
+        uses: actions/checkout@v4
+
+      - name: Checkout reference source
+        uses: actions/checkout@v4
+        with:
+          repository: aromeoes/edge-agent-skill
+          ref: ${{ github.event.inputs.source_ref || 'main' }}
+          path: reference-source
+          persist-credentials: false
+
+      - name: Copy generated references
+        run: |
+          set -euo pipefail
+          mkdir -p skills/edge-esmeralda/references
+          cp reference-source/references/wiki-content.md skills/edge-esmeralda/references/wiki-content.md
+          cp reference-source/references/website-content.md skills/edge-esmeralda/references/website-content.md
+          cp reference-source/references/newsletter-digest.md skills/edge-esmeralda/references/newsletter-digest.md
+
+      - name: Commit reference changes
+        id: commit
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add skills/edge-esmeralda/references/
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No reference changes to commit."
+            exit 0
+          fi
+          git commit -m "Update Edge Esmeralda references [automated]"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch skills sync
+        if: steps.commit.outputs.changed == 'true' && github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run sync-skills.yml --ref main

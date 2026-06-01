@@ -1,0 +1,20 @@
+name: post-merge
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      SYNC_HOST: ${{ secrets.SYNC_HOST }}
+      SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+    steps:
+      - name: Refresh cache index
+        run: |
+          curl -sf -o /dev/null -X POST "https://${SYNC_HOST}/hooks/sync" \
+            -H "Authorization: Bearer ${SYNC_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{}' 2>/dev/null
