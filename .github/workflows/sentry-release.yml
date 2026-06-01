@@ -1,0 +1,84 @@
+name: Sentry release
+
+on:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sentry-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backend-release:
+    name: Backend release
+    runs-on: ubuntu-latest
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure release
+        id: config
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            main) environment="production" ;;
+            dev) environment="development" ;;
+            *) environment="${GITHUB_REF_NAME}" ;;
+          esac
+
+          release="index-backend@${GITHUB_SHA}"
+          enabled="true"
+          if [ -z "${SENTRY_AUTH_TOKEN}" ] || [ -z "${SENTRY_ORG}" ] || [ -z "${SENTRY_PROJECT}" ]; then
+            enabled="false"
+            echo "Sentry release upload skipped: configure SENTRY_AUTH_TOKEN, SENTRY_ORG, and SENTRY_PROJECT secrets."
+          fi
+
+          {
+            echo "enabled=${enabled}"
+            echo "environment=${environment}"
+            echo "release=${release}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.config.outputs.enabled == 'true'
+        with:
+          bun-version: "1.2.20"
+
+      - name: Build backend artifacts
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          SENTRY_RELEASE: ${{ steps.config.outputs.release }}
+          SENTRY_ENVIRONMENT: ${{ steps.config.outputs.environment }}
+        run: |
+          bun install
+          cd packages/protocol
+          bun install
+          bun run build
+          cd ../../backend
+          bun install
+          bun run build
+
+      - name: Install sentry-cli
+        if: steps.config.outputs.enabled == 'true'
+        run: curl -sL https://sentry.io/get-cli/ | bash
+
+      - name: Create Sentry release and upload source maps
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          SENTRY_RELEASE: ${{ steps.config.outputs.release }}
+          SENTRY_ENVIRONMENT: ${{ steps.config.outputs.environment }}
+        run: |
+          sentry-cli releases new "$SENTRY_RELEASE" || true
+          sentry-cli releases set-commits "$SENTRY_RELEASE" --auto --ignore-missing
+          sentry-cli sourcemaps inject backend/dist packages/protocol/dist
+          sentry-cli sourcemaps upload --release "$SENTRY_RELEASE" backend/dist packages/protocol/dist
+          sentry-cli releases finalize "$SENTRY_RELEASE"
+          sentry-cli releases deploys "$SENTRY_RELEASE" new --env "$SENTRY_ENVIRONMENT"

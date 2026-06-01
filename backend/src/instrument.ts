@@ -20,6 +20,8 @@ const sentryEnvironment =
   process.env.NODE_ENV ??
   'development';
 const sentryDsn = process.env.SENTRY_DSN;
+const sentryCommitSha = process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA;
+const sentryRelease = process.env.SENTRY_RELEASE?.trim() || (sentryCommitSha ? `index-backend@${sentryCommitSha}` : undefined);
 
 function sampleRateFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -38,6 +40,7 @@ const tracesSampleRate = sampleRateFromEnv(
 Sentry.init({
   dsn: sentryDsn,
   environment: sentryEnvironment,
+  release: sentryRelease,
   enabled: Boolean(sentryDsn) && process.env.NODE_ENV !== 'test',
 
   // Adds request headers and IP addresses to events.
@@ -67,5 +70,7 @@ Sentry.setTags({
   service: 'backend',
   runtime: 'bun',
   'app.environment': sentryEnvironment,
+  'app.release': sentryRelease ?? 'unknown',
+  'app.commit_sha': sentryCommitSha ?? 'unknown',
   'sentry.traces_sample_rate': tracesSampleRate,
 });
