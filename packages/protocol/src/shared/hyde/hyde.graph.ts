@@ -7,6 +7,8 @@
 
 import { StateGraph, START, END } from '@langchain/langgraph';
 import { createHash } from 'crypto';
+
+import { getAbortSignalConfig } from '../agent/model-signal.js';
 import { HydeGraphState, type HydeDocumentState } from './hyde.state.js';
 import { LensInferrer } from './lens.inferrer.js';
 import { HydeGenerator } from './hyde.generator.js';
@@ -216,7 +218,7 @@ export class HydeGraphFactory {
         if (toEmbed.length > 0) {
           logger.verbose('Embedding documents', { count: toEmbed.length });
           const texts = toEmbed.map((t) => t.doc.hydeText);
-          const embeddings = await self.embedder.generate(texts);
+          const embeddings = await self.embedder.generate(texts, undefined, getAbortSignalConfig());
           const embeddingArray = Array.isArray(embeddings[0])
             ? (embeddings as number[][])
             : [embeddings as number[]];

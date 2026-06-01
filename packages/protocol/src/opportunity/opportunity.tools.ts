@@ -14,6 +14,7 @@ import type { Opportunity, OpportunityStatus } from "../shared/interfaces/databa
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
 import { selectByComposition, deduplicateByPerson } from "./opportunity.utils.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
@@ -677,7 +678,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const _introGraphStart = Date.now();
         const _introTraceEmitter = requestContext.getStore()?.traceEmitter;
         _introTraceEmitter?.({ type: "graph_start", name: "opportunity" });
-        const result = await graphs.opportunity.invoke({
+        const result = await invokeWithAbortSignal(graphs.opportunity, {
           operationMode: "create_introduction",
           userId: context.userId,
           networkId: primaryNetworkId,
@@ -830,7 +831,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const _scopeGraphStart = Date.now();
         const _scopeIndexMembershipTraceEmitter = requestContext.getStore()?.traceEmitter;
         _scopeIndexMembershipTraceEmitter?.({ type: "graph_start", name: "network_membership" });
-        const memberResult = await graphs.networkMembership.invoke({
+        const memberResult = await invokeWithAbortSignal(graphs.networkMembership, {
           userId: context.userId,
           networkId: effectiveIndexId,
           operationMode: "read" as const,
@@ -853,7 +854,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const _scopeGraphStart = Date.now();
         const _scopeIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
         _scopeIndexTraceEmitter?.({ type: "graph_start", name: "index" });
-        const indexResult = await graphs.index.invoke({
+        const indexResult = await invokeWithAbortSignal(graphs.index, {
           userId: context.userId,
           operationMode: "read" as const,
           showAll: true,
@@ -1553,7 +1554,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const _updateGraphStart = Date.now();
       const _updateTraceEmitter = requestContext.getStore()?.traceEmitter;
       _updateTraceEmitter?.({ type: "graph_start", name: "opportunity" });
-      const result = await graphs.opportunity.invoke({
+      const result = await invokeWithAbortSignal(graphs.opportunity, {
         userId: context.userId,
         operationMode: isSend ? ("send" as const) : ("update" as const),
         opportunityId: query.opportunityId,

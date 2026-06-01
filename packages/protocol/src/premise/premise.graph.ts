@@ -4,6 +4,7 @@ import { PremiseGraphState } from "./premise.state.js";
 import { PremiseAnalyzer } from "./premise.analyzer.js";
 import { PremiseIndexer } from "./premise.indexer.js";
 
+import { getAbortSignalConfig } from "../shared/agent/model-signal.js";
 import type { PremiseGraphDatabase, PremiseAnalysis } from "../shared/interfaces/database.interface.js";
 import type { Embedder } from "../shared/interfaces/embedder.interface.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -81,7 +82,7 @@ export class PremiseGraphFactory {
         logger.verbose(`[PremiseGraph.embed] Generating embedding for premise`);
 
         // Embedder.generate returns number[] | number[][], cast for single string input
-        const embedding = await this.embedder.generate(state.assertionText) as number[];
+        const embedding = await this.embedder.generate(state.assertionText, undefined, getAbortSignalConfig()) as number[];
         return { embedding };
       });
     };

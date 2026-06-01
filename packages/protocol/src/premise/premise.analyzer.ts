@@ -3,6 +3,7 @@ import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("PremiseAnalyzer");
 
@@ -118,7 +119,7 @@ Classify this premise and score its felicity conditions.`;
       new HumanMessage(prompt),
     ];
 
-    const result = await this.model.invoke(messages);
+    const result = await invokeWithAbortSignal(this.model, messages);
     const output = responseFormat.parse(result);
 
     logger.verbose(`[PremiseAnalyzer.invoke] Result: ${output.speechActType} entropy=${output.semanticEntropy}`);

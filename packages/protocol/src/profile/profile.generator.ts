@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ProfileGenerator");
 
@@ -68,7 +69,7 @@ export class ProfileGenerator {
       new SystemMessage(systemPrompt),
       new HumanMessage(`Here is the raw data:\n${input}`)
     ];
-    const result = await this.model.invoke(messages);
+    const result = await invokeWithAbortSignal(this.model, messages);
     const output = responseFormat.parse(result);
     const textToEmbed = this.toString(output);
     logger.verbose("Generated profile", {

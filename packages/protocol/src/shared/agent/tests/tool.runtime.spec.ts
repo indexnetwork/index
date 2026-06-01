@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { invokeWithAbortSignal } from "../model-signal.js";
 import { requestContext } from "../../observability/request-context.js";
 import type { ResolvedToolContext } from "../tool.helpers.js";
 import {
@@ -82,6 +83,45 @@ describe("tool runtime", () => {
       timeoutMs: 100,
       maxOutputBytes: 5,
     })).rejects.toMatchObject({ code: "TOOL_OUTPUT_TOO_LARGE" });
+  });
+
+  test("passes request abort signal into model invocations", async () => {
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    const runnable = {
+      invoke: async (_input: string, config?: { signal?: AbortSignal }) => {
+        observedSignal = config?.signal;
+        return "ok";
+      },
+    };
+
+    const result = await requestContext.run({ abortSignal: controller.signal }, () =>
+      invokeWithAbortSignal(runnable, "input"),
+    );
+
+    expect(result).toBe("ok");
+    expect(observedSignal).toBe(controller.signal);
+  });
+
+  test("combines explicit and request abort signals for model invocations", async () => {
+    const inherited = new AbortController();
+    const explicit = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    const runnable = {
+      invoke: async (_input: string, config?: { signal?: AbortSignal }) => {
+        observedSignal = config?.signal;
+        return "ok";
+      },
+    };
+
+    await requestContext.run({ abortSignal: inherited.signal }, () =>
+      invokeWithAbortSignal(runnable, "input", explicit.signal),
+    );
+
+    expect(observedSignal).toBeInstanceOf(AbortSignal);
+    expect(observedSignal?.aborted).toBe(false);
+    inherited.abort(new Error("request cancelled"));
+    expect(observedSignal?.aborted).toBe(true);
   });
 
   test("serializes runtime errors into MCP/REST-safe JSON envelopes", () => {

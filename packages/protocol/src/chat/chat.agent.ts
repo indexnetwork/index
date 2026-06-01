@@ -19,6 +19,7 @@ import {
 } from "./chat.prompt.modules.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { sanitizeForDebugMeta } from "../shared/observability/debug-meta.sanitizer.js";
 import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations, DebugMetaDiscoveryQuestions } from "./chat-streaming.types.js";
 import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
@@ -304,7 +305,7 @@ export class ChatAgent {
     });
 
     // Invoke model
-    const response = await this.model.invoke(fullMessages);
+    const response = await invokeWithAbortSignal(this.model, fullMessages);
     logger.debug("Chat model response", {
       content:
         typeof response.content === "string"
@@ -785,7 +786,7 @@ export class ChatAgent {
       ),
     ];
 
-    const forcedResponse = await this.model.invoke(forceResponseMessages);
+    const forcedResponse = await invokeWithAbortSignal(this.model, forceResponseMessages);
     const responseText = extractTextContent(
       forcedResponse.content as string | Array<Record<string, unknown>>,
     );

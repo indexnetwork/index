@@ -4,6 +4,7 @@ import { ExplicitIntentInferrer } from "./intent.inferrer.js";
 import { SemanticVerifier } from "./intent.verifier.js";
 import { IntentReconciler } from "./intent.reconciler.js";
 import { IntentGraphDatabase } from "../shared/interfaces/database.interface.js";
+import { getAbortSignalConfig } from "../shared/agent/model-signal.js";
 import type { EmbeddingGenerator } from "../shared/interfaces/embedder.interface.js";
 import type { IntentGraphQueue } from "../shared/interfaces/queue.interface.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -526,7 +527,7 @@ export class IntentGraphFactory {
               let flatEmbedding: number[] | undefined;
               if (this.embedder) {
                 try {
-                  const embedding = await this.embedder.generate(sanitizedPayload);
+                  const embedding = await this.embedder.generate(sanitizedPayload, undefined, getAbortSignalConfig());
                   flatEmbedding = Array.isArray(embedding?.[0])
                     ? (embedding as number[][])[0]
                     : (embedding as number[]);
@@ -606,7 +607,7 @@ export class IntentGraphFactory {
               let flatEmbedding: number[] | undefined;
               if (this.embedder) {
                 try {
-                  const embedding = await this.embedder.generate(sanitizedPayload);
+                  const embedding = await this.embedder.generate(sanitizedPayload, undefined, getAbortSignalConfig());
                   flatEmbedding = Array.isArray(embedding?.[0])
                     ? (embedding as number[][])[0]
                     : (embedding as number[]);

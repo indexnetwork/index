@@ -9,6 +9,7 @@ import type { EnrichmentResult, ProfileEnricher } from "../shared/interfaces/enr
 import type { OnboardingPrivacyState, OnboardingProfileSeed, OnboardingState, PrivacyConsentSource, UserRecord } from "../shared/interfaces/database.interface.js";
 import { socialsToEnrichmentRequest, detectSocialLabel } from "../shared/utils/social-label.js";
 import { ProfileGenerator } from "./profile.generator.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ChatTools:Profile");
 
@@ -315,7 +316,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       const _readProfileGraphStart = Date.now();
       const _readProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
       _readProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
-      const result = await graphs.profile.invoke({
+      const result = await invokeWithAbortSignal(graphs.profile, {
         userId: context.userId,
         operationMode: 'query' as const,
       });
@@ -713,7 +714,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           const _confirmGraphStart = Date.now();
           const _confirmTraceEmitter = requestContext.getStore()?.traceEmitter;
           _confirmTraceEmitter?.({ type: "graph_start", name: "profile" });
-          const result = await graphs.profile.invoke({
+          const result = await invokeWithAbortSignal(graphs.profile, {
             userId: context.userId,
             operationMode: 'generate' as const,
           });
@@ -757,7 +758,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         const _bioProfileGraphStart = Date.now();
         const _bioProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
         _bioProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
-        const result = await graphs.profile.invoke({
+        const result = await invokeWithAbortSignal(graphs.profile, {
           userId: context.userId,
           operationMode: 'write' as const,
           input: profileInput,
@@ -793,7 +794,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       const _generateProfileGraphStart = Date.now();
       const _generateProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
       _generateProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
-      const result = await graphs.profile.invoke({
+      const result = await invokeWithAbortSignal(graphs.profile, {
         userId: context.userId,
         operationMode: 'generate' as const,
         forceUpdate: true,
@@ -856,7 +857,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       const _updateQueryProfileGraphStart = Date.now();
       const _updateQueryProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
       _updateQueryProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
-      const queryResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
+      const queryResult = await invokeWithAbortSignal(graphs.profile, { userId: context.userId, operationMode: 'query' as const });
       const _updateQueryProfileGraphMs = Date.now() - _updateQueryProfileGraphStart;
       _updateQueryProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _updateQueryProfileGraphMs });
       if (!queryResult.readResult?.hasProfile && !queryResult.profile) {
@@ -877,7 +878,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       const _updateWriteProfileGraphStart = Date.now();
       const _updateWriteProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
       _updateWriteProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
-      const _writeResult = await graphs.profile.invoke({
+      const _writeResult = await invokeWithAbortSignal(graphs.profile, {
         userId: context.userId,
         operationMode: "write",
         input: inputForProfile,

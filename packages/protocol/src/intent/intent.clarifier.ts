@@ -6,6 +6,7 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
 
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("IntentClarifier");
 
@@ -106,7 +107,7 @@ ${profileContext || "none"}
 ${activeIntentsContext || "none"}
 `;
 
-      const result = await this.model.invoke([
+      const result = await invokeWithAbortSignal(this.model, [
         new SystemMessage(systemPrompt),
         new HumanMessage(prompt),
       ]);
@@ -152,7 +153,7 @@ ${profileContext || "none"}
 # Active Intents
 ${activeIntentsContext || "none"}
 `;
-      const output = await this.suggestionModel.invoke([
+      const output = await invokeWithAbortSignal(this.suggestionModel, [
         new SystemMessage(suggestionPrompt),
         new HumanMessage(prompt),
       ]);
@@ -181,7 +182,7 @@ ${profileContext || "none"}
 # Active Intents
 ${activeIntentsContext || "none"}
 `;
-      const output = await this.clarificationDraftModel.invoke([
+      const output = await invokeWithAbortSignal(this.clarificationDraftModel, [
         new SystemMessage(clarificationDraftPrompt),
         new HumanMessage(prompt),
       ]);

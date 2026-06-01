@@ -35,6 +35,7 @@ import type { Question, QuestionStrategy } from "../shared/schemas/question.sche
 import { traceAgent, tracePhase } from "../shared/observability/trace.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import { buildDiscoveryQuestionInput } from "./discovery-question.helper.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("OpportunityDiscover");
 
@@ -699,7 +700,7 @@ export async function runDiscoverFromQuery(
       limit,
     },
     async () => {
-      const result = await opportunityGraph.invoke({
+      const result = await invokeWithAbortSignal(opportunityGraph, {
         userId,
         searchQuery: queryOrEmpty || undefined,
         // A single index resolves to the strict networkId override (membership-
@@ -1242,7 +1243,7 @@ export async function continueDiscovery(input: {
 
   const debugSteps: DiscoverDebugStep[] = [];
 
-  const result = await opportunityGraph.invoke({
+  const result = await invokeWithAbortSignal(opportunityGraph, {
     userId,
     searchQuery: cached.query || undefined,
     candidates: cached.candidates,

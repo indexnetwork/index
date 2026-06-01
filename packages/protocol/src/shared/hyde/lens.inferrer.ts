@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { Timed } from "../observability/performance.js";
 import { protocolLogger } from '../observability/protocol.logger.js';
 import { createModel } from "../agent/model.config.js";
+import { invokeWithAbortSignal } from "../agent/model-signal.js";
 
 export type HydeTargetCorpus = 'profiles' | 'intents' | 'premises';
 
@@ -100,7 +101,7 @@ export class LensInferrer {
     ];
 
     try {
-      const result = await this.model.invoke(messages);
+      const result = await invokeWithAbortSignal(this.model, messages);
       const parsed = responseFormat.parse(result);
       const lenses = parsed.lenses.slice(0, maxLenses);
 

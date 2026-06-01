@@ -45,8 +45,12 @@ export interface HydeCandidate {
 // Embedding and vector store
 // ═══════════════════════════════════════════════════════════════════════════════
 
+export interface EmbeddingGenerateOptions {
+  signal?: AbortSignal;
+}
+
 export interface EmbeddingGenerator {
-  generate(text: string | string[], dimensions?: number): Promise<number[] | number[][]>;
+  generate(text: string | string[], dimensions?: number, options?: EmbeddingGenerateOptions): Promise<number[] | number[][]>;
 }
 
 export interface VectorSearchResult<T> {

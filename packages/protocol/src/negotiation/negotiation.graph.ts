@@ -1,5 +1,6 @@
 import { StateGraph } from "@langchain/langgraph";
 
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { requestContext, type TraceEmitter } from "../shared/observability/request-context.js";
 import type { NegotiationGraphDatabase } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-events.interface.js";
@@ -546,7 +547,7 @@ export async function negotiateCandidates(
           ? { networkId: candidate.networkId, prompt: indexContextOverrides?.get(candidate.networkId) ?? '' }
           : indexContext;
 
-        const result = await negotiationGraph.invoke({
+        const result = await invokeWithAbortSignal(negotiationGraph, {
           sourceUser,
           candidateUser: candidate.candidateUser,
           indexContext: candidateIndexContext,
