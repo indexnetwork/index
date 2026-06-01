@@ -110,7 +110,7 @@
     },
     "packages/cli": {
       "name": "@indexnetwork/cli",
-      "version": "0.10.7",
+      "version": "0.10.9",
       "bin": {
         "index": "bin/index.cjs",
       },
@@ -118,10 +118,10 @@
         "@types/bun": "latest",
       },
       "optionalDependencies": {
-        "@indexnetwork/cli-darwin-arm64": "0.10.7",
-        "@indexnetwork/cli-darwin-x64": "0.10.7",
-        "@indexnetwork/cli-linux-arm64": "0.10.7",
-        "@indexnetwork/cli-linux-x64": "0.10.7",
+        "@indexnetwork/cli-darwin-arm64": "0.10.9",
+        "@indexnetwork/cli-darwin-x64": "0.10.9",
+        "@indexnetwork/cli-linux-arm64": "0.10.9",
+        "@indexnetwork/cli-linux-x64": "0.10.9",
       },
     },
     "packages/protocol": {

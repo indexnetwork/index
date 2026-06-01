@@ -285,6 +285,55 @@ export class OpportunityService {
     });
   }
 
+  private assertOpportunityVisible(opp: Opportunity, viewerId: string): { error: string; status: number } | null {
+    const isActor = opp.actors.some((a) => a.userId === viewerId);
+    if (!isActor) {
+      return { error: 'Not authorized to view this opportunity', status: 403 };
+    }
+    if (!canUserSeeOpportunity(opp.actors, opp.status, viewerId)) {
+      return { error: 'Not authorized to view this opportunity', status: 403 };
+    }
+    return null;
+  }
+
+  private async resolveVisibleEnrichedReplacement(
+    original: Opportunity,
+    viewerId: string,
+  ): Promise<{ opportunity: Opportunity; resolvedFromOpportunityId?: string }> {
+    let current = original;
+    let resolvedFromOpportunityId: string | undefined;
+    const seenIds = new Set<string>([original.id]);
+
+    for (let depth = 0; depth < 5 && current.status === 'expired'; depth++) {
+      const replacements = await this.db.findEnrichedReplacementOpportunities(current.id);
+      const replacement = replacements.find((candidate) => {
+        if (seenIds.has(candidate.id)) return false;
+
+        const visibilityError = this.assertOpportunityVisible(candidate, viewerId);
+        if (visibilityError) {
+          logger.warn('[OpportunityService] Enriched replacement hidden from viewer', {
+            originalOpportunityId: original.id,
+            replacementOpportunityId: candidate.id,
+            viewerId,
+            status: candidate.status,
+          });
+          return false;
+        }
+
+        return true;
+      });
+
+      if (!replacement) break;
+      seenIds.add(replacement.id);
+      resolvedFromOpportunityId ??= original.id;
+      current = replacement;
+    }
+
+    return resolvedFromOpportunityId
+      ? { opportunity: current, resolvedFromOpportunityId }
+      : { opportunity: current };
+  }
+
   /**
    * Get a single opportunity with full presentation details.
    * 
@@ -295,19 +344,19 @@ export class OpportunityService {
   async getOpportunityWithPresentation(opportunityId: string, viewerId: string) {
     logger.verbose('[OpportunityService] Getting opportunity', { opportunityId, viewerId });
 
-    const opp = await this.db.getOpportunity(opportunityId);
+    let opp = await this.db.getOpportunity(opportunityId);
     if (!opp) {
       return null;
     }
 
     // Check if viewer is an actor and allowed to see per role-based visibility (Latent Opportunity Lifecycle)
-    const isActor = opp.actors.some((a) => a.userId === viewerId);
-    if (!isActor) {
-      return { error: 'Not authorized to view this opportunity', status: 403 };
+    const visibilityError = this.assertOpportunityVisible(opp, viewerId);
+    if (visibilityError) {
+      return visibilityError;
     }
-    if (!canUserSeeOpportunity(opp.actors, opp.status, viewerId)) {
-      return { error: 'Not authorized to view this opportunity', status: 403 };
-    }
+
+    const replacementResolution = await this.resolveVisibleEnrichedReplacement(opp, viewerId);
+    opp = replacementResolution.opportunity;
 
     const myActor = opp.actors.find((a) => a.userId === viewerId)!;
     const introducer = opp.actors.find((a) => a.role === 'introducer');
@@ -361,6 +410,9 @@ export class OpportunityService {
       primaryActionLabel: getPrimaryActionLabel(myActor.role),
       createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : opp.createdAt,
       expiresAt: opp.expiresAt ? (opp.expiresAt instanceof Date ? opp.expiresAt.toISOString() : opp.expiresAt) : undefined,
+      ...(replacementResolution.resolvedFromOpportunityId
+        ? { resolvedFromOpportunityId: replacementResolution.resolvedFromOpportunityId }
+        : {}),
     };
   }
 
