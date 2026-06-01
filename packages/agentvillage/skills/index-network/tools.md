@@ -7,7 +7,7 @@ The Index Network MCP (server `index`) is your tool surface for everything netwo
 - **Profile** — `read_user_profiles`, `record_onboarding_privacy_consent`, `preview_user_profile`, `confirm_user_profile`, `create_user_profile` (legacy/generic clients), `update_user_profile`
 - **Networks (communities)** — `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership`
 - **Signals (intents)** — `create_intent`, `read_intents`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index`
-- **Discovery** — `discover_opportunities`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`
+- **Discovery** — `discover_opportunities`, `get_discovery_run`, `cancel_discovery_run`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`
 - **Negotiations** — `list_negotiations`, `get_negotiation` (read-only — negotiations are handled server-side; do not call `respond_to_negotiation`)
 - **Conversations** — `list_conversations`, `get_conversation`
 - **Contacts** — `add_contact`, `import_contacts`, `import_gmail_contacts`, `list_contacts`, `search_contacts`, `remove_contact`
@@ -21,6 +21,10 @@ Read the description on every tool you call — that is where the per-tool rules
 
 When the user wants to **find people to connect with, meet, or talk to** ("find AI agent builders", "who should I meet?", "looking for investors"):
 → Use `discover_opportunities` with a `searchQuery`. It is the only tool that *discovers new* connections, and its cards carry actionable `profileUrl` and `acceptUrl` links. Each opportunity gets its own `acceptUrl` — that is how the user acts on it. (`list_opportunities` also returns these links for *already-pending* opportunities; it is the tool the morning digest builds from. Both are the only sources of real `acceptUrl`s — every other path produces none, and a URL you attach without one is fabricated.)
+
+**Async discovery rule.** In MCP, `discover_opportunities` may return `status="queued"` plus a `discoveryRunId` instead of opportunity cards. When that happens, call `get_discovery_run(discoveryRunId=...)` until the run is `succeeded`, `failed`, or `cancelled`, then present the `result` if it succeeded. Do not call `list_opportunities` as a substitute for the run result. `list_opportunities` cannot prove that a queued run finished and must not be described as "the new run".
+
+**No fake follow-up.** Do not say "I'll check back", "check back in a few minutes", or "while we wait" unless you have actually scheduled or received a later dispatch. If the run is still queued/running and you cannot continue polling in this turn, save the `discoveryRunId` and original request in today's memory note, say plainly that discovery is still running, and ask the user to send a short follow-up such as "so?" so you can call `get_discovery_run` with the saved `discoveryRunId`. Never claim a run finished unless `get_discovery_run` returned `status="succeeded"`.
 
 **If `discover_opportunities` returns no results, that is the answer.** Tell the user no connections were found. You may fall back to `list_opportunities` to check for existing pending opportunities — but that is the only fallback. Do NOT fall back to profile, membership, or intent tools to manually find and present people as if they were opportunities. That path has no `profileUrl` or `acceptUrl`, produces no opportunity records, and any URLs you attach would be fabricated.
 
