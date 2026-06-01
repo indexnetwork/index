@@ -1,0 +1,3 @@
+[submodule "packages/agentvillage"]
+	path = packages/agentvillage
+	url = https://github.com/Edge-City/agentvillage.git
