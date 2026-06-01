@@ -281,5 +281,7 @@ export function installIndex(): void {
   upsertEnvVar("INDEX_API_KEY", apiKey);
   writeMcpServerEntry(apiKey);
 
-  installCronJobs(hermesExecEnv());
+  if (!process.argv.includes("--skip-crons")) {
+    installCronJobs(hermesExecEnv());
+  }
 }

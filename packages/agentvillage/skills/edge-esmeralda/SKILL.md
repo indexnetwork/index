@@ -1,7 +1,7 @@
 ---
 name: edge-esmeralda-2026
 description: Edge Esmeralda 2026 — a month-long popup village (May 30 – Jun 27, Healdsburg, CA). Carries popup constants (popup id, week dates, themes), attendee directory field semantics, and the curated wiki / website / newsletter knowledge base. Pair with the `edgeos` skill for live API access and the `index-network` skill for discovery.
-version: 3.0.0
+version: 3.1.0
 author: Edge City
 tags: [edge-city, edge-esmeralda, popup-village, community]
 ---
@@ -26,21 +26,25 @@ This skill is a **knowledge layer** about the popup itself. For live calendar, R
 ## 1. Popup constants (use these with the `edgeos` skill)
 
 - **`popup_id`**: `43746fd0-bce2-472b-93e4-a438177b2dff`
-  Pass this as the `popup_id` parameter to `edgeos` skill calls that need it — `GET /applications/my/directory/{popup_id}`, `GET /event-venues/portal/venues?popup_id=...`, and `POST /event-venues/portal/venues` (body field).
+  Pass this as the `popup_id` parameter to `edgeos` skill calls that need it — `GET /events/portal/events?popup_id=...` (required for correct date filtering), `GET /applications/my/directory/{popup_id}`, `GET /event-venues/portal/venues?popup_id=...`, and `POST /event-venues/portal/venues` (body field).
 - **`popup_slug`**: `edge-esmeralda-2026` (informational; not used by EdgeOS API calls).
 - **`event_base_url`**: `https://edgecity.simplefi.tech/portal/edge-esmeralda-2026/events/`
   Use this as the prefix for event links by appending the `event_id` returned by the EdgeOS API.
 
-### Week dates
+### Week dates and themes
 
-| Week | Range |
-|---|---|
-| 1 | May 30 – June 6, 2026 |
-| 2 | June 6 – June 13, 2026 |
-| 3 | June 13 – June 20, 2026 |
-| 4 | June 20 – June 27, 2026 |
+Standardized weeks for Edge Esmeralda 2026. Week 1 is extended back to May 30 to cover opening weekend; weeks 2-4 match the published programming preview.
 
-When the user says "week 2", convert to `start_after=2026-06-06T00:00:00Z&start_before=2026-06-13T23:59:59Z`.
+| Week | Range | Published theme | Emphasis |
+|---|---|---|---|
+| 1 | May 30 – June 7, 2026 | Protocols for Flourishing | Health & Longevity, Consciousness, Wellbeing, Bio |
+| 2 | June 8 – June 14, 2026 | Intelligence and Autonomy | AI, Neurotech, Governance & Coordination, Hard Tech, Privacy |
+| 3 | June 15 – June 21, 2026 | Emergent Futures & World Building | Art & Culture, Decentralized Tech, Creative AI & Technologies, Spatial Computing |
+| 4 | June 22 – June 27, 2026 | Environments of Tomorrow | New Urbanism, Education, Energy & Climate, Food Systems |
+
+Themes are the published programming emphasis for each week, sourced from the Edge Esmeralda programming preview. They are directional: themes overlap and some programs span multiple weeks. A theme describes the week's focus, not a given day's schedule. For the actual events on any day, query the live `edgeos` calendar; do not infer "today's events" or "today's track" from this table, and do not present a theme as the day's schedule. Some EdgeOS tracks run across the whole month and do not map one-to-one to these theme weeks.
+
+When the user says "week 2", convert to `start_after=2026-06-08T07:00:00Z&start_before=2026-06-15T07:00:00Z` (PDT midnight = 07:00 UTC; `start_before` is the start of the day *after* the last day). Week 1 is `start_after=2026-05-30T07:00:00Z&start_before=2026-06-08T07:00:00Z`.
 
 ---
 
@@ -129,7 +133,7 @@ When a user asks about Edge Esmeralda, route the work like this:
 ## 6. Tips for answering well
 
 - **Default date range** for broad calendar queries: 2026-05-30 to 2026-06-27.
-- **Convert relative dates** ("tomorrow", "this Thursday") to ISO-8601 timestamps with the `America/Los_Angeles` timezone before passing them to the `edgeos` skill's event recipes.
+- **Convert relative dates** ("today", "tomorrow", "this Thursday") to ISO-8601 timestamps in `America/Los_Angeles`. Use the local date and UTC offset from your system timestamp — never derive the date from UTC alone.
 - **Combine sources** when needed. "What experiments are running this week?" pulls from both the wiki (experiment descriptions) and the `edgeos` calendar (live schedule).
 - **For venue questions**, first fetch the wiki for venue names / descriptions, then call the `edgeos` venues endpoint with `popup_id` from §1.
 - **For attendee matching**, prefer the `index-network` skill (semantic signal search). The `edgeos` directory is the registration-side fallback when you need a specific person by name / org / role.
