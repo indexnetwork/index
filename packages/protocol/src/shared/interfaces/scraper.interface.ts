@@ -8,6 +8,8 @@ export interface ExtractUrlContentOptions {
    * "User wants to update their profile from this page.", or omit for generic extraction.
    */
   objective?: string;
+  /** Optional cancellation signal for caller/client disconnect or runtime deadline. */
+  signal?: AbortSignal;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { authClient, clearJwtToken } from '@/lib/auth-client';
-import { useAuthenticatedAPI } from '../lib/api';
+import { APIError, useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
 import AuthModal from '@/components/AuthModal';
@@ -78,6 +78,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Failed to fetch user:', error);
+
+      // The browser can retain a Better Auth session/JWT for a user that no
+      // longer exists in the currently selected dev database. Treat auth/user
+      // lookup failures as stale auth state and clear it automatically instead
+      // of trapping the user on the error screen.
+      if (error instanceof APIError && (error.status === 401 || error.status === 404)) {
+        clearJwtToken();
+        await authClient.signOut().catch(signOutError => {
+          console.error('Failed to clear stale auth session:', signOutError);
+        });
+        setUser(null);
+        setUserFetchAttempted(false);
+        setError(null);
+        return;
+      }
+
       setError('Failed to load user data. Please try refreshing the page.');
       setUser(null);
     } finally {

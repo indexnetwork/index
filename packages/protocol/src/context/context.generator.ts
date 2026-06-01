@@ -10,6 +10,7 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import { createModel } from "../shared/agent/model.config.js";
+import { getAbortSignalConfig, invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import type { EmbeddingGenerator } from "../shared/interfaces/embedder.interface.js";
 
 /** Input for cold-start context generation from a full set of premises. */
@@ -58,7 +59,7 @@ export class UserContextGenerator {
     const premiseBlock = input.premises.map(p => `- ${p.text}`).join('\n');
     const networkContext = this.formatNetworkContext(input.networkPrompt, input.networkTitle);
 
-    const response = await this.model.invoke([
+    const response = await invokeWithAbortSignal(this.model, [
       new SystemMessage(COLD_START_SYSTEM_PROMPT),
       new HumanMessage(
         `${networkContext}\n\nPremises:\n${premiseBlock}\n\nWrite a focused context paragraph for this person in this network.`,
@@ -83,7 +84,7 @@ export class UserContextGenerator {
     const networkContext = this.formatNetworkContext(input.networkPrompt, input.networkTitle);
     const changeDescription = this.describeChange(input);
 
-    const response = await this.model.invoke([
+    const response = await invokeWithAbortSignal(this.model, [
       new SystemMessage(INCREMENTAL_SYSTEM_PROMPT),
       new HumanMessage(
         `${networkContext}\n\nCurrent context:\n${input.currentContext}\n\nChange:\n${changeDescription}\n\nWrite the updated context paragraph.`,
@@ -121,7 +122,7 @@ export class UserContextGenerator {
 
   /** Generate embedding from text, normalizing the return type. */
   private async embed(text: string): Promise<number[]> {
-    const result = await this.embeddingGenerator.generate(text);
+    const result = await this.embeddingGenerator.generate(text, undefined, getAbortSignalConfig());
     return Array.isArray(result[0]) ? result[0] as number[] : result as number[];
   }
 }

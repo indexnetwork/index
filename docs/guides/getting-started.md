@@ -146,6 +146,13 @@ TRUSTED_ORIGINS=http://localhost:3000
 # Web crawling and profile extraction
 # PARALLELS_API_KEY=...
 
+# MCP runtime limits (defaults shown)
+# MCP_MAX_REQUEST_BYTES=1000000
+# MCP_TOOL_MAX_OUTPUT_BYTES=1000000
+# MCP_TOOL_TIMEOUT_FAST_MS=10000
+# MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS=45000
+# MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS=50000
+
 # Telegram bot (optional — enables bot notifications and chat)
 # TELEGRAM_BOT_TOKEN=          # Bot token from @BotFather
 # TELEGRAM_BOT_USERNAME=       # Bot username without @, e.g. IndexBot

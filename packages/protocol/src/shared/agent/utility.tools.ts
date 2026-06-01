@@ -1,4 +1,7 @@
 import { z } from "zod";
+
+import { requestContext } from "../observability/request-context.js";
+
 import type { DefineTool, ToolDeps } from "./tool.helpers.js";
 import { success, error, normalizeUrl } from "./tool.helpers.js";
 
@@ -29,6 +32,7 @@ export function createUtilityTools(defineTool: DefineTool, deps: ToolDeps) {
 
       const content = await scraper.extractUrlContent(normalizedUrl, {
         objective: query.objective?.trim() || undefined,
+        signal: requestContext.getStore()?.abortSignal,
       });
 
       if (!content) {

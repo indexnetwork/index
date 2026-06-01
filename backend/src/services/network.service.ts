@@ -264,13 +264,13 @@ export class NetworkService {
   }
 
   /**
-   * Get non-personal indexes shared between the current user and a target user.
+   * Get non-personal networks shared between the current user and a target user.
    * @param currentUserId - Authenticated user ID.
    * @param targetUserId - Profile user ID to compare memberships with.
-   * @returns Shared non-personal indexes with member counts.
+   * @returns Shared non-personal networks with member counts.
    */
   async getSharedNetworks(currentUserId: string, targetUserId: string) {
-    logger.verbose('[NetworkService] Getting shared indexes', { currentUserId, targetUserId });
+    logger.verbose('[NetworkService] Getting shared networks', { currentUserId, targetUserId });
     return this.adapter.getSharedNetworks(currentUserId, targetUserId);
   }
 

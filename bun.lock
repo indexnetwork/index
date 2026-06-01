@@ -16,7 +16,7 @@
     },
     "backend": {
       "name": "protocol",
-      "version": "0.26.3",
+      "version": "0.26.4",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",
@@ -64,7 +64,7 @@
     },
     "frontend": {
       "name": "frontend",
-      "version": "0.10.0",
+      "version": "0.11.2",
       "dependencies": {
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-dialog": "^1.1.14",
@@ -136,7 +136,7 @@
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "1.23.1",
+      "version": "1.25.0",
       "dependencies": {
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",

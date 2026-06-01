@@ -8,6 +8,7 @@ import type { OpportunityStatus } from "../shared/interfaces/database.interface.
 import { Timed } from "../shared/observability/performance.js";
 import { stripUuids } from "./opportunity.presentation.js";
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("OpportunityEvaluator");
 
@@ -359,7 +360,7 @@ export class OpportunityEvaluator {
         new HumanMessage(`${sourceContext}\n${existingContextPart}\nCANDIDATE PROFILE:\n${candidateContext}`)
       ];
 
-      const result = await this.model.invoke(messages);
+      const result = await invokeWithAbortSignal(this.model, messages);
       const output = responseFormat.parse(result);
 
       const mappedOpportunities = output.opportunities.map((op: Opportunity) => ({
@@ -485,7 +486,7 @@ CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
     ];
     let parsedTotal = 0;
     try {
-      const result = await this.entityBundleModel.invoke(messages);
+      const result = await invokeWithAbortSignal(this.entityBundleModel, messages);
       const parsed = entityBundleResponseFormat.parse(result);
       for (const op of parsed.opportunities) {
         op.reasoning = stripUuids(op.reasoning);

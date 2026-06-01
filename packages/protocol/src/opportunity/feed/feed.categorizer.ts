@@ -15,6 +15,7 @@ import { getIconNamesForPrompt, DEFAULT_HOME_SECTION_ICON } from '../../shared/u
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { Timed } from "../../shared/observability/performance.js";
 import { createModel } from "../../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 
 const logger = protocolLogger('HomeCategorizer');
 
@@ -151,7 +152,7 @@ Rules:
     const userContent = `Cards to categorize:\n${cardSummaries}\n\nOutput sections with id, title (CTA-style), subtitle (optional), iconName, and itemIndices.`;
 
     try {
-      const result = await this.model.invoke([
+      const result = await invokeWithAbortSignal(this.model, [
         new SystemMessage(systemPrompt),
         new HumanMessage(userContent),
       ]);

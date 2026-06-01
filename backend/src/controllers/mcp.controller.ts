@@ -29,6 +29,8 @@ import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapte
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
+import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
+import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
 import db from '../lib/drizzle/drizzle';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
@@ -111,6 +113,8 @@ const protocolDeps = {
   agentDispatcher,
   chatMessageWriter: new ChatMessageWriterAdapter(chatSessionService),
   deliveryLedger: opportunityDeliveryService,
+  discoveryRuns: discoveryRunAdapter,
+  discoveryRunQueue,
   negotiationTimeoutQueue,
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
@@ -404,6 +408,8 @@ function getOrCreateMcpServer(): McpServer {
     questionGenerator: protocolDeps.questionGenerator,
     chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
+    discoveryRuns: protocolDeps.discoveryRuns,
+    discoveryRunQueue: protocolDeps.discoveryRunQueue,
     mintConnectToken: protocolDeps.mintConnectToken,
     mintConnectLink: protocolDeps.mintConnectLink,
     frontendUrl: protocolDeps.frontendUrl,
@@ -473,6 +479,61 @@ function getOrCreateTransport(): Promise<WebStandardStreamableHTTPServerTranspor
 // HTTP HANDLER
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const DEFAULT_MCP_MAX_REQUEST_BYTES = 1_000_000;
+
+function getMcpMaxRequestBytes(): number {
+  const parsed = Number.parseInt(process.env.MCP_MAX_REQUEST_BYTES ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MCP_MAX_REQUEST_BYTES;
+}
+
+function requestTooLargeResponse(maxRequestBytes: number, corsHeaders: Record<string, string>): Response {
+  return new Response(
+    JSON.stringify({ error: `MCP request too large. Max ${maxRequestBytes} bytes.` }),
+    { status: 413, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+  );
+}
+
+async function enforceMcpRequestSize(
+  req: Request,
+  maxRequestBytes: number,
+  corsHeaders: Record<string, string>,
+): Promise<Request | Response> {
+  const contentLength = req.headers.get('content-length');
+  if (contentLength && Number.parseInt(contentLength, 10) > maxRequestBytes) {
+    return requestTooLargeResponse(maxRequestBytes, corsHeaders);
+  }
+
+  if (!req.body) return req;
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxRequestBytes) {
+      await reader.cancel().catch(() => undefined);
+      return requestTooLargeResponse(maxRequestBytes, corsHeaders);
+    }
+    chunks.push(value);
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return new Request(req.url, {
+    method: req.method,
+    headers: req.headers,
+    body,
+    signal: req.signal,
+  });
+}
+
 /**
  * Handles an incoming MCP HTTP request.
  *
@@ -484,6 +545,11 @@ export async function mcpHandler(
   req: Request,
   corsHeaders: Record<string, string>,
 ): Promise<Response> {
+  const maxRequestBytes = getMcpMaxRequestBytes();
+  const sizeCheckedRequest = await enforceMcpRequestSize(req, maxRequestBytes, corsHeaders);
+  if (sizeCheckedRequest instanceof Response) return sizeCheckedRequest;
+  req = sizeCheckedRequest;
+
   // Reject unauthenticated requests at the HTTP level before they reach the MCP transport.
   // The transport catches errors and wraps them as HTTP 200 isError responses, which means
   // Claude Code never sees a 401 and never triggers OAuth. By checking here, we return a

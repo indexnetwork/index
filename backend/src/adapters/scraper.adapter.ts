@@ -93,7 +93,7 @@ export class ScraperAdapter {
    * @param options - Optional. objective: natural-language reason (intent/profile/general).
    * @returns The extracted content as a string, or null if extraction failed
    */
-  async extractUrlContent(url: string, options?: { objective?: string }): Promise<string | null> {
+  async extractUrlContent(url: string, options?: { objective?: string; signal?: AbortSignal }): Promise<string | null> {
     const useSearch =
       isProfileSearchUrl(url) ||
       (isProfileObjective(options?.objective) && url.startsWith('http'));
@@ -102,7 +102,10 @@ export class ScraperAdapter {
         const objective =
           options?.objective?.trim() ||
           `Find information about the person from this profile page: ${url}`;
-        const response = await searchUser({ objective: `${objective}\nURL: ${url}` });
+        const searchRequest = { objective: `${objective}\nURL: ${url}` };
+        const response = options?.signal
+          ? await searchUser(searchRequest, { signal: options.signal })
+          : await searchUser(searchRequest);
         if (response.results?.length) {
           return formatSearchResultsForContent(response.results, true);
         }

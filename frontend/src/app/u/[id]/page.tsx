@@ -210,7 +210,7 @@ export default function UserProfilePage() {
               <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Shared Networks</h3>
               <div className="flex flex-wrap gap-2">
                 {sharedNetworks.map((network) => (
-                  <Link key={network.id} to={`/index/${network.id}`} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-full text-sm text-gray-700 hover:border-gray-400 transition-colors">
+                  <Link key={network.id} to={`/networks/${network.id}`} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-full text-sm text-gray-700 hover:border-gray-400 transition-colors">
                     {network.title}
                     <span className="text-xs text-gray-400">{network._count.members}</span>
                   </Link>

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("IntentReconciler");
 
@@ -170,8 +171,8 @@ export class IntentReconciler {
     ];
 
     try {
-      const output = await this.model.invoke(messages);
-      const normalizedActions = output.actions.map((action: z.infer<typeof responseFormat>["actions"][number]) => ({
+      const output = responseFormat.parse(await invokeWithAbortSignal(this.model, messages));
+      const normalizedActions = output.actions.map((action: z.infer<typeof responseFormat>["actions"][number]) => ({ 
         ...action,
         type: normalizeActionType(action.type),
       })) as NormalizedIntentAction[];

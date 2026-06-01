@@ -12,6 +12,7 @@ import type {
   OpportunitySignal,
   OpportunityStatus,
 } from '../shared/interfaces/database.interface.js';
+import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
 import type { Embedder } from '../shared/interfaces/embedder.interface.js';
 import type { Id } from '../shared/interfaces/database.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
@@ -272,7 +273,7 @@ export async function enrichOrCreate(
           newReasoning,
           ...embeddable.map((o) => (o.interpretation?.reasoning ?? '').trim()),
         ];
-        const vectors = (await embedder.generate(textsToEmbed)) as number[][];
+        const vectors = (await embedder.generate(textsToEmbed, undefined, getAbortSignalConfig())) as number[][];
         const newVec = vectors[0];
         if (newVec?.length) {
           for (let i = 0; i < embeddable.length; i++) {

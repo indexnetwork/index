@@ -30,8 +30,8 @@ export class IndexEmbedder implements Embedder {
   /**
    * Generates embeddings using the internal generator.
    */
-  async generate(text: string | string[], dimensions: number = 2000): Promise<number[] | number[][]> {
-    return this.generator.generate(text, dimensions);
+  async generate(text: string | string[], dimensions: number = 2000, options?: { signal?: AbortSignal }): Promise<number[] | number[][]> {
+    return this.generator.generate(text, dimensions, options);
   }
 
   /**

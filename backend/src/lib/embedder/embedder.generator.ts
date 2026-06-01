@@ -30,7 +30,8 @@ export class OpenRouterGenerator implements EmbeddingGenerator {
 
   async generate(
     text: string | string[],
-    dimensions: number = OPENROUTER_EMBEDDING_DIMENSIONS
+    dimensions: number = OPENROUTER_EMBEDDING_DIMENSIONS,
+    options?: { signal?: AbortSignal }
   ): Promise<number[] | number[][]> {
     const texts = Array.isArray(text) ? text : [text];
 
@@ -47,7 +48,7 @@ export class OpenRouterGenerator implements EmbeddingGenerator {
         input: cleanTexts,
         dimensions,
         encoding_format: 'float',
-      });
+      }, options?.signal ? { signal: options.signal } : undefined);
 
       if (!response.data || response.data.length === 0) {
         throw new Error('No embedding data returned from OpenRouter');

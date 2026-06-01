@@ -1,4 +1,5 @@
 import { createModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import {
   SystemNegotiationTurnSchema,
   FinalNegotiationTurnSchema,
@@ -186,12 +187,13 @@ Why this match was suggested: ${input.seedAssessment.reasoning}${input.isContinu
 ${discoveryQueryReminder}
 ${input.history.length === 0 && !input.isContinuation ? "This is the opening turn. Propose the connection case." : "Evaluate the latest arguments and respond."}`;
 
-    const result = await model.invoke(
+    const result = await invokeWithAbortSignal(
+      model,
       [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      { signal: AbortSignal.timeout(this.turnTimeoutMs) },
+      AbortSignal.timeout(this.turnTimeoutMs),
     );
 
     return result as NegotiationTurn;

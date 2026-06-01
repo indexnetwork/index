@@ -11,9 +11,11 @@ import { OpportunityPresenter } from "./opportunity.presenter.js";
 import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
+import type { DiscoveryRunInput } from "../shared/interfaces/discovery-run.interface.js";
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
 import { selectByComposition, deduplicateByPerson } from "./opportunity.utils.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
@@ -383,7 +385,7 @@ export function buildOpportunityPresentation(
 }
 
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { database, userDb, systemDb, graphs, embedder, cache } = deps;
+  const { database, userDb, systemDb, graphs, cache } = deps;
 
   const discoverOpportunities = defineTool({
     name: "discover_opportunities",
@@ -400,7 +402,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       "3. **Direct connection**: pass `targetUserId` + `searchQuery`. Creates an opportunity between the current user and one specific person.\n" +
       "4. **Introducer discovery**: pass `introTargetUserId` (find matches FOR that person; current user becomes the introducer). " +
       "Use when user asks 'who should I introduce to [person]?'\n\n" +
-      "**Returns:** Opportunity code blocks (render as interactive cards) with opportunityId, match reasoning, confidence score, and status. " +
+      "**Returns:** In regular chat, opportunity code blocks (render as interactive cards) with opportunityId, match reasoning, confidence score, and status. " +
+      "In MCP contexts, starts an async discovery run and returns `discoveryRunId`; poll get_discovery_run until status is `succeeded`, then present its `result`. " +
       "All results start as drafts. Supports pagination via `continueFrom` for large result sets.\n\n" +
       "**Next steps:** Use update_opportunity(opportunityId, status='pending') to send a draft to the other party.\n\n" +
       "**Discovery-first rule.** For open-ended connection-seeking requests (\"find me a mentor\", " +
@@ -518,6 +521,40 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // implicit branch unreachable.
       const explicitIndexId = query.networkId?.trim() || undefined;
       const effectiveIndexId = explicitIndexId;
+      if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
+        return error("Invalid network ID format.");
+      }
+
+      if (context.isMcp && deps.discoveryRuns && deps.discoveryRunQueue) {
+        const run = await deps.discoveryRuns.create({
+          userId: context.userId,
+          agentId: context.agentId ?? null,
+          input: query as DiscoveryRunInput,
+          context: {
+            userId: context.userId,
+            userName: context.userName,
+            userEmail: context.userEmail,
+            ...(context.networkId ? { networkId: context.networkId } : {}),
+            ...(context.indexName ? { indexName: context.indexName } : {}),
+            indexScope: context.indexScope,
+            ...(context.sessionId ? { sessionId: context.sessionId } : {}),
+            ...(context.agentId ? { agentId: context.agentId } : {}),
+            ...(context.clientSurface ? { clientSurface: context.clientSurface } : {}),
+          },
+        });
+        try {
+          await deps.discoveryRunQueue.enqueue(run.id);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          await deps.discoveryRuns.markFailed(run.id, message);
+          return error(`Failed to enqueue discovery run: ${message}`);
+        }
+        return success({
+          status: "queued" as const,
+          discoveryRunId: run.id,
+          message: `Discovery started. Call get_discovery_run with discoveryRunId="${run.id}" until it succeeds, fails, or is cancelled.`,
+        });
+      }
 
       // ── Continuation mode ──
       // `continueFrom` is a pagination token for resuming a prior discovery's
@@ -677,7 +714,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const _introGraphStart = Date.now();
         const _introTraceEmitter = requestContext.getStore()?.traceEmitter;
         _introTraceEmitter?.({ type: "graph_start", name: "opportunity" });
-        const result = await graphs.opportunity.invoke({
+        const result = await invokeWithAbortSignal(graphs.opportunity, {
           operationMode: "create_introduction",
           userId: context.userId,
           networkId: primaryNetworkId,
@@ -830,7 +867,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const _scopeGraphStart = Date.now();
         const _scopeIndexMembershipTraceEmitter = requestContext.getStore()?.traceEmitter;
         _scopeIndexMembershipTraceEmitter?.({ type: "graph_start", name: "network_membership" });
-        const memberResult = await graphs.networkMembership.invoke({
+        const memberResult = await invokeWithAbortSignal(graphs.networkMembership, {
           userId: context.userId,
           networkId: effectiveIndexId,
           operationMode: "read" as const,
@@ -853,7 +890,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const _scopeGraphStart = Date.now();
         const _scopeIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
         _scopeIndexTraceEmitter?.({ type: "graph_start", name: "index" });
-        const indexResult = await graphs.index.invoke({
+        const indexResult = await invokeWithAbortSignal(graphs.index, {
           userId: context.userId,
           operationMode: "read" as const,
           showAll: true,
@@ -1216,6 +1253,81 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
+  const getDiscoveryRun = defineTool({
+    name: "get_discovery_run",
+    description:
+      "Checks the status of an async discovery run started by discover_opportunities in MCP contexts. " +
+      "Poll this tool with the discoveryRunId until status is succeeded, failed, or cancelled. " +
+      "When succeeded, the result field contains the same discovery payload that discover_opportunities would have returned synchronously.",
+    querySchema: z.object({
+      discoveryRunId: z.string().describe("Discovery run ID returned by discover_opportunities."),
+    }),
+    handler: async ({ context, query }) => {
+      if (!deps.discoveryRuns) {
+        return error("Async discovery runs are not available in this context.");
+      }
+      const run = await deps.discoveryRuns.get(query.discoveryRunId, context.userId);
+      if (!run) return error("Discovery run not found.");
+      return success({
+        discoveryRunId: run.id,
+        status: run.status,
+        progress: run.progress ?? null,
+        result: run.result ?? null,
+        error: run.error ?? null,
+        cancelRequestedAt: run.cancelRequestedAt?.toISOString?.() ?? null,
+        createdAt: run.createdAt.toISOString(),
+        startedAt: run.startedAt?.toISOString?.() ?? null,
+        completedAt: run.completedAt?.toISOString?.() ?? null,
+      });
+    },
+  });
+
+  const cancelDiscoveryRun = defineTool({
+    name: "cancel_discovery_run",
+    description:
+      "Requests cancellation for an async discovery run. If the queued job has not started, it is removed and marked cancelled. " +
+      "If already running, the worker observes cancellation and stops at the next cancellation check.",
+    querySchema: z.object({
+      discoveryRunId: z.string().describe("Discovery run ID returned by discover_opportunities."),
+    }),
+    handler: async ({ context, query }) => {
+      if (!deps.discoveryRuns || !deps.discoveryRunQueue) {
+        return error("Async discovery runs are not available in this context.");
+      }
+      const existing = await deps.discoveryRuns.get(query.discoveryRunId, context.userId);
+      if (!existing) return error("Discovery run not found.");
+      if (!["queued", "running"].includes(existing.status)) {
+        return success({
+          discoveryRunId: existing.id,
+          status: existing.status,
+          cancelled: existing.status === "cancelled",
+          message: `Discovery run is already ${existing.status}.`,
+        });
+      }
+      const run = await deps.discoveryRuns.requestCancel(query.discoveryRunId, context.userId);
+      if (!run) return error("Discovery run is no longer cancellable.");
+      const removed = await deps.discoveryRunQueue.cancel(run.id);
+      if (removed) {
+        await deps.discoveryRuns.markCancelled(run.id, "cancelled before worker start");
+      }
+      const updated = await deps.discoveryRuns.get(run.id, context.userId);
+      const status = updated?.status ?? (removed ? "cancelled" : run.status);
+      const message = removed
+        ? "Discovery run cancelled."
+        : status === "queued"
+          ? "Cancellation requested while the discovery run is still queued. It will be skipped or cancelled before work starts."
+          : status === "running"
+            ? "Cancellation requested. The running worker will stop at the next cancellation check."
+            : `Cancellation requested. Discovery run is now ${status}.`;
+      return success({
+        discoveryRunId: run.id,
+        status,
+        cancelled: removed || status === "cancelled",
+        message,
+      });
+    },
+  });
+
   const listOpportunities = defineTool({
     name: "list_opportunities",
     description:
@@ -1289,9 +1401,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // Compose-balance across feed categories so the digest/ambient prompt
       // can fill both Section A (connection) and Section B (connector-flow).
       // Falls back to the unbalanced view when the helper has nothing to do.
-      const opportunities = deduped.length > 0
+      const selected = deduped.length > 0
         ? selectByComposition(deduped, context.userId)
         : deduped;
+      const opportunities = selected.slice(0, CHAT_DISPLAY_LIMIT);
 
       if (!opportunities || opportunities.length === 0) {
         return success({
@@ -1553,7 +1666,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const _updateGraphStart = Date.now();
       const _updateTraceEmitter = requestContext.getStore()?.traceEmitter;
       _updateTraceEmitter?.({ type: "graph_start", name: "opportunity" });
-      const result = await graphs.opportunity.invoke({
+      const result = await invokeWithAbortSignal(graphs.opportunity, {
         userId: context.userId,
         operationMode: isSend ? ("send" as const) : ("update" as const),
         opportunityId: query.opportunityId,
@@ -1627,5 +1740,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [discoverOpportunities, listOpportunities, updateOpportunity, confirmOpportunityDelivery] as const;
+  return [
+    discoverOpportunities,
+    getDiscoveryRun,
+    cancelDiscoveryRun,
+    listOpportunities,
+    updateOpportunity,
+    confirmOpportunityDelivery,
+  ] as const;
 }

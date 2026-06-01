@@ -6,6 +6,8 @@ import { requestContext } from "../shared/observability/request-context.js";
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
+import type { UserRecord } from "../shared/interfaces/database.interface.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ChatTools:Intent");
 
@@ -28,6 +30,22 @@ async function ensureScopedMembership(
     return `This chat is scoped to ${context.indexName ?? 'this index'}. You are no longer a member of this community.`;
   }
   return null;
+}
+
+function buildApprovedProfileFallback(user: UserRecord | null | undefined): string {
+  const bio = user?.intro?.trim();
+  if (!user || !bio) return "";
+
+  return JSON.stringify({
+    userId: user.id,
+    identity: {
+      name: user.name ?? "",
+      bio,
+      location: user.location?.trim() ?? "",
+    },
+    narrative: { context: bio },
+    attributes: { skills: [], interests: [] },
+  });
 }
 
 export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
@@ -138,7 +156,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const _readIntentGraphStart = Date.now();
       const _readIntentTraceEmitter = requestContext.getStore()?.traceEmitter;
       _readIntentTraceEmitter?.({ type: "graph_start", name: "intent" });
-      const result = await graphs.intent.invoke(graphInput);
+      const result = await invokeWithAbortSignal(graphs.intent, graphInput);
       const _readIntentGraphMs = Date.now() - _readIntentGraphStart;
       _readIntentTraceEmitter?.({ type: "graph_end", name: "intent", durationMs: _readIntentGraphMs });
 
@@ -220,16 +238,18 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const _profileGraphStart1 = Date.now();
       const _createIntentProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
       _createIntentProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
-      const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
+      const profileResult = await invokeWithAbortSignal(graphs.profile, { userId: context.userId, operationMode: 'query' as const });
       const _profileGraphMs1 = Date.now() - _profileGraphStart1;
       _createIntentProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _profileGraphMs1 });
-      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : "";
+      const latestUser = profileResult.profile ? undefined : typeof userDb.getUser === "function" ? await userDb.getUser() : context.user;
+      const approvedProfileFallback = profileResult.profile ? "" : buildApprovedProfileFallback(latestUser);
+      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : approvedProfileFallback;
 
       // Run inference + verification only (propose mode — no DB persistence)
       const _intentGraphStart1 = Date.now();
       const _createIntentTraceEmitter = requestContext.getStore()?.traceEmitter;
       _createIntentTraceEmitter?.({ type: "graph_start", name: "intent" });
-      const result = await graphs.intent.invoke({
+      const result = await invokeWithAbortSignal(graphs.intent, {
         userId: context.userId,
         userProfile,
         inputContent: query.description,
@@ -292,7 +312,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
           const _createGraphStart = Date.now();
           const _createTraceEmitter = requestContext.getStore()?.traceEmitter;
           _createTraceEmitter?.({ type: "graph_start", name: "intent" });
-          const createResult = await graphs.intent.invoke({
+          const createResult = await invokeWithAbortSignal(graphs.intent, {
             userId: context.userId,
             userProfile,
             inputContent: v.description,
@@ -406,15 +426,17 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const _profileGraphStart2 = Date.now();
       const _updateIntentProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
       _updateIntentProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
-      const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
+      const profileResult = await invokeWithAbortSignal(graphs.profile, { userId: context.userId, operationMode: 'query' as const });
       const _profileGraphMs2 = Date.now() - _profileGraphStart2;
       _updateIntentProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _profileGraphMs2 });
-      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : "";
+      const latestUser = profileResult.profile ? undefined : typeof userDb.getUser === "function" ? await userDb.getUser() : context.user;
+      const approvedProfileFallback = profileResult.profile ? "" : buildApprovedProfileFallback(latestUser);
+      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : approvedProfileFallback;
 
       const _intentGraphStart2 = Date.now();
       const _updateIntentTraceEmitter = requestContext.getStore()?.traceEmitter;
       _updateIntentTraceEmitter?.({ type: "graph_start", name: "intent" });
-      const result = await graphs.intent.invoke({
+      const result = await invokeWithAbortSignal(graphs.intent, {
         userId: context.userId,
         userProfile,
         operationMode: 'update' as const,
@@ -479,7 +501,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const _deleteIntentGraphStart = Date.now();
       const _deleteIntentTraceEmitter = requestContext.getStore()?.traceEmitter;
       _deleteIntentTraceEmitter?.({ type: "graph_start", name: "intent" });
-      const result = await graphs.intent.invoke({
+      const result = await invokeWithAbortSignal(graphs.intent, {
         userId: context.userId,
         userProfile: "",
         operationMode: 'delete' as const,
@@ -534,7 +556,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const _createIntentIndexGraphStart = Date.now();
       const _createIntentIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
       _createIntentIndexTraceEmitter?.({ type: "graph_start", name: "intent_network" });
-      const result = await graphs.intentIndex.invoke({
+      const result = await invokeWithAbortSignal(graphs.intentIndex, {
         userId: context.userId,
         networkId,
         intentId,
@@ -616,7 +638,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const _readIntentIndexGraphStart = Date.now();
       const _readIntentIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
       _readIntentIndexTraceEmitter?.({ type: "graph_start", name: "intent_network" });
-      const result = await graphs.intentIndex.invoke({
+      const result = await invokeWithAbortSignal(graphs.intentIndex, {
         userId: context.userId,
         networkId,
         intentId,
@@ -667,7 +689,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const _deleteIntentIndexGraphStart = Date.now();
       const _deleteIntentIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
       _deleteIntentIndexTraceEmitter?.({ type: "graph_start", name: "intent_network" });
-      const result = await graphs.intentIndex.invoke({
+      const result = await invokeWithAbortSignal(graphs.intentIndex, {
         userId: context.userId,
         networkId,
         intentId,
