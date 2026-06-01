@@ -25,6 +25,8 @@ const context = {
 describe("tool runtime", () => {
   test("classifies audited tool timeout policies", () => {
     expect(getToolTimeoutPolicy("read_docs").class).toBe("fast");
+    expect(getToolTimeoutPolicy("get_discovery_run").class).toBe("fast");
+    expect(getToolTimeoutPolicy("cancel_discovery_run").class).toBe("fast");
     expect(getToolTimeoutPolicy("read_docs").maxOutputBytes).toBeGreaterThan(0);
     expect(getToolTimeoutPolicy("list_opportunities").class).toBe("bounded_slow");
     expect(getToolTimeoutPolicy("discover_opportunities").class).toBe("async_candidate");

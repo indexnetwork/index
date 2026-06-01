@@ -172,6 +172,23 @@ Invalid or non-positive numeric values are ignored and the default is used.
 
 Clients may cancel in-flight MCP calls with `notifications/cancelled`. HTTP request aborts exposed by the MCP SDK are treated the same way. The runtime propagates the abort signal into graph, LLM, scraper, and embedding paths where supported.
 
+**Async discovery runs:**
+
+For MCP callers, `discover_opportunities` does not execute the full discovery graph inside the initial `tools/call`. It returns quickly with:
+
+```json
+{
+  "success": true,
+  "data": {
+    "status": "queued",
+    "discoveryRunId": "...",
+    "message": "Discovery started. Call get_discovery_run ..."
+  }
+}
+```
+
+Clients poll `get_discovery_run({ discoveryRunId })` until `status` is `succeeded`, `failed`, or `cancelled`. When `succeeded`, `data.result` contains the normal discovery payload. Clients may call `cancel_discovery_run({ discoveryRunId })` to cancel a queued run or request cancellation of a running run. Non-MCP chat/web paths remain synchronous.
+
 **Runtime error envelope:**
 
 When the runtime rejects a tool call, the MCP text content contains a stable JSON envelope:

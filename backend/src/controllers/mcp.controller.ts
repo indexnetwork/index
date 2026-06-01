@@ -29,6 +29,8 @@ import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapte
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
+import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
+import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
 import db from '../lib/drizzle/drizzle';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
@@ -111,6 +113,8 @@ const protocolDeps = {
   agentDispatcher,
   chatMessageWriter: new ChatMessageWriterAdapter(chatSessionService),
   deliveryLedger: opportunityDeliveryService,
+  discoveryRuns: discoveryRunAdapter,
+  discoveryRunQueue,
   negotiationTimeoutQueue,
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
@@ -404,6 +408,8 @@ function getOrCreateMcpServer(): McpServer {
     questionGenerator: protocolDeps.questionGenerator,
     chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
+    discoveryRuns: protocolDeps.discoveryRuns,
+    discoveryRunQueue: protocolDeps.discoveryRunQueue,
     mintConnectToken: protocolDeps.mintConnectToken,
     mintConnectLink: protocolDeps.mintConnectLink,
     frontendUrl: protocolDeps.frontendUrl,

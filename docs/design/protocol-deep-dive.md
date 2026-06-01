@@ -601,6 +601,8 @@ The MCP HTTP controller rejects oversized inbound JSON-RPC bodies before they re
 
 Cancellation propagates through the same signal. MCP `notifications/cancelled`, client-side HTTP aborts exposed by the SDK, and runtime timeouts abort the active request context. Graph invocations, LangChain model calls, scraper calls, and embedding generation read that signal via the shared helpers so downstream work stops as close to the provider boundary as possible. Trace events emitted during a tool call are bridged to MCP `notifications/progress`, so capable clients can surface long-running graph/agent progress before either a result or cancellation.
 
+`discover_opportunities` is the first tool to use the async-run escape hatch on the MCP path. When MCP callers invoke it, the tool persists an `opportunity_discovery_runs` row, enqueues `opportunity-discovery-run`, and returns `{ status: "queued", discoveryRunId }` immediately. The worker runs the same discovery formatter out of band and stores the final JSON result on the run. MCP agents then call `get_discovery_run` until `status` is `succeeded`, `failed`, or `cancelled`; they can call `cancel_discovery_run` to remove a waiting job or request cancellation of a running one. Regular web/chat callers still use the synchronous path.
+
 Runtime error envelopes are JSON text payloads shaped as:
 
 ```json

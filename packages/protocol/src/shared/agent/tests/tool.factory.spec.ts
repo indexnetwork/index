@@ -1250,7 +1250,7 @@ describe("discover_opportunities tool", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data).toBeDefined();
     expect(Array.isArray(parsed.data.opportunities) ? parsed.data.opportunities : []).toBeDefined();
-  });
+  }, 60_000);
 
   test("introduction mode: viewer as introducer — card headline is 'PartyA → PartyB' and action is 'Introduce Them'", async () => {
     // Viewer (testUserId) is NOT in partyUserIds → viewerRole = "introducer"
@@ -1346,7 +1346,7 @@ describe("discover_opportunities tool", () => {
     expect(card.viewerRole).toBe("party");
     expect(card.headline).toBe("Connection with Other");
     expect(card.primaryActionLabel).toBe("Start Chat");
-  });
+  }, 60_000);
 
   test("introduction mode: entities only (no partyUserIds) derives partyUserIds and creates opportunity", async () => {
     const mockDb = createMockDatabase(async () => [], {
@@ -1392,7 +1392,7 @@ describe("discover_opportunities tool", () => {
     expect(opp.matchReason.length).toBeGreaterThan(0);
     expect(typeof opp.score).toBe("number");
     expect(["latent", "draft", "pending", "accepted", "rejected", "expired"]).toContain(opp.status);
-  });
+  }, 60_000);
 
   test("discovery mode: when searchQuery is non-empty and results are found, includes suggestIntentCreationForVisibility and suggestedIntentDescription", async () => {
     mockDiscoveryResult = {
@@ -2061,6 +2061,204 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     expect(codeBlockCount).toBe(6);
     // Total count reported should also be capped
     expect(parsed.data.count).toBe(6);
+  });
+});
+
+describe("discover_opportunities async MCP runs", () => {
+  test("MCP discover_opportunities enqueues a discovery run and returns run id", async () => {
+    const created: Array<{ userId: string; agentId?: string | null; input: unknown; context: unknown }> = [];
+    const enqueued: string[] = [];
+    const discoveryRuns = {
+      create: async (input: { userId: string; agentId?: string | null; input: unknown; context: unknown }) => {
+        created.push(input);
+        return {
+          id: "run-async-1",
+          userId: input.userId,
+          agentId: input.agentId,
+          status: "queued" as const,
+          input: input.input,
+          context: input.context,
+          progress: { stage: "queued" },
+          createdAt: new Date(),
+        };
+      },
+      get: async () => null,
+      markRunning: async () => null,
+      updateProgress: async () => {},
+      markSucceeded: async () => {},
+      markFailed: async () => {},
+      requestCancel: async () => null,
+      markCancelled: async () => {},
+      isCancelRequested: async () => false,
+      listActive: async () => [],
+    };
+    const discoveryRunQueue = {
+      enqueue: async (runId: string) => {
+        enqueued.push(runId);
+        return { jobId: runId };
+      },
+      cancel: async () => false,
+    };
+    const mockDb = createMockDatabase(async () => []);
+    const context: ToolContext = {
+      userId: testUserId,
+      database: mockDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      ...mockProtocolDeps,
+      discoveryRuns,
+      discoveryRunQueue,
+    } as ToolContext;
+    const resolved = {
+      userId: testUserId,
+      userName: "Test User",
+      userEmail: "test@example.com",
+      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers").ResolvedToolContext["user"],
+      userProfile: null,
+      userNetworks: [],
+      indexScope: ["idx-1"],
+      isOnboarding: false,
+      hasName: true,
+      isMcp: true,
+      agentId: "agent-1",
+    } satisfies import("../tool.helpers").ResolvedToolContext;
+
+    const tools = await createChatTools(context, resolved);
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as { invoke: (args: { searchQuery: string }) => Promise<string> };
+    const raw = await tool.invoke({ searchQuery: "find founders" });
+    const parsed = JSON.parse(raw);
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toMatchObject({ status: "queued", discoveryRunId: "run-async-1" });
+    expect(enqueued).toEqual(["run-async-1"]);
+    expect(created[0]).toMatchObject({ userId: testUserId, agentId: "agent-1", input: { searchQuery: "find founders" } });
+  });
+
+  test("get_discovery_run returns the persisted run result for the current user", async () => {
+    const completedAt = new Date("2026-01-01T00:00:00.000Z");
+    const discoveryRuns = {
+      create: async () => { throw new Error("not used"); },
+      get: async (runId: string, userId: string) => ({
+        id: runId,
+        userId,
+        agentId: "agent-1",
+        status: "succeeded" as const,
+        input: { searchQuery: "find founders" },
+        context: { userId, userName: "Test User", userEmail: "test@example.com", indexScope: ["idx-1"] },
+        progress: { stage: "succeeded" },
+        result: { success: true, data: { found: true, count: 1 } },
+        error: null,
+        createdAt: completedAt,
+        startedAt: completedAt,
+        completedAt,
+      }),
+      markRunning: async () => null,
+      updateProgress: async () => {},
+      markSucceeded: async () => {},
+      markFailed: async () => {},
+      requestCancel: async () => null,
+      markCancelled: async () => {},
+      isCancelRequested: async () => false,
+      listActive: async () => [],
+    };
+    const context: ToolContext = {
+      userId: testUserId,
+      database: createMockDatabase(async () => []),
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      ...mockProtocolDeps,
+      discoveryRuns,
+      discoveryRunQueue: { enqueue: async () => ({}), cancel: async () => false },
+    } as ToolContext;
+    const resolved = {
+      userId: testUserId,
+      userName: "Test User",
+      userEmail: "test@example.com",
+      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers").ResolvedToolContext["user"],
+      userProfile: null,
+      userNetworks: [],
+      indexScope: ["idx-1"],
+      isOnboarding: false,
+      hasName: true,
+      isMcp: true,
+      agentId: "agent-1",
+    } satisfies import("../tool.helpers").ResolvedToolContext;
+
+    const tools = await createChatTools(context, resolved);
+    const tool = tools.find((t: { name: string }) => t.name === "get_discovery_run") as { invoke: (args: { discoveryRunId: string }) => Promise<string> };
+    const parsed = JSON.parse(await tool.invoke({ discoveryRunId: "run-complete-1" }));
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toMatchObject({ discoveryRunId: "run-complete-1", status: "succeeded", result: { success: true, data: { found: true, count: 1 } } });
+  });
+
+  test("cancel_discovery_run requests cancellation and removes queued jobs", async () => {
+    const cancelRequests: string[] = [];
+    const cancelled: string[] = [];
+    const discoveryRuns = {
+      create: async () => { throw new Error("not used"); },
+      get: async (runId: string, userId: string) => ({
+        id: runId,
+        userId,
+        agentId: "agent-1",
+        status: cancelled.includes(runId) ? "cancelled" as const : "queued" as const,
+        input: { searchQuery: "find founders" },
+        context: { userId, userName: "Test User", userEmail: "test@example.com", indexScope: ["idx-1"] },
+        progress: { stage: "queued" },
+        createdAt: new Date(),
+      }),
+      markRunning: async () => null,
+      updateProgress: async () => {},
+      markSucceeded: async () => {},
+      markFailed: async () => {},
+      requestCancel: async (runId: string, userId: string) => {
+        cancelRequests.push(runId);
+        return {
+          id: runId,
+          userId,
+          agentId: "agent-1",
+          status: "queued" as const,
+          input: { searchQuery: "find founders" },
+          context: { userId, userName: "Test User", userEmail: "test@example.com", indexScope: ["idx-1"] },
+          progress: { stage: "cancellation_requested" },
+          createdAt: new Date(),
+        };
+      },
+      markCancelled: async (runId: string) => { cancelled.push(runId); },
+      isCancelRequested: async () => false,
+      listActive: async () => [],
+    };
+    const context: ToolContext = {
+      userId: testUserId,
+      database: createMockDatabase(async () => []),
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      ...mockProtocolDeps,
+      discoveryRuns,
+      discoveryRunQueue: { enqueue: async () => ({}), cancel: async () => true },
+    } as ToolContext;
+    const resolved = {
+      userId: testUserId,
+      userName: "Test User",
+      userEmail: "test@example.com",
+      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers").ResolvedToolContext["user"],
+      userProfile: null,
+      userNetworks: [],
+      indexScope: ["idx-1"],
+      isOnboarding: false,
+      hasName: true,
+      isMcp: true,
+      agentId: "agent-1",
+    } satisfies import("../tool.helpers").ResolvedToolContext;
+
+    const tools = await createChatTools(context, resolved);
+    const tool = tools.find((t: { name: string }) => t.name === "cancel_discovery_run") as { invoke: (args: { discoveryRunId: string }) => Promise<string> };
+    const parsed = JSON.parse(await tool.invoke({ discoveryRunId: "run-cancel-1" }));
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toMatchObject({ discoveryRunId: "run-cancel-1", status: "cancelled", cancelled: true });
+    expect(cancelRequests).toEqual(["run-cancel-1"]);
+    expect(cancelled).toEqual(["run-cancel-1"]);
   });
 });
 

@@ -201,6 +201,8 @@ export async function createChatTools(
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     agentDispatcher: deps.agentDispatcher,
     deliveryLedger: deps.deliveryLedger,
+    discoveryRuns: deps.discoveryRuns,
+    discoveryRunQueue: deps.discoveryRunQueue,
     mintConnectToken: deps.mintConnectToken,
     mintConnectLink: deps.mintConnectLink,
     frontendUrl: deps.frontendUrl,

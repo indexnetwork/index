@@ -41,6 +41,8 @@ const FAST_TOOLS = new Set([
   "delete_network_membership",
   "confirm_opportunity_delivery",
   "read_docs",
+  "get_discovery_run",
+  "cancel_discovery_run",
   "remove_contact",
   "register_agent",
   "list_agents",
