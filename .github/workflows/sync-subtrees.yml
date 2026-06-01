@@ -33,7 +33,7 @@ jobs:
           - prefix: packages/claude-plugin
             repo: indexnetwork/claude-plugin
           - prefix: packages/agentvillage
-            repo: indexnetwork/agentvillage
+            repo: Edge-City/agentvillage
             ignore_joins: true
             rebase_onto_main: true
     steps:

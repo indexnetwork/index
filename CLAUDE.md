@@ -135,16 +135,16 @@ git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork
 git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git <branch>
 ```
 
-#### packages/agentvillage/ → indexnetwork/agentvillage
+#### packages/agentvillage/ → Edge-City/agentvillage
 
-The `@indexnetwork/agentvillage` Agent Village workspace, skills, and installer. Includes skills for edge-esmeralda, index-network, and edgeos.
+The `@edge-city/agentvillage` Agent Village workspace, skills, and installer. Includes skills for edge-esmeralda, index-network, edgeos, and geo-esmeralda. The nested `skills/` directory syncs from `Edge-City/agentvillage` to `Edge-City/agentvillage-skills` via that repo's workflow.
 
 ```bash
 # Manual push if the hook failed (use dev or main)
-git subtree push --prefix=packages/agentvillage https://github.com/indexnetwork/agentvillage.git <branch>
+git subtree push --prefix=packages/agentvillage https://github.com/Edge-City/agentvillage.git <branch>
 
 # Pull if external repo was edited directly
-git subtree pull --squash --prefix=packages/agentvillage https://github.com/indexnetwork/agentvillage.git <branch>
+git subtree pull --squash --prefix=packages/agentvillage https://github.com/Edge-City/agentvillage.git <branch>
 ```
 
 ### Root
@@ -171,7 +171,7 @@ index/
 │   ├── protocol/        # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
 │   ├── cli/             # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
 │   ├── claude-plugin/   # @indexnetwork/claude-plugin — index-orchestrator and index-negotiator skills, subtree → indexnetwork/claude-plugin
-│   └── agentvillage/    # @indexnetwork/agentvillage — Agent Village workspace + skills, subtree → indexnetwork/agentvillage
+│   └── agentvillage/    # @edge-city/agentvillage — Agent Village workspace + skills, subtree → Edge-City/agentvillage
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
 └── scripts/           # Worktree helpers, hooks, dev launcher
