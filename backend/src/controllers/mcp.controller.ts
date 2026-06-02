@@ -238,7 +238,9 @@ export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
   if (normalized === 'web') return 'web';
   if (!seenInvalidSurfaces.has(normalized)) {
     seenInvalidSurfaces.add(normalized);
-    console.warn(`[mcp] unknown x-index-surface value "${normalized}" — coercing to "web"`);
+    logger.warn('Unknown x-index-surface value; coercing to web', {
+      value: normalized,
+    });
   }
   return 'web';
 }
