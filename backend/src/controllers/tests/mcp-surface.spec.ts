@@ -1,6 +1,10 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
-import { parseClientSurface } from '../mcp.controller';
+import { parseClientSurface, telegramHandleFromRequest } from '../mcp.controller';
+
+function requestWithHeaders(headers: Record<string, string>): Request {
+  return new Request('https://protocol.index.network/mcp', { headers });
+}
 
 describe('parseClientSurface', () => {
   test('returns "web" when header is null', () => {
@@ -47,5 +51,26 @@ describe('parseClientSurface', () => {
     ).length;
     expect(callCount).toBe(1);
     spy.mockRestore();
+  });
+});
+
+describe('telegramHandleFromRequest', () => {
+  test('normalizes x-index-telegram-username', () => {
+    expect(telegramHandleFromRequest(requestWithHeaders({
+      'x-index-telegram-username': ' @alice_tg ',
+    }))).toBe('alice_tg');
+  });
+
+  test('accepts x-index-telegram-handle fallback', () => {
+    expect(telegramHandleFromRequest(requestWithHeaders({
+      'x-index-telegram-handle': 'https://t.me/alice_tg',
+    }))).toBe('alice_tg');
+  });
+
+  test('rejects invalid or missing handles', () => {
+    expect(telegramHandleFromRequest(requestWithHeaders({}))).toBeNull();
+    expect(telegramHandleFromRequest(requestWithHeaders({
+      'x-index-telegram-username': 'bad',
+    }))).toBeNull();
   });
 });

@@ -1,4 +1,8 @@
+import * as Sentry from '@sentry/bun';
+
 type LogLevel = 'verbose' | 'debug' | 'info' | 'warn' | 'error';
+type SentryLogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
+type SentryLogAttributeValue = string | number | boolean | string[] | number[] | boolean[];
 
 /** Named context for styled logs (emoji + color). */
 export type LogContext =
@@ -142,6 +146,101 @@ function fmt(message: string, meta?: Record<string, unknown>) {
   }
 }
 
+function sentryLogLevel(level: LogLevel): SentryLogLevel {
+  return level === 'verbose' ? 'trace' : level;
+}
+
+function normalizeSentryAttributeName(key: string): string {
+  return key.replace(/[^a-zA-Z0-9_.-]/g, '_');
+}
+
+function truncateSentryString(value: string): string {
+  const maxLength = 2000;
+  return value.length > maxLength ? `${value.slice(0, maxLength)}…` : value;
+}
+
+function toSentryAttributeValue(value: unknown): SentryLogAttributeValue | undefined {
+  if (value === undefined || value === null) return undefined;
+  const sanitized = sanitizeForLogInternal(value);
+
+  if (typeof sanitized === 'string') return truncateSentryString(sanitized);
+  if (typeof sanitized === 'number' && Number.isFinite(sanitized)) return sanitized;
+  if (typeof sanitized === 'boolean') return sanitized;
+
+  if (Array.isArray(sanitized)) {
+    if (sanitized.every((item): item is string => typeof item === 'string')) {
+      return sanitized.map(truncateSentryString);
+    }
+    if (sanitized.every((item): item is number => typeof item === 'number' && Number.isFinite(item))) {
+      return sanitized;
+    }
+    if (sanitized.every((item): item is boolean => typeof item === 'boolean')) {
+      return sanitized;
+    }
+  }
+
+  try {
+    return truncateSentryString(JSON.stringify(sanitized));
+  } catch {
+    return undefined;
+  }
+}
+
+function sentryAttributes(
+  context: LogContext | undefined,
+  source: string | undefined,
+  meta: Record<string, unknown> | undefined,
+): Record<string, SentryLogAttributeValue> {
+  const attributes: Record<string, SentryLogAttributeValue> = {
+    service: 'backend',
+  };
+
+  if (context) attributes.log_context = context;
+  if (source) attributes.log_source = source;
+
+  for (const [key, value] of Object.entries(meta ?? {})) {
+    const attributeValue = toSentryAttributeValue(value);
+    if (attributeValue !== undefined) {
+      attributes[`meta.${normalizeSentryAttributeName(key)}`] = attributeValue;
+    }
+  }
+
+  return attributes;
+}
+
+function emitSentryLog(
+  level: LogLevel,
+  message: string,
+  context: LogContext | undefined,
+  source: string | undefined,
+  meta: Record<string, unknown> | undefined,
+): void {
+  if (process.env.NODE_ENV === 'test') return;
+
+  try {
+    const attributes = sentryAttributes(context, source, meta);
+    switch (sentryLogLevel(level)) {
+      case 'trace':
+        Sentry.logger.trace(message, attributes);
+        break;
+      case 'debug':
+        Sentry.logger.debug(message, attributes);
+        break;
+      case 'info':
+        Sentry.logger.info(message, attributes);
+        break;
+      case 'warn':
+        Sentry.logger.warn(message, attributes);
+        break;
+      case 'error':
+        Sentry.logger.error(message, attributes);
+        break;
+    }
+  } catch {
+    // Logging must never fail the application path.
+  }
+}
+
 /**
  * Source path is relative to src/ (e.g. "controllers/chat.controller.ts").
  * Non-deprecated: lib/*, controllers/, adapters/, jobs/, queues/, and root main.ts only.
@@ -206,30 +305,35 @@ function createLogger(
   return {
     verbose(message: string, meta?: Record<string, unknown>) {
       if (!shouldLogByContext(context) || !shouldLog('verbose')) return;
+      emitSentryLog('verbose', message, context, source, meta);
       const line = fmt(message, meta);
       const { start, end } = wrapWithContext(context, source, line);
       console.debug(start + line + end);
     },
     debug(message: string, meta?: Record<string, unknown>) {
       if (!shouldLogByContext(context) || !shouldLog('debug')) return;
+      emitSentryLog('debug', message, context, source, meta);
       const line = fmt(message, meta);
       const { start, end } = wrapWithContext(context, source, line);
       console.debug(start + line + end);
     },
     info(message: string, meta?: Record<string, unknown>) {
       if (!shouldLogByContext(context) || !shouldLog('info')) return;
+      emitSentryLog('info', message, context, source, meta);
       const line = fmt(message, meta);
       const { start, end } = wrapWithContext(context, source, line);
       console.info(start + line + end);
     },
     warn(message: string, meta?: Record<string, unknown>) {
       if (!shouldLogByContext(context) || !shouldLog('warn')) return;
+      emitSentryLog('warn', message, context, source, meta);
       const line = fmt(message, meta);
       const { start, end } = wrapWithContext(context, source, line);
       console.warn(start + line + end);
     },
     error(message: string, meta?: Record<string, unknown>) {
       if (!shouldLogByContext(context) || !shouldLog('error')) return;
+      emitSentryLog('error', message, context, source, meta);
       const line = fmt(message, meta);
       const { start, end } = wrapWithContext(context, source, line, 'error');
       console.error(start + line + end);

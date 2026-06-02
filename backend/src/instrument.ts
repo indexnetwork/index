@@ -66,11 +66,14 @@ Sentry.init({
   enableLogs: true,
 });
 
-Sentry.setTags({
+const appAttributes = {
   service: 'backend',
   runtime: 'bun',
   'app.environment': sentryEnvironment,
   'app.release': sentryRelease ?? 'unknown',
   'app.commit_sha': sentryCommitSha ?? 'unknown',
   'sentry.traces_sample_rate': tracesSampleRate,
-});
+};
+
+Sentry.setTags(appAttributes);
+Sentry.getGlobalScope().setAttributes(appAttributes);

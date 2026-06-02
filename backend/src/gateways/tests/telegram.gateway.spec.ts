@@ -1,7 +1,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import type { TelegramPrefs } from '../../schemas/database.schema';
 import type { GatewayStreamEvent } from '../telegram.gateway';
 
@@ -18,6 +18,7 @@ function defaultDeps() {
   const messages: Array<{ sessionId: string; role: string; content: string }> = [];
   const sent: SentMessage[] = [];
   const telegramPrefs = new Map<string, TelegramPrefs>();
+  const userSocials = new Map<string, Array<{ label: string; value: string }>>();
   const chatIdIndex = new Map<string, { userId: string; sessionId?: string }>();
   const chatActions: string[] = [];
 
@@ -26,11 +27,14 @@ function defaultDeps() {
     messages,
     sessions,
     telegramPrefs,
+    userSocials,
     chatIdIndex,
     chatActions,
     getTelegramPrefs: async (userId: string) => telegramPrefs.get(userId) ?? null,
     updateTelegramPrefs: async (userId: string, prefs: TelegramPrefs) => { telegramPrefs.set(userId, prefs); },
     findByTelegramChatId: async (chatId: string) => chatIdIndex.get(chatId) ?? null,
+    getUserSocials: async (userId: string) => userSocials.get(userId) ?? [],
+    setUserSocials: mock(async (userId: string, socials: { label: string; value: string }[]) => { userSocials.set(userId, socials); }),
     createChatSession: async (data: { id: string; userId: string; title?: string }) => { sessions.set(data.id, data); },
     createChatMessage: async (data: { id: string; sessionId: string; role: string; content: string }) => { messages.push(data); },
     processMessage: async (_userId: string, _text: string) => ({ responseText: 'Hello from Index!' }),
@@ -130,13 +134,13 @@ describe('handleInbound (blocking)', () => {
     redisFake = new Map();
   });
 
-  async function callInbound(chatId: string, text: string, overrides?: Partial<ReturnType<typeof defaultDeps>>) {
+  async function callInbound(chatId: string, text: string, overrides?: Partial<ReturnType<typeof defaultDeps>>, telegramUsername?: string | null) {
     const d = overrides ? { ...deps, ...overrides } : deps;
     const { handleInbound } = await import('../telegram.gateway');
     await handleInbound(chatId, text, d, {
       get: async (key: string) => redisFake.get(key) ?? null,
       del: async (key: string) => { redisFake.delete(key); },
-    });
+    }, telegramUsername);
   }
 
   it('replies with connect prompt and button for unknown chatId', async () => {
@@ -209,6 +213,52 @@ describe('handleInbound (blocking)', () => {
     expect(deps.sent[0].text).toContain('connected');
     // Token consumed
     expect(redisFake.has('telegram:connect:valid-token')).toBe(false);
+  });
+
+  it('captures Telegram username during /start without removing other socials', async () => {
+    redisFake.set('telegram:connect:valid-token', 'user-new');
+    deps.userSocials.set('user-new', [{ label: 'github', value: 'alice-gh' }]);
+
+    await callInbound('chat-new', '/start valid-token', undefined, '@alice_tg');
+
+    expect(deps.userSocials.get('user-new')).toEqual([
+      { label: 'github', value: 'alice-gh' },
+      { label: 'telegram', value: 'alice_tg' },
+    ]);
+  });
+
+  it('captures Telegram username on known inbound messages', async () => {
+    const prefs: TelegramPrefs = {
+      chatId: 'chat-known',
+      sessionId: 'sess-1',
+      connectedAt: '2026-04-14T00:00:00Z',
+      notifications: { opportunityAccepted: true },
+    };
+    deps.seedTelegramUser('user-known', prefs);
+    deps.userSocials.set('user-known', [{ label: 'telegram', value: 'old_handle' }]);
+
+    await callInbound('chat-known', 'hello', undefined, 'new_handle');
+
+    expect(deps.userSocials.get('user-known')).toContainEqual({ label: 'telegram', value: 'new_handle' });
+    expect(deps.userSocials.get('user-known')?.filter((s) => s.label === 'telegram')).toHaveLength(1);
+  });
+
+  it('skips social writes when Telegram username is unchanged', async () => {
+    const prefs: TelegramPrefs = {
+      chatId: 'chat-unchanged',
+      sessionId: 'sess-unchanged',
+      connectedAt: '2026-04-14T00:00:00Z',
+      notifications: { opportunityAccepted: true },
+    };
+    deps.seedTelegramUser('user-unchanged', prefs);
+    deps.userSocials.set('user-unchanged', [
+      { label: 'github', value: 'alice-gh' },
+      { label: 'telegram', value: 'same_handle' },
+    ]);
+
+    await callInbound('chat-unchanged', 'hello', undefined, 'same_handle');
+
+    expect(deps.setUserSocials).not.toHaveBeenCalled();
   });
 
   it('replies with expired-token message for unknown token', async () => {

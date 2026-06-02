@@ -82,6 +82,22 @@ export default tseslint.config(
     },
   },
 
+  // ── Backend runtime: route logs through lib/log so Sentry receives them ──
+  {
+    files: ["backend/src/**/*.ts"],
+    ignores: [
+      "backend/src/**/*.spec.ts",
+      "backend/src/**/*.test.ts",
+      "backend/src/**/tests/**",
+      "backend/src/cli/**/*.ts",
+      "backend/src/lib/log.ts",
+      "backend/src/startup.env.ts",
+    ],
+    rules: {
+      "no-console": "error",
+    },
+  },
+
   // ── Frontend: React-specific rules ──────────────────────────────────
   {
     files: ["frontend/src/**/*.{ts,tsx}"],
