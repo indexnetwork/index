@@ -37,9 +37,12 @@ type Profile = z.infer<typeof responseFormat>;
 export type ProfileDocument = Profile & { userId: string };
 
 export class ProfileGenerator {
+  private static baseModel: ReturnType<typeof createModel> | undefined;
   private model: { invoke(input: unknown, config?: { signal?: AbortSignal }): Promise<unknown> };
+
   constructor() {
-    this.model = createModel("profileGenerator").withStructuredOutput(responseFormat, {
+    const baseModel = ProfileGenerator.baseModel ??= createModel("profileGenerator");
+    this.model = baseModel.withStructuredOutput(responseFormat, {
       name: "profile_generator"
     });
   }
