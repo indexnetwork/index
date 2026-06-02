@@ -7,11 +7,24 @@ import {
   formatOpportunityCardHtml,
   formatOpportunityCardPlainText,
 } from '../lib/telegram/formatter';
+import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 
 const logger = log.lib.from('telegram.gateway');
 
 export const CONNECT_TOKEN_PREFIX = 'telegram:connect:';
 export const CONNECT_TOKEN_TTL_SEC = 15 * 60;
+
+function normalizeTelegramHandle(raw: string | null | undefined): string | null {
+  const trimmed = raw
+    ?.trim()
+    .replace(/^@/, '')
+    .replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//, '')
+    .split(/[/?#]/)[0];
+
+  if (!trimmed) return null;
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(trimmed)) return null;
+  return trimmed;
+}
 
 // ── Stream event subset (gateway only cares about a few event types) ────────
 
@@ -31,6 +44,8 @@ export interface GatewayDeps {
   getTelegramPrefs(userId: string): Promise<TelegramPrefs | null>;
   updateTelegramPrefs(userId: string, prefs: TelegramPrefs): Promise<void>;
   findByTelegramChatId(chatId: string): Promise<{ userId: string; sessionId?: string } | null>;
+  getUserSocials(userId: string): Promise<Array<{ label: string; value: string }>>;
+  setUserSocials(userId: string, socials: { label: string; value: string }[]): Promise<void>;
   createChatSession(data: { id: string; userId: string; title?: string }): Promise<void>;
   createChatMessage(data: { id: string; sessionId: string; role: 'user' | 'assistant' | 'system'; content: string }): Promise<void>;
   processMessage(userId: string, text: string): Promise<{ responseText: string; error?: string }>;
@@ -54,6 +69,8 @@ function productionDeps(): GatewayDeps {
     getTelegramPrefs: (userId) => userDatabaseAdapter.getTelegramPrefs(userId),
     updateTelegramPrefs: (userId, prefs) => userDatabaseAdapter.updateTelegramPrefs(userId, prefs),
     findByTelegramChatId: (chatId) => userDatabaseAdapter.findByTelegramChatId(chatId),
+    getUserSocials: (userId) => userDatabaseAdapter.getSocials(userId),
+    setUserSocials: (userId, socials) => userDatabaseAdapter.setSocials(userId, socials),
     createChatSession: (data) => conversationDatabaseAdapter.createChatSession(data),
     createChatMessage: (data) => conversationDatabaseAdapter.createChatMessage(data),
     processMessage: (userId, text) => chatSessionService.processMessage(userId, text),
@@ -186,6 +203,21 @@ const STATUS_THROTTLE_MS = 5_000;
 
 const PROCESS_TIMEOUT_MS = 120_000;
 
+async function upsertTelegramHandleFromUsername(
+  userId: string,
+  username: string | null | undefined,
+  deps: GatewayDeps,
+): Promise<void> {
+  const handle = normalizeTelegramHandle(username);
+  if (!handle) return;
+
+  const existingSocials = await deps.getUserSocials(userId);
+  const merged = mergeTelegramHandleIntoSocials(existingSocials, handle);
+  if (!merged) return;
+
+  await deps.setUserSocials(userId, merged);
+}
+
 // ── Structured-block formatting ────────────────────────────────────────────────
 
 /**
@@ -244,10 +276,11 @@ export async function handleInbound(
   text: string,
   deps: GatewayDeps = productionDeps(),
   redis: RedisReader = productionRedis(),
+  telegramUsername?: string | null,
 ): Promise<void> {
   if (text.startsWith('/start ')) {
     const token = text.slice(7).trim();
-    await handleConnectToken(chatId, token, deps, redis);
+    await handleConnectToken(chatId, token, deps, redis, telegramUsername);
     return;
   }
 
@@ -264,6 +297,10 @@ export async function handleInbound(
 
   const { userId } = found;
   let { sessionId } = found;
+
+  await upsertTelegramHandleFromUsername(userId, telegramUsername, deps).catch((err) => {
+    logger.warn('Failed to persist Telegram username', { userId, chatId, error: err });
+  });
 
   // Ensure a chat session exists (may not if the user messages before any outbound notification)
   if (!sessionId) {
@@ -455,6 +492,7 @@ async function handleConnectToken(
   token: string,
   deps: GatewayDeps,
   redis: RedisReader,
+  telegramUsername?: string | null,
 ): Promise<void> {
   const userId = await redis.get(`${CONNECT_TOKEN_PREFIX}${token}`);
   if (!userId) {
@@ -470,5 +508,8 @@ async function handleConnectToken(
     notifications: { opportunityAccepted: true },
   };
   await deps.updateTelegramPrefs(userId, newPrefs);
+  await upsertTelegramHandleFromUsername(userId, telegramUsername, deps).catch((err) => {
+    logger.warn('Failed to persist Telegram username during connect', { userId, chatId, error: err });
+  });
   await deps.sendTelegramMessage(chatId, CONNECTED_MSG);
 }
