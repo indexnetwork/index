@@ -1,7 +1,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import type { TelegramPrefs } from '../../schemas/database.schema';
 import type { GatewayStreamEvent } from '../telegram.gateway';
 
@@ -34,7 +34,7 @@ function defaultDeps() {
     updateTelegramPrefs: async (userId: string, prefs: TelegramPrefs) => { telegramPrefs.set(userId, prefs); },
     findByTelegramChatId: async (chatId: string) => chatIdIndex.get(chatId) ?? null,
     getUserSocials: async (userId: string) => userSocials.get(userId) ?? [],
-    setUserSocials: async (userId: string, socials: { label: string; value: string }[]) => { userSocials.set(userId, socials); },
+    setUserSocials: mock(async (userId: string, socials: { label: string; value: string }[]) => { userSocials.set(userId, socials); }),
     createChatSession: async (data: { id: string; userId: string; title?: string }) => { sessions.set(data.id, data); },
     createChatMessage: async (data: { id: string; sessionId: string; role: string; content: string }) => { messages.push(data); },
     processMessage: async (_userId: string, _text: string) => ({ responseText: 'Hello from Index!' }),
@@ -241,6 +241,24 @@ describe('handleInbound (blocking)', () => {
 
     expect(deps.userSocials.get('user-known')).toContainEqual({ label: 'telegram', value: 'new_handle' });
     expect(deps.userSocials.get('user-known')?.filter((s) => s.label === 'telegram')).toHaveLength(1);
+  });
+
+  it('skips social writes when Telegram username is unchanged', async () => {
+    const prefs: TelegramPrefs = {
+      chatId: 'chat-unchanged',
+      sessionId: 'sess-unchanged',
+      connectedAt: '2026-04-14T00:00:00Z',
+      notifications: { opportunityAccepted: true },
+    };
+    deps.seedTelegramUser('user-unchanged', prefs);
+    deps.userSocials.set('user-unchanged', [
+      { label: 'github', value: 'alice-gh' },
+      { label: 'telegram', value: 'same_handle' },
+    ]);
+
+    await callInbound('chat-unchanged', 'hello', undefined, 'same_handle');
+
+    expect(deps.setUserSocials).not.toHaveBeenCalled();
   });
 
   it('replies with expired-token message for unknown token', async () => {

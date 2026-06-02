@@ -7,6 +7,7 @@ import {
   formatOpportunityCardHtml,
   formatOpportunityCardPlainText,
 } from '../lib/telegram/formatter';
+import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 
 const logger = log.lib.from('telegram.gateway');
 
@@ -211,11 +212,10 @@ async function upsertTelegramHandleFromUsername(
   if (!handle) return;
 
   const existingSocials = await deps.getUserSocials(userId);
-  const kept = existingSocials
-    .filter((social) => social.label !== 'telegram')
-    .map((social) => ({ label: social.label, value: social.value }));
+  const merged = mergeTelegramHandleIntoSocials(existingSocials, handle);
+  if (!merged) return;
 
-  await deps.setUserSocials(userId, [...kept, { label: 'telegram', value: handle }]);
+  await deps.setUserSocials(userId, merged);
 }
 
 // ── Structured-block formatting ────────────────────────────────────────────────

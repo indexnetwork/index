@@ -52,6 +52,7 @@ import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
+import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 import { PremiseEvents } from '../events/premise.event';
 
@@ -248,13 +249,10 @@ async function finalizeMcpIdentity(request: Request, identity: ResolvedMcpIdenti
 
   try {
     const existingSocials = await chatDatabaseAdapter.getUserSocials(identity.userId);
-    const kept = existingSocials
-      .filter((social) => social.label !== 'telegram')
-      .map((social) => ({ label: social.label, value: social.value }));
-    await chatDatabaseAdapter.setUserSocials(identity.userId, [
-      ...kept,
-      { label: 'telegram', value: telegramHandle },
-    ]);
+    const merged = mergeTelegramHandleIntoSocials(existingSocials, telegramHandle);
+    if (!merged) return identity;
+
+    await chatDatabaseAdapter.setUserSocials(identity.userId, merged);
   } catch (err) {
     logger.warn('Failed to persist Telegram MCP handle', {
       userId: identity.userId,

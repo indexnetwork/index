@@ -85,8 +85,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   }
 
   function normalizeSocialUpdate(label: string, value: string): { label: string; value: string } | null {
-    const rawLabel = label.trim();
-    const normalizedLabel = rawLabel.toLowerCase() === 'telegram' ? 'telegram' : rawLabel;
+    const normalizedLabel = label.trim().toLowerCase();
     if (!normalizedLabel) return null;
     const trimmedValue = value.trim();
     if (!trimmedValue) return null;

@@ -223,6 +223,20 @@ describe("create_user_profile social merge logic", () => {
     ]);
   });
 
+  it("update_user_profile lowercases social labels before merging", async () => {
+    mockGetUserSocials.mockResolvedValue([
+      { id: "1", userId: "test-user", label: "github", value: "old-gh" },
+    ]);
+
+    await updateUserProfileTool.handler({
+      context: baseContext,
+      query: { socials: { GitHub: "new-gh" } },
+    });
+
+    const arg = mockSetUserSocials.mock.calls[0][0] as Array<{ label: string; value: string }>;
+    expect(arg).toEqual([{ label: "github", value: "new-gh" }]);
+  });
+
   it("update_user_profile persists socials while preserving non-overlapping labels before profile edits", async () => {
     mockGetUserSocials.mockResolvedValue([
       { id: "1", userId: "test-user", label: "linkedin", value: "alice-li" },
