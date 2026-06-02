@@ -3,7 +3,9 @@
   "private": true,
   "packageManager": "bun@1.3.6",
   "workspaces": [
-    "packages/*",
+    "packages/protocol",
+    "packages/cli",
+    "packages/claude-plugin",
     "backend",
     "frontend"
   ],
