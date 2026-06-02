@@ -2,11 +2,12 @@ import { z } from "zod";
 
 import { requestContext } from "../shared/observability/request-context.js";
 
-import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
+import type { DefineTool, ResolvedToolContext, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, needsClarification, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { EnrichmentResult, ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
+import type { EnrichmentResult } from "../shared/interfaces/enrichment.interface.js";
 import type { OnboardingPrivacyState, OnboardingProfileSeed, OnboardingState, PrivacyConsentSource, UserRecord } from "../shared/interfaces/database.interface.js";
+import type { ProfileRunInput, ProfileRunOperation } from "../shared/interfaces/profile-run.interface.js";
 import { socialsToEnrichmentRequest, detectSocialLabel } from "../shared/utils/social-label.js";
 import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 import { ProfileGenerator } from "./profile.generator.js";
@@ -26,7 +27,7 @@ function isMeaningfulEnrichment(enrichment: EnrichmentResult | null): enrichment
 }
 
 export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { userDb, systemDb, database, graphs, enricher, grantDefaultSystemPermissions } = deps;
+  const { userDb, systemDb, database, graphs, enricher, grantDefaultSystemPermissions, reportToolError } = deps;
 
   function trimToUndefined(value: string | null | undefined): string | undefined {
     const trimmed = value?.trim();
@@ -116,6 +117,42 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   function socialsRecordToRows(socials: Record<string, string> | undefined): { label: string; value: string }[] {
     if (!socials) return [];
     return Object.entries(socials).map(([label, value]) => ({ label, value }));
+  }
+
+  async function enqueueProfileRun(
+    context: ResolvedToolContext,
+    operation: ProfileRunOperation,
+    input: ProfileRunInput,
+  ): Promise<string | null> {
+    if (!context.isMcp || !deps.profileRuns || !deps.profileRunQueue) return null;
+    const run = await deps.profileRuns.create({
+      userId: context.userId,
+      agentId: context.agentId ?? null,
+      operation,
+      input,
+      context: {
+        userId: context.userId,
+        userName: context.userName,
+        userEmail: context.userEmail,
+        ...(context.networkId ? { networkId: context.networkId } : {}),
+        ...(context.indexName ? { indexName: context.indexName } : {}),
+        indexScope: context.indexScope,
+        ...(context.sessionId ? { sessionId: context.sessionId } : {}),
+        ...(context.agentId ? { agentId: context.agentId } : {}),
+        ...(context.clientSurface ? { clientSurface: context.clientSurface } : {}),
+      },
+    });
+    try {
+      await deps.profileRunQueue.enqueue(run.id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await deps.profileRuns.markFailed(run.id, message);
+      if (err instanceof Error) throw err;
+      const wrapped = new Error(`Failed to enqueue profile run: ${message}`) as Error & { cause?: unknown };
+      wrapped.cause = err;
+      throw wrapped;
+    }
+    return run.id;
   }
 
   async function persistApprovedProfileContext(profile: { identity: { name: string; bio: string; location: string } }, user: UserRecord | null, networkId?: string): Promise<void> {
@@ -455,7 +492,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     name: "preview_user_profile",
     description:
       "Builds a structured profile draft for onboarding without saving anything. Use this after recording privacy consent and before asking the user to approve the profile. " +
-      "If allowPublicLookup is false, this tool uses only explicit text, EdgeOS/event data the user allowed, and user-provided social URLs. If allowPublicLookup is true, persisted public lookup consent is required.",
+      "If allowPublicLookup is false, this tool uses only explicit text, EdgeOS/event data the user allowed, and user-provided social URLs. If allowPublicLookup is true, persisted public lookup consent is required. " +
+      "In MCP contexts, starts an async profile run and returns `profileRunId`; poll get_profile_run until status is `succeeded`, then present its `result`.",
     querySchema: z.object({
       name: z.string().optional().describe("Name explicitly provided by the user. For authenticated public lookup, the account identity is used first and this is only a fallback."),
       location: z.string().optional().describe("Location explicitly provided by the user or allowed event data."),
@@ -470,6 +508,15 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     handler: async ({ context, query }) => {
       const user = await userDb.getUser();
       if (!user) return error("User not found.");
+
+      const profileRunId = await enqueueProfileRun(context, "preview_user_profile", query);
+      if (profileRunId) {
+        return success({
+          status: "queued" as const,
+          profileRunId,
+          message: `Profile preview started. Call get_profile_run with profileRunId="${profileRunId}" until it succeeds, fails, or is cancelled.`,
+        });
+      }
 
       const onboarding = user.onboarding ?? context.user.onboarding;
       const hasEdgeosConsent = hasEdgeosImportConsent(onboarding);
@@ -879,7 +926,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       "- `socials={ telegram: \"@alice\" }` to silently add a reachable chat handle without regenerating the profile.\n\n" +
       "**When to use:** When the user wants to make specific changes without regenerating the whole profile. For full profile regeneration from social URLs, use create_user_profile instead.\n\n" +
       "**Important:** If the user provides a URL to update from, call scrape_url first, then pass the scraped content in `details`.\n\n" +
-      "**Returns:** Confirmation that the profile was updated.",
+      "**MCP behavior:** For MCP clients, text/profile graph updates are accepted immediately and completed in the background to avoid transport timeouts. Social-only updates still complete synchronously.\n\n" +
+      "**Returns:** Confirmation that the profile was updated or accepted for background update.",
     querySchema: z.object({
       profileId: z.string().optional().describe("Profile UUID from read_user_profiles. Omit to update the current user's own profile (most common usage)."),
       action: z.string().optional().describe("Natural language description of ALL changes to make in a single call. Examples: 'update bio to focus on AI research', 'add Python and Rust to skills', 'change location to Berlin and add machine learning to interests'. Optional when only updating socials."),
@@ -895,6 +943,15 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           return success({ message: "Profile socials updated." });
         }
         return error("Please specify what to update (e.g. action: 'update bio to X') or provide socials.");
+      }
+
+      const profileRunId = await enqueueProfileRun(context, "update_user_profile", query);
+      if (profileRunId) {
+        return success({
+          status: "queued" as const,
+          profileRunId,
+          message: `Profile update started. Call get_profile_run with profileRunId="${profileRunId}" until it succeeds, fails, or is cancelled.`,
+        });
       }
 
       // Use profileGraph query mode to validate profile existence and get id
@@ -915,6 +972,58 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
 
       if (socialUpdates.length > 0) {
         await mergeUserSocials(socialUpdates);
+      }
+
+      if (context.isMcp) {
+        const _backgroundWriteProfileGraphStart = Date.now();
+        const _backgroundWriteProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
+        _backgroundWriteProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
+        graphs.profile.invoke({
+          userId: context.userId,
+          operationMode: "write",
+          input: inputForProfile,
+          forceUpdate: true,
+        }).then((writeResult) => {
+          if (writeResult.error) {
+            logger.error("Background profile update failed", {
+              userId: context.userId,
+              error: writeResult.error,
+            });
+            reportToolError?.(new Error(writeResult.error), {
+              subsystem: "profile",
+              operation: "profile.update_background",
+              toolName: "update_user_profile",
+              userId: context.userId,
+              tags: { toolName: "update_user_profile", execution: "background" },
+              context: { profileId: existingProfileId ?? providedProfileId },
+            });
+          }
+        }).catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error("Background profile update failed", {
+            userId: context.userId,
+            error: message,
+          });
+          reportToolError?.(err, {
+            subsystem: "profile",
+            operation: "profile.update_background",
+            toolName: "update_user_profile",
+            userId: context.userId,
+            tags: { toolName: "update_user_profile", execution: "background" },
+            context: { profileId: existingProfileId ?? providedProfileId },
+          });
+        }).finally(() => {
+          const _backgroundWriteProfileGraphMs = Date.now() - _backgroundWriteProfileGraphStart;
+          _backgroundWriteProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _backgroundWriteProfileGraphMs });
+        });
+
+        return success({
+          accepted: true,
+          message: "Profile update accepted. The structured profile will refresh in the background.",
+          _graphTimings: [
+            { name: 'profile', durationMs: _updateQueryProfileGraphMs, agents: queryResult.agentTimings ?? [] },
+          ],
+        });
       }
 
       // Execute update directly
@@ -938,6 +1047,73 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           { name: 'profile', durationMs: _updateQueryProfileGraphMs, agents: queryResult.agentTimings ?? [] },
           { name: 'profile', durationMs: _updateWriteProfileGraphMs, agents: _writeResult.agentTimings ?? [] },
         ],
+      });
+    },
+  });
+
+  const getProfileRun = defineTool({
+    name: "get_profile_run",
+    description:
+      "Checks the status of an async profile preview/update run started by preview_user_profile or update_user_profile in MCP contexts. " +
+      "Poll this tool with the profileRunId until status is succeeded, failed, or cancelled. When succeeded, present the result to the user.",
+    querySchema: z.object({
+      profileRunId: z.string().describe("Profile run ID returned by preview_user_profile or update_user_profile."),
+    }),
+    handler: async ({ context, query }) => {
+      if (!deps.profileRuns) {
+        return error("Profile run polling is not available in this environment.");
+      }
+      const run = await deps.profileRuns.get(query.profileRunId, context.userId);
+      if (!run) return error("Profile run not found.");
+      return success({
+        profileRunId: run.id,
+        operation: run.operation,
+        status: run.status,
+        progress: run.progress ?? null,
+        result: run.result ?? null,
+        error: run.error ?? null,
+        createdAt: run.createdAt.toISOString?.() ?? null,
+        startedAt: run.startedAt?.toISOString?.() ?? null,
+        completedAt: run.completedAt?.toISOString?.() ?? null,
+      });
+    },
+  });
+
+  const cancelProfileRun = defineTool({
+    name: "cancel_profile_run",
+    description:
+      "Requests cancellation for an async profile run. If the queued job has not started, it is removed and marked cancelled. " +
+      "If already running, the worker observes the cancellation request and aborts where supported.",
+    querySchema: z.object({
+      profileRunId: z.string().describe("Profile run ID returned by preview_user_profile or update_user_profile."),
+    }),
+    handler: async ({ context, query }) => {
+      if (!deps.profileRuns || !deps.profileRunQueue) {
+        return error("Profile run cancellation is not available in this environment.");
+      }
+      const existing = await deps.profileRuns.get(query.profileRunId, context.userId);
+      if (!existing) return error("Profile run not found.");
+      if (!["queued", "running"].includes(existing.status)) {
+        return success({
+          profileRunId: existing.id,
+          status: existing.status,
+          message: `Profile run is already ${existing.status}.`,
+        });
+      }
+      const run = await deps.profileRuns.requestCancel(query.profileRunId, context.userId);
+      if (!run) return error("Profile run not found or cannot be cancelled.");
+      const removed = await deps.profileRunQueue.cancel(run.id);
+      if (removed) {
+        await deps.profileRuns.markCancelled(run.id, "cancelled before worker start");
+      }
+      const updated = await deps.profileRuns.get(run.id, context.userId);
+      return success({
+        profileRunId: run.id,
+        status: updated?.status ?? run.status,
+        cancelled: true,
+        message: removed
+          ? "Profile run cancelled before it started."
+          : "Cancellation requested while the profile run is running or queued.",
       });
     },
   });
@@ -994,5 +1170,5 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [readUserProfiles, recordOnboardingPrivacyConsent, previewUserProfile, confirmUserProfile, createUserProfile, updateUserProfile, completeOnboarding] as const;
+  return [readUserProfiles, recordOnboardingPrivacyConsent, previewUserProfile, confirmUserProfile, createUserProfile, updateUserProfile, getProfileRun, cancelProfileRun, completeOnboarding] as const;
 }

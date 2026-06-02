@@ -257,4 +257,107 @@ describe("create_user_profile social merge logic", () => {
     expect(arg).toContainEqual({ label: "telegram", value: "alice_tg" });
     expect(mockInvokeProfile).toHaveBeenCalledTimes(2);
   });
+
+  it("update_user_profile accepts MCP text edits and runs the write graph in the background when no profile queue is configured", async () => {
+    mockInvokeProfile
+      .mockResolvedValueOnce({ readResult: { hasProfile: true, profile: { id: "profile-1" } } })
+      .mockResolvedValueOnce({});
+
+    const result = await updateUserProfileTool.handler({
+      context: { ...baseContext, isMcp: true } as ResolvedToolContext,
+      query: { action: "set location", details: "Berlin" },
+    });
+
+    expect(result).toContain("Profile update accepted");
+    expect(mockInvokeProfile).toHaveBeenCalledTimes(2);
+    expect(mockInvokeProfile.mock.calls[1][0]).toMatchObject({
+      userId: "test-user",
+      operationMode: "write",
+      input: "set location\nBerlin",
+      forceUpdate: true,
+    });
+  });
+
+  it("preview_user_profile starts an async MCP profile run when queue deps are configured", async () => {
+    const profileRuns = {
+      create: mock(async (input) => ({
+        id: "profile-run-1",
+        userId: input.userId,
+        agentId: input.agentId,
+        operation: input.operation,
+        status: "queued",
+        input: input.input,
+        context: input.context,
+        createdAt: new Date(),
+      })),
+      markFailed: mock(async () => {}),
+    };
+    const profileRunQueue = { enqueue: mock(async () => ({ jobId: "profile-run-1" })) };
+    const queuedTools = captureTools({
+      userDb: { getUser: mockGetUser },
+      systemDb: {},
+      database: {},
+      graphs: { profile: { invoke: mockInvokeProfile } },
+      enricher: { enrichUserProfile: async () => null },
+      profileRuns,
+      profileRunQueue,
+    } as unknown as ToolDeps);
+    const preview = queuedTools.find((t) => t.name === "preview_user_profile")!;
+
+    const result = await preview.handler({
+      context: { ...baseContext, isMcp: true, userName: "Test", userEmail: "test@example.com", indexScope: ["net-1"] } as ResolvedToolContext,
+      query: { bioOrDescription: "Builder" },
+    });
+
+    expect(result).toContain("profile-run-1");
+    expect(profileRuns.create).toHaveBeenCalledTimes(1);
+    expect(profileRuns.create.mock.calls[0][0]).toMatchObject({
+      userId: "test-user",
+      operation: "preview_user_profile",
+      input: { bioOrDescription: "Builder" },
+    });
+    expect(profileRunQueue.enqueue).toHaveBeenCalledWith("profile-run-1");
+    expect(mockInvokeProfile).not.toHaveBeenCalled();
+  });
+
+  it("update_user_profile starts an async MCP profile run before graph validation when queue deps are configured", async () => {
+    const profileRuns = {
+      create: mock(async (input) => ({
+        id: "profile-run-2",
+        userId: input.userId,
+        agentId: input.agentId,
+        operation: input.operation,
+        status: "queued",
+        input: input.input,
+        context: input.context,
+        createdAt: new Date(),
+      })),
+      markFailed: mock(async () => {}),
+    };
+    const profileRunQueue = { enqueue: mock(async () => ({ jobId: "profile-run-2" })) };
+    const queuedTools = captureTools({
+      userDb: { getUserSocials: mockGetUserSocials, setUserSocials: mockSetUserSocials },
+      systemDb: {},
+      database: {},
+      graphs: { profile: { invoke: mockInvokeProfile } },
+      enricher: { enrichUserProfile: async () => null },
+      profileRuns,
+      profileRunQueue,
+    } as unknown as ToolDeps);
+    const update = queuedTools.find((t) => t.name === "update_user_profile")!;
+
+    const result = await update.handler({
+      context: { ...baseContext, isMcp: true, userName: "Test", userEmail: "test@example.com", indexScope: ["net-1"] } as ResolvedToolContext,
+      query: { action: "set location", details: "Berlin" },
+    });
+
+    expect(result).toContain("profile-run-2");
+    expect(profileRuns.create.mock.calls[0][0]).toMatchObject({
+      userId: "test-user",
+      operation: "update_user_profile",
+      input: { action: "set location", details: "Berlin" },
+    });
+    expect(profileRunQueue.enqueue).toHaveBeenCalledWith("profile-run-2");
+    expect(mockInvokeProfile).not.toHaveBeenCalled();
+  });
 });

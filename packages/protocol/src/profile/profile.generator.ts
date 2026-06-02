@@ -8,8 +8,6 @@ import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ProfileGenerator");
 
-const model = createModel("profileGenerator");
-
 const systemPrompt = `
     You are an expert profiler. Your task is to synthesize a structured User Profile from raw data or user requests.
 
@@ -39,9 +37,9 @@ type Profile = z.infer<typeof responseFormat>;
 export type ProfileDocument = Profile & { userId: string };
 
 export class ProfileGenerator {
-  private model: any;
+  private model: { invoke(input: unknown, config?: { signal?: AbortSignal }): Promise<unknown> };
   constructor() {
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createModel("profileGenerator").withStructuredOutput(responseFormat, {
       name: "profile_generator"
     });
   }

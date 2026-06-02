@@ -10,8 +10,9 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, test, expect } from "bun:test";
-import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "../mcp.server.js";
+import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError } from "../mcp.server.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
+import { ToolRuntimeError } from "../../shared/agent/tool.runtime.js";
 
 describe("MCP_INSTRUCTIONS", () => {
   test("fits within the 4500 character context budget", () => {
@@ -190,11 +191,35 @@ function minimalContext(overrides: Partial<ResolvedToolContext> = {}): ResolvedT
   };
 }
 
+describe("shouldReportMcpToolError", () => {
+  test("suppresses structured runtime failures that are returned to MCP clients", () => {
+    const err = new ToolRuntimeError(
+      "TOOL_TIMEOUT",
+      "Tool update_user_profile timed out after 50000ms.",
+      "update_user_profile",
+      { class: "async_candidate", timeoutMs: 50_000, maxOutputBytes: 1_000_000 },
+    );
+
+    expect(shouldReportMcpToolError(err)).toBe(false);
+  });
+
+  test("suppresses expected credential failures", () => {
+    expect(shouldReportMcpToolError(new Error("Invalid API key"))).toBe(false);
+    expect(shouldReportMcpToolError(new Error("Authentication required: provide Bearer token or x-api-key header"))).toBe(false);
+  });
+
+  test("reports unexpected tool failures", () => {
+    expect(shouldReportMcpToolError(new Error("database unavailable"))).toBe(true);
+  });
+});
+
 describe("ONBOARDING_ALLOWED", () => {
   test("contains all onboarding-flow tools", () => {
     const expected = [
       "record_onboarding_privacy_consent",
       "preview_user_profile",
+      "get_profile_run",
+      "cancel_profile_run",
       "confirm_user_profile",
       "create_user_profile",
       "complete_onboarding",
@@ -235,6 +260,7 @@ describe("buildMcpOnboardingMessage", () => {
     expect(msg).toContain("You're Alice, right?");
     expect(msg).toContain("record_onboarding_privacy_consent");
     expect(msg).toContain("preview_user_profile");
+    expect(msg).toContain("get_profile_run");
   });
 
   test("uses name-ask step when user has no name", () => {

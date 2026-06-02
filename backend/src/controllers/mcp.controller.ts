@@ -30,7 +30,9 @@ import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
 import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
+import { profileRunAdapter } from '../adapters/profile-run.adapter';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
+import { profileRunQueue } from '../queues/profile-run.queue';
 import db from '../lib/drizzle/drizzle';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
@@ -117,6 +119,8 @@ const protocolDeps = {
   deliveryLedger: opportunityDeliveryService,
   discoveryRuns: discoveryRunAdapter,
   discoveryRunQueue,
+  profileRuns: profileRunAdapter,
+  profileRunQueue,
   negotiationTimeoutQueue,
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
@@ -472,6 +476,8 @@ function getOrCreateMcpServer(): McpServer {
     }),
     discoveryRuns: protocolDeps.discoveryRuns,
     discoveryRunQueue: protocolDeps.discoveryRunQueue,
+    profileRuns: protocolDeps.profileRuns,
+    profileRunQueue: protocolDeps.profileRunQueue,
     mintConnectToken: protocolDeps.mintConnectToken,
     mintConnectLink: protocolDeps.mintConnectLink,
     frontendUrl: protocolDeps.frontendUrl,
