@@ -214,6 +214,57 @@ function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string
   }
 }
 
+type ResolvedMcpIdentity = {
+  userId: string;
+  agentId?: string;
+  isSessionAuth?: boolean;
+  networkScopeId?: string | null;
+  clientSurface?: 'telegram' | 'web';
+};
+
+function normalizeTelegramHeader(raw: string | null | undefined): string | null {
+  const trimmed = raw
+    ?.trim()
+    .replace(/^@/, '')
+    .replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//, '')
+    .split(/[/?#]/)[0];
+
+  if (!trimmed) return null;
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+export function telegramHandleFromRequest(request: Request): string | null {
+  return normalizeTelegramHeader(
+    request.headers.get('x-index-telegram-username') ??
+    request.headers.get('x-index-telegram-handle'),
+  );
+}
+
+async function finalizeMcpIdentity(request: Request, identity: ResolvedMcpIdentity): Promise<ResolvedMcpIdentity> {
+  if (identity.clientSurface !== 'telegram') return identity;
+  const telegramHandle = telegramHandleFromRequest(request);
+  if (!telegramHandle) return identity;
+
+  try {
+    const existingSocials = await chatDatabaseAdapter.getUserSocials(identity.userId);
+    const kept = existingSocials
+      .filter((social) => social.label !== 'telegram')
+      .map((social) => ({ label: social.label, value: social.value }));
+    await chatDatabaseAdapter.setUserSocials(identity.userId, [
+      ...kept,
+      { label: 'telegram', value: telegramHandle },
+    ]);
+  } catch (err) {
+    logger.warn('Failed to persist Telegram MCP handle', {
+      userId: identity.userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  return identity;
+}
+
 // Module-scope on purpose: dedupes the warn across the process lifetime so an
 // unknown header value only logs once per server process, not once per request.
 const seenInvalidSurfaces = new Set<string>();
@@ -246,7 +297,7 @@ export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
 }
 
 const authResolver: McpAuthResolver = {
-  async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string; isSessionAuth?: boolean; networkScopeId?: string | null; clientSurface?: 'telegram' | 'web' }> {
+  async resolveIdentity(request: Request): Promise<ResolvedMcpIdentity> {
     const clientSurface = parseClientSurface(request.headers.get('x-index-surface'));
     const authHeader = request.headers.get('Authorization');
     const [scheme, token] = authHeader?.split(/\s+/, 2) ?? [];
@@ -261,8 +312,8 @@ const authResolver: McpAuthResolver = {
         // (not omitted) so callers cannot conflate "no scope" with "scope unset".
         try {
           const { payload } = await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
-          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface };
-          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface };
+          if (typeof payload.id === 'string') return finalizeMcpIdentity(request, { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface });
+          if (typeof payload.sub === 'string') return finalizeMcpIdentity(request, { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface });
           throw new Error('JWT payload missing user ID');
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -281,7 +332,7 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface };
+            if (data?.userId) return finalizeMcpIdentity(request, { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface });
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -343,17 +394,17 @@ const authResolver: McpAuthResolver = {
             const networkScopeId = metadata.agentId
               ? await resolveAgentNetworkScopeById(metadata.agentId)
               : null;
-            return {
+            return finalizeMcpIdentity(request, {
               userId,
               ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
               networkScopeId,
               clientSurface,
-            };
+            });
           }
         }
 
         if (sessionUserId) {
-          return { userId: sessionUserId, networkScopeId: null, clientSurface };
+          return finalizeMcpIdentity(request, { userId: sessionUserId, networkScopeId: null, clientSurface });
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

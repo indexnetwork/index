@@ -144,7 +144,7 @@ The value drives the click-time redirect on opportunity connect links (`/c/{code
 
 The surface is snapshotted onto each minted `connect_links` row at MCP-call time (the auth resolver reads the header, the protocol threads it through `ResolvedToolContext.clientSurface`, and `mintConnectLink` writes it). First mint wins for the link's lifetime; rotation of an expired row re-stamps the surface.
 
-Today only the Telegram-bot MCP surface sends `telegram`. Every other caller — Claude Desktop, the web app, Claude Code, the CLI — omits the header and gets the web fallback.
+Today only the Telegram-bot MCP surface sends `telegram`. Every other caller — Claude Desktop, the web app, Claude Code, the CLI — omits the header and gets the web fallback. Telegram MCP clients may also send `x-index-telegram-username` (or `x-index-telegram-handle`); when present with `x-index-surface: telegram`, the MCP auth resolver upserts that handle into `user_socials` while preserving other socials.
 
 ### MCP runtime limits and error envelopes
 
@@ -2149,7 +2149,7 @@ Start OAuth flow to connect a toolkit.
 
 **Response**:
 - For `gmail`/`slack`: OAuth redirect URL from the integration adapter.
-- For `telegram`: `{ "deepLink": "https://t.me/<bot_username>?start=<token>" }` where `<token>` is a short-lived one-time token (15 min TTL). Opening the link prompts Telegram to message the bot with `/start <token>`, which completes the connection.
+- For `telegram`: `{ "deepLink": "https://t.me/<bot_username>?start=<token>" }` where `<token>` is a short-lived one-time token (15 min TTL). Opening the link prompts Telegram to message the bot with `/start <token>`, which completes the connection. If Telegram includes `message.from.username`, the gateway also upserts a public `user_socials` row with `label = 'telegram'` while preserving other socials.
 
 ### POST /api/integrations/:toolkit/link
 
@@ -2255,7 +2255,7 @@ Inbound endpoint for Telegram Bot API updates. Called by Telegram when the bot r
 
 **Auth**: Header `X-Telegram-Bot-Api-Secret-Token` must match `TELEGRAM_WEBHOOK_SECRET`. Otherwise responds `401`.
 
-**Body**: Telegram `Update` object (JSON). The handler only inspects `message.chat.id` and `message.text`.
+**Body**: Telegram `Update` object (JSON). The handler inspects `message.chat.id`, `message.text`, and optional `message.from.username`. When a valid username is present, it is stored as the user's public Telegram social handle without clearing other socials.
 
 **Response**: Always `200 OK`. Inbound handling is fire-and-forget so the endpoint never blocks Telegram's delivery pipeline.
 
@@ -3139,7 +3139,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `preview_user_profile` | Profile | Generate a non-persisted onboarding profile draft from allowed sources |
 | `confirm_user_profile` | Profile | Save an approved profile draft or explicit correction text |
 | `create_user_profile` | Profile | Legacy/generic profile generation from social links or bio |
-| `update_user_profile` | Profile | Update profile details |
+| `update_user_profile` | Profile | Update profile details or merge reachable social handles |
 | `complete_onboarding` | Profile | Mark onboarding complete |
 | `read_intents` | Intent | List user's intents with optional filters |
 | `create_intent` | Intent | Create a new intent from natural language |

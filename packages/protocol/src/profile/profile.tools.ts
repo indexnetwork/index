@@ -8,6 +8,7 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { EnrichmentResult, ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
 import type { OnboardingPrivacyState, OnboardingProfileSeed, OnboardingState, PrivacyConsentSource, UserRecord } from "../shared/interfaces/database.interface.js";
 import { socialsToEnrichmentRequest, detectSocialLabel } from "../shared/utils/social-label.js";
+import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 import { ProfileGenerator } from "./profile.generator.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
@@ -83,6 +84,41 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     return scoped[scoped.length - 1] ?? seeds[seeds.length - 1];
   }
 
+  function normalizeSocialUpdate(label: string, value: string): { label: string; value: string } | null {
+    const rawLabel = label.trim();
+    const normalizedLabel = rawLabel.toLowerCase() === 'telegram' ? 'telegram' : rawLabel;
+    if (!normalizedLabel) return null;
+    const trimmedValue = value.trim();
+    if (!trimmedValue) return null;
+    if (normalizedLabel === 'telegram') {
+      const handle = normalizeTelegramHandle(trimmedValue);
+      return handle ? { label: normalizedLabel, value: handle } : null;
+    }
+    return { label: normalizedLabel, value: trimmedValue };
+  }
+
+  async function mergeUserSocials(incoming: { label: string; value: string }[]): Promise<void> {
+    const normalizedIncoming = incoming
+      .map((social) => normalizeSocialUpdate(social.label, social.value))
+      .filter((social): social is { label: string; value: string } => social !== null);
+    if (normalizedIncoming.length === 0) return;
+
+    const existingSocials = await userDb.getUserSocials();
+    const incomingLabels = new Set(normalizedIncoming.map((social) => social.label));
+    const kept = existingSocials
+      .filter((social) => !incomingLabels.has(social.label) || social.label === 'custom')
+      .map((social) => ({ label: social.label, value: social.value }));
+    const merged = incomingLabels.has('custom')
+      ? [...kept.filter((social) => social.label !== 'custom'), ...normalizedIncoming]
+      : [...kept, ...normalizedIncoming];
+    await userDb.setUserSocials(merged);
+  }
+
+  function socialsRecordToRows(socials: Record<string, string> | undefined): { label: string; value: string }[] {
+    if (!socials) return [];
+    return Object.entries(socials).map(([label, value]) => ({ label, value }));
+  }
+
   async function persistApprovedProfileContext(profile: { identity: { name: string; bio: string; location: string } }, user: UserRecord | null, networkId?: string): Promise<void> {
     await userDb.updateUser({
       name: profile.identity.name,
@@ -95,15 +131,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     const seed = selectProfileSeed(onboarding, networkId);
     if (!seed?.socials?.length) return;
 
-    const existingSocials = await userDb.getUserSocials();
-    const seededLabels = new Set(seed.socials.map((social) => social.label));
-    const kept = existingSocials
-      .filter((social) => !seededLabels.has(social.label) || social.label === 'custom')
-      .map((social) => ({ label: social.label, value: social.value }));
-    const merged = seededLabels.has('custom')
-      ? [...kept.filter((social) => social.label !== 'custom'), ...seed.socials]
-      : [...kept, ...seed.socials];
-    await userDb.setUserSocials(merged);
+    await mergeUserSocials(seed.socials);
   }
 
   function buildProfileInput(parts: {
@@ -628,7 +656,6 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
       if (hasSocialsFromQuery) {
-        const existingSocials = await userDb.getUserSocials();
         const newSocials: { label: string; value: string }[] = [];
         if (linkedinUrl) newSocials.push({ label: 'linkedin', value: linkedinUrl });
         if (githubUrl) newSocials.push({ label: 'github', value: githubUrl });
@@ -636,14 +663,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         if (websites?.length) {
           for (const w of websites) newSocials.push({ label: detectSocialLabel(w) === 'custom' ? 'custom' : detectSocialLabel(w), value: w });
         }
-        const newLabels = new Set(newSocials.map(s => s.label));
-        const kept = existingSocials
-          .filter(s => !newLabels.has(s.label) || s.label === 'custom')
-          .map(s => ({ label: s.label, value: s.value }));
-        const merged = newLabels.has('custom')
-          ? [...kept.filter(s => s.label !== 'custom'), ...newSocials]
-          : [...kept, ...newSocials];
-        await userDb.setUserSocials(merged);
+        await mergeUserSocials(newSocials);
       }
       logger.verbose("Persisted user-info fields to user record", { userId: context.userId });
 
@@ -692,15 +712,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
                 for (const w of enrichment.socials.websites) enrichedSocials.push({ label: 'custom', value: w });
               }
               if (enrichedSocials.length > 0) {
-                const existingSocials = await userDb.getUserSocials();
-                const enrichedLabels = new Set(enrichedSocials.map(s => s.label));
-                const kept = existingSocials
-                  .filter(s => !enrichedLabels.has(s.label) || s.label === 'custom')
-                  .map(s => ({ label: s.label, value: s.value }));
-                const merged = enrichedLabels.has('custom')
-                  ? [...kept.filter(s => s.label !== 'custom'), ...enrichedSocials]
-                  : [...kept, ...enrichedSocials];
-                await userDb.setUserSocials(merged);
+                await mergeUserSocials(enrichedSocials);
               }
 
               return success({
@@ -859,20 +871,33 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       "Updates the authenticated user's existing profile using a verb-style instruction interface.\n\n" +
       "**How to use it:**\n" +
       "- `action`: a natural-language instruction describing what to change (e.g. \"add interests\", \"update bio\", \"remove skill\", \"set location\").\n" +
-      "- `details`: the content to apply (e.g. \"procedural generation, roguelikes, narrative games\").\n\n" +
+      "- `details`: the content to apply (e.g. \"procedural generation, roguelikes, narrative games\").\n" +
+      "- `socials`: optional social handles to merge into the user's reachable profile (e.g. `{ telegram: \"@alice\" }`).\n\n" +
       "**Examples:**\n" +
       "- `action=\"add interests\"`, `details=\"procedural generation, roguelikes\"`\n" +
       "- `action=\"update bio\"`, `details=\"Product designer focused on desktop CRPG interfaces\"`\n" +
-      "- `action=\"set location\"`, `details=\"Berlin\"`\n\n" +
+      "- `action=\"set location\"`, `details=\"Berlin\"`\n" +
+      "- `socials={ telegram: \"@alice\" }` to silently add a reachable chat handle without regenerating the profile.\n\n" +
       "**When to use:** When the user wants to make specific changes without regenerating the whole profile. For full profile regeneration from social URLs, use create_user_profile instead.\n\n" +
       "**Important:** If the user provides a URL to update from, call scrape_url first, then pass the scraped content in `details`.\n\n" +
       "**Returns:** Confirmation that the profile was updated.",
     querySchema: z.object({
       profileId: z.string().optional().describe("Profile UUID from read_user_profiles. Omit to update the current user's own profile (most common usage)."),
-      action: z.string().describe("Natural language description of ALL changes to make in a single call. Examples: 'update bio to focus on AI research', 'add Python and Rust to skills', 'change location to Berlin and add machine learning to interests'."),
+      action: z.string().optional().describe("Natural language description of ALL changes to make in a single call. Examples: 'update bio to focus on AI research', 'add Python and Rust to skills', 'change location to Berlin and add machine learning to interests'. Optional when only updating socials."),
       details: z.string().optional().describe("Additional context or content to incorporate. Use this to pass scraped URL content (from scrape_url) or longer text the user provided."),
+      socials: z.record(z.string()).optional().describe("Social handles or URLs to merge into the user profile, keyed by label. Example: { telegram: '@alice', github: 'alice' }. Existing socials with other labels are preserved."),
     }),
     handler: async ({ context, query }) => {
+      const socialUpdates = socialsRecordToRows(query.socials);
+      const inputForProfile = [query.action, query.details].filter(Boolean).join("\n");
+      if (!inputForProfile.trim()) {
+        if (socialUpdates.length > 0) {
+          await mergeUserSocials(socialUpdates);
+          return success({ message: "Profile socials updated." });
+        }
+        return error("Please specify what to update (e.g. action: 'update bio to X') or provide socials.");
+      }
+
       // Use profileGraph query mode to validate profile existence and get id
       const _updateQueryProfileGraphStart = Date.now();
       const _updateQueryProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
@@ -889,9 +914,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid profileId. Use the profile id from read_user_profiles.");
       }
 
-      const inputForProfile = [query.action, query.details].filter(Boolean).join("\n") || (query.details ?? query.action);
-      if (!inputForProfile.trim()) {
-        return error("Please specify what to update (e.g. action: 'update bio to X').");
+      if (socialUpdates.length > 0) {
+        await mergeUserSocials(socialUpdates);
       }
 
       // Execute update directly

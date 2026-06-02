@@ -32,8 +32,10 @@ describe("create_user_profile social merge logic", () => {
   let mockUpdateUser: ReturnType<typeof mock>;
   let mockGetProfile: ReturnType<typeof mock>;
   let mockGetUser: ReturnType<typeof mock>;
+  let mockInvokeProfile: ReturnType<typeof mock>;
   let tools: CapturedTool[];
   let createUserProfileTool: CapturedTool;
+  let updateUserProfileTool: CapturedTool;
 
   const baseContext: ResolvedToolContext = {
     userId: "test-user",
@@ -54,6 +56,7 @@ describe("create_user_profile social merge logic", () => {
       email: "test@example.com",
       socials: [],
     }));
+    mockInvokeProfile = mock(async () => ({ readResult: { hasProfile: true, profile: { id: "profile-1" } } }));
 
     const deps = {
       userDb: {
@@ -65,13 +68,14 @@ describe("create_user_profile social merge logic", () => {
       },
       systemDb: {},
       database: {},
-      graphs: { profile: { invoke: async () => ({}) } },
+      graphs: { profile: { invoke: mockInvokeProfile } },
       enricher: { enrichUserProfile: async () => null },
       grantDefaultSystemPermissions: async () => undefined,
     } as unknown as ToolDeps;
 
     tools = captureTools(deps);
     createUserProfileTool = tools.find((t) => t.name === "create_user_profile")!;
+    updateUserProfileTool = tools.find((t) => t.name === "update_user_profile")!;
   });
 
   it("does not call setUserSocials when no social URLs provided", async () => {
@@ -197,5 +201,46 @@ describe("create_user_profile social merge logic", () => {
 
     const arg = mockSetUserSocials.mock.calls[0][0] as Array<{ label: string; value: string }>;
     expect(arg).toContainEqual({ label: "linkedin", value: "https://linkedin.com/in/alice" });
+  });
+
+  it("update_user_profile merges social-only updates without invoking the graph", async () => {
+    mockGetUserSocials.mockResolvedValue([
+      { id: "1", userId: "test-user", label: "github", value: "alice-gh" },
+      { id: "2", userId: "test-user", label: "telegram", value: "old_tg" },
+    ]);
+
+    const result = await updateUserProfileTool.handler({
+      context: baseContext,
+      query: { socials: { telegram: "@alice_tg" } },
+    });
+
+    expect(result).toContain("Profile socials updated");
+    expect(mockInvokeProfile).not.toHaveBeenCalled();
+    const arg = mockSetUserSocials.mock.calls[0][0] as Array<{ label: string; value: string }>;
+    expect(arg).toEqual([
+      { label: "github", value: "alice-gh" },
+      { label: "telegram", value: "alice_tg" },
+    ]);
+  });
+
+  it("update_user_profile persists socials while preserving non-overlapping labels before profile edits", async () => {
+    mockGetUserSocials.mockResolvedValue([
+      { id: "1", userId: "test-user", label: "linkedin", value: "alice-li" },
+      { id: "2", userId: "test-user", label: "github", value: "alice-gh" },
+    ]);
+    mockInvokeProfile
+      .mockResolvedValueOnce({ readResult: { hasProfile: true, profile: { id: "profile-1" } } })
+      .mockResolvedValueOnce({});
+
+    await updateUserProfileTool.handler({
+      context: baseContext,
+      query: { action: "set location", details: "Berlin", socials: { telegram: "alice_tg" } },
+    });
+
+    const arg = mockSetUserSocials.mock.calls[0][0] as Array<{ label: string; value: string }>;
+    expect(arg).toContainEqual({ label: "linkedin", value: "alice-li" });
+    expect(arg).toContainEqual({ label: "github", value: "alice-gh" });
+    expect(arg).toContainEqual({ label: "telegram", value: "alice_tg" });
+    expect(mockInvokeProfile).toHaveBeenCalledTimes(2);
   });
 });

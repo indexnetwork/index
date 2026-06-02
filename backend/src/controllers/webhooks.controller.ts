@@ -9,6 +9,7 @@ const logger = log.controller.from('webhooks');
 interface TelegramUpdate {
   message?: {
     chat: { id: number };
+    from?: { username?: string };
     text?: string;
   };
 }
@@ -44,7 +45,7 @@ export class WebhooksController {
     const message = body.message;
     if (message?.text) {
       const chatId = String(message.chat.id);
-      handleInbound(chatId, message.text).catch((err) => {
+      handleInbound(chatId, message.text, undefined, undefined, message.from?.username).catch((err) => {
         logger.error('Telegram inbound handling failed', { chatId, error: err });
       });
     }
