@@ -360,4 +360,40 @@ describe("create_user_profile social merge logic", () => {
     expect(profileRunQueue.enqueue).toHaveBeenCalledWith("profile-run-2");
     expect(mockInvokeProfile).not.toHaveBeenCalled();
   });
+
+  it("marks an async profile run failed when enqueue fails", async () => {
+    const enqueueError = new Error("redis down");
+    const profileRuns = {
+      create: mock(async (input) => ({
+        id: "profile-run-3",
+        userId: input.userId,
+        agentId: input.agentId,
+        operation: input.operation,
+        status: "queued",
+        input: input.input,
+        context: input.context,
+        createdAt: new Date(),
+      })),
+      markFailed: mock(async () => {}),
+    };
+    const profileRunQueue = { enqueue: mock(async () => { throw enqueueError; }) };
+    const queuedTools = captureTools({
+      userDb: { getUser: mockGetUser },
+      systemDb: {},
+      database: {},
+      graphs: { profile: { invoke: mockInvokeProfile } },
+      enricher: { enrichUserProfile: async () => null },
+      profileRuns,
+      profileRunQueue,
+    } as unknown as ToolDeps);
+    const preview = queuedTools.find((t) => t.name === "preview_user_profile")!;
+
+    await expect(preview.handler({
+      context: { ...baseContext, isMcp: true, userName: "Test", userEmail: "test@example.com", indexScope: ["net-1"] } as ResolvedToolContext,
+      query: { bioOrDescription: "Builder" },
+    })).rejects.toThrow("redis down");
+
+    expect(profileRuns.markFailed).toHaveBeenCalledWith("profile-run-3", "redis down");
+    expect(mockInvokeProfile).not.toHaveBeenCalled();
+  });
 });
