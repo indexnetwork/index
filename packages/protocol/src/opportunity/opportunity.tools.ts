@@ -333,7 +333,13 @@ type OpportunityCardLike = Record<string, unknown> & {
  */
 export function buildOpportunityPresentation(
   cards: OpportunityCardLike[],
-  opts: { isMcp: boolean; leadIn: string; label?: "opportunity" | "opportunities" },
+  opts: {
+    isMcp: boolean;
+    leadIn: string;
+    label?: "opportunity" | "opportunities";
+    /** Include hidden digest metadata markers so scheduled brief tooling can confirm delivery. */
+    includeDigestMarkers?: boolean;
+  },
 ): string {
   if (cards.length === 0) return opts.leadIn;
 
@@ -341,6 +347,10 @@ export function buildOpportunityPresentation(
     const prose = cards
       .map((card, i) => {
         const lines: string[] = [`${i + 1}. ${card.name ?? "Unknown"}`];
+        if (opts.includeDigestMarkers) {
+          const markerId = String(card.opportunityId).replace(/[\s>]/g, "");
+          if (markerId) lines.push(`   <!-- digest-opportunity:id=${markerId} -->`);
+        }
         if (card.mainText) lines.push(`   ${card.mainText}`);
         if (card.status) lines.push(`   status: ${card.status}`);
         if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
@@ -1344,6 +1354,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .string()
         .optional()
         .describe("Index UUID to filter opportunities to a specific community. Get from read_networks. Defaults to the scoped index in index-scoped chats. Omit to see opportunities across all indexes."),
+      includeDigestMarkers: z
+        .boolean()
+        .optional()
+        .describe("Internal scheduled-digest mode only. When true, includes hidden delivery markers so the digest send pass can confirm only edited-in opportunities."),
     }),
     handler: async ({ context, query }) => {
       // Strict scope enforcement: when chat is index-scoped, only allow that index
@@ -1593,6 +1607,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         message: buildOpportunityPresentation(cardDataList, {
           isMcp: context.isMcp ?? false,
           leadIn: `You have ${cardDataList.length} opportunity(ies).`,
+          includeDigestMarkers: context.isMcp === true && query.includeDigestMarkers === true,
         }),
         ...(listDebugSteps.length ? { debugSteps: listDebugSteps } : {}),
       });
