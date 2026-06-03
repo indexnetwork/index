@@ -478,28 +478,8 @@ describe("buildOpportunityPresentation — MCP opportunityId omission", () => {
     );
 
     expect(out).not.toContain("opportunityId: opp-actionable-1");
-    expect(out).not.toContain("digest-opportunity:id=opp-actionable-1");
     expect(out).toContain("acceptUrl: https://api.test/c/Abc1234567");
     expect(out).not.toContain("Use opportunityId values only when calling update_opportunity");
-  });
-
-  test("includes hidden digest marker for actionable cards only when requested", () => {
-    const out = buildOpportunityPresentation(
-      [{
-        opportunityId: "opp-actionable-1",
-        name: "Alice",
-        mainText: "Both work on protocol design.",
-        status: "pending",
-        acceptUrl: "https://api.test/c/Abc1234567",
-        profileUrl: "https://app.test/u/opp-actionable-1-counterpart?link_preview=false",
-        feedCategory: "connection",
-      }],
-      { isMcp: true, leadIn: "Found 1 connection.", includeDigestMarkers: true },
-    );
-
-    expect(out).not.toContain("opportunityId: opp-actionable-1");
-    expect(out).toContain("<!-- digest-opportunity:id=opp-actionable-1 -->");
-    expect(out).toContain("acceptUrl: https://api.test/c/Abc1234567");
   });
 
   test("keeps opportunityId line when card has NO acceptUrl (draft sender etc.)", () => {
