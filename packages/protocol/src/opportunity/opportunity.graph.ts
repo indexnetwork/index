@@ -85,6 +85,20 @@ const logger = protocolLogger('OpportunityGraph');
 /** Time window for persist-node dedup. Parallel jobs arrive within seconds; 10 min catches those while allowing new opportunities for long-connected pairs. */
 const DEDUP_WINDOW_MS = 10 * 60 * 1000;
 
+/** Default cap for source premises used by premise-to-premise discovery. Prevents BACKEND-5-style fan-out. */
+const DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT = 40;
+
+/** Per-source cap for candidate premise matches. */
+const PREMISE_MATCH_LIMIT_PER_SOURCE = 20;
+
+/** Resolve the source premise discovery cap from env, preserving 0 as an explicit disable switch. */
+function getSourcePremiseDiscoveryLimit(): number {
+  const raw = process.env.DISCOVERY_SOURCE_PREMISE_LIMIT;
+  if (raw === undefined || raw.trim() === '') return DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT;
+}
+
 /** Input shape for the HyDE graph invoke call (query-based embedding). */
 export interface HydeGeneratorInvokeInput {
   sourceType: 'query';
@@ -272,10 +286,9 @@ export class OpportunityGraphFactory {
               };
             }
             const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
-            const [intents, profile, userPremises] = await Promise.all([
+            const [intents, profile] = await Promise.all([
               this.database.getActiveIntents(discoveryUserId),
               this.database.getProfile(discoveryUserId),
-              this.database.getPremisesForUser(discoveryUserId, 'ACTIVE'),
             ]);
             const indexedIntents: IndexedIntent[] = intents.map((intent: ActiveIntent) => ({
               intentId: intent.id,
@@ -290,12 +303,11 @@ export class OpportunityGraphFactory {
                   attributes: profile.attributes ?? undefined,
                 }
               : null;
-            const sourcePremises = (userPremises ?? [])
-              .filter(p => p.embedding && p.embedding.length > 0)
-              .map(p => ({
-                premiseId: p.id as Id<'premises'>,
-                embedding: p.embedding!,
-              }));
+            // Source premises are loaded after scope is resolved so premise discovery
+            // only uses premises assigned to the target network(s), and only up to
+            // DISCOVERY_SOURCE_PREMISE_LIMIT. Loading all premises here caused
+            // BACKEND-5: thousands of parallel vector searches for premise-rich users.
+            const sourcePremises: Array<{ premiseId: Id<'premises'>; embedding: number[] }> = [];
             const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
             const rawContexts = contextToIntentEnabled
               ? await this.database.getUserContexts(discoveryUserId)
@@ -315,7 +327,7 @@ export class OpportunityGraphFactory {
               sourceContexts,
               trace: [{
                 node: "prep",
-                detail: `${userNetworkIds.length} network(s), ${intents.length} intent(s), ${sourcePremises.length} premise(s), ${sourceContexts.length} context(s), ${profile ? 'profile loaded' : 'no profile'}`,
+                detail: `${userNetworkIds.length} network(s), ${intents.length} intent(s), premise discovery deferred, ${sourceContexts.length} context(s), ${profile ? 'profile loaded' : 'no profile'}`,
               }],
             };
           },
@@ -944,39 +956,64 @@ export class OpportunityGraphFactory {
            * scoped to target networks. Additive — merges into existing candidates.
            */
           async function runPremiseDiscovery(): Promise<CandidateMatch[]> {
-            if (!state.sourcePremises?.length) return [];
             const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
             if (targetNetworkIds.length === 0) return [];
 
-            logger.verbose('[Graph:Discovery] runPremiseDiscovery start', {
-              premiseCount: state.sourcePremises.length,
-              targetNetworks: targetNetworkIds.length,
-            });
+            const sourceLimit = getSourcePremiseDiscoveryLimit();
+            if (sourceLimit === 0) {
+              logger.verbose('[Graph:Discovery] runPremiseDiscovery disabled by DISCOVERY_SOURCE_PREMISE_LIMIT=0');
+              return [];
+            }
 
-            const searchResults = await Promise.all(
-              state.sourcePremises.map(sp =>
-                self.database.searchPremisesBySimilarity({
-                  embedding: sp.embedding,
-                  networkIds: targetNetworkIds,
-                  excludeUserId: discoveryUserId,
-                  limit: 20,
-                })
-              )
+            const sourcePremisesFromDb = self.database.getPremisesForUserInNetworks
+              ? await self.database.getPremisesForUserInNetworks(discoveryUserId, targetNetworkIds, 'ACTIVE', sourceLimit)
+              : await self.database.getPremisesForUser(discoveryUserId, 'ACTIVE');
+            const sourcePremises = (sourcePremisesFromDb.length > 0
+              ? sourcePremisesFromDb
+                  .filter(p => p.embedding && p.embedding.length > 0)
+                  .slice(0, sourceLimit)
+                  .map(p => ({ premiseId: p.id as Id<'premises'>, embedding: p.embedding! }))
+              : (state.sourcePremises ?? []).slice(0, sourceLimit)
             );
 
+            if (sourcePremises.length === 0) return [];
+
+            logger.verbose('[Graph:Discovery] runPremiseDiscovery start', {
+              premiseCount: sourcePremises.length,
+              sourceLimit,
+              targetNetworks: targetNetworkIds.length,
+              batched: !!self.database.searchPremisesBySimilarityBatch,
+            });
+
+            const rawResults = self.database.searchPremisesBySimilarityBatch
+              ? await self.database.searchPremisesBySimilarityBatch({
+                  sources: sourcePremises,
+                  networkIds: targetNetworkIds,
+                  excludeUserId: discoveryUserId,
+                  limitPerSource: PREMISE_MATCH_LIMIT_PER_SOURCE,
+                })
+              : (await Promise.all(
+                  sourcePremises.map(sp =>
+                    self.database.searchPremisesBySimilarity({
+                      embedding: sp.embedding,
+                      networkIds: targetNetworkIds,
+                      excludeUserId: discoveryUserId,
+                      limit: PREMISE_MATCH_LIMIT_PER_SOURCE,
+                    })
+                  )
+                )).flat();
+
             const premiseCandidates: CandidateMatch[] = [];
-            for (const results of searchResults) {
-              for (const r of results) {
-                premiseCandidates.push({
-                  candidateUserId: r.userId as Id<'users'>,
-                  candidatePremiseId: r.premiseId as Id<'premises'>,
-                  networkId: r.networkId as Id<'networks'>,
-                  similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
-                  lens: 'premise_match',
-                  candidatePayload: r.assertionText ?? '',
-                  discoverySource: 'premise-similarity',
-                });
-              }
+            for (const r of rawResults) {
+              premiseCandidates.push({
+                candidateUserId: r.userId as Id<'users'>,
+                candidatePremiseId: r.premiseId as Id<'premises'>,
+                networkId: r.networkId as Id<'networks'>,
+                similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
+                lens: 'premise_match',
+                candidatePayload: r.assertionText ?? '',
+                discoverySource: 'premise-similarity',
+              });
             }
 
             // Dedup by userId + premiseId + networkId (a premise can appear in multiple networks)
@@ -989,6 +1026,7 @@ export class OpportunityGraphFactory {
             }
             const deduped = Array.from(byKey.values());
             logger.verbose('[Graph:Discovery] runPremiseDiscovery complete', {
+              sourcePremiseCount: sourcePremises.length,
               rawCount: premiseCandidates.length,
               dedupedCount: deduped.length,
             });

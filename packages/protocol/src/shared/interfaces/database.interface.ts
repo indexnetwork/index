@@ -1451,6 +1451,13 @@ export interface Database {
 
   getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<PremiseRecord[]>;
 
+  /**
+   * Retrieve a user's premises assigned to one of the provided networks.
+   * Optional for older/test adapters; OpportunityGraph falls back to capped
+   * getPremisesForUser results when unavailable.
+   */
+  getPremisesForUserInNetworks?(userId: string, networkIds: string[], status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED', limit?: number): Promise<PremiseRecord[]>;
+
   updatePremise(premiseId: string, updates: {
     assertion?: PremiseAssertion;
     analysis?: PremiseAnalysis;
@@ -1474,6 +1481,26 @@ export interface Database {
     excludeUserId: string;
     limit: number;
   }): Promise<Array<{
+    premiseId: string;
+    userId: string;
+    networkId: string;
+    assertionText: string;
+    similarity: number;
+  }>>;
+
+  /**
+   * Batched version of premise similarity search. Executes one bounded DB call
+   * for all selected source premises instead of one query per source premise.
+   * Optional for older/test adapters; OpportunityGraph falls back to the
+   * single-source method when unavailable.
+   */
+  searchPremisesBySimilarityBatch?(params: {
+    sources: Array<{ premiseId: string; embedding: number[] }>;
+    networkIds: string[];
+    excludeUserId: string;
+    limitPerSource: number;
+  }): Promise<Array<{
+    sourcePremiseId: string;
     premiseId: string;
     userId: string;
     networkId: string;
@@ -2024,8 +2051,10 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'mergeGhostUser'
   // ProfileGraph aggregate mode (premise-to-profile materialization)
   | 'getPremisesForUser'
+  | 'getPremisesForUserInNetworks'
   // Premise-to-premise discovery (path D) in OpportunityGraph
   | 'searchPremisesBySimilarity'
+  | 'searchPremisesBySimilarityBatch'
   // User context methods (context-to-intent discovery) in OpportunityGraph
   | 'getUserContext'
   | 'getUserContexts'
@@ -2071,7 +2100,9 @@ export type OpportunityGraphDatabase = Pick<
   | 'getIntent'
   // Premise-to-premise discovery (path D)
   | 'getPremisesForUser'
+  | 'getPremisesForUserInNetworks'
   | 'searchPremisesBySimilarity'
+  | 'searchPremisesBySimilarityBatch'
   // User context methods (context-to-intent discovery)
   | 'getUserContext'
   | 'getUserContexts'

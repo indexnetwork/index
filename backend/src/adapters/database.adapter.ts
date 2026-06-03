@@ -3990,6 +3990,15 @@ export class ChatDatabaseAdapter {
   }
 
   /**
+   * Retrieve a capped set of active source premises scoped to target networks.
+   * Delegates to OpportunityDatabaseAdapter so OpportunityGraph can avoid
+   * loading every premise for premise-rich users.
+   */
+  async getPremisesForUserInNetworks(userId: string, networkIds: string[], status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED', limit?: number) {
+    return this.opportunityAdapter.getPremisesForUserInNetworks(userId, networkIds, status, limit);
+  }
+
+  /**
    * Cosine similarity search against premise embeddings, scoped to shared networks.
    * Delegates to OpportunityDatabaseAdapter (which hosts the raw SQL query).
    */
@@ -4000,6 +4009,20 @@ export class ChatDatabaseAdapter {
     limit: number;
   }) {
     return this.opportunityAdapter.searchPremisesBySimilarity(params);
+  }
+
+  /**
+   * Batched cosine similarity search against premise embeddings.
+   * Delegates to OpportunityDatabaseAdapter to avoid one DB round-trip per
+   * source premise during discovery.
+   */
+  async searchPremisesBySimilarityBatch(params: {
+    sources: Array<{ premiseId: string; embedding: number[] }>;
+    networkIds: string[];
+    excludeUserId: string;
+    limitPerSource: number;
+  }) {
+    return this.opportunityAdapter.searchPremisesBySimilarityBatch(params);
   }
 
   async updatePremise(premiseId: string, updates: {
@@ -5309,6 +5332,88 @@ export class OpportunityDatabaseAdapter {
   }
 
   /**
+   * Retrieve a capped set of embedded premises for a user, scoped to target networks.
+   * Premises are ordered by network relevancy score, then recency, so the
+   * premise-to-premise discovery path searches representative premises instead
+   * of every active premise a user has ever accumulated.
+   * @param userId - The source user whose premises should seed discovery
+   * @param networkIds - Target network IDs that premises must be assigned to
+   * @param status - Optional status filter
+   * @param limit - Maximum number of source premises to return
+   * @returns Scoped premise records with non-null embeddings
+   */
+  async getPremisesForUserInNetworks(userId: string, networkIds: string[], status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED', limit = 40): Promise<Array<{
+    id: string; userId: string;
+    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
+    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
+    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
+    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
+    embedding: number[];
+    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
+  }>> {
+    if (networkIds.length === 0 || limit <= 0) return [];
+    const statusClause = status ? sql`AND p.status = ${status}` : sql``;
+    const rows = await db.execute<{
+      id: string;
+      userId: string;
+      assertion: unknown;
+      provenance: unknown;
+      analysis: unknown | null;
+      validity: unknown;
+      embedding: number[];
+      status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
+      createdAt: Date;
+      updatedAt: Date;
+      retractedAt: Date | null;
+    }>(sql`
+      WITH scoped AS (
+        SELECT
+          p.id,
+          MAX(COALESCE(pn.relevancy_score::double precision, 0)) AS max_relevancy
+        FROM ${schema.premises} p
+        JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
+        WHERE p.user_id = ${userId}
+          AND pn.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
+          ${statusClause}
+          AND p.embedding IS NOT NULL
+          AND p.deleted_at IS NULL
+        GROUP BY p.id
+      )
+      SELECT
+        p.id AS "id",
+        p.user_id AS "userId",
+        p.assertion AS "assertion",
+        p.provenance AS "provenance",
+        p.analysis AS "analysis",
+        p.validity AS "validity",
+        p.embedding AS "embedding",
+        p.status AS "status",
+        p.created_at AS "createdAt",
+        p.updated_at AS "updatedAt",
+        p.retracted_at AS "retractedAt"
+      FROM scoped s
+      JOIN ${schema.premises} p ON p.id = s.id
+      ORDER BY s.max_relevancy DESC, p.created_at DESC
+      LIMIT ${limit}
+    `);
+
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
+      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
+      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
+      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
+      embedding: row.embedding,
+      status: row.status,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      retractedAt: row.retractedAt,
+    }));
+  }
+
+  /**
    * Cosine similarity search against premise embeddings, scoped to shared networks.
    * Used by the opportunity graph's premise discovery path (path D).
    * @param params - Search parameters including embedding vector, network scope, and exclusions
@@ -5352,7 +5457,7 @@ export class OpportunityDatabaseAdapter {
         1 - (p.embedding <=> ${vectorStr}::vector) AS similarity
       FROM ${schema.premises} p
       JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
-      WHERE pn.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}])
+      WHERE pn.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
         AND p.user_id != ${excludeUserId}
         AND p.status = 'ACTIVE'
         AND p.embedding IS NOT NULL
@@ -5368,6 +5473,91 @@ export class OpportunityDatabaseAdapter {
       assertionText: string;
       similarity: number;
     }>;
+      },
+    );
+  }
+
+  /**
+   * Batched cosine similarity search against premise embeddings, scoped to shared networks.
+   * Uses a VALUES CTE plus LATERAL nearest-neighbor searches so OpportunityGraph
+   * emits one DB span and one DB round-trip for all selected source premises.
+   * @param params - Batch search parameters including source embeddings and candidate scope
+   * @returns Matching premises ranked per source premise
+   */
+  async searchPremisesBySimilarityBatch(params: {
+    sources: Array<{ premiseId: string; embedding: number[] }>;
+    networkIds: string[];
+    excludeUserId: string;
+    limitPerSource: number;
+  }) {
+    if (params.sources.length === 0 || params.networkIds.length === 0 || params.limitPerSource <= 0) return [];
+    return traceAppOperation(
+      {
+        name: 'batch vector search premises by similarity',
+        op: 'db.vector_search',
+        attributes: {
+          subsystem: 'database',
+          'db.system': 'postgresql',
+          'db.operation': 'vector_search',
+          'search.strategy': 'premise-similarity-batch',
+          'search.source_premise_count': params.sources.length,
+          'search.index_scope_count': params.networkIds.length,
+          'search.limit_per_source': params.limitPerSource,
+        },
+      },
+      async () => {
+        const sourceValues = sql.join(
+          params.sources.map(source => sql`(${source.premiseId}, ${`[${source.embedding.join(',')}]`}::vector)`),
+          sql`, `,
+        );
+
+        const rows = await db.execute<{
+          sourcePremiseId: string;
+          premiseId: string;
+          userId: string;
+          networkId: string;
+          assertionText: string;
+          similarity: number;
+        }>(sql`
+          WITH source_embeddings(source_premise_id, embedding) AS (
+            VALUES ${sourceValues}
+          )
+          SELECT
+            matches.source_premise_id AS "sourcePremiseId",
+            matches.premise_id AS "premiseId",
+            matches.user_id AS "userId",
+            matches.network_id AS "networkId",
+            matches.assertion_text AS "assertionText",
+            matches.similarity AS "similarity"
+          FROM source_embeddings se
+          CROSS JOIN LATERAL (
+            SELECT
+              se.source_premise_id,
+              p.id AS premise_id,
+              p.user_id,
+              pn.network_id,
+              p.assertion->>'text' AS assertion_text,
+              1 - (p.embedding <=> se.embedding) AS similarity
+            FROM ${schema.premises} p
+            JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
+            WHERE pn.network_id = ANY(ARRAY[${sql.join(params.networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
+              AND p.user_id != ${params.excludeUserId}
+              AND p.status = 'ACTIVE'
+              AND p.embedding IS NOT NULL
+              AND p.deleted_at IS NULL
+            ORDER BY p.embedding <=> se.embedding
+            LIMIT ${params.limitPerSource}
+          ) matches
+        `);
+
+        return rows as Array<{
+          sourcePremiseId: string;
+          premiseId: string;
+          userId: string;
+          networkId: string;
+          assertionText: string;
+          similarity: number;
+        }>;
       },
     );
   }
