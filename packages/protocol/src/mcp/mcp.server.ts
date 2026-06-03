@@ -16,11 +16,29 @@ import type { Question } from '../shared/schemas/question.schema.js';
 import { QuestionSchema } from '../shared/schemas/question.schema.js';
 import { dispatchElicitations } from './elicitation.dispatcher.js';
 import { createToolRegistry } from '../shared/agent/tool.registry.js';
-import { invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
+import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('McpServer');
+
+function isExpectedMcpAuthError(message: string): boolean {
+  return message.includes('Authentication required') ||
+    message.includes('Invalid API key') ||
+    message.includes('Invalid or expired access token') ||
+    message.includes('JWT payload missing user ID');
+}
+
+/**
+ * Runtime/auth failures are converted into structured MCP `isError` tool
+ * results for the caller. Reporting them as application exceptions produces
+ * Sentry noise for expected client failures and policy-enforced timeouts.
+ */
+export function shouldReportMcpToolError(err: unknown): boolean {
+  if (err instanceof ToolRuntimeError) return false;
+  const message = err instanceof Error ? err.message : String(err);
+  return !isExpectedMcpAuthError(message);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ZOD 3 → JSON SCHEMA CONVERSION
@@ -256,6 +274,8 @@ export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
   'scrape_url',
   'record_onboarding_privacy_consent',
   'preview_user_profile',
+  'get_profile_run',
+  'cancel_profile_run',
   'confirm_user_profile',
   'create_user_profile',
   'complete_onboarding',
@@ -291,7 +311,7 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     `${nameStep}\n` +
     `2. Ask whether the user allows use of event/EdgeOS profile data, then call record_onboarding_privacy_consent(edgeosImportGranted=...).\n` +
     `3. Ask separately whether the user allows public internet/profile lookup, then call record_onboarding_privacy_consent(publicProfileLookupGranted=...).\n` +
-    `4. Call preview_user_profile(...) using only allowed inputs; do not run public lookup unless consent was granted.\n` +
+    `4. Call preview_user_profile(...) using only allowed inputs; do not run public lookup unless consent was granted. If it returns profileRunId, poll get_profile_run(profileRunId=...) until status is succeeded, then use its result as the draft.\n` +
     `5. Present the profile draft and ask "Does that look right?" On approval/correction, call confirm_user_profile(...).\n` +
     `${communityStep}\n` +
     `6. Ask what the user is looking for and call create_intent(description="...").\n` +
@@ -588,21 +608,23 @@ export function createMcpServer(
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logger.error(`MCP tool "${toolName}" failed`, { error: message });
-          reportDeps.reportToolError?.(err, {
-            subsystem: 'mcp',
-            operation: 'mcp.tool',
-            toolName,
-            userId: reportUserId,
-            tags: {
-              transport: 'mcp',
+          if (shouldReportMcpToolError(err)) {
+            reportDeps.reportToolError?.(err, {
+              subsystem: 'mcp',
+              operation: 'mcp.tool',
               toolName,
-            },
-            context: {
-              agentId: reportContext?.agentId,
-              networkId: reportContext?.networkId,
-              indexScope: reportContext?.indexScope,
-            },
-          });
+              userId: reportUserId,
+              tags: {
+                transport: 'mcp',
+                toolName,
+              },
+              context: {
+                agentId: reportContext?.agentId,
+                networkId: reportContext?.networkId,
+                indexScope: reportContext?.indexScope,
+              },
+            });
+          }
           const runtimeResult = toolRuntimeErrorToResult(err);
           return {
             content: [{ type: 'text' as const, text: runtimeResult ?? JSON.stringify({ error: message }) }],

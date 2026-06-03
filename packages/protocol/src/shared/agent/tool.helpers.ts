@@ -31,6 +31,7 @@ import type { QuestionerDatabase } from "../interfaces/questioner.interface.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
 import type { DiscoveryRunQueue, DiscoveryRunStore } from "../interfaces/discovery-run.interface.js";
+import type { ProfileRunQueue, ProfileRunStore } from "../interfaces/profile-run.interface.js";
 
 export type ProfileContext = ProfileDocument | null;
 
@@ -207,6 +208,10 @@ export interface ToolContext {
   discoveryRuns?: DiscoveryRunStore;
   /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
   discoveryRunQueue?: DiscoveryRunQueue;
+  /** Persistence for async MCP profile runs (optional — absent in non-MCP/test contexts). */
+  profileRuns?: ProfileRunStore;
+  /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
+  profileRunQueue?: ProfileRunQueue;
   /** Mints a short-lived connect token for opportunity accept links (optional — absent in non-MCP contexts). */
   mintConnectToken?: (userId: string, opportunityId: string) => Promise<string>;
   /** Mints (or reuses) a short connect link, snapshotting the greeting (optional — absent in non-MCP contexts). */
@@ -368,7 +373,6 @@ export async function resolveChatContext(params: {
  * Type for the `defineTool` closure created in `createChatTools`.
  * Auto-injects resolved context and provides uniform logging / error handling.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type DefineTool = <T extends z.ZodType>(opts: {
   name: string;
   description: string;
@@ -464,6 +468,10 @@ export interface ToolDeps {
   discoveryRuns?: DiscoveryRunStore;
   /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
   discoveryRunQueue?: DiscoveryRunQueue;
+  /** Persistence for async MCP profile runs (optional — absent in non-MCP/test contexts). */
+  profileRuns?: ProfileRunStore;
+  /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
+  profileRunQueue?: ProfileRunQueue;
   /** Mints a short-lived connect token for opportunity accept links (optional — absent in non-MCP contexts). */
   mintConnectToken?: (userId: string, opportunityId: string) => Promise<string>;
   /** Mints (or reuses) a short connect link, snapshotting the greeting (optional — absent in non-MCP contexts). */

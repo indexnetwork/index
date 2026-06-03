@@ -203,6 +203,8 @@ export async function createChatTools(
     deliveryLedger: deps.deliveryLedger,
     discoveryRuns: deps.discoveryRuns,
     discoveryRunQueue: deps.discoveryRunQueue,
+    profileRuns: deps.profileRuns,
+    profileRunQueue: deps.profileRunQueue,
     mintConnectToken: deps.mintConnectToken,
     mintConnectLink: deps.mintConnectLink,
     frontendUrl: deps.frontendUrl,

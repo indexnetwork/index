@@ -54,6 +54,7 @@ export type * from "./shared/interfaces/storage.interface.js";
 export type * from "./shared/interfaces/delivery-ledger.interface.js";
 export type * from "./shared/interfaces/connect-link.interface.js";
 export type * from "./shared/interfaces/discovery-run.interface.js";
+export type * from "./shared/interfaces/profile-run.interface.js";
 export type * from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
 export type {
@@ -162,6 +163,7 @@ export type {
 } from "./opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/opportunity.presenter.js";
 export { createOpportunityTools } from "./opportunity/opportunity.tools.js";
+export { createProfileTools } from "./profile/profile.tools.js";
 export type { PresenterDatabase } from "./opportunity/opportunity.presenter.js";
 export { QuestionGenerator } from "./opportunity/question.generator.js";
 export type {
