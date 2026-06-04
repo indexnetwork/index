@@ -26,7 +26,7 @@ const isDeployment =
   runtimeEnvironment === 'production' ||
   Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME);
 const requiredUnlessTest = isTest ? z.string().optional() : z.string().trim().min(1);
-const requiredInDeployment = isTest || !isDeployment ? z.string().optional() : z.string().trim().min(1);
+const requiredInProduction = isTest || runtimeEnvironment !== 'production' ? z.string().optional() : z.string().trim().min(1);
 const optionalUrl = z.union([z.literal(''), z.string().url()]).optional();
 const optionalInt = z.union([z.literal(''), z.string().regex(/^\d+$/)]).optional();
 const optionalBoolean = z.union([z.literal(''), z.enum(['true', 'false'])]).optional();
@@ -44,7 +44,7 @@ const envSchema = z.object({
 
   // 2. Authentication
   BETTER_AUTH_SECRET: requiredUnlessTest,
-  CONNECT_JWT_SECRET: requiredInDeployment,
+  CONNECT_JWT_SECRET: requiredInProduction,
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   TRUSTED_ORIGINS: z.string().optional(),
@@ -93,7 +93,7 @@ const envSchema = z.object({
   RUN_OPPORTUNITY_EVAL_IN_PARALLEL: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
   ENABLE_DISCOVERY_QUESTIONS: optionalBoolean,
-  DISCOVERY_QUESTIONS_INPUT_MODE: z.union([z.literal(''), z.enum(['transcripts', 'insights'])]).optional(),
+  DISCOVERY_QUESTIONS_INPUT_MODE: z.string().optional(),
   DISCOVERY_QUESTIONS_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SUMMARY_TIMEOUT_MS: optionalInt,
   NEGOTIATION_MAX_TURNS_CHAT: optionalInt,
@@ -182,6 +182,7 @@ function collectEnvWarnings(): string[] {
   };
 
   warnMissingAny(['BASE_URL', 'API_BASE_URL', 'APP_URL'], 'set the deployed API origin so MCP configs, connect links, and webhooks do not fall back to defaults.');
+  warnMissing('CONNECT_JWT_SECRET', 'connect redirect tokens will use the local development fallback unless NODE_ENV=production, where startup fails.');
   warnMissingAny(['FRONTEND_URL', 'APP_URL'], 'set the deployed frontend origin for auth, notifications, and integration callbacks.');
   warnMissingAny(['REDIS_URL', 'REDIS_HOST'], 'set Railway Redis; otherwise queues/cache/limiter may target localhost or in-memory fallbacks.');
   warnMissing('S3_ENDPOINT', 'set the Railway bucket endpoint when using Tigris/S3-compatible storage.');
@@ -197,6 +198,10 @@ function collectEnvWarnings(): string[] {
   warnPartial(['TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET'], 'set both values or Telegram webhook registration will be skipped/rejected.');
   if (hasValue('TELEGRAM_BOT_TOKEN') && !hasValue('TELEGRAM_BOT_USERNAME')) {
     warnings.push('TELEGRAM_BOT_USERNAME: set the bot username so Telegram integration links can be generated.');
+  }
+  const discoveryQuestionsInputMode = process.env.DISCOVERY_QUESTIONS_INPUT_MODE?.trim();
+  if (discoveryQuestionsInputMode && !['transcripts', 'insights'].includes(discoveryQuestionsInputMode)) {
+    warnings.push('DISCOVERY_QUESTIONS_INPUT_MODE: expected "transcripts" or "insights"; current value will fall back to transcript mode.');
   }
 
   return warnings;
