@@ -8,6 +8,7 @@ import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
 import { mintConnectLink, type ConnectLinkKind } from '../services/connect-link.service';
+import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { queueOpportunityNotification } from '../queues/notification.queue';
 import { log } from '../lib/log';
 
@@ -339,15 +340,9 @@ export class OpportunityController {
       greeting,
     });
 
-    // Public origin for short links. Falls back to a dev default; matches
-    // the precedence used by protocol-init.ts so MCP-minted and HTTP-minted
-    // URLs share the same host.
-    const apiBaseUrl = (
-      process.env.BASE_URL ||
-      process.env.API_BASE_URL ||
-      process.env.APP_URL ||
-      'http://localhost:3001'
-    ).replace(/\/+$/, '');
+    // Public origin for short links — the protocol host only (never the
+    // frontend APP_URL), shared with the MCP-minted path via this helper.
+    const apiBaseUrl = resolveProtocolBaseUrl();
 
     return Response.json({ url: `${apiBaseUrl}/c/${code}` });
   }

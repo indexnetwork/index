@@ -47,6 +47,7 @@ import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
+import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
 import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary } from '@indexnetwork/protocol';
@@ -73,12 +74,7 @@ const negotiationSummaryService = new NegotiationSummaryService();
 const integrationImporter = new IntegrationService(integration, contactService);
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
 
-const apiBaseUrl = (
-  process.env.BASE_URL ||
-  process.env.API_BASE_URL ||
-  process.env.APP_URL ||
-  'http://localhost:3001'
-).replace(/\/+$/, '');
+const apiBaseUrl = resolveProtocolBaseUrl();
 
 const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferredSurface }: {
   userId: string;
