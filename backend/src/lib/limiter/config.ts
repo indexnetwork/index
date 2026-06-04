@@ -15,15 +15,15 @@ const intEnv = (name: string, fallback: number): number => {
 };
 
 export const CLASS_CONFIG: Record<LimiterClass, ClassConfig> = {
-  auth_write: { perMinute: intEnv('LIMITER_AUTH_WRITE_PER_MIN', 10), windowSec: 60 },
-  read:       { perMinute: intEnv('LIMITER_READ_PER_MIN', 120),      windowSec: 60 },
-  write:      { perMinute: intEnv('LIMITER_WRITE_PER_MIN', 60),      windowSec: 60 },
+  auth_write: { perMinute: intEnv('LIMITER_AUTH_WRITE_PER_MIN', 100), windowSec: 60 },
+  read:       { perMinute: intEnv('LIMITER_READ_PER_MIN', 1200),      windowSec: 60 },
+  write:      { perMinute: intEnv('LIMITER_WRITE_PER_MIN', 600),      windowSec: 60 },
 };
 
 const CLASS_ENV: Record<LimiterClass, { envVar: string; fallback: number }> = {
-  auth_write: { envVar: 'LIMITER_AUTH_WRITE_PER_MIN', fallback: 10 },
-  read:       { envVar: 'LIMITER_READ_PER_MIN',       fallback: 120 },
-  write:      { envVar: 'LIMITER_WRITE_PER_MIN',      fallback: 60 },
+  auth_write: { envVar: 'LIMITER_AUTH_WRITE_PER_MIN', fallback: 100 },
+  read:       { envVar: 'LIMITER_READ_PER_MIN',       fallback: 1200 },
+  write:      { envVar: 'LIMITER_WRITE_PER_MIN',      fallback: 600 },
 };
 
 /**

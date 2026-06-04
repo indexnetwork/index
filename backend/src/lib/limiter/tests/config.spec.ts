@@ -10,9 +10,9 @@ describe('limiter config', () => {
     delete process.env.LIMITER_WRITE_PER_MIN;
     delete process.env.LIMITER_AUTH_WRITE_PER_MIN;
     const { CLASS_CONFIG } = await import(`../config?cb=${Math.random()}`);
-    expect(CLASS_CONFIG.read.perMinute).toBe(120);
-    expect(CLASS_CONFIG.write.perMinute).toBe(60);
-    expect(CLASS_CONFIG.auth_write.perMinute).toBe(10);
+    expect(CLASS_CONFIG.read.perMinute).toBe(1200);
+    expect(CLASS_CONFIG.write.perMinute).toBe(600);
+    expect(CLASS_CONFIG.auth_write.perMinute).toBe(100);
   });
 
   test('env vars override defaults', async () => {
