@@ -11,14 +11,15 @@ let warnedMissingProtocolBaseUrl = false;
  * `APP_URL`/`FRONTEND_URL`. A frontend host (e.g. `index.network`) must never
  * leak into these URLs — it would 404 against the SPA instead of resolving on
  * the protocol host. When neither var is set the provided `fallback` is used
- * (localhost for in-process dev callers, the public protocol host for URLs
- * handed to external integrators); in production a missing protocol base URL is
- * logged once so the misconfig surfaces loudly.
+ * (defaults to the public protocol host so a misconfigured deployment still
+ * mints a usable, correct-host URL rather than a localhost or frontend one);
+ * in production a missing protocol base URL is logged once so the misconfig
+ * surfaces loudly.
  *
  * @param fallback - Base URL to use when no protocol-host env var is set.
  * @returns Protocol base URL with any trailing slashes stripped.
  */
-export function resolveProtocolBaseUrl(fallback = 'http://localhost:3001'): string {
+export function resolveProtocolBaseUrl(fallback = 'https://protocol.index.network'): string {
   const explicit = process.env.BASE_URL || process.env.API_BASE_URL;
   if (explicit) return explicit.replace(/\/+$/, '');
 

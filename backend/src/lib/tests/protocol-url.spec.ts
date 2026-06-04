@@ -33,17 +33,16 @@ describe('resolveProtocolBaseUrl', () => {
     expect(resolveProtocolBaseUrl()).toBe('https://api.index.network');
   });
 
-  test('NEVER uses the frontend APP_URL', () => {
+  test('NEVER uses the frontend APP_URL — defaults to the protocol host', () => {
     process.env.APP_URL = 'https://index.network';
     // The whole point of the fix: a frontend host must not leak into a
-    // protocol-host URL. With no protocol var set, the dev fallback is used.
-    expect(resolveProtocolBaseUrl()).toBe('http://localhost:3001');
+    // protocol-host URL. With no protocol var set, the default protocol host
+    // is used instead of APP_URL.
+    expect(resolveProtocolBaseUrl()).toBe('https://protocol.index.network');
   });
 
-  test('uses the provided fallback when no protocol var is set', () => {
+  test('uses a caller-supplied fallback over the default when no protocol var is set', () => {
     process.env.APP_URL = 'https://index.network';
-    expect(resolveProtocolBaseUrl('https://protocol.index.network')).toBe(
-      'https://protocol.index.network',
-    );
+    expect(resolveProtocolBaseUrl('http://localhost:3001')).toBe('http://localhost:3001');
   });
 });
