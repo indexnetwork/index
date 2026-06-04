@@ -32,6 +32,7 @@ import { cacheAdapter, hydeCacheAdapter, RedisCacheAdapter } from '../../adapter
 import { scraperAdapter } from '../../adapters/scraper.adapter';
 import { discoveryRunAdapter } from '../../adapters/discovery-run.adapter';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../../services/connect-link.service';
+import { resolveProtocolBaseUrl } from '../../lib/protocol-url';
 import type { ConnectLinkKind } from '../../services/connect-link.service';
 import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
 
@@ -46,12 +47,7 @@ export interface DiscoveryRunQueueDeps {
   agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
 }
 
-const apiBaseUrl = (
-  process.env.BASE_URL ||
-  process.env.API_BASE_URL ||
-  process.env.APP_URL ||
-  'http://localhost:3001'
-).replace(/\/+$/, '');
+const apiBaseUrl = resolveProtocolBaseUrl();
 
 const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferredSurface }: {
   userId: string;
