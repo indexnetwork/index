@@ -363,6 +363,64 @@ describe('Opportunity Graph', () => {
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
     });
 
+    test('premise discovery uses scoped capped source premises and one batched DB search', async () => {
+      const previousSourcePremiseLimit = process.env.DISCOVERY_SOURCE_PREMISE_LIMIT;
+      process.env.DISCOVERY_SOURCE_PREMISE_LIMIT = '40';
+
+      try {
+        const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+        spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
+        const legacySearchSpy = spyOn(mockDb, 'searchPremisesBySimilarity');
+
+        const scopedCalls: Array<{ userId: string; networkIds: string[]; status?: string; limit?: number }> = [];
+        mockDb.getPremisesForUserInNetworks = async (userId, networkIds, status, limit) => {
+          scopedCalls.push({ userId, networkIds, status, limit });
+          return [
+            { id: 'premise-1', userId, assertion: { text: 'Builds protocols', tier: 'assertive' as const }, provenance: { source: 'enrichment' as const, confidence: 1, timestamp: new Date().toISOString() }, analysis: null, validity: { volatile: false }, embedding: dummyEmbedding, status: 'ACTIVE' as const, createdAt: new Date(), updatedAt: new Date(), retractedAt: null },
+            { id: 'premise-2', userId, assertion: { text: 'Knows founders', tier: 'assertive' as const }, provenance: { source: 'enrichment' as const, confidence: 1, timestamp: new Date().toISOString() }, analysis: null, validity: { volatile: false }, embedding: dummyEmbedding, status: 'ACTIVE' as const, createdAt: new Date(), updatedAt: new Date(), retractedAt: null },
+          ];
+        };
+
+        const batchCalls: Array<Parameters<NonNullable<OpportunityGraphDatabase['searchPremisesBySimilarityBatch']>>[0]> = [];
+        mockDb.searchPremisesBySimilarityBatch = async (params) => {
+          batchCalls.push(params);
+          return [{
+            sourcePremiseId: 'premise-1',
+            premiseId: 'candidate-premise-1',
+            userId: 'b0000000-0000-4000-8000-000000000002',
+            networkId: 'idx-1',
+            assertionText: 'Can help protocols find founders',
+            similarity: 0.88,
+          }];
+        };
+
+        const result = (await compiledGraph.invoke({
+          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+          searchQuery: 'co-founder',
+          options: {},
+        } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+        expect(scopedCalls).toHaveLength(1);
+        expect(scopedCalls[0]).toMatchObject({
+          userId: 'a0000000-0000-4000-8000-000000000001',
+          networkIds: ['idx-1'],
+          status: 'ACTIVE',
+          limit: 40,
+        });
+        expect(batchCalls).toHaveLength(1);
+        expect(batchCalls[0].sources.map(s => s.premiseId)).toEqual(['premise-1', 'premise-2']);
+        expect(batchCalls[0].limitPerSource).toBe(20);
+        expect(legacySearchSpy).not.toHaveBeenCalled();
+        expect(result.candidates.some(c => c.discoverySource === 'premise-similarity')).toBe(true);
+      } finally {
+        if (previousSourcePremiseLimit === undefined) {
+          delete process.env.DISCOVERY_SOURCE_PREMISE_LIMIT;
+        } else {
+          process.env.DISCOVERY_SOURCE_PREMISE_LIMIT = previousSourcePremiseLimit;
+        }
+      }
+    });
+
     test('when search returns only profile type (no intent), profile candidates are included', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph();
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
