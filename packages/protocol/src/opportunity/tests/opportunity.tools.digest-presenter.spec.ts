@@ -3,7 +3,6 @@ process.env.OPENROUTER_API_KEY ||= 'test-key-unused';
 
 import { mock, describe, expect, it, afterAll } from 'bun:test';
 
-import type { OpportunityPresenter } from '../opportunity.presenter.js';
 import type { PresenterDatabase } from '../opportunity.presenter.js';
 
 // ─── Module-level mocks: must run before any static import of opportunity.tools ───
@@ -22,7 +21,7 @@ mock.module('../opportunity.presenter.js', () => {
   gatherPresenterContextMock = mock(async (
     presenterDb: PresenterDatabase,
     opp: { status: string },
-    viewerId: string,
+    _viewerId: string,
   ) => ({
     opportunityStatus: opp.status,
   }));
