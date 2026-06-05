@@ -358,7 +358,7 @@ export function buildOpportunityPresentation(
         if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
         if (card.acceptUrl) lines.push(`   acceptUrl: ${card.acceptUrl}`);
         if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
-        if (opts.includeDigestMarkers && card.score != null) lines.push(`   confidence: ${Math.round(card.score)}`);
+        if (opts.includeDigestMarkers && card.score != null) lines.push(`   confidence: ${Math.round(card.score * 100)}`);
         // Only surface opportunityId when there's no acceptUrl. Exposing the
         // UUID alongside an actionable link gives the LLM a foothold to
         // hallucinate bare `/api/opportunities/<id>/connect` URLs.

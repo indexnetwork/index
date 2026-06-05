@@ -21,7 +21,7 @@ mock.module('../opportunity.presenter.js', () => {
   }));
   gatherPresenterContextMock = mock(async (
     presenterDb: PresenterDatabase,
-    opp: any,
+    opp: { status: string },
     viewerId: string,
   ) => ({
     opportunityStatus: opp.status,
@@ -29,12 +29,12 @@ mock.module('../opportunity.presenter.js', () => {
 
   return {
     OpportunityPresenter: class {
-      presentHomeCard(input: any) {
+      presentHomeCard(input: unknown) {
         return presentHomeCardMock(input);
       }
     },
-    gatherPresenterContext: (...args: any[]) => gatherPresenterContextMock(...args),
-    PresenterDatabase: undefined as any, // type-only, not consumed at runtime
+    gatherPresenterContext: (...args: unknown[]) => gatherPresenterContextMock(...args),
+    PresenterDatabase: undefined as unknown as PresenterDatabase, // type-only, not consumed at runtime
   };
 });
 
