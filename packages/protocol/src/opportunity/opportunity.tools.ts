@@ -314,6 +314,7 @@ type OpportunityCardLike = Record<string, unknown> & {
   feedCategory?: string | undefined;
   acceptUrl?: string | undefined;
   profileUrl?: string | undefined;
+  score?: number | undefined;
 };
 
 /**
@@ -357,6 +358,7 @@ export function buildOpportunityPresentation(
         if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
         if (card.acceptUrl) lines.push(`   acceptUrl: ${card.acceptUrl}`);
         if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
+        if (opts.includeDigestMarkers && card.score != null) lines.push(`   confidence: ${Math.round(card.score)}`);
         // Only surface opportunityId when there's no acceptUrl. Exposing the
         // UUID alongside an actionable link gives the LLM a foothold to
         // hallucinate bare `/api/opportunities/<id>/connect` URLs.
@@ -378,7 +380,7 @@ export function buildOpportunityPresentation(
       `${opts.leadIn}\n\n${prose}\n\n` +
       `Summarize these for the user in natural prose — mention first names and a brief match reason per connection. ` +
       `${linkInstructions}` +
-      `Do NOT print raw JSON, field labels, opportunityIds, or confidence scores. ` +
+      `Do NOT print raw JSON, field labels, or opportunityIds. ` +
       `${idInstructions}`
     );
   }
