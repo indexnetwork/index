@@ -241,7 +241,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     traceEmitter?.({ type: "graph_start", name: "profile" });
     try {
       const graphInput = {
-        userId: context.userId,
+        userId: profile.userId,
         operationMode: 'write' as const,
         input,
         forceUpdate: true,
@@ -253,14 +253,14 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       if (result.error) {
         const err = new Error(result.error);
         logger.error('Approved draft premise decomposition failed', {
-          userId: context.userId,
+          userId: profile.userId,
           error: result.error,
         });
         reportToolError?.(err, {
           subsystem: 'profile',
           operation: 'profile.confirm_draft_decompose',
           toolName: 'confirm_user_profile',
-          userId: context.userId,
+          userId: profile.userId,
           tags: { toolName: 'confirm_user_profile', execution: context.isMcp ? 'background' : 'sync' },
         });
         return;
@@ -273,14 +273,14 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       // authoritative, and a concurrent user-driven profile update could race.
     } catch (err) {
       logger.error('Approved draft premise decomposition failed', {
-        userId: context.userId,
+        userId: profile.userId,
         error: err instanceof Error ? err.message : String(err),
       });
       reportToolError?.(err, {
         subsystem: 'profile',
         operation: 'profile.confirm_draft_decompose',
         toolName: 'confirm_user_profile',
-        userId: context.userId,
+        userId: profile.userId,
         tags: { toolName: 'confirm_user_profile', execution: context.isMcp ? 'background' : 'sync' },
       });
     } finally {
