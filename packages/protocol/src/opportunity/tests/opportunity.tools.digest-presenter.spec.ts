@@ -85,7 +85,7 @@ function defineTool<T extends z.ZodType>(opts: {
   name: string;
   description: string;
   querySchema: T;
-  handler: (input: { context: any; query: z.infer<T> }) => Promise<string>;
+  handler: (input: { context: unknown; query: z.infer<T> }) => Promise<string>;
 }) {
   return opts;
 }
