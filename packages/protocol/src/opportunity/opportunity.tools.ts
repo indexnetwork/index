@@ -1470,7 +1470,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       if (isDigestMode) {
         // ── Digest mode: use LLM presenter for rich, second-person card text ──
         const presenter = new OpportunityPresenter();
-        const db = database as unknown as PresenterDatabase & typeof database;
+        const presenterDb = database as PresenterDatabase;
         const PRESENTER_CONCURRENCY = 6;
 
         for (let i = 0; i < opportunities.length; i += PRESENTER_CONCURRENCY) {
@@ -1548,7 +1548,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
                 try {
                   const ctx = await gatherPresenterContext(
-                    db,
+                    presenterDb,
                     opp,
                     context.userId,
                     counterpartUserId,
