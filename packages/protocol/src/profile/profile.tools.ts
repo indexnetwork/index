@@ -264,10 +264,11 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         return;
       }
 
-      // The write graph may regenerate the profile from newly-created premises.
-      // The user explicitly approved this structured draft, so keep the approved
-      // draft as the persisted profile while retaining the graph-created premises.
-      await userDb.saveProfile(profile);
+      // The write graph's decompose → aggregate → generate → save_profile
+      // pipeline persists the aggregate profile. The approved draft was already
+      // saved before decomposition started, so the DB is consistent regardless
+      // of graph outcome.  Do not re-save here — the graph's save_profile is
+      // authoritative, and a concurrent user-driven profile update could race.
     } catch (err) {
       logger.error('Approved draft premise decomposition failed', {
         userId: context.userId,

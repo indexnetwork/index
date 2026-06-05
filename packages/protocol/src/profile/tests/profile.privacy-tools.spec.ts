@@ -251,7 +251,7 @@ describe("onboarding privacy profile tools", () => {
 
     expect(result.success).toBe(true);
     expect(saveProfile).toHaveBeenCalledWith({ ...draft, userId: "u1" });
-    expect(saveProfile).toHaveBeenCalledTimes(2);
+    expect(saveProfile).toHaveBeenCalledTimes(1);
     expect(profileGraphInvoke).toHaveBeenCalledTimes(1);
     expect(profileGraphInvoke).toHaveBeenCalledWith({
       userId: "u1",
