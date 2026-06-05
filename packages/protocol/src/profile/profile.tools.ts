@@ -26,6 +26,12 @@ function isMeaningfulEnrichment(enrichment: EnrichmentResult | null): enrichment
     );
 }
 
+type ApprovedProfileDraft = {
+  identity: { name: string; bio: string; location: string };
+  narrative: { context: string };
+  attributes: { interests: string[]; skills: string[] };
+};
+
 export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   const { userDb, systemDb, database, graphs, enricher, grantDefaultSystemPermissions, reportToolError } = deps;
 
@@ -208,6 +214,75 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       skills: profile.attributes.skills,
       interests: profile.attributes.interests,
     };
+  }
+
+  function buildApprovedDraftProfileInput(draft: ApprovedProfileDraft): string {
+    return [
+      draft.identity.name ? `My name is ${draft.identity.name}.` : '',
+      draft.identity.location ? `I am based in ${draft.identity.location}.` : '',
+      draft.identity.bio || '',
+      draft.narrative.context || '',
+      draft.attributes.skills.length ? `My skills include ${draft.attributes.skills.join(', ')}.` : '',
+      draft.attributes.interests.length ? `My interests include ${draft.attributes.interests.join(', ')}.` : '',
+    ].filter((part) => part.trim().length > 0).join('\n');
+  }
+
+  async function decomposeApprovedDraftProfile(
+    context: ResolvedToolContext,
+    profile: ApprovedProfileDraft & { userId: string },
+  ): Promise<void> {
+    const input = buildApprovedDraftProfileInput(profile);
+    if (!input.trim()) return;
+
+    const traceEmitter = requestContext.getStore()?.traceEmitter;
+    const graphStart = Date.now();
+    traceEmitter?.({ type: "graph_start", name: "profile" });
+    try {
+      const graphInput = {
+        userId: context.userId,
+        operationMode: 'write' as const,
+        input,
+        forceUpdate: true,
+      };
+      const result = context.isMcp
+        ? await graphs.profile.invoke(graphInput)
+        : await invokeWithAbortSignal(graphs.profile, graphInput);
+
+      if (result.error) {
+        const err = new Error(result.error);
+        logger.error('Approved draft premise decomposition failed', {
+          userId: context.userId,
+          error: result.error,
+        });
+        reportToolError?.(err, {
+          subsystem: 'profile',
+          operation: 'profile.confirm_draft_decompose',
+          toolName: 'confirm_user_profile',
+          userId: context.userId,
+          tags: { toolName: 'confirm_user_profile', execution: context.isMcp ? 'background' : 'sync' },
+        });
+        return;
+      }
+
+      // The write graph may regenerate the profile from newly-created premises.
+      // The user explicitly approved this structured draft, so keep the approved
+      // draft as the persisted profile while retaining the graph-created premises.
+      await userDb.saveProfile(profile);
+    } catch (err) {
+      logger.error('Approved draft premise decomposition failed', {
+        userId: context.userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      reportToolError?.(err, {
+        subsystem: 'profile',
+        operation: 'profile.confirm_draft_decompose',
+        toolName: 'confirm_user_profile',
+        userId: context.userId,
+        tags: { toolName: 'confirm_user_profile', execution: context.isMcp ? 'background' : 'sync' },
+      });
+    } finally {
+      traceEmitter?.({ type: "graph_end", name: "profile", durationMs: Date.now() - graphStart });
+    }
   }
 
   const readUserProfiles = defineTool({
@@ -596,9 +671,23 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         const profile = { ...query.draft, userId: context.userId };
         await userDb.saveProfile(profile);
         await persistApprovedProfileContext(profile, user, context.networkId);
+
+        if (context.isMcp) {
+          decomposeApprovedDraftProfile(context, profile).catch((err: unknown) => {
+            logger.error('Approved draft premise decomposition failed', {
+              userId: context.userId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        } else {
+          await decomposeApprovedDraftProfile(context, profile);
+        }
+
         return success({
           created: true,
-          message: "Profile saved from approved draft.",
+          message: context.isMcp
+            ? "Profile saved from approved draft. Premise extraction is running in the background."
+            : "Profile saved from approved draft.",
           profile: toProfileSummary(profile),
         });
       }

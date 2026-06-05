@@ -240,7 +240,7 @@ describe("onboarding privacy profile tools", () => {
     expect(saveProfile).not.toHaveBeenCalled();
   });
 
-  it("confirm saves an approved structured draft", async () => {
+  it("confirm saves an approved structured draft and sends it through premise decomposition", async () => {
     const tool = tools.find((t) => t.name === "confirm_user_profile")!;
     const draft = {
       identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
@@ -251,7 +251,42 @@ describe("onboarding privacy profile tools", () => {
 
     expect(result.success).toBe(true);
     expect(saveProfile).toHaveBeenCalledWith({ ...draft, userId: "u1" });
+    expect(saveProfile).toHaveBeenCalledTimes(2);
+    expect(profileGraphInvoke).toHaveBeenCalledTimes(1);
+    expect(profileGraphInvoke).toHaveBeenCalledWith({
+      userId: "u1",
+      operationMode: "write",
+      input: [
+        "My name is Alice.",
+        "I am based in Healdsburg.",
+        "Builder",
+        "Alice builds tools.",
+        "My skills include TypeScript.",
+        "My interests include agents.",
+      ].join("\n"),
+      forceUpdate: true,
+    });
     expect(enricher).not.toHaveBeenCalled();
+  });
+
+  it("confirm schedules draft premise decomposition without blocking MCP callers", async () => {
+    const tool = tools.find((t) => t.name === "confirm_user_profile")!;
+    const draft = {
+      identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
+      narrative: { context: "Alice builds tools." },
+      attributes: { skills: ["TypeScript"], interests: ["agents"] },
+    };
+    profileGraphInvoke.mockImplementation(() => new Promise(() => {}));
+
+    const result = parseToolResult(await tool.handler({
+      context: { ...context(), isMcp: true } as ResolvedToolContext,
+      query: { draft },
+    }));
+
+    expect(result.success).toBe(true);
+    expect(String(result.data?.message)).toContain("background");
+    expect(saveProfile).toHaveBeenCalledTimes(1);
+    expect(profileGraphInvoke).toHaveBeenCalledTimes(1);
   });
 
   it("confirming approved text preserves existing location when no correction is supplied", async () => {
