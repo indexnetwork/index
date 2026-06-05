@@ -16,18 +16,18 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
+import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
+
 const envFile = process.env.NODE_ENV === 'development' ? '.env.development' : '.env.production';
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
-import { PremiseDecomposer, PremiseGraphFactory } from '@indexnetwork/protocol';
-import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
-
-import db, { closeDb } from '../lib/drizzle/drizzle';
-import { networkMembers, premises, userProfiles, users } from '../schemas/database.schema';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { premiseQueue } from '../queues/premise.queue';
+const { and, eq, isNull, sql } = await import('drizzle-orm');
+const { PremiseDecomposer, PremiseGraphFactory } = await import('@indexnetwork/protocol');
+const { default: db, closeDb } = await import('../lib/drizzle/drizzle');
+const { networkMembers, premises, userProfiles, users } = await import('../schemas/database.schema');
+const { ChatDatabaseAdapter } = await import('../adapters/database.adapter');
+const { EmbedderAdapter } = await import('../adapters/embedder.adapter');
+const { premiseQueue } = await import('../queues/premise.queue');
 
 const DEFAULT_LIMIT = 100;
 const BACKFILL_CONFIDENCE = 0.9;
