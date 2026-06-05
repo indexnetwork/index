@@ -2,6 +2,7 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 import { IntentGraphState, VerifiedIntent, ExecutionResult } from "./intent.state.js";
 import { ExplicitIntentInferrer } from "./intent.inferrer.js";
 import { SemanticVerifier } from "./intent.verifier.js";
+import { DEFAULT_SPECIFICITY_WARNING } from "./intent.specificity.js";
 import { IntentReconciler } from "./intent.reconciler.js";
 import { IntentGraphDatabase } from "../shared/interfaces/database.interface.js";
 import { getAbortSignalConfig } from "../shared/agent/model-signal.js";
@@ -105,6 +106,11 @@ const isVague = (description: string, entropy: number, clarity: number): boolean
   if (entropy > MAX_PERMISSIBLE_ENTROPY) return true;
   if (clarity < MIN_CLEAR_INTENT_SCORE) return true;
   return false;
+};
+
+const getSpecificityWarning = (verdict: { specificity_warning?: string | null }): string => {
+  const warning = verdict.specificity_warning?.trim();
+  return warning && warning.length > 0 ? warning : DEFAULT_SPECIFICITY_WARNING;
 };
 
 const toSpeechActType = (classification?: string): "COMMISSIVE" | "DIRECTIVE" | null => {
@@ -310,6 +316,15 @@ export class IntentGraphFactory {
                 return null;
               }
 
+              if (state.operationMode !== 'propose' && verdict.referential_breadth === 'broad') {
+                logger.warn(`Dropping broad attributive intent before persistence: "${description}"`, {
+                  referentialBreadth: verdict.referential_breadth,
+                  missingSelectionalConstraints: verdict.missing_selectional_constraints,
+                  warning: getSpecificityWarning(verdict),
+                });
+                return null;
+              }
+
               // Calculate Score
               const score = Math.min(
                 verdict.felicity_scores.authority,
@@ -344,14 +359,18 @@ export class IntentGraphFactory {
           const fs = v.verification?.felicity_scores;
           const entropy = v.verification?.semantic_entropy;
           const classification = v.verification?.classification;
+          const referentialBreadth = v.verification?.referential_breadth;
           return {
             node: "verification",
-            detail: `"${v.description.slice(0, 40)}${v.description.length > 40 ? '...' : ''}" → ${classification}`,
+            detail: `"${v.description.slice(0, 40)}${v.description.length > 40 ? '...' : ''}" → ${classification}${referentialBreadth ? ` (${referentialBreadth} referential breadth)` : ''}`,
             data: fs ? {
               clarity: fs.clarity,
               authority: fs.authority,
               sincerity: fs.sincerity,
               entropy: entropy != null ? Math.round(entropy * 100) / 100 : undefined,
+              referentialBreadth,
+              missingSelectionalConstraints: v.verification?.missing_selectional_constraints,
+              specificityWarning: v.verification?.specificity_warning ?? undefined,
               classification,
               score: v.score,
             } : undefined,

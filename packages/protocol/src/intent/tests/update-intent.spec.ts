@@ -36,6 +36,12 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
   return toolDefs;
 }
 
+function extractFirstIntentProposal(message: string): Record<string, unknown> {
+  const match = message.match(/```intent_proposal\s*\n([\s\S]*?)\n```/);
+  if (!match) throw new Error("intent proposal block not found");
+  return JSON.parse(match[1]) as Record<string, unknown>;
+}
+
 describe("create_intent", () => {
   test("falls back to approved user intro when structured profile is still pending", async () => {
     const capturedProfiles: string[] = [];
@@ -78,6 +84,98 @@ describe("create_intent", () => {
     expect(result.success).toBe(true);
     expect(capturedProfiles[0]).toContain("I build agent tools.");
     expect(capturedProfiles[0]).toContain("Healdsburg");
+  });
+
+  test("rejects broad referential-breadth signals in MCP auto-approve mode", async () => {
+    let createCalls = 0;
+    const tools = captureTools({
+      userDb: {},
+      systemDb: {},
+      graphs: {
+        profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
+        intent: {
+          invoke: async (input: { operationMode?: string }) => {
+            if (input.operationMode === "propose") {
+              return {
+                verifiedIntents: [{
+                  description: "Meet creative people, builders, and makers interested in AI and somatic exploration",
+                  score: 82,
+                  verification: {
+                    classification: "DIRECTIVE",
+                    semantic_entropy: 0.42,
+                    referential_breadth: "broad",
+                    missing_selectional_constraints: ["role", "outcome", "timeframe"],
+                    specificity_warning: "This signal is broad and may produce many weak matches.",
+                  },
+                }],
+                agentTimings: [],
+                trace: [],
+              };
+            }
+            createCalls++;
+            return { executionResults: [{ success: true }], agentTimings: [] };
+          },
+        },
+      },
+    } as unknown as ToolDeps);
+    const tool = tools.find((t) => t.name === "create_intent")!;
+
+    const result = JSON.parse(await tool.handler({
+      context: makeContext("alice"),
+      query: {
+        description: "Meet creative people, builders, and makers interested in AI and somatic exploration",
+        autoApprove: true,
+      },
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("broad");
+    expect(result.error).toContain("role, outcome, timeframe");
+    expect(createCalls).toBe(0);
+  });
+
+  test("surfaces referential-breadth warnings in web proposal cards", async () => {
+    const tools = captureTools({
+      userDb: {},
+      systemDb: {},
+      graphs: {
+        profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
+        intent: {
+          invoke: async () => ({
+            verifiedIntents: [{
+              description: "Meet creative people, builders, and makers interested in AI and somatic exploration",
+              score: 82,
+              verification: {
+                classification: "DIRECTIVE",
+                semantic_entropy: 0.42,
+                referential_breadth: "broad",
+                missing_selectional_constraints: ["role", "outcome", "timeframe"],
+                specificity_warning: "This signal is broad and may produce many weak matches.",
+              },
+            }],
+            agentTimings: [],
+            trace: [],
+          }),
+        },
+      },
+    } as unknown as ToolDeps);
+    const tool = tools.find((t) => t.name === "create_intent")!;
+    const context = { ...makeContext("alice"), isMcp: false } as ResolvedToolContext;
+
+    const result = JSON.parse(await tool.handler({
+      context,
+      query: {
+        description: "Meet creative people, builders, and makers interested in AI and somatic exploration",
+        autoApprove: false,
+      },
+    }));
+
+    expect(result.success).toBe(true);
+    const proposal = extractFirstIntentProposal(result.data.message);
+    expect(proposal.referentialBreadth).toBe("broad");
+    expect(proposal.specificityWarning).toContain("broad");
+    expect(proposal.missingSelectionalConstraints).toEqual(["role", "outcome", "timeframe"]);
+    expect(proposal.semanticEntropy).toBe(0.42);
   });
 });
 
@@ -143,6 +241,32 @@ describe("update_intent", () => {
     expect(capturedInputContent).toBe("Find a design partner for a CRPG UI");
     expect(parsed.success).toBe(true);
     expect(parsed.data.message).toBe("Intent updated.");
+  });
+
+  test("returns an error when verification filters the update into a no-op", async () => {
+    const tools = captureTools({
+      userDb: {},
+      systemDb: {
+        getIntent: async () => ({ id: "11111111-1111-4111-8111-111111111111", userId: "alice" }),
+      },
+      graphs: {
+        profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
+        intent: { invoke: async () => ({ verifiedIntents: [], actions: [], executionResults: [], agentTimings: [] }) },
+      },
+    } as unknown as ToolDeps);
+    const tool = tools.find((t) => t.name === "update_intent")!;
+
+    const result = JSON.parse(await tool.handler({
+      context: makeContext("alice"),
+      query: {
+        intentId: "11111111-1111-4111-8111-111111111111",
+        description: "Meet creative people, builders, and makers interested in AI and somatic exploration",
+      },
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not applied");
+    expect(result.error).toContain("too broad");
   });
 });
 

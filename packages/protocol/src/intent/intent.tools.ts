@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ExecutionResult, VerifiedIntent } from "./intent.state.js";
+import { DEFAULT_SPECIFICITY_WARNING } from "./intent.specificity.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { requestContext } from "../shared/observability/request-context.js";
 
@@ -46,6 +47,15 @@ function buildApprovedProfileFallback(user: UserRecord | null | undefined): stri
     narrative: { context: bio },
     attributes: { skills: [], interests: [] },
   });
+}
+
+function isBroadAttributiveIntent(intent: VerifiedIntent): boolean {
+  return intent.verification?.referential_breadth === "broad";
+}
+
+function specificityWarningFor(intent: VerifiedIntent): string {
+  const warning = intent.verification?.specificity_warning?.trim();
+  return warning && warning.length > 0 ? warning : DEFAULT_SPECIFICITY_WARNING;
 }
 
 export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
@@ -305,6 +315,18 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // ── Auto-approve path (for MCP agents or explicit opt-in) ──
       if (shouldAutoApprove) {
+        const broadIntents = (verified as VerifiedIntent[]).filter(isBroadAttributiveIntent);
+        if (broadIntents.length > 0) {
+          const first = broadIntents[0];
+          const missing = first.verification?.missing_selectional_constraints ?? [];
+          const missingHint = missing.length > 0 ? ` Missing selectional constraints: ${missing.join(", ")}.` : "";
+          return error(
+            `${specificityWarningFor(first)}${missingHint} ` +
+            `Please ask the user to clarify before creating this signal, or retry with a narrower description.`,
+            debugSteps,
+          );
+        }
+
         const createdIntents: Array<{ description: string; confidence: number | null; speechActType: string | null }> = [];
         const createTimings: Array<{ name: string; durationMs: number; agents: unknown[] }> = [];
 
@@ -354,12 +376,17 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       // Build intent_proposal code fences for each verified intent
       const proposalBlocks = verified.map((v: VerifiedIntent) => {
         const proposalId = crypto.randomUUID();
+        const isBroad = isBroadAttributiveIntent(v);
         const data = {
           proposalId,
           description: v.description,
           ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
           confidence: v.score != null ? Math.round(v.score * 100) / 100 : null,
           speechActType: v.verification?.classification ?? null,
+          semanticEntropy: v.verification?.semantic_entropy ?? null,
+          referentialBreadth: v.verification?.referential_breadth ?? null,
+          missingSelectionalConstraints: v.verification?.missing_selectional_constraints ?? [],
+          specificityWarning: isBroad ? specificityWarningFor(v) : v.verification?.specificity_warning ?? null,
         };
         return (
           "```intent_proposal\n" +
@@ -449,6 +476,11 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       if (result.executionResults?.some((r: ExecutionResult) => !r.success)) {
         return error("Failed to update intent.");
+      }
+      if (!result.executionResults?.some((r: ExecutionResult) => r.success)) {
+        return error(
+          "Intent update was not applied. The new description may be too broad, too vague, or failed semantic verification. Please ask the user to clarify with a more concrete role, outcome, location, timeframe, domain, or specific need.",
+        );
       }
       return success({
         message: "Intent updated.",
