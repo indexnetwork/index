@@ -5,9 +5,10 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
-import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportunity.presentation.js";
+import { viewerCentricCardSummary, narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
-import { OpportunityPresenter } from "./opportunity.presenter.js";
+import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
+import { stripLeadingNarratorName } from "./feed/feed.graph.js";
 import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
@@ -1461,109 +1462,310 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         if (user) userMap.set(userId, user);
       });
 
-      const cardDataList: Array<ReturnType<typeof buildMinimalOpportunityCard>> = [];
+      const isDigestMode = context.isMcp === true && query.includeDigestMarkers === true;
+      const cardDataList: Array<Record<string, unknown> & { opportunityId: string }> = [];
       const seenOpportunityIds = new Set<string>();
       const skippedIds: string[] = [];
 
-      for (const opp of opportunities) {
-        if (seenOpportunityIds.has(opp.id)) continue;
-        seenOpportunityIds.add(opp.id);
-        try {
-          const counterpartActor = opp.actors.find(
-            (a) => a.userId !== context.userId && a.role !== "introducer",
-          );
-          const counterpartUserId = counterpartActor?.userId;
-          if (!counterpartUserId) continue;
+      if (isDigestMode) {
+        // ── Digest mode: use LLM presenter for rich, second-person card text ──
+        const presenter = new OpportunityPresenter();
+        const db = database as unknown as PresenterDatabase & typeof database;
+        const PRESENTER_CONCURRENCY = 6;
 
-          const viewerIsIntroducerHere = opp.actors.some(
-            (a) => a.role === "introducer" && a.userId === context.userId,
-          );
-          const secondPartyActorForHeadline = viewerIsIntroducerHere
-            ? opp.actors.find(
-                (a) =>
-                  a.userId !== context.userId &&
-                  a.userId !== counterpartUserId &&
-                  a.role !== "introducer",
-              )
-            : undefined;
-          const secondPartyNameForHeadline = secondPartyActorForHeadline
-            ? (profileMap.get(secondPartyActorForHeadline.userId)?.identity?.name ??
-              userMap.get(secondPartyActorForHeadline.userId)?.name ??
-              undefined)
-            : undefined;
+        for (let i = 0; i < opportunities.length; i += PRESENTER_CONCURRENCY) {
+          const chunk = opportunities.slice(i, i + PRESENTER_CONCURRENCY);
+          const chunkCards = await Promise.all(
+            chunk.map(async (opp) => {
+              if (seenOpportunityIds.has(opp.id)) return null;
+              seenOpportunityIds.add(opp.id);
+              try {
+                const counterpartActor = opp.actors.find(
+                  (a) => a.userId !== context.userId && a.role !== "introducer",
+                );
+                const counterpartUserId = counterpartActor?.userId;
+                if (!counterpartUserId) return null;
 
-          const introducerActor = opp.actors.find(
-            (a) => a.role === "introducer" && a.userId !== context.userId,
-          );
-          const createdByName = opp.detection.createdByName;
+                const viewerIsIntroducerHere = opp.actors.some(
+                  (a) => a.role === "introducer" && a.userId === context.userId,
+                );
+                const secondPartyActorForHeadline = viewerIsIntroducerHere
+                  ? opp.actors.find(
+                      (a) =>
+                        a.userId !== context.userId &&
+                        a.userId !== counterpartUserId &&
+                        a.role !== "introducer",
+                    )
+                  : undefined;
 
-          const counterpartProfile = profileMap.get(counterpartUserId) ?? null;
-          const counterpartUser = userMap.get(counterpartUserId) ?? null;
-          const introducerProfile =
-            introducerActor && !createdByName
-              ? profileMap.get(introducerActor.userId) ?? null
+                const introducerActor = opp.actors.find(
+                  (a) => a.role === "introducer" && a.userId !== context.userId,
+                );
+                const createdByName = opp.detection.createdByName;
+
+                const counterpartUser = userMap.get(counterpartUserId) ?? null;
+                const counterpartName =
+                  profileMap.get(counterpartUserId)?.identity?.name ??
+                  counterpartUser?.name ??
+                  "Someone";
+                const introducerName =
+                  createdByName ??
+                  (introducerActor
+                    ? (profileMap.get(introducerActor.userId)?.identity?.name ?? null)
+                    : null);
+                const introducerUser = introducerActor
+                  ? userMap.get(introducerActor.userId) ?? null
+                  : null;
+
+                const secondPartyUser = secondPartyActorForHeadline
+                  ? userMap.get(secondPartyActorForHeadline.userId) ?? null
+                  : null;
+                const secondPartyNameForHeadline = secondPartyActorForHeadline
+                  ? (profileMap.get(secondPartyActorForHeadline.userId)?.identity?.name ??
+                    secondPartyUser?.name ??
+                    undefined)
+                  : undefined;
+
+                const viewerActor = opp.actors.find((a) => a.userId === context.userId);
+                const viewerRole = viewerActor?.role ?? "party";
+                const isCounterpartGhost = counterpartUser?.isGhost ?? false;
+
+                // Build fallback card in case LLM presenter fails
+                const fallbackCard = buildMinimalOpportunityCard(
+                  opp,
+                  context.userId,
+                  counterpartUserId,
+                  counterpartName,
+                  counterpartUser?.avatar ?? null,
+                  introducerName,
+                  introducerUser?.avatar ?? null,
+                  viewerName,
+                  secondPartyNameForHeadline,
+                  secondPartyUser?.avatar ?? null,
+                  secondPartyActorForHeadline?.userId,
+                  isCounterpartGhost,
+                );
+
+                try {
+                  const ctx = await gatherPresenterContext(
+                    db,
+                    opp,
+                    context.userId,
+                    counterpartUserId,
+                  );
+
+                  const presentation = await presenter.presentHomeCard({
+                    ...ctx,
+                    opportunityStatus: opp.status,
+                  });
+
+                  // Build narrator chip from presenter output
+                  let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
+                  const introducerIsCounterpart = introducerActor && counterpartActor && introducerActor.userId === counterpartActor.userId;
+                  if (introducerActor && introducerActor.userId !== context.userId && !introducerIsCounterpart) {
+                    const narratorName = introducerName ?? "Someone";
+                    narratorChip = {
+                      name: narratorName,
+                      text: stripLeadingNarratorName(presentation.narratorRemark, narratorName),
+                      avatar: introducerUser?.avatar ?? null,
+                      userId: introducerActor.userId,
+                    };
+                  } else if (introducerActor?.userId === context.userId) {
+                    narratorChip = { name: "You", text: presentation.narratorRemark, userId: context.userId };
+                  } else {
+                    narratorChip = { name: "Index", text: presentation.narratorRemark };
+                  }
+
+                  const card: Record<string, unknown> = {
+                    opportunityId: opp.id,
+                    userId: counterpartUserId,
+                    name: counterpartName,
+                    avatar: counterpartUser?.avatar ?? null,
+                    mainText: stripUuids(presentation.personalizedSummary),
+                    cta: presentation.suggestedAction,
+                    headline: viewerIsIntroducerHere && secondPartyNameForHeadline
+                      ? `${counterpartName} → ${secondPartyNameForHeadline}`
+                      : presentation.headline,
+                    primaryActionLabel: getPrimaryActionLabel(viewerRole),
+                    secondaryActionLabel: SECONDARY_ACTION_LABEL,
+                    mutualIntentsLabel: presentation.mutualIntentsLabel,
+                    narratorChip,
+                    viewerRole,
+                    score: typeof opp.interpretation?.confidence === "number"
+                      ? opp.interpretation.confidence
+                      : undefined,
+                    status: opp.status,
+                    isGhost: isCounterpartGhost,
+                    ...(viewerIsIntroducerHere && secondPartyNameForHeadline
+                      ? {
+                          secondParty: {
+                            name: secondPartyNameForHeadline,
+                            ...(secondPartyUser?.avatar != null ? { avatar: secondPartyUser.avatar } : {}),
+                            ...(secondPartyActorForHeadline?.userId ? { userId: secondPartyActorForHeadline.userId } : {}),
+                          },
+                        }
+                      : {}),
+                  };
+
+                  // Attach actionable links for MCP callers
+                  if (context.isMcp && deps.mintConnectLink) {
+                    const viewerApproved =
+                      viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
+                    await attachActionableLinks(card as Record<string, unknown> & {
+                      opportunityId: string;
+                      viewerRole: string;
+                      status: string;
+                    }, {
+                      viewerId: context.userId,
+                      viewerApproved,
+                      counterpartUserId,
+                      mintConnectLink: deps.mintConnectLink,
+                      frontendUrl: deps.frontendUrl,
+                      preferredSurface: context.clientSurface,
+                    });
+                  }
+
+                  return card as Record<string, unknown> & { opportunityId: string };
+                } catch (presenterErr) {
+                  logger.warn("LLM presenter failed for list_opportunities digest card, using fallback", {
+                    opportunityId: opp.id,
+                    err: presenterErr,
+                  });
+                  // Attach links to fallback card too
+                  if (context.isMcp && deps.mintConnectLink) {
+                    const viewerApproved =
+                      viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
+                    await attachActionableLinks(fallbackCard as Record<string, unknown> & {
+                      opportunityId: string;
+                      viewerRole: string;
+                      status: string;
+                    }, {
+                      viewerId: context.userId,
+                      viewerApproved,
+                      counterpartUserId,
+                      mintConnectLink: deps.mintConnectLink,
+                      frontendUrl: deps.frontendUrl,
+                      preferredSurface: context.clientSurface,
+                    });
+                  }
+                  return fallbackCard as Record<string, unknown> & { opportunityId: string };
+                }
+              } catch (err) {
+                logger.warn("Skipping opportunity that failed to build card", {
+                  opportunityId: opp.id,
+                  err,
+                });
+                skippedIds.push(opp.id);
+                return null;
+              }
+            }),
+          );
+          for (const card of chunkCards) {
+            if (card) cardDataList.push(card);
+          }
+        }
+      } else {
+        // ── Chat mode: fast heuristic path (no LLM) ──
+        for (const opp of opportunities) {
+          if (seenOpportunityIds.has(opp.id)) continue;
+          seenOpportunityIds.add(opp.id);
+          try {
+            const counterpartActor = opp.actors.find(
+              (a) => a.userId !== context.userId && a.role !== "introducer",
+            );
+            const counterpartUserId = counterpartActor?.userId;
+            if (!counterpartUserId) continue;
+
+            const viewerIsIntroducerHere = opp.actors.some(
+              (a) => a.role === "introducer" && a.userId === context.userId,
+            );
+            const secondPartyActorForHeadline = viewerIsIntroducerHere
+              ? opp.actors.find(
+                  (a) =>
+                    a.userId !== context.userId &&
+                    a.userId !== counterpartUserId &&
+                    a.role !== "introducer",
+                )
+              : undefined;
+            const secondPartyNameForHeadline = secondPartyActorForHeadline
+              ? (profileMap.get(secondPartyActorForHeadline.userId)?.identity?.name ??
+                userMap.get(secondPartyActorForHeadline.userId)?.name ??
+                undefined)
+              : undefined;
+
+            const introducerActor = opp.actors.find(
+              (a) => a.role === "introducer" && a.userId !== context.userId,
+            );
+            const createdByName = opp.detection.createdByName;
+
+            const counterpartProfile = profileMap.get(counterpartUserId) ?? null;
+            const counterpartUser = userMap.get(counterpartUserId) ?? null;
+            const introducerProfile =
+              introducerActor && !createdByName
+                ? profileMap.get(introducerActor.userId) ?? null
+                : null;
+
+            const counterpartName =
+              counterpartProfile?.identity?.name ??
+              counterpartUser?.name ??
+              "Someone";
+            const introducerName =
+              createdByName ??
+              (introducerActor ? introducerProfile?.identity?.name ?? null : null);
+            const introducerUser = introducerActor
+              ? userMap.get(introducerActor.userId) ?? null
               : null;
 
-          const counterpartName =
-            counterpartProfile?.identity?.name ??
-            counterpartUser?.name ??
-            "Someone";
-          const introducerName =
-            createdByName ??
-            (introducerActor ? introducerProfile?.identity?.name ?? null : null);
-          const introducerUser = introducerActor
-            ? userMap.get(introducerActor.userId) ?? null
-            : null;
-
-          const secondPartyUser = secondPartyActorForHeadline
-            ? userMap.get(secondPartyActorForHeadline.userId) ?? null
-            : null;
-          const cardData = buildMinimalOpportunityCard(
-            opp,
-            context.userId,
-            counterpartUserId,
-            counterpartName,
-            counterpartUser?.avatar ?? null,
-            introducerName,
-            introducerUser?.avatar ?? null,
-            viewerName,
-            secondPartyNameForHeadline,
-            secondPartyUser?.avatar ?? null,
-            secondPartyActorForHeadline?.userId,
-          );
-
-          // For MCP callers (e.g. Edge Claw), mint a connect token and attach
-          // acceptUrl + profileUrl when the (status, viewerRole) is actionable
-          // for the viewer. Non-actionable combos (sender-on-draft,
-          // pending-on-introducer-waiting, rejected, etc.) deliberately get
-          // no link — the LLM would otherwise hallucinate `/api/.../connect`
-          // URLs from the exposed opportunityId.
-          if (context.isMcp && deps.mintConnectLink) {
-            const viewerActor = opp.actors.find((a) => a.userId === context.userId);
-            const viewerApproved =
-              viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
-            await attachActionableLinks(cardData as Record<string, unknown> & {
-              opportunityId: string;
-              viewerRole: string;
-              status: string;
-            }, {
-              viewerId: context.userId,
-              viewerApproved,
+            const secondPartyUser = secondPartyActorForHeadline
+              ? userMap.get(secondPartyActorForHeadline.userId) ?? null
+              : null;
+            const cardData = buildMinimalOpportunityCard(
+              opp,
+              context.userId,
               counterpartUserId,
-              mintConnectLink: deps.mintConnectLink,
-              frontendUrl: deps.frontendUrl,
-              preferredSurface: context.clientSurface,
-            });
-          }
+              counterpartName,
+              counterpartUser?.avatar ?? null,
+              introducerName,
+              introducerUser?.avatar ?? null,
+              viewerName,
+              secondPartyNameForHeadline,
+              secondPartyUser?.avatar ?? null,
+              secondPartyActorForHeadline?.userId,
+            );
 
-          cardDataList.push(cardData);
-        } catch (err) {
-          logger.warn("Skipping opportunity that failed to build minimal card", {
-            opportunityId: opp.id,
-            err,
-          });
-          skippedIds.push(opp.id);
-          continue;
+            // For MCP callers (e.g. Edge Claw), mint a connect token and attach
+            // acceptUrl + profileUrl when the (status, viewerRole) is actionable
+            // for the viewer. Non-actionable combos (sender-on-draft,
+            // pending-on-introducer-waiting, rejected, etc.) deliberately get
+            // no link — the LLM would otherwise hallucinate `/api/.../connect`
+            // URLs from the exposed opportunityId.
+            if (context.isMcp && deps.mintConnectLink) {
+              const viewerActor = opp.actors.find((a) => a.userId === context.userId);
+              const viewerApproved =
+                viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
+              await attachActionableLinks(cardData as Record<string, unknown> & {
+                opportunityId: string;
+                viewerRole: string;
+                status: string;
+              }, {
+                viewerId: context.userId,
+                viewerApproved,
+                counterpartUserId,
+                mintConnectLink: deps.mintConnectLink,
+                frontendUrl: deps.frontendUrl,
+                preferredSurface: context.clientSurface,
+              });
+            }
+
+            cardDataList.push(cardData);
+          } catch (err) {
+            logger.warn("Skipping opportunity that failed to build minimal card", {
+              opportunityId: opp.id,
+              err,
+            });
+            skippedIds.push(opp.id);
+            continue;
+          }
         }
       }
 
