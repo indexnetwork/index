@@ -1470,7 +1470,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       if (isDigestMode) {
         // ── Digest mode: use LLM presenter for rich, second-person card text ──
         const presenter = new OpportunityPresenter();
-        const presenterDb = database as PresenterDatabase;
+        const presenterDb: PresenterDatabase = database;
         const PRESENTER_CONCURRENCY = 6;
 
         for (let i = 0; i < opportunities.length; i += PRESENTER_CONCURRENCY) {
