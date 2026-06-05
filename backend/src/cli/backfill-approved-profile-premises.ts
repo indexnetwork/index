@@ -186,7 +186,7 @@ async function main(): Promise<void> {
         const premiseResult = await premiseGraph.invoke({
           userId: row.userId,
           assertionText: p.text,
-          tier: p.tier as 'assertive' | 'contextual',
+          tier: p.tier,
           provenanceSource: 'onboarding' as const,
           provenanceConfidence: BACKFILL_CONFIDENCE,
         });
