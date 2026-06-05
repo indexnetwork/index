@@ -8,7 +8,21 @@ import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LA
 import { viewerCentricCardSummary, narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
-import { stripLeadingNarratorName } from "./feed/feed.graph.js";
+
+function stripLeadingNarratorName(remark: string, narratorName: string): string {
+  let t = remark.trim();
+  if (!t || !narratorName.trim()) return remark;
+  const name = narratorName.trim();
+  const nameLower = name.toLowerCase();
+  for (;;) {
+    const lower = t.toLowerCase();
+    if (!lower.startsWith(nameLower)) break;
+    const rest = t.slice(name.length).replace(/^\s*[:,\-–—]\s*/i, '').trim();
+    if (rest.length === 0 || rest === t) break;
+    t = rest;
+  }
+  return t;
+}
 import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";

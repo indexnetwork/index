@@ -679,7 +679,12 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
             });
           });
         } else {
-          await decomposeApprovedDraftProfile(context, profile);
+          decomposeApprovedDraftProfile(context, profile).catch((err: unknown) => {
+            logger.error('Approved draft premise decomposition failed (web)', {
+              userId: context.userId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
         }
 
         return success({

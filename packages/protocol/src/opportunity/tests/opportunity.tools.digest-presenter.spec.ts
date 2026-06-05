@@ -42,7 +42,6 @@ afterAll(() => mock.restore());
 
 // ─── Imports after mocks ──────────────────────────────────────────────────────
 
-const { buildMinimalOpportunityCard } = await import('../opportunity.tools.js');
 const { createOpportunityTools } = await import('../opportunity.tools.js');
 const { z } = await import('zod');
 
