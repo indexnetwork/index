@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, Check, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,10 @@ export interface IntentProposalData {
   networkId?: string;
   confidence?: number | null;
   speechActType?: string | null;
+  semanticEntropy?: number | null;
+  referentialBreadth?: "narrow" | "moderate" | "broad" | null;
+  missingSelectionalConstraints?: string[];
+  specificityWarning?: string | null;
 }
 
 interface IntentProposalCardProps {
@@ -61,13 +65,17 @@ export default function IntentProposalCard({
   const statusResolved = currentStatus !== undefined;
   const effectiveStatus = currentStatus ?? (actionTaken ? actionTaken : "pending");
   const isPending = statusResolved && effectiveStatus === "pending" && !actionTaken && !actionError;
+  const specificityWarning = card.specificityWarning?.trim();
+  const requiresManualApproval = Boolean(specificityWarning || card.referentialBreadth === "broad");
 
-  // Start countdown on mount when pending
+  // Start countdown on mount when pending. Broad attributive signals require
+  // explicit approval so the user has a chance to refine instead of silently
+  // broadcasting a high-breadth proposal.
   useEffect(() => {
-    if (!isPending || !onApprove || countdownStarted.current) return;
+    if (!isPending || !onApprove || countdownStarted.current || requiresManualApproval) return;
     countdownStarted.current = true;
     setCountdown(COUNTDOWN_SECONDS);
-  }, [isPending, onApprove]);
+  }, [isPending, onApprove, requiresManualApproval]);
 
   // Countdown tick
   useEffect(() => {
@@ -247,6 +255,12 @@ export default function IntentProposalCard({
           )}>
             {card.description || "No description provided"}
           </p>
+          {specificityWarning && effectiveStatus !== "rejected" && (
+            <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[12px] leading-relaxed text-amber-800">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{specificityWarning}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
@@ -261,30 +275,40 @@ export default function IntentProposalCard({
                   Skip
                 </button>
               )}
-              <button
-                type="button"
-                onClick={handleApproveNow}
-                className="relative w-8 h-8 rounded-full bg-gray-100 border border-gray-300 flex items-center justify-center text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors overflow-hidden group"
-                title="Create now"
-              >
-                <span className="text-xs font-medium group-hover:hidden z-10 relative tabular-nums">
-                  {countdown ?? COUNTDOWN_SECONDS}
-                </span>
-                <Check className="w-4 h-4 z-10 relative hidden group-hover:block" />
-                <svg className="absolute inset-[1px] pointer-events-none -rotate-90" viewBox="0 0 30 30">
-                  <circle
-                    cx="15"
-                    cy="15"
-                    r="14"
-                    fill="none"
-                    stroke="rgb(75,85,99)"
-                    strokeWidth="1.5"
-                    strokeDasharray="87.96"
-                    strokeDashoffset={87.96 * (1 - (countdown ?? COUNTDOWN_SECONDS) / COUNTDOWN_SECONDS)}
-                    className="transition-[stroke-dashoffset] duration-1000 linear"
-                  />
-                </svg>
-              </button>
+              {requiresManualApproval ? (
+                <button
+                  type="button"
+                  onClick={handleApproveNow}
+                  className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                >
+                  Create anyway
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleApproveNow}
+                  className="relative w-8 h-8 rounded-full bg-gray-100 border border-gray-300 flex items-center justify-center text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors overflow-hidden group"
+                  title="Create now"
+                >
+                  <span className="text-xs font-medium group-hover:hidden z-10 relative tabular-nums">
+                    {countdown ?? COUNTDOWN_SECONDS}
+                  </span>
+                  <Check className="w-4 h-4 z-10 relative hidden group-hover:block" />
+                  <svg className="absolute inset-[1px] pointer-events-none -rotate-90" viewBox="0 0 30 30">
+                    <circle
+                      cx="15"
+                      cy="15"
+                      r="14"
+                      fill="none"
+                      stroke="rgb(75,85,99)"
+                      strokeWidth="1.5"
+                      strokeDasharray="87.96"
+                      strokeDashoffset={87.96 * (1 - (countdown ?? COUNTDOWN_SECONDS) / COUNTDOWN_SECONDS)}
+                      className="transition-[stroke-dashoffset] duration-1000 linear"
+                    />
+                  </svg>
+                </button>
+              )}
             </>
           )}
 

@@ -8,6 +8,16 @@ import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("SemanticVerifier");
 
+const referentialBreadthSchema = z.enum(["narrow", "moderate", "broad"]);
+const missingSelectionalConstraintSchema = z.enum([
+  "role",
+  "outcome",
+  "location",
+  "timeframe",
+  "domain",
+  "concrete_need",
+]);
+
 const model = createModel("intentVerifier");
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT
@@ -122,6 +132,26 @@ REFERENTIAL ANCHOR → referential_anchor field
   "I want to join Google" → "Google"
   "I want to join a startup" → null
 
+REFERENTIAL BREADTH → referential_breadth field
+  Estimate the extension size of the open candidate class: how many people could plausibly satisfy the description.
+  This is NOT the same as semantic_entropy. Semantic entropy measures underspecification/constraint density;
+  referential breadth measures whether the attributive description narrows the satisfier class enough for discovery.
+
+  narrow   → a small satisfier class due to concrete role/outcome/location/timeframe/specific need.
+             Example: "Find a robotics founder in Healdsburg this week to test my meditation hardware prototype"
+  moderate → a bounded professional/community class, but some constraints are still missing.
+             Example: "Meet AI safety researchers working on evals in London"
+  broad    → a large satisfier class; many people could plausibly match even if topical constraints are present.
+             Example: "Meet creative people, builders, and makers interested in AI, meditation, and tech exploration"
+
+MISSING SELECTIONAL CONSTRAINTS → missing_selectional_constraints field
+  Report the constraints whose absence keeps the candidate class too broad:
+  role, outcome, location, timeframe, domain, concrete_need.
+
+SPECIFICITY WARNING → specificity_warning field
+  If referential_breadth is broad, provide a concise user-facing warning asking for a more concrete role,
+  outcome, location, timeframe, domain, or need. Otherwise output null.
+
 ═══════════════════════════════════════════════════
 STEP 3 — FLAGS
 ═══════════════════════════════════════════════════
@@ -131,6 +161,7 @@ Add flags when scores fall below threshold:
   sincerity < 70  → "WEAK_COMMITMENT"
   clarity < 50    → "VAGUE_INTENT"
   classification is ASSERTIVE or EXPRESSIVE → "NOISE"
+  referential_breadth is broad → "BROAD_ATTRIBUTIVE_REFERENCE"
 `;
 
 // ──────────────────────────────────────────────────────────────
@@ -169,8 +200,20 @@ const responseFormat = z.object({
     "Named specific entity the utterance refers to (Donnellan referential), or null for attributive reference"
   ),
 
+  referential_breadth: referentialBreadthSchema.describe(
+    "Extension size of the open candidate class: narrow, moderate, or broad. Distinct from semantic entropy."
+  ),
+
+  missing_selectional_constraints: z.array(missingSelectionalConstraintSchema).describe(
+    "Selectional constraints whose absence leaves the satisfier class too broad."
+  ),
+
+  specificity_warning: z.string().nullable().describe(
+    "Concise user-facing warning when referential_breadth is broad; otherwise null."
+  ),
+
   flags: z.array(z.string()).describe(
-    "Semantic violation tags: SKILL_MISMATCH (authority<70), WEAK_COMMITMENT (sincerity<70), VAGUE_INTENT (clarity<50), NOISE (ASSERTIVE or EXPRESSIVE)"
+    "Semantic violation tags: SKILL_MISMATCH (authority<70), WEAK_COMMITMENT (sincerity<70), VAGUE_INTENT (clarity<50), NOISE (ASSERTIVE or EXPRESSIVE), BROAD_ATTRIBUTIVE_REFERENCE (referential_breadth=broad)"
   ),
 });
 
@@ -178,6 +221,8 @@ const responseFormat = z.object({
 // 3. TYPE DEFINITIONS
 // ──────────────────────────────────────────────────────────────
 
+export type ReferentialBreadth = z.infer<typeof referentialBreadthSchema>;
+export type MissingSelectionalConstraint = z.infer<typeof missingSelectionalConstraintSchema>;
 export type SemanticVerifierOutput = z.infer<typeof responseFormat>;
 
 // ──────────────────────────────────────────────────────────────
