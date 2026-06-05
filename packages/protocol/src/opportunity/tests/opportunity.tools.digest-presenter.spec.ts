@@ -1,5 +1,5 @@
-// Stub API key to prevent module-level createModel() from throwing
-process.env.OPENROUTER_API_KEY = 'test-key-unused';
+// Stub API key to prevent module-level createModel() from throwing — only set when absent
+process.env.OPENROUTER_API_KEY ||= 'test-key-unused';
 
 import { mock, describe, expect, it, afterAll } from 'bun:test';
 
