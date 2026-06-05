@@ -46,7 +46,7 @@ const { buildMinimalOpportunityCard } = await import('../opportunity.tools.js');
 const { createOpportunityTools } = await import('../opportunity.tools.js');
 const { z } = await import('zod');
 
-import type { ToolDeps } from '../../shared/agent/tool.helpers.js';
+import type { ToolDeps, DefineTool } from '../../shared/agent/tool.helpers.js';
 import type {
   ChatGraphCompositeDatabase,
   Opportunity,
@@ -121,25 +121,25 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
       getPremisesForUser: mock(async () => []),
       getActiveIntents: mock(async () => []),
       getNetwork: mock(async () => null),
-    } as any,
-    systemDb: {} as any,
-    scraper: {} as any,
-    embedder: { embedText: mock(async () => []), generateEmbedding: mock(async () => []) } as any,
-    cache: {} as any,
-    integration: {} as any,
-    contactService: {} as any,
-    integrationImporter: {} as any,
-    enricher: {} as any,
-    negotiationDatabase: {} as any,
+    } as unknown as ToolDeps["userDb"],
+    systemDb: {} as unknown as ToolDeps["systemDb"],
+    scraper: {} as unknown as ToolDeps["scraper"],
+    embedder: { embedText: mock(async () => []), generateEmbedding: mock(async () => []) } as unknown as ToolDeps["embedder"],
+    cache: {} as unknown as ToolDeps["cache"],
+    integration: {} as unknown as ToolDeps["integration"],
+    contactService: {} as unknown as ToolDeps["contactService"],
+    integrationImporter: {} as unknown as ToolDeps["integrationImporter"],
+    enricher: {} as unknown as ToolDeps["enricher"],
+    negotiationDatabase: {} as unknown as ToolDeps["negotiationDatabase"],
     graphs: {
-      profile: noopGraph as any,
-      intent: noopGraph as any,
-      index: noopGraph as any,
-      networkMembership: noopGraph as any,
-      intentIndex: noopGraph as any,
-      opportunity: noopGraph as any,
-      premise: noopGraph as any,
-    },
+      profile: noopGraph,
+      intent: noopGraph,
+      index: noopGraph,
+      networkMembership: noopGraph,
+      intentIndex: noopGraph,
+      opportunity: noopGraph,
+      premise: noopGraph,
+    } as unknown as ToolDeps["graphs"],
     ...overrides,
   } as ToolDeps;
 }
@@ -153,8 +153,8 @@ describe('list_opportunities digest presenter path', () => {
     getProfile = mock(async () => ({ identity: { name: 'Alice', bio: '', location: '' }, userId: 'c-1' }) as ProfileRow | null);
 
     const deps = makeDeps();
-    const tools = createOpportunityTools(defineTool as any, deps);
-    const listTool = tools.find((t: any) => t.name === 'list_opportunities')!;
+    const tools = createOpportunityTools(defineTool as unknown as DefineTool, deps);
+    const listTool = tools.find((t: { name: string }) => t.name === 'list_opportunities')!;
 
     const result = parseResult(
       await listTool.handler({
@@ -186,8 +186,8 @@ describe('list_opportunities digest presenter path', () => {
     });
 
     const deps = makeDeps();
-    const tools = createOpportunityTools(defineTool as any, deps);
-    const listTool = tools.find((t: any) => t.name === 'list_opportunities')!;
+    const tools = createOpportunityTools(defineTool as unknown as DefineTool, deps);
+    const listTool = tools.find((t: { name: string }) => t.name === 'list_opportunities')!;
 
     const result = parseResult(
       await listTool.handler({
