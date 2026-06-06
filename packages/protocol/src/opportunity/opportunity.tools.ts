@@ -1584,7 +1584,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                   let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
                   const introducerIsCounterpart = introducerActor && counterpartActor && introducerActor.userId === counterpartActor.userId;
                   if (introducerActor && introducerActor.userId !== context.userId && !introducerIsCounterpart) {
-                    const narratorName = introducerName ?? "Someone";
+                    const narratorName = introducerName?.trim() || "Someone";
                     narratorChip = {
                       name: narratorName,
                       text: stripLeadingNarratorName(presentation.narratorRemark, narratorName),
