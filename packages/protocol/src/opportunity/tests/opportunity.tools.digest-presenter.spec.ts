@@ -14,6 +14,7 @@ mock.module('../opportunity.presenter.js', () => {
   presentHomeCardMock = mock(async () => ({
     headline: 'Test Headline',
     personalizedSummary: 'Test personalized summary.',
+    digestSummary: 'You might like meeting Alice because she matches your current interests.',
     suggestedAction: 'Test action',
     narratorRemark: 'Test narrator remark',
     mutualIntentsLabel: undefined,
@@ -171,7 +172,8 @@ describe('list_opportunities digest presenter path', () => {
     expect(result.success).toBe(true);
     expect(gatherPresenterContextMock).toHaveBeenCalled();
     expect(presentHomeCardMock).toHaveBeenCalled();
-    expect(String(result.data?.message)).toContain('Test personalized summary');
+    expect(String(result.data?.message)).toContain('You might like meeting Alice because she matches your current interests.');
+    expect(String(result.data?.message)).not.toContain('Test personalized summary');
   });
 
   it('skips digest cards instead of surfacing raw fallback when presenter throws', async () => {

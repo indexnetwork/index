@@ -330,6 +330,7 @@ type OpportunityCardLike = Record<string, unknown> & {
   userId?: string | undefined;
   name?: string | undefined;
   mainText?: string | undefined;
+  digestSummary?: string | undefined;
   status?: string | undefined;
   feedCategory?: string | undefined;
   acceptUrl?: string | undefined;
@@ -373,7 +374,11 @@ export function buildOpportunityPresentation(
           const markerId = String(card.opportunityId).replace(/[\s>]/g, "");
           if (markerId) lines.push(`   <!-- digest-opportunity:id=${markerId} -->`);
         }
-        if (card.mainText) lines.push(`   ${card.mainText}`);
+        if (opts.includeDigestMarkers && card.digestSummary) {
+          lines.push(`   ${card.digestSummary}`);
+        } else if (card.mainText) {
+          lines.push(`   ${card.mainText}`);
+        }
         if (card.status) lines.push(`   status: ${card.status}`);
         if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
         if (card.acceptUrl) lines.push(`   acceptUrl: ${card.acceptUrl}`);
@@ -1588,6 +1593,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                     name: counterpartName,
                     avatar: counterpartUser?.avatar ?? null,
                     mainText: stripUuids(presentation.personalizedSummary),
+                    digestSummary: stripUuids(presentation.digestSummary),
                     cta: presentation.suggestedAction,
                     headline: viewerIsIntroducerHere && secondPartyNameForHeadline
                       ? `${counterpartName} → ${secondPartyNameForHeadline}`
