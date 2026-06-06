@@ -8,7 +8,27 @@ import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LA
 import { viewerCentricCardSummary, narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
-import { stripLeadingNarratorName } from "./feed/feed.graph.js";
+
+function stripLeadingNarratorName(remark: string, narratorName: string): string {
+  let t = remark.trim();
+  if (!t || !narratorName.trim()) return remark;
+  const name = narratorName.trim();
+  const nameLower = name.toLowerCase();
+  for (;;) {
+    const lower = t.toLowerCase();
+    if (!lower.startsWith(nameLower)) break;
+    // Require a word boundary after the name so a short name like "Al" does not
+    // mangle a longer word ("Always …" → "ways …"). The char after the name must
+    // be a separator (sentence/clause punctuation or whitespace) or end of string.
+    // Keep this set in sync with the separator stripped from `rest` below.
+    const boundary = t.charAt(name.length);
+    if (boundary && !/[\s.:,\-–—]/.test(boundary)) break;
+    const rest = t.slice(name.length).replace(/^\s*[.:,\-–—]\s*/i, '').trim();
+    if (rest.length === 0 || rest === t) break;
+    t = rest;
+  }
+  return t;
+}
 import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
@@ -358,7 +378,7 @@ export function buildOpportunityPresentation(
         if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
         if (card.acceptUrl) lines.push(`   acceptUrl: ${card.acceptUrl}`);
         if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
-        if (opts.includeDigestMarkers && card.score != null) lines.push(`   confidence: ${Math.round(card.score)}`);
+        if (opts.includeDigestMarkers && card.score != null) lines.push(`   confidence: ${Math.round(card.score * 100)}`);
         // Only surface opportunityId when there's no acceptUrl. Exposing the
         // UUID alongside an actionable link gives the LLM a foothold to
         // hallucinate bare `/api/opportunities/<id>/connect` URLs.
@@ -1532,22 +1552,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                 const viewerRole = viewerActor?.role ?? "party";
                 const isCounterpartGhost = counterpartUser?.isGhost ?? false;
 
-                // Build fallback card in case LLM presenter fails
-                const fallbackCard = buildMinimalOpportunityCard(
-                  opp,
-                  context.userId,
-                  counterpartUserId,
-                  counterpartName,
-                  counterpartUser?.avatar ?? null,
-                  introducerName,
-                  introducerUser?.avatar ?? null,
-                  viewerName,
-                  secondPartyNameForHeadline,
-                  secondPartyUser?.avatar ?? null,
-                  secondPartyActorForHeadline?.userId,
-                  isCounterpartGhost,
-                );
-
                 try {
                   const ctx = await gatherPresenterContext(
                     presenterDb,
@@ -1565,7 +1569,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                   let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
                   const introducerIsCounterpart = introducerActor && counterpartActor && introducerActor.userId === counterpartActor.userId;
                   if (introducerActor && introducerActor.userId !== context.userId && !introducerIsCounterpart) {
-                    const narratorName = introducerName ?? "Someone";
+                    const narratorName = introducerName?.trim() || "Someone";
                     narratorChip = {
                       name: narratorName,
                       text: stripLeadingNarratorName(presentation.narratorRemark, narratorName),
@@ -1629,28 +1633,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
                   return card as Record<string, unknown> & { opportunityId: string };
                 } catch (presenterErr) {
-                  logger.warn("LLM presenter failed for list_opportunities digest card, using fallback", {
+                  logger.warn("LLM presenter failed for list_opportunities digest card, skipping raw fallback", {
                     opportunityId: opp.id,
                     err: presenterErr,
                   });
-                  // Attach links to fallback card too
-                  if (context.isMcp && deps.mintConnectLink) {
-                    const viewerApproved =
-                      viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
-                    await attachActionableLinks(fallbackCard as Record<string, unknown> & {
-                      opportunityId: string;
-                      viewerRole: string;
-                      status: string;
-                    }, {
-                      viewerId: context.userId,
-                      viewerApproved,
-                      counterpartUserId,
-                      mintConnectLink: deps.mintConnectLink,
-                      frontendUrl: deps.frontendUrl,
-                      preferredSurface: context.clientSurface,
-                    });
-                  }
-                  return fallbackCard as Record<string, unknown> & { opportunityId: string };
+                  // Scheduled digests should only surface OpportunityPresenter-rendered
+                  // copy. The minimal fallback reuses evaluator reasoning, which can
+                  // contain raw narrator phrasing (for example "The discoverer...")
+                  // and is not suitable for AgentVillage morning briefs.
+                  skippedIds.push(opp.id);
+                  return null;
                 }
               } catch (err) {
                 logger.warn("Skipping opportunity that failed to build card", {

@@ -3,7 +3,6 @@ process.env.OPENROUTER_API_KEY ||= 'test-key-unused';
 
 import { mock, describe, expect, it, afterAll } from 'bun:test';
 
-import type { OpportunityPresenter } from '../opportunity.presenter.js';
 import type { PresenterDatabase } from '../opportunity.presenter.js';
 
 // ─── Module-level mocks: must run before any static import of opportunity.tools ───
@@ -21,20 +20,20 @@ mock.module('../opportunity.presenter.js', () => {
   }));
   gatherPresenterContextMock = mock(async (
     presenterDb: PresenterDatabase,
-    opp: any,
-    viewerId: string,
+    opp: { status: string },
+    _viewerId: string,
   ) => ({
     opportunityStatus: opp.status,
   }));
 
   return {
     OpportunityPresenter: class {
-      presentHomeCard(input: any) {
+      presentHomeCard(input: unknown) {
         return presentHomeCardMock(input);
       }
     },
-    gatherPresenterContext: (...args: any[]) => gatherPresenterContextMock(...args),
-    PresenterDatabase: undefined as any, // type-only, not consumed at runtime
+    gatherPresenterContext: (...args: unknown[]) => gatherPresenterContextMock(...args),
+    PresenterDatabase: undefined as unknown as PresenterDatabase, // type-only, not consumed at runtime
   };
 });
 
@@ -42,11 +41,10 @@ afterAll(() => mock.restore());
 
 // ─── Imports after mocks ──────────────────────────────────────────────────────
 
-const { buildMinimalOpportunityCard } = await import('../opportunity.tools.js');
 const { createOpportunityTools } = await import('../opportunity.tools.js');
 const { z } = await import('zod');
 
-import type { ToolDeps } from '../../shared/agent/tool.helpers.js';
+import type { ToolDeps, DefineTool } from '../../shared/agent/tool.helpers.js';
 import type {
   ChatGraphCompositeDatabase,
   Opportunity,
@@ -85,7 +83,7 @@ function defineTool<T extends z.ZodType>(opts: {
   name: string;
   description: string;
   querySchema: T;
-  handler: (input: { context: any; query: z.infer<T> }) => Promise<string>;
+  handler: (input: { context: unknown; query: z.infer<T> }) => Promise<string>;
 }) {
   return opts;
 }
@@ -121,25 +119,25 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
       getPremisesForUser: mock(async () => []),
       getActiveIntents: mock(async () => []),
       getNetwork: mock(async () => null),
-    } as any,
-    systemDb: {} as any,
-    scraper: {} as any,
-    embedder: { embedText: mock(async () => []), generateEmbedding: mock(async () => []) } as any,
-    cache: {} as any,
-    integration: {} as any,
-    contactService: {} as any,
-    integrationImporter: {} as any,
-    enricher: {} as any,
-    negotiationDatabase: {} as any,
+    } as unknown as ToolDeps["userDb"],
+    systemDb: {} as unknown as ToolDeps["systemDb"],
+    scraper: {} as unknown as ToolDeps["scraper"],
+    embedder: { embedText: mock(async () => []), generateEmbedding: mock(async () => []) } as unknown as ToolDeps["embedder"],
+    cache: {} as unknown as ToolDeps["cache"],
+    integration: {} as unknown as ToolDeps["integration"],
+    contactService: {} as unknown as ToolDeps["contactService"],
+    integrationImporter: {} as unknown as ToolDeps["integrationImporter"],
+    enricher: {} as unknown as ToolDeps["enricher"],
+    negotiationDatabase: {} as unknown as ToolDeps["negotiationDatabase"],
     graphs: {
-      profile: noopGraph as any,
-      intent: noopGraph as any,
-      index: noopGraph as any,
-      networkMembership: noopGraph as any,
-      intentIndex: noopGraph as any,
-      opportunity: noopGraph as any,
-      premise: noopGraph as any,
-    },
+      profile: noopGraph,
+      intent: noopGraph,
+      index: noopGraph,
+      networkMembership: noopGraph,
+      intentIndex: noopGraph,
+      opportunity: noopGraph,
+      premise: noopGraph,
+    } as unknown as ToolDeps["graphs"],
     ...overrides,
   } as ToolDeps;
 }
@@ -153,8 +151,8 @@ describe('list_opportunities digest presenter path', () => {
     getProfile = mock(async () => ({ identity: { name: 'Alice', bio: '', location: '' }, userId: 'c-1' }) as ProfileRow | null);
 
     const deps = makeDeps();
-    const tools = createOpportunityTools(defineTool as any, deps);
-    const listTool = tools.find((t: any) => t.name === 'list_opportunities')!;
+    const tools = createOpportunityTools(defineTool as unknown as DefineTool, deps);
+    const listTool = tools.find((t: { name: string }) => t.name === 'list_opportunities')!;
 
     const result = parseResult(
       await listTool.handler({
@@ -176,7 +174,7 @@ describe('list_opportunities digest presenter path', () => {
     expect(String(result.data?.message)).toContain('Test personalized summary');
   });
 
-  it('falls back to buildMinimalOpportunityCard when presenter throws', async () => {
+  it('skips digest cards instead of surfacing raw fallback when presenter throws', async () => {
     getOppsForUser = mock(async () => [makeOpp('opp-2', 'c-2')]);
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);
     getProfile = mock(async () => ({ identity: { name: 'Bob', bio: '', location: '' }, userId: 'c-2' }) as ProfileRow | null);
@@ -186,8 +184,8 @@ describe('list_opportunities digest presenter path', () => {
     });
 
     const deps = makeDeps();
-    const tools = createOpportunityTools(defineTool as any, deps);
-    const listTool = tools.find((t: any) => t.name === 'list_opportunities')!;
+    const tools = createOpportunityTools(defineTool as unknown as DefineTool, deps);
+    const listTool = tools.find((t: { name: string }) => t.name === 'list_opportunities')!;
 
     const result = parseResult(
       await listTool.handler({
@@ -203,10 +201,10 @@ describe('list_opportunities digest presenter path', () => {
       }),
     );
 
-    // Should succeed and include the counterpart name from the fallback
     expect(result.success).toBe(true);
-    expect(String(result.data?.message)).toContain('Bob');
-    // Fallback card should NOT contain presenter-specific text
-    expect(String(result.data?.message)).not.toContain('Test personalized summary');
+    expect(result.data?.found).toBe(false);
+    expect(String(result.data?.message)).toContain("couldn't render");
+    expect(String(result.data?.message)).not.toContain('Bob');
+    expect(String(result.data?.message)).not.toContain('Reasoning for c-2');
   });
 });

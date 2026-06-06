@@ -230,7 +230,6 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   }
 
   async function decomposeApprovedDraftProfile(
-    context: ResolvedToolContext,
     profile: ApprovedProfileDraft & { userId: string },
   ): Promise<void> {
     const input = buildApprovedDraftProfileInput(profile);
@@ -241,27 +240,29 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     traceEmitter?.({ type: "graph_start", name: "profile" });
     try {
       const graphInput = {
-        userId: context.userId,
+        userId: profile.userId,
         operationMode: 'write' as const,
         input,
         forceUpdate: true,
       };
-      const result = context.isMcp
-        ? await graphs.profile.invoke(graphInput)
-        : await invokeWithAbortSignal(graphs.profile, graphInput);
+      // Always invoked as a background fire-and-forget task (see confirm_user_profile
+      // call sites), so decomposition must outlive the originating request — invoke
+      // the graph directly and never bind the request abort signal, which would
+      // cancel it as soon as the web request completes.
+      const result = await graphs.profile.invoke(graphInput);
 
       if (result.error) {
         const err = new Error(result.error);
         logger.error('Approved draft premise decomposition failed', {
-          userId: context.userId,
+          userId: profile.userId,
           error: result.error,
         });
         reportToolError?.(err, {
           subsystem: 'profile',
           operation: 'profile.confirm_draft_decompose',
           toolName: 'confirm_user_profile',
-          userId: context.userId,
-          tags: { toolName: 'confirm_user_profile', execution: context.isMcp ? 'background' : 'sync' },
+          userId: profile.userId,
+          tags: { toolName: 'confirm_user_profile', execution: 'background' },
         });
         return;
       }
@@ -273,15 +274,15 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       // authoritative, and a concurrent user-driven profile update could race.
     } catch (err) {
       logger.error('Approved draft premise decomposition failed', {
-        userId: context.userId,
+        userId: profile.userId,
         error: err instanceof Error ? err.message : String(err),
       });
       reportToolError?.(err, {
         subsystem: 'profile',
         operation: 'profile.confirm_draft_decompose',
         toolName: 'confirm_user_profile',
-        userId: context.userId,
-        tags: { toolName: 'confirm_user_profile', execution: context.isMcp ? 'background' : 'sync' },
+        userId: profile.userId,
+        tags: { toolName: 'confirm_user_profile', execution: 'background' },
       });
     } finally {
       traceEmitter?.({ type: "graph_end", name: "profile", durationMs: Date.now() - graphStart });
@@ -671,16 +672,15 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         await userDb.saveProfile(profile);
         await persistApprovedProfileContext(profile, user, context.networkId);
 
-        if (context.isMcp) {
-          decomposeApprovedDraftProfile(context, profile).catch((err: unknown) => {
-            logger.error('Approved draft premise decomposition failed', {
-              userId: context.userId,
-              error: err instanceof Error ? err.message : String(err),
-            });
+        const decomposeLogLabel = context.isMcp
+          ? 'Approved draft premise decomposition failed'
+          : 'Approved draft premise decomposition failed (web)';
+        decomposeApprovedDraftProfile(profile).catch((err: unknown) => {
+          logger.error(decomposeLogLabel, {
+            userId: profile.userId,
+            error: err instanceof Error ? err.message : String(err),
           });
-        } else {
-          await decomposeApprovedDraftProfile(context, profile);
-        }
+        });
 
         return success({
           created: true,

@@ -42,6 +42,14 @@ export function IntentProposalSkeleton() {
 const COUNTDOWN_SECONDS = 5;
 
 /**
+ * Fallback warning shown when a proposal requires manual approval (broad signal)
+ * but the backend didn't supply a specific warning string (older or partial
+ * payload). Mirrors DEFAULT_SPECIFICITY_WARNING in the protocol package.
+ */
+const DEFAULT_SPECIFICITY_WARNING =
+  "This signal is broad and may produce many weak matches. Add a more concrete role, outcome, location, timeframe, domain, or specific need to get better recommendations.";
+
+/**
  * Auto-save card for intent creation in chat.
  * Countdown from 5 with Skip option; auto-saves after countdown; Undo after save.
  */
@@ -67,6 +75,12 @@ export default function IntentProposalCard({
   const isPending = statusResolved && effectiveStatus === "pending" && !actionTaken && !actionError;
   const specificityWarning = card.specificityWarning?.trim();
   const requiresManualApproval = Boolean(specificityWarning || card.referentialBreadth === "broad");
+  // When manual approval is required, always show a warning banner — fall back to
+  // the default if the backend sent a broad breadth without a specific message, so
+  // the disabled countdown is explained rather than looking stuck.
+  const displayWarning = requiresManualApproval
+    ? specificityWarning || DEFAULT_SPECIFICITY_WARNING
+    : undefined;
 
   // Start countdown on mount when pending. Broad attributive signals require
   // explicit approval so the user has a chance to refine instead of silently
@@ -255,10 +269,10 @@ export default function IntentProposalCard({
           )}>
             {card.description || "No description provided"}
           </p>
-          {specificityWarning && effectiveStatus !== "rejected" && (
+          {displayWarning && effectiveStatus !== "rejected" && (
             <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[12px] leading-relaxed text-amber-800">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{specificityWarning}</span>
+              <span>{displayWarning}</span>
             </div>
           )}
         </div>
