@@ -174,7 +174,7 @@ describe('list_opportunities digest presenter path', () => {
     expect(String(result.data?.message)).toContain('Test personalized summary');
   });
 
-  it('falls back to buildMinimalOpportunityCard when presenter throws', async () => {
+  it('skips digest cards instead of surfacing raw fallback when presenter throws', async () => {
     getOppsForUser = mock(async () => [makeOpp('opp-2', 'c-2')]);
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);
     getProfile = mock(async () => ({ identity: { name: 'Bob', bio: '', location: '' }, userId: 'c-2' }) as ProfileRow | null);
@@ -201,10 +201,10 @@ describe('list_opportunities digest presenter path', () => {
       }),
     );
 
-    // Should succeed and include the counterpart name from the fallback
     expect(result.success).toBe(true);
-    expect(String(result.data?.message)).toContain('Bob');
-    // Fallback card should NOT contain presenter-specific text
-    expect(String(result.data?.message)).not.toContain('Test personalized summary');
+    expect(result.data?.found).toBe(false);
+    expect(String(result.data?.message)).toContain("couldn't render");
+    expect(String(result.data?.message)).not.toContain('Bob');
+    expect(String(result.data?.message)).not.toContain('Reasoning for c-2');
   });
 });

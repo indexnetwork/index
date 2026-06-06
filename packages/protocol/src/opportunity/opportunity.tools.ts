@@ -1552,22 +1552,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                 const viewerRole = viewerActor?.role ?? "party";
                 const isCounterpartGhost = counterpartUser?.isGhost ?? false;
 
-                // Build fallback card in case LLM presenter fails
-                const fallbackCard = buildMinimalOpportunityCard(
-                  opp,
-                  context.userId,
-                  counterpartUserId,
-                  counterpartName,
-                  counterpartUser?.avatar ?? null,
-                  introducerName,
-                  introducerUser?.avatar ?? null,
-                  viewerName,
-                  secondPartyNameForHeadline,
-                  secondPartyUser?.avatar ?? null,
-                  secondPartyActorForHeadline?.userId,
-                  isCounterpartGhost,
-                );
-
                 try {
                   const ctx = await gatherPresenterContext(
                     presenterDb,
@@ -1649,28 +1633,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
                   return card as Record<string, unknown> & { opportunityId: string };
                 } catch (presenterErr) {
-                  logger.warn("LLM presenter failed for list_opportunities digest card, using fallback", {
+                  logger.warn("LLM presenter failed for list_opportunities digest card, skipping raw fallback", {
                     opportunityId: opp.id,
                     err: presenterErr,
                   });
-                  // Attach links to fallback card too
-                  if (context.isMcp && deps.mintConnectLink) {
-                    const viewerApproved =
-                      viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
-                    await attachActionableLinks(fallbackCard as Record<string, unknown> & {
-                      opportunityId: string;
-                      viewerRole: string;
-                      status: string;
-                    }, {
-                      viewerId: context.userId,
-                      viewerApproved,
-                      counterpartUserId,
-                      mintConnectLink: deps.mintConnectLink,
-                      frontendUrl: deps.frontendUrl,
-                      preferredSurface: context.clientSurface,
-                    });
-                  }
-                  return fallbackCard as Record<string, unknown> & { opportunityId: string };
+                  // Scheduled digests should only surface OpportunityPresenter-rendered
+                  // copy. The minimal fallback reuses evaluator reasoning, which can
+                  // contain raw narrator phrasing (for example "The discoverer...")
+                  // and is not suitable for AgentVillage morning briefs.
+                  skippedIds.push(opp.id);
+                  return null;
                 }
               } catch (err) {
                 logger.warn("Skipping opportunity that failed to build card", {
