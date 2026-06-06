@@ -88,9 +88,9 @@ export const HomeCardLLMSchema = z.object({
     ),
   digestSummary: z
     .string()
-    .max(260)
+    .max(220)
     .describe(
-      "One digest-ready sentence for a morning brief. It must be addressed to the viewer and mention the counterpart by name, e.g. 'You might like meeting Paul because ...'. No markdown.",
+      "One concise digest-ready sentence for a morning brief. It must be addressed to the viewer and mention the counterpart by name, e.g. 'You might like meeting Paul because ...'. No markdown.",
     ),
   suggestedAction: z
     .string()
@@ -215,7 +215,8 @@ Rules:
 - Prefer first names in user-facing copy. Avoid repeated full names unless disambiguation is necessary.
 - digestSummary must be grammatically complete as a standalone sentence. It should usually start with "You might like meeting {Name} because ..." for direct connections, or "You may be able to help {Name} because ..." for connector/introducer cards.
 - digestSummary must NOT use awkward third-person fragments like "Name is...", "they're ..., and is...", "you is...", or "the discoverer's query".
-- digestSummary must be one sentence, <= 220 characters when possible, and contain no markdown links; the caller will attach links.
+- digestSummary must be one sentence, MUST fit within 180 characters when possible, and MUST contain no markdown links; the caller will attach links.
+- If you cannot fit every detail, choose one clear reason and stop. Do not rely on downstream truncation.
 
 **Introduction-originated opportunities (ONLY when INTRODUCTION CONTEXT is provided):**
 When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created by an introducer. It was NOT automatically discovered.
