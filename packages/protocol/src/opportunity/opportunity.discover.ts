@@ -446,18 +446,21 @@ async function enrichOpportunities(
       }
 
       const isCounterpartGhost = isGhostByUserId.get(item.candidateUserId) ?? false;
+      const personalizedSummary = viewerCentricCardSummary(
+        reasoning,
+        name,
+        MINIMAL_MAIN_TEXT_MAX_CHARS,
+        viewerName,
+        introducerName,
+      );
       return {
         headline: viewerIsIntroducer && secondPartyName
           ? `${name} → ${secondPartyName}`
           : (name ? `Connection with ${name}` : "Suggested connection"),
-        personalizedSummary:
-          viewerCentricCardSummary(
-            reasoning,
-            name,
-            MINIMAL_MAIN_TEXT_MAX_CHARS,
-            viewerName,
-            introducerName,
-          ),
+        personalizedSummary,
+        digestSummary: name
+          ? `You might like meeting ${name} based on your current interests.`
+          : "This connection may be relevant to your current interests.",
         suggestedAction: "Start a conversation to connect.",
         narratorRemark: narratorRemarkFromReasoning(reasoning, name, viewerName),
         primaryActionLabel: getPrimaryActionLabel(viewerIsIntroducer ? "introducer" : "party"),

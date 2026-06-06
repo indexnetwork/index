@@ -86,6 +86,12 @@ export const HomeCardLLMSchema = z.object({
     .describe(
       "2-3 sentence explanation in 'you' language for the main card body",
     ),
+  digestSummary: z
+    .string()
+    .max(260)
+    .describe(
+      "One digest-ready sentence for a morning brief. It must be addressed to the viewer and mention the counterpart by name, e.g. 'You might like meeting Paul because ...'. No markdown.",
+    ),
   suggestedAction: z
     .string()
     .describe("Brief suggested next step (e.g. CTA line)"),
@@ -195,10 +201,11 @@ You are an expert at presenting connection opportunities for a home feed card.
 Given context about the viewer, the other person, and why they were matched, produce:
 1. headline: one short hook line.
 2. personalizedSummary: 2-3 sentences in "you" language (main body text).
-3. suggestedAction: one brief suggested next step.
-4. narratorRemark: one short sentence for the narrator chip (who is suggesting and why; max ~80 chars).
-5. greeting: a 2-4 sentence first-person message the viewer could send to the counterpart. Plain prose, no greeting prefix, no markdown.
-6. mutualIntentsLabel: short subtitle under the other party's name. Examples: "3 mutual intents", "Shared interests", "Aligned goals" — keep it brief. NEVER output "0 mutual intents" or any zero-count label; use a qualitative phrase instead.
+3. digestSummary: one polished morning-brief sentence that can be printed directly after the person's linked name. No markdown, no field labels.
+4. suggestedAction: one brief suggested next step.
+5. narratorRemark: one short sentence for the narrator chip (who is suggesting and why; max ~80 chars).
+6. greeting: a 2-4 sentence first-person message the viewer could send to the counterpart. Plain prose, no greeting prefix, no markdown.
+7. mutualIntentsLabel: short subtitle under the other party's name. Examples: "3 mutual intents", "Shared interests", "Aligned goals" — keep it brief. NEVER output "0 mutual intents" or any zero-count label; use a qualitative phrase instead.
 
 Rules:
 - Address the viewer with "you"/"your". Be concise and compelling.
@@ -206,6 +213,9 @@ Rules:
 - narratorRemark is displayed with the narrator name prepended (e.g. "Index: …" or "Alice: …"). Do NOT start narratorRemark with the narrator's name or repeat it; write only the remark (e.g. "Based on your overlapping intents" or "introduced you two, sensing a valuable connection").
 - Vary wording for the match itself. Do not repeat "opportunity" across headline, summary, and narratorRemark when alternatives fit.
 - Prefer first names in user-facing copy. Avoid repeated full names unless disambiguation is necessary.
+- digestSummary must be grammatically complete as a standalone sentence. It should usually start with "You might like meeting {Name} because ..." for direct connections, or "You may be able to help {Name} because ..." for connector/introducer cards.
+- digestSummary must NOT use awkward third-person fragments like "Name is...", "they're ..., and is...", "you is...", or "the discoverer's query".
+- digestSummary must be one sentence, <= 220 characters when possible, and contain no markdown links; the caller will attach links.
 
 **Introduction-originated opportunities (ONLY when INTRODUCTION CONTEXT is provided):**
 When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created by an introducer. It was NOT automatically discovered.
@@ -405,7 +415,7 @@ COMMUNITY: ${input.indexName}
 Viewer's role in this opportunity: ${input.viewerRole}
 Opportunity status: ${input.opportunityStatus ?? "pending"}
 
-Produce headline, personalizedSummary, suggestedAction, narratorRemark, greeting, and mutualIntentsLabel.
+Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorRemark, greeting, and mutualIntentsLabel.
 `;
 
     const isIntroducer = input.viewerRole === "introducer";
@@ -418,6 +428,7 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, greeting
       const result = await this.invokeWithTimeout(this.homeCardModel, messages);
       const parsed = homeCardResponseFormat.parse(result);
       parsed.presentation.personalizedSummary = stripUuids(parsed.presentation.personalizedSummary);
+      parsed.presentation.digestSummary = stripUuids(parsed.presentation.digestSummary);
       parsed.presentation.narratorRemark = stripUuids(parsed.presentation.narratorRemark);
       if (/^0\s+(mutual|overlapping)\s+intent/i.test(parsed.presentation.mutualIntentsLabel)) {
         parsed.presentation.mutualIntentsLabel = "Shared interests";
@@ -425,6 +436,10 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, greeting
       if (input.isIntroduction && input.introducerName) {
         parsed.presentation.personalizedSummary = stripIntroducerMentions(
           parsed.presentation.personalizedSummary,
+          input.introducerName,
+        );
+        parsed.presentation.digestSummary = stripIntroducerMentions(
+          parsed.presentation.digestSummary,
           input.introducerName,
         );
       }
@@ -446,6 +461,9 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, greeting
       return {
         headline: "A promising connection",
         personalizedSummary: fallbackSummary,
+        digestSummary: isIntroducer
+          ? "You may be able to help make a useful introduction here."
+          : "You might like meeting them based on your current interests.",
         suggestedAction: isIntroducer
           ? "Share this introduction to get things started."
           : "Take a look and decide whether to reach out.",
@@ -560,6 +578,7 @@ function buildNegotiatingChip(input: HomeCardPresenterInput): HomeCardLLMResult 
   return {
     headline: "Negotiation in progress",
     personalizedSummary: "Your agent is still talking with theirs to see if this connection makes sense. We'll surface the full match as soon as they converge.",
+    digestSummary: "Your agent is still checking whether this connection makes sense.",
     suggestedAction: "Check back shortly — no action needed yet.",
     narratorRemark,
     mutualIntentsLabel: input.mutualIntentCount && input.mutualIntentCount > 0
