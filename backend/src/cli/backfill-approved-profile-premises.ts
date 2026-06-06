@@ -7,7 +7,7 @@
  * recorded data-use consent grant. Use --dry-run first.
  *
  * Usage:
- *   bun ./src/cli/backfill-approved-profile-premises.ts --network <networkId> [--limit=N] [--dry-run]
+ *   bun run maintenance:backfill-approved-profile-premises -- --network <networkId> [--limit=N] [--dry-run]
  *
  * Escape hatches are intentionally explicit:
  *   --allow-incomplete-onboarding
@@ -57,7 +57,7 @@ function parseArgs(): Args {
   const limitValue = Number.parseInt(argValue(args, '--limit') ?? '', 10);
 
   if (!networkId) {
-    console.error('Usage: bun ./src/cli/backfill-approved-profile-premises.ts --network <networkId> [--limit=N] [--dry-run]');
+    console.error('Usage: bun run maintenance:backfill-approved-profile-premises -- --network <networkId> [--limit=N] [--dry-run]');
     process.exit(1);
   }
 
