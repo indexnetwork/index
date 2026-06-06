@@ -19,10 +19,11 @@ function stripLeadingNarratorName(remark: string, narratorName: string): string 
     if (!lower.startsWith(nameLower)) break;
     // Require a word boundary after the name so a short name like "Al" does not
     // mangle a longer word ("Always …" → "ways …"). The char after the name must
-    // be a separator (punctuation/whitespace) or the end of the string.
+    // be a separator (sentence/clause punctuation or whitespace) or end of string.
+    // Keep this set in sync with the separator stripped from `rest` below.
     const boundary = t.charAt(name.length);
-    if (boundary && !/[\s:,\-–—]/.test(boundary)) break;
-    const rest = t.slice(name.length).replace(/^\s*[:,\-–—]\s*/i, '').trim();
+    if (boundary && !/[\s.:,\-–—]/.test(boundary)) break;
+    const rest = t.slice(name.length).replace(/^\s*[.:,\-–—]\s*/i, '').trim();
     if (rest.length === 0 || rest === t) break;
     t = rest;
   }
