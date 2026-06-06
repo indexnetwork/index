@@ -26,6 +26,14 @@ function isMeaningfulEnrichment(enrichment: EnrichmentResult | null): enrichment
     );
 }
 
+const approvedProfileDraftSchema = z.object({
+  identity: z.object({ name: z.string(), bio: z.string(), location: z.string() }),
+  narrative: z.object({ context: z.string() }),
+  attributes: z.object({ interests: z.array(z.string()), skills: z.array(z.string()) }),
+});
+
+type ApprovedProfileDraft = z.infer<typeof approvedProfileDraftSchema>;
+
 export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   const { userDb, systemDb, database, graphs, enricher, grantDefaultSystemPermissions, reportToolError } = deps;
 
@@ -208,6 +216,77 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       skills: profile.attributes.skills,
       interests: profile.attributes.interests,
     };
+  }
+
+  function buildApprovedDraftProfileInput(draft: ApprovedProfileDraft): string {
+    return [
+      draft.identity.name ? `My name is ${draft.identity.name}.` : '',
+      draft.identity.location ? `I am based in ${draft.identity.location}.` : '',
+      draft.identity.bio || '',
+      draft.narrative.context || '',
+      draft.attributes.skills.length ? `My skills include ${draft.attributes.skills.join(', ')}.` : '',
+      draft.attributes.interests.length ? `My interests include ${draft.attributes.interests.join(', ')}.` : '',
+    ].filter((part) => part.trim().length > 0).join('\n');
+  }
+
+  async function decomposeApprovedDraftProfile(
+    profile: ApprovedProfileDraft & { userId: string },
+  ): Promise<void> {
+    const input = buildApprovedDraftProfileInput(profile);
+    if (!input.trim()) return;
+
+    const traceEmitter = requestContext.getStore()?.traceEmitter;
+    const graphStart = Date.now();
+    traceEmitter?.({ type: "graph_start", name: "profile" });
+    try {
+      const graphInput = {
+        userId: profile.userId,
+        operationMode: 'write' as const,
+        input,
+        forceUpdate: true,
+      };
+      // Always invoked as a background fire-and-forget task (see confirm_user_profile
+      // call sites), so decomposition must outlive the originating request — invoke
+      // the graph directly and never bind the request abort signal, which would
+      // cancel it as soon as the web request completes.
+      const result = await graphs.profile.invoke(graphInput);
+
+      if (result.error) {
+        const err = new Error(result.error);
+        logger.error('Approved draft premise decomposition failed', {
+          userId: profile.userId,
+          error: result.error,
+        });
+        reportToolError?.(err, {
+          subsystem: 'profile',
+          operation: 'profile.confirm_draft_decompose',
+          toolName: 'confirm_user_profile',
+          userId: profile.userId,
+          tags: { toolName: 'confirm_user_profile', execution: 'background' },
+        });
+        return;
+      }
+
+      // The write graph's decompose → aggregate → generate → save_profile
+      // pipeline persists the aggregate profile. The approved draft was already
+      // saved before decomposition started, so the DB is consistent regardless
+      // of graph outcome.  Do not re-save here — the graph's save_profile is
+      // authoritative, and a concurrent user-driven profile update could race.
+    } catch (err) {
+      logger.error('Approved draft premise decomposition failed', {
+        userId: profile.userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      reportToolError?.(err, {
+        subsystem: 'profile',
+        operation: 'profile.confirm_draft_decompose',
+        toolName: 'confirm_user_profile',
+        userId: profile.userId,
+        tags: { toolName: 'confirm_user_profile', execution: 'background' },
+      });
+    } finally {
+      traceEmitter?.({ type: "graph_end", name: "profile", durationMs: Date.now() - graphStart });
+    }
   }
 
   const readUserProfiles = defineTool({
@@ -581,11 +660,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       "Saves an explicitly approved onboarding profile draft. Call this only after the user has seen the draft from preview_user_profile and approved it or provided corrections. " +
       "This path uses only the approved draft/explicit correction text and does not scrape or run public lookup.",
     querySchema: z.object({
-      draft: z.object({
-        identity: z.object({ name: z.string(), bio: z.string(), location: z.string() }),
-        narrative: z.object({ context: z.string() }),
-        attributes: z.object({ interests: z.array(z.string()), skills: z.array(z.string()) }),
-      }).optional().describe("The structured profile draft returned by preview_user_profile after user approval."),
+      draft: approvedProfileDraftSchema.optional().describe("The structured profile draft returned by preview_user_profile after user approval."),
       bioOrDescription: z.string().optional().describe("Approved correction or explicit profile text if not passing a structured draft."),
       name: z.string().optional().describe("Approved name correction."),
       location: z.string().optional().describe("Approved location correction."),
@@ -596,9 +671,22 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         const profile = { ...query.draft, userId: context.userId };
         await userDb.saveProfile(profile);
         await persistApprovedProfileContext(profile, user, context.networkId);
+
+        const decomposeLogLabel = context.isMcp
+          ? 'Approved draft premise decomposition failed'
+          : 'Approved draft premise decomposition failed (web)';
+        decomposeApprovedDraftProfile(profile).catch((err: unknown) => {
+          logger.error(decomposeLogLabel, {
+            userId: profile.userId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
         return success({
           created: true,
-          message: "Profile saved from approved draft.",
+          message: context.isMcp
+            ? "Profile saved from approved draft. Premise extraction is running in the background."
+            : "Profile saved from approved draft.",
           profile: toProfileSummary(profile),
         });
       }
