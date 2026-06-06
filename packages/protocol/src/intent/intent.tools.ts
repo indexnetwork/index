@@ -319,7 +319,9 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         if (broadIntents.length > 0) {
           const first = broadIntents[0];
           const missing = first.verification?.missing_selectional_constraints ?? [];
-          const missingHint = missing.length > 0 ? ` Missing selectional constraints: ${missing.join(", ")}.` : "";
+          const missingHint = missing.length > 0
+            ? ` Missing specifics: ${missing.map((m) => m.replace(/_/g, " ")).join(", ")}.`
+            : "";
           return error(
             `${specificityWarningFor(first)}${missingHint} ` +
             `Please ask the user to clarify before creating this signal, or retry with a narrower description.`,
