@@ -1,6 +1,11 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
-import { parseClientSurface, telegramHandleFromRequest } from '../mcp.controller';
+import {
+  findTelegramHandleMismatch,
+  parseClientSurface,
+  resolveMcpApiKeyPrincipal,
+  telegramHandleFromRequest,
+} from '../mcp.controller';
 
 function requestWithHeaders(headers: Record<string, string>): Request {
   return new Request('https://protocol.index.network/mcp', { headers });
@@ -72,5 +77,77 @@ describe('telegramHandleFromRequest', () => {
     expect(telegramHandleFromRequest(requestWithHeaders({
       'x-index-telegram-username': 'bad',
     }))).toBeNull();
+  });
+});
+
+describe('findTelegramHandleMismatch', () => {
+  test('accepts matching authenticated user telegram handle', () => {
+    expect(findTelegramHandleMismatch({
+      userId: 'user-1',
+      telegramHandle: '@Alice_TG',
+      authenticatedUserSocials: [{ userId: 'user-1', label: 'telegram', value: 'alice_tg' }],
+      matchingTelegramSocials: [{ userId: 'user-1', label: 'telegram', value: 'alice_tg' }],
+    })).toBeNull();
+  });
+
+  test('rejects when authenticated user has a different telegram handle', () => {
+    expect(findTelegramHandleMismatch({
+      userId: 'edge-city-user',
+      telegramHandle: 'seren_tg',
+      authenticatedUserSocials: [{ userId: 'edge-city-user', label: 'telegram', value: 'edge_city_tg' }],
+      matchingTelegramSocials: [],
+    })).toEqual({ reason: 'authenticated_user_handle_mismatch' });
+  });
+
+  test('rejects when requested telegram handle belongs to another user', () => {
+    expect(findTelegramHandleMismatch({
+      userId: 'edge-city-user',
+      telegramHandle: 'seren_tg',
+      authenticatedUserSocials: [],
+      matchingTelegramSocials: [{ userId: 'seren-user', label: 'telegram', value: 'seren_tg' }],
+    })).toEqual({ reason: 'handle_belongs_to_other_user', ownerUserId: 'seren-user' });
+  });
+
+  test('allows first-time persistence when the handle is not owned elsewhere', () => {
+    expect(findTelegramHandleMismatch({
+      userId: 'user-1',
+      telegramHandle: 'new_handle',
+      authenticatedUserSocials: [],
+      matchingTelegramSocials: [],
+    })).toBeNull();
+  });
+});
+
+describe('resolveMcpApiKeyPrincipal', () => {
+  test('prefers the verified session user when available', () => {
+    expect(resolveMcpApiKeyPrincipal({
+      userId: 'row-user',
+      referenceId: 'row-ref',
+      metadata: null,
+    }, 'session-user')).toEqual({ userId: 'session-user' });
+  });
+
+  test('prefers apikey.userId over referenceId without a session user', () => {
+    expect(resolveMcpApiKeyPrincipal({
+      userId: 'row-user',
+      referenceId: 'row-ref',
+      metadata: null,
+    })).toEqual({ userId: 'row-user' });
+  });
+
+  test('rejects agent keys whose referenceId and userId diverge', () => {
+    expect(() => resolveMcpApiKeyPrincipal({
+      userId: 'edge-city-user',
+      referenceId: 'seren-user',
+      metadata: JSON.stringify({ agentId: 'agent-1' }),
+    })).toThrow(/principal mismatch/);
+  });
+
+  test('returns agentId for valid agent keys', () => {
+    expect(resolveMcpApiKeyPrincipal({
+      userId: 'seren-user',
+      referenceId: 'seren-user',
+      metadata: JSON.stringify({ agentId: 'agent-1' }),
+    })).toEqual({ userId: 'seren-user', agentId: 'agent-1' });
   });
 });
