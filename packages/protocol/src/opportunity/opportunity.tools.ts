@@ -1519,6 +1519,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                     .map((a) => a.userId)
                     .filter((userId): userId is string => typeof userId === "string"),
                 });
+                skippedIds.push(opp.id);
                 return null;
               }
               try {
@@ -1694,6 +1695,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                 .map((a) => a.userId)
                 .filter((userId): userId is string => typeof userId === "string"),
             });
+            skippedIds.push(opp.id);
             continue;
           }
           try {
