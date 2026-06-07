@@ -1515,7 +1515,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                 logger.warn("list_opportunities: skipping opportunity where caller is not an actor", {
                   opportunityId: opp.id,
                   viewerId: context.userId,
-                  actorUserIds: opp.actors.map((a) => a.userId),
+                  actorUserIds: opp.actors
+                    .map((a) => a.userId)
+                    .filter((userId): userId is string => typeof userId === "string"),
                 });
                 return null;
               }
@@ -1688,7 +1690,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             logger.warn("list_opportunities: skipping opportunity where caller is not an actor", {
               opportunityId: opp.id,
               viewerId: context.userId,
-              actorUserIds: opp.actors.map((a) => a.userId),
+              actorUserIds: opp.actors
+                .map((a) => a.userId)
+                .filter((userId): userId is string => typeof userId === "string"),
             });
             continue;
           }
