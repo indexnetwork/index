@@ -365,6 +365,55 @@ describe('opportunity.utils', () => {
         ])
       ).not.toThrow();
     });
+
+    test('rejects a discovery self-match where all non-introducer rows are the same user', () => {
+      const self = 'c2505011-2e45-426e-81dd-b9abb9b72023';
+      expect(() =>
+        validateOpportunityActors([
+          { userId: self, role: 'agent' },
+          { userId: self, role: 'patient' },
+        ])
+      ).toThrow(/match a user with themselves/);
+    });
+
+    test('accepts duplicate rows for one participant when another distinct participant is present', () => {
+      expect(() =>
+        validateOpportunityActors([
+          { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', role: 'agent' },
+          { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', role: 'patient' },
+          { userId: 'a1234567-b234-c345-d456-e56789abcdef', role: 'party' },
+        ])
+      ).not.toThrow();
+    });
+
+    test('rejects an introducer who is also a participant ("Amina introduced you to Amina")', () => {
+      const amina = 'a1234567-b234-c345-d456-e56789abcdef';
+      expect(() =>
+        validateOpportunityActors([
+          { userId: amina, role: 'introducer' },
+          { userId: amina, role: 'party' },
+        ])
+      ).toThrow(/both the introducer and a participant/);
+    });
+
+    test('accepts a 1:1 intro where introducer and party are distinct users', () => {
+      expect(() =>
+        validateOpportunityActors([
+          { userId: 'a1234567-b234-c345-d456-e56789abcdef', role: 'introducer' },
+          { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', role: 'party' },
+        ])
+      ).not.toThrow();
+    });
+
+    test('accepts a 2-party intro where all three users are distinct', () => {
+      expect(() =>
+        validateOpportunityActors([
+          { userId: 'a1234567-b234-c345-d456-e56789abcdef', role: 'party' },
+          { userId: 'b2345678-c345-d456-e567-f6789abcdef0', role: 'party' },
+          { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', role: 'introducer' },
+        ])
+      ).not.toThrow();
+    });
   });
 });
 
