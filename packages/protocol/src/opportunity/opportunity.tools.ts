@@ -1427,10 +1427,47 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         },
       );
 
+      const skippedIds: string[] = [];
+      const buildListDebugSteps = (): Array<{ step: string; detail?: string; data?: Record<string, unknown> }> => {
+        const steps: Array<{ step: string; detail?: string; data?: Record<string, unknown> }> = [];
+        if (skippedIds.length > 0) {
+          steps.push({
+            step: "opportunity_display_skips",
+            detail: `${skippedIds.length} opportunity card(s) couldn't be displayed`,
+            data: {
+              skippedCount: skippedIds.length,
+              totalOpportunities: fetched.length,
+              skippedOpportunityIds: skippedIds,
+            },
+          });
+        }
+        return steps;
+      };
+      const recordCallerMismatch = (opp: Opportunity): void => {
+        logger.warn("list_opportunities: skipping opportunity where caller is not an actor", {
+          opportunityId: opp.id,
+          viewerId: context.userId,
+          actorUserIds: opp.actors
+            .map((a) => a.userId)
+            .filter((userId): userId is string => typeof userId === "string"),
+        });
+        skippedIds.push(opp.id);
+      };
+
+      // Read invariant: only surface opportunities the caller actually
+      // participates in. Apply before latent filtering, dedup/selection, and
+      // profile/user batch fetches so a mismatched row cannot influence which
+      // valid opportunities are selected or trigger cross-user reads.
+      const callerScoped = fetched.filter((opp) => {
+        if (opp.actors.some((a) => a.userId === context.userId)) return true;
+        recordCallerMismatch(opp);
+        return false;
+      });
+
       // Latent rows in chat are introducer-as-viewer only. The ACL layer
       // (isActionableForViewer) returns true for several other latent cases —
       // those belong to the home feed, not the digest/ambient surface.
-      const visible = fetched.filter((opp) => {
+      const visible = callerScoped.filter((opp) => {
         if (opp.status !== "latent") return true;
         const me = opp.actors.find((a) => a.userId === context.userId);
         return me?.role === "introducer";
@@ -1449,6 +1486,17 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const opportunities = selected.slice(0, CHAT_DISPLAY_LIMIT);
 
       if (!opportunities || opportunities.length === 0) {
+        if (skippedIds.length > 0) {
+          const listDebugSteps = buildListDebugSteps();
+          return success({
+            found: false,
+            count: 0,
+            summary: "Some opportunities couldn't be displayed",
+            message:
+              "I found opportunities, but couldn't render them. Please try again.",
+            ...(listDebugSteps.length ? { debugSteps: listDebugSteps } : {}),
+          });
+        }
         return success({
           found: false,
           count: 0,
@@ -1492,7 +1540,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const isDigestMode = context.isMcp === true && query.includeDigestMarkers === true;
       const cardDataList: Array<Record<string, unknown> & { opportunityId: string }> = [];
       const seenOpportunityIds = new Set<string>();
-      const skippedIds: string[] = [];
 
       if (isDigestMode) {
         // ── Digest mode: use LLM presenter for rich, second-person card text ──
@@ -1506,22 +1553,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             chunk.map(async (opp) => {
               if (seenOpportunityIds.has(opp.id)) return null;
               seenOpportunityIds.add(opp.id);
-              // Read invariant: the digest must only surface opportunities the
-              // caller actually participates in. A card whose caller is not an
-              // actor signals bad data or an identity/credential mismatch
-              // upstream — skip it loudly rather than render someone else's
-              // connection and mint a connect link under the wrong identity.
-              if (!opp.actors.some((a) => a.userId === context.userId)) {
-                logger.warn("list_opportunities: skipping opportunity where caller is not an actor", {
-                  opportunityId: opp.id,
-                  viewerId: context.userId,
-                  actorUserIds: opp.actors
-                    .map((a) => a.userId)
-                    .filter((userId): userId is string => typeof userId === "string"),
-                });
-                skippedIds.push(opp.id);
-                return null;
-              }
               try {
                 const counterpartActor = opp.actors.find(
                   (a) => a.userId !== context.userId && a.role !== "introducer",
@@ -1685,19 +1716,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         for (const opp of opportunities) {
           if (seenOpportunityIds.has(opp.id)) continue;
           seenOpportunityIds.add(opp.id);
-          // Read invariant: only surface opportunities the caller participates
-          // in (see digest-mode note above). Skip loudly on a mismatch.
-          if (!opp.actors.some((a) => a.userId === context.userId)) {
-            logger.warn("list_opportunities: skipping opportunity where caller is not an actor", {
-              opportunityId: opp.id,
-              viewerId: context.userId,
-              actorUserIds: opp.actors
-                .map((a) => a.userId)
-                .filter((userId): userId is string => typeof userId === "string"),
-            });
-            skippedIds.push(opp.id);
-            continue;
-          }
           try {
             const counterpartActor = opp.actors.find(
               (a) => a.userId !== context.userId && a.role !== "introducer",
@@ -1798,18 +1816,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
-      const listDebugSteps: Array<{ step: string; detail?: string; data?: Record<string, unknown> }> = [];
-      if (skippedIds.length > 0) {
-        listDebugSteps.push({
-          step: "card_build_errors",
-          detail: `${skippedIds.length} opportunity card(s) failed to build`,
-          data: {
-            skippedCount: skippedIds.length,
-            totalOpportunities: opportunities.length,
-            skippedOpportunityIds: skippedIds,
-          },
-        });
-      }
+      const listDebugSteps = buildListDebugSteps();
 
       if (cardDataList.length === 0) {
         if (skippedIds.length > 0) {

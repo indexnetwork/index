@@ -58,9 +58,12 @@ export function deriveRolesFromCorpus(corpus: HydeTargetCorpus): DerivedRoles {
  * identity (e.g. a connect link/greeting rendered in one party's voice while the
  * card shows the viewer "matched with themselves"). Two degenerate shapes are
  * blocked here, at the single persist chokepoint:
- *   - a duplicate non-introducer party, e.g. `[X(agent), X(patient)]`
+ *   - every userId-bearing non-introducer actor collapses to the same user,
+ *     e.g. `[X(agent), X(patient)]`
  *   - an introducer who is also a participant ("Amina introduced you to Amina")
  * Only `userId`-bearing actors are checked; role-only actors (legacy/tests) pass.
+ * Duplicate rows for one participant are allowed when at least one other distinct
+ * participant is present (some callers model multiple intents as multiple actor rows).
  *
  * @param actors - Array of actors with at least a role and optional userId
  * @throws Error when the actor set is invalid
@@ -92,7 +95,8 @@ export function validateOpportunityActors(actors: Array<{ userId?: string; role:
     }
   }
 
-  if (new Set(nonIntroducerUserIds).size !== nonIntroducerUserIds.length) {
+  const uniqueNonIntroducerUserIds = new Set(nonIntroducerUserIds);
+  if (nonIntroducerUserIds.length > 1 && uniqueNonIntroducerUserIds.size === 1) {
     throw new Error('An opportunity cannot match a user with themselves (duplicate participant).');
   }
 }
