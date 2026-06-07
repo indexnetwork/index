@@ -1506,6 +1506,19 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             chunk.map(async (opp) => {
               if (seenOpportunityIds.has(opp.id)) return null;
               seenOpportunityIds.add(opp.id);
+              // Read invariant: the digest must only surface opportunities the
+              // caller actually participates in. A card whose caller is not an
+              // actor signals bad data or an identity/credential mismatch
+              // upstream — skip it loudly rather than render someone else's
+              // connection and mint a connect link under the wrong identity.
+              if (!opp.actors.some((a) => a.userId === context.userId)) {
+                logger.warn("list_opportunities: skipping opportunity where caller is not an actor", {
+                  opportunityId: opp.id,
+                  viewerId: context.userId,
+                  actorUserIds: opp.actors.map((a) => a.userId),
+                });
+                return null;
+              }
               try {
                 const counterpartActor = opp.actors.find(
                   (a) => a.userId !== context.userId && a.role !== "introducer",
@@ -1669,6 +1682,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         for (const opp of opportunities) {
           if (seenOpportunityIds.has(opp.id)) continue;
           seenOpportunityIds.add(opp.id);
+          // Read invariant: only surface opportunities the caller participates
+          // in (see digest-mode note above). Skip loudly on a mismatch.
+          if (!opp.actors.some((a) => a.userId === context.userId)) {
+            logger.warn("list_opportunities: skipping opportunity where caller is not an actor", {
+              opportunityId: opp.id,
+              viewerId: context.userId,
+              actorUserIds: opp.actors.map((a) => a.userId),
+            });
+            continue;
+          }
           try {
             const counterpartActor = opp.actors.find(
               (a) => a.userId !== context.userId && a.role !== "introducer",

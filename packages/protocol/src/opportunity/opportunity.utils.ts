@@ -52,6 +52,16 @@ export function deriveRolesFromCorpus(corpus: HydeTargetCorpus): DerivedRoles {
  * one or two non-introducer actors (1 = 1:1 intro e.g. "I want to connect with X";
  * 2 = introducer connecting two others).
  *
+ * Also rejects self-matches — the same person occupying both sides of a
+ * connection. The discovery/persist pipeline trusts the LLM evaluator's actor
+ * list, which can collapse onto a single user; downstream readers then garble
+ * identity (e.g. a connect link/greeting rendered in one party's voice while the
+ * card shows the viewer "matched with themselves"). Two degenerate shapes are
+ * blocked here, at the single persist chokepoint:
+ *   - a duplicate non-introducer party, e.g. `[X(agent), X(patient)]`
+ *   - an introducer who is also a participant ("Amina introduced you to Amina")
+ * Only `userId`-bearing actors are checked; role-only actors (legacy/tests) pass.
+ *
  * @param actors - Array of actors with at least a role and optional userId
  * @throws Error when the actor set is invalid
  */
@@ -63,6 +73,27 @@ export function validateOpportunityActors(actors: Array<{ userId?: string; role:
     throw new Error(
       'An opportunity with an introducer must have one or two other actors.'
     );
+  }
+
+  // Self-match guard. Compare only actors that carry a userId so role-only
+  // shapes (used by some callers/tests) are unaffected.
+  const introducerUserIds = new Set(
+    actors.filter((a) => a.role === 'introducer' && a.userId).map((a) => a.userId as string),
+  );
+  const nonIntroducerUserIds = actors
+    .filter((a) => a.role !== 'introducer' && a.userId)
+    .map((a) => a.userId as string);
+
+  for (const userId of nonIntroducerUserIds) {
+    if (introducerUserIds.has(userId)) {
+      throw new Error(
+        'An opportunity actor cannot be both the introducer and a participant (self-match).'
+      );
+    }
+  }
+
+  if (new Set(nonIntroducerUserIds).size !== nonIntroducerUserIds.length) {
+    throw new Error('An opportunity cannot match a user with themselves (duplicate participant).');
   }
 }
 
