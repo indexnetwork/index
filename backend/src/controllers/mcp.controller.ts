@@ -3,7 +3,6 @@
  * This is the composition root: all adapter/service wiring lives here.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 import {
   McpServer,
@@ -35,7 +34,6 @@ import { profileRunAdapter } from '../adapters/profile-run.adapter';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
 import { profileRunQueue } from '../queues/profile-run.queue';
 import db from '../lib/drizzle/drizzle';
-import { userSocials } from '../schemas/database.schema';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
@@ -332,6 +330,20 @@ export function resolveMcpApiKeyPrincipal(
   };
 }
 
+/**
+ * Distinguishes Telegram identity verification/mismatch failures from auth
+ * (token / API-key) failures. The auth resolver's per-path catch blocks
+ * reclassify unknown errors (e.g. "API key authentication failed"); rethrowing
+ * this type unchanged keeps the client-facing reason accurate and avoids
+ * muddling auth alerting.
+ */
+class TelegramIdentityError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'TelegramIdentityError';
+  }
+}
+
 async function finalizeMcpIdentity(request: Request, identity: ResolvedMcpIdentity): Promise<ResolvedMcpIdentity> {
   if (identity.clientSurface !== 'telegram') return identity;
   const telegramHandle = telegramHandleFromRequest(request);
@@ -341,23 +353,16 @@ async function finalizeMcpIdentity(request: Request, identity: ResolvedMcpIdenti
   let matchingTelegramSocials: TelegramSocial[];
   try {
     existingSocials = await chatDatabaseAdapter.getUserSocials(identity.userId);
-    matchingTelegramSocials = await db
-      .select({ userId: userSocials.userId, label: userSocials.label, value: userSocials.value })
-      .from(userSocials)
-      .where(and(
-        eq(userSocials.label, 'telegram'),
-        inArray(
-          sql<string>`lower(${userSocials.value})`,
-          telegramHandleStorageCandidates(telegramHandle).map((value) => value.toLowerCase()),
-        ),
-      ));
+    matchingTelegramSocials = await chatDatabaseAdapter.findTelegramSocialsByValues(
+      telegramHandleStorageCandidates(telegramHandle),
+    );
   } catch (err) {
     logger.warn('Failed to verify Telegram MCP handle', {
       userId: identity.userId,
       telegramHandle,
       error: err instanceof Error ? err.message : String(err),
     });
-    throw new Error('Telegram handle verification failed', { cause: err });
+    throw new TelegramIdentityError('Telegram handle verification failed', { cause: err });
   }
 
   const mismatch = findTelegramHandleMismatch({
@@ -373,7 +378,7 @@ async function finalizeMcpIdentity(request: Request, identity: ResolvedMcpIdenti
       reason: mismatch.reason,
       ownerUserId: mismatch.ownerUserId,
     });
-    throw new Error('Telegram handle does not match authenticated user');
+    throw new TelegramIdentityError('Telegram handle does not match authenticated user');
   }
 
   try {
@@ -442,6 +447,7 @@ const authResolver: McpAuthResolver = {
           if (typeof payload.sub === 'string') return finalizeMcpIdentity(request, { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface });
           throw new Error('JWT payload missing user ID');
         } catch (err) {
+          if (err instanceof TelegramIdentityError) throw err;
           const msg = err instanceof Error ? err.message : String(err);
           const isTransport = msg.includes('fetch') || msg.includes('ECONNREFUSED') ||
             msg.includes('timeout') || msg.includes('NetworkError');
@@ -461,6 +467,7 @@ const authResolver: McpAuthResolver = {
             if (data?.userId) return finalizeMcpIdentity(request, { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface });
           }
         } catch (err) {
+          if (err instanceof TelegramIdentityError) throw err;
           const msg = err instanceof Error ? err.message : String(err);
           throw new Error(`MCP token lookup failed: ${msg}`, { cause: err });
         }
@@ -544,6 +551,7 @@ const authResolver: McpAuthResolver = {
           return finalizeMcpIdentity(request, { userId: sessionUserId, networkScopeId: null, clientSurface });
         }
       } catch (err) {
+        if (err instanceof TelegramIdentityError) throw err;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === 'Invalid API key') {
           throw err;

@@ -1017,6 +1017,11 @@ export class ChatDatabaseAdapter {
     return profileAdapter.getUserSocials(userId);
   }
 
+  async findTelegramSocialsByValues(values: string[]) {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.findTelegramSocialsByValues(values);
+  }
+
   async setUserSocials(userId: string, socials: { label: string; value: string }[]) {
     const profileAdapter = new ProfileDatabaseAdapter();
     return profileAdapter.setUserSocials(userId, socials);
@@ -4364,6 +4369,30 @@ export class ProfileDatabaseAdapter {
       .where(eq(schema.userSocials.userId, userId))
       .orderBy(asc(schema.userSocials.createdAt), asc(schema.userSocials.id));
     return rows.map(r => ({ id: r.id, userId: r.userId, label: r.label, value: r.value }));
+  }
+
+  /**
+   * Finds telegram socials whose stored value matches any of the provided
+   * candidate representations (case-insensitive). Used by MCP identity
+   * verification to detect whether a telegram handle is already owned by another
+   * user. Normalizing the handle into candidate forms stays with the caller.
+   * @param values - Candidate stored representations (e.g. `@handle`, `https://t.me/handle`).
+   * @returns Matching telegram social rows with their owning userId.
+   */
+  async findTelegramSocialsByValues(values: string[]): Promise<Array<{ userId: string; label: string; value: string }>> {
+    if (values.length === 0) return [];
+    const lowered = values.map(v => v.toLowerCase());
+    const rows = await db.select({
+      userId: schema.userSocials.userId,
+      label: schema.userSocials.label,
+      value: schema.userSocials.value,
+    })
+      .from(schema.userSocials)
+      .where(and(
+        eq(schema.userSocials.label, 'telegram'),
+        inArray(sql<string>`lower(${schema.userSocials.value})`, lowered),
+      ));
+    return rows.map(r => ({ userId: r.userId, label: r.label, value: r.value }));
   }
 
   async setUserSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
