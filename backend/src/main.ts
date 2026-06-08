@@ -1,12 +1,7 @@
 import './startup.env';
 
-import crypto from 'crypto';
-
 import * as Sentry from '@sentry/bun';
-import { and, eq, isNull } from 'drizzle-orm';
 
-import db from './lib/drizzle/drizzle';
-import { networkMembers, networks } from './schemas/database.schema';
 import { ChatController } from './controllers/chat.controller';
 import { DebugController } from './controllers/debug.controller';
 import { ToolController } from './controllers/tool.controller';
@@ -76,14 +71,13 @@ import { createPremiseFromAnswerFactory } from './events/handlers/question.answe
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
 import { storeNegotiationContextFactory } from './events/handlers/question.answer.negotiation';
 import { premiseQueue } from './queues/premise.queue';
+import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { NegotiationGraphFactory, UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer, setTimingWrapper } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase } from '@indexnetwork/protocol';
+import { NegotiationGraphFactory, setTimingWrapper } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
-import { EmbedderAdapter, embedderAdapter } from './adapters/embedder.adapter';
-import { RedisCacheAdapter } from './adapters/cache.adapter';
+import { embedderAdapter } from './adapters/embedder.adapter';
 import { agentService } from './services/agent.service';
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 
@@ -141,8 +135,8 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
 };
 
 enrichmentQueue.onEnrichmentComplete = (userId: string) => {
-  generateUserContexts(userId)
-    .catch(err => log.job.from('UserContext').error('Failed to generate contexts after enrichment', { userId, error: err }));
+  userContextQueue.addRegenJob({ userId, reason: 'enrichment_complete' })
+    .catch(err => log.job.from('UserContext').error('Failed to enqueue context regen after enrichment', { userId, error: err }));
 
   // KNOWN RESIDUAL: profile-based discovery runs unscoped (no networkId), so for
   // a user who belongs to more than one network it can still surface matches across
@@ -183,86 +177,6 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
   premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_expired' })
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
 };
-
-// ─── User context generation ────────────────────────────────────────────────
-
-async function generateUserContexts(userId: string): Promise<void> {
-  const generator = new UserContextGenerator(embedderAdapter);
-
-  // Fetch ALL networks (not just autoAssign) — context represents the user in every network
-  const memberRows = await db
-    .select({ networkId: networkMembers.networkId })
-    .from(networkMembers)
-    .innerJoin(networks, eq(networkMembers.networkId, networks.id))
-    .where(and(
-      eq(networkMembers.userId, userId),
-      isNull(networkMembers.deletedAt),
-      isNull(networks.deletedAt),
-      eq(networks.isPersonal, false),
-    ));
-  const networkIds = memberRows.map(r => r.networkId);
-  const allPremises = await chatDatabaseAdapter.getPremisesForUser(userId, 'ACTIVE');
-  if (!allPremises?.length || networkIds.length === 0) return;
-
-  const premiseTexts = allPremises
-    .map(p => ({ text: p.assertion.text }))
-    .filter(p => p.text.length > 0);
-  if (premiseTexts.length === 0) return;
-
-  const premiseHash = crypto.createHash('sha256')
-    .update(allPremises.map(p => `${p.id}:${p.updatedAt.toISOString()}`).sort().join('|'))
-    .digest('hex')
-    .slice(0, 16);
-
-  for (const networkId of networkIds) {
-    try {
-      const existing = await chatDatabaseAdapter.getUserContext(userId, networkId);
-      if (existing && existing.premiseHash === premiseHash) continue;
-
-      const network = await chatDatabaseAdapter.getNetwork(networkId);
-      if (!network) continue;
-
-      const result = await generator.generateColdStart({
-        premises: premiseTexts,
-        networkPrompt: network.prompt ?? null,
-        networkTitle: network.title,
-      });
-
-      const upserted = await chatDatabaseAdapter.upsertUserContext({
-        userId,
-        networkId,
-        text: result.text,
-        embedding: result.embedding,
-        premiseHash,
-      });
-
-      // Generate HyDE documents for the context so context-to-intent discovery
-      // uses optimised hypothetical-document embeddings rather than raw paragraph vectors.
-      try {
-        const hydeEmbedder = new EmbedderAdapter();
-        const hydeCache = new RedisCacheAdapter();
-        const inferrer = new LensInferrer();
-        const hydeGenerator = new HydeGenerator();
-        const graphDb = chatDatabaseAdapter as unknown as HydeGraphDatabase;
-        const hydeGraph = new HydeGraphFactory(graphDb, hydeEmbedder, hydeCache, inferrer, hydeGenerator).createGraph();
-        await hydeGraph.invoke({
-          sourceType: 'context' as const,
-          sourceId: upserted.id,
-          sourceText: result.text,
-          forceRegenerate: false,
-          maxLenses: 3,
-        });
-        log.job.from('UserContext').verbose('Generated context HyDE documents', { userId, networkId, contextId: upserted.id });
-      } catch (hydeErr) {
-        log.job.from('UserContext').error('Failed to generate context HyDE', { userId, networkId, error: hydeErr });
-      }
-
-      log.job.from('UserContext').verbose('Generated user context', { userId, networkId });
-    } catch (err) {
-      log.job.from('UserContext').error('Failed to generate user context', { userId, networkId, error: err });
-    }
-  }
-}
 
 // ─── Question answer reaction handlers ──────────────────────────────────────
 
@@ -336,6 +250,7 @@ if (process.env.QUESTIONER_ENABLED === 'true') {
   questionerQueue.startWorker();
 }
 premiseQueue.startWorker();
+userContextQueue.startWorker();
 premiseQueue.startCrons();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
@@ -779,6 +694,7 @@ const shutdown = async () => {
     negotiationClaimTimeoutQueue.close(),
     questionerQueue.close(),
     premiseQueue.close(),
+    userContextQueue.close(),
   ]);
   logger.info('Workers closed');
   await Sentry.close(2000);
