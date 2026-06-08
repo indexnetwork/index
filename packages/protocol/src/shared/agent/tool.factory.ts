@@ -14,7 +14,6 @@ import { IntentIndexer } from "../../intent/intent.indexer.js";
 import { NegotiationGraphFactory } from "../../negotiation/negotiation.graph.js";
 import { PremiseGraphFactory } from "../../premise/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
-import { configureProtocol } from "./model.config.js";
 
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 
@@ -59,11 +58,6 @@ export async function createChatTools(
   deps: ToolContext,
   preResolvedContext?: ResolvedToolContext
 ) {
-  // Apply model config so all agents created in this session use the right credentials.
-  if (deps.modelConfig) {
-    configureProtocol(deps.modelConfig);
-  }
-
   const { database, embedder, scraper } = deps;
 
   // ─── Resolve context from DB ───────────────────────────────────────────────
