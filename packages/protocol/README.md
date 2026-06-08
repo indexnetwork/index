@@ -14,7 +14,7 @@ npm install @indexnetwork/protocol
 
 The package reads `OPENROUTER_API_KEY` (required), `CHAT_MODEL`, and `CHAT_REASONING_EFFORT` from environment variables. No startup call is needed.
 
-To override the chat model or reasoning effort per request, set `modelConfig` on `ToolContext`:
+To override the chat model or reasoning effort when using the built-in chat runtime (`ChatGraphFactory` / `ChatAgent`), pass `modelConfig` on `ToolContext`. `ChatAgent` reads these fields when the chat graph runs; the tools themselves do not consume `modelConfig`:
 
 ```typescript
 import { createChatTools } from "@indexnetwork/protocol";
@@ -28,7 +28,7 @@ const tools = await createChatTools({
 });
 ```
 
-`apiKey` and `baseURL` can also be overridden. Note: `modelConfig` is only honored by `ChatAgent` — it reads all `ModelConfig` fields (`apiKey`, `baseURL`, `chatModel`, `chatReasoningEffort`) from `ToolContext` when the chat graph runs. All other protocol agents (evaluators, generators, etc.) rely on `OPENROUTER_API_KEY` set in the environment.
+`apiKey` and `baseURL` can also be overridden this way. All other protocol agents (evaluators, generators, etc.) rely on `OPENROUTER_API_KEY` set in the environment regardless of `modelConfig`.
 
 ### 2. Implement the adapters
 
