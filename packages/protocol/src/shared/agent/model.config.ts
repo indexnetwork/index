@@ -10,7 +10,7 @@ export interface ModelSettings {
 
 /**
  * Runtime configuration for the protocol package.
- * Set once via configureProtocol() at application startup.
+ * Pass via ToolContext.modelConfig to override env vars for the chat model.
  * All fields fall back to environment variables if not provided.
  */
 export interface ModelConfig {
@@ -24,22 +24,7 @@ export interface ModelConfig {
   chatReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 }
 
-/** Module-level config set by configureProtocol(). Merged with per-call overrides. */
-let _activeConfig: ModelConfig = {};
-
-/**
- * Configure the protocol package with runtime credentials and settings.
- * Call once at application startup before any agents are used.
- * Falls back to environment variables for any field not provided.
- *
- * @param config - Runtime configuration overrides
- */
-export function configureProtocol(config: ModelConfig): void {
-  _activeConfig = config;
-}
-
 function getModelConfig(config?: ModelConfig) {
-  const merged: ModelConfig = { ..._activeConfig, ...config };
   return {
     intentInferrer:       { model: "google/gemini-2.5-flash" },
     intentIndexer:        { model: "google/gemini-2.5-flash" },
@@ -66,10 +51,10 @@ function getModelConfig(config?: ModelConfig) {
     premiseIndexer:       { model: "google/gemini-2.5-flash" },
     userContextGenerator: { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 512 },
     chat: {
-      model: merged.chatModel ?? process.env.CHAT_MODEL ?? "google/gemini-3-pro-preview",
+      model: config?.chatModel ?? process.env.CHAT_MODEL ?? "google/gemini-3-pro-preview",
       maxTokens: 8192,
       reasoning: {
-        effort: (merged.chatReasoningEffort ?? process.env.CHAT_REASONING_EFFORT ?? "low") as NonNullable<ModelSettings["reasoning"]>["effort"],
+        effort: (config?.chatReasoningEffort ?? process.env.CHAT_REASONING_EFFORT ?? "low") as NonNullable<ModelSettings["reasoning"]>["effort"],
         exclude: true,
       },
     },
@@ -79,7 +64,7 @@ function getModelConfig(config?: ModelConfig) {
 /**
  * Returns the model name string for the given agent key.
  * @param agent - Key from MODEL_CONFIG identifying which agent's settings to use.
- * @param config - Optional runtime config overrides (merged with module-level config).
+ * @param config - Optional runtime config overrides.
  */
 export function getModelName(agent: keyof ReturnType<typeof getModelConfig>, config?: ModelConfig): string {
   return getModelConfig(config)[agent].model;
@@ -88,15 +73,14 @@ export function getModelName(agent: keyof ReturnType<typeof getModelConfig>, con
 /**
  * Creates a ChatOpenAI instance configured for OpenRouter.
  * @param agent - Key identifying which agent's model settings to use.
- * @param config - Optional runtime config overrides (merged with module-level config).
+ * @param config - Optional runtime config overrides.
  */
 export function createModel(agent: keyof ReturnType<typeof getModelConfig>, config?: ModelConfig): ChatOpenAI {
-  const merged: ModelConfig = { ..._activeConfig, ...config };
-  const apiKey = merged.apiKey ?? process.env.OPENROUTER_API_KEY;
+  const apiKey = config?.apiKey ?? process.env.OPENROUTER_API_KEY;
   if (!apiKey?.trim()) {
-    throw new Error(`createModel(${agent}): OPENROUTER_API_KEY is required. Pass via configureProtocol({ apiKey }) or set the OPENROUTER_API_KEY environment variable.`);
+    throw new Error(`createModel(${agent}): OPENROUTER_API_KEY is required. Pass via ToolContext.modelConfig.apiKey or set the OPENROUTER_API_KEY environment variable.`);
   }
-  const cfg = getModelConfig(merged)[agent] as ModelSettings;
+  const cfg = getModelConfig(config)[agent] as ModelSettings;
   // Hard upper bound on a single LLM call. Without this, langchain's HTTP
   // client waits until the upstream cuts the socket (~3 minutes via
   // OpenRouter), blocking the entire chat response. 60 s is generous enough
@@ -113,7 +97,7 @@ export function createModel(agent: keyof ReturnType<typeof getModelConfig>, conf
   return new ChatOpenAI({
     model: cfg.model,
     configuration: {
-      baseURL: merged.baseURL ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+      baseURL: config?.baseURL ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
       apiKey,
     },
     temperature: cfg.temperature,
