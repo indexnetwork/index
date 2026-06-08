@@ -16,6 +16,17 @@ import { normalizeTelegramHandle } from '@indexnetwork/protocol';
 
 const logger = log.service.from("OpportunityService");
 
+/**
+ * Lifecycle statuses surfaced in the default opportunity list (when no explicit
+ * `status` filter is given). This is everything a user currently sees EXCEPT the
+ * terminal-stale `expired` and `rejected`, which otherwise clutter the live list
+ * inline with active matches (IND-254). Pre-send `draft` is already excluded by
+ * the adapter's visibility rules. A caller can still request a single terminal
+ * status explicitly (e.g. `?status=expired`) for a history view — that path
+ * bypasses this default.
+ */
+const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['latent', 'negotiating', 'pending', 'stalled', 'accepted'];
+
 interface OpportunityStatusUpdateResult {
   opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
   counterpartUserId?: string;
@@ -253,7 +264,13 @@ export class OpportunityService {
   ) {
     logger.verbose('[OpportunityService] Getting opportunities for user', { userId, options });
 
-    const rows = await this.db.getOpportunitiesForUser(userId, options);
+    // No explicit status filter ⇒ show only live statuses, hiding terminal-stale
+    // expired/rejected from the default list (IND-254). An explicit single status
+    // (e.g. ?status=expired) is honored as-is for a history view.
+    const rows = await this.db.getOpportunitiesForUser(
+      userId,
+      options?.status ? options : { ...options, statuses: DEFAULT_LIST_STATUSES },
+    );
 
     // Resolve actor names in bulk for CLI/API consumers
     const allUserIds = new Set<string>();
@@ -796,7 +813,14 @@ export class OpportunityService {
       return { error: 'Not a member of this network', status: 403 };
     }
 
-    return this.db.getOpportunitiesForNetwork(networkId, options);
+    // Same live-status default as the per-user list (IND-254): hide terminal-stale
+    // expired/rejected unless a specific status is requested. The network list had
+    // no status filtering at all, so this also stops draft/latent leaking into the
+    // community opportunity view.
+    return this.db.getOpportunitiesForNetwork(
+      networkId,
+      options?.status ? options : { ...options, statuses: DEFAULT_LIST_STATUSES },
+    );
   }
 
   /**
