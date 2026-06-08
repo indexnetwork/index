@@ -1,5 +1,6 @@
 import { getStorage } from './index';
 import { isLimiterDisabled } from './config';
+import { sha256Truncated } from './identifier';
 import type { LimiterStorage } from './storage';
 import { log } from '../log';
 
@@ -68,12 +69,14 @@ export async function checkMcpRateLimit(
   storage?: LimiterStorage,
 ): Promise<McpThrottleDecision> {
   if (isLimiterDisabled()) return { allowed: true };
-  const principal = `${input.userId}:${input.agentId ?? '-'}`;
 
   // Fail OPEN on storage errors (Redis/bootstrap hiccups) so a limiter incident
   // never takes down /mcp tool dispatch — same posture as the RateLimit guard
   // (backend/src/guards/limiter.guard.ts).
   try {
+    // Hash the principal so raw user/agent UUIDs aren't written into the Redis
+    // keyspace — same defense-in-depth the RateLimit guard applies to user IDs.
+    const principal = await sha256Truncated(`${input.userId}:${input.agentId ?? '-'}`);
     const store = storage ?? (await getStorage());
 
     const toolMax = toolLimit(input.toolName);

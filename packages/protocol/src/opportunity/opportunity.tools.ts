@@ -438,7 +438,7 @@ export function buildOpportunityPresentation(
  * `continueFrom` pagination token are only trimmed (case-sensitive) so distinct
  * tokens never collapse together.
  */
-function discoveryRunSignature(input: DiscoveryRunInput): string {
+function discoveryRunSignature(input: DiscoveryRunInput, scopeKey: string): string {
   const text = (s?: string) => (s ?? "").trim().toLowerCase();
   const id = (s?: string) => (s ?? "").trim();
   // Encode each entity as a JSON tuple string, then sort the strings — a stable
@@ -456,6 +456,22 @@ function discoveryRunSignature(input: DiscoveryRunInput): string {
     hint: text(input.hint),
     partyUserIds: [...(input.partyUserIds ?? [])].map((x) => x.trim()).sort(),
     entities,
+    scope: scopeKey,
+  });
+}
+
+/**
+ * Stable key for the resolved discovery scope of a request. Two requests
+ * coalesce only when they resolve to the same reach — the focus index
+ * (`networkId`) and the full reachable `indexScope` set. When `query.networkId`
+ * is omitted, scope comes from context (network-scoped agent vs unscoped
+ * session), so folding it into the signature prevents a scoped caller from
+ * coalescing onto an unscoped run and receiving out-of-scope opportunities.
+ */
+function discoveryScopeKey(ctx: { networkId?: string; indexScope?: string[] }): string {
+  return JSON.stringify({
+    networkId: (ctx.networkId ?? "").trim(),
+    indexScope: [...(ctx.indexScope ?? [])].map((s) => s.trim()).sort(),
   });
 }
 
@@ -610,11 +626,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         // get_discovery_run) would otherwise kick off a fresh, expensive
         // opportunity-graph run on every call — the loop that drives the agent
         // into provider rate limits.
-        const signature = discoveryRunSignature(query as DiscoveryRunInput);
+        const signature = discoveryRunSignature(
+          query as DiscoveryRunInput,
+          discoveryScopeKey(context),
+        );
         try {
           const active = await deps.discoveryRuns.listActive(context.userId);
           const existing = active.find(
-            (r) => discoveryRunSignature(r.input) === signature,
+            (r) => discoveryRunSignature(r.input, discoveryScopeKey(r.context)) === signature,
           );
           if (existing) {
             return success({
