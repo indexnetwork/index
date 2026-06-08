@@ -45,8 +45,8 @@ describe('UserContextQueue', () => {
         jobId: 'usercontext-regen-u1',
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
-        removeOnComplete: { age: 24 * 60 * 60 },
-        removeOnFail: { age: 7 * 24 * 60 * 60 },
+        removeOnComplete: true,
+        removeOnFail: true,
       }),
     );
   });

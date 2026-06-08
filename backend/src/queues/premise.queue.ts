@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { Job } from 'bullmq';
+import { Job, JobsOptions } from 'bullmq';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
@@ -153,6 +153,11 @@ export class PremiseQueue {
   addProfileRegenJob(data: ProfileRegenData): Promise<Job<PremiseJobPayload>> {
     return this.addJob('profile_regen', data, {
       jobId: `profile-regen-${data.userId}-${data.trigger}`,
+      // Free the jobId as soon as the regen settles so repeated premise changes
+      // re-run instead of being deduped against a retained completed job — the
+      // jobId only needs to coalesce concurrent bursts (jobs still waiting/active).
+      removeOnComplete: true,
+      removeOnFail: true,
     });
   }
 
@@ -169,15 +174,20 @@ export class PremiseQueue {
   async addJob(
     name: 'premise_cascade' | 'profile_regen',
     data: PremiseJobPayload,
-    options?: { jobId?: string; priority?: number }
+    options?: {
+      jobId?: string;
+      priority?: number;
+      removeOnComplete?: JobsOptions['removeOnComplete'];
+      removeOnFail?: JobsOptions['removeOnFail'];
+    }
   ): Promise<Job<PremiseJobPayload>> {
     return this.queue.add(name, data, {
       jobId: options?.jobId,
       priority: options?.priority,
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: { age: 24 * 60 * 60 },
-      removeOnFail: { age: 7 * 24 * 60 * 60 },
+      removeOnComplete: options?.removeOnComplete ?? { age: 24 * 60 * 60 },
+      removeOnFail: options?.removeOnFail ?? { age: 7 * 24 * 60 * 60 },
     });
   }
 

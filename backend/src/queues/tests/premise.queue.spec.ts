@@ -55,3 +55,19 @@ describe('PremiseQueue — profile regen chaining', () => {
     expect(enqueueContextRegen).not.toHaveBeenCalled();
   });
 });
+
+describe('PremiseQueue — profile regen enqueue options', () => {
+  it('frees the jobId on settle so repeated premise changes re-run (removeOnComplete/Fail true)', async () => {
+    const queue = new PremiseQueue();
+    await queue.addProfileRegenJob({ userId: 'u1', trigger: 'premise_created' });
+    expect(mockAdd).toHaveBeenCalledWith(
+      'profile_regen',
+      { userId: 'u1', trigger: 'premise_created' },
+      expect.objectContaining({
+        jobId: 'profile-regen-u1-premise_created',
+        removeOnComplete: true,
+        removeOnFail: true,
+      }),
+    );
+  });
+});

@@ -106,8 +106,12 @@ export class UserContextQueue {
       jobId: `usercontext-regen-${data.userId}`,
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: { age: 24 * 60 * 60 },
-      removeOnFail: { age: 7 * 24 * 60 * 60 },
+      // Free the per-user jobId as soon as the job settles so a later premise change
+      // always enqueues a fresh regen — the jobId only needs to coalesce concurrent
+      // bursts (jobs still waiting/active); retaining completed jobs would dedup and
+      // silently drop subsequent edits within the retention window.
+      removeOnComplete: true,
+      removeOnFail: true,
     });
   }
 
