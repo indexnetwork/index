@@ -26,7 +26,7 @@ const tools = await createChatTools({
 });
 ```
 
-`apiKey` and `baseURL` can also be overridden here. Note: `modelConfig` is only honored by `ChatAgent`. All other protocol agents (evaluators, generators, etc.) always require `OPENROUTER_API_KEY` set in the environment.
+`apiKey` and `baseURL` can also be overridden. Note: `modelConfig` is only honored by `ChatAgent` — it reads all `ModelConfig` fields (`apiKey`, `baseURL`, `chatModel`, `chatReasoningEffort`) from `ToolContext` when the chat graph runs. All other protocol agents (evaluators, generators, etc.) rely on `OPENROUTER_API_KEY` set in the environment.
 
 ### 2. Implement the adapters
 

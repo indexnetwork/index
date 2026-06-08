@@ -10,8 +10,10 @@ export interface ModelSettings {
 
 /**
  * Runtime configuration for the protocol package.
- * Pass via `ToolContext.modelConfig` (honored by `ChatAgent`) or directly to `createModel()`.
- * Only `ChatAgent` reads this from `ToolContext`; all other protocol agents require env vars.
+ * When passed via `ToolContext.modelConfig`, all fields (`apiKey`, `baseURL`, `chatModel`,
+ * `chatReasoningEffort`) are honored by `ChatAgent` when the chat graph runs.
+ * Other protocol agents don't read from `ToolContext` but may accept an explicit `ModelConfig`
+ * as a direct parameter to `createModel()`.
  * All fields fall back to environment variables if not provided.
  */
 export interface ModelConfig {
