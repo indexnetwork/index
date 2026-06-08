@@ -89,6 +89,8 @@ export type AgentStreamEvent =
       type: "opportunity_draft_ready";
       opportunityId: string;
       opportunity: Opportunity;
+      /** Viewer-centric summary derived from interpretation.reasoning via viewerCentricCardSummary. */
+      personalizedSummary?: string;
       counterparty: {
         userId: string;
         name?: string;

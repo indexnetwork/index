@@ -1796,6 +1796,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           userId: draft.counterparty.userId,
                           name: draft.counterparty.name ?? "New connection",
                           mainText:
+                            draft.personalizedSummary ??
                             draft.opportunity.interpretation?.reasoning ??
                             "Accepted draft opportunity",
                           primaryActionLabel: "Start Chat",
