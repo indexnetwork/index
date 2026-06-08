@@ -18,7 +18,7 @@ import {
   type IterationContext,
 } from "./chat.prompt.modules.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createModel, type ModelConfig } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { sanitizeForDebugMeta } from "../shared/observability/debug-meta.sanitizer.js";
 import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations, DebugMetaDiscoveryQuestions } from "./chat-streaming.types.js";
@@ -227,8 +227,9 @@ export class ChatAgent {
   private constructor(
     private resolvedContext: ResolvedToolContext,
     tools: Awaited<ReturnType<typeof createChatTools>>,
+    modelConfig?: ModelConfig,
   ) {
-    this.model = createModel("chat");
+    this.model = createModel("chat", modelConfig);
 
     // Store tools and index by name
     this.tools = tools;
@@ -266,7 +267,7 @@ export class ChatAgent {
       sessionId: context.sessionId,
     });
     const tools = await createChatTools(context, resolved);
-    return new ChatAgent(resolved, tools);
+    return new ChatAgent(resolved, tools, context.modelConfig);
   }
 
   /**
