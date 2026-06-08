@@ -200,6 +200,19 @@ describe('discover_opportunities — MCP run coalescing', () => {
     expect(runStore.createCalls).toBe(2);
   });
 
+  test('same query in different scopes does NOT coalesce', async () => {
+    const runStore = makeRunStore();
+    const queue = { enqueueCalls: 0 };
+    const tool = captureDiscoverTool(makeDeps(runStore, queue));
+
+    await tool.handler({ context: makeContext({ indexScope: ['idx-1'] }), query: { searchQuery: 'AI engineers' } });
+    const second = parseToolResult(
+      await tool.handler({ context: makeContext({ indexScope: ['idx-1', 'idx-2'] }), query: { searchQuery: 'AI engineers' } }),
+    );
+    expect(second.data!.coalesced).toBeUndefined();
+    expect(runStore.createCalls).toBe(2);
+  });
+
   test('a different query starts a fresh run', async () => {
     const runStore = makeRunStore();
     const queue = { enqueueCalls: 0 };
