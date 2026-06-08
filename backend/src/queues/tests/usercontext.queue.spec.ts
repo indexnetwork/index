@@ -85,6 +85,47 @@ describe('UserContextQueue', () => {
     expect(generateContextHyde).toHaveBeenCalledWith({ contextId: 'ctx-1', sourceText: 'ctx' });
   });
 
+  it('rolls back the premiseHash and fails the job when HyDE generation fails', async () => {
+    const premises: ContextPremise[] = [
+      { id: 'p1', updatedAt: new Date('2026-01-01T00:00:00.000Z'), assertion: { text: 'hello' } },
+    ];
+    const currentHash = computePremiseHash(premises);
+
+    const upsertUserContext = mock(async () => ({ id: 'ctx-1' }));
+    const generateContextHyde = mock(async () => {
+      throw new Error('hyde boom');
+    });
+
+    const deps: UserContextQueueDeps = {
+      getUserNetworkIds: async () => ['netA'],
+      getActivePremises: async () => premises,
+      getExistingContext: async () => null,
+      getNetwork: async (networkId) => ({ title: networkId, prompt: null }),
+      generateContext: async () => ({ text: 'ctx', embedding: [0.1] }),
+      upsertUserContext,
+      generateContextHyde,
+    };
+
+    const queue = new UserContextQueue(deps);
+
+    // The job must fail so BullMQ retries.
+    await expect(
+      queue.processJob('regenerate_contexts', { userId: 'u1', reason: 'profile_regen' }),
+    ).rejects.toThrow(/regeneration failed/);
+
+    // First upsert commits the fresh hash; second rolls it back to '' so the retry
+    // won't short-circuit this network as already-fresh while its HyDE is stale.
+    expect(upsertUserContext).toHaveBeenCalledTimes(2);
+    expect(upsertUserContext).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ networkId: 'netA', premiseHash: currentHash }),
+    );
+    expect(upsertUserContext).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ networkId: 'netA', premiseHash: '' }),
+    );
+  });
+
   it('no-ops when the user has no networks or no premises', async () => {
     const generateContext = mock(async () => ({ text: 'ctx', embedding: [0.1] }));
     const queue = new UserContextQueue({

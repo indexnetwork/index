@@ -180,6 +180,7 @@ export class UserContextQueue {
 
     const premiseHash = computePremiseHash(allPremises);
 
+    let failures = 0;
     for (const networkId of networkIds) {
       try {
         const existing = await getExistingContext(userId, networkId);
@@ -203,18 +204,34 @@ export class UserContextQueue {
         });
 
         // Generate HyDE documents so context-to-intent discovery uses optimised
-        // hypothetical-document embeddings rather than raw paragraph vectors.
+        // hypothetical-document embeddings rather than raw paragraph vectors. The
+        // context row (with its new premiseHash) is already committed above, so on a
+        // HyDE failure we roll the staleness key back to '' — otherwise a retry / the
+        // next trigger would short-circuit this network as "fresh" while its HyDE docs
+        // are stale. Then rethrow so the network counts as failed.
         try {
           await generateContextHyde({ contextId: upserted.id, sourceText: result.text });
           this.logger.verbose('Generated context HyDE documents', { userId, networkId, contextId: upserted.id });
         } catch (hydeErr) {
-          this.logger.error('Failed to generate context HyDE', { userId, networkId, error: hydeErr });
+          await upsertUserContext({ userId, networkId, text: result.text, embedding: result.embedding, premiseHash: '' });
+          throw hydeErr;
         }
 
         this.logger.verbose('Generated user context', { userId, networkId });
       } catch (err) {
-        this.logger.error('Failed to generate user context', { userId, networkId, error: err });
+        // Isolate the failure to this network (others still get processed), but record
+        // it so the job fails at the end and BullMQ retries. premiseHash for a failed
+        // network is either un-advanced (generate/upsert failure) or rolled back (HyDE
+        // failure), so the retry regenerates it rather than short-circuiting.
+        this.logger.error('Failed to regenerate user context', { userId, networkId, error: err });
+        failures += 1;
       }
+    }
+
+    if (failures > 0) {
+      throw new Error(
+        `UserContext regeneration failed for ${failures}/${networkIds.length} network(s) for user ${userId}; failing job so BullMQ retries`,
+      );
     }
   }
 
