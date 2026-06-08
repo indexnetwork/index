@@ -970,7 +970,7 @@ export class OpportunityGraphFactory {
               : await self.database.getPremisesForUser(discoveryUserId, 'ACTIVE');
             const sourcePremises = (sourcePremisesFromDb.length > 0
               ? sourcePremisesFromDb
-                  .filter(p => p.embedding && p.embedding.length > 0)
+                  .filter(p => Array.isArray(p.embedding) && p.embedding.length > 0)
                   .slice(0, sourceLimit)
                   .map(p => ({ premiseId: p.id as Id<'premises'>, embedding: p.embedding! }))
               : (state.sourcePremises ?? []).slice(0, sourceLimit)

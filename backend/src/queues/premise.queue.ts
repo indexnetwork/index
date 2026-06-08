@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { Job } from 'bullmq';
+import { Job, JobsOptions } from 'bullmq';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
@@ -8,6 +8,7 @@ import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ProfileGraphFactory } from '@indexnetwork/protocol';
 
 import { PremiseEvents } from '../events/premise.event';
+import { userContextQueue } from './usercontext.queue';
 
 /** BullMQ queue name for premise cascade and profile regeneration jobs. */
 export const QUEUE_NAME = 'premise-queue';
@@ -79,6 +80,12 @@ export interface PremiseQueueDeps {
   invokeProfileAggregate?: (userId: string) => Promise<void>;
 
   /**
+   * Enqueue per-network user-context regeneration. Called after the global profile
+   * aggregate completes so the per-network representation derives from a fresh profile.
+   */
+  enqueueContextRegen?: (userId: string) => Promise<void>;
+
+  /**
    * Find ACTIVE premises whose validity.validUntil has passed.
    * Returns a minimal shape: id + userId.
    */
@@ -146,6 +153,11 @@ export class PremiseQueue {
   addProfileRegenJob(data: ProfileRegenData): Promise<Job<PremiseJobPayload>> {
     return this.addJob('profile_regen', data, {
       jobId: `profile-regen-${data.userId}-${data.trigger}`,
+      // Free the jobId as soon as the regen settles so repeated premise changes
+      // re-run instead of being deduped against a retained completed job — the
+      // jobId only needs to coalesce concurrent bursts (jobs still waiting/active).
+      removeOnComplete: true,
+      removeOnFail: true,
     });
   }
 
@@ -157,20 +169,25 @@ export class PremiseQueue {
    * Add a named job to the premise queue.
    * @param name - Job type (`premise_cascade` or `profile_regen`)
    * @param data - Job payload
-   * @param options - Optional jobId and priority
+   * @param options - Optional jobId, priority, and removeOnComplete/removeOnFail overrides
    */
   async addJob(
     name: 'premise_cascade' | 'profile_regen',
     data: PremiseJobPayload,
-    options?: { jobId?: string; priority?: number }
+    options?: {
+      jobId?: string;
+      priority?: number;
+      removeOnComplete?: JobsOptions['removeOnComplete'];
+      removeOnFail?: JobsOptions['removeOnFail'];
+    }
   ): Promise<Job<PremiseJobPayload>> {
     return this.queue.add(name, data, {
       jobId: options?.jobId,
       priority: options?.priority,
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: { age: 24 * 60 * 60 },
-      removeOnFail: { age: 7 * 24 * 60 * 60 },
+      removeOnComplete: options?.removeOnComplete ?? { age: 24 * 60 * 60 },
+      removeOnFail: options?.removeOnFail ?? { age: 7 * 24 * 60 * 60 },
     });
   }
 
@@ -363,8 +380,16 @@ export class PremiseQueue {
       this.deps?.invokeProfileAggregate ??
       ((uid: string) => this.defaultInvokeProfileAggregate(uid));
 
+    const enqueueContextRegen =
+      this.deps?.enqueueContextRegen ??
+      ((uid: string) => this.defaultEnqueueContextRegen(uid));
+
     await invokeProfileAggregate(userId);
 
+    // Global profile is now fresh; enqueue per-network context regeneration downstream.
+    // Log completion only after the enqueue settles so a failed/retried job is not
+    // preceded by a misleading "complete" line.
+    await enqueueContextRegen(userId);
     this.logger.info('[ProfileRegen] Profile regeneration complete', { userId, trigger });
   }
 
@@ -378,6 +403,13 @@ export class PremiseQueue {
     const factory = new ProfileGraphFactory(database, scraper);
     const graph = factory.createGraph();
     await graph.invoke({ userId, operationMode: 'aggregate' });
+  }
+
+  /**
+   * Default production implementation: enqueue a per-network context regeneration job.
+   */
+  private async defaultEnqueueContextRegen(userId: string): Promise<void> {
+    await userContextQueue.addRegenJob({ userId, reason: 'profile_regen' });
   }
 }
 

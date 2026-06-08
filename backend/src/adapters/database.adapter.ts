@@ -9,6 +9,7 @@ import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inAr
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
+import { normalizeEmbedding } from '../lib/embedding/vector';
 import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
 import type {
   Conversation,
@@ -209,8 +210,7 @@ interface HydeDocumentRow {
   expiresAt: Date | null;
 }
 function toHydeDocument(row: typeof hydeDocuments.$inferSelect): HydeDocumentRow {
-  const embedding = row.hydeEmbedding;
-  const vec = Array.isArray(embedding) ? embedding : (typeof embedding === 'string' ? (JSON.parse(embedding) as number[]) : []);
+  const vec = normalizeEmbedding(row.hydeEmbedding);
   return {
     id: row.id,
     sourceType: row.sourceType as HydeSourceTypeLocal,
@@ -1015,6 +1015,11 @@ export class ChatDatabaseAdapter {
   async getUserSocials(userId: string) {
     const profileAdapter = new ProfileDatabaseAdapter();
     return profileAdapter.getUserSocials(userId);
+  }
+
+  async findTelegramHandleOwners(handle: string) {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.findTelegramHandleOwners(handle);
   }
 
   async setUserSocials(userId: string, socials: { label: string; value: string }[]) {
@@ -4366,6 +4371,37 @@ export class ProfileDatabaseAdapter {
     return rows.map(r => ({ id: r.id, userId: r.userId, label: r.label, value: r.value }));
   }
 
+  /**
+   * Finds telegram socials owned by any user whose stored value resolves to the
+   * given bare handle. Used by MCP identity verification to detect whether a
+   * telegram handle is already owned by another user. Each stored value is
+   * normalized in SQL to its bare handle before comparison — a leading `@` or
+   * `t.me`/`telegram.me` URL prefix is stripped and everything from the first
+   * `/`, `?`, or `#` is dropped — so handles stored as `@h`, `https://t.me/h`,
+   * `https://t.me/h/`, or `https://t.me/h?start=x` all match, which a fixed
+   * candidate list would miss.
+   * @param handle - Bare telegram handle (no `@`, no URL), already extracted by the caller.
+   * @returns Matching telegram social rows with their owning userId.
+   */
+  async findTelegramHandleOwners(handle: string): Promise<Array<{ userId: string; label: string; value: string }>> {
+    const normalized = handle.trim().toLowerCase();
+    if (!normalized) return [];
+    const rows = await db.select({
+      userId: schema.userSocials.userId,
+      label: schema.userSocials.label,
+      value: schema.userSocials.value,
+    })
+      .from(schema.userSocials)
+      .where(and(
+        eq(schema.userSocials.label, 'telegram'),
+        eq(
+          sql<string>`lower((regexp_split_to_array(regexp_replace(${schema.userSocials.value}, '^(@|(https?://)?(t\\.me|telegram\\.me)/)', '', 'i'), '[/?#]'))[1])`,
+          normalized,
+        ),
+      ));
+    return rows.map(r => ({ userId: r.userId, label: r.label, value: r.value }));
+  }
+
   async setUserSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
     await db.transaction(async (tx) => {
       await tx.delete(schema.userSocials).where(eq(schema.userSocials.userId, userId));
@@ -5361,7 +5397,10 @@ export class OpportunityDatabaseAdapter {
       provenance: unknown;
       analysis: unknown | null;
       validity: unknown;
-      embedding: number[];
+      // Raw db.execute bypasses Drizzle's vector mapper: a pgvector column
+      // arrives as a string here, not number[]. Typed `unknown` so every
+      // caller must route through normalizeEmbedding (IND-348).
+      embedding: unknown;
       status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
       createdAt: Date;
       updatedAt: Date;
@@ -5405,7 +5444,10 @@ export class OpportunityDatabaseAdapter {
       provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
       analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
       validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
+      // Raw `db.execute` bypasses Drizzle's vector mapper, so `embedding` arrives
+      // as a pgvector string here — normalize to number[] before consumers call
+      // `.join(',')` to rebuild the vector literal (IND-348).
+      embedding: normalizeEmbedding(row.embedding),
       status: row.status,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
