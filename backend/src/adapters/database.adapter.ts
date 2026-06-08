@@ -3027,7 +3027,7 @@ export class ChatDatabaseAdapter {
   }
   async getOpportunitiesForNetwork(
     networkId: string,
-    options?: { status?: string; limit?: number; offset?: number }
+    options?: { status?: string; statuses?: string[]; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesForNetwork(networkId, options);
   }
@@ -5017,7 +5017,7 @@ export class OpportunityDatabaseAdapter {
 
   async getOpportunitiesForNetwork(
     networkId: string,
-    options?: { status?: string; limit?: number; offset?: number }
+    options?: { status?: string; statuses?: string[]; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
     // Actor-anchored scope: an opportunity belongs to the network when at
     // least one actor was matched there. Replaces an earlier `context.networkId`
@@ -5028,6 +5028,9 @@ export class OpportunityDatabaseAdapter {
       WHERE actor->>'networkId' = ${networkId}
     )`];
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
+    if (options?.statuses?.length) {
+      conditions.push(inArray(opportunities.status, options.statuses as Array<typeof opportunities.$inferSelect.status>));
+    }
     let q = db
       .select()
       .from(opportunities)

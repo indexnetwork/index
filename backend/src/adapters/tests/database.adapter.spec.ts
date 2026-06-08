@@ -965,6 +965,43 @@ describe('OpportunityDatabaseAdapter', () => {
         await db.delete(networks).where(eq(networks.id, otherNetworkId));
       }
     });
+
+    it('getOpportunitiesForNetwork narrows results by the statuses filter (IND-254)', async () => {
+      // The network/community list relies on this SQL `statuses` filter to hide
+      // stale/pre-draft opportunities (the service passes a live-status allow-list).
+      // Assert the adapter actually narrows by status, and that with no filter it
+      // returns every status (the default allow-list lives in the service, not here).
+      const mk = (status: 'pending' | 'expired' | 'latent') =>
+        adapter.createOpportunity({
+          detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+          actors: [
+            { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+            { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+          ],
+          interpretation: { category: 'collaboration', reasoning: `status filter ${status}`, confidence: 0.8 },
+          context: { networkId: fixture.networkId },
+          confidence: '0.8',
+          status,
+        });
+      const pendingOpp = await mk('pending');
+      const expiredOpp = await mk('expired');
+      const latentOpp = await mk('latent');
+
+      try {
+        const live = await adapter.getOpportunitiesForNetwork(fixture.networkId, { statuses: ['negotiating', 'pending', 'stalled', 'accepted'] });
+        expect(live.some((o) => o.id === pendingOpp.id)).toBe(true);
+        expect(live.some((o) => o.id === expiredOpp.id)).toBe(false);
+        expect(live.some((o) => o.id === latentOpp.id)).toBe(false);
+
+        // No status filter ⇒ adapter returns every status (no default narrowing here).
+        const all = await adapter.getOpportunitiesForNetwork(fixture.networkId);
+        expect(all.some((o) => o.id === pendingOpp.id)).toBe(true);
+        expect(all.some((o) => o.id === expiredOpp.id)).toBe(true);
+        expect(all.some((o) => o.id === latentOpp.id)).toBe(true);
+      } finally {
+        await db.delete(opportunities).where(inArray(opportunities.id, [pendingOpp.id, expiredOpp.id, latentOpp.id]));
+      }
+    });
   });
 
   describe('draft visibility (getOpportunitiesForUser)', () => {
