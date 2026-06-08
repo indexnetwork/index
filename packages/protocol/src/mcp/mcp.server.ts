@@ -465,11 +465,21 @@ export function createMcpServer(
           // tool calls — it stops an over-eager agent from cascading itself into
           // provider rate limits.
           if (deps.mcpRateLimiter) {
-            const decision = await deps.mcpRateLimiter({
-              userId,
-              ...(agentId ? { agentId } : {}),
-              toolName,
-            });
+            // Throttling is best-effort: never let a limiter failure (or a host
+            // implementation that throws instead of failing open) break tool
+            // dispatch. Treat any error as "allowed".
+            let decision: Awaited<ReturnType<NonNullable<typeof deps.mcpRateLimiter>>> | null = null;
+            try {
+              decision = await deps.mcpRateLimiter({
+                userId,
+                ...(agentId ? { agentId } : {}),
+                toolName,
+              });
+            } catch (rlErr) {
+              logger.warn(`MCP rate limiter threw for "${toolName}" — failing open`, {
+                error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+              });
+            }
             if (decision && !decision.allowed) {
               const retryAfterSec = decision.retryAfterSec ?? 60;
               return {

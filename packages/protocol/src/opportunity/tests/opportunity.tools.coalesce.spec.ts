@@ -187,6 +187,19 @@ describe('discover_opportunities — MCP run coalescing', () => {
     expect(runStore.createCalls).toBe(2);
   });
 
+  test('continueFrom is case-sensitive — distinct tokens do NOT coalesce', async () => {
+    const runStore = makeRunStore();
+    const queue = { enqueueCalls: 0 };
+    const tool = captureDiscoverTool(makeDeps(runStore, queue));
+
+    await tool.handler({ context: makeContext({}), query: { continueFrom: 'AbC123' } });
+    const second = parseToolResult(
+      await tool.handler({ context: makeContext({}), query: { continueFrom: 'abc123' } }),
+    );
+    expect(second.data!.coalesced).toBeUndefined();
+    expect(runStore.createCalls).toBe(2);
+  });
+
   test('a different query starts a fresh run', async () => {
     const runStore = makeRunStore();
     const queue = { enqueueCalls: 0 };

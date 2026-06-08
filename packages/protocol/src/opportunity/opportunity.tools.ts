@@ -433,21 +433,27 @@ export function buildOpportunityPresentation(
  * user-supplied string containing the delimiter can never make two distinct
  * requests collide. `hint` and each entity's `networkId` are included because
  * they change the discovery result (different reason / different shared index),
- * so requests that differ only in those must NOT coalesce.
+ * so requests that differ only in those must NOT coalesce. Natural-language
+ * fields (`searchQuery`, `hint`) are lowercased; identifiers and the opaque
+ * `continueFrom` pagination token are only trimmed (case-sensitive) so distinct
+ * tokens never collapse together.
  */
 function discoveryRunSignature(input: DiscoveryRunInput): string {
-  const norm = (s?: string) => (s ?? "").trim().toLowerCase();
+  const text = (s?: string) => (s ?? "").trim().toLowerCase();
+  const id = (s?: string) => (s ?? "").trim();
+  // Encode each entity as a JSON tuple string, then sort the strings — a stable
+  // total order with a correct comparator (default Array#sort on strings).
   const entities = [...(input.entities ?? [])]
-    .map((e) => [norm(e.networkId), e.userId.trim()] as [string, string])
-    .sort((a, b) => (JSON.stringify(a) < JSON.stringify(b) ? -1 : 1));
+    .map((e) => JSON.stringify([id(e.networkId), id(e.userId)]))
+    .sort();
   return JSON.stringify({
-    searchQuery: norm(input.searchQuery),
-    networkId: norm(input.networkId),
-    intentId: norm(input.intentId),
-    targetUserId: norm(input.targetUserId),
-    introTargetUserId: norm(input.introTargetUserId),
-    continueFrom: norm(input.continueFrom),
-    hint: norm(input.hint),
+    searchQuery: text(input.searchQuery),
+    networkId: id(input.networkId),
+    intentId: id(input.intentId),
+    targetUserId: id(input.targetUserId),
+    introTargetUserId: id(input.introTargetUserId),
+    continueFrom: id(input.continueFrom),
+    hint: text(input.hint),
     partyUserIds: [...(input.partyUserIds ?? [])].map((x) => x.trim()).sort(),
     entities,
   });

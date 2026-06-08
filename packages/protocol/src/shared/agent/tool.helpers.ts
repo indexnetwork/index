@@ -234,7 +234,7 @@ export interface ToolContext {
     allowed: boolean;
     retryAfterSec?: number;
     limit?: number;
-    scope?: string;
+    scope?: 'tool' | 'principal';
   }>;
   /** Optional premise lifecycle event callbacks. Fired by premise tools after successful operations. */
   premiseEvents?: {
@@ -504,7 +504,7 @@ export interface ToolDeps {
     allowed: boolean;
     retryAfterSec?: number;
     limit?: number;
-    scope?: string;
+    scope?: 'tool' | 'principal';
   }>;
   /** Optional premise lifecycle event callbacks. Fired by premise tools after successful operations. */
   premiseEvents?: {
