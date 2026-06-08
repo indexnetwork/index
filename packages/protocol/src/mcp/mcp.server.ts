@@ -488,9 +488,10 @@ export function createMcpServer(
                   text: JSON.stringify({
                     error: 'Rate limit exceeded',
                     message:
-                      `Too many ${toolName} calls in a short period. Wait ${retryAfterSec}s before retrying, ` +
-                      `and avoid re-issuing the same request — if a discovery run is in progress, poll ` +
-                      `get_discovery_run instead of calling discover_opportunities again.`,
+                      `Too many ${toolName} calls in a short period. Wait ${retryAfterSec}s before retrying.` +
+                      (toolName === 'discover_opportunities'
+                        ? ` If a discovery run is in progress, poll get_discovery_run instead of calling discover_opportunities again.`
+                        : ''),
                     retryAfterSec,
                   }),
                 }],
