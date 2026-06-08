@@ -169,7 +169,7 @@ export class PremiseQueue {
    * Add a named job to the premise queue.
    * @param name - Job type (`premise_cascade` or `profile_regen`)
    * @param data - Job payload
-   * @param options - Optional jobId and priority
+   * @param options - Optional jobId, priority, and removeOnComplete/removeOnFail overrides
    */
   async addJob(
     name: 'premise_cascade' | 'profile_regen',
