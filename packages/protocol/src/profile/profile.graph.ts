@@ -239,7 +239,7 @@ export class ProfileGraphFactory {
           });
           return {
             profile: undefined,
-            error: "Failed to load profile from database"
+            error: `Failed to load profile from database: ${error instanceof Error ? error.message : String(error)}`
           };
         }
       });
@@ -326,7 +326,7 @@ export class ProfileGraphFactory {
             error: error instanceof Error ? error.message : String(error)
           });
           return {
-            error: "Web scrape failed"
+            error: `Web scrape failed: ${error instanceof Error ? error.message : String(error)}`
           };
         }
       });
@@ -590,7 +590,7 @@ export class ProfileGraphFactory {
             error: error instanceof Error ? error.message : String(error)
           });
           return {
-            error: "Profile generation failed",
+            error: `Profile generation failed: ${error instanceof Error ? error.message : String(error)}`,
             agentTimings: agentTimingsAccum
           };
         }
@@ -675,7 +675,7 @@ export class ProfileGraphFactory {
             error: error instanceof Error ? error.message : String(error)
           });
           return {
-            error: "Failed to save profile"
+            error: `Failed to save profile: ${error instanceof Error ? error.message : String(error)}`
           };
         }
       });
