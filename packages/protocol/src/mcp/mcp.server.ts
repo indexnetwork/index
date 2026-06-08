@@ -459,6 +459,36 @@ export function createMcpServer(
           const { userId, agentId, isSessionAuth, networkScopeId, clientSurface } = await authResolver.resolveIdentity(httpReq);
           reportUserId = userId;
 
+          // Per-principal MCP throttle. Runs BEFORE any DB work so a throttled
+          // call short-circuits cheaply. The /mcp transport bypasses the
+          // controller-level RateLimit guard, so this is the only volume cap on
+          // tool calls — it stops an over-eager agent from cascading itself into
+          // provider rate limits.
+          if (deps.mcpRateLimiter) {
+            const decision = await deps.mcpRateLimiter({
+              userId,
+              ...(agentId ? { agentId } : {}),
+              toolName,
+            });
+            if (decision && !decision.allowed) {
+              const retryAfterSec = decision.retryAfterSec ?? 60;
+              return {
+                content: [{
+                  type: 'text' as const,
+                  text: JSON.stringify({
+                    error: 'Rate limit exceeded',
+                    message:
+                      `Too many ${toolName} calls in a short period. Wait ${retryAfterSec}s before retrying, ` +
+                      `and avoid re-issuing the same request — if a discovery run is in progress, poll ` +
+                      `get_discovery_run instead of calling discover_opportunities again.`,
+                    retryAfterSec,
+                  }),
+                }],
+                isError: true,
+              };
+            }
+          }
+
           // Resolve chat context for the user (mark as MCP — no interactive UI available)
           const context = await resolveChatContext({ database: deps.database, userId });
           reportContext = context;
