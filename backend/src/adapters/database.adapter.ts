@@ -1017,9 +1017,9 @@ export class ChatDatabaseAdapter {
     return profileAdapter.getUserSocials(userId);
   }
 
-  async findTelegramSocialsByValues(values: string[]) {
+  async findTelegramHandleOwners(handle: string) {
     const profileAdapter = new ProfileDatabaseAdapter();
-    return profileAdapter.findTelegramSocialsByValues(values);
+    return profileAdapter.findTelegramHandleOwners(handle);
   }
 
   async setUserSocials(userId: string, socials: { label: string; value: string }[]) {
@@ -4372,16 +4372,20 @@ export class ProfileDatabaseAdapter {
   }
 
   /**
-   * Finds telegram socials whose stored value matches any of the provided
-   * candidate representations (case-insensitive). Used by MCP identity
-   * verification to detect whether a telegram handle is already owned by another
-   * user. Normalizing the handle into candidate forms stays with the caller.
-   * @param values - Candidate stored representations (e.g. `@handle`, `https://t.me/handle`).
+   * Finds telegram socials owned by any user whose stored value resolves to the
+   * given bare handle. Used by MCP identity verification to detect whether a
+   * telegram handle is already owned by another user. Each stored value is
+   * normalized in SQL to its bare handle before comparison — a leading `@` or
+   * `t.me`/`telegram.me` URL prefix is stripped and everything from the first
+   * `/`, `?`, or `#` is dropped — so handles stored as `@h`, `https://t.me/h`,
+   * `https://t.me/h/`, or `https://t.me/h?start=x` all match, which a fixed
+   * candidate list would miss.
+   * @param handle - Bare telegram handle (no `@`, no URL), already extracted by the caller.
    * @returns Matching telegram social rows with their owning userId.
    */
-  async findTelegramSocialsByValues(values: string[]): Promise<Array<{ userId: string; label: string; value: string }>> {
-    if (values.length === 0) return [];
-    const lowered = values.map(v => v.toLowerCase());
+  async findTelegramHandleOwners(handle: string): Promise<Array<{ userId: string; label: string; value: string }>> {
+    const normalized = handle.trim().toLowerCase();
+    if (!normalized) return [];
     const rows = await db.select({
       userId: schema.userSocials.userId,
       label: schema.userSocials.label,
@@ -4390,7 +4394,10 @@ export class ProfileDatabaseAdapter {
       .from(schema.userSocials)
       .where(and(
         eq(schema.userSocials.label, 'telegram'),
-        inArray(sql<string>`lower(${schema.userSocials.value})`, lowered),
+        eq(
+          sql<string>`lower((regexp_split_to_array(regexp_replace(${schema.userSocials.value}, '^(@|(https?://)?(t\\.me|telegram\\.me)/)', '', 'i'), '[/?#]'))[1])`,
+          normalized,
+        ),
       ));
     return rows.map(r => ({ userId: r.userId, label: r.label, value: r.value }));
   }

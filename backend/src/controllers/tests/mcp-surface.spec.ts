@@ -108,6 +108,15 @@ describe('findTelegramHandleMismatch', () => {
     })).toEqual({ reason: 'handle_belongs_to_other_user', ownerUserId: 'seren-user' });
   });
 
+  test('detects another owner when the handle is stored as a t.me URL with query params', () => {
+    expect(findTelegramHandleMismatch({
+      userId: 'edge-city-user',
+      telegramHandle: 'seren_tg',
+      authenticatedUserSocials: [],
+      matchingTelegramSocials: [{ userId: 'seren-user', label: 'telegram', value: 'https://t.me/seren_tg?start=abc' }],
+    })).toEqual({ reason: 'handle_belongs_to_other_user', ownerUserId: 'seren-user' });
+  });
+
   test('allows first-time persistence when the handle is not owned elsewhere', () => {
     expect(findTelegramHandleMismatch({
       userId: 'user-1',
@@ -139,6 +148,14 @@ describe('resolveMcpApiKeyPrincipal', () => {
     expect(() => resolveMcpApiKeyPrincipal({
       userId: 'edge-city-user',
       referenceId: 'seren-user',
+      metadata: JSON.stringify({ agentId: 'agent-1' }),
+    })).toThrow(/principal mismatch/);
+  });
+
+  test('rejects agent keys missing one principal id', () => {
+    expect(() => resolveMcpApiKeyPrincipal({
+      userId: 'seren-user',
+      referenceId: null,
       metadata: JSON.stringify({ agentId: 'agent-1' }),
     })).toThrow(/principal mismatch/);
   });

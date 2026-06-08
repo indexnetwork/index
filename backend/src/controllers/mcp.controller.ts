@@ -263,19 +263,6 @@ function normalizeTelegramHandleForComparison(raw: string): string | null {
   return normalizeTelegramHeader(raw)?.toLowerCase() ?? null;
 }
 
-function telegramHandleStorageCandidates(telegramHandle: string): string[] {
-  const variants = new Set<string>();
-  for (const handle of [telegramHandle, telegramHandle.toLowerCase()]) {
-    variants.add(handle);
-    variants.add(`@${handle}`);
-    variants.add(`https://t.me/${handle}`);
-    variants.add(`http://t.me/${handle}`);
-    variants.add(`https://telegram.me/${handle}`);
-    variants.add(`http://telegram.me/${handle}`);
-  }
-  return [...variants];
-}
-
 export function findTelegramHandleMismatch(params: {
   userId: string;
   telegramHandle: string;
@@ -317,7 +304,11 @@ export function resolveMcpApiKeyPrincipal(
 ): { userId: string; agentId?: string } | null {
   const metadata = parseApiKeyMetadata(row.metadata);
 
-  if (metadata.agentId && row.userId && row.referenceId && row.userId !== row.referenceId) {
+  // Agent keys must carry both principal columns and they must agree. The
+  // adapter mints agent keys with referenceId === userId, so a missing or
+  // divergent side signals a cross-wired/tampered key — reject rather than
+  // resolve to whichever side happens to be non-null.
+  if (metadata.agentId && (!row.userId || !row.referenceId || row.userId !== row.referenceId)) {
     throw new Error('Agent API key principal mismatch');
   }
 
@@ -353,9 +344,7 @@ async function finalizeMcpIdentity(request: Request, identity: ResolvedMcpIdenti
   let matchingTelegramSocials: TelegramSocial[];
   try {
     existingSocials = await chatDatabaseAdapter.getUserSocials(identity.userId);
-    matchingTelegramSocials = await chatDatabaseAdapter.findTelegramSocialsByValues(
-      telegramHandleStorageCandidates(telegramHandle),
-    );
+    matchingTelegramSocials = await chatDatabaseAdapter.findTelegramHandleOwners(telegramHandle);
   } catch (err) {
     logger.warn('Failed to verify Telegram MCP handle', {
       userId: identity.userId,
@@ -524,7 +513,7 @@ const authResolver: McpAuthResolver = {
             principal = resolveMcpApiKeyPrincipal(row, sessionUserId);
           } catch (err) {
             logger.warn('API key principal mismatch', {
-              keyPrefix: apiKey.slice(0, 6),
+              keyHashPrefix: hashed.slice(0, 8),
               rowUserId: row.userId,
               referenceId: row.referenceId,
               error: err instanceof Error ? err.message : String(err),
