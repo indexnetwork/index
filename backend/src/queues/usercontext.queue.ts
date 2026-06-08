@@ -10,7 +10,7 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import db from '../lib/drizzle/drizzle';
 import { networkMembers, networks } from '../schemas/database.schema';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter, embedderAdapter } from '../adapters/embedder.adapter';
+import { embedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 
 /** BullMQ queue name for per-network user-context regeneration jobs. */
@@ -91,6 +91,13 @@ export class UserContextQueue {
   private readonly queueLogger = log.queue.from('UserContextQueue');
   private readonly deps: UserContextQueueDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<UserContextJobData>> | null = null;
+
+  /**
+   * Lazily-built, reused context generator. `UserContextGenerator` builds an LLM
+   * model in its constructor, so one is shared across all networks in a job (and
+   * across jobs) rather than re-created per network.
+   */
+  private generator: UserContextGenerator | undefined;
 
   constructor(deps?: UserContextQueueDeps) {
     this.deps = deps;
@@ -255,18 +262,17 @@ export class UserContextQueue {
     networkPrompt: string | null;
     networkTitle: string;
   }): Promise<{ text: string; embedding: number[] }> {
-    const generator = new UserContextGenerator(embedderAdapter);
-    return generator.generateColdStart(input);
+    this.generator ??= new UserContextGenerator(embedderAdapter);
+    return this.generator.generateColdStart(input);
   }
 
   /** Run the HyDE graph for a freshly upserted context. */
   private async defaultGenerateContextHyde(params: { contextId: string; sourceText: string }): Promise<void> {
-    const hydeEmbedder = new EmbedderAdapter();
     const hydeCache = new RedisCacheAdapter();
     const inferrer = new LensInferrer();
     const hydeGenerator = new HydeGenerator();
     const graphDb = chatDatabaseAdapter as unknown as HydeGraphDatabase;
-    const hydeGraph = new HydeGraphFactory(graphDb, hydeEmbedder, hydeCache, inferrer, hydeGenerator).createGraph();
+    const hydeGraph = new HydeGraphFactory(graphDb, embedderAdapter, hydeCache, inferrer, hydeGenerator).createGraph();
     await hydeGraph.invoke({
       sourceType: 'context' as const,
       sourceId: params.contextId,
