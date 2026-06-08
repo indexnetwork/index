@@ -245,7 +245,11 @@ function normalizeTelegramHeader(raw: string | null | undefined): string | null 
   const trimmed = raw
     ?.trim()
     .replace(/^@/, '')
-    .replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//, '')
+    // Case-insensitive to match the SQL normalization in
+    // ProfileDatabaseAdapter.findTelegramHandleOwners; otherwise a stored
+    // `HTTPS://T.ME/<handle>` would pass the SQL filter but fail this JS
+    // re-check, bypassing the mismatch/ownership guard.
+    .replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//i, '')
     .split(/[/?#]/)[0];
 
   if (!trimmed) return null;

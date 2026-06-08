@@ -72,6 +72,12 @@ describe('telegramHandleFromRequest', () => {
     }))).toBe('alice_tg');
   });
 
+  test('strips an uppercase t.me URL prefix (case-insensitive, matching the SQL)', () => {
+    expect(telegramHandleFromRequest(requestWithHeaders({
+      'x-index-telegram-handle': 'HTTPS://T.ME/alice_tg',
+    }))).toBe('alice_tg');
+  });
+
   test('rejects invalid or missing handles', () => {
     expect(telegramHandleFromRequest(requestWithHeaders({}))).toBeNull();
     expect(telegramHandleFromRequest(requestWithHeaders({
@@ -114,6 +120,15 @@ describe('findTelegramHandleMismatch', () => {
       telegramHandle: 'seren_tg',
       authenticatedUserSocials: [],
       matchingTelegramSocials: [{ userId: 'seren-user', label: 'telegram', value: 'https://t.me/seren_tg?start=abc' }],
+    })).toEqual({ reason: 'handle_belongs_to_other_user', ownerUserId: 'seren-user' });
+  });
+
+  test('detects another owner when the handle is stored as an uppercase t.me URL', () => {
+    expect(findTelegramHandleMismatch({
+      userId: 'edge-city-user',
+      telegramHandle: 'seren_tg',
+      authenticatedUserSocials: [],
+      matchingTelegramSocials: [{ userId: 'seren-user', label: 'telegram', value: 'HTTPS://T.ME/seren_tg' }],
     })).toEqual({ reason: 'handle_belongs_to_other_user', ownerUserId: 'seren-user' });
   });
 

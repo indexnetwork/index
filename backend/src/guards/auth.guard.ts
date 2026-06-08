@@ -110,15 +110,16 @@ export const AuthOrApiKeyGuard = async (req: Request): Promise<AuthenticatedUser
     .where(eq(apikeys.key, hashed))
     .limit(1);
 
-  const keyPrefix = apiKey.slice(0, 6);
+  // Log a prefix of the stored SHA-256 hash, never raw x-api-key material.
+  const keyHashPrefix = hashed.slice(0, 8);
   const ua = req.headers.get('user-agent') ?? 'unknown';
 
   if (!row || !row.enabled) {
-    logger.warn('API key rejected', { reason: row ? 'disabled' : 'not_found', keyPrefix, ua });
+    logger.warn('API key rejected', { reason: row ? 'disabled' : 'not_found', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
   if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
-    logger.warn('API key rejected', { reason: 'expired', keyPrefix, ua });
+    logger.warn('API key rejected', { reason: 'expired', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
 
@@ -126,11 +127,11 @@ export const AuthOrApiKeyGuard = async (req: Request): Promise<AuthenticatedUser
   try {
     userId = resolveApiKeyUserId(row);
   } catch {
-    logger.warn('API key rejected', { reason: 'principal_mismatch', keyPrefix, ua });
+    logger.warn('API key rejected', { reason: 'principal_mismatch', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
   if (!userId) {
-    logger.warn('API key rejected', { reason: 'no_user_ref', keyPrefix, ua });
+    logger.warn('API key rejected', { reason: 'no_user_ref', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
 
@@ -141,7 +142,7 @@ export const AuthOrApiKeyGuard = async (req: Request): Promise<AuthenticatedUser
     .limit(1);
 
   if (!user) {
-    logger.warn('API key rejected', { reason: 'user_not_found', keyPrefix, ua });
+    logger.warn('API key rejected', { reason: 'user_not_found', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
 

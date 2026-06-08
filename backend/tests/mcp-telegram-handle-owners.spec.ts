@@ -42,15 +42,16 @@ function uniqueHandle(): string {
 describe('findTelegramHandleOwners (integration)', () => {
   it('resolves every stored telegram representation to the bare handle', async () => {
     const handle = uniqueHandle();
-    const [bare, at, url, slash, query, telegramMe] = await Promise.all([
+    const [bare, at, url, slash, query, telegramMe, upper] = await Promise.all([
       createUserWithTelegram(handle),
       createUserWithTelegram(`@${handle}`),
       createUserWithTelegram(`https://t.me/${handle}`),
       createUserWithTelegram(`https://t.me/${handle}/`),
       createUserWithTelegram(`https://t.me/${handle}?start=abc`),
       createUserWithTelegram(`http://telegram.me/${handle}`),
+      createUserWithTelegram(`HTTPS://T.ME/${handle}`),
     ]);
-    const ids = { bare, at, url, slash, query, telegramMe };
+    const ids = { bare, at, url, slash, query, telegramMe, upper };
 
     const owners = await chatDatabaseAdapter.findTelegramHandleOwners(handle);
     const ownerIds = new Set(owners.map((o) => o.userId));
