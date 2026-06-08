@@ -3,8 +3,10 @@ import { MemoryStorage } from '../storage.memory';
 import { checkMcpRateLimit } from '../mcp';
 
 describe('checkMcpRateLimit', () => {
+  const originalEnv = { ...process.env };
   let s: MemoryStorage;
   beforeEach(() => {
+    process.env = { ...originalEnv };
     s = new MemoryStorage();
     process.env.MCP_LIMIT_DISCOVER_PER_MIN = '3';
     process.env.MCP_LIMIT_TOOL_PER_MIN = '5';
@@ -13,9 +15,7 @@ describe('checkMcpRateLimit', () => {
   });
   afterEach(() => {
     s.stop();
-    delete process.env.MCP_LIMIT_DISCOVER_PER_MIN;
-    delete process.env.MCP_LIMIT_TOOL_PER_MIN;
-    delete process.env.MCP_LIMIT_PRINCIPAL_PER_MIN;
+    process.env = originalEnv;
   });
 
   test('allows up to the per-tool limit, then blocks', async () => {
