@@ -63,6 +63,13 @@ describe("OpportunityService list status filtering (IND-254)", () => {
       expect(userCall.opts?.statuses).toBeUndefined();
     });
 
+    it("preserves an explicit statuses filter instead of overwriting it with the default", async () => {
+      const { service, userCall } = createService();
+      await service.getOpportunitiesForUser("user-1", { statuses: ["expired", "rejected"] });
+
+      expect(userCall.opts?.statuses).toEqual(["expired", "rejected"]);
+    });
+
     it("preserves other options (networkId) alongside the default allow-list", async () => {
       const { service, userCall } = createService();
       await service.getOpportunitiesForUser("user-1", { networkId: "net-1" });
@@ -89,6 +96,13 @@ describe("OpportunityService list status filtering (IND-254)", () => {
 
       expect(networkCall.opts?.status).toBe("rejected");
       expect(networkCall.opts?.statuses).toBeUndefined();
+    });
+
+    it("preserves an explicit statuses filter instead of overwriting it with the default", async () => {
+      const { service, networkCall } = createService();
+      await service.getOpportunitiesForNetwork("net-1", "user-1", { statuses: ["expired"] });
+
+      expect(networkCall.opts?.statuses).toEqual(["expired"]);
     });
   });
 });

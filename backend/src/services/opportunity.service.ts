@@ -270,6 +270,7 @@ export class OpportunityService {
     userId: string,
     options?: {
       status?: 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+      statuses?: OpportunityStatus[];
       networkId?: string;
       limit?: number;
       offset?: number;
@@ -278,11 +279,12 @@ export class OpportunityService {
     logger.verbose('[OpportunityService] Getting opportunities for user', { userId, options });
 
     // No explicit status filter ⇒ show only live statuses, hiding terminal-stale
-    // expired/rejected from the default list (IND-254). An explicit single status
-    // (e.g. ?status=expired) is honored as-is for a history view.
+    // expired/rejected from the default list (IND-254). An explicit `status` or
+    // `statuses` filter (e.g. ?status=expired for a history view) is honored as-is.
+    const hasExplicitStatus = !!options?.status || (options?.statuses?.length ?? 0) > 0;
     const rows = await this.db.getOpportunitiesForUser(
       userId,
-      options?.status ? options : { ...options, statuses: DEFAULT_LIST_STATUSES },
+      hasExplicitStatus ? options : { ...options, statuses: DEFAULT_LIST_STATUSES },
     );
 
     // Resolve actor names in bulk for CLI/API consumers
@@ -813,6 +815,7 @@ export class OpportunityService {
     userId: string,
     options?: {
       status?: 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+      statuses?: OpportunityStatus[];
       limit?: number;
       offset?: number;
     }
@@ -821,7 +824,7 @@ export class OpportunityService {
 
     const isOwner = await this.db.isIndexOwner(networkId, userId);
     const isMember = await this.db.isNetworkMember(networkId, userId);
-    
+
     if (!isOwner && !isMember) {
       return { error: 'Not a member of this network', status: 403 };
     }
@@ -829,10 +832,11 @@ export class OpportunityService {
     // IND-254: the network list had no status filtering at all, so it leaked
     // draft/latent and terminal-stale expired/rejected into the community view.
     // Default to live community statuses (no latent — there's no per-actor
-    // visibility guard here) unless a specific status is requested.
+    // visibility guard here) unless an explicit status/statuses filter is given.
+    const hasExplicitStatus = !!options?.status || (options?.statuses?.length ?? 0) > 0;
     return this.db.getOpportunitiesForNetwork(
       networkId,
-      options?.status ? options : { ...options, statuses: DEFAULT_NETWORK_LIST_STATUSES },
+      hasExplicitStatus ? options : { ...options, statuses: DEFAULT_NETWORK_LIST_STATUSES },
     );
   }
 
