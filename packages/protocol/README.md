@@ -12,7 +12,7 @@ npm install @indexnetwork/protocol
 
 ### 1. Configure the LLM
 
-The package reads `OPENROUTER_API_KEY` (required), `CHAT_MODEL`, and `CHAT_REASONING_EFFORT` from environment variables. No startup call is needed.
+The package reads `OPENROUTER_API_KEY`, `CHAT_MODEL`, and `CHAT_REASONING_EFFORT` from environment variables. `OPENROUTER_API_KEY` is required unless an `apiKey` is supplied via `modelConfig`. No startup call is needed.
 
 To override the chat model or reasoning effort per request, set `modelConfig` on `ToolContext`:
 
