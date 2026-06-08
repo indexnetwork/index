@@ -34,6 +34,7 @@ import { profileRunAdapter } from '../adapters/profile-run.adapter';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
 import { profileRunQueue } from '../queues/profile-run.queue';
 import db from '../lib/drizzle/drizzle';
+import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
@@ -202,7 +203,7 @@ const JWKS = createRemoteJWKSet(
   new URL('/api/auth/jwks', BASE_URL),
 );
 
-function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
+export function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
   if (!raw) {
     return {};
   }
@@ -214,6 +215,23 @@ function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string
     return {};
   }
 }
+
+type ApiKeyPrincipalRow = {
+  referenceId: string | null;
+  userId: string | null;
+  metadata?: string | null;
+};
+
+type TelegramSocial = {
+  userId?: string;
+  label: string;
+  value: string;
+};
+
+type TelegramHandleMismatch = {
+  reason: 'authenticated_user_handle_mismatch' | 'handle_belongs_to_other_user';
+  ownerUserId?: string;
+};
 
 type ResolvedMcpIdentity = {
   userId: string;
@@ -227,7 +245,11 @@ function normalizeTelegramHeader(raw: string | null | undefined): string | null 
   const trimmed = raw
     ?.trim()
     .replace(/^@/, '')
-    .replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//, '')
+    // Case-insensitive to match the SQL normalization in
+    // ProfileDatabaseAdapter.findTelegramHandleOwners; otherwise a stored
+    // `HTTPS://T.ME/<handle>` would pass the SQL filter but fail this JS
+    // re-check, bypassing the mismatch/ownership guard.
+    .replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//i, '')
     .split(/[/?#]/)[0];
 
   if (!trimmed) return null;
@@ -242,13 +264,118 @@ export function telegramHandleFromRequest(request: Request): string | null {
   );
 }
 
+function normalizeTelegramHandleForComparison(raw: string): string | null {
+  return normalizeTelegramHeader(raw)?.toLowerCase() ?? null;
+}
+
+export function findTelegramHandleMismatch(params: {
+  userId: string;
+  telegramHandle: string;
+  authenticatedUserSocials: TelegramSocial[];
+  matchingTelegramSocials: TelegramSocial[];
+}): TelegramHandleMismatch | null {
+  const requested = normalizeTelegramHandleForComparison(params.telegramHandle);
+  if (!requested) return null;
+
+  const authenticatedTelegramHandles = params.authenticatedUserSocials
+    .filter((social) => social.label === 'telegram')
+    .map((social) => normalizeTelegramHandleForComparison(social.value))
+    .filter((value): value is string => value !== null);
+
+  if (
+    authenticatedTelegramHandles.length > 0 &&
+    !authenticatedTelegramHandles.some((handle) => handle === requested)
+  ) {
+    return { reason: 'authenticated_user_handle_mismatch' };
+  }
+
+  const otherOwner = params.matchingTelegramSocials.find((social) => (
+    social.userId !== undefined &&
+    social.userId !== params.userId &&
+    social.label === 'telegram' &&
+    normalizeTelegramHandleForComparison(social.value) === requested
+  ));
+
+  if (otherOwner?.userId) {
+    return { reason: 'handle_belongs_to_other_user', ownerUserId: otherOwner.userId };
+  }
+
+  return null;
+}
+
+export function resolveMcpApiKeyPrincipal(
+  row: ApiKeyPrincipalRow,
+  sessionUserId?: string,
+): { userId: string; agentId?: string } | null {
+  const metadata = parseApiKeyMetadata(row.metadata);
+
+  // Agent keys must additionally carry BOTH principal columns (the adapter
+  // mints them with referenceId === userId); a missing side signals a
+  // cross-wired/tampered agent key. Divergence between populated columns is
+  // rejected for every key by resolveApiKeyUserId below.
+  if (metadata.agentId && (!row.userId || !row.referenceId)) {
+    throw new Error('Agent API key principal mismatch');
+  }
+
+  const userId = resolveApiKeyUserId(row, sessionUserId);
+  if (!userId) return null;
+
+  return {
+    userId,
+    ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
+  };
+}
+
+/**
+ * Distinguishes Telegram identity verification/mismatch failures from auth
+ * (token / API-key) failures. The auth resolver's per-path catch blocks
+ * reclassify unknown errors (e.g. "API key authentication failed"); rethrowing
+ * this type unchanged keeps the client-facing reason accurate and avoids
+ * muddling auth alerting.
+ */
+class TelegramIdentityError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'TelegramIdentityError';
+  }
+}
+
 async function finalizeMcpIdentity(request: Request, identity: ResolvedMcpIdentity): Promise<ResolvedMcpIdentity> {
   if (identity.clientSurface !== 'telegram') return identity;
   const telegramHandle = telegramHandleFromRequest(request);
   if (!telegramHandle) return identity;
 
+  let existingSocials: TelegramSocial[];
+  let matchingTelegramSocials: TelegramSocial[];
   try {
-    const existingSocials = await chatDatabaseAdapter.getUserSocials(identity.userId);
+    existingSocials = await chatDatabaseAdapter.getUserSocials(identity.userId);
+    matchingTelegramSocials = await chatDatabaseAdapter.findTelegramHandleOwners(telegramHandle);
+  } catch (err) {
+    logger.warn('Failed to verify Telegram MCP handle', {
+      userId: identity.userId,
+      telegramHandle,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw new TelegramIdentityError('Telegram handle verification failed', { cause: err });
+  }
+
+  const mismatch = findTelegramHandleMismatch({
+    userId: identity.userId,
+    telegramHandle,
+    authenticatedUserSocials: existingSocials,
+    matchingTelegramSocials,
+  });
+  if (mismatch) {
+    logger.warn('Telegram MCP handle mismatch', {
+      userId: identity.userId,
+      telegramHandle,
+      reason: mismatch.reason,
+      ownerUserId: mismatch.ownerUserId,
+    });
+    throw new TelegramIdentityError('Telegram handle does not match authenticated user');
+  }
+
+  try {
     const merged = mergeTelegramHandleIntoSocials(existingSocials, telegramHandle);
     if (!merged) return identity;
 
@@ -314,6 +441,7 @@ const authResolver: McpAuthResolver = {
           if (typeof payload.sub === 'string') return finalizeMcpIdentity(request, { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface });
           throw new Error('JWT payload missing user ID');
         } catch (err) {
+          if (err instanceof TelegramIdentityError) throw err;
           const msg = err instanceof Error ? err.message : String(err);
           const isTransport = msg.includes('fetch') || msg.includes('ECONNREFUSED') ||
             msg.includes('timeout') || msg.includes('NetworkError');
@@ -333,6 +461,7 @@ const authResolver: McpAuthResolver = {
             if (data?.userId) return finalizeMcpIdentity(request, { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface });
           }
         } catch (err) {
+          if (err instanceof TelegramIdentityError) throw err;
           const msg = err instanceof Error ? err.message : String(err);
           throw new Error(`MCP token lookup failed: ${msg}`, { cause: err });
         }
@@ -384,17 +513,28 @@ const authResolver: McpAuthResolver = {
             throw new Error('Invalid API key');
           }
 
-          const userId = row.referenceId ?? row.userId ?? sessionUserId;
-          if (userId) {
-            const metadata = parseApiKeyMetadata(row.metadata);
+          let principal: { userId: string; agentId?: string } | null;
+          try {
+            principal = resolveMcpApiKeyPrincipal(row, sessionUserId);
+          } catch (err) {
+            logger.warn('API key principal mismatch', {
+              keyHashPrefix: hashed.slice(0, 8),
+              rowUserId: row.userId,
+              referenceId: row.referenceId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            throw new Error('Invalid API key', { cause: err });
+          }
+
+          if (principal) {
             // For network-scoped agents, resolve the bound network scope so the
             // MCP server can clamp `indexScope` to that single network downstream.
-            const networkScopeId = metadata.agentId
-              ? await resolveAgentNetworkScopeById(metadata.agentId)
+            const networkScopeId = principal.agentId
+              ? await resolveAgentNetworkScopeById(principal.agentId)
               : null;
             return finalizeMcpIdentity(request, {
-              userId,
-              ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
+              userId: principal.userId,
+              ...(principal.agentId ? { agentId: principal.agentId } : {}),
               networkScopeId,
               clientSurface,
             });
@@ -405,6 +545,7 @@ const authResolver: McpAuthResolver = {
           return finalizeMcpIdentity(request, { userId: sessionUserId, networkScopeId: null, clientSurface });
         }
       } catch (err) {
+        if (err instanceof TelegramIdentityError) throw err;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === 'Invalid API key') {
           throw err;
