@@ -29,6 +29,7 @@ import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapte
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
+import { checkMcpRateLimit } from '../lib/limiter/mcp';
 import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
 import { profileRunAdapter } from '../adapters/profile-run.adapter';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
@@ -611,6 +612,7 @@ function getOrCreateMcpServer(): McpServer {
       context: report.context,
       userId: report.userId,
     }),
+    mcpRateLimiter: (input) => checkMcpRateLimit(input),
     discoveryRuns: protocolDeps.discoveryRuns,
     discoveryRunQueue: protocolDeps.discoveryRunQueue,
     profileRuns: protocolDeps.profileRuns,

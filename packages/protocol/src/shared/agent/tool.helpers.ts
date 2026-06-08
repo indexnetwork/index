@@ -224,6 +224,18 @@ export interface ToolContext {
   questionerDatabase?: QuestionerDatabase;
   /** Optional host-side error reporter for swallowed protocol/tool errors. */
   reportToolError?: (error: unknown, report: ToolErrorReport) => void;
+  /**
+   * Optional host-side per-principal MCP call throttle. Invoked once per MCP
+   * tool dispatch (after identity resolves, before any DB work). When the
+   * returned decision is `allowed: false`, the dispatch short-circuits with a
+   * rate-limit error carrying `retryAfterSec`. Absent in chat/test contexts.
+   */
+  mcpRateLimiter?: (input: { userId: string; agentId?: string; toolName: string }) => Promise<{
+    allowed: boolean;
+    retryAfterSec?: number;
+    limit?: number;
+    scope?: string;
+  }>;
   /** Optional premise lifecycle event callbacks. Fired by premise tools after successful operations. */
   premiseEvents?: {
     onCreated?: (premiseId: string, userId: string) => void;
@@ -482,6 +494,18 @@ export interface ToolDeps {
   apiBaseUrl?: string;
   /** Optional host-side error reporter for swallowed protocol/tool errors. */
   reportToolError?: (error: unknown, report: ToolErrorReport) => void;
+  /**
+   * Optional host-side per-principal MCP call throttle. Invoked once per MCP
+   * tool dispatch (after identity resolves, before any DB work). When the
+   * returned decision is `allowed: false`, the dispatch short-circuits with a
+   * rate-limit error carrying `retryAfterSec`. Absent in chat/test contexts.
+   */
+  mcpRateLimiter?: (input: { userId: string; agentId?: string; toolName: string }) => Promise<{
+    allowed: boolean;
+    retryAfterSec?: number;
+    limit?: number;
+    scope?: string;
+  }>;
   /** Optional premise lifecycle event callbacks. Fired by premise tools after successful operations. */
   premiseEvents?: {
     onCreated?: (premiseId: string, userId: string) => void;

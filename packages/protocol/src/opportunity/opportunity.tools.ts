@@ -422,6 +422,28 @@ export function buildOpportunityPresentation(
   );
 }
 
+/**
+ * Stable signature of a discovery request, used to coalesce duplicate MCP runs.
+ * Two requests with the same signature describe the same discovery and should
+ * share a single in-flight run rather than each spawning a fresh (expensive)
+ * opportunity-graph execution. Text fields are normalized (trim + lowercase);
+ * id lists are sorted so ordering does not matter.
+ */
+function discoveryRunSignature(input: DiscoveryRunInput): string {
+  const norm = (s?: string) => (s ?? "").trim().toLowerCase();
+  const ids = (xs?: string[]) => [...(xs ?? [])].map((x) => x.trim()).sort().join(",");
+  return [
+    norm(input.searchQuery),
+    norm(input.networkId),
+    norm(input.intentId),
+    norm(input.targetUserId),
+    norm(input.introTargetUserId),
+    norm(input.continueFrom),
+    ids(input.partyUserIds),
+    ids((input.entities ?? []).map((e) => e.userId)),
+  ].join("|");
+}
+
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const { database, userDb, systemDb, graphs, cache } = deps;
 
@@ -441,7 +463,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       "4. **Introducer discovery**: pass `introTargetUserId` (find matches FOR that person; current user becomes the introducer). " +
       "Use when user asks 'who should I introduce to [person]?'\n\n" +
       "**Returns:** In regular chat, opportunity code blocks (render as interactive cards) with opportunityId, match reasoning, confidence score, and status. " +
-      "In MCP contexts, starts an async discovery run and returns `discoveryRunId`; poll get_discovery_run until status is `succeeded`, then present its `result`. " +
+      "In MCP contexts, starts an async discovery run and returns `discoveryRunId` with status `queued`. " +
+      "Then poll get_discovery_run with that id roughly every 5 seconds until status is `succeeded`, `failed`, or `cancelled`, and present its `result`. " +
+      "Do NOT call discover_opportunities again for the same request while a run is in progress — a repeat call with the same parameters " +
+      "returns the SAME in-progress run (with `coalesced: true`), not a new one. Keep polling the run id instead of starting new runs. " +
       "All results start as drafts. Supports pagination via `continueFrom` for large result sets.\n\n" +
       "**Next steps:** Use update_opportunity(opportunityId, status='pending') to send a draft to the other party.\n\n" +
       "**Discovery-first rule.** For open-ended connection-seeking requests (\"find me a mentor\", " +
@@ -564,6 +589,34 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       if (context.isMcp && deps.discoveryRuns && deps.discoveryRunQueue) {
+        // Coalesce: if an equivalent discovery is already queued/running for this
+        // user, return that run instead of spawning a duplicate. An over-eager
+        // MCP client that re-fires discover_opportunities (instead of polling
+        // get_discovery_run) would otherwise kick off a fresh, expensive
+        // opportunity-graph run on every call — the loop that drives the agent
+        // into provider rate limits.
+        const signature = discoveryRunSignature(query as DiscoveryRunInput);
+        try {
+          const active = await deps.discoveryRuns.listActive(context.userId);
+          const existing = active.find(
+            (r) => discoveryRunSignature(r.input) === signature,
+          );
+          if (existing) {
+            return success({
+              status: existing.status === "running" ? ("running" as const) : ("queued" as const),
+              discoveryRunId: existing.id,
+              coalesced: true,
+              message:
+                `A discovery run for this exact request is already ${existing.status}. ` +
+                `Do NOT call discover_opportunities again — keep calling get_discovery_run with ` +
+                `discoveryRunId="${existing.id}" (about every 5 seconds) until it succeeds, fails, ` +
+                `or is cancelled, then present its result.`,
+            });
+          }
+        } catch {
+          // listActive is a best-effort optimization; fall through to create on error.
+        }
+
         const run = await deps.discoveryRuns.create({
           userId: context.userId,
           agentId: context.agentId ?? null,
@@ -590,7 +643,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return success({
           status: "queued" as const,
           discoveryRunId: run.id,
-          message: `Discovery started. Call get_discovery_run with discoveryRunId="${run.id}" until it succeeds, fails, or is cancelled.`,
+          message:
+            `Discovery started. Poll get_discovery_run with discoveryRunId="${run.id}" about every 5 seconds ` +
+            `until status is succeeded, failed, or cancelled, then present its result. ` +
+            `Do NOT call discover_opportunities again for this request while the run is in progress — ` +
+            `a repeat call returns this same run, not a new one.`,
         });
       }
 
@@ -1295,7 +1352,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     name: "get_discovery_run",
     description:
       "Checks the status of an async discovery run started by discover_opportunities in MCP contexts. " +
-      "Poll this tool with the discoveryRunId until status is succeeded, failed, or cancelled. " +
+      "Poll this tool with the discoveryRunId roughly every 5 seconds until status is succeeded, failed, or cancelled. " +
+      "While status is queued or running, keep polling THIS tool — do NOT call discover_opportunities again (that does not speed anything up and returns the same run). " +
       "When succeeded, the result field contains the same discovery payload that discover_opportunities would have returned synchronously.",
     querySchema: z.object({
       discoveryRunId: z.string().describe("Discovery run ID returned by discover_opportunities."),
