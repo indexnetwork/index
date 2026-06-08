@@ -37,6 +37,7 @@ import type { OpportunityGraphDatabase } from '../shared/interfaces/database.int
 import { IntentIndexer } from '../intent/intent.indexer.js';
 import { getModelName } from '../shared/agent/model.config.js';
 import { validateOpportunityActors } from './opportunity.utils.js';
+import { viewerCentricCardSummary } from './opportunity.presentation.js';
 
 /** Optional evaluator for testing (avoids LLM calls). */
 export type OpportunityEvaluatorLike = {
@@ -2079,10 +2080,21 @@ export class OpportunityGraphFactory {
             });
           if (!updated || abortSignal?.aborted) return;
 
+          const counterpartName = candidate.candidateUser.profile?.name ?? '';
+          const viewerName = sourceUser.profile.name;
+          const rawReasoning = updated.interpretation?.reasoning ?? '';
+          const personalizedSummary = viewerCentricCardSummary(
+            rawReasoning,
+            counterpartName,
+            undefined,
+            viewerName,
+          );
+
           traceEmitter?.({
             type: 'opportunity_draft_ready',
             opportunityId: candidate.opportunityId,
             opportunity: updated,
+            personalizedSummary,
             counterparty: {
               userId: candidate.candidateUser.id,
               ...(candidate.candidateUser.profile?.name

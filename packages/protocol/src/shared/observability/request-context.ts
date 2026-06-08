@@ -27,6 +27,8 @@ export type TraceEmitter = (
         type: "opportunity_draft_ready";
         opportunityId: string;
         opportunity: Opportunity;
+        /** Viewer-centric summary derived from interpretation.reasoning. */
+        personalizedSummary?: string;
         /**
          * Minimal counterparty data for rendering the inline card without a
          * second-round-trip user lookup. Populated from the negotiation

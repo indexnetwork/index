@@ -38,6 +38,7 @@ export interface StreamingDraft {
     interpretation?: { reasoning?: string };
     actors?: Array<{ userId: string; role?: string }>;
   };
+  personalizedSummary?: string;
   counterparty: {
     userId: string;
     name?: string;
@@ -790,6 +791,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     const draft: StreamingDraft = {
                       opportunityId: event.opportunityId,
                       opportunity: event.opportunity,
+                      personalizedSummary: event.personalizedSummary,
                       counterparty: event.counterparty,
                       receivedAt: Date.now(),
                     };
