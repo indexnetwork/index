@@ -20,10 +20,13 @@ const logger = log.service.from("OpportunityService");
  * Lifecycle statuses surfaced in the default opportunity list (when no explicit
  * `status` filter is given). This is everything a user currently sees EXCEPT the
  * terminal-stale `expired` and `rejected`, which otherwise clutter the live list
- * inline with active matches (IND-254). Pre-send `draft` is already excluded by
- * the adapter's visibility rules. A caller can still request a single terminal
- * status explicitly (e.g. `?status=expired`) for a history view — that path
- * bypasses this default.
+ * inline with active matches (IND-254). Pre-send `draft` is excluded simply by
+ * its absence from this list: passing an explicit `statuses` filter makes the
+ * adapter treat it as a caller-chosen filter, which bypasses the adapter's own
+ * `!= 'draft'` default branch — so the omission here is what keeps drafts out on
+ * this path, not that branch. A caller can still request a single terminal status
+ * explicitly (e.g. `?status=expired`) for a history view — that path bypasses
+ * this default.
  */
 const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['latent', 'negotiating', 'pending', 'stalled', 'accepted'];
 
