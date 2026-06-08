@@ -1,7 +1,7 @@
 // ─── Public API (recommended for external consumers) ──────────────────────────
 
 export { createChatTools } from "./shared/agent/tool.factory.js";
-export { configureProtocol, getModelName } from "./shared/agent/model.config.js";
+export { getModelName } from "./shared/agent/model.config.js";
 export type { ChatTools } from "./shared/agent/tool.factory.js";
 export type { ModelConfig, ModelSettings } from "./shared/agent/model.config.js";
 export type {
