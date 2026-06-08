@@ -7,7 +7,7 @@ import { AuthGuard, AuthOrApiKeyGuard } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
-import { mintConnectLink, type ConnectLinkKind } from '../services/connect-link.service';
+import { mintConnectLink, buildConnectShortUrl, type ConnectLinkKind } from '../services/connect-link.service';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { queueOpportunityNotification } from '../queues/notification.queue';
 import { log } from '../lib/log';
@@ -36,6 +36,22 @@ const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', '
 /** Route params when path has :id or :networkId */
 type RouteParams = Record<string, string>;
 
+/** Mirrors resolveActionableLinkKind from @indexnetwork/protocol without re-exporting it. */
+function resolveActionableLinkKind(
+  status: string,
+  viewerRole: string,
+  viewerApproved?: boolean,
+): ConnectLinkKind | null {
+  const isIntroducer = viewerRole === 'introducer';
+  if (status === 'accepted') return isIntroducer ? null : 'outreach';
+  if (status === 'pending') return isIntroducer ? null : 'connect';
+  if (status === 'draft' || status === 'latent') {
+    if (!isIntroducer) return 'send_direct';
+    return viewerApproved === true ? null : 'approve_introduction';
+  }
+  return null;
+}
+
 /**
  * OpportunityController: REST API for opportunities.
  * Uses OpportunityService for all business logic and graph operations.
@@ -44,6 +60,12 @@ type RouteParams = Record<string, string>;
 export class OpportunityController {
   /**
    * GET /opportunities — list opportunities for the authenticated user.
+   *
+   * When `includeLinks=true` is set, each opportunity is enriched with
+   * `profileUrl`, `acceptUrl`, and `feedCategory` — minting connect links
+   * idempotently for actionable opportunities. Intended for non-interactive
+   * callers (cron scripts, agents) that need pre-built action URLs without an
+   * additional round-trip per opportunity.
    */
   @Get('')
   @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
@@ -53,6 +75,7 @@ export class OpportunityController {
     const networkId = url.searchParams.get('networkId') ?? undefined;
     const limit = url.searchParams.get('limit');
     const offset = url.searchParams.get('offset');
+    const includeLinks = url.searchParams.get('includeLinks') === 'true' || url.searchParams.get('includeLinks') === '1';
 
     if (rawStatus) {
       const parsed = listStatusSchema.safeParse(rawStatus);
@@ -71,8 +94,52 @@ export class OpportunityController {
       offset: offset ? parseInt(offset, 10) : undefined,
     };
     const list = await opportunityService.getOpportunitiesForUser(user.id, options);
-    logger.verbose('Opportunities listed', { userId: user.id, count: list.length });
-    return Response.json({ opportunities: list });
+    logger.verbose('Opportunities listed', { userId: user.id, count: list.length, includeLinks });
+
+    if (!includeLinks) {
+      return Response.json({ opportunities: list });
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+    const apiBaseUrl = resolveProtocolBaseUrl();
+
+    const enriched = await Promise.all(
+      list.map(async (opp) => {
+        type Actor = { userId: string; role: string; approved?: boolean };
+        const actors = opp.actors as Actor[];
+        const viewerActor = actors.find((a) => a.userId === user.id);
+        const counterpart =
+          actors.find((a) => a.role !== 'introducer' && a.userId !== user.id) ??
+          actors.find((a) => a.userId !== user.id);
+
+        if (!viewerActor || !counterpart) return opp;
+
+        const profileUrl = `${frontendUrl}/u/${counterpart.userId}?link_preview=false`;
+        const viewerRole = viewerActor.role;
+        const kind = resolveActionableLinkKind(opp.status, viewerRole, viewerActor.approved);
+
+        if (kind === null) return { ...opp, profileUrl };
+
+        try {
+          const { code } = await mintConnectLink({
+            userId: user.id,
+            opportunityId: opp.id,
+            kind,
+          });
+          const acceptUrl = buildConnectShortUrl(apiBaseUrl, code);
+          const feedCategory = viewerRole === 'introducer' ? 'connector-flow' : 'connection';
+          return { ...opp, profileUrl, acceptUrl, feedCategory };
+        } catch (err) {
+          logger.warn('Failed to mint link for includeLinks enrichment', {
+            opportunityId: opp.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return { ...opp, profileUrl };
+        }
+      }),
+    );
+
+    return Response.json({ opportunities: enriched });
   }
 
   /**
