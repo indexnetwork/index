@@ -92,7 +92,9 @@ describe("preview_user_profile publicLookup block", () => {
       context: baseContext,
       query: { bioOrDescription: "I build things", allowPublicLookup: false },
     });
-    const { data } = JSON.parse(result);
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    const { data } = parsed;
     expect(data.publicLookup).toEqual({ used: false });
   });
 
@@ -103,7 +105,9 @@ describe("preview_user_profile publicLookup block", () => {
       context: baseContext,
       query: { bioOrDescription: "I build things", allowPublicLookup: true },
     });
-    const { data } = JSON.parse(result);
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    const { data } = parsed;
     expect(data.publicLookup.used).toBe(true);
     expect(data.publicLookup.confidentMatch).toBe(true);
     expect(data.publicLookup.identity).toEqual({
@@ -125,7 +129,9 @@ describe("preview_user_profile publicLookup block", () => {
       context: baseContext,
       query: { bioOrDescription: "I build things", allowPublicLookup: true },
     });
-    const { data } = JSON.parse(result);
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    const { data } = parsed;
     expect(data.publicLookup.used).toBe(true);
     expect(data.publicLookup.confidentMatch).toBe(false);
     expect(lastGeneratorInput).not.toContain("Unrelated wrong-person bio");
