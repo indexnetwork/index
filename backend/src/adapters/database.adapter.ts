@@ -4973,7 +4973,7 @@ export class OpportunityDatabaseAdapter {
         );
       }
     }
-    if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
+    if (options?.status && !options?.statuses?.length) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.networkId) {
       // Network scope gate (two clauses):
       // 1. The viewer's own actor must be anchored on the bound network. This
@@ -5027,7 +5027,7 @@ export class OpportunityDatabaseAdapter {
       SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
       WHERE actor->>'networkId' = ${networkId}
     )`];
-    if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
+    if (options?.status && !options?.statuses?.length) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.statuses?.length) {
       conditions.push(inArray(opportunities.status, options.statuses as Array<typeof opportunities.$inferSelect.status>));
     }
