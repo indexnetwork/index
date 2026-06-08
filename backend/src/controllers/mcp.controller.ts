@@ -34,6 +34,7 @@ import { profileRunAdapter } from '../adapters/profile-run.adapter';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
 import { profileRunQueue } from '../queues/profile-run.queue';
 import db from '../lib/drizzle/drizzle';
+import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
@@ -304,15 +305,15 @@ export function resolveMcpApiKeyPrincipal(
 ): { userId: string; agentId?: string } | null {
   const metadata = parseApiKeyMetadata(row.metadata);
 
-  // Agent keys must carry both principal columns and they must agree. The
-  // adapter mints agent keys with referenceId === userId, so a missing or
-  // divergent side signals a cross-wired/tampered key — reject rather than
-  // resolve to whichever side happens to be non-null.
-  if (metadata.agentId && (!row.userId || !row.referenceId || row.userId !== row.referenceId)) {
+  // Agent keys must additionally carry BOTH principal columns (the adapter
+  // mints them with referenceId === userId); a missing side signals a
+  // cross-wired/tampered agent key. Divergence between populated columns is
+  // rejected for every key by resolveApiKeyUserId below.
+  if (metadata.agentId && (!row.userId || !row.referenceId)) {
     throw new Error('Agent API key principal mismatch');
   }
 
-  const userId = sessionUserId ?? row.userId ?? row.referenceId;
+  const userId = resolveApiKeyUserId(row, sessionUserId);
   if (!userId) return null;
 
   return {

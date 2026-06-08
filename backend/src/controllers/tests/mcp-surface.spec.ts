@@ -128,20 +128,36 @@ describe('findTelegramHandleMismatch', () => {
 });
 
 describe('resolveMcpApiKeyPrincipal', () => {
-  test('prefers the verified session user when available', () => {
+  test('prefers the verified session user over the key userId', () => {
     expect(resolveMcpApiKeyPrincipal({
       userId: 'row-user',
-      referenceId: 'row-ref',
+      referenceId: null,
       metadata: null,
     }, 'session-user')).toEqual({ userId: 'session-user' });
   });
 
-  test('prefers apikey.userId over referenceId without a session user', () => {
+  test('resolves to the key userId when columns agree and no session is present', () => {
     expect(resolveMcpApiKeyPrincipal({
+      userId: 'row-user',
+      referenceId: 'row-user',
+      metadata: null,
+    })).toEqual({ userId: 'row-user' });
+  });
+
+  test('falls back to referenceId for a non-agent key whose userId is null', () => {
+    expect(resolveMcpApiKeyPrincipal({
+      userId: null,
+      referenceId: 'ref-user',
+      metadata: null,
+    })).toEqual({ userId: 'ref-user' });
+  });
+
+  test('rejects any key whose populated principal columns disagree', () => {
+    expect(() => resolveMcpApiKeyPrincipal({
       userId: 'row-user',
       referenceId: 'row-ref',
       metadata: null,
-    })).toEqual({ userId: 'row-user' });
+    })).toThrow(/principal mismatch/);
   });
 
   test('rejects agent keys whose referenceId and userId diverge', () => {

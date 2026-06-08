@@ -2,6 +2,7 @@ import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { eq } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
+import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { apikeys, users } from '../schemas/database.schema';
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -121,7 +122,13 @@ export const AuthOrApiKeyGuard = async (req: Request): Promise<AuthenticatedUser
     throw new Error('Invalid API key');
   }
 
-  const userId = row.referenceId ?? row.userId;
+  let userId: string | null;
+  try {
+    userId = resolveApiKeyUserId(row);
+  } catch {
+    logger.warn('API key rejected', { reason: 'principal_mismatch', keyPrefix, ua });
+    throw new Error('Invalid API key');
+  }
   if (!userId) {
     logger.warn('API key rejected', { reason: 'no_user_ref', keyPrefix, ua });
     throw new Error('Invalid API key');
