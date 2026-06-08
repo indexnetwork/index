@@ -428,20 +428,29 @@ export function buildOpportunityPresentation(
  * share a single in-flight run rather than each spawning a fresh (expensive)
  * opportunity-graph execution. Text fields are normalized (trim + lowercase);
  * id lists are sorted so ordering does not matter.
+ *
+ * Encoded as JSON of a normalized object — NOT a delimiter join — so a
+ * user-supplied string containing the delimiter can never make two distinct
+ * requests collide. `hint` and each entity's `networkId` are included because
+ * they change the discovery result (different reason / different shared index),
+ * so requests that differ only in those must NOT coalesce.
  */
 function discoveryRunSignature(input: DiscoveryRunInput): string {
   const norm = (s?: string) => (s ?? "").trim().toLowerCase();
-  const ids = (xs?: string[]) => [...(xs ?? [])].map((x) => x.trim()).sort().join(",");
-  return [
-    norm(input.searchQuery),
-    norm(input.networkId),
-    norm(input.intentId),
-    norm(input.targetUserId),
-    norm(input.introTargetUserId),
-    norm(input.continueFrom),
-    ids(input.partyUserIds),
-    ids((input.entities ?? []).map((e) => e.userId)),
-  ].join("|");
+  const entities = [...(input.entities ?? [])]
+    .map((e) => [norm(e.networkId), e.userId.trim()] as [string, string])
+    .sort((a, b) => (JSON.stringify(a) < JSON.stringify(b) ? -1 : 1));
+  return JSON.stringify({
+    searchQuery: norm(input.searchQuery),
+    networkId: norm(input.networkId),
+    intentId: norm(input.intentId),
+    targetUserId: norm(input.targetUserId),
+    introTargetUserId: norm(input.introTargetUserId),
+    continueFrom: norm(input.continueFrom),
+    hint: norm(input.hint),
+    partyUserIds: [...(input.partyUserIds ?? [])].map((x) => x.trim()).sort(),
+    entities,
+  });
 }
 
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {

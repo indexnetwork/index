@@ -148,6 +148,45 @@ describe('discover_opportunities — MCP run coalescing', () => {
     expect(runStore.createCalls).toBe(1);
   });
 
+  test('intro requests differing only by hint do NOT coalesce', async () => {
+    const runStore = makeRunStore();
+    const queue = { enqueueCalls: 0 };
+    const tool = captureDiscoverTool(makeDeps(runStore, queue));
+    const base = {
+      partyUserIds: ['u1', 'u2'],
+      entities: [
+        { userId: 'u1', networkId: 'idx-1' },
+        { userId: 'u2', networkId: 'idx-1' },
+      ],
+    };
+
+    await tool.handler({ context: makeContext({}), query: { ...base, hint: 'both in healthcare AI' } });
+    const second = parseToolResult(
+      await tool.handler({ context: makeContext({}), query: { ...base, hint: 'complementary startup skills' } }),
+    );
+    expect(second.data!.coalesced).toBeUndefined();
+    expect(runStore.createCalls).toBe(2);
+  });
+
+  test('intro requests with same parties but different entity networkId do NOT coalesce', async () => {
+    const runStore = makeRunStore();
+    const queue = { enqueueCalls: 0 };
+    const tool = captureDiscoverTool(makeDeps(runStore, queue));
+
+    await tool.handler({
+      context: makeContext({}),
+      query: { partyUserIds: ['u1', 'u2'], entities: [{ userId: 'u1', networkId: 'idx-1' }, { userId: 'u2', networkId: 'idx-1' }] },
+    });
+    const second = parseToolResult(
+      await tool.handler({
+        context: makeContext({}),
+        query: { partyUserIds: ['u1', 'u2'], entities: [{ userId: 'u1', networkId: 'idx-2' }, { userId: 'u2', networkId: 'idx-2' }] },
+      }),
+    );
+    expect(second.data!.coalesced).toBeUndefined();
+    expect(runStore.createCalls).toBe(2);
+  });
+
   test('a different query starts a fresh run', async () => {
     const runStore = makeRunStore();
     const queue = { enqueueCalls: 0 };
