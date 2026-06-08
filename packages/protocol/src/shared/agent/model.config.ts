@@ -81,7 +81,7 @@ export function getModelName(agent: keyof ReturnType<typeof getModelConfig>, con
 export function createModel(agent: keyof ReturnType<typeof getModelConfig>, config?: ModelConfig): ChatOpenAI {
   const apiKey = config?.apiKey ?? process.env.OPENROUTER_API_KEY;
   if (!apiKey?.trim()) {
-    throw new Error(`createModel(${agent}): OPENROUTER_API_KEY is required. Pass via the config argument or set the OPENROUTER_API_KEY environment variable.`);
+    throw new Error(`createModel(${agent}): OPENROUTER_API_KEY is required. Pass via the config argument, ToolContext.modelConfig.apiKey, or set the OPENROUTER_API_KEY environment variable.`);
   }
   const cfg = getModelConfig(config)[agent] as ModelSettings;
   // Hard upper bound on a single LLM call. Without this, langchain's HTTP
