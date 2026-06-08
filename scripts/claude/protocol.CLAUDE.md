@@ -30,7 +30,7 @@ Each domain exposes a `*GraphFactory` class. Pattern:
 2. `{domain}/{domain}.graph.ts` — `*GraphFactory` class; constructor receives typed deps (subsets of the interfaces in `shared/interfaces/`). Compile graph in the constructor.
 3. Export the factory from `src/index.ts`.
 
-Graphs must not import from `backend/` or call `configureProtocol` — they call `createModel()` from `shared/agent/model.config.ts`.
+Graphs must not import from `backend/` or use global config state — they call `createModel()` from `shared/agent/model.config.ts`.
 
 ## Adding a new infrastructure interface
 
