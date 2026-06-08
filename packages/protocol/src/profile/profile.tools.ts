@@ -572,7 +572,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     description:
       "Builds a structured profile draft for onboarding without saving anything. Use this after recording privacy consent and before asking the user to approve the profile. " +
       "If allowPublicLookup is false, this tool uses only explicit text, EdgeOS/event data the user allowed, and user-provided social URLs. If allowPublicLookup is true, persisted public lookup consent is required. " +
-      "In MCP contexts, starts an async profile run and returns `profileRunId`; poll get_profile_run until status is `succeeded`, then present its `result`.",
+      "In MCP contexts, starts an async profile run and returns `profileRunId`; poll get_profile_run until status is `succeeded`, then present its `result`." +
+      " When public lookup runs, the result includes a `publicLookup` block (`used`, `confidentMatch`, the looked-up `identity` of name/role/location, and `socials`) so the caller can confirm identity before saving; when no lookup runs it is `{ used: false }`.",
     querySchema: z.object({
       name: z.string().optional().describe("Name explicitly provided by the user. For authenticated public lookup, the account identity is used first and this is only a fallback."),
       location: z.string().optional().describe("Location explicitly provided by the user or allowed event data."),
@@ -650,6 +651,18 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         message: "Profile draft generated. Show this to the user and ask whether it looks right before calling confirm_user_profile.",
         profile: toProfileSummary(profile),
         draft: profile,
+        publicLookup: enrichment
+          ? {
+              used: true,
+              confidentMatch: enrichment.confidentMatch,
+              identity: {
+                name: enrichment.identity.name,
+                role: enrichment.identity.bio,
+                location: enrichment.identity.location,
+              },
+              socials: enrichment.socials,
+            }
+          : { used: false },
       });
     },
   });
