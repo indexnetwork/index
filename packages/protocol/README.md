@@ -12,17 +12,21 @@ npm install @indexnetwork/protocol
 
 ### 1. Configure the LLM
 
-Call `configureProtocol` once at startup before creating any tools or graphs:
+The package reads `OPENROUTER_API_KEY` (required), `CHAT_MODEL`, and `CHAT_REASONING_EFFORT` from environment variables. No startup call is needed.
+
+To override the chat model or reasoning effort per request, set `modelConfig` on `ToolContext`:
 
 ```typescript
-import { configureProtocol } from "@indexnetwork/protocol";
-
-configureProtocol({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  chatModel: "google/gemini-2.5-flash",       // optional — has a default
-  chatReasoningEffort: "low",                  // optional: minimal | low | medium | high | xhigh
+const tools = await createChatTools({
+  // ... other deps ...
+  modelConfig: {
+    chatModel: "google/gemini-2.5-flash",       // optional — has a default
+    chatReasoningEffort: "low",                  // optional: minimal | low | medium | high | xhigh
+  },
 });
 ```
+
+`apiKey` and `baseURL` can also be overridden here if you need to use a different OpenRouter key per request.
 
 ### 2. Implement the adapters
 
