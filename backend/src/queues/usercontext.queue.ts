@@ -277,7 +277,12 @@ export class UserContextQueue {
       sourceType: 'context' as const,
       sourceId: params.contextId,
       sourceText: params.sourceText,
-      forceRegenerate: false,
+      // The HyDE cache/DB keys on (sourceType, sourceId, lens) — not the text — and the
+      // context row id is stable across regenerations (upsert on userId+networkId). Without
+      // forcing, a changed context would reuse stale HyDE docs, which is exactly what
+      // context-to-intent discovery matches on. We only reach here when the network's
+      // premiseHash changed, so regenerating is both correct and not wasteful.
+      forceRegenerate: true,
       maxLenses: 3,
     });
   }
