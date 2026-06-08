@@ -3027,7 +3027,7 @@ export class ChatDatabaseAdapter {
   }
   async getOpportunitiesForNetwork(
     networkId: string,
-    options?: { status?: string; limit?: number; offset?: number }
+    options?: { status?: string; statuses?: string[]; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesForNetwork(networkId, options);
   }

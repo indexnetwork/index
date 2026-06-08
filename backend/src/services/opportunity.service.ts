@@ -27,6 +27,16 @@ const logger = log.service.from("OpportunityService");
  */
 const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['latent', 'negotiating', 'pending', 'stalled', 'accepted'];
 
+/**
+ * Default statuses for the per-network community list. Stricter than
+ * {@link DEFAULT_LIST_STATUSES}: it also drops `latent`. The per-user list can
+ * include `latent` because the adapter applies a role-based visibility guard
+ * that gates candidate-pool opportunities per actor — but the network list only
+ * checks membership, with no per-actor guard, so surfacing `latent` would leak
+ * pre-draft candidates to every member. Live community statuses only.
+ */
+const DEFAULT_NETWORK_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'stalled', 'accepted'];
+
 interface OpportunityStatusUpdateResult {
   opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
   counterpartUserId?: string;
@@ -813,13 +823,13 @@ export class OpportunityService {
       return { error: 'Not a member of this network', status: 403 };
     }
 
-    // Same live-status default as the per-user list (IND-254): hide terminal-stale
-    // expired/rejected unless a specific status is requested. The network list had
-    // no status filtering at all, so this also stops draft/latent leaking into the
-    // community opportunity view.
+    // IND-254: the network list had no status filtering at all, so it leaked
+    // draft/latent and terminal-stale expired/rejected into the community view.
+    // Default to live community statuses (no latent — there's no per-actor
+    // visibility guard here) unless a specific status is requested.
     return this.db.getOpportunitiesForNetwork(
       networkId,
-      options?.status ? options : { ...options, statuses: DEFAULT_LIST_STATUSES },
+      options?.status ? options : { ...options, statuses: DEFAULT_NETWORK_LIST_STATUSES },
     );
   }
 
