@@ -236,8 +236,9 @@ async function resolveOpportunityForLink(
 }
 
 /**
- * Resolve a short code to its row. Self-heals expired codes by extending
- * TTL when the underlying opportunity is still actionable.
+ * Resolve a short code to its row. Returns null for terminal-status opportunities
+ * regardless of link freshness. Self-heals stale codes by extending TTL when
+ * the underlying opportunity is still actionable.
  *
  * @param code - The 10-char base62 short code.
  * @returns The resolved link row, or `null` for unknown codes or codes
@@ -255,13 +256,12 @@ export async function resolveConnectLink(code: string): Promise<ResolvedLink | n
   const opp = await resolveOpportunityForLink(row.opportunityId, row.userId);
   if (!opp) return null;
 
+  if (TERMINAL_STATUSES.has(opp.status)) return null;
+
   const resolvedLink = toResolvedLink(row, opp.id);
   if (row.expiresAt > now) {
     return resolvedLink;
   }
-
-  // Expired — check if the opportunity is still actionable.
-  if (TERMINAL_STATUSES.has(opp.status)) return null;
 
   // Extend TTL.
   const expiresAt = new Date(now.getTime() + TTL_DAYS * 24 * 60 * 60 * 1000);

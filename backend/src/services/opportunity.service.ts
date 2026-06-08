@@ -675,9 +675,9 @@ export class OpportunityService {
       });
       return { conversationId: conversation.id, counterpartUserId: counterpart.userId, opportunity: opp };
     }
-    if (opp.status !== 'pending' && opp.status !== 'draft') {
+    if (opp.status !== 'pending' && opp.status !== 'draft' && opp.status !== 'latent') {
       return {
-        error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending or draft.`,
+        error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending, draft, or latent.`,
         status: 400,
       };
     }
@@ -700,7 +700,7 @@ export class OpportunityService {
     }
 
     // Resolve the DM first — independent of opp state, safe to retry if it
-    // throws (opp is still pending/draft, button re-appears).
+    // throws (opp is still pending/draft/latent, button re-appears).
     let conversation: { id: string };
     try {
       conversation = await this.db.getOrCreateDM(userId, counterpart.userId);
