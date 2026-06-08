@@ -10,7 +10,8 @@ export interface ModelSettings {
 
 /**
  * Runtime configuration for the protocol package.
- * Pass via ToolContext.modelConfig to override env vars for the chat model.
+ * Pass via `ToolContext.modelConfig` (honored by `ChatAgent`) or directly to `createModel()`.
+ * Only `ChatAgent` reads this from `ToolContext`; all other protocol agents require env vars.
  * All fields fall back to environment variables if not provided.
  */
 export interface ModelConfig {
@@ -78,7 +79,7 @@ export function getModelName(agent: keyof ReturnType<typeof getModelConfig>, con
 export function createModel(agent: keyof ReturnType<typeof getModelConfig>, config?: ModelConfig): ChatOpenAI {
   const apiKey = config?.apiKey ?? process.env.OPENROUTER_API_KEY;
   if (!apiKey?.trim()) {
-    throw new Error(`createModel(${agent}): OPENROUTER_API_KEY is required. Pass via ToolContext.modelConfig.apiKey or set the OPENROUTER_API_KEY environment variable.`);
+    throw new Error(`createModel(${agent}): OPENROUTER_API_KEY is required. Pass via the config argument, ToolContext.modelConfig.apiKey, or set the OPENROUTER_API_KEY environment variable.`);
   }
   const cfg = getModelConfig(config)[agent] as ModelSettings;
   // Hard upper bound on a single LLM call. Without this, langchain's HTTP

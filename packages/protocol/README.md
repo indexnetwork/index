@@ -26,7 +26,7 @@ const tools = await createChatTools({
 });
 ```
 
-`apiKey` and `baseURL` can also be overridden here if you need to use a different OpenRouter key per request.
+`apiKey` and `baseURL` can also be overridden here. Note: `modelConfig` is only honored by `ChatAgent`. All other protocol agents (evaluators, generators, etc.) always require `OPENROUTER_API_KEY` set in the environment.
 
 ### 2. Implement the adapters
 
