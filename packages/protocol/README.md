@@ -17,6 +17,8 @@ The package reads `OPENROUTER_API_KEY` (required), `CHAT_MODEL`, and `CHAT_REASO
 To override the chat model or reasoning effort per request, set `modelConfig` on `ToolContext`:
 
 ```typescript
+import { createChatTools } from "@indexnetwork/protocol";
+
 const tools = await createChatTools({
   // ... other deps ...
   modelConfig: {
