@@ -385,10 +385,12 @@ export class PremiseQueue {
       ((uid: string) => this.defaultEnqueueContextRegen(uid));
 
     await invokeProfileAggregate(userId);
-    this.logger.info('[ProfileRegen] Profile regeneration complete', { userId, trigger });
 
     // Global profile is now fresh; enqueue per-network context regeneration downstream.
+    // Log completion only after the enqueue settles so a failed/retried job is not
+    // preceded by a misleading "complete" line.
     await enqueueContextRegen(userId);
+    this.logger.info('[ProfileRegen] Profile regeneration complete', { userId, trigger });
   }
 
   /**
