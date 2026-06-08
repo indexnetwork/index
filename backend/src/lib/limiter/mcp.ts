@@ -1,6 +1,9 @@
 import { getStorage } from './index';
 import { isLimiterDisabled } from './config';
 import type { LimiterStorage } from './storage';
+import { log } from '../log';
+
+const logger = log.server.from('limiter');
 
 /**
  * Per-principal, per-tool throttle for the MCP transport.
@@ -65,20 +68,31 @@ export async function checkMcpRateLimit(
   storage?: LimiterStorage,
 ): Promise<McpThrottleDecision> {
   if (isLimiterDisabled()) return { allowed: true };
-  const store = storage ?? (await getStorage());
   const principal = `${input.userId}:${input.agentId ?? '-'}`;
 
-  const toolMax = toolLimit(input.toolName);
-  const toolHit = await store.hit(`mcp:tool:${principal}:${input.toolName}`, WINDOW_SEC, toolMax);
-  if (!toolHit.allowed) {
-    return { allowed: false, retryAfterSec: retryAfter(toolHit.resetAt), limit: toolMax, scope: 'tool' };
-  }
+  // Fail OPEN on storage errors (Redis/bootstrap hiccups) so a limiter incident
+  // never takes down /mcp tool dispatch — same posture as the RateLimit guard
+  // (backend/src/guards/limiter.guard.ts).
+  try {
+    const store = storage ?? (await getStorage());
 
-  const aggMax = principalLimit();
-  const aggHit = await store.hit(`mcp:all:${principal}`, WINDOW_SEC, aggMax);
-  if (!aggHit.allowed) {
-    return { allowed: false, retryAfterSec: retryAfter(aggHit.resetAt), limit: aggMax, scope: 'principal' };
-  }
+    const toolMax = toolLimit(input.toolName);
+    const toolHit = await store.hit(`mcp:tool:${principal}:${input.toolName}`, WINDOW_SEC, toolMax);
+    if (!toolHit.allowed) {
+      return { allowed: false, retryAfterSec: retryAfter(toolHit.resetAt), limit: toolMax, scope: 'tool' };
+    }
 
-  return { allowed: true };
+    const aggMax = principalLimit();
+    const aggHit = await store.hit(`mcp:all:${principal}`, WINDOW_SEC, aggMax);
+    if (!aggHit.allowed) {
+      return { allowed: false, retryAfterSec: retryAfter(aggHit.resetAt), limit: aggMax, scope: 'principal' };
+    }
+
+    return { allowed: true };
+  } catch (err) {
+    logger.error('MCP limiter storage error — failing open', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { allowed: true };
+  }
 }

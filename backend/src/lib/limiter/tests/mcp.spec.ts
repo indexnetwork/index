@@ -61,6 +61,14 @@ describe('checkMcpRateLimit', () => {
     expect(fifth.scope).toBe('principal');
   });
 
+  test('fails OPEN when storage throws', async () => {
+    const throwing = {
+      async hit() { throw new Error('redis down'); },
+    } as unknown as MemoryStorage;
+    const d = await checkMcpRateLimit({ userId: 'u1', agentId: 'a1', toolName: 'discover_opportunities' }, throwing);
+    expect(d.allowed).toBe(true);
+  });
+
   test('respects LIMITER_DISABLE escape hatch', async () => {
     process.env.LIMITER_DISABLE = '1';
     const input = { userId: 'u1', agentId: 'a1', toolName: 'discover_opportunities' };
