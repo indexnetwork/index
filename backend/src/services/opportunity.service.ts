@@ -16,6 +16,30 @@ import { normalizeTelegramHandle } from '@indexnetwork/protocol';
 
 const logger = log.service.from("OpportunityService");
 
+/**
+ * Lifecycle statuses surfaced in the default opportunity list (when no explicit
+ * `status` filter is given). This is everything a user currently sees EXCEPT the
+ * terminal-stale `expired` and `rejected`, which otherwise clutter the live list
+ * inline with active matches (IND-254). Pre-send `draft` is excluded simply by
+ * its absence from this list: passing an explicit `statuses` filter makes the
+ * adapter treat it as a caller-chosen filter, which bypasses the adapter's own
+ * `!= 'draft'` default branch — so the omission here is what keeps drafts out on
+ * this path, not that branch. A caller can still request a single terminal status
+ * explicitly (e.g. `?status=expired`) for a history view — that path bypasses
+ * this default.
+ */
+const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['latent', 'negotiating', 'pending', 'stalled', 'accepted'];
+
+/**
+ * Default statuses for the per-network community list. Stricter than
+ * {@link DEFAULT_LIST_STATUSES}: it also drops `latent`. The per-user list can
+ * include `latent` because the adapter applies a role-based visibility guard
+ * that gates candidate-pool opportunities per actor — but the network list only
+ * checks membership, with no per-actor guard, so surfacing `latent` would leak
+ * pre-draft candidates to every member. Live community statuses only.
+ */
+const DEFAULT_NETWORK_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'stalled', 'accepted'];
+
 interface OpportunityStatusUpdateResult {
   opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
   counterpartUserId?: string;
@@ -246,6 +270,7 @@ export class OpportunityService {
     userId: string,
     options?: {
       status?: 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+      statuses?: OpportunityStatus[];
       networkId?: string;
       limit?: number;
       offset?: number;
@@ -253,7 +278,14 @@ export class OpportunityService {
   ) {
     logger.verbose('[OpportunityService] Getting opportunities for user', { userId, options });
 
-    const rows = await this.db.getOpportunitiesForUser(userId, options);
+    // No explicit status filter ⇒ show only live statuses, hiding terminal-stale
+    // expired/rejected from the default list (IND-254). An explicit `status` or
+    // `statuses` filter (e.g. ?status=expired for a history view) is honored as-is.
+    const hasExplicitStatus = !!options?.status || (options?.statuses?.length ?? 0) > 0;
+    const rows = await this.db.getOpportunitiesForUser(
+      userId,
+      hasExplicitStatus ? options : { ...options, statuses: DEFAULT_LIST_STATUSES },
+    );
 
     // Resolve actor names in bulk for CLI/API consumers
     const allUserIds = new Set<string>();
@@ -783,6 +815,7 @@ export class OpportunityService {
     userId: string,
     options?: {
       status?: 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+      statuses?: OpportunityStatus[];
       limit?: number;
       offset?: number;
     }
@@ -791,12 +824,20 @@ export class OpportunityService {
 
     const isOwner = await this.db.isIndexOwner(networkId, userId);
     const isMember = await this.db.isNetworkMember(networkId, userId);
-    
+
     if (!isOwner && !isMember) {
       return { error: 'Not a member of this network', status: 403 };
     }
 
-    return this.db.getOpportunitiesForNetwork(networkId, options);
+    // IND-254: the network list had no status filtering at all, so it leaked
+    // draft/latent and terminal-stale expired/rejected into the community view.
+    // Default to live community statuses (no latent — there's no per-actor
+    // visibility guard here) unless an explicit status/statuses filter is given.
+    const hasExplicitStatus = !!options?.status || (options?.statuses?.length ?? 0) > 0;
+    return this.db.getOpportunitiesForNetwork(
+      networkId,
+      hasExplicitStatus ? options : { ...options, statuses: DEFAULT_NETWORK_LIST_STATUSES },
+    );
   }
 
   /**
