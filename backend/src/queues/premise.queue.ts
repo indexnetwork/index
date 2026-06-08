@@ -8,6 +8,7 @@ import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ProfileGraphFactory } from '@indexnetwork/protocol';
 
 import { PremiseEvents } from '../events/premise.event';
+import { userContextQueue } from './usercontext.queue';
 
 /** BullMQ queue name for premise cascade and profile regeneration jobs. */
 export const QUEUE_NAME = 'premise-queue';
@@ -77,6 +78,12 @@ export interface PremiseQueueDeps {
    * rebuilding the profile from their current active premises.
    */
   invokeProfileAggregate?: (userId: string) => Promise<void>;
+
+  /**
+   * Enqueue per-network user-context regeneration. Called after the global profile
+   * aggregate completes so the per-network representation derives from a fresh profile.
+   */
+  enqueueContextRegen?: (userId: string) => Promise<void>;
 
   /**
    * Find ACTIVE premises whose validity.validUntil has passed.
@@ -363,9 +370,15 @@ export class PremiseQueue {
       this.deps?.invokeProfileAggregate ??
       ((uid: string) => this.defaultInvokeProfileAggregate(uid));
 
-    await invokeProfileAggregate(userId);
+    const enqueueContextRegen =
+      this.deps?.enqueueContextRegen ??
+      ((uid: string) => this.defaultEnqueueContextRegen(uid));
 
+    await invokeProfileAggregate(userId);
     this.logger.info('[ProfileRegen] Profile regeneration complete', { userId, trigger });
+
+    // Global profile is now fresh; enqueue per-network context regeneration downstream.
+    await enqueueContextRegen(userId);
   }
 
   /**
@@ -378,6 +391,13 @@ export class PremiseQueue {
     const factory = new ProfileGraphFactory(database, scraper);
     const graph = factory.createGraph();
     await graph.invoke({ userId, operationMode: 'aggregate' });
+  }
+
+  /**
+   * Default production implementation: enqueue a per-network context regeneration job.
+   */
+  private async defaultEnqueueContextRegen(userId: string): Promise<void> {
+    await userContextQueue.addRegenJob({ userId, reason: 'profile_regen' });
   }
 }
 
