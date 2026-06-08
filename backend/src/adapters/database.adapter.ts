@@ -5361,7 +5361,10 @@ export class OpportunityDatabaseAdapter {
       provenance: unknown;
       analysis: unknown | null;
       validity: unknown;
-      embedding: number[];
+      // Raw db.execute bypasses Drizzle's vector mapper: a pgvector column
+      // arrives as a string here, not number[]. Typed `unknown` so every
+      // caller must route through normalizeEmbedding (IND-348).
+      embedding: unknown;
       status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
       createdAt: Date;
       updatedAt: Date;
