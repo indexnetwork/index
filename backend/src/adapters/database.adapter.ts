@@ -9,6 +9,7 @@ import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inAr
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
+import { normalizeEmbedding } from '../lib/embedding/vector';
 import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
 import type {
   Conversation,
@@ -209,8 +210,7 @@ interface HydeDocumentRow {
   expiresAt: Date | null;
 }
 function toHydeDocument(row: typeof hydeDocuments.$inferSelect): HydeDocumentRow {
-  const embedding = row.hydeEmbedding;
-  const vec = Array.isArray(embedding) ? embedding : (typeof embedding === 'string' ? (JSON.parse(embedding) as number[]) : []);
+  const vec = normalizeEmbedding(row.hydeEmbedding);
   return {
     id: row.id,
     sourceType: row.sourceType as HydeSourceTypeLocal,
@@ -5405,7 +5405,10 @@ export class OpportunityDatabaseAdapter {
       provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
       analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
       validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
+      // Raw `db.execute` bypasses Drizzle's vector mapper, so `embedding` arrives
+      // as a pgvector string here — normalize to number[] before consumers call
+      // `.join(',')` to rebuild the vector literal (IND-348).
+      embedding: normalizeEmbedding(row.embedding),
       status: row.status,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
