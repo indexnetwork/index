@@ -1,10 +1,17 @@
+import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
-import { resolveConnectLink } from '../services/connect-link.service';
+import { resolveConnectLinkForUser } from '../services/connect-link.service';
 import { opportunityService } from '../services/opportunity.service';
 
 /** Route params when path has :code */
 type RouteParams = Record<string, string>;
+
+type ConnectLinkGoResponse =
+  | { url: string }
+  | { kind: 'approve_introduction' };
+
+const CODE_PATTERN = /^[A-Za-z0-9]{10}$/;
 
 const EXPIRED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Unavailable</title></head>
 <body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
@@ -12,40 +19,9 @@ const EXPIRED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Un
 <p style="color:#666">The opportunity behind this link has expired or been closed.</p>
 </div></body></html>`;
 
-const APPROVED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Introduction Approved</title></head>
-<body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
-<div style="text-align:center"><h1 style="font-size:1.5rem">Introduction approved</h1>
-<p style="color:#666">You approved the introduction. Both parties will be connected shortly.</p>
-</div></body></html>`;
-
-// Connect/outreach flows trigger an inline LLM call to generate a personalized
-// greeting (see opportunityService.getGreetingForCard). That call has a 20s
-// timeout and the user otherwise stares at a blank tab while it runs. Serve
-// this interstitial immediately, then fetch the resolved URL via /c/:code/go
-// and redirect client-side so the wait is visible.
-const INTERSTITIAL_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting…</title><meta name="robots" content="noindex"></head>
-<body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;color:#333">
-<div id="state" style="text-align:center">
-<div style="display:inline-block;width:32px;height:32px;border:3px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:spin 1s linear infinite"></div>
-<h1 style="font-size:1.25rem;margin:1rem 0 0.5rem">Connecting…</h1>
-<p style="color:#666;margin:0">Preparing your message. This usually takes a few seconds.</p>
-</div>
-<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
-<script>
-(async()=>{
-  const fail = (h)=>{document.getElementById('state').innerHTML=h};
-  try {
-    const r = await fetch(window.location.pathname.replace(/\\/$/, '') + '/go', { credentials: 'omit' });
-    if (!r.ok) return fail('<h1 style="font-size:1.25rem">Could not open conversation</h1><p style="color:#666">Please try again, or contact support if this keeps happening.</p>');
-    const j = await r.json();
-    if (j.url) window.location.replace(j.url);
-    else fail('<h1 style="font-size:1.25rem">Done</h1><p style="color:#666">You can close this tab.</p>');
-  } catch (e) {
-    fail('<h1 style="font-size:1.25rem">Connection failed</h1><p style="color:#666">Please try again.</p>');
-  }
-})();
-</script>
-</body></html>`;
+function getFrontendUrl(): string {
+  return (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+}
 
 function jsonError(message: string, status: number): Response {
   return new Response(JSON.stringify({ error: message }), {
@@ -54,36 +30,27 @@ function jsonError(message: string, status: number): Response {
   });
 }
 
+function notFoundJson(): Response {
+  return jsonError('Link not found', 404);
+}
+
 /**
  * ConnectLinkController: opaque short-link dispatcher.
  *
- * Resolves a base62 short code minted by `connect-link.service.ts` and performs
- * the kind-appropriate side effect: `connect` accepts the opportunity and
- * redirects to Telegram (or web chat); `approve_introduction` flips the
- * introducer's approved flag and renders an inline HTML confirmation;
- * `outreach` redirects to a Telegram DM (or fallback chat URL) for an
- * already-accepted opportunity. Greeting is pulled from the connect-link row
- * and URI-encoded into the redirect target.
- *
- * No guard: authentication is via possession of the short code itself.
+ * Public `/c/:code` is only a bridge into the frontend continuation route. It
+ * deliberately does not resolve `connect_links` rows: account binding happens
+ * on authenticated `/c/:code/go`, where the JWT user must match the stored
+ * recipient before any opportunity side effect or destination lookup runs.
  */
 @Controller('/c')
 export class ConnectLinkController {
   /**
-   * GET /c/:code — opaque short-link dispatcher.
+   * GET /c/:code — public short-link bridge.
    *
-   * Browser entry point. For approve_introduction (synchronous-light, no LLM)
-   * we do the work inline and return the confirmation HTML. For connect and
-   * outreach (which trigger a 20s-tail LLM greeting call inside
-   * getGreetingForCard), we return an interstitial HTML page that fetches
-   * `/c/:code/go` and redirects client-side — the user sees a loading state
-   * instead of a blank tab while the LLM runs.
-   *
-   * @param _req - The incoming request (unused; code is in path params).
-   * @param _user - Unauthenticated route; no user context.
-   * @param params - Path params, must contain `code`.
-   * @returns Interstitial HTML 200 for connect/outreach; confirmation HTML 200
-   *   for approve_introduction; expired HTML 404 if the code is unknown.
+   * Valid-looking short codes are redirected to the frontend continuation route
+   * with the same opaque code. The frontend preserves that URL through login and
+   * calls authenticated `/api/c/:code/go`. This route performs no DB lookup and
+   * no opportunity side effects.
    */
   @Get('/:code')
   @UseGuards(RateLimit('read'))
@@ -91,74 +58,52 @@ export class ConnectLinkController {
     const code = params?.code;
     if (!code) return new Response('Missing code', { status: 400 });
 
-    // Codes are 10-char base62 by construction (see connect-link.service.ts).
-    // Reject malformed codes before hitting the DB to avoid wasted lookups
-    // and make brute-force scanning more expensive.
-    if (!/^[A-Za-z0-9]{10}$/.test(code)) {
+    if (!CODE_PATTERN.test(code)) {
       return new Response(EXPIRED_HTML, { status: 404, headers: { 'Content-Type': 'text/html' } });
     }
 
-    const link = await resolveConnectLink(code);
-    if (!link) {
-      return new Response(EXPIRED_HTML, { status: 404, headers: { 'Content-Type': 'text/html' } });
-    }
-
-    if (link.kind === 'approve_introduction') {
-      const result = await opportunityService.approveIntroduction(link.opportunityId, link.userId);
-      if ('error' in result) {
-        return new Response(result.error, { status: result.status });
-      }
-      return new Response(APPROVED_HTML, { status: 200, headers: { 'Content-Type': 'text/html' } });
-    }
-
-    return new Response(INTERSTITIAL_HTML, {
-      status: 200,
-      headers: { 'Content-Type': 'text/html' },
-    });
+    return Response.redirect(`${getFrontendUrl()}/c/${code}`, 302);
   }
 
   /**
-   * GET /c/:code/go — JSON resolver invoked by the interstitial HTML.
+   * GET /c/:code/go — authenticated JSON resolver.
    *
-   * Does the side-effecting work (resolve, optionally startChat, generate
-   * greeting via LLM, look up Telegram handle / conversation) and returns the
-   * final redirect URL as JSON. The client-side script in INTERSTITIAL_HTML
-   * calls this endpoint and `location.replace`s on success.
-   *
-   * @returns `{ url: string }` for connect/outreach success; `{ error }` with
-   *   appropriate status for any failure path. approve_introduction is handled
-   *   inline on `/c/:code`; if this endpoint receives one, it executes the
-   *   approval and returns `{ kind: 'approve_introduction' }` for completeness.
+   * Resolves the short code, verifies the authenticated user is the stored
+   * recipient, then performs the kind-specific side effect and returns the final
+   * destination. Unknown, terminal, malformed, and wrong-account links are all
+   * masked as 404. No greeting generation, DM lookup, approval, or acceptance
+   * runs until the recipient check passes.
    */
   @Get('/:code/go')
-  @UseGuards(RateLimit('read'))
-  async go(_req: Request, _user: unknown, params?: RouteParams) {
+  @UseGuards(RateLimit('read'), AuthGuard)
+  async go(_req: Request, user: AuthenticatedUser, params?: RouteParams): Promise<Response> {
     const code = params?.code;
     if (!code) return jsonError('Missing code', 400);
-    if (!/^[A-Za-z0-9]{10}$/.test(code)) return jsonError('Invalid code', 404);
+    if (!CODE_PATTERN.test(code)) return notFoundJson();
 
-    const link = await resolveConnectLink(code);
-    if (!link) return jsonError('Link expired', 404);
+    const link = await resolveConnectLinkForUser(code, user.id);
+    if (!link) return notFoundJson();
 
-    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
-    const greeting = link.greeting
-      ?? (await opportunityService.getGreetingForCard(link.opportunityId, link.userId));
+    const frontendUrl = getFrontendUrl();
+    const greetingForRecipient = async () => (
+      link.greeting ?? (await opportunityService.getGreetingForCard(link.opportunityId, user.id))
+    );
+
+    if (link.kind === 'approve_introduction') {
+      const result = await opportunityService.approveIntroduction(link.opportunityId, user.id);
+      if ('error' in result) return jsonError(result.error, result.status);
+      return Response.json({ kind: 'approve_introduction' } satisfies ConnectLinkGoResponse);
+    }
 
     // `connect` (receiver flipping pending → accepted) and `send_direct`
-    // (sender flipping draft/latent → accepted) both want the same thing
-    // once they land: the chat is open and the greeting is ready to send.
-    // opportunityService.startChat already handles both source statuses —
-    // see its docstring — so the two kinds share one handler body. The
-    // semantic difference (who's consenting first vs. second) lives in the
-    // matrix that picked the kind, not here.
+    // (sender flipping draft/latent → accepted) both want the chat open and the
+    // greeting ready to send. opportunityService.startChat handles both source
+    // statuses; the semantic difference lives in the matrix that picked `kind`.
     if (link.kind === 'connect' || link.kind === 'send_direct') {
-      const result = await opportunityService.startChat(link.opportunityId, link.userId);
+      const greeting = await greetingForRecipient();
+      const result = await opportunityService.startChat(link.opportunityId, user.id);
       if ('error' in result) return jsonError(result.error, result.status);
 
-      // Receiver surface determines redirect target. preferredSurface = 'telegram'
-      // means the click came from a Telegram-rendering MCP client and
-      // we should attempt the t.me deep link. Anything else (including NULL on
-      // pre-rollout rows) goes to the web frontend.
       if (link.preferredSurface === 'telegram') {
         const handle = await opportunityService.getCounterpartTelegramHandle(result.counterpartUserId);
         const target = handle
@@ -166,34 +111,30 @@ export class ConnectLinkController {
           : (greeting
               ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
               : `${frontendUrl}/u/${result.counterpartUserId}/chat`);
-        return Response.json({ url: target });
+        return Response.json({ url: target } satisfies ConnectLinkGoResponse);
       }
 
       const target = greeting
         ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
         : `${frontendUrl}/u/${result.counterpartUserId}/chat`;
-      return Response.json({ url: target });
+      return Response.json({ url: target } satisfies ConnectLinkGoResponse);
     }
 
     if (link.kind === 'outreach') {
+      const greeting = await greetingForRecipient();
+
       if (link.preferredSurface === 'telegram') {
-        const handle = await opportunityService.getCounterpartTelegramHandleForOpp(link.opportunityId, link.userId);
+        const handle = await opportunityService.getCounterpartTelegramHandleForOpp(link.opportunityId, user.id);
         if (handle) {
           const target = greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`;
-          return Response.json({ url: target });
+          return Response.json({ url: target } satisfies ConnectLinkGoResponse);
         }
       }
-      const conversationId = await opportunityService.getConversationIdForOpp(link.opportunityId, link.userId);
+      const conversationId = await opportunityService.getConversationIdForOpp(link.opportunityId, user.id);
       const target = conversationId
         ? `${frontendUrl}/conversations/${conversationId}${greeting ? `?msg=${encodeURIComponent(greeting)}` : ''}`
         : frontendUrl;
-      return Response.json({ url: target });
-    }
-
-    if (link.kind === 'approve_introduction') {
-      const result = await opportunityService.approveIntroduction(link.opportunityId, link.userId);
-      if ('error' in result) return jsonError(result.error, result.status);
-      return Response.json({ kind: 'approve_introduction' });
+      return Response.json({ url: target } satisfies ConnectLinkGoResponse);
     }
 
     return jsonError('Unknown link kind', 400);
