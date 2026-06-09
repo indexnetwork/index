@@ -4,6 +4,10 @@ import { PremiseGraphState } from "./premise.state.js";
 import { PremiseAnalyzer } from "./premise.analyzer.js";
 import { PremiseIndexer } from "./premise.indexer.js";
 
+import {
+  buildNetworkAssignmentDecision,
+  resolveAssignmentNetworkScope,
+} from "../shared/assignment/network-assignment.policy.js";
 import { getAbortSignalConfig } from "../shared/agent/model-signal.js";
 import type { PremiseGraphDatabase, PremiseAnalysis } from "../shared/interfaces/database.interface.js";
 import type { Embedder } from "../shared/interfaces/embedder.interface.js";
@@ -20,6 +24,7 @@ export class PremiseGraphFactory {
   constructor(
     private database: PremiseGraphDatabase,
     private embedder: Embedder,
+    private premiseIndexer: PremiseIndexer = new PremiseIndexer(),
   ) {}
 
   /**
@@ -29,7 +34,7 @@ export class PremiseGraphFactory {
    */
   public createGraph() {
     const analyzer = new PremiseAnalyzer();
-    const indexer = new PremiseIndexer();
+    const indexer = this.premiseIndexer;
 
     const queryNode = async (state: typeof PremiseGraphState.State) => {
       return timed("PremiseGraph.query", async () => {
@@ -124,6 +129,7 @@ export class PremiseGraphFactory {
           },
           provenance: {
             source: state.provenanceSource ?? 'explicit',
+            sourceId: state.provenanceSourceId,
             confidence: state.provenanceConfidence ?? 1.0,
             timestamp: new Date().toISOString(),
           },
@@ -145,31 +151,62 @@ export class PremiseGraphFactory {
 
         logger.verbose(`[PremiseGraph.index] Scoring premise against user networks`);
 
-        const indexIds = await this.database.getUserIndexIds(state.userId);
+        const membershipNetworkIds = await this.database.getAssignmentNetworkIdsForUser(state.userId);
+        const indexIds = resolveAssignmentNetworkScope({
+          memberships: membershipNetworkIds,
+          networkScopeId: state.networkScopeId,
+        });
+        const scope = state.networkScopeId ? "network" : "global";
         const assignments: Array<{ networkId: string; relevancyScore: number }> = [];
+        const agentTimings: DebugMetaAgent[] = [];
 
         for (const networkId of indexIds) {
           try {
-            const network = await this.database.getNetwork(networkId);
-            if (!network || !network.prompt) continue;
+            const assignmentContext = await this.database.getNetworkAssignmentContext(networkId, state.userId);
+            if (!assignmentContext) continue;
+            const indexPrompt = assignmentContext.indexPrompt;
+            const memberPrompt = assignmentContext.memberPrompt;
+            const hasPrompts = !!indexPrompt?.trim() || !!memberPrompt?.trim();
+            let rawScores: { indexScore?: number; memberScore?: number } | undefined;
+            let reason: string | undefined;
 
-            const memberContext = await this.database.getNetworkMemberContext(networkId, state.userId);
+            if (hasPrompts) {
+              const start = Date.now();
+              const result = await indexer.invoke({
+                premiseText: state.assertionText!,
+                indexPrompt: indexPrompt ?? "",
+                memberPrompt: memberPrompt ?? undefined,
+              });
+              const timing: DebugMetaAgent = {
+                name: "premise-indexer",
+                durationMs: Date.now() - start,
+              };
+              rawScores = { indexScore: result.indexScore, memberScore: result.memberScore };
+              reason = result.reasoning;
+              agentTimings.push(timing);
+            }
 
-            const start = Date.now();
-            const result = await indexer.invoke({
-              premiseText: state.assertionText!,
-              indexPrompt: network.prompt,
-              memberPrompt: memberContext?.memberPrompt ?? undefined,
+            const decision = buildNetworkAssignmentDecision({
+              resourceType: "premise",
+              mode: "automatic",
+              scope,
+              indexPrompt,
+              memberPrompt,
+              rawScores,
+              evaluator: "premise-indexer",
+              source: "premise-graph",
+              reason,
+              createdAt: new Date().toISOString(),
             });
-            const timing: DebugMetaAgent = {
-              name: "premise-indexer",
-              durationMs: Date.now() - start,
-            };
 
-            const score = Math.max(result.indexScore, result.memberScore);
-            if (score >= 0.5) {
-              await this.database.assignPremiseToNetwork(state.premise.id, networkId, score);
-              assignments.push({ networkId, relevancyScore: score });
+            if (decision.assigned) {
+              await this.database.assignPremiseToNetwork(
+                state.premise.id,
+                networkId,
+                decision.finalScore,
+                decision.metadata,
+              );
+              assignments.push({ networkId, relevancyScore: decision.finalScore });
             }
           } catch (err) {
             logger.verbose(`[PremiseGraph.index] Failed to score network ${networkId}, skipping: ${err}`);
@@ -178,7 +215,7 @@ export class PremiseGraphFactory {
 
         logger.verbose(`[PremiseGraph.index] Assigned to ${assignments.length} networks`);
 
-        return { networkAssignments: assignments };
+        return { networkAssignments: assignments, agentTimings };
       });
     };
 

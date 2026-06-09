@@ -9,6 +9,8 @@ import { Timed } from "../shared/observability/performance.js";
 import { stripUuids } from "./opportunity.presentation.js";
 import { createModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
+import { renderOpportunityEvidenceForPrompt } from './opportunity.evidence.js';
 
 const logger = protocolLogger("OpportunityEvaluator");
 
@@ -83,9 +85,11 @@ Input:
 - DISCOVERER: The user ID who triggered discovery (for context; they may or may not be in the entity list).
 - ENTITIES: A set of entities. Each entity has:
   - userId, networkId (the index through which they were found)
+  - evidenceKey (stable key for the matched resource when available)
   - profile: name, bio, location, interests, skills, context
   - intents (optional): list of { intentId, payload, summary } — some entities are profile-only, some have intents
   - ragScore, matchedVia (how they were found)
+  - evidence (typed retrieval evidence: discovery kind, network, score, lens, source/candidate ids)
 - EXISTING OPPORTUNITIES: Context of matches already made (for deduplication).
 
 BEFORE SCORING — determine role satisfiability:
@@ -121,6 +125,7 @@ Output:
     - userId
     - role: "agent" (can do something for others), "patient" (needs something from others), "peer" (symmetric collaboration)
     - intentId (optional): if the match is intent-driven, the specific intent ID for that user
+    - evidenceKey (optional): copy the entity evidenceKey when the actor is driven by a specific listed entity
 
 VISIBILITY (role controls who sees the opportunity when):
 - agent: Last to see — after the patient has committed to reaching out.
@@ -188,8 +193,10 @@ export interface EvaluatorEntity {
     summary?: string;
   }>;
   networkId: string;
+  evidenceKey?: string;
   ragScore?: number;
   matchedVia?: string;
+  evidence?: OpportunityEvidence[];
 }
 
 export interface EvaluatorInput {
@@ -215,6 +222,7 @@ const ActorSchema = z.object({
   userId: z.string(),
   role: z.enum(['agent', 'patient', 'peer']),
   intentId: z.string().nullable().describe('If the match is intent-driven, the specific intent ID; null otherwise'),
+  evidenceKey: z.string().nullable().optional().describe('Stable evidence key for the matched entity; null if unknown'),
 });
 
 const OpportunityWithActorsSchema = z.object({
@@ -472,9 +480,12 @@ CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
       return `
   USER: ${e.userId}
   INDEX: ${e.networkId}
+  EVIDENCE KEY: ${e.evidenceKey ?? '—'}
   PROFILE: Name: ${displayName} | Bio: ${e.profile.bio ?? ''} | Location: ${e.profile.location ?? ''} | Interests: ${e.profile.interests?.join(', ') ?? ''} | Skills: ${e.profile.skills?.join(', ') ?? ''} | Context: ${e.profile.context ?? ''}${intentsPart}
   RAG SCORE: ${e.ragScore ?? '—'}
-  MATCHED VIA: ${e.matchedVia ?? '—'}`;
+  MATCHED VIA: ${e.matchedVia ?? '—'}
+  EVIDENCE:
+${renderOpportunityEvidenceForPrompt(e.evidence ?? [])}`;
     }).join('\n');
     const networkContextPart = input.networkContexts && Object.keys(input.networkContexts).length > 0
       ? `\n\nNETWORK CONTEXTS:\n${Object.entries(input.networkContexts).map(([nid, ctx]) => `[INDEX: ${nid}]\n${ctx}`).join('\n\n')}`

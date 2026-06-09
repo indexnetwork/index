@@ -556,12 +556,25 @@ export class IntentDatabaseAdapter {
    * @returns Promise that resolves when the row is inserted.
    * @throws May throw on database insertion errors (db.insert/schema.intentNetworks).
    */
-  async assignIntentToNetwork(intentId: string, networkId: string, relevancyScore?: number): Promise<void> {
+  async assignIntentToNetwork(
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+  ): Promise<void> {
     await db.insert(schema.intentNetworks)
-      .values({ intentId, networkId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
+      .values({
+        intentId,
+        networkId,
+        relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
+        assignmentMetadata: assignmentMetadata ?? null,
+      })
       .onConflictDoUpdate({
         target: [schema.intentNetworks.intentId, schema.intentNetworks.networkId],
-        set: { relevancyScore: relevancyScore != null ? String(relevancyScore) : null },
+        set: {
+          relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
+          assignmentMetadata: assignmentMetadata ?? null,
+        },
       });
   }
 
@@ -1653,6 +1666,55 @@ export class ChatDatabaseAdapter {
     return rows[0] ?? null;
   }
 
+  async getAssignmentNetworkIdsForUser(userId: string): Promise<string[]> {
+    try {
+      const result = await db
+        .select({ networkId: schema.networkMembers.networkId })
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
+        .leftJoin(schema.personalNetworks, eq(schema.networks.id, schema.personalNetworks.networkId))
+        .where(
+          and(
+            eq(schema.networkMembers.userId, userId),
+            isNull(schema.networkMembers.deletedAt),
+            isNull(schema.networks.deletedAt),
+            or(
+              eq(schema.networks.isPersonal, false),
+              and(
+                eq(schema.networks.isPersonal, true),
+                eq(schema.personalNetworks.userId, userId),
+              ),
+            ),
+          )
+        );
+      return result.map((r) => r.networkId);
+    } catch (error: unknown) {
+      logger.error('ChatDatabaseAdapter.getAssignmentNetworkIdsForUser error', { error: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
+  }
+
+  async getNetworkAssignmentContext(networkId: string, userId: string) {
+    const rows = await db
+      .select({
+        networkId: networks.id,
+        indexPrompt: networks.prompt,
+        memberPrompt: networkMembers.prompt,
+      })
+      .from(networks)
+      .innerJoin(networkMembers, eq(networks.id, networkMembers.networkId))
+      .where(
+        and(
+          eq(networks.id, networkId),
+          eq(networkMembers.userId, userId),
+          isNull(networkMembers.deletedAt),
+          isNull(networks.deletedAt)
+        )
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async isIntentAssignedToIndex(intentId: string, networkId: string): Promise<boolean> {
     const rows = await db
       .select({ networkId: intentNetworks.networkId })
@@ -1667,26 +1729,45 @@ export class ChatDatabaseAdapter {
     return rows.length > 0;
   }
 
-  async assignIntentToNetwork(intentId: string, networkId: string, relevancyScore?: number): Promise<void> {
+  async assignIntentToNetwork(
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+  ): Promise<void> {
     await db.insert(intentNetworks)
-      .values({ intentId, networkId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
+      .values({
+        intentId,
+        networkId,
+        relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
+        assignmentMetadata: assignmentMetadata ?? null,
+      })
       .onConflictDoUpdate({
         target: [intentNetworks.intentId, intentNetworks.networkId],
-        set: { relevancyScore: relevancyScore != null ? String(relevancyScore) : null },
+        set: {
+          relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
+          assignmentMetadata: assignmentMetadata ?? null,
+        },
       });
   }
 
-  async getIntentIndexScores(intentId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>> {
+  async getIntentIndexScores(intentId: string): Promise<Array<{
+    networkId: string;
+    relevancyScore: number | null;
+    assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata | null;
+  }>> {
     const rows = await db
       .select({
         networkId: intentNetworks.networkId,
         relevancyScore: intentNetworks.relevancyScore,
+        assignmentMetadata: intentNetworks.assignmentMetadata,
       })
       .from(intentNetworks)
       .where(eq(intentNetworks.intentId, intentId));
     return rows.map(r => ({
       networkId: r.networkId,
       relevancyScore: r.relevancyScore != null ? Number(r.relevancyScore) : null,
+      assignmentMetadata: r.assignmentMetadata ?? null,
     }));
   }
 
@@ -4076,31 +4157,46 @@ export class ChatDatabaseAdapter {
     };
   }
 
-  async assignPremiseToNetwork(premiseId: string, networkId: string, relevancyScore: number): Promise<void> {
+  async assignPremiseToNetwork(
+    premiseId: string,
+    networkId: string,
+    relevancyScore: number,
+    assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+  ): Promise<void> {
     await db
       .insert(schema.premiseNetworks)
       .values({
         premiseId,
         networkId,
         relevancyScore: String(relevancyScore),
+        assignmentMetadata: assignmentMetadata ?? null,
       })
       .onConflictDoUpdate({
         target: [schema.premiseNetworks.premiseId, schema.premiseNetworks.networkId],
-        set: { relevancyScore: String(relevancyScore) },
+        set: {
+          relevancyScore: String(relevancyScore),
+          assignmentMetadata: assignmentMetadata ?? null,
+        },
       });
   }
 
-  async getPremiseNetworks(premiseId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>> {
+  async getPremiseNetworks(premiseId: string): Promise<Array<{
+    networkId: string;
+    relevancyScore: number | null;
+    assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata | null;
+  }>> {
     const rows = await db
       .select({
         networkId: schema.premiseNetworks.networkId,
         relevancyScore: schema.premiseNetworks.relevancyScore,
+        assignmentMetadata: schema.premiseNetworks.assignmentMetadata,
       })
       .from(schema.premiseNetworks)
       .where(eq(schema.premiseNetworks.premiseId, premiseId));
     return rows.map((r) => ({
       networkId: r.networkId,
       relevancyScore: r.relevancyScore !== null ? Number(r.relevancyScore) : null,
+      assignmentMetadata: r.assignmentMetadata ?? null,
     }));
   }
 
@@ -4834,6 +4930,7 @@ interface CreateOpportunityInput {
   confidence: string;
   status?: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
   expiresAt?: Date;
+  metadata?: Record<string, unknown> | null;
 }
 
 function toOpportunityRow(row: typeof opportunities.$inferSelect): OpportunityRow {
@@ -4883,6 +4980,7 @@ export class OpportunityDatabaseAdapter {
         confidence: data.confidence,
         status: data.status ?? 'pending',
         expiresAt: data.expiresAt ?? null,
+        metadata: data.metadata ?? {},
       })
       .returning();
     if (!row) throw new Error('OpportunityDatabaseAdapter.createOpportunity: no row returned');
@@ -5161,6 +5259,7 @@ export class OpportunityDatabaseAdapter {
           confidence: data.confidence,
           status: data.status ?? 'pending',
           expiresAt: data.expiresAt ?? null,
+          metadata: data.metadata ?? {},
         })
         .returning();
       if (!inserted) throw new Error('OpportunityDatabaseAdapter.createOpportunityAndExpireIds: no row returned');
@@ -5652,6 +5751,27 @@ export class NetworkGraphDatabaseAdapter {
     return rows[0] ?? null;
   }
 
+  async getNetworkAssignmentContext(networkId: string, userId: string) {
+    const rows = await db
+      .select({
+        networkId: networks.id,
+        indexPrompt: networks.prompt,
+        memberPrompt: networkMembers.prompt,
+      })
+      .from(networks)
+      .innerJoin(networkMembers, eq(networks.id, networkMembers.networkId))
+      .where(
+        and(
+          eq(networks.id, networkId),
+          eq(networkMembers.userId, userId),
+          isNull(networkMembers.deletedAt),
+          isNull(networks.deletedAt)
+        )
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async isIntentAssignedToIndex(intentId: string, networkId: string): Promise<boolean> {
     const rows = await db
       .select({ networkId: intentNetworks.networkId })
@@ -5666,12 +5786,25 @@ export class NetworkGraphDatabaseAdapter {
     return rows.length > 0;
   }
 
-  async assignIntentToNetwork(intentId: string, networkId: string, relevancyScore?: number): Promise<void> {
+  async assignIntentToNetwork(
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+  ): Promise<void> {
     await db.insert(intentNetworks)
-      .values({ intentId, networkId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
+      .values({
+        intentId,
+        networkId,
+        relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
+        assignmentMetadata: assignmentMetadata ?? null,
+      })
       .onConflictDoUpdate({
         target: [intentNetworks.intentId, intentNetworks.networkId],
-        set: { relevancyScore: relevancyScore != null ? String(relevancyScore) : null },
+        set: {
+          relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
+          assignmentMetadata: assignmentMetadata ?? null,
+        },
       });
   }
 
@@ -6698,11 +6831,16 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
         await db.assignIntentToNetwork(intentId, networkId);
       }
     },
-    assignIntentToNetwork: async (intentId: string, networkId: string, relevancyScore?: number) => {
+    assignIntentToNetwork: async (
+      intentId: string,
+      networkId: string,
+      relevancyScore?: number,
+      assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+    ) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      return db.assignIntentToNetwork(intentId, networkId, relevancyScore);
+      return db.assignIntentToNetwork(intentId, networkId, relevancyScore, assignmentMetadata);
     },
     unassignIntentFromIndex: async (intentId: string, networkId: string) => {
       const intent = await db.getIntent(intentId);
@@ -6731,6 +6869,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     getOwnedIndexes: () => db.getOwnedIndexes(authUserId),
     getNetworkMembership: (networkId: string) => db.getNetworkMembership(networkId, authUserId),
     getNetworkMemberContext: (networkId: string) => db.getNetworkMemberContext(networkId, authUserId),
+    getNetworkAssignmentContext: (networkId: string) => db.getNetworkAssignmentContext(networkId, authUserId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Index CRUD Operations

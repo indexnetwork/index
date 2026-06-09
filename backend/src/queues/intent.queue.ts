@@ -4,8 +4,15 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { HydeGraphFactory, HydeGenerator, LensInferrer, IntentIndexer } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, IntentGraphQueue } from '@indexnetwork/protocol';
+import {
+  HydeGraphFactory,
+  HydeGenerator,
+  LensInferrer,
+  IntentIndexer,
+  buildNetworkAssignmentDecision,
+  resolveAssignmentNetworkScope,
+} from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput } from '@indexnetwork/protocol';
 import { fromIntentQueue } from './opportunity/from-intent.queue';
 
 /** BullMQ queue name for intent HyDE generation and deletion jobs. */
@@ -30,7 +37,7 @@ export type IntentJobPayload = IntentJobData | IntentDeleteData;
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getUserIndexIds' | 'getUserPersonalNetworkIds' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkMemberContext' | 'getProfile' | 'getActiveIntents'
+  'getIntentForIndexing' | 'getAssignmentNetworkIdsForUser' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkAssignmentContext' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -47,6 +54,12 @@ export interface IntentQueueDeps {
     profileContext?: string;
   }) => Promise<void>;
   addOpportunityJob?: (data: { intentId: string; userId: string; networkIds?: string[] }) => Promise<unknown>;
+  evaluateIntentAssignment?: (opts: {
+    intent: string;
+    indexPrompt: string | null;
+    memberPrompt: string | null;
+    sourceName?: string | null;
+  }) => Promise<IntentIndexerOutput | null>;
 }
 
 /**
@@ -180,7 +193,7 @@ export class IntentQueue implements IntentGraphQueue {
 
   private async handleGenerateHyde(
     data: IntentJobData,
-    overrides?: { addOpportunityJob?: (d: { intentId: string; userId: string }) => Promise<unknown> }
+    overrides?: { addOpportunityJob?: (d: { intentId: string; userId: string; networkIds?: string[] }) => Promise<unknown> }
   ): Promise<void> {
     const { intentId, userId, networkScopeId } = data;
     const db = this.deps?.database ?? this.database;
@@ -193,72 +206,62 @@ export class IntentQueue implements IntentGraphQueue {
     this.logger.debug('[IntentHyde] Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
     let assignedIndexCount = 0;
     try {
-      let userIndexIds = await db.getUserIndexIds(userId);
-      if (networkScopeId) {
-        const personalNetworkIds = await db.getUserPersonalNetworkIds(userId);
-        const allowed = new Set([networkScopeId, ...personalNetworkIds]);
-        userIndexIds = userIndexIds.filter((id) => allowed.has(id));
-        this.logger.info('[IntentHyde] Scope filter applied', { intentId, networkScopeId, kept: userIndexIds.length });
-      }
-      this.logger.info('[IntentHyde] User indexes found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
+      const membershipNetworkIds = await db.getAssignmentNetworkIdsForUser(userId);
+      const userIndexIds = resolveAssignmentNetworkScope({ memberships: membershipNetworkIds, networkScopeId });
+      this.logger.info('[IntentHyde] User assignment networks found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
 
-      // Fetch prompts for each index to determine which need scoring
-      const indexContexts = await Promise.all(
+      const evaluateIntentAssignment = this.deps?.evaluateIntentAssignment ?? (async (opts: {
+        intent: string;
+        indexPrompt: string | null;
+        memberPrompt: string | null;
+        sourceName?: string | null;
+      }) => {
+        const indexer = new IntentIndexer();
+        return indexer.invoke(opts.intent, opts.indexPrompt, opts.memberPrompt, opts.sourceName ?? null);
+      });
+
+      const sourceName = intent.sourceType
+        ? `${intent.sourceType}:${intent.sourceId ?? ''}`
+        : undefined;
+
+      const scoringResults = await Promise.all(
         userIndexIds.map(async (networkId) => {
-          const ctx = await db.getNetworkMemberContext(networkId, userId);
-          return { networkId, ctx };
+          const ctx = await db.getNetworkAssignmentContext(networkId, userId);
+          const indexPrompt = ctx?.indexPrompt ?? null;
+          const memberPrompt = ctx?.memberPrompt ?? null;
+          const hasPrompts = !!indexPrompt?.trim() || !!memberPrompt?.trim();
+          let result: IntentIndexerOutput | null = null;
+          if (hasPrompts) {
+            try {
+              result = await evaluateIntentAssignment({ intent: intent.payload, indexPrompt, memberPrompt, sourceName });
+            } catch (err) {
+              this.logger.warn('[IntentHyde] IntentIndexer failed for index', { intentId, networkId, error: err });
+            }
+          }
+
+          const decision = buildNetworkAssignmentDecision({
+            resourceType: 'intent',
+            mode: 'automatic',
+            scope: networkScopeId ? 'network' : 'global',
+            indexPrompt,
+            memberPrompt,
+            rawScores: result ? { indexScore: result.indexScore, memberScore: result.memberScore } : undefined,
+            evaluator: 'intent-indexer',
+            source: 'intent-hyde-queue',
+            reason: result?.reasoning,
+            createdAt: new Date().toISOString(),
+          });
+          return { networkId, decision };
         })
       );
 
-      // Split: no-prompt indexes get score 1.0, others need IntentIndexer
-      const noPromptIndexes = indexContexts.filter(
-        ({ ctx }) => !ctx?.indexPrompt?.trim() && !ctx?.memberPrompt?.trim()
-      );
-      const scorableIndexes = indexContexts.filter(
-        ({ ctx }) => ctx?.indexPrompt?.trim() || ctx?.memberPrompt?.trim()
-      );
-
-      // Assign no-prompt indexes with default score
-      for (const { networkId } of noPromptIndexes) {
+      for (const { networkId, decision } of scoringResults) {
+        if (!decision.assigned) continue;
         try {
-          await db.assignIntentToNetwork(intentId, networkId, 1.0);
+          await db.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
           assignedIndexCount++;
         } catch (assignErr) {
           this.logger.debug('[IntentHyde] Assign intent to index skipped', { intentId, networkId, error: assignErr });
-        }
-      }
-
-      // Score and assign scorable indexes in parallel
-      if (scorableIndexes.length > 0) {
-        const indexer = new IntentIndexer();
-        const scoringResults = await Promise.all(
-          scorableIndexes.map(async ({ networkId, ctx }) => {
-            try {
-              const result = await indexer.invoke(
-                intent.payload,
-                ctx?.indexPrompt ?? null,
-                ctx?.memberPrompt ?? null,
-              );
-              const score = result
-                ? (ctx?.indexPrompt && ctx?.memberPrompt
-                    ? result.indexScore * 0.6 + result.memberScore * 0.4
-                    : ctx?.indexPrompt ? result.indexScore : result.memberScore)
-                : 1.0;
-              return { networkId, score };
-            } catch (err) {
-              this.logger.warn('[IntentHyde] IntentIndexer failed for index, using default score', { intentId, networkId, error: err });
-              return { networkId, score: 1.0 };
-            }
-          })
-        );
-
-        for (const { networkId, score } of scoringResults) {
-          try {
-            await db.assignIntentToNetwork(intentId, networkId, score);
-            assignedIndexCount++;
-          } catch (assignErr) {
-            this.logger.debug('[IntentHyde] Assign intent to index skipped', { intentId, networkId, error: assignErr });
-          }
         }
       }
     } catch (err) {

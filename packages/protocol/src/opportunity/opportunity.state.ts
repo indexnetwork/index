@@ -4,6 +4,7 @@ import type { OpportunityStatus, Opportunity } from '../shared/interfaces/databa
 import type { Lens } from '../shared/interfaces/embedder.interface.js';
 import type { EvaluatorEntity } from './opportunity.evaluator.js';
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
+import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
 import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
 
 /**
@@ -48,8 +49,12 @@ export interface TargetNetwork {
 export interface CandidateMatch {
   candidateUserId: Id<'users'>;
   candidateIntentId?: Id<'intents'>;
-  /** Premise that produced this candidate (set when discoverySource is 'premise-similarity'). */
+  /** Source premise that produced this candidate (set when discoverySource is 'premise-similarity'). */
+  sourcePremiseId?: Id<'premises'>;
+  /** Candidate premise that matched this candidate (set for premise-based matches). */
   candidatePremiseId?: Id<'premises'>;
+  /** Source context that produced this candidate (set when discoverySource is 'context-to-intent'). */
+  sourceContextId?: string;
   networkId: Id<'networks'>;
   similarity: number;
   /** Free-text lens label that produced this match. */
@@ -60,6 +65,8 @@ export interface CandidateMatch {
   discoverySource?: 'query' | 'premise-similarity' | 'context-to-intent';
   /** Which discovery strategies found this candidate (set by mergeStrategyCandidates). */
   matchedStrategies?: string[];
+  /** Typed evidence that explains why this candidate entered evaluation. */
+  evidence?: OpportunityEvidence[];
 }
 
 /**
@@ -97,6 +104,7 @@ export interface EvaluatedOpportunity {
   actors: EvaluatedOpportunityActor[];
   score: number;
   reasoning: string;
+  evidence?: OpportunityEvidence[];
 }
 
 /**

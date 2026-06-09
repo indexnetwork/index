@@ -602,6 +602,41 @@ describe('Opportunity Graph', () => {
       expect(result.opportunities[0].actors.length).toBe(2);
       expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.userId === 'b0000000-0000-4000-8000-000000000002')).toBe(true);
     });
+
+    test('persists typed opportunity evidence in metadata', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob',
+          userId: 'b0000000-0000-4000-8000-000000000002',
+          score: 0.9,
+          matchedVia: 'mirror' as const,
+          networkId: 'idx-1',
+        },
+      ]);
+
+      await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput);
+
+      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({
+        metadata: expect.objectContaining({
+          evidence: expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'query_intent',
+              candidateIntentId: 'intent-bob',
+              networkId: 'idx-1',
+              score: 0.9,
+              matchedStrategies: expect.arrayContaining(['query']),
+            }),
+          ]),
+        }),
+      }));
+    });
   });
 
   describe('Evaluation: pairwise actor normalization', () => {

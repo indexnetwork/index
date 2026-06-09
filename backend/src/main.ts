@@ -75,7 +75,8 @@ import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { NegotiationGraphFactory, setTimingWrapper } from '@indexnetwork/protocol';
+import { NegotiationGraphFactory, PremiseGraphFactory, setTimingWrapper } from '@indexnetwork/protocol';
+import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
 import { agentService } from './services/agent.service';
@@ -180,13 +181,14 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
 
 // ─── Question answer reaction handlers ──────────────────────────────────────
 
+const profileAnswerPremiseGraph = new PremiseGraphFactory(
+  chatDatabaseAdapter as unknown as PremiseGraphDatabase,
+  embedderAdapter,
+).createGraph();
+
 const questionAnswerDeps = {
   createPremiseFromAnswer: createPremiseFromAnswerFactory({
-    createPremise: (input) => chatDatabaseAdapter.createPremise(input),
-    embedText: async (text) => {
-      const result = await embedderAdapter.generate([text]) as number[][];
-      return result[0] ?? [];
-    },
+    runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
     emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
   }),
   enqueueIntentRefinement: enqueueIntentRefinementFactory({

@@ -146,6 +146,14 @@ export type {
   BuildNetworkAssignmentDecisionArgs,
   NetworkAssignmentDecision,
 } from "./shared/assignment/network-assignment.policy.js";
+export {
+  buildCandidateEvidence,
+  withCandidateEvidence,
+  mergeOpportunityEvidence,
+  withMatchedStrategies,
+  renderOpportunityEvidenceForPrompt,
+} from "./opportunity/opportunity.evidence.js";
+export type { EvidenceCandidateInput } from "./opportunity/opportunity.evidence.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
