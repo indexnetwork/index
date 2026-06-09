@@ -3,8 +3,9 @@ import type { McpAuthInput } from '../schemas/mcp-auth.schema.js';
 /**
  * Resolves the authenticated MCP identity from an auth input DTO.
  * The DTO is extracted from the transport at the edge (e.g. from HTTP Request
- * headers) before the protocol layer is called, keeping the shared auth
- * interface free of platform-specific `Request` coupling.
+ * headers) before the protocol layer is called. New auth paths stay free of
+ * platform-specific `Request` coupling; `resolveUserId` remains only as a
+ * deprecated compatibility bridge while callers migrate to `resolveIdentity`.
  */
 export interface McpAuthResolver {
   /**
@@ -38,6 +39,10 @@ export interface McpAuthResolver {
   }>;
 
   /**
+   * Deprecated HTTP Request bridge retained for compatibility with older
+   * callers. New transport code must extract `McpAuthInput` at the edge and
+   * call `resolveIdentity` instead.
+   *
    * @deprecated Use resolveIdentity instead.
    */
   resolveUserId(request: Request): Promise<string>;

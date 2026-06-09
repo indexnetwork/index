@@ -417,10 +417,10 @@ After \`discover_opportunities\`, the tool result may include a second text bloc
 /**
  * Extracts a Bearer token from an HTTP Authorization header.
  */
-function extractBearerToken(req: Request): string | undefined {
+export function extractBearerToken(req: Request): string | undefined {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return undefined;
-  const [scheme, token] = authHeader.split(/\s+/, 2);
+  const [scheme, token] = authHeader.trim().split(/\s+/, 2);
   if (scheme?.toLowerCase() === 'bearer' && token) return token;
   return undefined;
 }
@@ -430,9 +430,10 @@ function extractBearerToken(req: Request): string | undefined {
  * Unknown or absent values collapse to 'web'.
  */
 let hasWarnedInvalidSurface = false;
-function parseClientSurface(raw: string | null): 'telegram' | 'web' {
+export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
   if (raw === null || raw === '') return 'web';
   const trimmed = raw.trim().toLowerCase();
+  if (trimmed === '') return 'web';
   if (trimmed === 'telegram') return 'telegram';
   if (trimmed === 'web') return 'web';
   if (!hasWarnedInvalidSurface) {

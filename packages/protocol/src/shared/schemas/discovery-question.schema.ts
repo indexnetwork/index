@@ -49,7 +49,7 @@ export const DiscoverySummarySchema = z.object({
   opportunitiesFound: z.number(),
   noOpportunityCount: z.number(),
   timeoutCount: z.number(),
-  roleDistribution: z.record(z.string(), z.number()),
+  roleDistribution: z.record(NegotiationRoleSchema, z.number()),
 });
 export type DiscoverySummary = {
   totalCandidates: number;

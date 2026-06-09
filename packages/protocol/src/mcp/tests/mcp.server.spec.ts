@@ -10,7 +10,7 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, test, expect } from "bun:test";
-import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError } from "../mcp.server.js";
+import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError, extractBearerToken, parseClientSurface } from "../mcp.server.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import { ToolRuntimeError } from "../../shared/agent/tool.runtime.js";
 
@@ -210,6 +210,50 @@ describe("shouldReportMcpToolError", () => {
 
   test("reports unexpected tool failures", () => {
     expect(shouldReportMcpToolError(new Error("database unavailable"))).toBe(true);
+  });
+});
+
+describe("extractBearerToken", () => {
+  function requestWithAuthorization(value?: string): Request {
+    return new Request("https://example.test/mcp", {
+      headers: value === undefined ? undefined : { Authorization: value },
+    });
+  }
+
+  test("returns undefined when Authorization is missing", () => {
+    expect(extractBearerToken(requestWithAuthorization())).toBeUndefined();
+  });
+
+  test("extracts bearer token case-insensitively", () => {
+    expect(extractBearerToken(requestWithAuthorization("Bearer token-123"))).toBe("token-123");
+    expect(extractBearerToken(requestWithAuthorization("bearer token-456"))).toBe("token-456");
+  });
+
+  test("allows extra whitespace around bearer credentials", () => {
+    expect(extractBearerToken(requestWithAuthorization("  Bearer   spaced-token  "))).toBe("spaced-token");
+  });
+
+  test("rejects wrong schemes and missing tokens", () => {
+    expect(extractBearerToken(requestWithAuthorization("Basic token-123"))).toBeUndefined();
+    expect(extractBearerToken(requestWithAuthorization("Bearer"))).toBeUndefined();
+  });
+});
+
+describe("parseClientSurface", () => {
+  test("defaults absent, empty, and whitespace-only values to web", () => {
+    expect(parseClientSurface(null)).toBe("web");
+    expect(parseClientSurface("")).toBe("web");
+    expect(parseClientSurface("   ")).toBe("web");
+  });
+
+  test("normalizes known surfaces", () => {
+    expect(parseClientSurface("telegram")).toBe("telegram");
+    expect(parseClientSurface(" Telegram ")).toBe("telegram");
+    expect(parseClientSurface("WEB")).toBe("web");
+  });
+
+  test("coerces unknown surfaces to web", () => {
+    expect(parseClientSurface("slack")).toBe("web");
   });
 });
 
