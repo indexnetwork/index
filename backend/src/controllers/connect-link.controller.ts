@@ -83,7 +83,6 @@ export class ConnectLinkController {
 
     const link = await resolveConnectLinkForUser(code, user.id);
     if (!link) return notFoundJson();
-    if (link.userId !== user.id) return notFoundJson();
 
     const frontendUrl = getFrontendUrl();
     const greetingForRecipient = async () => (
@@ -101,10 +100,9 @@ export class ConnectLinkController {
     // greeting ready to send. opportunityService.startChat handles both source
     // statuses; the semantic difference lives in the matrix that picked `kind`.
     if (link.kind === 'connect' || link.kind === 'send_direct') {
+      const greeting = await greetingForRecipient();
       const result = await opportunityService.startChat(link.opportunityId, user.id);
       if ('error' in result) return jsonError(result.error, result.status);
-
-      const greeting = await greetingForRecipient();
 
       if (link.preferredSurface === 'telegram') {
         const handle = await opportunityService.getCounterpartTelegramHandle(result.counterpartUserId);
