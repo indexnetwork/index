@@ -1,37 +1,17 @@
 # ===================
-# OS Files
+# OS
 # ===================
 .DS_Store
 
 # ===================
-# IDE & Editor
+# Editors & Local Tooling
 # ===================
 .vscode/*
 !.vscode/index.code-workspace
 .cursor/
 .claude/settings.local.json
 .claude/worktrees
-
-# ===================
-# Docker & Infrastructure
-# ===================
-docker-compose.yml
-env.docker
-postgres/
-
-# ===================
-# Temporary Files & Uploads
-# ===================
-backend/temp-uploads/
-txt/
-
-# ===================
-# Documentation & Reports
-# ===================
-*.report.md
-docs/superpowers/
-packages/protocol/CLAUDE.md
-packages/protocol/.claude
+.rules
 
 # ===================
 # Dependencies
@@ -39,26 +19,33 @@ packages/protocol/.claude
 node_modules/
 
 # ===================
-# Git & Version Control
+# Local Worktrees
 # ===================
 .worktrees/
 
 # ===================
-# Environment Files
+# Docker & Local Infrastructure
 # ===================
-.mcp.json
+docker-compose.yml
+env.docker
+postgres/
 
 # ===================
-# Project Configuration (Zed Agent Rules)
+# Temporary Data & Uploads
 # ===================
-.rules
+backend/temp-uploads/
+txt/
 
 # ===================
-# Generated skills (local workspace dev output)
+# Generated Local Artifacts
 # ===================
+docs/superpowers/
 /skills/**/SKILL.md
+packages/protocol/.claude
+packages/protocol/CLAUDE.md
 
 # ===================
-# Matching eval run reports (ephemeral; --report output)
+# Reports & Eval Outputs
 # ===================
+*.report.md
 packages/protocol/eval/matching/runs/
