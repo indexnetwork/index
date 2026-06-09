@@ -1,7 +1,7 @@
 /**
- * Negotiation state DTOs — pure interfaces extracted from
- * negotiation/negotiation.state.ts for consumption by shared interfaces.
- * The Zod schemas and LangGraph Annotation.Root stay in the domain file.
+ * Negotiation state DTOs extracted from negotiation/negotiation.state.ts for
+ * consumption by shared interfaces. This shared module owns the DTO schemas;
+ * LangGraph Annotation.Root stays in the domain file.
  */
 import { z } from "zod";
 

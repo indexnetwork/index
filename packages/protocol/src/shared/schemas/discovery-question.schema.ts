@@ -49,14 +49,14 @@ export const DiscoverySummarySchema = z.object({
   opportunitiesFound: z.number(),
   noOpportunityCount: z.number(),
   timeoutCount: z.number(),
-  roleDistribution: z.record(z.string(), z.number()).optional(),
+  roleDistribution: z.record(z.string(), z.number()),
 });
 export type DiscoverySummary = {
   totalCandidates: number;
   opportunitiesFound: number;
   noOpportunityCount: number;
   timeoutCount: number;
-  roleDistribution?: Partial<Record<NegotiationRole, number>>;
+  roleDistribution: Partial<Record<NegotiationRole, number>>;
 };
 
 export const DiscoverySourceProfileSchema = z.object({

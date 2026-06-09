@@ -429,15 +429,15 @@ function extractBearerToken(req: Request): string | undefined {
  * Normalizes the x-index-surface header to a typed surface value.
  * Unknown or absent values collapse to 'web'.
  */
-const seenInvalidSurfaces = new Set<string>();
+let hasWarnedInvalidSurface = false;
 function parseClientSurface(raw: string | null): 'telegram' | 'web' {
   if (raw === null || raw === '') return 'web';
   const trimmed = raw.trim().toLowerCase();
   if (trimmed === 'telegram') return 'telegram';
   if (trimmed === 'web') return 'web';
-  if (!seenInvalidSurfaces.has(trimmed)) {
-    seenInvalidSurfaces.add(trimmed);
-    logger.warn(`Unknown x-index-surface value: "${trimmed}" (collapsing to web; seen once per process)`);
+  if (!hasWarnedInvalidSurface) {
+    hasWarnedInvalidSurface = true;
+    logger.warn('Unknown x-index-surface value (collapsing to web; warning once per process)');
   }
   return 'web';
 }

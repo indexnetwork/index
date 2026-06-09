@@ -1,4 +1,4 @@
-import { ProfileDocument } from '../schemas/profile.schema.js';
+import type { ProfileDocument } from '../schemas/profile.schema.js';
 
 // ─── Inlined types (previously imported from outside the protocol lib) ───────
 

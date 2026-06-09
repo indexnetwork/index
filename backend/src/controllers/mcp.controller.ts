@@ -265,6 +265,10 @@ export function telegramHandleFromRequest(request: Request): string | null {
   );
 }
 
+function telegramHandleFromAuthInput(input: McpAuthInput): string | undefined {
+  return normalizeTelegramHeader(input.telegramUsername ?? input.telegramHandle) ?? undefined;
+}
+
 function normalizeTelegramHandleForComparison(raw: string): string | null {
   return normalizeTelegramHeader(raw)?.toLowerCase() ?? null;
 }
@@ -431,8 +435,8 @@ const authResolver: McpAuthResolver = {
         // JWT path
         try {
           const { payload } = await jwtVerify(input.bearerToken, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
-          if (typeof payload.id === 'string') return finalizeMcpIdentity(input.telegramHandle ?? input.telegramUsername, { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface });
-          if (typeof payload.sub === 'string') return finalizeMcpIdentity(input.telegramHandle ?? input.telegramUsername, { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface });
+          if (typeof payload.id === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface });
+          if (typeof payload.sub === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface });
           throw new Error('JWT payload missing user ID');
         } catch (err) {
           if (err instanceof TelegramIdentityError) throw err;
@@ -451,7 +455,7 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return finalizeMcpIdentity(input.telegramHandle ?? input.telegramUsername, { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface });
+            if (data?.userId) return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface });
           }
         } catch (err) {
           if (err instanceof TelegramIdentityError) throw err;
@@ -522,7 +526,7 @@ const authResolver: McpAuthResolver = {
             const networkScopeId = principal.agentId
               ? await resolveAgentNetworkScopeById(principal.agentId)
               : null;
-            return finalizeMcpIdentity(input.telegramHandle ?? input.telegramUsername, {
+            return finalizeMcpIdentity(telegramHandleFromAuthInput(input), {
               userId: principal.userId,
               ...(principal.agentId ? { agentId: principal.agentId } : {}),
               networkScopeId,
@@ -532,7 +536,7 @@ const authResolver: McpAuthResolver = {
         }
 
         if (sessionUserId) {
-          return finalizeMcpIdentity(input.telegramHandle ?? input.telegramUsername, { userId: sessionUserId, networkScopeId: null, clientSurface });
+          return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: sessionUserId, networkScopeId: null, clientSurface });
         }
       } catch (err) {
         if (err instanceof TelegramIdentityError) throw err;
