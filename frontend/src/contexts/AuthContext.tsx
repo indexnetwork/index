@@ -15,7 +15,7 @@ type AuthContextType = {
   error: string | null;
   refetchUser: () => Promise<void>;
   updateUser: (user: User) => void;
-  openLoginModal: () => void;
+  openLoginModal: (callbackURL?: string) => void;
   signOut: () => Promise<void>;
 };
 
@@ -30,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userFetchAttempted, setUserFetchAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [pendingCallbackURL, setPendingCallbackURL] = useState<string | undefined>(undefined);
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const api = useAuthenticatedAPI();
@@ -42,7 +43,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(updatedUser);
   }, []);
 
-  const openLoginModal = useCallback(() => {
+  const openLoginModal = useCallback((callbackURL?: string) => {
+    setPendingCallbackURL(callbackURL);
     setLoginModalOpen(true);
   }, []);
 
@@ -188,7 +190,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       )}
       <AuthModal
         isOpen={loginModalOpen}
-        onClose={() => setLoginModalOpen(false)}
+        onClose={() => { setPendingCallbackURL(undefined); setLoginModalOpen(false); }}
+        callbackURL={pendingCallbackURL}
       />
     </AuthContext.Provider>
   );

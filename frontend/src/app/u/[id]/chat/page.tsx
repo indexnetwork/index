@@ -20,20 +20,22 @@ export default function ChatPage() {
   const prefillMessage = initialState?.prefill ?? searchParams.get('msg') ?? undefined;
   const autoSend = initialState?.autoSend ?? false;
   const pendingOpportunityId = initialState?.opportunityId ?? undefined;
-  const { isAuthenticated, isLoading: authLoading } = useAuthContext();
+  const { isAuthenticated, isLoading: authLoading, openLoginModal } = useAuthContext();
   const usersService = useUsers();
   const opportunitiesService = useOpportunities();
   const opportunityAcceptedRef = useRef(false);
+  const loginPromptedRef = useRef(false);
 
   const [profileData, setProfileData] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      navigate('/');
+    if (!authLoading && !isAuthenticated && !loginPromptedRef.current) {
+      loginPromptedRef.current = true;
+      openLoginModal(window.location.href);
     }
-  }, [authLoading, isAuthenticated, navigate]);
+  }, [authLoading, isAuthenticated, openLoginModal]);
 
   useEffect(() => {
     const fetchData = async () => {
