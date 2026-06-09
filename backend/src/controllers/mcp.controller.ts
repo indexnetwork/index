@@ -564,7 +564,7 @@ const authResolver: McpAuthResolver = {
         return scheme?.toLowerCase() === 'bearer' && token ? token : undefined;
       })(),
       apiKey: request.headers.get('x-api-key') ?? undefined,
-      clientSurface: parseClientSurface(request.headers.get('x-index-surface')),
+      clientSurface: request.headers.get('x-index-surface')?.trim().toLowerCase() === 'telegram' ? 'telegram' : 'web',
       telegramHandle: request.headers.get('x-index-telegram-handle') ?? undefined,
       telegramUsername: request.headers.get('x-index-telegram-username') ?? undefined,
     };
