@@ -9,7 +9,7 @@ import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 const logger = protocolLogger("ChatTools:Premise");
 
 export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
-  const database = deps.database as unknown as PremiseGraphDatabase;
+  const database = deps.database as PremiseGraphDatabase;
   const premiseGraph = deps.graphs.premise;
 
   // ─────────────────────────────────────────────────────────────────────────────

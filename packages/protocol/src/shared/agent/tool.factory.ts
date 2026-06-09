@@ -127,7 +127,7 @@ export async function createChatTools(
     : undefined;
 
   const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue, sessionAwareEnqueue).createGraph();
-  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
+  const premiseGraph = new PremiseGraphFactory(database as PremiseGraphDatabase, embedder).createGraph();
   const profileGraph = new ProfileGraphFactory(database, scraper, deps.enricher, sessionAwareEnqueue, premiseGraph).createGraph();
   const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
