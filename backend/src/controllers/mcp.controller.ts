@@ -554,16 +554,19 @@ const authResolver: McpAuthResolver = {
   },
 
   async resolveUserId(request: Request): Promise<string> {
-    // Deprecated bridge: extract McpAuthInput from Request
+    // Deprecated bridge: extract McpAuthInput from Request using the same
+    // edge semantics as the protocol MCP transport.
     const input: McpAuthInput = {
       bearerToken: (() => {
         const auth = request.headers.get('Authorization');
         if (!auth) return undefined;
-        const [scheme, token] = auth.split(/\s+/, 2);
+        const [scheme, token] = auth.trim().split(/\s+/, 2);
         return scheme?.toLowerCase() === 'bearer' && token ? token : undefined;
       })(),
       apiKey: request.headers.get('x-api-key') ?? undefined,
-      clientSurface: undefined,
+      clientSurface: parseClientSurface(request.headers.get('x-index-surface')),
+      telegramHandle: request.headers.get('x-index-telegram-handle') ?? undefined,
+      telegramUsername: request.headers.get('x-index-telegram-username') ?? undefined,
     };
     const { userId } = await authResolver.resolveIdentity(input);
     return userId;

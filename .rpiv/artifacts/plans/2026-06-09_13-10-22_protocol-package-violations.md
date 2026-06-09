@@ -315,7 +315,7 @@ export type { NegotiationGraphLike } from "./negotiation/negotiation.state.js";
 - [x] Structural parity between dual definitions: `diff <(grep -n "^export" packages/protocol/src/shared/schemas/negotiation-state.schema.ts) <(grep -n "^export\|^export type\|^export interface" packages/protocol/src/negotiation/negotiation.state.ts | head -4)` passes
 
 #### Manual Verification:
-- [x] `negotiation-state.schema.ts` defines `NegotiationTurn` as a pure static interface (not `z.infer`)
+- [x] `negotiation-state.schema.ts` defines `NegotiationTurnSchema` as the canonical Zod schema and derives `NegotiationTurn` with `z.infer`
 - [x] `negotiation.state.ts` defines `NegotiationTurn`, `NegotiationOutcome`, `UserNegotiationContext`, `SeedAssessment` structurally identical to the shared schema (dual definitions — schema is canonical for shared interfaces; domain file keeps local copies for graph internals)
 - [x] `agent-dispatcher.interface.ts` imports negotiation types from `../schemas/negotiation-state.schema.js`
 
