@@ -1,28 +1,6 @@
 {
   "permissions": {
-    "allow": [
-      "Read",
-      "Bash(git check-ignore:*)",
-      "Bash(git branch:*)",
-      "Bash(git log:*)",
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git remote:*)",
-      "Bash(git fetch:*)",
-      "Bash(git worktree:*)",
-      "Bash(git checkout:*)",
-      "Bash(ls:*)",
-      "Bash(grep:*)",
-      "Bash(mkdir:*)",
-      "Bash(cat:*)",
-      "Bash(command -v:*)",
-      "Bash(bun run:*)",
-      "Bash(bun test:*)",
-      "Bash(bun install:*)",
-      "Bash(gh pr:*)",
-      "Bash(gh auth:*)",
-      "Bash(railway:*)"
-    ],
+    "allow": ["Read", "Bash"],
     "defaultMode": "acceptEdits"
   },
   "hooks": {
