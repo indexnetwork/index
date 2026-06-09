@@ -1,4 +1,4 @@
-import { ProfileDocument } from '../../profile/profile.generator.js';
+import type { ProfileDocument } from '../schemas/profile.schema.js';
 
 // ─── Inlined types (previously imported from outside the protocol lib) ───────
 
@@ -2050,8 +2050,14 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'findDuplicateUser'
   | 'mergeGhostUser'
   // ProfileGraph aggregate mode (premise-to-profile materialization)
+  // Premise lifecycle (CRUD + network assignment)
   | 'getPremisesForUser'
   | 'getPremisesForUserInNetworks'
+  | 'createPremise'
+  | 'getPremise'
+  | 'updatePremise'
+  | 'assignPremiseToNetwork'
+  | 'getPremiseNetworks'
   // Premise-to-premise discovery (path D) in OpportunityGraph
   | 'searchPremisesBySimilarity'
   | 'searchPremisesBySimilarityBatch'

@@ -6,14 +6,11 @@ export type { ChatTools } from "./shared/agent/tool.factory.js";
 export type { ModelConfig, ModelSettings } from "./shared/agent/model.config.js";
 export type {
   ToolContext,
-  ToolErrorReport,
   ResolvedToolContext,
   ToolDeps,
   ProtocolDeps,
-  DefineTool,
   RawToolDefinition,
   CompiledGraph,
-  ToolRegistry,
 } from "./shared/agent/tool.helpers.js";
 export { ChatContextAccessError, resolveChatContext } from "./shared/agent/tool.helpers.js";
 export { requestContext } from "./shared/observability/request-context.js";
@@ -97,6 +94,23 @@ export {
   type QuestionAnswer,
 } from "./shared/schemas/question.schema.js";
 export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
+export type { McpAuthInput } from "./shared/schemas/mcp-auth.schema.js";
+export {
+  ProfileIdentitySchema,
+  ProfileNarrativeSchema,
+  ProfileAttributesSchema,
+  ProfileDocumentSchema,
+  type ProfileDocument,
+} from "./shared/schemas/profile.schema.js";
+export type {
+  DiscoverySourceProfile,
+  DiscoverySummary,
+  DiscoveryNegotiation,
+  DiscoveryTurn,
+  DiscoveryOutcome,
+  DiscoveryQuestionInput,
+  NegotiationRole,
+} from "./shared/schemas/discovery-question.schema.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
@@ -166,15 +180,6 @@ export { createOpportunityTools } from "./opportunity/opportunity.tools.js";
 export { createProfileTools } from "./profile/profile.tools.js";
 export type { PresenterDatabase } from "./opportunity/opportunity.presenter.js";
 export { QuestionGenerator } from "./opportunity/question.generator.js";
-export type {
-  DiscoveryQuestionInput,
-  DiscoveryNegotiation,
-  DiscoveryOutcome,
-  DiscoveryTurn,
-  DiscoverySummary,
-  DiscoverySourceProfile,
-  NegotiationRole,
-} from "./opportunity/question.prompt.js";
 
 // ─── Support utilities ────────────────────────────────────────────────────────
 
@@ -236,8 +241,8 @@ export type {
   NegotiationTurn,
   NegotiationOutcome,
   SeedAssessment,
-  NegotiationGraphLike,
-} from "./negotiation/negotiation.state.js";
+} from "./shared/schemas/negotiation-state.schema.js";
+export type { NegotiationGraphLike } from "./negotiation/negotiation.state.js";
 
 // ─── Streamers ────────────────────────────────────────────────────────────────
 

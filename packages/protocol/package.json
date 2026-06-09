@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,7 +22,6 @@
   "dependencies": {
     "@langchain/core": "^1.1.17",
     "@langchain/langgraph": "^1.1.2",
-    "@langchain/langgraph-checkpoint-postgres": "^1.0.0",
     "@langchain/openai": "^1.2.3",
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",
     "dotenv": "^16.3.1",

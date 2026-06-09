@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "linear-index": {
+      "url": "https://mcp.linear.app/mcp",
+      "auth": "oauth",
+      "oauth": {
+        "clientName": "Pi Linear Index Network"
+      }
+    },
+    "linear-edge-city": {
+      "url": "https://mcp.linear.app/mcp",
+      "auth": "oauth",
+      "oauth": {
+        "clientName": "Pi Linear Edge City"
+      }
+    },
+    "railway": {
+      "command": "railway",
+      "args": ["mcp"]
+    }
+  }
+}

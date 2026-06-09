@@ -97,7 +97,7 @@ git push <indexnetwork-remote> main
 
 ### Subtrees
 
-The following packages are git subtrees tracked to external repos. **Syncing is automatic for Index-owned subtrees** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). AgentVillage is Edge-City-owned and is mounted as a git submodule at `packages/agentvillage`; `Edge-City/agentvillage` is canonical. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
+The following packages are git subtrees tracked to external repos. **Syncing is automatic for Index-owned subtrees** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). AgentVillage is Edge-City-owned and is mounted as a git submodule at `packages/edge-city/agentvillage`; `Edge-City/agentvillage` is canonical. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
 
 #### packages/protocol/ → indexnetwork/protocol
 
@@ -135,24 +135,24 @@ git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork
 git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git <branch>
 ```
 
-#### packages/agentvillage/ → Edge-City/agentvillage submodule
+#### packages/edge-city/agentvillage/ → Edge-City/agentvillage submodule
 
 The `@edge-city/agentvillage` Agent Village workspace, skills, and installer. Includes skills for edge-esmeralda, index-network, edgeos, and geo-esmeralda. This package is Edge-City-owned; `Edge-City/agentvillage` is canonical and this monorepo records a submodule pointer for local context only. See `docs/guides/agentvillage-submodule.md` for the workflow and migration preservation note. Do not use subtree push/pull for AgentVillage anymore. Make AgentVillage changes inside the submodule, push a branch/fork to `Edge-City/agentvillage`, open the PR there, then update this monorepo's submodule pointer after the canonical PR merges. The nested `skills/` directory syncs from `Edge-City/agentvillage` to `Edge-City/agentvillage-skills` via that repo's workflow.
 
 ```bash
 # First clone or after switching branches
-git submodule update --init packages/agentvillage
+git submodule update --init packages/edge-city/agentvillage
 
 # Work on AgentVillage against the canonical repository
-cd packages/agentvillage
+cd packages/edge-city/agentvillage
 git checkout -b <branch>
 # edit, commit, push to a fork/branch, then open a PR against Edge-City/agentvillage:main
 
-# After the Edge-City PR merges, update the pointer in this monorepo
-cd ../..
-git -C packages/agentvillage fetch origin main
-git -C packages/agentvillage checkout origin/main
-git add packages/agentvillage
+# After the Edge-City PR merges, update this monorepo's pointer
+cd ../../..
+git -C packages/edge-city/agentvillage fetch origin main
+git -C packages/edge-city/agentvillage checkout origin/main
+git add packages/edge-city/agentvillage
 ```
 
 ### Root
@@ -179,7 +179,7 @@ index/
 │   ├── protocol/        # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
 │   ├── cli/             # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
 │   ├── claude-plugin/   # @indexnetwork/claude-plugin — index-orchestrator and index-negotiator skills, subtree → indexnetwork/claude-plugin
-│   └── agentvillage/    # @edge-city/agentvillage — git submodule → Edge-City/agentvillage (canonical)
+│   └── edge-city/       # Edge-City submodules: agentvillage, landing, controlplane
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
 └── scripts/           # Worktree helpers, hooks, dev launcher

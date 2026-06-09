@@ -10,6 +10,7 @@ import { McpServer, fromJsonSchema } from '@modelcontextprotocol/server';
 import type { ServerContext, JsonSchemaType } from '@modelcontextprotocol/server';
 
 import type { McpAuthResolver } from '../shared/interfaces/auth.interface.js';
+import type { McpAuthInput } from '../shared/schemas/mcp-auth.schema.js';
 import type { ToolDeps, ResolvedToolContext } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
 import type { Question } from '../shared/schemas/question.schema.js';
@@ -413,6 +414,35 @@ After \`discover_opportunities\`, the tool result may include a second text bloc
 **Elicitation-capable clients** (those that declared \`elicitation\` support in \`initialize\`): the server dispatches \`elicitation/create\` requests directly — answers are written back to the chat session automatically. You will not see the envelope as a follow-up task in that case.
 `.trim();
 
+/**
+ * Extracts a Bearer token from an HTTP Authorization header.
+ */
+export function extractBearerToken(req: Request): string | undefined {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) return undefined;
+  const [scheme, token] = authHeader.trim().split(/\s+/, 2);
+  if (scheme?.toLowerCase() === 'bearer' && token) return token;
+  return undefined;
+}
+
+/**
+ * Normalizes the x-index-surface header to a typed surface value.
+ * Unknown or absent values collapse to 'web'.
+ */
+let hasWarnedInvalidSurface = false;
+export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
+  if (raw === null || raw === '') return 'web';
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed === '') return 'web';
+  if (trimmed === 'telegram') return 'telegram';
+  if (trimmed === 'web') return 'web';
+  if (!hasWarnedInvalidSurface) {
+    hasWarnedInvalidSurface = true;
+    logger.warn('Unknown x-index-surface value (collapsing to web; warning once per process)');
+  }
+  return 'web';
+}
+
 export function createMcpServer(
   deps: ToolDeps,
   authResolver: McpAuthResolver,
@@ -455,8 +485,17 @@ export function createMcpServer(
             };
           }
 
-          // Resolve authenticated identity (userId + optional agentId + optional network scope + optional surface)
-          const { userId, agentId, isSessionAuth, networkScopeId, clientSurface } = await authResolver.resolveIdentity(httpReq);
+          // Extract transport-neutral auth input DTO from the HTTP request
+          const mcpAuthInput: McpAuthInput = {
+            bearerToken: extractBearerToken(httpReq),
+            apiKey: httpReq.headers.get('x-api-key') ?? undefined,
+            clientSurface: parseClientSurface(httpReq.headers.get('x-index-surface')),
+            telegramHandle: httpReq.headers.get('x-index-telegram-handle') ?? undefined,
+            telegramUsername: httpReq.headers.get('x-index-telegram-username') ?? undefined,
+          };
+
+          // Resolve authenticated identity from the auth input DTO
+          const { userId, agentId, isSessionAuth, networkScopeId, clientSurface } = await authResolver.resolveIdentity(mcpAuthInput);
           reportUserId = userId;
 
           // Per-principal MCP throttle. Runs BEFORE any DB work so a throttled

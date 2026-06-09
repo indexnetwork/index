@@ -1,6 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import type { HydeGraphDatabase, PremiseGraphDatabase } from "../interfaces/database.interface.js";
+import type { HydeGraphDatabase } from "../interfaces/database.interface.js";
 import { IntentGraphFactory } from "../../intent/intent.graph.js";
 import { ProfileGraphFactory } from "../../profile/profile.graph.js";
 import { OpportunityGraphFactory } from "../../opportunity/opportunity.graph.js";
@@ -127,7 +127,7 @@ export async function createChatTools(
     : undefined;
 
   const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue, sessionAwareEnqueue).createGraph();
-  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
+  const premiseGraph = new PremiseGraphFactory(database, embedder).createGraph();
   const profileGraph = new ProfileGraphFactory(database, scraper, deps.enricher, sessionAwareEnqueue, premiseGraph).createGraph();
   const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
