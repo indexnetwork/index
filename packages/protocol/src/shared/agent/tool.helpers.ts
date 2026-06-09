@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ModelConfig } from "./model.config.js";
-import type { ProfileDocument } from "../../profile/profile.generator.js";
+import type { ProfileDocument } from "../schemas/profile.schema.js";
 import type {
   ChatGraphCompositeDatabase,
   NetworkMembership,

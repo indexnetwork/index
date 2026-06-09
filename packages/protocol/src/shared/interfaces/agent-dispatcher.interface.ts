@@ -6,7 +6,7 @@
  * The concrete implementation lives in the host application.
  */
 
-import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '../../negotiation/negotiation.state.js';
+import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '../schemas/negotiation-state.schema.js';
 
 /** Payload sent to the dispatcher for each negotiation turn. */
 export interface NegotiationTurnPayload {
