@@ -7,7 +7,7 @@
  * its own LLM-bound `QuestionGenerator` — callers inject one (or `undefined` to
  * opt out).
  */
-import type { DiscoveryQuestionInput } from "../../opportunity/question.prompt.js";
+import type { DiscoveryQuestionInput } from "../schemas/discovery-question.schema.js";
 import type { QuestionGenerationResult } from "../schemas/question.schema.js";
 
 export interface QuestionGeneratorReader {

@@ -3,13 +3,13 @@ import { z } from "zod";
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { PremiseGraphDatabase, PremiseRecord, PremiseValidity } from "../shared/interfaces/database.interface.js";
+import type { PremiseRecord, PremiseValidity } from "../shared/interfaces/database.interface.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ChatTools:Premise");
 
 export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
-  const database = deps.database as unknown as PremiseGraphDatabase;
+  const database = deps.database;
   const premiseGraph = deps.graphs.premise;
 
   // ─────────────────────────────────────────────────────────────────────────────

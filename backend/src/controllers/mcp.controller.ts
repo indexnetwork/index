@@ -52,7 +52,7 @@ import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
 import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput } from '@indexnetwork/protocol';
 
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -265,6 +265,10 @@ export function telegramHandleFromRequest(request: Request): string | null {
   );
 }
 
+function telegramHandleFromAuthInput(input: McpAuthInput): string | undefined {
+  return normalizeTelegramHeader(input.telegramUsername ?? input.telegramHandle) ?? undefined;
+}
+
 function normalizeTelegramHandleForComparison(raw: string): string | null {
   return normalizeTelegramHeader(raw)?.toLowerCase() ?? null;
 }
@@ -341,10 +345,8 @@ class TelegramIdentityError extends Error {
   }
 }
 
-async function finalizeMcpIdentity(request: Request, identity: ResolvedMcpIdentity): Promise<ResolvedMcpIdentity> {
-  if (identity.clientSurface !== 'telegram') return identity;
-  const telegramHandle = telegramHandleFromRequest(request);
-  if (!telegramHandle) return identity;
+async function finalizeMcpIdentity(telegramHandle: string | undefined, identity: ResolvedMcpIdentity): Promise<ResolvedMcpIdentity> {
+  if (identity.clientSurface !== 'telegram' || !telegramHandle) return identity;
 
   let existingSocials: TelegramSocial[];
   let matchingTelegramSocials: TelegramSocial[];
@@ -423,23 +425,18 @@ export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
 }
 
 const authResolver: McpAuthResolver = {
-  async resolveIdentity(request: Request): Promise<ResolvedMcpIdentity> {
-    const clientSurface = parseClientSurface(request.headers.get('x-index-surface'));
-    const authHeader = request.headers.get('Authorization');
-    const [scheme, token] = authHeader?.split(/\s+/, 2) ?? [];
+  async resolveIdentity(input: McpAuthInput): Promise<ResolvedMcpIdentity> {
+    const clientSurface = input.clientSurface ?? 'web';
 
-    if (scheme?.toLowerCase() === 'bearer' && token) {
-      const isJwt = token.split('.').length === 3;
+    if (input.bearerToken) {
+      const isJwt = input.bearerToken.split('.').length === 3;
 
       if (isJwt) {
-        // JWT path: verify with JWKS (issued by the jwt() plugin for CLI/API use).
-        // JWTs don't carry an agentId — they authenticate users, not agents — so
-        // there is no network scope to compute; the field is explicitly null
-        // (not omitted) so callers cannot conflate "no scope" with "scope unset".
+        // JWT path
         try {
-          const { payload } = await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
-          if (typeof payload.id === 'string') return finalizeMcpIdentity(request, { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface });
-          if (typeof payload.sub === 'string') return finalizeMcpIdentity(request, { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface });
+          const { payload } = await jwtVerify(input.bearerToken, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
+          if (typeof payload.id === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface });
+          if (typeof payload.sub === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface });
           throw new Error('JWT payload missing user ID');
         } catch (err) {
           if (err instanceof TelegramIdentityError) throw err;
@@ -450,16 +447,15 @@ const authResolver: McpAuthResolver = {
           throw new Error(`Invalid or expired access token: ${msg}`, { cause: err });
         }
       } else {
-        // Opaque token path: issued by the mcp() plugin via OAuth flow — also
-        // session-auth, no agent identity, so network scope is always null.
+        // Opaque token path
         try {
           const res = await fetch(`${BASE_URL}/api/auth/mcp/get-session`, {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${input.bearerToken}` },
             signal: AbortSignal.timeout(5000),
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return finalizeMcpIdentity(request, { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface });
+            if (data?.userId) return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface });
           }
         } catch (err) {
           if (err instanceof TelegramIdentityError) throw err;
@@ -470,13 +466,12 @@ const authResolver: McpAuthResolver = {
       }
     }
 
-    const apiKey = request.headers.get('x-api-key');
-    if (apiKey) {
+    if (input.apiKey) {
       let sessionUserId: string | undefined;
 
       try {
         const sessionRes = await fetch(`${BASE_URL}/api/auth/get-session`, {
-          headers: { 'x-api-key': apiKey },
+          headers: { 'x-api-key': input.apiKey },
           signal: AbortSignal.timeout(5000),
         });
         if (sessionRes.ok) {
@@ -488,7 +483,7 @@ const authResolver: McpAuthResolver = {
       } catch { /* session lookup failed, try direct DB */ }
 
       try {
-        const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(apiKey));
+        const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input.apiKey));
         const hashed = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
           .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         const drizzle = await import('../lib/drizzle/drizzle');
@@ -528,12 +523,10 @@ const authResolver: McpAuthResolver = {
           }
 
           if (principal) {
-            // For network-scoped agents, resolve the bound network scope so the
-            // MCP server can clamp `indexScope` to that single network downstream.
             const networkScopeId = principal.agentId
               ? await resolveAgentNetworkScopeById(principal.agentId)
               : null;
-            return finalizeMcpIdentity(request, {
+            return finalizeMcpIdentity(telegramHandleFromAuthInput(input), {
               userId: principal.userId,
               ...(principal.agentId ? { agentId: principal.agentId } : {}),
               networkScopeId,
@@ -543,7 +536,7 @@ const authResolver: McpAuthResolver = {
         }
 
         if (sessionUserId) {
-          return finalizeMcpIdentity(request, { userId: sessionUserId, networkScopeId: null, clientSurface });
+          return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: sessionUserId, networkScopeId: null, clientSurface });
         }
       } catch (err) {
         if (err instanceof TelegramIdentityError) throw err;
@@ -561,7 +554,21 @@ const authResolver: McpAuthResolver = {
   },
 
   async resolveUserId(request: Request): Promise<string> {
-    const { userId } = await authResolver.resolveIdentity(request);
+    // Deprecated bridge: extract McpAuthInput from Request using the same
+    // edge semantics as the protocol MCP transport.
+    const input: McpAuthInput = {
+      bearerToken: (() => {
+        const auth = request.headers.get('Authorization');
+        if (!auth) return undefined;
+        const [scheme, token] = auth.trim().split(/\s+/, 2);
+        return scheme?.toLowerCase() === 'bearer' && token ? token : undefined;
+      })(),
+      apiKey: request.headers.get('x-api-key') ?? undefined,
+      clientSurface: request.headers.get('x-index-surface')?.trim().toLowerCase() === 'telegram' ? 'telegram' : 'web',
+      telegramHandle: request.headers.get('x-index-telegram-handle') ?? undefined,
+      telegramUsername: request.headers.get('x-index-telegram-username') ?? undefined,
+    };
+    const { userId } = await authResolver.resolveIdentity(input);
     return userId;
   },
 };
