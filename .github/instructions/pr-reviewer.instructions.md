@@ -16,6 +16,11 @@ applyTo: "**"
 - Flag manual type definitions where Drizzle inference (`$inferSelect`, `$inferInsert`) would suffice.
 - Flag imports from `lib/schema` — always import from `src/schemas/database.schema.ts`.
 
+## Optional / Nullable Columns in Drizzle Upserts
+
+- When an upsert writes an optional column as `col: value ?? null` or `col: value ?? undefined`, check whether this clobbers an existing non-null value on the conflict update path. The preferred pattern is a conditional spread: `...(value !== undefined ? { col: value } : {})` — this omits the column entirely when omitted by the caller, so the DB default or existing row value is preserved.
+- This applies equally to `.values()` and `.set()` in `.onConflictDoUpdate()`.
+
 ## Database & Migrations
 
 - Flag any migration file that does not follow the naming pattern `{NNNN}_{action}_{target}[_{detail}].sql` (e.g. `0001_add_chat_session_share_token.sql`).

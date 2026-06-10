@@ -53,9 +53,16 @@ function isBroadAttributiveIntent(intent: VerifiedIntent): boolean {
   return intent.verification?.referential_breadth === "broad";
 }
 
+const NULL_LIKE_SPECIFICITY_WARNING_VALUES = new Set(["null", "undefined"]);
+
+function normalizeSpecificityWarning(value: string | null | undefined): string | null {
+  const warning = value?.trim();
+  if (!warning) return null;
+  return NULL_LIKE_SPECIFICITY_WARNING_VALUES.has(warning.toLowerCase()) ? null : warning;
+}
+
 function specificityWarningFor(intent: VerifiedIntent): string {
-  const warning = intent.verification?.specificity_warning?.trim();
-  return warning && warning.length > 0 ? warning : DEFAULT_SPECIFICITY_WARNING;
+  return normalizeSpecificityWarning(intent.verification?.specificity_warning) ?? DEFAULT_SPECIFICITY_WARNING;
 }
 
 export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
@@ -388,7 +395,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
           semanticEntropy: v.verification?.semantic_entropy ?? null,
           referentialBreadth: v.verification?.referential_breadth ?? null,
           missingSelectionalConstraints: v.verification?.missing_selectional_constraints ?? [],
-          specificityWarning: isBroad ? specificityWarningFor(v) : v.verification?.specificity_warning ?? null,
+          specificityWarning: isBroad ? specificityWarningFor(v) : normalizeSpecificityWarning(v.verification?.specificity_warning),
         };
         return (
           "```intent_proposal\n" +

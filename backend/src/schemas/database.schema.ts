@@ -346,6 +346,7 @@ export const premiseNetworks = pgTable('premise_networks', {
   premiseId: text('premise_id').notNull().references(() => premises.id, { onDelete: 'cascade' }),
   networkId: text('network_id').notNull().references(() => networks.id),
   relevancyScore: numeric('relevancy_score'),
+  assignmentMetadata: jsonb('assignment_metadata').$type<import('@indexnetwork/protocol').NetworkAssignmentMetadata>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   pk: primaryKey({ columns: [t.premiseId, t.networkId] }),
@@ -638,6 +639,7 @@ export const intentNetworks = pgTable('intent_networks', {
   intentId: text('intent_id').notNull().references(() => intents.id),
   networkId: text('network_id').notNull().references(() => networks.id),
   relevancyScore: numeric('relevancy_score'),
+  assignmentMetadata: jsonb('assignment_metadata').$type<import('@indexnetwork/protocol').NetworkAssignmentMetadata>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   pk: primaryKey({ columns: [t.intentId, t.networkId] }),

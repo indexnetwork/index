@@ -18,6 +18,7 @@ import {
   networkMembers,
   intents,
   intentNetworks,
+  premises,
   opportunities,
 } from '../../schemas/database.schema';
 import {
@@ -320,6 +321,76 @@ describe('ChatDatabaseAdapter', () => {
     await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
     expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
     await db.delete(intents).where(eq(intents.id, newIntentId));
+  });
+
+  it('should persist assignment metadata for intent-network assignment', async () => {
+    const newIntentId = uuidv4();
+    const metadata = {
+      resourceType: 'intent' as const,
+      mode: 'automatic' as const,
+      scope: 'global' as const,
+      policy: 'unified-threshold-v1' as const,
+      threshold: 0.7,
+      promptPresence: 'both' as const,
+      rawScores: { indexScore: 0.8, memberScore: 0.7 },
+      finalScore: 0.76,
+      assigned: true,
+      reason: 'Matched network and member prompts.',
+      evaluator: 'intent-indexer',
+      source: 'test',
+      createdAt: '2026-06-09T00:00:00.000Z',
+    };
+
+    await db.insert(intents).values({
+      id: newIntentId,
+      userId: fixture.userBId,
+      payload: TEST_PREFIX + 'Assignment metadata test',
+      sourceType: 'discovery_form',
+      sourceId: fixture.userBId,
+    });
+
+    await adapter.assignIntentToNetwork(newIntentId, fixture.networkId, 0.76, metadata);
+    const scores = await adapter.getIntentIndexScores(newIntentId);
+    const row = scores.find((score) => score.networkId === fixture.networkId);
+
+    expect(row?.relevancyScore).toBe(0.76);
+    expect(row?.assignmentMetadata).toEqual(metadata);
+
+    await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
+    await db.delete(intents).where(eq(intents.id, newIntentId));
+  });
+
+  it('should persist assignment metadata for premise-network assignment', async () => {
+    const premise = await adapter.createPremise({
+      userId: fixture.userBId,
+      assertion: { text: TEST_PREFIX + 'Premise metadata test', tier: 'assertive' },
+      provenance: { source: 'explicit', confidence: 1, timestamp: '2026-06-09T00:00:00.000Z' },
+      validity: { volatile: false },
+    });
+    const metadata = {
+      resourceType: 'premise' as const,
+      mode: 'automatic' as const,
+      scope: 'global' as const,
+      policy: 'unified-threshold-v1' as const,
+      threshold: 0.7,
+      promptPresence: 'index' as const,
+      rawScores: { indexScore: 0.9 },
+      finalScore: 0.9,
+      assigned: true,
+      reason: 'Matched network prompt.',
+      evaluator: 'premise-indexer',
+      source: 'test',
+      createdAt: '2026-06-09T00:00:00.000Z',
+    };
+
+    await adapter.assignPremiseToNetwork(premise.id, fixture.networkId, 0.9, metadata);
+    const rows = await adapter.getPremiseNetworks(premise.id);
+    const row = rows.find((score) => score.networkId === fixture.networkId);
+
+    expect(row?.relevancyScore).toBe(0.9);
+    expect(row?.assignmentMetadata).toEqual(metadata);
+
+    await db.delete(premises).where(eq(premises.id, premise.id));
   });
 
   it('should get owned indexes for owner', async () => {

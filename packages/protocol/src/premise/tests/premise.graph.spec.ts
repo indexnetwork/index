@@ -42,6 +42,8 @@ function createMockDatabase(): PremiseGraphDatabase {
     },
     assignPremiseToNetwork: async () => {},
     getPremiseNetworks: async () => [],
+    getAssignmentNetworkIdsForUser: async () => [],
+    getNetworkAssignmentContext: async () => null,
     getUserIndexIds: async () => [],
     getNetwork: async () => null,
     getNetworkMemberContext: async () => null,
@@ -92,13 +94,65 @@ describe("PremiseGraphFactory", () => {
       tier: "assertive" as const,
       volatile: false,
       provenanceSource: "enrichment" as const,
+      provenanceSourceId: "source-1",
       provenanceConfidence: 0.85,
     });
 
     expect(result.premise).toBeDefined();
     expect(result.premise!.provenance.source).toBe("enrichment");
+    expect(result.premise!.provenance.sourceId).toBe("source-1");
     expect(result.premise!.provenance.confidence).toBe(0.85);
     expect(result.error).toBeUndefined();
+  }, 60_000);
+
+  it("assigns created premises to all membership networks with metadata", async () => {
+    const assignments: Array<{ networkId: string; score: number; metadata: unknown }> = [];
+    const db = {
+      ...createMockDatabase(),
+      getAssignmentNetworkIdsForUser: async () => ["n1", "n2"],
+      getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
+      assignPremiseToNetwork: async (_premiseId: string, networkId: string, score: number, metadata: unknown) => {
+        assignments.push({ networkId, score, metadata });
+      },
+    };
+    const embedder = createMockEmbedder();
+    const premiseIndexer = { invoke: async () => ({ indexScore: 0, memberScore: 0, reasoning: "unused" }) };
+    const factory = new PremiseGraphFactory(db, embedder, premiseIndexer as never);
+    const graph = factory.createGraph();
+
+    await graph.invoke({
+      userId: "user-1",
+      assertionText: "I build AI developer tools",
+      tier: "assertive" as const,
+      volatile: false,
+    });
+
+    expect(assignments.map((a) => a.networkId).sort()).toEqual(["n1", "n2"]);
+    expect(assignments[0].metadata).toMatchObject({ resourceType: "premise", scope: "global", assigned: true, finalScore: 1 });
+  }, 60_000);
+
+  it("restricts premise assignment to active network scope", async () => {
+    const assignments: string[] = [];
+    const db = {
+      ...createMockDatabase(),
+      getAssignmentNetworkIdsForUser: async () => ["active-network", "other-network"],
+      getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
+      assignPremiseToNetwork: async (_premiseId: string, networkId: string) => {
+        assignments.push(networkId);
+      },
+    };
+    const factory = new PremiseGraphFactory(db, createMockEmbedder(), { invoke: async () => ({ indexScore: 0, memberScore: 0, reasoning: "unused" }) } as never);
+    const graph = factory.createGraph();
+
+    await graph.invoke({
+      userId: "user-1",
+      assertionText: "I am attending the active network event",
+      tier: "assertive" as const,
+      volatile: false,
+      networkScopeId: "active-network",
+    });
+
+    expect(assignments).toEqual(["active-network"]);
   }, 60_000);
 
   it("returns premises in query mode without LLM calls", async () => {

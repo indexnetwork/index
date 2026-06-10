@@ -273,3 +273,47 @@ export async function resolveConnectLink(code: string): Promise<ResolvedLink | n
   return resolvedLink;
 }
 
+/**
+ * Resolve a short code for a specific authenticated recipient.
+ *
+ * This filters by `userId` before expired-opportunity replacement lookup or TTL
+ * extension, so wrong-account callers cannot mutate `connect_links` rows merely
+ * by probing another user's code.
+ *
+ * @param code - The 10-char base62 short code.
+ * @param userId - Authenticated recipient id that must own the link row.
+ * @returns The resolved link row, or `null` for unknown, wrong-recipient,
+ *   expired-terminal, or otherwise unavailable links.
+ */
+export async function resolveConnectLinkForUser(
+  code: string,
+  userId: string,
+): Promise<ResolvedLink | null> {
+  const [row] = await db
+    .select()
+    .from(connectLinks)
+    .where(and(eq(connectLinks.code, code), eq(connectLinks.userId, userId)))
+    .limit(1);
+  if (!row) return null;
+
+  const now = new Date();
+  const opp = await resolveOpportunityForLink(row.opportunityId, userId);
+  if (!opp) return null;
+
+  if (TERMINAL_STATUSES.has(opp.status)) return null;
+
+  const resolvedLink = toResolvedLink(row, opp.id);
+  if (row.expiresAt > now) {
+    return resolvedLink;
+  }
+
+  // Extend TTL only after the authenticated recipient has matched the row.
+  const expiresAt = new Date(now.getTime() + TTL_DAYS * 24 * 60 * 60 * 1000);
+  await db
+    .update(connectLinks)
+    .set({ expiresAt })
+    .where(and(eq(connectLinks.code, code), eq(connectLinks.userId, userId)));
+
+  return resolvedLink;
+}
+

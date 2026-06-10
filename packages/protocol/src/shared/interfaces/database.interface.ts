@@ -1,3 +1,4 @@
+import type { NetworkAssignmentMetadata } from '../schemas/network-assignment.schema.js';
 import type { ProfileDocument } from '../schemas/profile.schema.js';
 
 // ─── Inlined types (previously imported from outside the protocol lib) ───────
@@ -26,6 +27,12 @@ export interface OnboardingProfileSeed {
   bio?: string;
   location?: string;
   socials?: { label: string; value: string }[];
+}
+
+export interface NetworkAssignmentContext {
+  networkId: string;
+  indexPrompt: string | null;
+  memberPrompt: string | null;
 }
 
 /** Onboarding flow state stored as JSON on the user record. */
@@ -485,6 +492,7 @@ export interface Opportunity {
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface CreateOpportunityData {
@@ -495,6 +503,7 @@ export interface CreateOpportunityData {
   confidence: string;
   status?: OpportunityStatus;
   expiresAt?: Date;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface OpportunityQueryOptions {
@@ -854,11 +863,19 @@ export interface Database {
   getNetworkMemberContext(
     networkId: string,
     userId: string
-  ): Promise<{
-    networkId: string;
-    indexPrompt: string | null;
-    memberPrompt: string | null;
-  } | null>;
+  ): Promise<NetworkAssignmentContext | null>;
+
+  /**
+   * Network IDs that should be considered for assignment policy. Unlike
+   * getUserIndexIds, this is not gated by network_members.autoAssign.
+   */
+  getAssignmentNetworkIdsForUser(userId: string): Promise<string[]>;
+
+  /**
+   * Prompt context for assignment policy. Unlike getNetworkMemberContext, this is
+   * not gated by network_members.autoAssign.
+   */
+  getNetworkAssignmentContext(networkId: string, userId: string): Promise<NetworkAssignmentContext | null>;
 
   /**
    * Whether the intent is currently assigned to the index.
@@ -868,12 +885,21 @@ export interface Database {
   /**
    * Assigns an intent to an index (inserts intent_indexes row).
    */
-  assignIntentToNetwork(intentId: string, networkId: string, relevancyScore?: number): Promise<void>;
+  assignIntentToNetwork(
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: NetworkAssignmentMetadata,
+  ): Promise<void>;
 
   /**
    * Returns per-index relevancy scores for an intent's index assignments.
    */
-  getIntentIndexScores(intentId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>>;
+  getIntentIndexScores(intentId: string): Promise<Array<{
+    networkId: string;
+    relevancyScore: number | null;
+    assignmentMetadata?: NetworkAssignmentMetadata | null;
+  }>>;
 
   /**
    * Removes an intent from an index (deletes intent_indexes row).
@@ -1467,9 +1493,18 @@ export interface Database {
     retractedAt?: Date;
   }): Promise<PremiseRecord>;
 
-  assignPremiseToNetwork(premiseId: string, networkId: string, relevancyScore: number): Promise<void>;
+  assignPremiseToNetwork(
+    premiseId: string,
+    networkId: string,
+    relevancyScore: number,
+    assignmentMetadata?: NetworkAssignmentMetadata,
+  ): Promise<void>;
 
-  getPremiseNetworks(premiseId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>>;
+  getPremiseNetworks(premiseId: string): Promise<Array<{
+    networkId: string;
+    relevancyScore: number | null;
+    assignmentMetadata?: NetworkAssignmentMetadata | null;
+  }>>;
 
   /**
    * Cosine similarity search against premise embeddings, scoped to shared networks.
@@ -1651,7 +1686,12 @@ export interface UserDatabase {
   associateIntentWithNetworks(intentId: string, networkIds: string[]): Promise<void>;
 
   /** Assign an intent to an index. */
-  assignIntentToNetwork(intentId: string, networkId: string, relevancyScore?: number): Promise<void>;
+  assignIntentToNetwork(
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: NetworkAssignmentMetadata,
+  ): Promise<void>;
 
   /** Unassign an intent from an index. */
   unassignIntentFromIndex(intentId: string, networkId: string): Promise<void>;
@@ -1679,11 +1719,10 @@ export interface UserDatabase {
   getNetworkMembership(networkId: string): Promise<NetworkMembership | null>;
 
   /** Get index + member context for the authenticated user (for auto-assign). */
-  getNetworkMemberContext(networkId: string): Promise<{
-    networkId: string;
-    indexPrompt: string | null;
-    memberPrompt: string | null;
-  } | null>;
+  getNetworkMemberContext(networkId: string): Promise<NetworkAssignmentContext | null>;
+
+  /** Get index + member context for the authenticated user without auto-assign gating. */
+  getNetworkAssignmentContext?(networkId: string): Promise<NetworkAssignmentContext | null>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Index CRUD Operations (owner operations on own indexes)
@@ -1967,7 +2006,7 @@ export type ProfileGraphDatabase = Pick<
  */
 export type PremiseGraphDatabase = Pick<
   Database,
-  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext'
+  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getAssignmentNetworkIdsForUser' | 'getNetworkAssignmentContext' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext'
 >;
 
 /**
@@ -2016,12 +2055,14 @@ export type ChatGraphCompositeDatabase = Pick<
   // NetworkGraph subgraph requirements (index created intents in user's indexes)
   | 'getPublicIndexesNotJoined'
   | 'getUserIndexIds'
+  | 'getAssignmentNetworkIdsForUser'
   | 'getNetworkMemberships'
   | 'getNetworkMembership'
   | 'getNetwork'
   | 'getNetworkWithPermissions'
   | 'getIntentForIndexing'
   | 'getNetworkMemberContext'
+  | 'getNetworkAssignmentContext'
   | 'isIntentAssignedToIndex'
   | 'assignIntentToNetwork'
   | 'unassignIntentFromIndex'
@@ -2092,6 +2133,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'getNetworkMemberCount'
   | 'getIntentIndexScores'
   | 'getNetworkMemberContext'
+  | 'getNetworkAssignmentContext'
   // Read/update/send modes
   | 'getOpportunity'
   | 'getOpportunitiesForUser'
@@ -2340,6 +2382,7 @@ export type IntentNetworkGraphDatabase = Pick<
   Database,
   | 'getIntentForIndexing'
   | 'getNetworkMemberContext'
+  | 'getNetworkAssignmentContext'
   | 'getNetwork'
   | 'isIntentAssignedToIndex'
   | 'assignIntentToNetwork'

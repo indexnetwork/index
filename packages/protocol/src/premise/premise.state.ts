@@ -35,6 +35,11 @@ export const PremiseGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
+  provenanceSourceId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   provenanceConfidence: Annotation<number | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
@@ -43,6 +48,11 @@ export const PremiseGraphState = Annotation.Root({
   operationMode: Annotation<'create' | 'update' | 'query'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'create',
+  }),
+
+  networkScopeId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
   }),
 
   targetPremiseId: Annotation<string | undefined>({

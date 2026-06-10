@@ -111,6 +111,49 @@ export type {
   DiscoveryQuestionInput,
   NegotiationRole,
 } from "./shared/schemas/discovery-question.schema.js";
+export {
+  NetworkAssignmentResourceTypeSchema,
+  NetworkAssignmentModeSchema,
+  NetworkAssignmentScopeSchema,
+  NetworkAssignmentPromptPresenceSchema,
+  NetworkAssignmentPolicySchema,
+  NetworkAssignmentRawScoresSchema,
+  NetworkAssignmentMetadataSchema,
+  OpportunityEvidenceKindSchema,
+  OpportunityEvidenceSchema,
+} from "./shared/schemas/network-assignment.schema.js";
+export type {
+  NetworkAssignmentResourceType,
+  NetworkAssignmentMode,
+  NetworkAssignmentScope,
+  NetworkAssignmentPromptPresence,
+  NetworkAssignmentPolicy,
+  NetworkAssignmentRawScores,
+  NetworkAssignmentMetadata,
+  OpportunityEvidenceKind,
+  OpportunityEvidence,
+} from "./shared/schemas/network-assignment.schema.js";
+export {
+  DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD,
+  classifyPromptPresence,
+  resolveAssignmentNetworkScope,
+  buildNetworkAssignmentDecision,
+  combineAssignmentScores,
+} from "./shared/assignment/network-assignment.policy.js";
+export type {
+  PromptPresenceInput,
+  ResolveAssignmentNetworkScopeArgs,
+  BuildNetworkAssignmentDecisionArgs,
+  NetworkAssignmentDecision,
+} from "./shared/assignment/network-assignment.policy.js";
+export {
+  buildCandidateEvidence,
+  withCandidateEvidence,
+  mergeOpportunityEvidence,
+  withMatchedStrategies,
+  renderOpportunityEvidenceForPrompt,
+} from "./opportunity/opportunity.evidence.js";
+export type { EvidenceCandidateInput } from "./opportunity/opportunity.evidence.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
@@ -145,6 +188,7 @@ export type { SuggestionGeneratorInput } from "./chat/chat.suggester.js";
 export { generateInviteMessage } from "./contact/contact.inviter.js";
 export type { InviteInput, InviteOutput } from "./contact/contact.inviter.js";
 export { IntentIndexer } from "./intent/intent.indexer.js";
+export type { IntentIndexerOutput } from "./intent/intent.indexer.js";
 export { PremiseAnalyzer } from "./premise/premise.analyzer.js";
 export type { PremiseAnalyzerOutput } from "./premise/premise.analyzer.js";
 export { PremiseDecomposer } from "./premise/premise.decomposer.js";

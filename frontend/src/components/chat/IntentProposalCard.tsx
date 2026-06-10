@@ -49,6 +49,14 @@ const COUNTDOWN_SECONDS = 5;
 const DEFAULT_SPECIFICITY_WARNING =
   "This signal is broad and may produce many weak matches. Add a more concrete role, outcome, location, timeframe, domain, or specific need to get better recommendations.";
 
+const NULL_LIKE_SPECIFICITY_WARNING_VALUES = new Set(["null", "undefined"]);
+
+function normalizeSpecificityWarning(value: string | null | undefined): string | null {
+  const warning = value?.trim();
+  if (!warning) return null;
+  return NULL_LIKE_SPECIFICITY_WARNING_VALUES.has(warning.toLowerCase()) ? null : warning;
+}
+
 /**
  * Auto-save card for intent creation in chat.
  * Countdown from 5 with Skip option; auto-saves after countdown; Undo after save.
@@ -73,7 +81,7 @@ export default function IntentProposalCard({
   const statusResolved = currentStatus !== undefined;
   const effectiveStatus = currentStatus ?? (actionTaken ? actionTaken : "pending");
   const isPending = statusResolved && effectiveStatus === "pending" && !actionTaken && !actionError;
-  const specificityWarning = card.specificityWarning?.trim();
+  const specificityWarning = normalizeSpecificityWarning(card.specificityWarning);
   const requiresManualApproval = Boolean(specificityWarning || card.referentialBreadth === "broad");
   // When manual approval is required, always show a warning banner — fall back to
   // the default if the backend sent a broad breadth without a specific message, so

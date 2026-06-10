@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 
 import { createIntentTools } from "../intent.tools.js";
+import { DEFAULT_SPECIFICITY_WARNING } from "../intent.specificity.js";
 
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
@@ -132,6 +133,98 @@ describe("create_intent", () => {
     expect(result.error).toContain("broad");
     expect(result.error).toContain("role, outcome, timeframe");
     expect(createCalls).toBe(0);
+  });
+
+  test("uses default broad warning in MCP auto-approve mode when verifier emits a null-like string", async () => {
+    let createCalls = 0;
+    const tools = captureTools({
+      userDb: {},
+      systemDb: {},
+      graphs: {
+        profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
+        intent: {
+          invoke: async (input: { operationMode?: string }) => {
+            if (input.operationMode === "propose") {
+              return {
+                verifiedIntents: [{
+                  description: "Meet creative people, builders, and makers interested in AI and somatic exploration",
+                  score: 82,
+                  verification: {
+                    classification: "DIRECTIVE",
+                    semantic_entropy: 0.42,
+                    referential_breadth: "broad",
+                    missing_selectional_constraints: ["role", "outcome", "timeframe"],
+                    specificity_warning: " null ",
+                  },
+                }],
+                agentTimings: [],
+                trace: [],
+              };
+            }
+            createCalls++;
+            return { executionResults: [{ success: true }], agentTimings: [] };
+          },
+        },
+      },
+    } as unknown as ToolDeps);
+    const tool = tools.find((t) => t.name === "create_intent")!;
+
+    const result = JSON.parse(await tool.handler({
+      context: makeContext("alice"),
+      query: {
+        description: "Meet creative people, builders, and makers interested in AI and somatic exploration",
+        autoApprove: true,
+      },
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain(DEFAULT_SPECIFICITY_WARNING);
+    expect(result.error).not.toMatch(/\bnull\b/i);
+    expect(result.error).toContain("role, outcome, timeframe");
+    expect(createCalls).toBe(0);
+  });
+
+  test("normalizes null-like specificity warnings in web proposal cards", async () => {
+    const tools = captureTools({
+      userDb: {},
+      systemDb: {},
+      graphs: {
+        profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
+        intent: {
+          invoke: async () => ({
+            verifiedIntents: [{
+              description: "Find agent builders for TypeScript protocol tooling",
+              score: 77,
+              verification: {
+                classification: "DIRECTIVE",
+                semantic_entropy: 0.33,
+                referential_breadth: "moderate",
+                missing_selectional_constraints: [],
+                specificity_warning: " undefined ",
+              },
+            }],
+            agentTimings: [],
+            trace: [],
+          }),
+        },
+      },
+    } as unknown as ToolDeps);
+    const tool = tools.find((t) => t.name === "create_intent")!;
+    const context = { ...makeContext("alice"), isMcp: false } as ResolvedToolContext;
+
+    const result = JSON.parse(await tool.handler({
+      context,
+      query: {
+        description: "Find agent builders for TypeScript protocol tooling",
+        autoApprove: false,
+      },
+    }));
+
+    expect(result.success).toBe(true);
+    const proposal = extractFirstIntentProposal(result.data.message);
+    expect(proposal.referentialBreadth).toBe("moderate");
+    expect(proposal.specificityWarning).toBeNull();
+    expect(proposal.semanticEntropy).toBe(0.33);
   });
 
   test("surfaces referential-breadth warnings in web proposal cards", async () => {

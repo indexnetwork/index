@@ -1,6 +1,9 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 
 import { IntentIndexer } from "../../intent/intent.indexer.js";
+import {
+  buildNetworkAssignmentDecision,
+} from "../../shared/assignment/network-assignment.policy.js";
 import type { IntentNetworkGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { timed } from "../../shared/observability/performance.js";
@@ -16,7 +19,6 @@ import {
 } from "./indexer.state.js";
 
 const logger = protocolLogger("IntentNetworkGraphFactory");
-const QUALIFICATION_THRESHOLD = 0.7;
 
 /**
  * Factory class to build and compile the Intent Index Graph.
@@ -82,7 +84,15 @@ export class IntentNetworkGraphFactory {
 
           // Direct assignment (skip evaluation)
           if (state.skipEvaluation) {
-            await this.database.assignIntentToNetwork(intentId, networkId, 1.0);
+            const decision = buildNetworkAssignmentDecision({
+              resourceType: "intent",
+              mode: "manual_override",
+              scope: "network",
+              evaluator: "intent-network-graph",
+              source: "manual-index-assignment",
+              createdAt: new Date().toISOString(),
+            });
+            await this.database.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
             return {
               agentTimings: agentTimingsAccum,
               assignmentResult: { networkId, assigned: true, success: true } as AssignmentResult,
@@ -96,24 +106,33 @@ export class IntentNetworkGraphFactory {
             return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "Intent not found for networking." } };
           }
 
-          const indexContext = await this.database.getNetworkMemberContext(networkId, intentForIndexing.userId);
+          const indexContext = await this.database.getNetworkAssignmentContext(networkId, intentForIndexing.userId);
           if (!indexContext) {
-            // No prompts or not eligible - auto-assign
-            await this.database.assignIntentToNetwork(intentId, networkId, 1.0);
             return {
               agentTimings: agentTimingsAccum,
-              assignmentResult: { networkId, assigned: true, success: true } as AssignmentResult,
-              mutationResult: { success: true, message: "Intent assigned to network (auto-assign, no prompts)." },
+              assignmentResult: { networkId, assigned: false, success: false } as AssignmentResult,
+              mutationResult: { success: false, error: "Network assignment context not found." },
             };
           }
-
-          const hasNoPrompts = !indexContext.indexPrompt?.trim() && !indexContext.memberPrompt?.trim();
+          const indexPrompt = indexContext.indexPrompt ?? null;
+          const memberPrompt = indexContext.memberPrompt ?? null;
+          const hasNoPrompts = !indexPrompt?.trim() && !memberPrompt?.trim();
           if (hasNoPrompts) {
-            await this.database.assignIntentToNetwork(intentId, networkId, 1.0);
+            const decision = buildNetworkAssignmentDecision({
+              resourceType: "intent",
+              mode: "automatic",
+              scope: "network",
+              indexPrompt,
+              memberPrompt,
+              evaluator: "intent-indexer",
+              source: "intent-network-graph",
+              createdAt: new Date().toISOString(),
+            });
+            await this.database.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
             return {
               agentTimings: agentTimingsAccum,
               assignmentResult: { networkId, assigned: true, success: true } as AssignmentResult,
-              mutationResult: { success: true, message: "Intent assigned to network (no prompts, auto-assign)." },
+              mutationResult: { success: true, message: "Intent assigned to network (no prompts)." },
             };
           }
 
@@ -140,8 +159,8 @@ export class IntentNetworkGraphFactory {
           try {
             result = await indexer.evaluate(
               intentForIndexing.payload,
-              indexContext.indexPrompt,
-              indexContext.memberPrompt,
+              indexPrompt,
+              memberPrompt,
               sourceName,
               renderedContext
             );
@@ -161,42 +180,28 @@ export class IntentNetworkGraphFactory {
             };
           }
 
-          const { indexScore, memberScore } = result;
-          const ip = indexContext.indexPrompt?.trim();
-          const mp = indexContext.memberPrompt?.trim();
+          const decision = buildNetworkAssignmentDecision({
+            resourceType: "intent",
+            mode: "automatic",
+            scope: "network",
+            indexPrompt,
+            memberPrompt,
+            rawScores: { indexScore: result.indexScore, memberScore: result.memberScore },
+            evaluator: "intent-indexer",
+            source: "intent-network-graph",
+            reason: result.reasoning,
+            createdAt: new Date().toISOString(),
+          });
 
-          let shouldAssign = false;
-          let finalScore = 0;
-
-          if (ip && mp) {
-            if (indexScore > QUALIFICATION_THRESHOLD && memberScore > QUALIFICATION_THRESHOLD) {
-              shouldAssign = true;
-              finalScore = indexScore * 0.6 + memberScore * 0.4;
-            }
-          } else if (ip) {
-            if (indexScore > QUALIFICATION_THRESHOLD) {
-              shouldAssign = true;
-              finalScore = indexScore;
-            }
-          } else if (mp) {
-            if (memberScore > QUALIFICATION_THRESHOLD) {
-              shouldAssign = true;
-              finalScore = memberScore;
-            }
-          } else {
-            shouldAssign = true;
-            finalScore = 1.0;
-          }
-
-          if (shouldAssign) {
-            await this.database.assignIntentToNetwork(intentId, networkId, finalScore);
+          if (decision.assigned) {
+            await this.database.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
             return {
               agentTimings: agentTimingsAccum,
               evaluation: result,
               shouldAssign: true,
-              finalScore,
+              finalScore: decision.finalScore,
               assignmentResult: { networkId, assigned: true, success: true } as AssignmentResult,
-              mutationResult: { success: true, message: `Intent assigned to network (score: ${finalScore.toFixed(2)}).` },
+              mutationResult: { success: true, message: `Intent assigned to network (score: ${decision.finalScore.toFixed(2)}).` },
             };
           }
 
@@ -204,9 +209,9 @@ export class IntentNetworkGraphFactory {
             agentTimings: agentTimingsAccum,
             evaluation: result,
             shouldAssign: false,
-            finalScore,
+            finalScore: decision.finalScore,
             assignmentResult: { networkId, assigned: false, success: true } as AssignmentResult,
-            mutationResult: { success: false, error: `Intent did not qualify for this network (score: ${finalScore.toFixed(2)}).` },
+            mutationResult: { success: false, error: `Intent did not qualify for this network (score: ${decision.finalScore.toFixed(2)}).` },
           };
         } catch (err) {
           logger.error("Assign failed", { error: err });
