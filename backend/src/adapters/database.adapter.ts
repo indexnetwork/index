@@ -567,13 +567,13 @@ export class IntentDatabaseAdapter {
         intentId,
         networkId,
         relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
-        assignmentMetadata: assignmentMetadata ?? null,
+        ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
       })
       .onConflictDoUpdate({
         target: [schema.intentNetworks.intentId, schema.intentNetworks.networkId],
         set: {
           relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
-          assignmentMetadata: assignmentMetadata ?? null,
+          ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
         },
       });
   }
@@ -1740,13 +1740,13 @@ export class ChatDatabaseAdapter {
         intentId,
         networkId,
         relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
-        assignmentMetadata: assignmentMetadata ?? null,
+        ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
       })
       .onConflictDoUpdate({
         target: [intentNetworks.intentId, intentNetworks.networkId],
         set: {
           relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
-          assignmentMetadata: assignmentMetadata ?? null,
+          ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
         },
       });
   }
@@ -4169,13 +4169,13 @@ export class ChatDatabaseAdapter {
         premiseId,
         networkId,
         relevancyScore: String(relevancyScore),
-        assignmentMetadata: assignmentMetadata ?? null,
+        ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
       })
       .onConflictDoUpdate({
         target: [schema.premiseNetworks.premiseId, schema.premiseNetworks.networkId],
         set: {
           relevancyScore: String(relevancyScore),
-          assignmentMetadata: assignmentMetadata ?? null,
+          ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
         },
       });
   }
@@ -5797,13 +5797,13 @@ export class NetworkGraphDatabaseAdapter {
         intentId,
         networkId,
         relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
-        assignmentMetadata: assignmentMetadata ?? null,
+        ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
       })
       .onConflictDoUpdate({
         target: [intentNetworks.intentId, intentNetworks.networkId],
         set: {
           relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
-          assignmentMetadata: assignmentMetadata ?? null,
+          ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
         },
       });
   }
