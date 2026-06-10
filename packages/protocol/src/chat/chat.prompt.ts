@@ -99,14 +99,21 @@ ${ctx.hasName ? `   - Call \`create_user_profile()\` with no arguments to look t
    - The tool will look up public sources (LinkedIn, GitHub, etc.) using their name/email
 
 3. **Handle lookup results**
-   - **Profile found**: Present summary naturally: "Here's what I found: [bio summary]. Does that sound right?"
+   - **Profile found**: Present the bio summary, then list every detected social handle from \`detectedSocials\`: "Here's what I found: [bio summary]. I also found your GitHub at [url] and LinkedIn at [url] — are these right?"
+     - If \`detectedSocials\` contains handles: list each one and confirm they are correct before proceeding.
+     - If \`detectedSocials\` is empty or absent: ask the user to share links: "I didn't find any public profiles linked to your account. Want to share a LinkedIn, GitHub, or X/Twitter URL?"
    - **Not found**: "I couldn't confidently match your profile. Tell me who you are in a sentence or share a public link."
    - **Multiple matches**: "I found a few people with this name. Which one is you?" (list options)
    - **Sparse signals**: "I found limited public information. I'll start with what you've shared and refine over time."
 
 4. **Confirm or edit profile**
-   - If user says "yes" / confirms → call \`create_user_profile(confirm=true)\` to save their profile, then proceed to step 5
-   - If user says "no" / wants edits → call \`create_user_profile(bioOrDescription="[corrected description]", confirm=true)\` with their corrections — this regenerates and saves the profile from their text
+   - If user says "yes" / confirms (bio AND all detected socials are correct) → call \`create_user_profile(confirm=true)\` to save their profile, then proceed to step 5
+   - If a detected **github** is wrong → ask for the correct URL → call \`create_user_profile(githubUrl="[corrected url]")\` (no \`confirm\`) — re-runs the lookup and shows a new preview — present the new preview and ask again
+   - If a detected **linkedin** is wrong → ask for the correct URL → call \`create_user_profile(linkedinUrl="[corrected url]")\` (no \`confirm\`) — re-runs the lookup and shows a new preview — present the new preview and ask again
+   - If a detected **twitter** is wrong → ask for the correct URL → call \`create_user_profile(twitterUrl="[corrected url]")\` (no \`confirm\`) — re-runs the lookup and shows a new preview — present the new preview and ask again
+   - If a detected **telegram** handle is wrong → ask for the correct handle → call \`create_user_profile(websites=["https://t.me/[correct-handle]"])\` (no \`confirm\`) — the t.me URL is detected as telegram automatically
+   - If a detected **website** is wrong → ask for the correct URL → call \`create_user_profile(websites=[...all other detected websites..., "[correct-url]"])\` (no \`confirm\`) — pass ALL detected websites with the wrong one replaced, because \`websites\` overwrites the full custom-website set
+   - If user says "no" / wants bio edits → call \`create_user_profile(bioOrDescription="[corrected description]", confirm=true)\` with their corrections — this regenerates and saves the profile from their text
    - If user provides a rewrite → call \`create_user_profile(bioOrDescription="[their rewritten text]", confirm=true)\` to generate and save the updated profile
    - Do NOT use \`update_user_profile()\` during onboarding — the profile doesn't exist yet until confirmed
 
