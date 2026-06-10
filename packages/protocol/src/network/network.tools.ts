@@ -116,8 +116,11 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             networks: publicNetworksForRanking,
           });
           if (rankingResult) {
-            // Normalize LLM output: keep only input IDs, de-dupe, append any IDs
-            // the model omitted (in original order) so every network is represented.
+            // Normalize LLM output against the ranked slice (top 50):
+            // keep only IDs from the input set, de-dupe preserving order, then
+            // append any slice IDs the model omitted. Networks beyond the top-50
+            // slice are not in orderedNetworkIds and will sort to the tail in the
+            // frontend (consistent with the UI's own 50-item page size).
             const inputIds = publicNetworksForRanking.map((n) => n.networkId);
             const inputIdSet = new Set(inputIds);
             const seen = new Set<string>();

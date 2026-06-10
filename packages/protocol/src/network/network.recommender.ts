@@ -73,12 +73,10 @@ OUTPUT RULES:
  * LLM-based agent that ranks public communities against a user's profile.
  * Used during onboarding step 6 to surface the most relevant communities first.
  *
- * Modeled after IntentIndexer: module-level createModel, withStructuredOutput,
- * invokeWithAbortSignal, null-on-error fallback.
- *
- * Note: `createModel` is called inside the constructor (not at module level) so
- * that importing this file does not require OPENROUTER_API_KEY to be set — tests
- * that import `createNetworkTools` without a live LLM env remain unaffected.
+ * Follows the IntentIndexer pattern: `withStructuredOutput`, `invokeWithAbortSignal`,
+ * null-on-error fallback. `createModel` is called inside the constructor (not at
+ * module level) so that importing this file does not require OPENROUTER_API_KEY to
+ * be set — tests that import `createNetworkTools` without a live LLM env are unaffected.
  */
 export class NetworkRecommender {
   private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
