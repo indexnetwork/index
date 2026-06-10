@@ -55,7 +55,7 @@ export type OpportunityEvaluatorLike = {
   invokeEntityBundle?: (input: EvaluatorInput, options: { minScore?: number }) => Promise<Array<{
     reasoning: string;
     score: number;
-    actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null }>;
+    actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null; evidenceKey?: string | null }>;
   }>>;
 };
 import type { Embedder, LensEmbedding } from '../shared/interfaces/embedder.interface.js';
@@ -80,6 +80,12 @@ import { protocolLogger, withCallLogging } from '../shared/observability/protoco
 import { timed } from '../shared/observability/performance.js';
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { requestContext } from "../shared/observability/request-context.js";
+import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
+import {
+  mergeOpportunityEvidence,
+  withCandidateEvidence,
+  withMatchedStrategies,
+} from './opportunity.evidence.js';
 
 const logger = protocolLogger('OpportunityGraph');
 
@@ -98,6 +104,14 @@ function getSourcePremiseDiscoveryLimit(): number {
   if (raw === undefined || raw.trim() === '') return DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT;
+}
+
+function buildEvaluatorEvidenceKey(candidate: CandidateMatch): string {
+  return [
+    candidate.candidateUserId,
+    candidate.networkId,
+    candidate.candidateIntentId ?? candidate.candidatePremiseId ?? candidate.sourceContextId ?? 'profile',
+  ].join(':');
 }
 
 /** Input shape for the HyDE graph invoke call (query-based embedding). */
@@ -310,7 +324,7 @@ export class OpportunityGraphFactory {
             // BACKEND-5: thousands of parallel vector searches for premise-rich users.
             const sourcePremises: Array<{ premiseId: Id<'premises'>; embedding: number[] }> = [];
             const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
-            const rawContexts = contextToIntentEnabled
+            const rawContexts = contextToIntentEnabled && typeof this.database.getUserContexts === 'function'
               ? await this.database.getUserContexts(discoveryUserId)
               : [];
             const sourceContexts = rawContexts
@@ -702,7 +716,7 @@ export class OpportunityGraphFactory {
                 const intentNetworkIds = await this.database.getNetworkIdsForIntent(intent.id);
                 const overlapping = sharedIndexIds.filter(id => intentNetworkIds.includes(id));
                 for (const networkId of overlapping) {
-                  directCandidates.push({
+                  directCandidates.push(withCandidateEvidence({
                     candidateUserId: state.targetUserId,
                     candidateIntentId: intent.id as Id<'intents'>,
                     networkId,
@@ -711,23 +725,22 @@ export class OpportunityGraphFactory {
                     candidatePayload: intent.payload,
                     candidateSummary: intent.summary ?? undefined,
                     discoverySource: 'query',
-                  });
+                  }));
                 }
               }
             }
 
             // Always add a profile-level candidate (so evaluation runs even without intents)
             if (directCandidates.length === 0) {
-              directCandidates.push({
+              directCandidates.push(withCandidateEvidence({
                 candidateUserId: state.targetUserId,
-                candidateIntentId: undefined,
                 networkId: sharedIndexIds[0] as Id<'networks'>,
                 similarity: 1.0,
                 lens: 'explicit_mention',
                 candidatePayload: '',
                 candidateSummary: undefined,
                 discoverySource: 'query',
-              });
+              }));
             }
 
             logger.verbose('[Graph:Discovery] Direct candidates constructed', {
@@ -906,7 +919,7 @@ export class OpportunityGraphFactory {
                   minScore,
                 });
                 for (const r of results.filter((x) => x.type === 'intent')) {
-                  all.push({
+                  all.push(withCandidateEvidence({
                     candidateUserId: r.userId as Id<'users'>,
                     candidateIntentId: r.id as Id<'intents'>,
                     networkId: targetIndex.networkId,
@@ -915,10 +928,10 @@ export class OpportunityGraphFactory {
                     candidatePayload: '',
                     candidateSummary: undefined,
                     discoverySource: 'query' as const,
-                  });
+                  }));
                 }
                 for (const r of results.filter((x) => x.type === 'premise')) {
-                  all.push({
+                  all.push(withCandidateEvidence({
                     candidateUserId: r.userId as Id<'users'>,
                     candidatePremiseId: r.id as Id<'premises'>,
                     networkId: targetIndex.networkId,
@@ -927,7 +940,7 @@ export class OpportunityGraphFactory {
                     candidatePayload: '',
                     candidateSummary: undefined,
                     discoverySource: 'query' as const,
-                  });
+                  }));
                 }
               })
             );
@@ -994,27 +1007,29 @@ export class OpportunityGraphFactory {
                   limitPerSource: PREMISE_MATCH_LIMIT_PER_SOURCE,
                 })
               : (await Promise.all(
-                  sourcePremises.map(sp =>
-                    self.database.searchPremisesBySimilarity({
+                  sourcePremises.map(async (sp) => {
+                    const results = await self.database.searchPremisesBySimilarity({
                       embedding: sp.embedding,
                       networkIds: targetNetworkIds,
                       excludeUserId: discoveryUserId,
                       limit: PREMISE_MATCH_LIMIT_PER_SOURCE,
-                    })
-                  )
+                    });
+                    return results.map((r) => ({ ...r, sourcePremiseId: sp.premiseId }));
+                  })
                 )).flat();
 
             const premiseCandidates: CandidateMatch[] = [];
             for (const r of rawResults) {
-              premiseCandidates.push({
+              premiseCandidates.push(withCandidateEvidence({
                 candidateUserId: r.userId as Id<'users'>,
+                sourcePremiseId: r.sourcePremiseId as Id<'premises'> | undefined,
                 candidatePremiseId: r.premiseId as Id<'premises'>,
                 networkId: r.networkId as Id<'networks'>,
                 similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
                 lens: 'premise_match',
                 candidatePayload: r.assertionText ?? '',
                 discoverySource: 'premise-similarity',
-              });
+              }));
             }
 
             // Dedup by userId + premiseId + networkId (a premise can appear in multiple networks)
@@ -1076,16 +1091,17 @@ export class OpportunityGraphFactory {
                   minScore,
                 });
                 for (const r of results.filter(r => r.type === 'intent')) {
-                  contextCandidates.push({
+                  contextCandidates.push(withCandidateEvidence({
                     candidateUserId: r.userId as Id<'users'>,
                     candidateIntentId: r.id as Id<'intents'>,
+                    sourceContextId: ctx.contextId,
                     networkId: ctx.networkId,
                     similarity: r.score,
                     lens: r.matchedVia,
                     candidatePayload: '',
                     candidateSummary: undefined,
                     discoverySource: 'context-to-intent',
-                  });
+                  }));
                 }
               } else {
                 // Fallback: raw context embedding search (no HyDE docs yet)
@@ -1097,16 +1113,17 @@ export class OpportunityGraphFactory {
                   minScore: minScore,
                 });
                 for (const r of results) {
-                  contextCandidates.push({
+                  contextCandidates.push(withCandidateEvidence({
                     candidateUserId: r.userId as Id<'users'>,
                     candidateIntentId: r.intentId as Id<'intents'>,
+                    sourceContextId: ctx.contextId,
                     networkId: r.networkId as Id<'networks'>,
                     similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
                     lens: 'context_match',
                     candidatePayload: r.payload ?? '',
                     candidateSummary: r.summary ?? undefined,
                     discoverySource: 'context-to-intent',
-                  });
+                  }));
                 }
               }
             }
@@ -1143,18 +1160,23 @@ export class OpportunityGraphFactory {
                   merged.set(key, { ...c, _strategies: new Set([c.discoverySource ?? 'unknown']) });
                 } else {
                   existing._strategies.add(c.discoverySource ?? 'unknown');
+                  const mergedEvidence = mergeOpportunityEvidence(existing.evidence, c.evidence);
                   if (c.similarity > existing.similarity) {
-                    Object.assign(existing, c);
+                    Object.assign(existing, { ...c, evidence: mergedEvidence });
+                  } else {
+                    existing.evidence = mergedEvidence;
                   }
                 }
               }
             }
             return Array.from(merged.values()).map(({ _strategies, ...c }) => {
+              const matchedStrategies = Array.from(_strategies);
               const boost = Math.min((_strategies.size - 1) * 0.05, 0.15);
               return {
                 ...c,
                 similarity: Math.min(c.similarity + boost, 1.0),
-                matchedStrategies: Array.from(_strategies),
+                matchedStrategies,
+                evidence: withMatchedStrategies(mergeOpportunityEvidence(c.evidence), matchedStrategies),
               };
             });
           }
@@ -1226,7 +1248,7 @@ export class OpportunityGraphFactory {
                 minScore,
               });
               for (const result of results.filter((r) => r.type === 'intent')) {
-                allCandidates.push({
+                allCandidates.push(withCandidateEvidence({
                   candidateUserId: result.userId as Id<'users'>,
                   candidateIntentId: result.id as Id<'intents'>,
                   networkId: targetIndex.networkId,
@@ -1235,10 +1257,10 @@ export class OpportunityGraphFactory {
                   candidatePayload: '',
                   candidateSummary: undefined,
                   discoverySource: 'query' as const,
-                });
+                }));
               }
               for (const result of results.filter((r) => r.type === 'premise')) {
-                allCandidates.push({
+                allCandidates.push(withCandidateEvidence({
                   candidateUserId: result.userId as Id<'users'>,
                   candidatePremiseId: result.id as Id<'premises'>,
                   networkId: targetIndex.networkId,
@@ -1247,7 +1269,7 @@ export class OpportunityGraphFactory {
                   candidatePayload: '',
                   candidateSummary: undefined,
                   discoverySource: 'query' as const,
-                });
+                }));
               }
             })
           );
@@ -1480,6 +1502,7 @@ export class OpportunityGraphFactory {
               summary: i.summary,
             })),
             networkId: '' as Id<'networks'>,  // Placeholder — overwritten per-pairing below
+            evidenceKey: `${discoveryUserId}::source`,
             ragScore: undefined,
             matchedVia: undefined,
           };
@@ -1496,6 +1519,7 @@ export class OpportunityGraphFactory {
                   intentSummary = intent.summary ?? undefined;
                 }
               }
+              const evidenceKey = buildEvaluatorEvidenceKey(c);
               return {
                 userId: c.candidateUserId,
                 profile: {
@@ -1511,15 +1535,37 @@ export class OpportunityGraphFactory {
                     ? [{ intentId: c.candidateIntentId, payload: intentPayload ?? '', summary: intentSummary }]
                     : undefined,
                 networkId: c.networkId,
+                evidenceKey,
                 ragScore: c.similarity * 100,
                 matchedVia: c.lens,
+                evidence: c.evidence,
               };
             })
           );
 
           const userIdToIndexId = new Map<string, Id<'networks'>>();
+          const evidenceByEntityKey = new Map<string, OpportunityEvidence[]>();
+          const entityKeysByUserId = new Map<string, string[]>();
           for (const e of candidateEntities) {
             if (!userIdToIndexId.has(e.userId)) userIdToIndexId.set(e.userId, e.networkId as Id<'networks'>);
+            if (e.evidenceKey) {
+              evidenceByEntityKey.set(
+                e.evidenceKey,
+                mergeOpportunityEvidence(evidenceByEntityKey.get(e.evidenceKey), e.evidence),
+              );
+              entityKeysByUserId.set(e.userId, [...(entityKeysByUserId.get(e.userId) ?? []), e.evidenceKey]);
+            }
+          }
+
+          function evidenceForActor(actor: { userId: string; intentId?: string | null; evidenceKey?: string | null }): OpportunityEvidence[] | undefined {
+            if (actor.evidenceKey) return evidenceByEntityKey.get(actor.evidenceKey);
+            const keys = entityKeysByUserId.get(actor.userId) ?? [];
+            const intentKey = actor.intentId ? keys.find((key) => key.endsWith(`:${actor.intentId}`)) : undefined;
+            if (intentKey) return evidenceByEntityKey.get(intentKey);
+            // Avoid leaking unrelated resource evidence when the evaluator collapsed multiple
+            // candidates for the same user into a profile-only actor.
+            if (keys.length === 1) return evidenceByEntityKey.get(keys[0]);
+            return undefined;
           }
 
           // Lower default threshold to 50 for better recall
@@ -1536,7 +1582,7 @@ export class OpportunityGraphFactory {
           const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
           const parallelErrors: Array<{ candidateUserId: string; candidateName: string; error: string; durationMs: number }> = [];
 
-          let pairwiseOpportunities: Array<{ reasoning: string; score: number; actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null }> }>;
+          let pairwiseOpportunities: Array<{ reasoning: string; score: number; actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null; evidenceKey?: string | null }> }>;
 
           if (runParallel) {
             // Experimental: one LLM call per candidate, all fired in parallel
@@ -1578,7 +1624,7 @@ export class OpportunityGraphFactory {
                       error: _errMsg,
                       durationMs: _evalDuration,
                     });
-                    return [] as Array<{ reasoning: string; score: number; actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null }> }>;
+                    return [] as Array<{ reasoning: string; score: number; actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null; evidenceKey?: string | null }> }>;
                   });
               })
             );
@@ -1687,6 +1733,7 @@ export class OpportunityGraphFactory {
           const evaluatedOpportunities: EvaluatedOpportunity[] = pairwiseOpportunities.map((op) => ({
             reasoning: op.reasoning,
             score: op.score,
+            evidence: mergeOpportunityEvidence(...op.actors.map(evidenceForActor)),
             actors: op.actors.map((a) => {
               const isSource = a.userId === discoveryUserId;
               if (isSource) {
@@ -2973,6 +3020,9 @@ export class OpportunityGraphFactory {
                 },
                 confidence: String(evaluated.score / 100),
                 status: initialStatus,
+                metadata: {
+                  evidence: evaluated.evidence ?? [],
+                },
               };
             }
 

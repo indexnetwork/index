@@ -30,9 +30,19 @@ import {
   type IntentJobPayload,
   type IntentQueueDatabase,
 } from '../intent.queue';
+import { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD } from '@indexnetwork/protocol';
 
-/** Cast a plain object to IntentQueueDatabase for tests (avoids satisfying full adapter type). */
-const asIntentDb = (db: unknown): IntentQueueDatabase => db as IntentQueueDatabase;
+/** Cast a plain object to IntentQueueDatabase for tests and provide assignment-policy defaults. */
+const asIntentDb = (db: Partial<IntentQueueDatabase> & { getUserIndexIds?: (userId: string) => Promise<string[]> }): IntentQueueDatabase => ({
+  getIntentForIndexing: async () => null,
+  getAssignmentNetworkIdsForUser: async (userId: string) => db.getUserIndexIds?.(userId) ?? [],
+  getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
+  assignIntentToNetwork: async () => {},
+  deleteHydeDocumentsForSource: async () => 0,
+  getProfile: async () => null,
+  getActiveIntents: async () => [],
+  ...db,
+} as IntentQueueDatabase);
 
 describe('IntentQueue', () => {
   describe('constructor and static', () => {
@@ -185,51 +195,164 @@ describe('IntentQueue', () => {
       expect(invokeHyde).toHaveBeenCalled();
     });
 
-    it('generate_hyde: networkScopeId restricts assignment to scope ∪ personal networks', async () => {
+    it('generate_hyde: networkScopeId restricts assignment to active network only', async () => {
       const invokeHyde = mock(async () => {});
       const addOpportunityJob = mock(async () => ({}));
       const assignIntentToNetwork = mock(async () => {});
-      const getUserPersonalNetworkIds = mock(async () => ['personal-net']);
+      const getAssignmentNetworkIdsForUser = mock(async () => ['scope-net', 'personal-net', 'other-net']);
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
-        getUserIndexIds: async () => ['scope-net', 'personal-net', 'other-net'],
-        getUserPersonalNetworkIds,
-        getNetworkMemberContext: async () => ({ indexPrompt: null, memberPrompt: null }),
+        getAssignmentNetworkIdsForUser,
+        getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
         assignIntentToNetwork,
         deleteHydeDocumentsForSource: async () => 0,
       };
       const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde, addOpportunityJob });
       await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1', networkScopeId: 'scope-net' });
 
-      expect(getUserPersonalNetworkIds).toHaveBeenCalledWith('u1');
-      const assignedNetworkIds = assignIntentToNetwork.mock.calls.map((c) => c[1]);
-      expect(assignedNetworkIds.sort()).toEqual(['personal-net', 'scope-net']);
-      expect(assignedNetworkIds).not.toContain('other-net');
+      expect(getAssignmentNetworkIdsForUser).toHaveBeenCalledWith('u1');
+      expect(assignIntentToNetwork.mock.calls.map((c) => c[1])).toEqual(['scope-net']);
       expect(invokeHyde).toHaveBeenCalled();
       // Discovery must inherit the agent's network scope — otherwise a network-scoped
       // agent's intent gets matched against every network the user belongs to.
       expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1', networkIds: ['scope-net'] });
     });
 
-    it('generate_hyde: no networkScopeId leaves all user index IDs eligible', async () => {
+    it('generate_hyde: global assignment uses all membership networks and persists metadata', async () => {
       const invokeHyde = mock(async () => {});
       const addOpportunityJob = mock(async () => ({}));
       const assignIntentToNetwork = mock(async () => {});
-      const getUserPersonalNetworkIds = mock(async () => ['personal-net']);
       const db = {
-        getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
-        getUserIndexIds: async () => ['scope-net', 'personal-net', 'other-net'],
-        getUserPersonalNetworkIds,
-        getNetworkMemberContext: async () => ({ indexPrompt: null, memberPrompt: null }),
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build AI tools', userId: 'u1', sourceType: 'discovery_form', sourceId: 'u1' }),
+        getAssignmentNetworkIdsForUser: async () => ['n1', 'n2'],
+        getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
         assignIntentToNetwork,
         deleteHydeDocumentsForSource: async () => 0,
       };
       const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde, addOpportunityJob });
       await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
 
-      expect(getUserPersonalNetworkIds).not.toHaveBeenCalled();
-      const assignedNetworkIds = assignIntentToNetwork.mock.calls.map((c) => c[1]);
-      expect(assignedNetworkIds.sort()).toEqual(['other-net', 'personal-net', 'scope-net']);
+      expect(assignIntentToNetwork.mock.calls.map((c) => c[1]).sort()).toEqual(['n1', 'n2']);
+      const metadata = assignIntentToNetwork.mock.calls[0][3];
+      expect(metadata).toMatchObject({ resourceType: 'intent', mode: 'automatic', scope: 'global', assigned: true, finalScore: 1 });
+    });
+
+    it('generate_hyde: prompted networks use injected evaluator and unified threshold', async () => {
+      const assignIntentToNetwork = mock(async () => {});
+      const evaluateIntentAssignment = mock(async () => ({ indexScore: 0.8, memberScore: 0.6, reasoning: 'Weighted match' }));
+      const db = {
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build AI tools', userId: 'u1', sourceType: null, sourceId: null }),
+        getAssignmentNetworkIdsForUser: async () => ['n1'],
+        getNetworkAssignmentContext: async () => ({ networkId: 'n1', indexPrompt: 'AI founders', memberPrompt: 'developer tools' }),
+        assignIntentToNetwork,
+        deleteHydeDocumentsForSource: async () => 0,
+      };
+      const queue = new IntentQueue({
+        database: asIntentDb(db),
+        invokeHyde: mock(async () => {}),
+        addOpportunityJob: mock(async () => ({})),
+        evaluateIntentAssignment,
+      });
+
+      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
+
+      expect(evaluateIntentAssignment).toHaveBeenCalled();
+      expect(assignIntentToNetwork).toHaveBeenCalledWith('i1', 'n1', 0.72, expect.objectContaining({ finalScore: 0.72, promptPresence: 'both' }));
+    });
+
+    describe('network assignment domain invariants', () => {
+      it('evaluates all user memberships in global scope and stores assignment metadata', async () => {
+        const assignIntentToNetwork = mock(async () => {});
+        const evaluateIntentAssignment = mock(async () => ({
+          indexScore: 0.86,
+          memberScore: 0.82,
+          reasoning: 'Intent matches network and member prompts.',
+        }));
+        const getAssignmentNetworkIdsForUser = mock(async () => ['net-a', 'net-b']);
+        const getNetworkAssignmentContext = mock(async (networkId: string) => ({
+          networkId,
+          indexPrompt: `Index prompt for ${networkId}`,
+          memberPrompt: `Member prompt for ${networkId}`,
+        }));
+        const db = {
+          getIntentForIndexing: async () => ({ id: 'intent-1', payload: 'Build protocol tools', userId: 'user-1', sourceType: null, sourceId: null }),
+          getAssignmentNetworkIdsForUser,
+          getNetworkAssignmentContext,
+          assignIntentToNetwork,
+          deleteHydeDocumentsForSource: async () => 0,
+        };
+        const queue = new IntentQueue({
+          database: asIntentDb(db),
+          invokeHyde: mock(async () => {}),
+          addOpportunityJob: mock(async () => ({})),
+          evaluateIntentAssignment,
+        });
+
+        await queue.processJob('generate_hyde', { intentId: 'intent-1', userId: 'user-1' });
+
+        expect(getAssignmentNetworkIdsForUser).toHaveBeenCalledWith('user-1');
+        expect(assignIntentToNetwork.mock.calls.map((call) => call[1]).sort()).toEqual(['net-a', 'net-b']);
+        for (const call of assignIntentToNetwork.mock.calls) {
+          expect(call[3]).toEqual(expect.objectContaining({
+            resourceType: 'intent',
+            mode: 'automatic',
+            scope: 'global',
+            policy: 'unified-threshold-v1',
+            threshold: DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD,
+            assigned: true,
+          }));
+        }
+      });
+
+      it('limits network-scoped assignment to the requested network', async () => {
+        const getNetworkAssignmentContext = mock(async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }));
+        const assignIntentToNetwork = mock(async () => {});
+        const db = {
+          getIntentForIndexing: async () => ({ id: 'intent-1', payload: 'Build protocol tools', userId: 'user-1', sourceType: null, sourceId: null }),
+          getAssignmentNetworkIdsForUser: mock(async () => ['net-a', 'net-b']),
+          getNetworkAssignmentContext,
+          assignIntentToNetwork,
+          deleteHydeDocumentsForSource: async () => 0,
+        };
+        const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde: mock(async () => {}), addOpportunityJob: mock(async () => ({})) });
+
+        await queue.processJob('generate_hyde', { intentId: 'intent-1', userId: 'user-1', networkScopeId: 'net-b' });
+
+        expect(getNetworkAssignmentContext).toHaveBeenCalledTimes(1);
+        expect(getNetworkAssignmentContext).toHaveBeenCalledWith('net-b', 'user-1');
+        expect(assignIntentToNetwork.mock.calls.map((call) => call[1])).toEqual(['net-b']);
+      });
+
+      it('skips assignment fail-closed when membership context disappears', async () => {
+        const assignIntentToNetwork = mock(async () => {});
+        const evaluateIntentAssignment = mock(async () => ({
+          indexScore: 0.9,
+          memberScore: 0.9,
+          reasoning: 'Would match if context existed.',
+        }));
+        const db = {
+          getIntentForIndexing: async () => ({ id: 'intent-1', payload: 'Build protocol tools', userId: 'user-1', sourceType: null, sourceId: null }),
+          getAssignmentNetworkIdsForUser: mock(async () => ['net-a', 'net-b']),
+          getNetworkAssignmentContext: mock(async (networkId: string) => (
+            networkId === 'net-a'
+              ? { networkId, indexPrompt: null, memberPrompt: null }
+              : null
+          )),
+          assignIntentToNetwork,
+          deleteHydeDocumentsForSource: async () => 0,
+        };
+        const queue = new IntentQueue({
+          database: asIntentDb(db),
+          invokeHyde: mock(async () => {}),
+          addOpportunityJob: mock(async () => ({})),
+          evaluateIntentAssignment,
+        });
+
+        await queue.processJob('generate_hyde', { intentId: 'intent-1', userId: 'user-1' });
+
+        expect(assignIntentToNetwork.mock.calls.map((call) => call[1])).toEqual(['net-a']);
+        expect(evaluateIntentAssignment).not.toHaveBeenCalled();
+      });
     });
 
     it('delete_hyde: calls deleteHydeDocumentsForSource', async () => {

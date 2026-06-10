@@ -1,24 +1,32 @@
 /**
- * Profile-mode answer handler: creates a premise from the user's answer.
+ * Profile-mode answer handler: creates a premise from the user's answer through
+ * the shared PremiseGraph lifecycle.
  *
- * The answer text (selectedOptions + optional freeText) becomes the premise
- * assertion. Creating a premise fires PremiseEvents.onCreated, which triggers
- * profile regeneration automatically via the premise queue.
+ * The graph performs analysis, embedding, network assignment, and persistence.
+ * This handler emits PremiseEvents.onCreated after the graph returns so the
+ * existing profile-regeneration cascade remains unchanged.
  */
 
 import { log } from '../../lib/log';
 
 const logger = log.service.from('QuestionAnswerProfile');
 
+export interface PremiseLifecycleResult {
+  premise?: { id: string };
+  error?: string;
+}
+
 export interface PremiseCreatorDeps {
-  createPremise: (input: {
+  runPremiseLifecycle: (input: {
     userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    validity: { volatile: boolean };
-    embedding?: number[];
-  }) => Promise<{ id: string }>;
-  embedText: (text: string) => Promise<number[]>;
+    assertionText: string;
+    tier: 'assertive' | 'contextual';
+    volatile: boolean;
+    provenanceSource: 'explicit' | 'enrichment' | 'integration' | 'onboarding';
+    provenanceSourceId?: string;
+    provenanceConfidence: number;
+    networkScopeId?: string;
+  }) => Promise<PremiseLifecycleResult>;
   emitPremiseCreated: (premiseId: string, userId: string) => void;
 }
 
@@ -40,6 +48,7 @@ export function createPremiseFromAnswerFactory(deps: PremiseCreatorDeps) {
     selectedOptions: string[];
     freeText?: string;
     sourceId: string;
+    networkScopeId?: string;
   }): Promise<void> => {
     const assertionText = buildAssertionText(input.selectedOptions, input.freeText);
 
@@ -51,42 +60,36 @@ export function createPremiseFromAnswerFactory(deps: PremiseCreatorDeps) {
       return;
     }
 
-    logger.verbose('Creating premise from profile answer', {
+    logger.verbose('Creating premise from profile answer through premise lifecycle', {
       userId: input.userId,
       questionId: input.questionId,
       assertionLength: assertionText.length,
     });
 
-    let embedding: number[] | undefined;
-    try {
-      embedding = await deps.embedText(assertionText);
-    } catch (err) {
-      logger.warn('Failed to embed premise text — creating without embedding', {
-        questionId: input.questionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-
-    const premise = await deps.createPremise({
+    const result = await deps.runPremiseLifecycle({
       userId: input.userId,
-      assertion: {
-        text: assertionText,
-        tier: 'contextual',
-      },
-      provenance: {
-        source: 'explicit',
-        sourceId: input.questionId,
-        confidence: 0.9,
-        timestamp: new Date().toISOString(),
-      },
-      validity: { volatile: false },
-      ...(embedding ? { embedding } : {}),
+      assertionText,
+      tier: 'contextual',
+      volatile: false,
+      provenanceSource: 'explicit',
+      provenanceSourceId: input.questionId,
+      provenanceConfidence: 0.9,
+      ...(input.networkScopeId ? { networkScopeId: input.networkScopeId } : {}),
     });
 
-    deps.emitPremiseCreated(premise.id, input.userId);
+    if (!result.premise) {
+      logger.warn('Premise lifecycle did not create a premise from profile answer', {
+        questionId: input.questionId,
+        userId: input.userId,
+        error: result.error,
+      });
+      return;
+    }
+
+    deps.emitPremiseCreated(result.premise.id, input.userId);
 
     logger.info('Premise created from profile answer', {
-      premiseId: premise.id,
+      premiseId: result.premise.id,
       userId: input.userId,
       questionId: input.questionId,
     });
