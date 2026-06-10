@@ -6,6 +6,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
+import { Button } from "@/components/ui/button";
 
 type ConnectLinkGoResponse =
   | { url: string }
@@ -148,9 +149,17 @@ export default function ConnectLinkPage() {
       <ContentContainer>
         <div className="flex flex-col items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-gray-400 mb-4" />
-          <p className="text-gray-600 font-ibm-plex-mono">
+          <p className="text-gray-600 font-ibm-plex-mono mb-4">
             {!isAuthenticated ? "Sign in to continue…" : "Opening opportunity…"}
           </p>
+          {!isAuthenticated && (
+            <Button
+              className="bg-[#041729] text-white hover:bg-[#0a2d4a] font-ibm-plex-mono"
+              onClick={() => openLoginModal(window.location.href)}
+            >
+              Sign in
+            </Button>
+          )}
         </div>
       </ContentContainer>
     );
