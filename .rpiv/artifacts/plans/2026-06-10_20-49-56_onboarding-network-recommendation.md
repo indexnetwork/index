@@ -418,14 +418,14 @@ Adds location-collection step 5.5 and updates step 6 to instruct the LLM to incl
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] TypeScript compiles without errors: `cd packages/protocol && bun run build`
-- [ ] `grep -c "5.5" packages/protocol/src/chat/chat.prompt.ts` returns >= 3
-- [ ] `grep "orderedNetworkIds" packages/protocol/src/chat/chat.prompt.ts` returns a match
+- [x] TypeScript compiles without errors: `cd packages/protocol && bun run build`
+- [x] `grep -c "5.5" packages/protocol/src/chat/chat.prompt.ts` returns >= 3 (5)
+- [x] `grep "orderedNetworkIds" packages/protocol/src/chat/chat.prompt.ts` returns a match
 
 #### Manual Verification:
-- [ ] Step 5 now says "proceed to step 5.5" (not step 6) in all four forward references
-- [ ] Step 5.5 location block appears between step 5 and step 6 in the prompt
-- [ ] Step 6 `networks_panel` instruction shows the conditional orderedNetworkIds JSON example
+- [x] Step 5 now says "proceed to step 5.5" in all four forward references
+- [x] Step 5.5 location block appears between step 5 and step 6 in the prompt
+- [x] Step 6 `networks_panel` instruction shows the conditional orderedNetworkIds JSON example
 
 ---
 
