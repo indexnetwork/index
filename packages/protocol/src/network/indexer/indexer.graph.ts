@@ -107,8 +107,15 @@ export class IntentNetworkGraphFactory {
           }
 
           const indexContext = await this.database.getNetworkAssignmentContext(networkId, intentForIndexing.userId);
-          const indexPrompt = indexContext?.indexPrompt ?? null;
-          const memberPrompt = indexContext?.memberPrompt ?? null;
+          if (!indexContext) {
+            return {
+              agentTimings: agentTimingsAccum,
+              assignmentResult: { networkId, assigned: false, success: false } as AssignmentResult,
+              mutationResult: { success: false, error: "Network assignment context not found." },
+            };
+          }
+          const indexPrompt = indexContext.indexPrompt ?? null;
+          const memberPrompt = indexContext.memberPrompt ?? null;
           const hasNoPrompts = !indexPrompt?.trim() && !memberPrompt?.trim();
           if (hasNoPrompts) {
             const decision = buildNetworkAssignmentDecision({

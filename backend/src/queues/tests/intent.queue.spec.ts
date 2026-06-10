@@ -322,6 +322,37 @@ describe('IntentQueue', () => {
         expect(getNetworkAssignmentContext).toHaveBeenCalledWith('net-b', 'user-1');
         expect(assignIntentToNetwork.mock.calls.map((call) => call[1])).toEqual(['net-b']);
       });
+
+      it('skips assignment fail-closed when membership context disappears', async () => {
+        const assignIntentToNetwork = mock(async () => {});
+        const evaluateIntentAssignment = mock(async () => ({
+          indexScore: 0.9,
+          memberScore: 0.9,
+          reasoning: 'Would match if context existed.',
+        }));
+        const db = {
+          getIntentForIndexing: async () => ({ id: 'intent-1', payload: 'Build protocol tools', userId: 'user-1', sourceType: null, sourceId: null }),
+          getAssignmentNetworkIdsForUser: mock(async () => ['net-a', 'net-b']),
+          getNetworkAssignmentContext: mock(async (networkId: string) => (
+            networkId === 'net-a'
+              ? { networkId, indexPrompt: null, memberPrompt: null }
+              : null
+          )),
+          assignIntentToNetwork,
+          deleteHydeDocumentsForSource: async () => 0,
+        };
+        const queue = new IntentQueue({
+          database: asIntentDb(db),
+          invokeHyde: mock(async () => {}),
+          addOpportunityJob: mock(async () => ({})),
+          evaluateIntentAssignment,
+        });
+
+        await queue.processJob('generate_hyde', { intentId: 'intent-1', userId: 'user-1' });
+
+        expect(assignIntentToNetwork.mock.calls.map((call) => call[1])).toEqual(['net-a']);
+        expect(evaluateIntentAssignment).not.toHaveBeenCalled();
+      });
     });
 
     it('delete_hyde: calls deleteHydeDocumentsForSource', async () => {

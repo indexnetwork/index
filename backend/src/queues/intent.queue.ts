@@ -227,8 +227,12 @@ export class IntentQueue implements IntentGraphQueue {
       const scoringResults = await Promise.all(
         userIndexIds.map(async (networkId) => {
           const ctx = await db.getNetworkAssignmentContext(networkId, userId);
-          const indexPrompt = ctx?.indexPrompt ?? null;
-          const memberPrompt = ctx?.memberPrompt ?? null;
+          if (!ctx) {
+            this.logger.warn('[IntentHyde] Assignment context missing for index, skipping fail-closed', { intentId, userId, networkId });
+            return null;
+          }
+          const indexPrompt = ctx.indexPrompt ?? null;
+          const memberPrompt = ctx.memberPrompt ?? null;
           const hasPrompts = !!indexPrompt?.trim() || !!memberPrompt?.trim();
           let result: IntentIndexerOutput | null = null;
           if (hasPrompts) {
@@ -255,7 +259,9 @@ export class IntentQueue implements IntentGraphQueue {
         })
       );
 
-      for (const { networkId, decision } of scoringResults) {
+      for (const scoringResult of scoringResults) {
+        if (!scoringResult) continue;
+        const { networkId, decision } = scoringResult;
         if (!decision.assigned) continue;
         try {
           await db.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);

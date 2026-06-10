@@ -69,4 +69,24 @@ describe("IntentNetworkGraphFactory", () => {
     expect(result.finalScore).toBeCloseTo(0.72);
     expect(db.assignments[0].metadata).toMatchObject({ mode: "automatic", finalScore: 0.72, promptPresence: "both" });
   });
+
+  it("fails closed when evaluated assignment context is missing", async () => {
+    const db = createDb({ getNetworkAssignmentContext: async () => null });
+    const graph = new IntentNetworkGraphFactory(
+      db as never,
+      createIndexer({ indexScore: 0.9, memberScore: 0.9, reasoning: "Would otherwise match" }) as never,
+    ).createGraph();
+
+    const result = await graph.invoke({
+      userId: "user-1",
+      intentId: "intent-1",
+      networkId: "network-1",
+      operationMode: "create" as const,
+      skipEvaluation: false,
+    });
+
+    expect(result.mutationResult).toEqual({ success: false, error: "Network assignment context not found." });
+    expect(result.assignmentResult).toMatchObject({ networkId: "network-1", assigned: false, success: false });
+    expect(db.assignments).toEqual([]);
+  });
 });
