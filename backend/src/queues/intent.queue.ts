@@ -210,15 +210,15 @@ export class IntentQueue implements IntentGraphQueue {
       const userIndexIds = resolveAssignmentNetworkScope({ memberships: membershipNetworkIds, networkScopeId });
       this.logger.info('[IntentHyde] User assignment networks found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
 
-      const evaluateIntentAssignment = this.deps?.evaluateIntentAssignment ?? (async (opts: {
+      // Instantiate once per job run so the same withStructuredOutput binding
+      // is reused across all network evaluations in the Promise.all below.
+      const defaultIndexer = this.deps?.evaluateIntentAssignment ? null : new IntentIndexer();
+      const evaluateIntentAssignment = this.deps?.evaluateIntentAssignment ?? ((opts: {
         intent: string;
         indexPrompt: string | null;
         memberPrompt: string | null;
         sourceName?: string | null;
-      }) => {
-        const indexer = new IntentIndexer();
-        return indexer.invoke(opts.intent, opts.indexPrompt, opts.memberPrompt, opts.sourceName ?? null);
-      });
+      }) => defaultIndexer!.invoke(opts.intent, opts.indexPrompt, opts.memberPrompt, opts.sourceName ?? null));
 
       const sourceName = intent.sourceType
         ? `${intent.sourceType}:${intent.sourceId ?? ''}`
