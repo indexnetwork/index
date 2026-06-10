@@ -279,13 +279,13 @@ export class NetworkRecommender {
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] TypeScript compiles without errors: `cd packages/protocol && bun run build`
-- [ ] `grep "networkRecommender" packages/protocol/src/shared/agent/model.config.ts` returns a match
-- [ ] `grep -c "NetworkRecommender" packages/protocol/src/network/network.recommender.ts` returns >= 5
+- [x] TypeScript compiles without errors: `cd packages/protocol && bun run build`
+- [x] `grep "networkRecommender" packages/protocol/src/shared/agent/model.config.ts` returns a match
+- [x] `grep -c "NetworkRecommender" packages/protocol/src/network/network.recommender.ts` returns >= 5 (16)
 
 #### Manual Verification:
-- [ ] `NetworkRecommender` class in `network.recommender.ts` has `invoke()` returning `NetworkRecommenderOutput | null`
-- [ ] `createModel("networkRecommender")` resolves without TypeScript error
+- [x] `NetworkRecommender` class in `network.recommender.ts` has `invoke()` returning `NetworkRecommenderOutput | null`
+- [x] `createModel("networkRecommender")` resolves without TypeScript error
 
 ---
 
