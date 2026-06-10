@@ -352,14 +352,14 @@ const recommender = new NetworkRecommender();
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] TypeScript compiles without errors: `cd packages/protocol && bun run build`
-- [ ] `grep "NetworkRecommender" packages/protocol/src/network/network.tools.ts` returns matches for import and instantiation
-- [ ] `grep "orderedNetworkIds" packages/protocol/src/network/network.tools.ts` returns a match
+- [x] TypeScript compiles without errors: `cd packages/protocol && bun run build`
+- [x] `grep "NetworkRecommender" packages/protocol/src/network/network.tools.ts` returns matches for import and instantiation
+- [x] `grep "orderedNetworkIds" packages/protocol/src/network/network.tools.ts` returns a match
 
 #### Manual Verification:
-- [ ] When `context.isOnboarding` is false, `read_networks` response is identical to today (no `orderedNetworkIds`)
-- [ ] When `context.isOnboarding` is true and `context.userProfile` is null, no ranking call fires
-- [ ] When `publicNetworks` is empty, no ranking call fires
+- [x] When `context.isOnboarding` is false, `read_networks` response is identical to today (no `orderedNetworkIds` — guard requires `isOnboarding`)
+- [x] When `context.isOnboarding` is true and `context.userProfile` is null, no ranking call fires (guard: `&& context.userProfile`)
+- [x] When `publicNetworks` is empty, no ranking call fires (guard: `.length > 0`)
 
 ---
 

@@ -5,6 +5,9 @@ import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
+import { NetworkRecommender } from "./network.recommender.js";
+
+const recommender = new NetworkRecommender();
 
 export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const { graphs, userDb, systemDb } = deps;
@@ -29,7 +32,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Returns:** Up to three lists — `memberOf` (networks the user joined), `owns` (networks the user created), and `publicNetworks` " +
       "(publicly joinable communities the user is not yet a member of). Entries in `memberOf` include `isPersonal` set to `true` for the user's " +
       "personal network.\n\n" +
-      "**Note:** In index-scoped chats, only the scoped network is returned.",
+      "**Note:** In index-scoped chats, only the scoped network is returned. During onboarding, `orderedNetworkIds` " +
+      "is returned alongside `publicNetworks` \u2014 a ranked array of network IDs ordered by relevance to the user's profile.",
     querySchema: z.object({
       userId: z.string().optional().describe("Must be the current user's ID or omitted. Cannot list another user's indexes."),
     }),
@@ -74,7 +78,38 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
-        return success({ ...enriched, _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }] });
+        // Onboarding-only: rank public networks by profile relevance.
+        // Guard: only when isOnboarding, userProfile exists, not scoped, and there are public networks to rank.
+        let orderedNetworkIds: string[] | undefined;
+        if (
+          context.isOnboarding &&
+          context.userProfile &&
+          Array.isArray(enriched.publicNetworks) &&
+          (enriched.publicNetworks as Array<Record<string, unknown>>).length > 0
+        ) {
+          const publicNetworksForRanking = (enriched.publicNetworks as Array<Record<string, unknown>>).map((n) => ({
+            networkId: n.networkId as string,
+            renderedContext: (n.renderedContext as string) ?? `## ${n.title as string}`,
+          }));
+          const rankingResult = await recommender.invoke({
+            userProfile: {
+              bio: context.userProfile.identity.bio,
+              location: context.userProfile.identity.location || context.user.location || "",
+              interests: context.userProfile.attributes.interests,
+              skills: context.userProfile.attributes.skills,
+            },
+            networks: publicNetworksForRanking,
+          });
+          if (rankingResult) {
+            orderedNetworkIds = rankingResult.rankedNetworkIds;
+          }
+        }
+
+        return success({
+          ...enriched,
+          ...(orderedNetworkIds !== undefined ? { orderedNetworkIds } : {}),
+          _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
+        });
       }
       return error("Failed to fetch index information.");
     },
