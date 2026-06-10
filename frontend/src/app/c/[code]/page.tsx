@@ -47,17 +47,29 @@ export default function ConnectLinkPage() {
   // Once authenticated, call the authenticated resolver and redirect.
   useEffect(() => {
     if (!isAuthenticated || authLoading || resolvedRef.current) return;
+    if (!code) {
+      setError("Invalid link — missing code.");
+      setStep("error");
+      return;
+    }
     resolvedRef.current = true;
 
     const resolve = async () => {
       try {
         const data = await api.get<ConnectLinkGoResponse>(`/c/${code}/go`);
         if ("url" in data) {
-          // External URL (e.g. Telegram) or internal frontend path.
-          if (data.url.startsWith("http")) {
-            window.location.href = data.url;
-          } else {
-            navigate(data.url.replace(window.location.origin, ""));
+          // Parse the URL: same-origin paths get client-side navigation;
+          // cross-origin URLs (e.g. Telegram) get a hard redirect.
+          try {
+            const parsed = new URL(data.url);
+            if (parsed.origin === window.location.origin) {
+              navigate(parsed.pathname + parsed.search + parsed.hash);
+            } else {
+              window.location.href = data.url;
+            }
+          } catch {
+            // Relative URL — pass directly to React Router.
+            navigate(data.url);
           }
         } else if (data.kind === "approve_introduction") {
           setStep("intro-approved");
