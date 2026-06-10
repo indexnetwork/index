@@ -114,6 +114,12 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
               skills: context.userProfile.attributes.skills,
             },
             networks: publicNetworksForRanking,
+          }).catch((err: unknown) => {
+            // Catches errors from a custom deps.networkRanker (the default fallback
+            // handles its own errors internally). Degrade gracefully: omit orderedNetworkIds.
+            console.warn("[read_networks] networkRanker threw, skipping ranking:", err);
+            deps.reportToolError?.(err, { operation: "network-ranking", toolName: "read_networks", userId: context.userId });
+            return null;
           });
           if (rankingResult) {
             // Normalize LLM output against the ranked slice (top 50):
