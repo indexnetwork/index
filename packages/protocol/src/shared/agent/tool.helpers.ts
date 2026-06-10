@@ -521,6 +521,14 @@ export interface ToolDeps {
     opportunity: CompiledOpportunityGraph;
     premise: CompiledGraph;
   };
+  /**
+   * Optional network ranking override for `read_networks`. Injected by tests or custom compositions.
+   * When absent, defaults to `NetworkRecommender.invoke()` with a lazy module-level singleton.
+   */
+  networkRanker?: (input: {
+    userProfile: { bio: string; location: string; interests: string[]; skills: string[] };
+    networks: Array<{ networkId: string; renderedContext: string }>;
+  }) => Promise<{ rankedNetworkIds: string[] } | null>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

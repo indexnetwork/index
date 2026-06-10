@@ -100,24 +100,34 @@ function parseAllBlocks(content: string): MessageSegment[] {
     const blockType = match[1];
 
     {
-      try {
-        const data = JSON.parse(match[2].trim());
-        if (blockType === "opportunity" && data.opportunityId && data.userId) {
-          segments.push({ type: "opportunity", data: data as OpportunityCardData });
-        } else if (blockType === "intent_proposal" && data.proposalId) {
-          segments.push({ type: "intent_proposal", data: data as IntentProposalData });
-        } else if (blockType === "networks_panel") {
+      if (blockType === "networks_panel") {
+        // Parse independently so an empty or malformed body still renders the panel
+        // (matches ChatContent.tsx behaviour — graceful degradation, not text fallback).
+        try {
+          const bodyStr = match[2].trim();
+          const body = bodyStr ? (JSON.parse(bodyStr) as Record<string, unknown>) : {};
           const orderedNetworkIds =
-            Array.isArray(data.orderedNetworkIds) &&
-            (data.orderedNetworkIds as unknown[]).every((id) => typeof id === "string")
-              ? (data.orderedNetworkIds as string[])
+            Array.isArray(body.orderedNetworkIds) &&
+            (body.orderedNetworkIds as unknown[]).every((id) => typeof id === "string")
+              ? (body.orderedNetworkIds as string[])
               : undefined;
           segments.push({ type: "networks_panel", orderedNetworkIds });
-        } else {
+        } catch {
+          segments.push({ type: "networks_panel" });
+        }
+      } else {
+        try {
+          const data = JSON.parse(match[2].trim());
+          if (blockType === "opportunity" && data.opportunityId && data.userId) {
+            segments.push({ type: "opportunity", data: data as OpportunityCardData });
+          } else if (blockType === "intent_proposal" && data.proposalId) {
+            segments.push({ type: "intent_proposal", data: data as IntentProposalData });
+          } else {
+            segments.push({ type: "text", content: match[0] });
+          }
+        } catch {
           segments.push({ type: "text", content: match[0] });
         }
-      } catch {
-        segments.push({ type: "text", content: match[0] });
       }
     }
     lastIndex = match.index + match[0].length;

@@ -35,7 +35,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       "(publicly joinable communities the user is not yet a member of). Entries in `memberOf` include `isPersonal` set to `true` for the user's " +
       "personal network.\n\n" +
       "**Note:** In index-scoped chats, only the scoped network is returned. During onboarding, `orderedNetworkIds` " +
-      "is returned alongside `publicNetworks` \u2014 a ranked array of network IDs ordered by relevance to the user's profile.",
+      "may be returned alongside `publicNetworks` \u2014 a ranked array of network IDs ordered by relevance to the user's profile (omitted when ranking is unavailable or fails).",
     querySchema: z.object({
       userId: z.string().optional().describe("Must be the current user's ID or omitted. Cannot list another user's indexes."),
     }),
@@ -96,8 +96,17 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
               networkId: n.networkId as string,
               renderedContext: (n.renderedContext as string) ?? `## ${n.title as string}`,
             }));
-          recommender ??= new NetworkRecommender();
-          const rankingResult = await recommender.invoke({
+          const rankFn = deps.networkRanker ?? (async (input) => {
+            try {
+              recommender ??= new NetworkRecommender();
+              return await recommender.invoke(input);
+            } catch (err) {
+              // e.g. missing OPENROUTER_API_KEY — degrade gracefully, omit orderedNetworkIds
+              console.warn("[read_networks] NetworkRecommender unavailable, skipping ranking:", err);
+              return null;
+            }
+          });
+          const rankingResult = await rankFn({
             userProfile: {
               bio: context.userProfile.identity.bio,
               location: context.userProfile.identity.location || context.user.location || "",
