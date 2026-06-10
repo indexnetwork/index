@@ -875,7 +875,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
                 },
                 // Always present when isMeaningfulEnrichment passes — may be {} if the
                 // enrichment found no social handles. LLM should ask the user to provide
-                // links when empty (FR5).
+                // links when empty (see buildOnboarding step 3 in chat.prompt.ts).
                 detectedSocials: enrichment.socials,
               });
             }

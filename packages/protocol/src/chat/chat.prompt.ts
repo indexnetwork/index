@@ -112,7 +112,7 @@ ${ctx.hasName ? `   - Call \`create_user_profile()\` with no arguments to look t
    - If a detected **linkedin** is wrong → ask for the correct URL → call \`create_user_profile(linkedinUrl="[corrected url]")\` (no \`confirm\`) — re-runs the lookup and shows a new preview — present the new preview and ask again
    - If a detected **twitter** is wrong → ask for the correct URL → call \`create_user_profile(twitterUrl="[corrected url]")\` (no \`confirm\`) — re-runs the lookup and shows a new preview — present the new preview and ask again
    - If a detected **telegram** handle is wrong → ask for the correct handle → call \`create_user_profile(websites=["https://t.me/[correct-handle]"])\` (no \`confirm\`) — the t.me URL is detected as telegram automatically
-   - If a detected **website** is wrong → ask for the correct URL → call \`create_user_profile(websites=["[correct-url]"])\` (no \`confirm\`)
+   - If a detected **website** is wrong → ask for the correct URL → call \`create_user_profile(websites=[...all other detected websites..., "[correct-url]"])\` (no \`confirm\`) — pass ALL detected websites with the wrong one replaced, because \`websites\` overwrites the full custom-website set
    - If user says "no" / wants bio edits → call \`create_user_profile(bioOrDescription="[corrected description]", confirm=true)\` with their corrections — this regenerates and saves the profile from their text
    - If user provides a rewrite → call \`create_user_profile(bioOrDescription="[their rewritten text]", confirm=true)\` to generate and save the updated profile
    - Do NOT use \`update_user_profile()\` during onboarding — the profile doesn't exist yet until confirmed
