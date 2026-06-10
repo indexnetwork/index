@@ -37,6 +37,30 @@ describe("createPremiseFromAnswerFactory", () => {
     expect(String(call.assertionText)).toContain("Specifically in AI/ML");
   });
 
+  it("routes profile-answer premises through lifecycle with assignment-capable graph input", async () => {
+    const deps = makeDeps();
+    const fn = createPremiseFromAnswerFactory(deps);
+
+    await fn({
+      userId: "user-1",
+      questionId: "question-1",
+      selectedOptions: ["AI developer tools"],
+      freeText: "especially protocol design",
+      sourceId: "profile-1",
+    });
+
+    expect(deps.runPremiseLifecycle).toHaveBeenCalledWith(expect.objectContaining({
+      userId: "user-1",
+      assertionText: expect.stringContaining("AI developer tools"),
+      tier: "contextual",
+      volatile: false,
+      provenanceSource: "explicit",
+      provenanceSourceId: "question-1",
+    }));
+    expect((deps as unknown as Record<string, unknown>).createPremise).toBeUndefined();
+    expect((deps as unknown as Record<string, unknown>).embedText).toBeUndefined();
+  });
+
   it("emits PremiseEvents.onCreated after successful lifecycle creation", async () => {
     const deps = makeDeps();
     const fn = createPremiseFromAnswerFactory(deps);

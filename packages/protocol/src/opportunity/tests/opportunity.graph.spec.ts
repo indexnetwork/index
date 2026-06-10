@@ -7,7 +7,7 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { afterAll, beforeAll, describe, test, it, expect, spyOn } from 'bun:test';
+import { afterAll, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext } from '../opportunity.graph.js';
 import type { Id } from '../../types/common.types.js';
 import type {
@@ -630,6 +630,50 @@ describe('Opportunity Graph', () => {
               networkId: 'idx-1',
               score: 0.9,
               matchedStrategies: expect.arrayContaining(['query']),
+            }),
+          ]),
+        }),
+      }));
+    });
+
+    test('merges strategy evidence before persisting surfaced opportunities', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
+        getUserIndexIds: () => Promise.resolve(['net-1'] as Id<'networks'>[]),
+        getNetwork: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
+      });
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'net-1' },
+      ]);
+      mockDb.getUserContexts = mock(async () => [
+        {
+          id: 'ctx-1',
+          networkId: 'net-1',
+          text: 'Alice is looking for protocol collaborators',
+          embedding: dummyEmbedding,
+          premiseHash: 'hash-1',
+          generatedAt: new Date('2026-06-09T00:00:00.000Z'),
+        },
+      ]) as typeof mockDb.getUserContexts;
+      mockDb.getHydeDocumentsForSource = mock(async () => []) as typeof mockDb.getHydeDocumentsForSource;
+      mockDb.searchIntentsByContextEmbedding = mock(async () => [
+        { intentId: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', networkId: 'net-1', similarity: 0.86, payload: 'Looking for protocol collaborators' },
+      ]) as typeof mockDb.searchIntentsByContextEmbedding;
+
+      await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'protocol collaborator',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput);
+
+      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({
+        metadata: expect.objectContaining({
+          evidence: expect.arrayContaining([
+            expect.objectContaining({
+              candidateIntentId: 'intent-bob',
+              networkId: 'net-1',
+              matchedStrategies: expect.arrayContaining(['query', 'context-to-intent']),
             }),
           ]),
         }),

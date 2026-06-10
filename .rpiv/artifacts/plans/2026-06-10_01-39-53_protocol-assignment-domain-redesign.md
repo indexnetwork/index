@@ -2761,21 +2761,21 @@ test('merges strategy evidence before persisting surfaced opportunities', async 
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] Shared assignment helper tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/packages/protocol && bun test src/shared/assignment/tests/network-assignment.policy.spec.ts`
-- [ ] Intent queue assignment regression tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/backend && bun test src/queues/tests/intent.queue.spec.ts`
-- [ ] Profile answer lifecycle regression tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/backend && bun test src/events/handlers/tests/question.answer.profile.test.ts src/events/handlers/tests/question.answer.handler.test.ts`
-- [ ] Opportunity evidence helper and integration tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/packages/protocol && bun test src/opportunity/tests/opportunity.evidence.spec.ts src/opportunity/tests/opportunity.graph.spec.ts`
-- [ ] Premise graph assignment tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/packages/protocol && bun test src/premise/tests/premise.graph.spec.ts`
-- [ ] Migration flow is clean after implementation: `cd .worktrees/docs-protocol-assignment-domain-redesign/backend && bun run db:generate && bun run db:migrate && bun run db:generate`
-- [ ] Assignment metadata is visible across schema, interfaces, adapters, and graph/queue call sites: `cd .worktrees/docs-protocol-assignment-domain-redesign && rg "assignmentMetadata|NetworkAssignmentMetadata" backend packages/protocol`
-- [ ] Production assignment code does not use `autoAssign` as assignment gate: `cd .worktrees/docs-protocol-assignment-domain-redesign && ! rg "autoAssign" packages/protocol/src/premise/premise.graph.ts backend/src/queues/intent.queue.ts packages/protocol/src/network/indexer/indexer.graph.ts`
-- [ ] Profile answer handler has no direct premise/embed shortcut: `cd .worktrees/docs-protocol-assignment-domain-redesign && ! rg "embedText|createPremise:" backend/src/events/handlers/question.answer.profile.ts`
-- [ ] Opportunity evidence is visible across state/evaluator/graph/tests: `cd .worktrees/docs-protocol-assignment-domain-redesign && rg "OpportunityEvidence|evidence" packages/protocol/src/opportunity`
+- [x] Shared assignment helper tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/packages/protocol && bun test src/shared/assignment/tests/network-assignment.policy.spec.ts`
+- [x] Intent queue assignment regression tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/backend && bun test src/queues/tests/intent.queue.spec.ts`
+- [x] Profile answer lifecycle regression tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/backend && bun test src/events/handlers/tests/question.answer.profile.test.ts src/events/handlers/tests/question.answer.handler.test.ts`
+- [x] Opportunity evidence helper and integration tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/packages/protocol && bun test src/opportunity/tests/opportunity.evidence.spec.ts src/opportunity/tests/opportunity.graph.spec.ts`
+- [x] Premise graph assignment tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/packages/protocol && bun test src/premise/tests/premise.graph.spec.ts`
+- [x] Migration flow is clean after implementation: `cd .worktrees/docs-protocol-assignment-domain-redesign/backend && bun run db:generate && bun run db:migrate && bun run db:generate`
+- [x] Assignment metadata is visible across schema, interfaces, adapters, and graph/queue call sites: `cd .worktrees/docs-protocol-assignment-domain-redesign && rg "assignmentMetadata|NetworkAssignmentMetadata" backend packages/protocol`
+- [x] Production assignment code does not use `autoAssign` as assignment gate: `cd .worktrees/docs-protocol-assignment-domain-redesign && ! rg "autoAssign" packages/protocol/src/premise/premise.graph.ts backend/src/queues/intent.queue.ts packages/protocol/src/network/indexer/indexer.graph.ts`
+- [x] Profile answer handler has no direct premise/embed shortcut: `cd .worktrees/docs-protocol-assignment-domain-redesign && ! rg "embedText|createPremise:" backend/src/events/handlers/question.answer.profile.ts`
+- [x] Opportunity evidence is visible across state/evaluator/graph/tests: `cd .worktrees/docs-protocol-assignment-domain-redesign && rg "OpportunityEvidence|evidence" packages/protocol/src/opportunity`
 
 #### Manual Verification:
-- [ ] Slice 6 only adds/updates tests and verification checks; it introduces no runtime behavior.
-- [ ] The regression surface covers the three redesign pillars: assignment policy/metadata, one premise lifecycle, and typed opportunity evidence persistence.
-- [ ] Verification commands mirror the artifact-level Verification Notes so `/skill:implement` and `/skill:validate` can execute them phase-by-phase.
+- [x] Slice 6 only adds/updates tests and verification checks; it introduces no runtime behavior.
+- [x] The regression surface covers the three redesign pillars: assignment policy/metadata, one premise lifecycle, and typed opportunity evidence persistence.
+- [x] Verification commands mirror the artifact-level Verification Notes so `/skill:implement` and `/skill:validate` can execute them phase-by-phase.
 
 
 ---
