@@ -4227,7 +4227,7 @@ export class ChatDatabaseAdapter {
    *
    * @param userId - Owner of the premises
    * @param source - Provenance source value to filter by (e.g. 'integration', 'explicit')
-   * @returns Minimal rows: id for each matching non-deleted premise
+   * @returns Minimal rows: id for each matching ACTIVE (non-deleted, non-retracted) premise
    */
   async getPremisesBySource(userId: string, source: string): Promise<Array<{ id: string }>> {
     const rows = await db
@@ -4236,6 +4236,7 @@ export class ChatDatabaseAdapter {
       .where(
         and(
           eq(schema.premises.userId, userId),
+          eq(schema.premises.status, 'ACTIVE'),
           isNull(schema.premises.deletedAt),
           sql`(${schema.premises.provenance}->>'source') = ${source}`,
         )
