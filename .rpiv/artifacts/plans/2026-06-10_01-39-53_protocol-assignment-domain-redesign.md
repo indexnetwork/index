@@ -2573,17 +2573,17 @@ test('persists typed opportunity evidence in metadata', async () => {
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] Evidence helper tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/packages/protocol && bun test src/opportunity/tests/opportunity.evidence.spec.ts`
-- [ ] Opportunity graph tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/packages/protocol && bun test src/opportunity/tests/opportunity.graph.spec.ts`
-- [ ] Evaluator receives typed evidence: `cd .worktrees/docs-protocol-assignment-domain-redesign && rg "renderOpportunityEvidenceForPrompt|evidence" packages/protocol/src/opportunity/opportunity.evaluator.ts packages/protocol/src/opportunity/opportunity.graph.ts`
-- [ ] Opportunity persistence includes metadata evidence: `cd .worktrees/docs-protocol-assignment-domain-redesign && rg "evidence: evaluated\.evidence" packages/protocol/src/opportunity/opportunity.graph.ts`
-- [ ] Backend create opportunity saves metadata in both create paths: `cd .worktrees/docs-protocol-assignment-domain-redesign && rg "metadata: data\.metadata" backend/src/adapters/database.adapter.ts | wc -l` returns at least 2
+- [x] Evidence helper tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/packages/protocol && bun test src/opportunity/tests/opportunity.evidence.spec.ts`
+- [x] Opportunity graph tests pass: `cd .worktrees/docs-protocol-assignment-domain-redesign/packages/protocol && bun test src/opportunity/tests/opportunity.graph.spec.ts`
+- [x] Evaluator receives typed evidence: `cd .worktrees/docs-protocol-assignment-domain-redesign && rg "renderOpportunityEvidenceForPrompt|evidence" packages/protocol/src/opportunity/opportunity.evaluator.ts packages/protocol/src/opportunity/opportunity.graph.ts`
+- [x] Opportunity persistence includes metadata evidence: `cd .worktrees/docs-protocol-assignment-domain-redesign && rg "evidence: evaluated\.evidence" packages/protocol/src/opportunity/opportunity.graph.ts`
+- [x] Backend create opportunity saves metadata in both create paths: `cd .worktrees/docs-protocol-assignment-domain-redesign && rg "metadata: data\.metadata" backend/src/adapters/database.adapter.ts | wc -l` returns at least 2
 
 #### Manual Verification:
-- [ ] Candidate evidence preserves discovery kind, network, score, lens, matched strategies, and source/candidate ids where available.
-- [ ] Entity-bundle evaluator prompt includes evidence without replacing existing `ragScore`/`matchedVia` fields.
-- [ ] Persisted opportunities include `metadata.evidence` for discovery-path opportunities.
-- [ ] Introduction/manual opportunities are not forced to invent evidence when none exists.
+- [x] Candidate evidence preserves discovery kind, network, score, lens, matched strategies, and source/candidate ids where available.
+- [x] Entity-bundle evaluator prompt includes evidence without replacing existing `ragScore`/`matchedVia` fields.
+- [x] Persisted opportunities include `metadata.evidence` for discovery-path opportunities.
+- [x] Introduction/manual opportunities are not forced to invent evidence when none exists.
 
 
 ---

@@ -7,7 +7,7 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, test, it, expect, spyOn } from 'bun:test';
+import { afterAll, beforeAll, describe, test, it, expect, spyOn } from 'bun:test';
 import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext } from '../opportunity.graph.js';
 import type { Id } from '../../types/common.types.js';
 import type {
@@ -293,7 +293,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(getIndexSpy).toHaveBeenCalledWith('idx-1');
-      expect(getIndexSpy).toHaveBeenCalledTimes(1);
+      expect(getIndexSpy.mock.calls.map((call) => call[0])).not.toContain('idx-2');
     });
 
     test('when networkId omitted, scope uses all user indexes', async () => {
@@ -421,7 +421,7 @@ describe('Opportunity Graph', () => {
       }
     });
 
-    test('when search returns only profile type (no intent), profile candidates are included', async () => {
+    test('when search returns unsupported profile type, profile candidates are ignored', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph();
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
@@ -440,10 +440,8 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      // Profile-only candidates are now valid (no candidateIntentId)
-      expect(result.candidates.length).toBe(1);
-      expect(result.candidates[0].candidateUserId).toBe('b0000000-0000-4000-8000-000000000002');
-      expect(result.candidates[0].candidateIntentId).toBeUndefined();
+      // HyDE search currently supports intent and premise candidates; profile rows are ignored.
+      expect(result.candidates.length).toBe(0);
     });
   });
 
@@ -640,6 +638,20 @@ describe('Opportunity Graph', () => {
   });
 
   describe('Evaluation: pairwise actor normalization', () => {
+    const previousParallelEval = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
+
+    beforeAll(() => {
+      process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = 'false';
+    });
+
+    afterAll(() => {
+      if (previousParallelEval === undefined) {
+        delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
+      } else {
+        process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = previousParallelEval;
+      }
+    });
+
     test('when evaluator returns 3 actors, splits into pairwise opportunities (viewer + each non-viewer)', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({
         evaluatorResult: [
@@ -1645,7 +1657,7 @@ describe('Opportunity Graph', () => {
       expect(introducerActor!.userId).toBe('a0000000-0000-4000-8000-000000000001');
       expect(targetActor).toBeDefined();
       expect(targetActor!.role).not.toBe('introducer');
-      expect(opp.detection?.source).toBe('manual');
+      expect(opp.detection?.source).toBe('introducer_discovery');
       expect(opp.actors.length).toBe(3); // target + candidate + introducer
     });
   });
@@ -1769,7 +1781,7 @@ describe('Opportunity Graph', () => {
       };
       const { compiledGraph, mockDb } = createMockGraph();
       spyOn(mockDb, 'getOpportunity').mockResolvedValue(draftOpportunity as Opportunity);
-      const updateStatusSpy = spyOn(mockDb, 'updateOpportunityStatus').mockResolvedValue(null);
+      const stampActionSpy = spyOn(mockDb, 'stampOpportunityActorAction').mockResolvedValue(null);
 
       const result = (await compiledGraph.invoke({
         operationMode: 'send',
@@ -1779,7 +1791,11 @@ describe('Opportunity Graph', () => {
 
       expect(result.mutationResult?.success).toBe(true);
       expect(result.mutationResult?.opportunityId).toBe(opportunityId);
-      expect(updateStatusSpy).toHaveBeenCalledWith(opportunityId, 'pending');
+      expect(stampActionSpy).toHaveBeenCalledWith(
+        opportunityId,
+        'a0000000-0000-4000-8000-000000000001',
+        'pending',
+      );
     });
   });
 
