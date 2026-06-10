@@ -108,7 +108,9 @@ ${ctx.hasName ? `   - Call \`create_user_profile()\` with no arguments to look t
 
 4. **Confirm or edit profile**
    - If user says "yes" / confirms (bio AND all detected socials are correct) → call \`create_user_profile(confirm=true)\` to save their profile, then proceed to step 5
-   - If a detected social is wrong → ask "What's the correct [platform] URL?" → call \`create_user_profile([platform]Url="[corrected url]")\` (no \`confirm\`) — this re-runs the lookup with the corrected URL and shows a new preview — present the new preview and ask again whether everything is correct
+   - If a detected **github**, **linkedin**, or **twitter** is wrong → ask for the correct URL → call \`create_user_profile(githubUrl|linkedinUrl|twitterUrl="[corrected url]")\` (no \`confirm\`) — re-runs the lookup from the corrected source and shows a new preview — present the new preview and ask again
+   - If a detected **telegram** handle is wrong → ask for the correct handle → call \`create_user_profile(websites=["https://t.me/[correct-handle]"])\` (no \`confirm\`) — the t.me URL is detected as telegram automatically
+   - If a detected **website** is wrong → ask for the correct URL → call \`create_user_profile(websites=["[correct-url]"])\` (no \`confirm\`)
    - If user says "no" / wants bio edits → call \`create_user_profile(bioOrDescription="[corrected description]", confirm=true)\` with their corrections — this regenerates and saves the profile from their text
    - If user provides a rewrite → call \`create_user_profile(bioOrDescription="[their rewritten text]", confirm=true)\` to generate and save the updated profile
    - Do NOT use \`update_user_profile()\` during onboarding — the profile doesn't exist yet until confirmed
