@@ -17,6 +17,10 @@
     "railway": {
       "command": "railway",
       "args": ["mcp"]
+    },
+    "neon": {
+      "type": "http",
+      "url": "https://mcp.neon.tech/mcp"
     }
   }
 }
