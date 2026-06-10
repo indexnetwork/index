@@ -11,6 +11,8 @@ import type { Network } from "@/lib/types";
 interface NetworksPanelProps {
   onJoin: (networkId: string, networkTitle: string) => void;
   pendingJoinIds?: Set<string>;
+  /** Ranked network IDs from the LLM recommendation. Joinable networks are sorted by this order; unranked appended at end. */
+  orderedNetworkIds?: string[];
 }
 
 /**
@@ -18,7 +20,7 @@ interface NetworksPanelProps {
  * Shows already-joined networks with a badge and public networks with a Join button.
  * Works in any chat context — onboarding or regular chat.
  */
-export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: NetworksPanelProps) {
+export default function NetworksPanel({ onJoin, pendingJoinIds = new Set(), orderedNetworkIds }: NetworksPanelProps) {
   const indexesService = useNetworks();
   const { indexes: joinedIndexes } = useNetworksState();
 
@@ -36,7 +38,16 @@ export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: Ne
 
   const joinedNonPersonal = joinedIndexes.filter((i) => !i.isPersonal);
   const joinedIds = new Set(joinedNonPersonal.map((i) => i.id));
-  const joinable = publicNetworks.filter((n) => !joinedIds.has(n.id));
+  const joinable = (() => {
+    const unfiltered = publicNetworks.filter((n) => !joinedIds.has(n.id));
+    if (!orderedNetworkIds || orderedNetworkIds.length === 0) return unfiltered;
+    const orderMap = new Map(orderedNetworkIds.map((id, i) => [id, i]));
+    return [...unfiltered].sort((a, b) => {
+      const ai = orderMap.get(a.id) ?? Infinity;
+      const bi = orderMap.get(b.id) ?? Infinity;
+      return ai - bi;
+    });
+  })();
 
   if (loading) {
     return (
