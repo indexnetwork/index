@@ -4220,6 +4220,31 @@ export class ChatDatabaseAdapter {
     return rows.map((r) => ({ id: r.id, userId: r.userId }));
   }
 
+  /**
+   * Find premises for a user with a specific provenance source.
+   * Used for bulk-retraction of premises derived from a given source type
+   * (e.g. 'integration' when social URLs are updated).
+   *
+   * @param userId - Owner of the premises
+   * @param source - Provenance source value to filter by (e.g. 'integration', 'explicit')
+   * @returns Minimal rows: id for each matching ACTIVE (non-deleted, non-retracted) premise
+   */
+  async getPremisesBySource(userId: string, source: string): Promise<Array<{ id: string }>> {
+    const rows = await db
+      .select({ id: schema.premises.id })
+      .from(schema.premises)
+      .where(
+        and(
+          eq(schema.premises.userId, userId),
+          eq(schema.premises.status, 'ACTIVE'),
+          isNull(schema.premises.deletedAt),
+          sql`(${schema.premises.provenance}->>'source') = ${source}`,
+        )
+      );
+    return rows.map(r => ({ id: r.id }));
+  }
+
+
   // ─────────────────────────────────────────────────────────────────────────────
   // User Context Methods — CRUD for per-user-per-network context summaries
   // ─────────────────────────────────────────────────────────────────────────────

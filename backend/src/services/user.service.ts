@@ -1,9 +1,27 @@
 import { log } from '../lib/log';
-import { userDatabaseAdapter } from '../adapters/database.adapter';
+import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
 import { validateKey } from '../lib/keys';
+import { PremiseEvents } from '../events/premise.event';
+import { enrichmentQueue } from '../queues/enrichment.queue';
 
 const logger = log.service.from("UserService");
+
+/**
+ * Injectable dependencies for `UserService.setSocials` cascade behavior.
+ * All fields are optional; the class uses production singletons as defaults.
+ * Inject mocks in tests.
+ */
+export interface UserServiceDeps {
+  /** Query premise IDs by provenance source for a user. */
+  getPremisesBySource?: (userId: string, source: string) => Promise<Array<{ id: string }>>;
+  /** Retract a single premise (set status RETRACTED + retractedAt). */
+  retractPremise?: (premiseId: string) => Promise<void>;
+  /** Emit the onRetracted lifecycle event for a premise. */
+  emitPremiseRetracted?: (premiseId: string, userId: string) => void;
+  /** Enqueue an enrichment job to rebuild premises from updated socials. */
+  enqueueEnrichment?: (userId: string) => Promise<void>;
+}
 
 /**
  * UserService
@@ -16,7 +34,10 @@ const logger = log.service.from("UserService");
  * - Graph resolution: `findWithGraph` joins User + Profile + Settings.
  */
 export class UserService {
-  constructor(private db = userDatabaseAdapter) {}
+  constructor(
+    private db = userDatabaseAdapter,
+    private readonly deps?: UserServiceDeps,
+  ) {}
     async findById(userId: string) {
         logger.verbose('[UserService] Finding user by ID', { userId });
         return this.db.findById(userId);
@@ -53,9 +74,55 @@ export class UserService {
         return this.db.getSocials(userId);
     }
 
-    async setSocials(userId: string, socials: { label: string; value: string }[]) {
+    async setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
         logger.verbose('[UserService] Setting socials', { userId, count: socials.length });
-        return this.db.setSocials(userId, socials);
+        await this.db.setSocials(userId, socials);
+        await this.retractIntegrationPremises(userId);
+    }
+
+    /**
+     * Retract all `source='integration'` premises for a user after their social URLs
+     * change, then fire-and-forget a re-enrichment job to rebuild from the new social set.
+     *
+     * Retraction loop is synchronous — errors propagate to the caller.
+     * Re-enrichment failure is logged and swallowed (best-effort).
+     */
+    private async retractIntegrationPremises(userId: string): Promise<void> {
+        const getPremisesBySource =
+            this.deps?.getPremisesBySource ??
+            ((uid: string, src: string) => chatDatabaseAdapter.getPremisesBySource(uid, src));
+
+        const retractPremise =
+            this.deps?.retractPremise ??
+            (async (id: string) => { await chatDatabaseAdapter.updatePremise(id, { status: 'RETRACTED', retractedAt: new Date() }); });
+
+        const emitPremiseRetracted =
+            this.deps?.emitPremiseRetracted ??
+            ((id: string, uid: string) => PremiseEvents.onRetracted(id, uid));
+
+        const enqueueEnrichment =
+            this.deps?.enqueueEnrichment ??
+            (async (uid: string) => { await enrichmentQueue.addEnrichUserJob({ userId: uid, reason: 'socials_updated' }); });
+
+        const toRetract = await getPremisesBySource(userId, 'integration');
+
+        logger.verbose('[UserService] Retracting integration premises before re-enrich', {
+            userId,
+            count: toRetract.length,
+        });
+
+        for (const { id } of toRetract) {
+            await retractPremise(id);
+            emitPremiseRetracted(id, userId);
+        }
+
+        // Re-enrichment is fire-and-forget — failure is logged but does not propagate to caller.
+        enqueueEnrichment(userId).catch(err =>
+            logger.error('[UserService] Failed to enqueue re-enrichment after social update', {
+                userId,
+                error: err,
+            }),
+        );
     }
 
     async softDelete(userId: string) {

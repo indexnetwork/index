@@ -45,6 +45,7 @@ import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
 import { IntegrationService } from '../services/integration.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
+import { userService } from '../services/user.service';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
@@ -382,7 +383,7 @@ async function finalizeMcpIdentity(telegramHandle: string | undefined, identity:
     const merged = mergeTelegramHandleIntoSocials(existingSocials, telegramHandle);
     if (!merged) return identity;
 
-    await chatDatabaseAdapter.setUserSocials(identity.userId, merged);
+    await userService.setSocials(identity.userId, merged);
   } catch (err) {
     logger.warn('Failed to persist Telegram MCP handle', {
       userId: identity.userId,
