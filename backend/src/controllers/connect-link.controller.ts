@@ -137,6 +137,6 @@ export class ConnectLinkController {
       return Response.json({ url: target } satisfies ConnectLinkGoResponse);
     }
 
-    return jsonError('Unknown link kind', 400);
+    return notFoundJson();
   }
 }
