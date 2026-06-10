@@ -181,8 +181,9 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
 
 // ─── Question answer reaction handlers ──────────────────────────────────────
 
+const profileAnswerPremiseDatabase: PremiseGraphDatabase = chatDatabaseAdapter;
 const profileAnswerPremiseGraph = new PremiseGraphFactory(
-  chatDatabaseAdapter as unknown as PremiseGraphDatabase,
+  profileAnswerPremiseDatabase,
   embedderAdapter,
 ).createGraph();
 
