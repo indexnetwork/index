@@ -31,7 +31,10 @@ export default function ConnectLinkPage() {
   const api = useAuthenticatedAPI();
   const navigate = useNavigate();
   const loginPromptedRef = useRef(false);
-  const resolvedRef = useRef(false);
+  // Track which code was last resolved rather than a plain boolean so that
+  // navigating between /c/:codeA and /c/:codeB (same component instance in
+  // React Router) still resolves each code exactly once.
+  const lastResolvedCodeRef = useRef<string | null>(null);
 
   const [step, setStep] = useState<PageStep>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -47,13 +50,18 @@ export default function ConnectLinkPage() {
 
   // Once authenticated, call the authenticated resolver and redirect.
   useEffect(() => {
-    if (!isAuthenticated || authLoading || resolvedRef.current) return;
+    if (!isAuthenticated || authLoading) return;
+    if (lastResolvedCodeRef.current === code) return; // already resolved this code
     if (!code) {
       setError("Invalid link — missing code.");
       setStep("error");
       return;
     }
-    resolvedRef.current = true;
+    // Mark this code as resolved before the async call so concurrent renders
+    // don't fire a second request. If the code changed, reset display state first.
+    lastResolvedCodeRef.current = code;
+    setStep("loading");
+    setError(null);
 
     const resolve = async () => {
       try {
