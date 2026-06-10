@@ -7,7 +7,9 @@ import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { NetworkRecommender } from "./network.recommender.js";
 
-const recommender = new NetworkRecommender();
+// Lazy singleton — only instantiated on first onboarding ranking call so that
+// importing this module does not require OPENROUTER_API_KEY at load time.
+let recommender: NetworkRecommender | undefined;
 
 export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const { graphs, userDb, systemDb } = deps;
@@ -87,10 +89,14 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
           Array.isArray(enriched.publicNetworks) &&
           (enriched.publicNetworks as Array<Record<string, unknown>>).length > 0
         ) {
-          const publicNetworksForRanking = (enriched.publicNetworks as Array<Record<string, unknown>>).map((n) => ({
-            networkId: n.networkId as string,
-            renderedContext: (n.renderedContext as string) ?? `## ${n.title as string}`,
-          }));
+          // Cap at 50 to bound LLM context window usage (matches the UI's discoverPublicIndexes(1, 50)).
+          const publicNetworksForRanking = (enriched.publicNetworks as Array<Record<string, unknown>>)
+            .slice(0, 50)
+            .map((n) => ({
+              networkId: n.networkId as string,
+              renderedContext: (n.renderedContext as string) ?? `## ${n.title as string}`,
+            }));
+          recommender ??= new NetworkRecommender();
           const rankingResult = await recommender.invoke({
             userProfile: {
               bio: context.userProfile.identity.bio,
@@ -101,7 +107,22 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             networks: publicNetworksForRanking,
           });
           if (rankingResult) {
-            orderedNetworkIds = rankingResult.rankedNetworkIds;
+            // Normalize LLM output: keep only input IDs, de-dupe, append any IDs
+            // the model omitted (in original order) so every network is represented.
+            const inputIds = publicNetworksForRanking.map((n) => n.networkId);
+            const inputIdSet = new Set(inputIds);
+            const seen = new Set<string>();
+            const normalized: string[] = [];
+            for (const id of rankingResult.rankedNetworkIds) {
+              if (inputIdSet.has(id) && !seen.has(id)) {
+                normalized.push(id);
+                seen.add(id);
+              }
+            }
+            for (const id of inputIds) {
+              if (!seen.has(id)) normalized.push(id);
+            }
+            orderedNetworkIds = normalized;
           }
         }
 

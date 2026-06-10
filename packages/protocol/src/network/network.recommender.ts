@@ -67,10 +67,6 @@ OUTPUT RULES:
 - Keep reasoning brief (one sentence about the top recommendation).
 `;
 
-// ─── Model ────────────────────────────────────────────────────────────────────
-
-const model = createModel("networkRecommender");
-
 // ─── Agent class ──────────────────────────────────────────────────────────────
 
 /**
@@ -79,11 +75,16 @@ const model = createModel("networkRecommender");
  *
  * Modeled after IntentIndexer: module-level createModel, withStructuredOutput,
  * invokeWithAbortSignal, null-on-error fallback.
+ *
+ * Note: `createModel` is called inside the constructor (not at module level) so
+ * that importing this file does not require OPENROUTER_API_KEY to be set — tests
+ * that import `createNetworkTools` without a live LLM env remain unaffected.
  */
 export class NetworkRecommender {
   private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
 
   constructor() {
+    const model = createModel("networkRecommender");
     this.model = model.withStructuredOutput(NetworkRecommenderOutputSchema, {
       name: "network_recommender",
     });
