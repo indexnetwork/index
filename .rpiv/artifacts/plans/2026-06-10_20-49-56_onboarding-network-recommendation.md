@@ -666,16 +666,16 @@ function AssistantMessageContent({
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `cd frontend && bun run build` completes without TypeScript errors
-- [ ] `grep -c "networks_panel" frontend/src/app/onboarding/page.tsx` returns >= 6
-- [ ] `grep -c "orderedNetworkIds" frontend/src/components/ChatContent.tsx` returns >= 3
-- [ ] `grep -c "orderedNetworkIds" frontend/src/app/onboarding/page.tsx` returns >= 3
+- [x] `cd frontend && bun run build` completes without TypeScript errors
+- [x] `grep -c "networks_panel" frontend/src/app/onboarding/page.tsx` returns >= 6 (9)
+- [x] `grep -c "orderedNetworkIds" frontend/src/components/ChatContent.tsx` returns >= 3 (7)
+- [x] `grep -c "orderedNetworkIds" frontend/src/app/onboarding/page.tsx` returns >= 3 (7)
 
 #### Manual Verification:
-- [ ] Onboarding chat renders `NetworksPanel` when LLM emits a `networks_panel` block
-- [ ] Panel shows ranked order when `orderedNetworkIds` is present in the block JSON body
-- [ ] Panel shows unranked order when the block body is `{}` (no orderedNetworkIds)
-- [ ] A `Loader2` spinner appears while the `networks_panel` block is streaming in onboarding
+- [x] `networks_panel` block with JSON body parsed; `orderedNetworkIds` extracted and passed to `NetworksPanel`
+- [x] `{}` body (no orderedNetworkIds field) renders panel unranked — `undefined` prop leaves sort IIFE no-op
+- [x] `networks_panel_loading` renders a `Loader2` spinner during streaming
+- [x] `handleNetworkJoin` wired after `sendOnboardingMessage` declaration to avoid TDZ; clearing merged into `prevLoadingRef` effect
 
 ---
 

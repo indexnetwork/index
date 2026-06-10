@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGmailConnect } from "@/hooks/useGmailConnect";
 import { useNavigate } from "react-router";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, Loader2, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -25,6 +25,7 @@ import { MentionsTextInput } from "@/components/MentionsInput";
 import { cn } from "@/lib/utils";
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 import type { Suggestion } from "@/hooks/useSuggestions";
+import NetworksPanel from "@/components/chat/NetworksPanel";
 
 /** Step-specific suggestions for onboarding. */
 const ONBOARDING_STEP_SUGGESTIONS: Record<string, Suggestion[]> = {
@@ -81,11 +82,13 @@ type MessageSegment =
   | { type: "opportunity"; data: OpportunityCardData }
   | { type: "opportunity_loading" }
   | { type: "intent_proposal"; data: IntentProposalData }
-  | { type: "intent_proposal_loading" };
+  | { type: "intent_proposal_loading" }
+  | { type: "networks_panel"; orderedNetworkIds?: string[] }
+  | { type: "networks_panel_loading" };
 
 function parseAllBlocks(content: string): MessageSegment[] {
   const segments: MessageSegment[] = [];
-  const regex = /```(opportunity|intent_proposal)\s*\n([\s\S]*?)\n```/g;
+  const regex = /```(opportunity|intent_proposal|networks_panel)\s*\n([\s\S]*?)\n```/g;
   let lastIndex = 0;
   let match;
 
@@ -103,6 +106,13 @@ function parseAllBlocks(content: string): MessageSegment[] {
           segments.push({ type: "opportunity", data: data as OpportunityCardData });
         } else if (blockType === "intent_proposal" && data.proposalId) {
           segments.push({ type: "intent_proposal", data: data as IntentProposalData });
+        } else if (blockType === "networks_panel") {
+          const orderedNetworkIds =
+            Array.isArray(data.orderedNetworkIds) &&
+            (data.orderedNetworkIds as unknown[]).every((id) => typeof id === "string")
+              ? (data.orderedNetworkIds as string[])
+              : undefined;
+          segments.push({ type: "networks_panel", orderedNetworkIds });
         } else {
           segments.push({ type: "text", content: match[0] });
         }
@@ -116,8 +126,9 @@ function parseAllBlocks(content: string): MessageSegment[] {
   const remaining = content.slice(lastIndex);
   const partialOpp = remaining.match(/```opportunity/);
   const partialIntent = remaining.match(/```intent_proposal/);
+  const partialNetworks = remaining.match(/```networks_panel/);
 
-  const candidates = ([partialOpp, partialIntent] as (RegExpMatchArray | null)[]).filter(
+  const candidates = ([partialOpp, partialIntent, partialNetworks] as (RegExpMatchArray | null)[]).filter(
     (c): c is RegExpMatchArray => c !== null,
   );
   const partialMatch = candidates.length > 0
@@ -129,6 +140,8 @@ function parseAllBlocks(content: string): MessageSegment[] {
     if (textBefore.trim()) segments.push({ type: "text", content: textBefore });
     if (partialMatch === partialOpp) {
       segments.push({ type: "opportunity_loading" });
+    } else if (partialMatch === partialNetworks) {
+      segments.push({ type: "networks_panel_loading" });
     } else {
       segments.push({ type: "intent_proposal_loading" });
     }
@@ -174,6 +187,8 @@ function AssistantMessageContent({
   onIntentProposalUndo,
   intentProposalStatusMap,
   OAuthLink,
+  onNetworkJoin,
+  pendingNetworkJoinIds,
 }: {
   content: string;
   isStreaming: boolean;
@@ -186,6 +201,8 @@ function AssistantMessageContent({
   onIntentProposalUndo?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
   OAuthLink?: React.ComponentType<React.ComponentPropsWithoutRef<"a">>;
+  onNetworkJoin?: (networkId: string, networkTitle: string) => void;
+  pendingNetworkJoinIds?: Set<string>;
 }) {
   const displayed = normalizeBlockquotes(mentionsToMarkdownLinks(content));
   const showCursor = isStreaming;
@@ -248,6 +265,24 @@ function AssistantMessageContent({
             </div>
           );
         }
+        if (seg.type === "networks_panel") {
+          return (
+            <div key={`networks-panel-${idx}`} className="my-3">
+              <NetworksPanel
+                onJoin={onNetworkJoin ?? (() => {})}
+                pendingJoinIds={pendingNetworkJoinIds}
+                orderedNetworkIds={seg.orderedNetworkIds}
+              />
+            </div>
+          );
+        }
+        if (seg.type === "networks_panel_loading") {
+          return (
+            <div key={`networks-panel-loading-${idx}`} className="my-3 flex justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
+            </div>
+          );
+        }
         // intent_proposal_loading
         return <div key={`intent-load-${idx}`} className="my-3"><IntentProposalSkeleton /></div>;
       })}
@@ -298,6 +333,7 @@ export default function OnboardingPage() {
   const [opportunityStatusMap, setOpportunityStatusMap] = useState<Record<string, string>>({});
   const [intentProposalStatusMap, setIntentProposalStatusMap] = useState<Record<string, "pending" | "created" | "rejected">>({});
   const [proposalIntentMap, setProposalIntentMap] = useState<Record<string, string>>({});
+  const [pendingNetworkJoinIds, setPendingNetworkJoinIds] = useState<Set<string>>(new Set());
 
   const hasName = !!user?.name?.trim();
   const fullGreeting = buildGreeting(hasName, hasName ? `**${user?.name?.trim()}**` : undefined);
@@ -358,9 +394,12 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (prevLoadingRef.current && !isLoading) {
       refetchUser();
+      if (pendingNetworkJoinIds.size > 0) setPendingNetworkJoinIds(new Set());
     }
     prevLoadingRef.current = isLoading;
-  }, [isLoading, refetchUser]);
+  }, [isLoading, refetchUser, pendingNetworkJoinIds.size]);
+
+
 
   // Slide transition: sidebar slides in from left, content shifts right
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -483,6 +522,14 @@ export default function OnboardingPage() {
       return sendMessage(message);
     },
     [sessionId, sendMessage, fullGreeting],
+  );
+
+  const handleNetworkJoin = useCallback(
+    (networkId: string, networkTitle: string) => {
+      setPendingNetworkJoinIds((prev) => new Set([...prev, networkId]));
+      sendOnboardingMessage(`I'd like to join ${networkTitle}`);
+    },
+    [sendOnboardingMessage],
   );
 
   // Infer onboarding step from last assistant message to show step-specific suggestions
@@ -615,6 +662,8 @@ export default function OnboardingPage() {
                           onIntentProposalUndo={handleIntentProposalUndo}
                           intentProposalStatusMap={intentProposalStatusMap}
                           OAuthLink={OAuthLink}
+                          onNetworkJoin={handleNetworkJoin}
+                          pendingNetworkJoinIds={pendingNetworkJoinIds}
                         />
                       </article>
                     </div>
