@@ -4980,7 +4980,7 @@ export class OpportunityDatabaseAdapter {
         confidence: data.confidence,
         status: data.status ?? 'pending',
         expiresAt: data.expiresAt ?? null,
-        metadata: data.metadata ?? {},
+        metadata: data.metadata ?? undefined,
       })
       .returning();
     if (!row) throw new Error('OpportunityDatabaseAdapter.createOpportunity: no row returned');
@@ -5259,7 +5259,7 @@ export class OpportunityDatabaseAdapter {
           confidence: data.confidence,
           status: data.status ?? 'pending',
           expiresAt: data.expiresAt ?? null,
-          metadata: data.metadata ?? {},
+          metadata: data.metadata ?? undefined,
         })
         .returning();
       if (!inserted) throw new Error('OpportunityDatabaseAdapter.createOpportunityAndExpireIds: no row returned');

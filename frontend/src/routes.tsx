@@ -78,6 +78,10 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/index/[indexId]/page"),
       },
       {
+        path: "/c/:code",
+        lazy: () => import("@/app/c/[code]/page"),
+      },
+      {
         path: "/l/:code",
         lazy: () => import("@/app/l/[code]/page"),
       },

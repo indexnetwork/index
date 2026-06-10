@@ -41,7 +41,7 @@ export const NetworkAssignmentMetadataSchema = z.object({
   reason: z.string().optional(),
   evaluator: z.string().optional(),
   source: z.string().optional(),
-  createdAt: z.string().optional(),
+  createdAt: z.string().datetime().optional(),
 });
 export type NetworkAssignmentMetadata = z.infer<typeof NetworkAssignmentMetadataSchema>;
 
