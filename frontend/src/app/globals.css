@@ -270,6 +270,32 @@ button {
   animation: cursor-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Steer / queue interrupt animations */
+
+/* Soft throb for the 'classifying…' badge — less aggressive than the default animate-pulse */
+@keyframes classify-throb {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.badge-classifying {
+  animation: classify-throb 1.8s ease-in-out infinite;
+}
+
+/* Cancel button fades in after a short delay once 'queued' badge settles */
+@keyframes fade-in-delayed {
+  0%, 30% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.cancel-fade-in {
+  animation: fade-in-delayed 0.4s ease-out forwards;
+}
+
+/* Slide-up fade-out when a queued message is cancelled */
+@keyframes slide-fade-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-4px); }
+}
+
 @keyframes cursor-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }

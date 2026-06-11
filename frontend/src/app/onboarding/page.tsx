@@ -630,14 +630,13 @@ export default function OnboardingPage() {
             <div key={msg.id}>
               <div className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}>
                 {msg.role === "user" ? (
-                  <div className="max-w-[75%] bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-4xl px-4 py-1 text-sm leading-relaxed">
-                    <article className="max-w-none">
-                      <div className="chat-markdown max-w-none">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {mentionsToMarkdownLinks(msg.content)}
-                        </ReactMarkdown>
-                      </div>
-                    </article>
+                  <div className="w-fit max-w-[75%] bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-4xl px-4 py-1 text-sm leading-relaxed">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{ p: ({ children }) => <span className="block">{children}</span> }}
+                    >
+                      {mentionsToMarkdownLinks(msg.content)}
+                    </ReactMarkdown>
                   </div>
                 ) : (
                   <div className="w-full text-gray-900">
