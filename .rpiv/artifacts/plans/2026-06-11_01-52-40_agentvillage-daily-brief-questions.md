@@ -301,14 +301,14 @@ describe("createQuestionerTools", () => {
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `cd packages/protocol && bun test src/questioner/tests/questioner.tools.spec.ts` — all 4 tests pass
-- [ ] `grep -r 'createQuestionerTools' packages/protocol/src/shared/agent/tool.registry.ts` — returns a match
-- [ ] `grep -r 'read_pending_questions' packages/protocol/src/shared/agent/tool.factory.ts` — returns nothing
-- [ ] `cd packages/protocol && bun run build` — compiles without errors
+- [x] `cd packages/protocol && bun test src/questioner/tests/questioner.tools.spec.ts` — all 4 tests pass
+- [x] `grep -r 'createQuestionerTools' packages/protocol/src/shared/agent/tool.registry.ts` — returns a match
+- [x] `grep -r 'read_pending_questions' packages/protocol/src/shared/agent/tool.factory.ts` — returns nothing
+- [x] `cd packages/protocol && bun run build` — compiles without errors
 
 #### Manual Verification:
-- [ ] `questioner.tools.ts` is located in `packages/protocol/src/questioner/` (not `opportunity/`)
-- [ ] `tool.registry.ts` calls `createQuestionerTools(dt, deps)` after `createPremiseTools(dt, deps)`
+- [x] `questioner.tools.ts` is located in `packages/protocol/src/questioner/` (not `opportunity/`)
+- [x] `tool.registry.ts` calls `createQuestionerTools(dt, deps)` after `createPremiseTools(dt, deps)`
 
 ## Phase 2: Context fetch
 
