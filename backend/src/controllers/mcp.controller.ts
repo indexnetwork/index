@@ -574,14 +574,10 @@ const authResolver: McpAuthResolver = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// LAZY MCP SERVER CREATION
+// PER-REQUEST MCP SERVER CREATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
-let mcpServer: McpServer | null = null;
-
-function getOrCreateMcpServer(): McpServer {
-  if (mcpServer) return mcpServer;
-
+function createMcpServerInstance(): McpServer {
   const graphs = getOrCompileGraphs();
 
   const userDb = protocolDeps.createUserDatabase(protocolDeps.database, 'system');
@@ -661,9 +657,7 @@ function getOrCreateMcpServer(): McpServer {
     },
   };
 
-  mcpServer = createMcpServer(toolDeps, authResolver, scopedDepsFactory);
-  logger.info('MCP server initialized');
-  return mcpServer;
+  return createMcpServer(toolDeps, authResolver, scopedDepsFactory);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -671,17 +665,21 @@ function getOrCreateMcpServer(): McpServer {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Creates a fresh transport for each HTTP request and connects it to the
- * singleton MCP server. This avoids the shared _requestToStreamMapping in
- * WebStandardStreamableHTTPServerTransport that routes responses by JSON-RPC
- * message.id — when multiple clients send the same id (e.g. all agentvillage
- * pods send id:2 for tools/call), a shared transport overwrites the mapping
- * and routes Response A to Client B, leaking data across users.
+ * Creates a fresh MCP server and transport for each HTTP request. The transport
+ * keeps response-routing state keyed by JSON-RPC message.id, and McpServer keeps
+ * a single active transport reference. Reusing either object across concurrent
+ * stateless HTTP clients can route a response to the wrong connection when
+ * clients reuse ids (for example, all agentvillage pods send id:2 for
+ * tools/call).
+ *
+ * enableJsonResponse makes handleRequest resolve only after the tool response is
+ * ready, so the handler can safely close the per-request transport afterwards.
  */
 async function createPerRequestTransport(): Promise<WebStandardStreamableHTTPServerTransport> {
-  const server = getOrCreateMcpServer();
+  const server = createMcpServerInstance();
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
+    enableJsonResponse: true,
   });
   await server.connect(transport);
   return transport;
