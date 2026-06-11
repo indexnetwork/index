@@ -667,26 +667,24 @@ function getOrCreateMcpServer(): McpServer {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TRANSPORT (created once, reused across requests)
+// TRANSPORT (created per request to isolate stream mappings)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-let mcpTransportPromise: Promise<WebStandardStreamableHTTPServerTransport> | null = null;
-
-function getOrCreateTransport(): Promise<WebStandardStreamableHTTPServerTransport> {
-  if (mcpTransportPromise) return mcpTransportPromise;
-
-  mcpTransportPromise = (async () => {
-    const server = getOrCreateMcpServer();
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
-    await server.connect(transport);
-    logger.info('MCP transport connected');
-    return transport;
-  })();
-
-  mcpTransportPromise.catch(() => { mcpTransportPromise = null; });
-  return mcpTransportPromise;
+/**
+ * Creates a fresh transport for each HTTP request and connects it to the
+ * singleton MCP server. This avoids the shared _requestToStreamMapping in
+ * WebStandardStreamableHTTPServerTransport that routes responses by JSON-RPC
+ * message.id — when multiple clients send the same id (e.g. all agentvillage
+ * pods send id:2 for tools/call), a shared transport overwrites the mapping
+ * and routes Response A to Client B, leaking data across users.
+ */
+async function createPerRequestTransport(): Promise<WebStandardStreamableHTTPServerTransport> {
+  const server = getOrCreateMcpServer();
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+  await server.connect(transport);
+  return transport;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -783,8 +781,9 @@ export async function mcpHandler(
     );
   }
 
+  let transport: WebStandardStreamableHTTPServerTransport | undefined;
   try {
-    const transport = await getOrCreateTransport();
+    transport = await createPerRequestTransport();
     const response = await transport.handleRequest(req);
 
     const newHeaders = new Headers(response.headers);
@@ -852,5 +851,10 @@ export async function mcpHandler(
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       },
     );
+  } finally {
+    // Close the per-request transport to release accumulated state and prevent memory leaks
+    if (transport) {
+      await transport.close().catch(() => {});
+    }
   }
 }
