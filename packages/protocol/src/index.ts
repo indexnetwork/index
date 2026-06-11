@@ -180,6 +180,8 @@ export { PremiseGraphFactory } from "./premise/premise.graph.js";
 export { UserContextGenerator } from "./context/context.generator.js";
 export type { UserContextInput, IncrementalContextInput, UserContextResult } from "./context/context.generator.js";
 export { ChatTitleGenerator } from "./chat/chat.title.generator.js";
+export { ChatInterruptClassifier } from "./chat/chat.interrupt.classifier.js";
+export type { ClassifyInterruptInput } from "./chat/chat.interrupt.classifier.js";
 export { ChatSummarizer } from "./chat/chat.summarizer.js";
 export type { ChatSummarizerInput, ChatSummarizerMessage } from "./chat/chat.summarizer.js";
 export { HydeGenerator } from "./shared/hyde/hyde.generator.js";

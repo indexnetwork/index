@@ -324,6 +324,37 @@ describe('ProfileGraph', () => {
       expect(mockScraper.scrape).not.toHaveBeenCalled();
     });
   });
+
+  describe('Provenance tracking via activeSocialIds', () => {
+    it('should populate activeSocialIds in output state when getUserSocials returns records on scrape path', async () => {
+      (mockDatabase.getProfile as any).mockResolvedValue(null);
+      (mockDatabase.getUserSocials as any).mockResolvedValue([
+        { id: 'social-id-1', userId: 'test-user-id', label: 'github', value: 'https://github.com/test' },
+        { id: 'social-id-2', userId: 'test-user-id', label: 'linkedin', value: 'https://linkedin.com/in/test' },
+      ]);
+
+      const graph = factory.createGraph();
+      const result = await graph.invoke({
+        userId: 'test-user-id',
+        operationMode: 'write',
+      });
+
+      expect(result.activeSocialIds).toEqual(['social-id-1', 'social-id-2']);
+    });
+
+    it('should leave activeSocialIds as empty array when user has no socials', async () => {
+      (mockDatabase.getProfile as any).mockResolvedValue(null);
+      (mockDatabase.getUserSocials as any).mockResolvedValue([]);
+
+      const graph = factory.createGraph();
+      const result = await graph.invoke({
+        userId: 'test-user-id',
+        operationMode: 'write',
+      });
+
+      expect(result.activeSocialIds).toEqual([]);
+    });
+  });
 });
 
 // ─── Generate mode tests ─────────────────────────────────────────────────────

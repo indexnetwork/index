@@ -25,6 +25,9 @@ afterAll(async () => {
   await db.delete(questions).where(
     sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: 'test-user-1' }])}::jsonb`,
   );
+  await db.delete(questions).where(
+    sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: 'test-user-2' }])}::jsonb`,
+  );
   await client.end({ timeout: 5 });
 });
 
@@ -143,5 +146,45 @@ describe('QuestionerAdapter', () => {
     expect(first).toBe(true);
     const second = await adapter.dismiss(ids[0], 'test-user-1');
     expect(second).toBe(false);
+  });
+
+  it('findPending filters by a modes set, excluding other modes', async () => {
+    await adapter.persist([
+      makePersistable({
+        detection: { mode: 'profile', sourceType: 'profile', sourceId: 'test-user-2', timestamp: new Date().toISOString() },
+        actors: [{ userId: 'test-user-2', role: 'subject' as const }],
+      }),
+      makePersistable({
+        detection: { mode: 'negotiation', sourceType: 'opportunity', sourceId: 'test-opp-2', timestamp: new Date().toISOString() },
+        actors: [{ userId: 'test-user-2', role: 'subject' as const }],
+      }),
+    ]);
+    const pending = await adapter.findPending('test-user-2', {
+      modes: ['profile', 'intent', 'discovery'],
+    });
+    expect(pending.length).toBeGreaterThanOrEqual(1);
+    for (const q of pending) {
+      expect(q.detection.mode).not.toBe('negotiation');
+    }
+    const all = await adapter.findPending('test-user-2');
+    expect(all.some((q) => q.detection.mode === 'negotiation')).toBe(true);
+  });
+
+  it('findPending applies the SQL limit preserving oldest-first order', async () => {
+    await adapter.persist([
+      makePersistable({
+        detection: { mode: 'intent', sourceType: 'intent', sourceId: 'test-intent-2a', timestamp: new Date().toISOString() },
+        actors: [{ userId: 'test-user-2', role: 'subject' as const }],
+      }),
+      makePersistable({
+        detection: { mode: 'intent', sourceType: 'intent', sourceId: 'test-intent-2b', timestamp: new Date().toISOString() },
+        actors: [{ userId: 'test-user-2', role: 'subject' as const }],
+      }),
+    ]);
+    const all = await adapter.findPending('test-user-2');
+    expect(all.length).toBeGreaterThan(1);
+    const limited = await adapter.findPending('test-user-2', { limit: 1 });
+    expect(limited).toHaveLength(1);
+    expect(limited[0].id).toBe(all[0].id);
   });
 });

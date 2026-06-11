@@ -393,6 +393,38 @@ describe('ChatDatabaseAdapter', () => {
     await db.delete(premises).where(eq(premises.id, premise.id));
   });
 
+  it('should return premises matching a specific provenance source', async () => {
+    const integrationPremise = await adapter.createPremise({
+      userId: fixture.userBId,
+      assertion: { text: TEST_PREFIX + 'integration-source-test', tier: 'assertive' as const },
+      provenance: { source: 'integration', sourceId: 'social-id-1', confidence: 1, timestamp: new Date().toISOString() },
+      validity: { volatile: false },
+    });
+    const explicitPremise = await adapter.createPremise({
+      userId: fixture.userBId,
+      assertion: { text: TEST_PREFIX + 'explicit-source-test', tier: 'assertive' as const },
+      provenance: { source: 'explicit', confidence: 1, timestamp: new Date().toISOString() },
+      validity: { volatile: false },
+    });
+
+    try {
+      const integrationResults = await adapter.getPremisesBySource(fixture.userBId, 'integration');
+      const explicitResults = await adapter.getPremisesBySource(fixture.userBId, 'explicit');
+
+      expect(integrationResults.some(p => p.id === integrationPremise.id)).toBe(true);
+      expect(integrationResults.some(p => p.id === explicitPremise.id)).toBe(false);
+      expect(explicitResults.some(p => p.id === explicitPremise.id)).toBe(true);
+      expect(explicitResults.some(p => p.id === integrationPremise.id)).toBe(false);
+    } finally {
+      await db.delete(premises).where(inArray(premises.id, [integrationPremise.id, explicitPremise.id]));
+    }
+  });
+
+  it('should return empty array for user with no premises of that source', async () => {
+    const results = await adapter.getPremisesBySource(uuidv4(), 'integration');
+    expect(results).toEqual([]);
+  });
+
   it('should get owned indexes for owner', async () => {
     const owned = await adapter.getOwnedIndexes(fixture.userAId);
     expect(owned.length).toBeGreaterThanOrEqual(1);

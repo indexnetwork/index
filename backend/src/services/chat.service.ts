@@ -160,6 +160,7 @@ export class ChatSessionService {
     routingDecision?: Record<string, unknown>;
     subgraphResults?: Record<string, unknown>;
     tokenCount?: number;
+    interrupted?: boolean;
   }): Promise<string> {
     logger.verbose('Adding message', {
       sessionId: params.sessionId,
@@ -177,6 +178,7 @@ export class ChatSessionService {
       routingDecision: params.routingDecision,
       subgraphResults: params.subgraphResults,
       tokenCount: params.tokenCount,
+      interrupted: params.interrupted,
     });
 
     // Update session timestamp

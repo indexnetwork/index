@@ -1,7 +1,7 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { ProfileGraphState } from "./profile.state.js";
 import { ProfileGenerator, ProfileDocument } from "./profile.generator.js";
-import { ProfileGraphDatabase, PremiseRecord } from "../shared/interfaces/database.interface.js";
+import { ProfileGraphDatabase, PremiseRecord, PremiseProvenance } from "../shared/interfaces/database.interface.js";
 import { Scraper } from "../shared/interfaces/scraper.interface.js";
 import type { ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
 import { shouldEnrichGhostDisplayNameFromParallel, isEnrichedNameMeaningful } from "./profile.enricher.js";
@@ -24,6 +24,8 @@ export interface CompiledPremiseGraph {
     assertionText: string;
     tier: 'assertive' | 'contextual';
     operationMode: 'create';
+    provenanceSource?: PremiseProvenance['source'];
+    provenanceSourceId?: string;
   }): Promise<{
     premise?: { id: string } | undefined;
     error?: string | undefined;
@@ -319,6 +321,7 @@ export class ProfileGraphFactory {
           return {
             objective,
             input: scrapedData,
+            activeSocialIds: socials.map(s => s.id),
             operationsPerformed: { scraped: true }
           };
         } catch (error) {
@@ -492,6 +495,7 @@ export class ProfileGraphFactory {
                 needsUserInfo: false,
                 needsProfileGeneration: true,
                 forceUpdate: true,
+                activeSocialIds: socials.map(s => s.id),
                 operationsPerformed: { scraped: true },
               };
             }
@@ -779,6 +783,9 @@ export class ProfileGraphFactory {
                 assertionText: p.text,
                 tier: p.tier,
                 operationMode: 'create',
+                ...(state.activeSocialIds?.length
+                  ? { provenanceSource: 'integration' as const, provenanceSourceId: state.activeSocialIds[0] }
+                  : {}),
               });
 
               if (premiseResult.premise) {

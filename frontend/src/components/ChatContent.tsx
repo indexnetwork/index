@@ -14,7 +14,6 @@ import {
   Share2,
   Check,
   Users,
-  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
@@ -28,17 +27,15 @@ import { validateFiles } from "@/lib/file-validation";
 import InlineDiscoveryCard from "@/components/chat/InlineDiscoveryCard";
 import { DecisionQuestions } from "@/components/DecisionQuestions";
 import InviteMessageModal from "@/components/InviteMessageModal";
+import { SuggestionChips } from "@/components/chat/SuggestionChips";
+import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
+import AssistantMessageContent, {
+  parseAllBlocks,
+} from "@/components/chat/AssistantMessageContent";
 import OpportunityCard, {
   type OpportunityCardData,
   OpportunitySkeleton,
 } from "@/components/chat/OpportunityCardInChat";
-import IntentProposalCard, {
-  type IntentProposalData,
-  IntentProposalSkeleton,
-} from "@/components/chat/IntentProposalCard";
-import NetworksPanel from "@/components/chat/NetworksPanel";
-import { SuggestionChips } from "@/components/chat/SuggestionChips";
-import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
@@ -70,282 +67,6 @@ interface PendingFile {
 interface ChatContentProps {
   sessionIdParam?: string | null;
 }
-
-/**
- * Sub-component for assistant message content.
- */
-/**
- * Ensure blockquote lines are always followed by a blank line so that
- * subsequent non-blockquote text isn't absorbed via markdown "lazy continuation".
- * - "> Retrieving…\nHere is…" → "> Retrieving…\n\nHere is…"
- * - "> Updating...Your profile now" (no newline after "...") → "> Updating...\n\nYour profile now"
- */
-function normalizeBlockquotes(text: string): string {
-  // When a blockquote line ends with "..." and more text follows on the same line (e.g. stream
-  // sent no newline), insert a blank line so the following text renders on a new line.
-  let out = text.replace(/^(>.*?\.\.\.)\s*(\S.+)$/gm, "$1\n\n$2");
-  out = out.replace(/^(>.*)\n(?!>|\n)/gm, "$1\n\n");
-  return out;
-}
-
-/**
- * Parse message content to extract ```opportunity code blocks.
- * Returns an array of segments: either text or opportunity card data.
- */
-type MessageSegment =
-  | { type: "text"; content: string }
-  | { type: "opportunity"; data: OpportunityCardData }
-  | { type: "opportunity_loading" }
-  | { type: "intent_proposal"; data: IntentProposalData }
-  | { type: "intent_proposal_loading" }
-  | { type: "networks_panel" }
-  | { type: "networks_panel_loading" };
-
-function parseAllBlocks(content: string): MessageSegment[] {
-  const segments: MessageSegment[] = [];
-  const regex = /```(opportunity|intent_proposal|networks_panel)\s*\n([\s\S]*?)\n```/g;
-  let lastIndex = 0;
-  let match;
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      const textBefore = content.slice(lastIndex, match.index);
-      if (textBefore.trim()) {
-        segments.push({ type: "text", content: textBefore });
-      }
-    }
-
-    const blockType = match[1];
-
-    if (blockType === "networks_panel") {
-      segments.push({ type: "networks_panel" });
-    } else {
-      try {
-        const jsonStr = match[2].trim();
-        const data = JSON.parse(jsonStr);
-
-        if (blockType === "opportunity" && data.opportunityId && data.userId) {
-          segments.push({ type: "opportunity", data: data as OpportunityCardData });
-        } else if (
-          blockType === "intent_proposal" &&
-          data.proposalId &&
-          (typeof data.description === "string" || !("description" in data))
-        ) {
-          segments.push({ type: "intent_proposal", data: data as IntentProposalData });
-        } else if (blockType === "intent_proposal") {
-          // Broken block (e.g. model wrote intent_proposal without calling create_intent — no proposalId)
-          segments.push({
-            type: "text",
-            content: "This proposal couldn't be loaded as a card. Ask again to add this as a signal.",
-          });
-        } else {
-          segments.push({ type: "text", content: match[0] });
-        }
-      } catch {
-        segments.push({ type: "text", content: match[0] });
-      }
-    }
-
-    lastIndex = match.index + match[0].length;
-  }
-
-  const remainingContent = content.slice(lastIndex);
-  const partialOpp = remainingContent.match(/```opportunity/);
-  const partialIntent = remainingContent.match(/```intent_proposal/);
-  const partialNetworks = remainingContent.match(/```networks_panel/);
-
-  const candidates = ([partialOpp, partialIntent, partialNetworks] as (RegExpMatchArray | null)[]).filter(
-    (c): c is RegExpMatchArray => c !== null,
-  );
-  const partialMatch = candidates.length > 0
-    ? candidates.reduce((earliest, c) => c.index! < earliest.index! ? c : earliest)
-    : null;
-
-  if (partialMatch) {
-    const partialIndex = partialMatch.index!;
-    const textBefore = remainingContent.slice(0, partialIndex);
-    if (textBefore.trim()) {
-      segments.push({ type: "text", content: textBefore });
-    }
-    if (partialMatch === partialOpp) {
-      segments.push({ type: "opportunity_loading" });
-    } else if (partialMatch === partialIntent) {
-      segments.push({ type: "intent_proposal_loading" });
-    } else {
-      segments.push({ type: "networks_panel_loading" });
-    }
-  } else if (lastIndex < content.length) {
-    const remaining = content.slice(lastIndex);
-    if (remaining.trim()) {
-      segments.push({ type: "text", content: remaining });
-    }
-  }
-
-  if (segments.length === 0 && content.trim()) {
-    segments.push({ type: "text", content });
-  }
-
-  return segments;
-}
-
-function dedupeSegments(segments: MessageSegment[]): MessageSegment[] {
-  const seenOpps = new Set<string>();
-  const seenProposals = new Set<string>();
-  return segments.filter((seg) => {
-    if (seg.type === "opportunity") {
-      if (seenOpps.has(seg.data.opportunityId)) return false;
-      seenOpps.add(seg.data.opportunityId);
-      return true;
-    }
-    if (seg.type === "intent_proposal") {
-      if (seenProposals.has(seg.data.proposalId)) return false;
-      seenProposals.add(seg.data.proposalId);
-      return true;
-    }
-    return true;
-  });
-}
-
-function AssistantMessageContent({
-  content,
-  isStreaming,
-  onOpportunityPrimaryAction,
-  onOpportunitySecondaryAction,
-  opportunityLoadingMap,
-  currentStatusMap,
-  onIntentProposalApprove,
-  onIntentProposalReject,
-  onIntentProposalUndo,
-  intentProposalStatusMap,
-  OAuthLink,
-  onNetworkJoin,
-  networkPanelPendingJoinIds,
-}: {
-  content: string;
-  isStreaming: boolean;
-  onOpportunityPrimaryAction?: (
-    opportunityId: string,
-    userId: string,
-    viewerRole?: string,
-    counterpartName?: string,
-    isGhost?: boolean,
-  ) => void;
-  onOpportunitySecondaryAction?: (
-    opportunityId: string,
-    userId: string,
-    viewerRole?: string,
-    counterpartName?: string,
-    isGhost?: boolean,
-  ) => void;
-  opportunityLoadingMap?: Record<string, boolean>;
-  /** Map of opportunityId -> current status from server */
-  currentStatusMap?: Record<string, string>;
-  onIntentProposalApprove?: (proposalId: string, description: string, networkId?: string) => void;
-  onIntentProposalReject?: (proposalId: string) => void;
-  onIntentProposalUndo?: (proposalId: string) => void;
-  intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
-  OAuthLink?: React.ComponentType<React.ComponentPropsWithoutRef<"a">>;
-  onNetworkJoin?: (networkId: string, networkTitle: string) => void;
-  networkPanelPendingJoinIds?: Set<string>;
-}) {
-  const displayedContent = normalizeBlockquotes(mentionsToMarkdownLinks(content));
-
-  // Show cursor while streaming (before content arrives)
-  const showCursor = isStreaming;
-
-  // No text yet — render a standalone blinking cursor
-  if (!displayedContent && isStreaming) {
-    return <span className="inline-block w-2 h-4 bg-current animate-pulse" />;
-  }
-
-  // Parse opportunity and intent_proposal blocks from the displayed content; dedupe
-  const segments = dedupeSegments(parseAllBlocks(displayedContent));
-
-  return (
-    <div>
-      {segments.map((segment, idx) => {
-        if (segment.type === "text") {
-          const isLast = idx === segments.length - 1;
-          return (
-            <div
-              key={`text-${idx}`}
-              className={cn(
-                "chat-markdown max-w-none",
-                isStreaming && "chat-markdown-streaming",
-                showCursor && isLast && "chat-markdown-typing",
-              )}
-            >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={OAuthLink ? { a: OAuthLink } : undefined}
-              >
-                {segment.content}
-              </ReactMarkdown>
-            </div>
-          );
-        } else if (segment.type === "opportunity") {
-          return (
-            <div
-              key={segment.data.opportunityId}
-              className="my-3"
-            >
-              <OpportunityCard
-                card={segment.data}
-                onPrimaryAction={onOpportunityPrimaryAction}
-                onSecondaryAction={onOpportunitySecondaryAction}
-                isLoading={
-                  opportunityLoadingMap?.[segment.data.opportunityId] ?? false
-                }
-                currentStatus={currentStatusMap?.[segment.data.opportunityId]}
-              />
-            </div>
-          );
-        } else if (segment.type === "opportunity_loading") {
-          return (
-            <div key={`loading-${idx}`} className="my-3">
-              <OpportunitySkeleton />
-            </div>
-          );
-        } else if (segment.type === "intent_proposal") {
-          return (
-            <div key={segment.data.proposalId} className="my-3">
-              <IntentProposalCard
-                card={segment.data}
-                onApprove={onIntentProposalApprove}
-                onReject={onIntentProposalReject}
-                onUndo={onIntentProposalUndo}
-                currentStatus={intentProposalStatusMap?.[segment.data.proposalId]}
-              />
-            </div>
-          );
-        } else if (segment.type === "intent_proposal_loading") {
-          return (
-            <div key={`intent-loading-${idx}`} className="my-3">
-              <IntentProposalSkeleton />
-            </div>
-          );
-        } else if (segment.type === "networks_panel") {
-          return (
-            <div key={`networks-panel-${idx}`} className="my-3">
-              <NetworksPanel
-                onJoin={onNetworkJoin ?? (() => {})}
-                pendingJoinIds={networkPanelPendingJoinIds}
-              />
-            </div>
-          );
-        } else {
-          // networks_panel_loading
-          return (
-            <div key={`networks-panel-loading-${idx}`} className="my-3 flex justify-center py-6">
-              <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
-            </div>
-          );
-        }
-      })}
-    </div>
-  );
-}
-
 export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const navigate = useNavigate();
   const sessionIdFromUrl = sessionIdParam ?? null;
@@ -362,6 +83,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     setScopeNetworkId,
     sessionNetworkId,
     updateSessionTitle,
+    pendingQueue,
+    cancelQueuedMessage,
+    submitMidStreamMessage,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, success: showSuccess, addNotification } = useNotifications();
@@ -517,14 +241,18 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     setInjectedQuestions((prev) => prev.filter((q) => q.id !== questionId));
   }, [questionsService]);
 
-  // Clear pending join IDs when stream completes (agent processed the join)
+  // Index filter state (needed before stream-end effect so refreshIndexes is in scope)
+  const { indexes, refreshIndexes } = useNetworksState();
+
+  // Clear pending join IDs when stream completes and refresh sidebar
   const prevIsLoadingRef = useRef(isLoading);
   useEffect(() => {
     if (prevIsLoadingRef.current && !isLoading && networkPanelPendingJoinIds.size > 0) {
       setNetworkPanelPendingJoinIds(new Set());
+      void refreshIndexes();
     }
     prevIsLoadingRef.current = isLoading;
-  }, [isLoading, networkPanelPendingJoinIds.size]);
+  }, [isLoading, networkPanelPendingJoinIds.size, refreshIndexes]);
 
   const handleNetworkJoin = useCallback(
     (networkId: string, networkTitle: string) => {
@@ -587,7 +315,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   // Index filter
   const { selectedNetworkIds, setSelectedNetworkIds } = useNetworkFilter();
-  const { indexes } = useNetworksState();
   const selectedIndexId =
     selectedNetworkIds.length === 1 ? selectedNetworkIds[0] : null;
 
@@ -922,8 +649,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       setIsInputMultiline(true);
     }
   }, [input]);
-  const isBusy = isLoading || isUploadingFiles;
-
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
@@ -950,7 +675,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSend || isBusy) return;
+    if (!canSend || isUploadingFiles) return;  // file upload blocks; stream does not
 
     const message = input.trim();
     setInput("");
@@ -968,9 +693,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         setSelectedFiles([]);
       } catch (err) {
         console.error("[AI Chat] Upload failed:", err);
-        showError(
-          err instanceof Error ? err.message : "Failed to upload file(s)",
-        );
+        showError(err instanceof Error ? err.message : "Failed to upload file(s)");
         setIsUploadingFiles(false);
         inputRef.current?.focus();
         return;
@@ -978,11 +701,17 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       setIsUploadingFiles(false);
     }
 
-    await sendMessage(
-      message || "Attached file(s).",
-      fileIds.length ? fileIds : undefined,
-      attachmentNames.length ? attachmentNames : undefined,
-    );
+    const msgContent = message || "Attached file(s).";
+    const fileArg = fileIds.length ? fileIds : undefined;
+    const nameArg = attachmentNames.length ? attachmentNames : undefined;
+
+    if (isLoading) {
+      // Mid-stream: route via interrupt flow
+      const streamingMsg = messages.find((m) => m.isStreaming);
+      submitMidStreamMessage(msgContent, streamingMsg?.traceEvents ?? [], fileArg, nameArg);
+    } else {
+      await sendMessage(msgContent, fileArg, nameArg);
+    }
     inputRef.current?.focus();
   };
 
@@ -1107,7 +836,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               type="button"
               variant="ghost"
               size="icon"
-              disabled={isBusy}
+              disabled={isUploadingFiles}
               onClick={() => fileInputRef.current?.click()}
               className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
               title="Attach files"
@@ -1119,7 +848,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               value={input}
               onChange={setInput}
               placeholder={CHAT_INPUT_PLACEHOLDER}
-              disabled={isBusy}
+              disabled={isUploadingFiles}
               autoFocus
               inputRef={inputRef}
               suggestionsAbove
@@ -1328,7 +1057,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       type="button"
                       variant="ghost"
                       size="icon"
-                      disabled={isBusy}
+                      disabled={isUploadingFiles}
                       onClick={() => fileInputRef.current?.click()}
                       className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
                       title="Attach files"
@@ -1339,7 +1068,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       value={input}
                       onChange={setInput}
                       placeholder={CHAT_INPUT_PLACEHOLDER}
-                      disabled={isBusy}
+                      disabled={isUploadingFiles}
                       autoFocus
                       inputRef={inputRef}
                     />
@@ -1503,7 +1232,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  disabled={isBusy}
+                  disabled={isUploadingFiles}
                   onClick={() => fileInputRef.current?.click()}
                   className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
                   title="Attach files"
@@ -1514,7 +1243,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   value={input}
                   onChange={setInput}
                   placeholder={CHAT_INPUT_PLACEHOLDER}
-                  disabled={isBusy}
+                  disabled={isUploadingFiles}
                   autoFocus
                   inputRef={inputRef}
                 />
@@ -1675,18 +1404,42 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   )}
                 >
                   {msg.role === "user" ? (
-                    <div className="max-w-[75%] bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-4xl px-4 py-1 text-sm leading-relaxed">
-                      <article className="max-w-none">
-                        <div className="chat-markdown max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {mentionsToMarkdownLinks(msg.content)}
-                          </ReactMarkdown>
-                        </div>
-                      </article>
+                    <div className="flex flex-col items-end gap-1 max-w-[75%]">
+                      {(msg.isPending || msg.isQueued) && (
+                        <span className={cn(
+                          "inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full font-medium font-ibm-plex-mono tracking-wide transition-colors duration-150",
+                          msg.isPending
+                            ? "bg-amber-50 text-amber-600 border border-amber-200 badge-classifying"
+                            : "bg-blue-50 text-blue-500 border border-blue-200",
+                        )}>
+                          {msg.isPending ? "classifying…" : "queued"}
+                          {msg.isQueued && (
+                            <button
+                              type="button"
+                              onClick={() => cancelQueuedMessage(msg.id)}
+                              className="ml-0.5 text-blue-400 hover:text-blue-700 focus:outline-none cancel-fade-in"
+                              aria-label="Cancel queued message"
+                            >
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          )}
+                        </span>
+                      )}
+                      <div className={cn(
+                        "w-fit max-w-full bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-4xl px-4 py-1 text-sm leading-relaxed transition-opacity duration-150",
+                        (msg.isPending || msg.isQueued) && "opacity-60",
+                      )}>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{ p: ({ children }) => <span className="block">{children}</span> }}
+                        >
+                          {mentionsToMarkdownLinks(msg.content)}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   ) : (
                     <div className="w-full text-gray-900">
-                      <span className="text-[10px] uppercase tracking-wider text-black font-bold mb-1 block">
+                      <span className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-ibm-plex-mono mb-1.5 block">
                         Index
                       </span>
                       {msg.traceEvents && msg.traceEvents.length > 0 && (
@@ -1746,6 +1499,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           />
                         </article>
                       </div>
+                      {msg.wasInterrupted && (
+                        <p className="text-[10px] text-gray-300 mt-1 font-ibm-plex-mono tracking-wide">{"\u2014 interrupted"}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1864,7 +1620,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           <ContentContainer>
             <SuggestionChips
               suggestions={suggestions}
-              disabled={isBusy}
+              disabled={isUploadingFiles}
               onSuggestionClick={handleSuggestionClick}
             />
             {renderInputForm()}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGmailConnect } from "@/hooks/useGmailConnect";
 import { useNavigate } from "react-router";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, Loader2, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -11,20 +11,14 @@ import { useNetworksState } from "@/contexts/IndexesContext";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiClient } from "@/lib/api";
-import OpportunityCard, {
-  type OpportunityCardData,
-  OpportunitySkeleton,
-} from "@/components/chat/OpportunityCardInChat";
-import IntentProposalCard, {
-  type IntentProposalData,
-  IntentProposalSkeleton,
-} from "@/components/chat/IntentProposalCard";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
+import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { MentionsTextInput } from "@/components/MentionsInput";
 import { cn } from "@/lib/utils";
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 import type { Suggestion } from "@/hooks/useSuggestions";
+import NetworksPanel from "@/components/chat/NetworksPanel";
 
 /** Step-specific suggestions for onboarding. */
 const ONBOARDING_STEP_SUGGESTIONS: Record<string, Suggestion[]> = {
@@ -46,6 +40,9 @@ const ONBOARDING_STEP_SUGGESTIONS: Record<string, Suggestion[]> = {
   gmail: [
     { label: "Skip for now", type: "direct", followupText: "Skip for now" },
   ],
+  communities: [
+    { label: "Continue", type: "direct", followupText: "I'll skip joining networks for now, let's continue" },
+  ],
   intent: [
     { label: "Building something", type: "prompt", prefill: "Building something " },
     { label: "Exploring partnerships", type: "prompt", prefill: "Exploring partnerships " },
@@ -64,195 +61,6 @@ function buildGreeting(hasName: boolean, userName?: string): string {
   return hasName
     ? `${GREETING_PREAMBLE}\nYou're ${userName}, right? Is that right?`
     : `${GREETING_PREAMBLE} What's your name, and what's your LinkedIn, Twitter/X, or GitHub?`;
-}
-
-// ---------------------------------------------------------------------------
-// Markdown / block parsing (mirrors ChatContent logic)
-// ---------------------------------------------------------------------------
-
-function normalizeBlockquotes(text: string): string {
-  let out = text.replace(/^(>.*?\.\.\.)\s*(\S.+)$/gm, "$1\n\n$2");
-  out = out.replace(/^(>.*)\n(?!>|\n)/gm, "$1\n\n");
-  return out;
-}
-
-type MessageSegment =
-  | { type: "text"; content: string }
-  | { type: "opportunity"; data: OpportunityCardData }
-  | { type: "opportunity_loading" }
-  | { type: "intent_proposal"; data: IntentProposalData }
-  | { type: "intent_proposal_loading" };
-
-function parseAllBlocks(content: string): MessageSegment[] {
-  const segments: MessageSegment[] = [];
-  const regex = /```(opportunity|intent_proposal)\s*\n([\s\S]*?)\n```/g;
-  let lastIndex = 0;
-  let match;
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      const textBefore = content.slice(lastIndex, match.index);
-      if (textBefore.trim()) segments.push({ type: "text", content: textBefore });
-    }
-    const blockType = match[1];
-
-    {
-      try {
-        const data = JSON.parse(match[2].trim());
-        if (blockType === "opportunity" && data.opportunityId && data.userId) {
-          segments.push({ type: "opportunity", data: data as OpportunityCardData });
-        } else if (blockType === "intent_proposal" && data.proposalId) {
-          segments.push({ type: "intent_proposal", data: data as IntentProposalData });
-        } else {
-          segments.push({ type: "text", content: match[0] });
-        }
-      } catch {
-        segments.push({ type: "text", content: match[0] });
-      }
-    }
-    lastIndex = match.index + match[0].length;
-  }
-
-  const remaining = content.slice(lastIndex);
-  const partialOpp = remaining.match(/```opportunity/);
-  const partialIntent = remaining.match(/```intent_proposal/);
-
-  const candidates = ([partialOpp, partialIntent] as (RegExpMatchArray | null)[]).filter(
-    (c): c is RegExpMatchArray => c !== null,
-  );
-  const partialMatch = candidates.length > 0
-    ? candidates.reduce((earliest, c) => c.index! < earliest.index! ? c : earliest)
-    : null;
-
-  if (partialMatch) {
-    const textBefore = remaining.slice(0, partialMatch.index!);
-    if (textBefore.trim()) segments.push({ type: "text", content: textBefore });
-    if (partialMatch === partialOpp) {
-      segments.push({ type: "opportunity_loading" });
-    } else {
-      segments.push({ type: "intent_proposal_loading" });
-    }
-  } else if (remaining.trim()) {
-    segments.push({ type: "text", content: remaining });
-  }
-
-  if (segments.length === 0 && content.trim()) {
-    segments.push({ type: "text", content });
-  }
-  return segments;
-}
-
-function dedupeSegments(segments: MessageSegment[]): MessageSegment[] {
-  const seenOpps = new Set<string>();
-  const seenProposals = new Set<string>();
-  return segments.filter((seg) => {
-    if (seg.type === "opportunity") {
-      if (seenOpps.has(seg.data.opportunityId)) return false;
-      seenOpps.add(seg.data.opportunityId);
-    }
-    if (seg.type === "intent_proposal") {
-      if (seenProposals.has(seg.data.proposalId)) return false;
-      seenProposals.add(seg.data.proposalId);
-    }
-    return true;
-  });
-}
-
-// ---------------------------------------------------------------------------
-// AssistantMessage (simplified for onboarding — no file upload, no mentions)
-// ---------------------------------------------------------------------------
-
-function AssistantMessageContent({
-  content,
-  isStreaming,
-  onOpportunityPrimaryAction,
-  onOpportunitySecondaryAction,
-  opportunityLoadingMap,
-  currentStatusMap,
-  onIntentProposalApprove,
-  onIntentProposalReject,
-  onIntentProposalUndo,
-  intentProposalStatusMap,
-  OAuthLink,
-}: {
-  content: string;
-  isStreaming: boolean;
-  onOpportunityPrimaryAction?: (id: string, userId: string, role?: string, name?: string) => void;
-  onOpportunitySecondaryAction?: (id: string, userId: string, role?: string, name?: string) => void;
-  opportunityLoadingMap?: Record<string, boolean>;
-  currentStatusMap?: Record<string, string>;
-  onIntentProposalApprove?: (proposalId: string, description: string, networkId?: string) => void;
-  onIntentProposalReject?: (proposalId: string) => void;
-  onIntentProposalUndo?: (proposalId: string) => void;
-  intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
-  OAuthLink?: React.ComponentType<React.ComponentPropsWithoutRef<"a">>;
-}) {
-  const displayed = normalizeBlockquotes(mentionsToMarkdownLinks(content));
-  const showCursor = isStreaming;
-
-  if (!displayed && isStreaming) {
-    return <span className="inline-block w-2 h-4 bg-current animate-pulse" />;
-  }
-
-  const segments = dedupeSegments(parseAllBlocks(displayed));
-
-  return (
-    <div>
-      {segments.map((seg, idx) => {
-        if (seg.type === "text") {
-          const isLast = idx === segments.length - 1;
-          return (
-            <div
-              key={`text-${idx}`}
-              className={cn(
-                "chat-markdown max-w-none",
-                isStreaming && "chat-markdown-streaming",
-                showCursor && isLast && "chat-markdown-typing",
-              )}
-            >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={OAuthLink ? { a: OAuthLink } : undefined}
-              >
-                {seg.content}
-              </ReactMarkdown>
-            </div>
-          );
-        }
-        if (seg.type === "opportunity") {
-          return (
-            <div key={seg.data.opportunityId} className="my-3">
-              <OpportunityCard
-                card={seg.data}
-                onPrimaryAction={onOpportunityPrimaryAction}
-                onSecondaryAction={onOpportunitySecondaryAction}
-                isLoading={opportunityLoadingMap?.[seg.data.opportunityId] ?? false}
-                currentStatus={currentStatusMap?.[seg.data.opportunityId]}
-              />
-            </div>
-          );
-        }
-        if (seg.type === "opportunity_loading") {
-          return <div key={`opp-load-${idx}`} className="my-3"><OpportunitySkeleton /></div>;
-        }
-        if (seg.type === "intent_proposal") {
-          return (
-            <div key={seg.data.proposalId} className="my-3">
-              <IntentProposalCard
-                card={seg.data}
-                onApprove={onIntentProposalApprove}
-                onReject={onIntentProposalReject}
-                onUndo={onIntentProposalUndo}
-                currentStatus={intentProposalStatusMap?.[seg.data.proposalId]}
-              />
-            </div>
-          );
-        }
-        // intent_proposal_loading
-        return <div key={`intent-load-${idx}`} className="my-3"><IntentProposalSkeleton /></div>;
-      })}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +106,7 @@ export default function OnboardingPage() {
   const [opportunityStatusMap, setOpportunityStatusMap] = useState<Record<string, string>>({});
   const [intentProposalStatusMap, setIntentProposalStatusMap] = useState<Record<string, "pending" | "created" | "rejected">>({});
   const [proposalIntentMap, setProposalIntentMap] = useState<Record<string, string>>({});
+  const [networkPanelPendingJoinIds, setNetworkPanelPendingJoinIds] = useState<Set<string>>(new Set());
 
   const hasName = !!user?.name?.trim();
   const fullGreeting = buildGreeting(hasName, hasName ? `**${user?.name?.trim()}**` : undefined);
@@ -358,9 +167,22 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (prevLoadingRef.current && !isLoading) {
       refetchUser();
+      if (pendingNetworkJoinIds.size > 0) setPendingNetworkJoinIds(new Set());
     }
     prevLoadingRef.current = isLoading;
-  }, [isLoading, refetchUser]);
+  }, [isLoading, refetchUser, pendingNetworkJoinIds.size]);
+
+
+
+  // After stream completes with pending network join IDs, clear them and refresh sidebar
+  const prevNetworkJoinLoadingRef = useRef(isLoading);
+  useEffect(() => {
+    if (prevNetworkJoinLoadingRef.current && !isLoading && networkPanelPendingJoinIds.size > 0) {
+      setNetworkPanelPendingJoinIds(new Set());
+      void refreshIndexes();
+    }
+    prevNetworkJoinLoadingRef.current = isLoading;
+  }, [isLoading, networkPanelPendingJoinIds.size, refreshIndexes]);
 
   // Slide transition: sidebar slides in from left, content shifts right
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -369,6 +191,9 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (!user?.onboarding?.completedAt || hasTriggeredRedirect.current) return;
     hasTriggeredRedirect.current = true;
+
+    // Always refresh so any new memberships appear in the sidebar immediately
+    void refreshIndexes();
 
     // Accept pending invitation deferred from /l/:code (only after onboarding completes)
     const pendingCode = localStorage.getItem('pendingInviteCode');
@@ -485,6 +310,14 @@ export default function OnboardingPage() {
     [sessionId, sendMessage, fullGreeting],
   );
 
+  const handleNetworkJoin = useCallback(
+    (networkId: string, networkTitle: string) => {
+      setNetworkPanelPendingJoinIds((prev) => new Set([...prev, networkId]));
+      sendOnboardingMessage(`I'd like to join ${networkTitle}`);
+    },
+    [sendOnboardingMessage],
+  );
+
   // Infer onboarding step from last assistant message to show step-specific suggestions
   const onboardingStep = useMemo(() => {
     const lastAssistant = [...allMessages].reverse().find((m) => m.role === "assistant");
@@ -494,6 +327,7 @@ export default function OnboardingPage() {
     if (userCount === 0) return hasName ? "identity" : "identity_no_name";
     if (content.includes("does that sound right") || content.includes("here's what i found")) return "profile";
     if (content.includes("connect your google account") || content.includes("connect gmail")) return "gmail";
+    if (content.includes("communities you might find relevant")) return "communities";
     if (content.includes("what are you open to") || content.includes("open to right now")) return "intent";
     return "identity";
   }, [allMessages, chatMessages, hasName]);
@@ -573,14 +407,13 @@ export default function OnboardingPage() {
             <div key={msg.id}>
               <div className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}>
                 {msg.role === "user" ? (
-                  <div className="max-w-[75%] bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-4xl px-4 py-1 text-sm leading-relaxed">
-                    <article className="max-w-none">
-                      <div className="chat-markdown max-w-none">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {mentionsToMarkdownLinks(msg.content)}
-                        </ReactMarkdown>
-                      </div>
-                    </article>
+                  <div className="w-fit max-w-[75%] bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-4xl px-4 py-1 text-sm leading-relaxed">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{ p: ({ children }) => <span className="block">{children}</span> }}
+                    >
+                      {mentionsToMarkdownLinks(msg.content)}
+                    </ReactMarkdown>
                   </div>
                 ) : (
                   <div className="w-full text-gray-900">
@@ -615,6 +448,8 @@ export default function OnboardingPage() {
                           onIntentProposalUndo={handleIntentProposalUndo}
                           intentProposalStatusMap={intentProposalStatusMap}
                           OAuthLink={OAuthLink}
+                          onNetworkJoin={handleNetworkJoin}
+                          networkPanelPendingJoinIds={networkPanelPendingJoinIds}
                         />
                       </article>
                     </div>

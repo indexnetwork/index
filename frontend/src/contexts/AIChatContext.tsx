@@ -106,6 +106,14 @@ export interface TraceEvent {
   agreedRoles?: { ownUser?: string; otherUser?: string };
 }
 
+export interface QueuedMessage {
+  id: string;
+  message: string;
+  fileIds?: string[];
+  attachmentNames?: string[];
+  status: 'pending' | 'queued';
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -129,6 +137,9 @@ interface ChatMessage {
   decisionQuestions?: Question[];
   /** True once the user has submitted answers; disables/mutes the renderer. */
   decisionQuestionsSubmitted?: boolean;
+  isPending?: boolean;
+  isQueued?: boolean;
+  wasInterrupted?: boolean;
 }
 
 interface AIChatContextType {
@@ -159,6 +170,9 @@ interface AIChatContextType {
   clearChat: (options?: { abortStream?: boolean }) => void;
   loadSession: (sessionId: string) => Promise<void>;
   updateSessionTitle: (sessionId: string, title: string) => Promise<boolean>;
+  pendingQueue: QueuedMessage[];
+  cancelQueuedMessage: (id: string) => void;
+  submitMidStreamMessage: (message: string, traceEvents: TraceEvent[], fileIds?: string[], attachmentNames?: string[]) => void;
 }
 
 const AIChatContext = createContext<AIChatContextType | null>(null);
@@ -264,8 +278,71 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const { refetchSessions } = useAIChatSessions();
   const abortControllerRef = useRef<AbortController | null>(null);
+  const pendingQueueRef = useRef<QueuedMessage[]>([]);
+  const steerPendingRef = useRef<Array<{ message: string; fileIds?: string[]; attachmentNames?: string[] }>>([]);
+  /** Per-message timeout IDs so cancelling or resolving one pending message doesn't affect others. */
+  const interruptTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
   /** When true, sendMessage will only refetch sessions on X-Session-Id and not set sessionId (used when user navigated away during stream). */
   const skipSessionUpdateForRequestRef = useRef(false);
+
+  const cancelQueuedMessage = useCallback((id: string) => {
+    const t = interruptTimeoutsRef.current.get(id);
+    if (t !== undefined) { clearTimeout(t); interruptTimeoutsRef.current.delete(id); }
+    pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== id);
+    setPendingQueue([...pendingQueueRef.current]);
+    setMessages((prev) => prev.filter((msg) => msg.id !== id));
+  }, []);
+
+  const submitMidStreamMessage = useCallback(
+    (message: string, traceEvents: TraceEvent[], fileIds?: string[], attachmentNames?: string[]) => {
+      if (!sessionId) return;
+      const pendingMsgId = crypto.randomUUID();
+      const displayContent = message.trim() || (fileIds?.length ? 'Attached file(s).' : '');
+      if (!displayContent) return;
+
+      setMessages((prev) => [...prev, {
+        id: pendingMsgId, role: 'user' as const, content: displayContent,
+        timestamp: new Date(), isPending: true,
+        ...(attachmentNames?.length ? { attachmentNames } : {}),
+      }]);
+      const entry: QueuedMessage = { id: pendingMsgId, message, fileIds, attachmentNames, status: 'pending' };
+      pendingQueueRef.current = [...pendingQueueRef.current, entry];
+      setPendingQueue([...pendingQueueRef.current]);
+
+      const agentStateNames = traceEvents
+        .filter((e) => ['tool_start', 'graph_start', 'agent_start', 'phase_start'].includes(e.type))
+        .slice(-5)
+        .map((e) => `${e.type}: ${(e as { name?: string }).name ?? 'unknown'}`);
+
+      // 5-second fallback → steer (in case SSE steer_or_queue event never arrives)
+      const timeoutId = setTimeout(() => {
+        interruptTimeoutsRef.current.delete(pendingMsgId); // clean up map entry when timeout fires
+        steerPendingRef.current = [...steerPendingRef.current, { message, fileIds, attachmentNames }];
+        pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== pendingMsgId);
+        setPendingQueue([...pendingQueueRef.current]);
+        setMessages((prev) => prev.map((msg) => msg.id === pendingMsgId ? { ...msg, isPending: false } : msg));
+        if (abortControllerRef.current) abortControllerRef.current.abort('steer');
+      }, 5_000);
+      interruptTimeoutsRef.current.set(pendingMsgId, timeoutId);
+
+      apiClient
+        .post('/chat/interrupt', { sessionId, message, messageId: pendingMsgId, traceSnapshot: agentStateNames })
+        .catch(() => {
+          clearTimeout(timeoutId);
+          interruptTimeoutsRef.current.delete(pendingMsgId);
+          // Guard: message may have been cancelled before the POST failed.
+          // If it's no longer tracked, don't steer or abort.
+          if (!pendingQueueRef.current.some((q) => q.id === pendingMsgId)) return;
+          steerPendingRef.current = [...steerPendingRef.current, { message, fileIds, attachmentNames }];
+          pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== pendingMsgId);
+          setPendingQueue([...pendingQueueRef.current]);
+          setMessages((prev) => prev.map((msg) => msg.id === pendingMsgId ? { ...msg, isPending: false } : msg));
+          if (abortControllerRef.current) abortControllerRef.current.abort('steer');
+        });
+    },
+    [sessionId],
+  );
 
   const sendMessage = useCallback(
     async (message: string, fileIds?: string[], attachmentNames?: string[], options?: { hidden?: boolean; prefillMessages?: Array<{ role: "assistant" | "user"; content: string }> }) => {
@@ -805,6 +882,37 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     );
                     break;
                   }
+                  case "steer_or_queue": {
+                    const t = interruptTimeoutsRef.current.get((event as { messageId: string }).messageId ?? '');
+                    if (t !== undefined) { clearTimeout(t); interruptTimeoutsRef.current.delete((event as { messageId: string }).messageId); }
+                    const { decision, messageId: pendingId } = event as { decision: 'steer' | 'queue'; messageId: string };
+                    if (decision === 'steer') {
+                      const steerEntry = pendingQueueRef.current.find((q) => q.id === pendingId);
+                      // Only act if the message is still tracked — it may have been cancelled
+                      // or drained already, in which case we must not abort the current stream.
+                      if (steerEntry) {
+                        steerPendingRef.current = [...steerPendingRef.current, { message: steerEntry.message, fileIds: steerEntry.fileIds, attachmentNames: steerEntry.attachmentNames }];
+                        pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== pendingId);
+                        setPendingQueue([...pendingQueueRef.current]);
+                        setMessages((prev) => prev.map((msg) => msg.id === pendingId ? { ...msg, isPending: false, isQueued: false } : msg));
+                        if (abortControllerRef.current) abortControllerRef.current.abort('steer');
+                      }
+                    } else {
+                      // Only act if the message is still tracked — the 5s fallback may have
+                      // already fired and moved it to steerPendingRef before this SSE arrived.
+                      const queueEntry = pendingQueueRef.current.find((q) => q.id === pendingId);
+                      if (queueEntry) {
+                        pendingQueueRef.current = pendingQueueRef.current.map((q) =>
+                          q.id === pendingId ? { ...q, status: 'queued' as const } : q,
+                        );
+                        setPendingQueue([...pendingQueueRef.current]);
+                        setMessages((prev) => prev.map((msg) =>
+                          msg.id === pendingId ? { ...msg, isPending: false, isQueued: true } : msg,
+                        ));
+                      }
+                    }
+                    break;
+                  }
                   case "decision_questions": {
                     const incoming = (event.questions ?? []) as Question[];
                     setMessages((prev) =>
@@ -905,7 +1013,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
-          console.log("Chat stream aborted");
+          const isSteerAbort = abortControllerRef.current?.signal.reason === 'steer';
+          console.log(isSteerAbort ? "Chat stream interrupted by steer" : "Chat stream aborted");
           const stoppedAt = Date.now();
           setMessages((prev) =>
             prev.map((msg) =>
@@ -913,8 +1022,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                 ? {
                     ...msg,
                     isStreaming: false,
-                    wasStoppedByUser: true,
-                    stoppedAt,
+                    ...(isSteerAbort
+                      ? { wasInterrupted: true }
+                      : { wasStoppedByUser: true, stoppedAt }),
                   }
                 : msg,
             ),
@@ -936,6 +1046,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       } finally {
         skipSessionUpdateForRequestRef.current = false;
         setIsLoading(false);
+        // Queue drain is handled by the useEffect below (watches isLoading transition to false).
         // Ensure isStreaming is always cleared when the stream ends
         setMessages((prev) =>
           prev.map((msg) =>
@@ -955,8 +1066,46 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Drain the pending queue whenever loading ends.
+  // Steer messages take priority; queued messages drain FIFO.
+  // Uses useEffect (not inline in sendMessage) to avoid React Compiler circular-reference issues.
+  React.useEffect(() => {
+    if (isLoading) return;
+    if (steerPendingRef.current.length > 0) {
+      const [steerMsg, ...rest] = steerPendingRef.current;
+      steerPendingRef.current = rest;
+      // Use hidden:true so sendMessage does not add a duplicate user message —
+      // the placeholder added by submitMidStreamMessage already represents this turn.
+      void sendMessage(steerMsg.message, steerMsg.fileIds, steerMsg.attachmentNames, { hidden: true });
+    } else if (pendingQueueRef.current.length > 0) {
+      const [nextMsg, ...rest] = pendingQueueRef.current;
+      pendingQueueRef.current = rest;
+      setPendingQueue(rest);
+      // Cancel any live fallback timer for this message (may still be running if
+      // the stream ended before the SSE decision arrived).
+      const t = interruptTimeoutsRef.current.get(nextMsg.id);
+      if (t !== undefined) { clearTimeout(t); interruptTimeoutsRef.current.delete(nextMsg.id); }
+      // Reset both isPending and isQueued so the placeholder no longer shows "classifying…".
+      setMessages((prev) =>
+        prev.map((msg) => msg.id === nextMsg.id ? { ...msg, isPending: false, isQueued: false } : msg),
+      );
+      // Use hidden:true — the placeholder is the canonical user bubble.
+      void sendMessage(nextMsg.message, nextMsg.fileIds, nextMsg.attachmentNames, { hidden: true });
+    }
+  // sendMessage is stable when sessionId/scopeNetworkId/refetchSessions don't change;
+  // including it would loop. Drain only fires on isLoading transitions.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
   const clearChat = useCallback((options?: { abortStream?: boolean }) => {
     const abortStream = options?.abortStream !== false;
+    // Cancel all pending interrupt timers and reset queue refs so the drain
+    // effect does not fire stale queued messages into the freshly-cleared chat.
+    interruptTimeoutsRef.current.forEach((t) => clearTimeout(t));
+    interruptTimeoutsRef.current.clear();
+    pendingQueueRef.current = [];
+    steerPendingRef.current = [];
+    setPendingQueue([]);
     if (!abortStream) {
       skipSessionUpdateForRequestRef.current = true;
       setIsLoading(false); // Stop showing loading on home while stream continues in background
@@ -972,6 +1121,13 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadSession = useCallback(async (id: string) => {
+    // Reset steer/queue state so messages queued against the previous session
+    // don't drain into this one via the useEffect.
+    interruptTimeoutsRef.current.forEach((t) => clearTimeout(t));
+    interruptTimeoutsRef.current.clear();
+    pendingQueueRef.current = [];
+    steerPendingRef.current = [];
+    setPendingQueue([]);
     try {
       const data = await apiClient.post<{
         session: {
@@ -988,6 +1144,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           streamingDrafts?: StreamingDraft[] | null;
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
+          interrupted?: boolean | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -1023,6 +1180,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           ...(m.decisionQuestionsSubmitted
             ? { decisionQuestionsSubmitted: true }
             : {}),
+          ...(m.interrupted ? { wasInterrupted: true } : {}),
         })),
       );
     } catch (err) {
@@ -1069,6 +1227,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         clearChat,
         loadSession,
         updateSessionTitle,
+        pendingQueue,
+        cancelQueuedMessage,
+        submitMidStreamMessage,
       }}
     >
       {children}

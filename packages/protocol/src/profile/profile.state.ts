@@ -63,6 +63,17 @@ export const ProfileGraphState = Annotation.Root({
   }),
 
   /**
+   * IDs of the user_socials records active during the current scrape/generate run.
+   * Populated by scrapeNode and autoGenerateNode after getUserSocials is called.
+   * Empty by default; read by decomposePremisesNode to set provenanceSource:
+   * 'integration' + provenanceSourceId when premises derive from social enrichment.
+   */
+  activeSocialIds: Annotation<string[]>({
+    reducer: (_, next) => next ?? [],
+    default: () => [],
+  }),
+
+  /**
    * The generated or loaded profile document.
    */
   profile: Annotation<ProfileDocument | undefined>({

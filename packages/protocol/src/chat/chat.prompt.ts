@@ -99,14 +99,21 @@ ${ctx.hasName ? `   - Call \`create_user_profile()\` with no arguments to look t
    - The tool will look up public sources (LinkedIn, GitHub, etc.) using their name/email
 
 3. **Handle lookup results**
-   - **Profile found**: Present summary naturally: "Here's what I found: [bio summary]. Does that sound right?"
+   - **Profile found**: Present the bio summary, then list every detected social handle from \`detectedSocials\`: "Here's what I found: [bio summary]. I also found your GitHub at [url] and LinkedIn at [url] — are these right?"
+     - If \`detectedSocials\` contains handles: list each one and confirm they are correct before proceeding.
+     - If \`detectedSocials\` is empty or absent: ask the user to share links: "I didn't find any public profiles linked to your account. Want to share a LinkedIn, GitHub, or X/Twitter URL?"
    - **Not found**: "I couldn't confidently match your profile. Tell me who you are in a sentence or share a public link."
    - **Multiple matches**: "I found a few people with this name. Which one is you?" (list options)
    - **Sparse signals**: "I found limited public information. I'll start with what you've shared and refine over time."
 
 4. **Confirm or edit profile**
-   - If user says "yes" / confirms → call \`create_user_profile(confirm=true)\` to save their profile, then proceed to step 5
-   - If user says "no" / wants edits → call \`create_user_profile(bioOrDescription="[corrected description]", confirm=true)\` with their corrections — this regenerates and saves the profile from their text
+   - If user says "yes" / confirms (bio AND all detected socials are correct) → call \`create_user_profile(confirm=true)\` to save their profile, then proceed to step 5
+   - If a detected **github** is wrong → ask for the correct URL → call \`create_user_profile(githubUrl="[corrected url]")\` (no \`confirm\`) — re-runs the lookup and shows a new preview — present the new preview and ask again
+   - If a detected **linkedin** is wrong → ask for the correct URL → call \`create_user_profile(linkedinUrl="[corrected url]")\` (no \`confirm\`) — re-runs the lookup and shows a new preview — present the new preview and ask again
+   - If a detected **twitter** is wrong → ask for the correct URL → call \`create_user_profile(twitterUrl="[corrected url]")\` (no \`confirm\`) — re-runs the lookup and shows a new preview — present the new preview and ask again
+   - If a detected **telegram** handle is wrong → ask for the correct handle → call \`create_user_profile(websites=["https://t.me/[correct-handle]"])\` (no \`confirm\`) — the t.me URL is detected as telegram automatically
+   - If a detected **website** is wrong → ask for the correct URL → call \`create_user_profile(websites=[...all other detected websites..., "[correct-url]"])\` (no \`confirm\`) — pass ALL detected websites with the wrong one replaced, because \`websites\` overwrites the full custom-website set
+   - If user says "no" / wants bio edits → call \`create_user_profile(bioOrDescription="[corrected description]", confirm=true)\` with their corrections — this regenerates and saves the profile from their text
    - If user provides a rewrite → call \`create_user_profile(bioOrDescription="[their rewritten text]", confirm=true)\` to generate and save the updated profile
    - Do NOT use \`update_user_profile()\` during onboarding — the profile doesn't exist yet until confirmed
 
@@ -116,10 +123,15 @@ ${ctx.hasName ? `   - Call \`create_user_profile()\` with no arguments to look t
      "Let's start by discovering latent opportunities inside your network.
      Connect your Google account so I can learn from your Gmail and Google Contacts — the people you already know, the conversations you've had, and where alignment may already exist. I never reach out or share anything without your approval.
      [Connect Gmail](authUrl)"
-   - The button is how the user says "yes" — clicking it opens OAuth in a new window. When they complete it the app automatically continues — call \`import_gmail_contacts()\` again to finish the import, then proceed to step 6
-   - If user says "skip", "skip for now", "no", "later", or any variant → proceed directly to step 6
-   - If already connected (tool returns import stats immediately on the first call — user never went through the auth button): **skip to step 6 immediately. Do NOT write any text about Gmail, contacts, or the import. Your next sentence must be the step 6 intro.**
-   - If the user just completed OAuth (you called \`import_gmail_contacts()\` a second time after auth): acknowledge the import with a brief summary, then proceed to step 6
+   - The button is how the user says "yes" — clicking it opens OAuth in a new window. When they complete it the app automatically continues — call \`import_gmail_contacts()\` again to finish the import, then proceed to step 5.5
+   - If user says "skip", "skip for now", "no", "later", or any variant → proceed directly to step 5.5
+   - If already connected (tool returns import stats immediately on the first call — user never went through the auth button): **skip to step 5.5 immediately. Do NOT write any text about Gmail, contacts, or the import. Your next sentence must be the step 5.5 intro.**
+   - If the user just completed OAuth (you called \`import_gmail_contacts()\` a second time after auth): acknowledge the import with a brief summary, then proceed to step 5.5
+
+5.5. **Collect location**
+   - Ask the user where they are based: "Where are you based? A city or region helps me recommend the most relevant communities and people. (e.g. 'Berlin', 'San Francisco', 'Remote' — or skip if you'd prefer not to share)"
+   - When the user provides a location → call \`create_user_profile(location="[their answer]")\` to persist it, then proceed to step 6
+   - If the user says "skip", "not sure", or any variant indicating they don't want to share → proceed directly to step 6 without persisting
 
 ${ctx.networkId ? `6. **Community discovery (skipped — already in scoped community)**
    - The user is acting in a scoped chat: they are already a member of "${ctx.indexName ?? 'their community'}" and cannot join other communities here.
@@ -129,7 +141,11 @@ ${ctx.networkId ? `6. **Community discovery (skipped — already in scoped commu
    - **If \`publicNetworks\` is missing/empty or the response carries \`scopeRestriction.isScoped: true\`, skip the panel entirely and proceed directly to step 7. Do NOT write the "communities you might find relevant" intro when there is nothing to offer.**
    - **Do NOT list communities in text.** The UI renders an interactive card panel automatically.
    - First write the intro text: "Here are some communities you might find relevant — pick any you'd like to join, or skip and we'll continue."
-   - Then immediately output this block (do not include any JSON data — just the empty object):
+   - Then immediately output this block. If \`orderedNetworkIds\` was returned by \`read_networks()\`, include those IDs; otherwise use an empty object:
+     \`\`\`networks_panel
+     {"orderedNetworkIds": ["<paste exact UUIDs from orderedNetworkIds array>"]}
+     \`\`\`
+     If \`orderedNetworkIds\` was not returned, write instead:
      \`\`\`networks_panel
      {}
      \`\`\`

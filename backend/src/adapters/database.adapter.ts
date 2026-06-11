@@ -767,6 +767,7 @@ export interface ChatMessage {
   routingDecision: Record<string, unknown> | null;
   subgraphResults: Record<string, unknown> | null;
   tokenCount: number | null;
+  interrupted?: boolean | null;
   createdAt: Date;
 }
 
@@ -793,6 +794,8 @@ export interface ChatMessageMeta {
    * these into message.streamingDrafts on loadSession.
    */
   streamingDrafts?: unknown;
+  /** Set to true when the assistant message was partially generated before a steer interrupt. */
+  interrupted?: boolean;
   [key: string]: unknown;
 }
 
@@ -811,6 +814,7 @@ export interface CreateMessageInput {
   routingDecision?: Record<string, unknown>;
   subgraphResults?: Record<string, unknown>;
   tokenCount?: number;
+  interrupted?: boolean;
 }
 
 /**
@@ -4219,6 +4223,31 @@ export class ChatDatabaseAdapter {
       );
     return rows.map((r) => ({ id: r.id, userId: r.userId }));
   }
+
+  /**
+   * Find premises for a user with a specific provenance source.
+   * Used for bulk-retraction of premises derived from a given source type
+   * (e.g. 'integration' when social URLs are updated).
+   *
+   * @param userId - Owner of the premises
+   * @param source - Provenance source value to filter by (e.g. 'integration', 'explicit')
+   * @returns Minimal rows: id for each matching ACTIVE (non-deleted, non-retracted) premise
+   */
+  async getPremisesBySource(userId: string, source: string): Promise<Array<{ id: string }>> {
+    const rows = await db
+      .select({ id: schema.premises.id })
+      .from(schema.premises)
+      .where(
+        and(
+          eq(schema.premises.userId, userId),
+          eq(schema.premises.status, 'ACTIVE'),
+          isNull(schema.premises.deletedAt),
+          sql`(${schema.premises.provenance}->>'source') = ${source}`,
+        )
+      );
+    return rows.map(r => ({ id: r.id }));
+  }
+
 
   // ─────────────────────────────────────────────────────────────────────────────
   // User Context Methods — CRUD for per-user-per-network context summaries
@@ -8702,6 +8731,7 @@ export class ConversationDatabaseAdapter {
     if (data.routingDecision) msgMeta.routingDecision = data.routingDecision;
     if (data.subgraphResults) msgMeta.subgraphResults = data.subgraphResults;
     if (data.tokenCount !== undefined) msgMeta.tokenCount = data.tokenCount;
+    if (data.interrupted) msgMeta.interrupted = true;
 
     await db.insert(schema.messages).values({
       id: data.id,
@@ -8750,6 +8780,7 @@ export class ConversationDatabaseAdapter {
         routingDecision: (meta.routingDecision as Record<string, unknown>) ?? null,
         subgraphResults: (meta.subgraphResults as Record<string, unknown>) ?? null,
         tokenCount: typeof meta.tokenCount === 'number' ? meta.tokenCount : null,
+        interrupted: meta.interrupted ?? null,
         createdAt: msg.createdAt,
       };
     });

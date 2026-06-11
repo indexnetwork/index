@@ -5,7 +5,7 @@ import { describe, it, expect } from "bun:test";
  * matches what ToolDeps expects. This is a compile-time alignment test
  * rather than a runtime integration test (the real adapter hits the DB).
  */
-import type { PendingQuestionSummary } from "@indexnetwork/protocol";
+import type { PendingQuestionSummary, ToolDeps } from "@indexnetwork/protocol";
 
 describe("findPendingQuestions wiring", () => {
   it("adapter shape produces PendingQuestionSummary[]", () => {
@@ -40,5 +40,18 @@ describe("findPendingQuestions wiring", () => {
 
     expect(summary.id).toBe("q-1");
     expect(summary.mode).toBe("discovery");
+  });
+
+  it("widened filters shape (modes + limit) matches the ToolDeps contract", () => {
+    type FindPendingQuestions = NonNullable<ToolDeps["findPendingQuestions"]>;
+    const impl: FindPendingQuestions = async (_userId, filters) => {
+      // Compile-time: filters must carry modes + limit alongside source filters.
+      const modes: Array<"discovery" | "intent" | "profile" | "negotiation"> | undefined = filters?.modes;
+      const limit: number | undefined = filters?.limit;
+      void modes;
+      void limit;
+      return [];
+    };
+    expect(typeof impl).toBe("function");
   });
 });
