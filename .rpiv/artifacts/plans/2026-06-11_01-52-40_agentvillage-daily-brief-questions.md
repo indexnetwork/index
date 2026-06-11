@@ -604,9 +604,9 @@ Modify `composeDailyBrief()` in `stage-daily-brief.ts` to render the "One for yo
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `cd packages/edge-city/agentvillage && bun test skills/index-network/scripts/tests/stage-daily-brief.test.ts` — all tests pass including 3 new One for you section tests
-- [ ] `grep 'One for you' packages/edge-city/agentvillage/skills/index-network/scripts/stage-daily-brief.ts` — returns a match
-- [ ] `cd packages/protocol && bun run build` — compiles without errors
+- [x] `cd packages/edge-city/agentvillage && bun test skills/index-network/scripts/tests/stage-daily-brief.test.ts` — all tests pass including 3 new One for you section tests
+- [x] `grep 'One for you' packages/edge-city/agentvillage/skills/index-network/scripts/stage-daily-brief.ts` — returns a match
+- [x] `cd packages/protocol && bun run build` — compiles without errors
 
 #### Manual Verification:
 - [ ] The question section appears AFTER "That's it for now..." in the brief body, preceded by `---`
