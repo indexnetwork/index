@@ -153,6 +153,8 @@ export class ChatGraphFactory {
       maxContextMessages?: number;
       networkId?: string;
       prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
+      /** Per-run identifier used to form a composite LangGraph thread_id (sessionId:runId). */
+      runId?: string;
     },
     checkpointer?: BaseCheckpointSaver,
     signal?: AbortSignal,

@@ -49,7 +49,9 @@ export type ChatStreamEventType =
   | "chat_summarizer_end"
   | "question_generator_start"
   | "question_generator_end"
-  | "decision_questions";
+  | "decision_questions"
+  // Steer-or-queue interrupt event
+  | "steer_or_queue";
 
 /**
  * Base interface for all chat stream events.
@@ -558,6 +560,19 @@ export interface DecisionQuestionsEvent extends ChatStreamEventBase {
 }
 
 /**
+ * Steer-or-queue event — injected into the active SSE stream by the /chat/interrupt
+ * endpoint after the classifier runs. The frontend holds the mid-stream message as
+ * "pending" until this event arrives, then acts on the decision.
+ */
+export interface SteerOrQueueEvent extends ChatStreamEventBase {
+  type: "steer_or_queue";
+  /** Classifier decision: interrupt and restart, or buffer until current run completes. */
+  decision: "steer" | "queue";
+  /** Echoed from the interrupt request so the frontend can update the correct pending message. */
+  messageId: string;
+}
+
+/**
  * Union type of all chat stream events.
  */
 export type ChatStreamEvent =
@@ -600,7 +615,8 @@ export type ChatStreamEvent =
   | ChatSummarizerEndEvent
   | QuestionGeneratorStartEvent
   | QuestionGeneratorEndEvent
-  | DecisionQuestionsEvent;
+  | DecisionQuestionsEvent
+  | SteerOrQueueEvent;
 
 /**
  * Formats a chat stream event as an SSE message. If JSON.stringify throws (e.g. circular ref,
@@ -1075,4 +1091,18 @@ export function createDecisionQuestionsEvent(
   payload: { questions: Question[] },
 ): DecisionQuestionsEvent {
   return createStreamEvent<DecisionQuestionsEvent>("decision_questions", sessionId, payload);
+}
+
+/**
+ * Creates a steer-or-queue event injected into the active stream by the interrupt endpoint.
+ */
+export function createSteerOrQueueEvent(
+  sessionId: string,
+  decision: "steer" | "queue",
+  messageId: string,
+): SteerOrQueueEvent {
+  return createStreamEvent<SteerOrQueueEvent>("steer_or_queue", sessionId, {
+    decision,
+    messageId,
+  });
 }
