@@ -151,9 +151,9 @@ async me(_req: Request, user: AuthenticatedUser) {
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] ESLint passes: `cd backend && bun run lint`
-- [ ] `AuthOrApiKeyGuard` exported from guard file: `grep -c 'export const AuthOrApiKeyGuard' backend/src/guards/auth.guard.ts` returns 1
-- [ ] `AuthGuard` still imported (used by updateProfile + deleteAccount): `grep -c 'AuthGuard' backend/src/controllers/auth.controller.ts` returns >= 3
+- [x] ESLint passes: `cd backend && bun run lint`
+- [x] `AuthOrApiKeyGuard` exported from guard file: `grep -c 'export const AuthOrApiKeyGuard' backend/src/guards/auth.guard.ts` returns 1
+- [x] `AuthGuard` still imported (used by updateProfile + deleteAccount): `grep -c 'AuthGuard' backend/src/controllers/auth.controller.ts` returns >= 3
 
 #### Manual Verification:
 - [ ] Only `me()` guard changed; `updateProfile` and `deleteAccount` still use `AuthGuard`

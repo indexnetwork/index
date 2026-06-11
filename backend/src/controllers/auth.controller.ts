@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
-import { AuthGuard } from '../guards/auth.guard';
+import { AuthGuard, AuthOrApiKeyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
 import { profileService } from '../services/profile.service';
@@ -61,7 +61,7 @@ export class AuthController {
    * Response shape: { user: User } for frontend APIResponse compatibility.
    */
   @Get('/me')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
   async me(_req: Request, user: AuthenticatedUser) {
     logger.verbose('Auth me requested', { userId: user.id });
     const fullUser = await userService.findWithGraph(user.id);
