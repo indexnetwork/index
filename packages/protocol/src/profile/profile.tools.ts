@@ -35,7 +35,7 @@ const approvedProfileDraftSchema = z.object({
 type ApprovedProfileDraft = z.infer<typeof approvedProfileDraftSchema>;
 
 export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { userDb, systemDb, database, graphs, enricher, grantDefaultSystemPermissions, reportToolError } = deps;
+  const { userDb, systemDb, graphs, enricher, grantDefaultSystemPermissions, reportToolError } = deps;
 
   function trimToUndefined(value: string | null | undefined): string | undefined {
     const trimmed = value?.trim();
@@ -1230,8 +1230,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       "Marks the user's onboarding as complete, unlocking full platform access. This is the final step in the new-user setup flow.\n\n" +
       "**Prerequisites:** The user must have a profile (created via create_user_profile) AND must have explicitly confirmed it " +
       "(said 'yes', 'looks good', 'that's right', or similar). Do NOT call this until the user confirms.\n\n" +
-      "**What happens:** Sets completedAt timestamp on the user's onboarding record. May also auto-join the user to preconfigured indexes " +
-      "(communities) based on server configuration.\n\n" +
+      "**What happens:** Sets completedAt timestamp on the user's onboarding record.\n\n" +
       "**Workflow:** create_user_profile() -> user confirms preview -> create_user_profile(confirm=true) -> user confirms saved profile -> complete_onboarding()\n\n" +
       "**Returns:** Confirmation that onboarding is complete. No parameters needed.",
     querySchema: z.object({}),
@@ -1259,19 +1258,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
-      const autoJoinIds = (process.env.AUTO_JOIN_INDEX_IDS ?? '')
-        .split(',')
-        .map(id => id.trim())
-        .filter(Boolean);
-      for (const networkId of autoJoinIds) {
-        try {
-          await database.addMemberToNetwork(networkId, context.userId, 'member');
-        } catch (err) {
-          logger.warn('Auto-join network failed (non-fatal)', { networkId, userId: context.userId, error: err instanceof Error ? err.message : String(err) });
-        }
-      }
-
-      logger.info("Onboarding completed", { userId: context.userId, autoJoinedNetworks: autoJoinIds.length });
+      logger.info("Onboarding completed", { userId: context.userId });
       return success({ message: "Onboarding complete." });
     },
   });
