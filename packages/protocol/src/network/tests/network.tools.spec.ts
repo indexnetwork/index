@@ -22,6 +22,86 @@ function captureTool(name: string, deps: Partial<ToolDeps>) {
   return captured!;
 }
 
+const PUBLIC_NETWORKS = [
+  { networkId: "net-1", title: "AI Hub", prompt: "AI community", memberCount: 5, owner: null },
+  { networkId: "net-2", title: "DeSci", prompt: "DeSci community", memberCount: 3, owner: null },
+];
+
+function makeOnboardingContext(userId = "user-1"): ResolvedToolContext {
+  return {
+    userId,
+    user: { id: userId, name: "Alice", email: "a@test", location: "Berlin" } as never,
+    userProfile: {
+      identity: { bio: "AI researcher", location: "Berlin" },
+      attributes: { interests: ["AI"], skills: ["TypeScript"] },
+    },
+    userNetworks: [],
+    isMcp: true,
+    isOnboarding: true,
+  } as unknown as ResolvedToolContext;
+}
+
+describe("read_networks — onboarding orderedNetworkIds", () => {
+  const baseDeps = {
+    graphs: {
+      index: {
+        invoke: async () => ({
+          readResult: {
+            memberOf: [],
+            owns: [],
+            publicNetworks: PUBLIC_NETWORKS,
+            stats: { memberOfCount: 0, ownsCount: 0, publicNetworksCount: 2 },
+          },
+        }),
+      },
+    },
+  };
+
+  test("omits orderedNetworkIds when context.isOnboarding is false", async () => {
+    const tool = captureTool("read_networks", baseDeps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext("user-1"), query: {} })
+    );
+    expect(result.success).toBe(true);
+    expect(result.data.orderedNetworkIds).toBeUndefined();
+  });
+
+  test("omits orderedNetworkIds when context.userProfile is null", async () => {
+    const ctx = makeOnboardingContext();
+    (ctx as unknown as Record<string, unknown>).userProfile = null;
+    const tool = captureTool("read_networks", baseDeps);
+    const result = JSON.parse(
+      await tool.handler({ context: ctx, query: {} })
+    );
+    expect(result.success).toBe(true);
+    expect(result.data.orderedNetworkIds).toBeUndefined();
+  });
+
+  test("omits orderedNetworkIds when networkRanker returns null", async () => {
+    const deps = { ...baseDeps, networkRanker: async () => null };
+    const tool = captureTool("read_networks", deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeOnboardingContext(), query: {} })
+    );
+    expect(result.success).toBe(true);
+    expect(result.data.orderedNetworkIds).toBeUndefined();
+  });
+
+  test("includes normalized orderedNetworkIds when networkRanker returns ranking", async () => {
+    const deps = {
+      ...baseDeps,
+      networkRanker: async () => ({ rankedNetworkIds: ["net-2", "net-1", "net-unknown"] }),
+    };
+    const tool = captureTool("read_networks", deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeOnboardingContext(), query: {} })
+    );
+    expect(result.success).toBe(true);
+    // "net-unknown" filtered out; both input IDs present in ranked order
+    expect(result.data.orderedNetworkIds).toEqual(["net-2", "net-1"]);
+  });
+});
+
 describe("read_networks — field naming", () => {
   test("memberOf entries expose prompt not description", async () => {
     const deps = {

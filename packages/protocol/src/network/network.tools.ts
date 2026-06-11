@@ -5,6 +5,11 @@ import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
+import { NetworkRecommender } from "./network.recommender.js";
+
+// Lazy singleton — only instantiated on first onboarding ranking call so that
+// importing this module does not require OPENROUTER_API_KEY at load time.
+let recommender: NetworkRecommender | undefined;
 
 export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const { graphs, userDb, systemDb } = deps;
@@ -29,7 +34,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Returns:** Up to three lists — `memberOf` (networks the user joined), `owns` (networks the user created), and `publicNetworks` " +
       "(publicly joinable communities the user is not yet a member of). Entries in `memberOf` include `isPersonal` set to `true` for the user's " +
       "personal network.\n\n" +
-      "**Note:** In index-scoped chats, only the scoped network is returned.",
+      "**Note:** In index-scoped chats, only the scoped network is returned. During onboarding, `orderedNetworkIds` " +
+      "may be returned alongside `publicNetworks` \u2014 a ranked array of network IDs ordered by relevance to the user's profile (omitted when ranking is unavailable or fails).",
     querySchema: z.object({
       userId: z.string().optional().describe("Must be the current user's ID or omitted. Cannot list another user's indexes."),
     }),
@@ -74,7 +80,75 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
-        return success({ ...enriched, _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }] });
+        // Onboarding-only: rank public networks by profile relevance.
+        // Guard: only when isOnboarding, userProfile exists, not scoped, and there are public networks to rank.
+        let orderedNetworkIds: string[] | undefined;
+        if (
+          context.isOnboarding &&
+          context.userProfile &&
+          Array.isArray(enriched.publicNetworks) &&
+          (enriched.publicNetworks as Array<Record<string, unknown>>).length > 0
+        ) {
+          // Cap at 50 to bound LLM context window usage (matches the UI's discoverPublicIndexes(1, 50)).
+          const publicNetworksForRanking = (enriched.publicNetworks as Array<Record<string, unknown>>)
+            .slice(0, 50)
+            .map((n) => ({
+              networkId: n.networkId as string,
+              renderedContext: (n.renderedContext as string) ?? `## ${n.title as string}`,
+            }));
+          const rankFn = deps.networkRanker ?? (async (input) => {
+            try {
+              recommender ??= new NetworkRecommender();
+              return await recommender.invoke(input);
+            } catch (err) {
+              // e.g. missing OPENROUTER_API_KEY — degrade gracefully, omit orderedNetworkIds
+              console.warn("[read_networks] NetworkRecommender unavailable, skipping ranking:", err);
+              return null;
+            }
+          });
+          const rankingResult = await rankFn({
+            userProfile: {
+              bio: context.userProfile.identity.bio,
+              location: context.userProfile.identity.location || context.user.location || "",
+              interests: context.userProfile.attributes.interests,
+              skills: context.userProfile.attributes.skills,
+            },
+            networks: publicNetworksForRanking,
+          }).catch((err: unknown) => {
+            // Catches errors from a custom deps.networkRanker (the default fallback
+            // handles its own errors internally). Degrade gracefully: omit orderedNetworkIds.
+            console.warn("[read_networks] networkRanker threw, skipping ranking:", err);
+            deps.reportToolError?.(err, { operation: "network-ranking", toolName: "read_networks", userId: context.userId });
+            return null;
+          });
+          if (rankingResult) {
+            // Normalize LLM output against the ranked slice (top 50):
+            // keep only IDs from the input set, de-dupe preserving order, then
+            // append any slice IDs the model omitted. Networks beyond the top-50
+            // slice are not in orderedNetworkIds and will sort to the tail in the
+            // frontend (consistent with the UI's own 50-item page size).
+            const inputIds = publicNetworksForRanking.map((n) => n.networkId);
+            const inputIdSet = new Set(inputIds);
+            const seen = new Set<string>();
+            const normalized: string[] = [];
+            for (const id of rankingResult.rankedNetworkIds) {
+              if (inputIdSet.has(id) && !seen.has(id)) {
+                normalized.push(id);
+                seen.add(id);
+              }
+            }
+            for (const id of inputIds) {
+              if (!seen.has(id)) normalized.push(id);
+            }
+            orderedNetworkIds = normalized;
+          }
+        }
+
+        return success({
+          ...enriched,
+          ...(orderedNetworkIds !== undefined ? { orderedNetworkIds } : {}),
+          _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
+        });
       }
       return error("Failed to fetch index information.");
     },

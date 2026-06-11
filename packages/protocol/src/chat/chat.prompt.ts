@@ -123,10 +123,15 @@ ${ctx.hasName ? `   - Call \`create_user_profile()\` with no arguments to look t
      "Let's start by discovering latent opportunities inside your network.
      Connect your Google account so I can learn from your Gmail and Google Contacts — the people you already know, the conversations you've had, and where alignment may already exist. I never reach out or share anything without your approval.
      [Connect Gmail](authUrl)"
-   - The button is how the user says "yes" — clicking it opens OAuth in a new window. When they complete it the app automatically continues — call \`import_gmail_contacts()\` again to finish the import, then proceed to step 6
-   - If user says "skip", "skip for now", "no", "later", or any variant → proceed directly to step 6
-   - If already connected (tool returns import stats immediately on the first call — user never went through the auth button): **skip to step 6 immediately. Do NOT write any text about Gmail, contacts, or the import. Your next sentence must be the step 6 intro.**
-   - If the user just completed OAuth (you called \`import_gmail_contacts()\` a second time after auth): acknowledge the import with a brief summary, then proceed to step 6
+   - The button is how the user says "yes" — clicking it opens OAuth in a new window. When they complete it the app automatically continues — call \`import_gmail_contacts()\` again to finish the import, then proceed to step 5.5
+   - If user says "skip", "skip for now", "no", "later", or any variant → proceed directly to step 5.5
+   - If already connected (tool returns import stats immediately on the first call — user never went through the auth button): **skip to step 5.5 immediately. Do NOT write any text about Gmail, contacts, or the import. Your next sentence must be the step 5.5 intro.**
+   - If the user just completed OAuth (you called \`import_gmail_contacts()\` a second time after auth): acknowledge the import with a brief summary, then proceed to step 5.5
+
+5.5. **Collect location**
+   - Ask the user where they are based: "Where are you based? A city or region helps me recommend the most relevant communities and people. (e.g. 'Berlin', 'San Francisco', 'Remote' — or skip if you'd prefer not to share)"
+   - When the user provides a location → call \`create_user_profile(location="[their answer]")\` to persist it, then proceed to step 6
+   - If the user says "skip", "not sure", or any variant indicating they don't want to share → proceed directly to step 6 without persisting
 
 ${ctx.networkId ? `6. **Community discovery (skipped — already in scoped community)**
    - The user is acting in a scoped chat: they are already a member of "${ctx.indexName ?? 'their community'}" and cannot join other communities here.
@@ -136,7 +141,11 @@ ${ctx.networkId ? `6. **Community discovery (skipped — already in scoped commu
    - **If \`publicNetworks\` is missing/empty or the response carries \`scopeRestriction.isScoped: true\`, skip the panel entirely and proceed directly to step 7. Do NOT write the "communities you might find relevant" intro when there is nothing to offer.**
    - **Do NOT list communities in text.** The UI renders an interactive card panel automatically.
    - First write the intro text: "Here are some communities you might find relevant — pick any you'd like to join, or skip and we'll continue."
-   - Then immediately output this block (do not include any JSON data — just the empty object):
+   - Then immediately output this block. If \`orderedNetworkIds\` was returned by \`read_networks()\`, include those IDs; otherwise use an empty object:
+     \`\`\`networks_panel
+     {"orderedNetworkIds": ["<paste exact UUIDs from orderedNetworkIds array>"]}
+     \`\`\`
+     If \`orderedNetworkIds\` was not returned, write instead:
      \`\`\`networks_panel
      {}
      \`\`\`

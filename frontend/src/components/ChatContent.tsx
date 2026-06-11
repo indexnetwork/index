@@ -98,7 +98,7 @@ type MessageSegment =
   | { type: "opportunity_loading" }
   | { type: "intent_proposal"; data: IntentProposalData }
   | { type: "intent_proposal_loading" }
-  | { type: "networks_panel" }
+  | { type: "networks_panel"; orderedNetworkIds?: string[] }
   | { type: "networks_panel_loading" };
 
 function parseAllBlocks(content: string): MessageSegment[] {
@@ -118,7 +118,18 @@ function parseAllBlocks(content: string): MessageSegment[] {
     const blockType = match[1];
 
     if (blockType === "networks_panel") {
-      segments.push({ type: "networks_panel" });
+      try {
+        const bodyStr = match[2].trim();
+        const body = bodyStr ? (JSON.parse(bodyStr) as Record<string, unknown>) : {};
+        const orderedNetworkIds =
+          Array.isArray(body.orderedNetworkIds) &&
+          (body.orderedNetworkIds as unknown[]).every((id) => typeof id === "string")
+            ? (body.orderedNetworkIds as string[])
+            : undefined;
+        segments.push({ type: "networks_panel", orderedNetworkIds });
+      } catch {
+        segments.push({ type: "networks_panel" });
+      }
     } else {
       try {
         const jsonStr = match[2].trim();
@@ -330,6 +341,7 @@ function AssistantMessageContent({
               <NetworksPanel
                 onJoin={onNetworkJoin ?? (() => {})}
                 pendingJoinIds={networkPanelPendingJoinIds}
+                orderedNetworkIds={segment.orderedNetworkIds}
               />
             </div>
           );
