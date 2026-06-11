@@ -94,6 +94,10 @@ export interface AdapterQuestionFilters {
   conversationId?: string;
   /** When true, only return questions with no conversationId (sidebar-only). */
   noConversation?: boolean;
+  /** Restrict to questions whose detection mode is in this set. */
+  modes?: Array<'discovery' | 'intent' | 'profile' | 'negotiation'>;
+  /** Maximum rows to return (applied as a SQL LIMIT). */
+  limit?: number;
 }
 
 /**
@@ -133,7 +137,7 @@ export class QuestionerAdapter {
    * `actors` array includes an entry with the target userId.
    *
    * @param userId  - The user to find pending questions for.
-   * @param filters - Optional narrowing filters.
+   * @param filters - Optional narrowing filters (mode/modes, source, conversation, SQL limit).
    * @returns Pending questions ordered by creation time (oldest first).
    */
   async findPending(
@@ -161,12 +165,22 @@ export class QuestionerAdapter {
     if (filters?.noConversation) {
       conditions.push(isNull(questions.conversationId));
     }
+    if (filters?.modes && filters.modes.length > 0) {
+      const modeConditions = filters.modes.map(
+        (mode) => sql`${questions.detection}->>'mode' = ${mode}`,
+      );
+      conditions.push(or(...modeConditions)!);
+    }
 
-    const rows = await this.db
+    const baseQuery = this.db
       .select()
       .from(questions)
       .where(and(...conditions))
       .orderBy(questions.createdAt);
+
+    const rows = filters?.limit && filters.limit > 0
+      ? await baseQuery.limit(filters.limit)
+      : await baseQuery;
 
     return rows.map(toPersistedQuestion);
   }

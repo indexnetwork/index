@@ -630,7 +630,15 @@ function getOrCreateMcpServer(): McpServer {
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
     ...(protocolDeps.questionerEnqueue && { questionerEnqueue: protocolDeps.questionerEnqueue }),
-    findPendingQuestions: async (userId: string, filters?: { sourceType?: string; sourceId?: string }) => {
+    findPendingQuestions: async (
+      userId: string,
+      filters?: {
+        sourceType?: string;
+        sourceId?: string;
+        modes?: Array<'discovery' | 'intent' | 'profile' | 'negotiation'>;
+        limit?: number;
+      },
+    ) => {
       const rows = await questionerAdapter.findPending(userId, filters);
       return rows.map((row): PendingQuestionSummary => ({
         id: row.id,

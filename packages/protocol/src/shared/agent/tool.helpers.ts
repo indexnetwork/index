@@ -30,6 +30,7 @@ import type { MintConnectLink } from "../interfaces/connect-link.interface.js";
 import type { QuestionerDatabase } from "../interfaces/questioner.interface.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
+import type { QuestionMode } from "../schemas/question.schema.js";
 import type { DiscoveryRunQueue, DiscoveryRunStore } from "../interfaces/discovery-run.interface.js";
 import type { ProfileRunQueue, ProfileRunStore } from "../interfaces/profile-run.interface.js";
 
@@ -456,13 +457,21 @@ export interface ToolDeps {
    */
   questionerEnqueue?: QuestionerEnqueueFn;
   /**
-   * Lookup pending questions for a user, optionally filtered by source.
+   * Lookup pending questions for a user, optionally filtered by source,
+   * detection mode, or capped by count (hosts apply `limit` SQL-side).
    * Used by tools to attach contextually relevant questions to their results.
    * Injected by the composition root — absent when question delivery is disabled.
    */
   findPendingQuestions?: (
     userId: string,
-    filters?: { sourceType?: string; sourceId?: string },
+    filters?: {
+      sourceType?: string;
+      sourceId?: string;
+      /** Restrict to questions whose detection mode is in this set. */
+      modes?: QuestionMode[];
+      /** Maximum rows to return; hosts should apply this in the query. */
+      limit?: number;
+    },
   ) => Promise<PendingQuestionSummary[]>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
