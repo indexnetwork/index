@@ -524,9 +524,9 @@ import {
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `cd packages/edge-city/agentvillage && bun test skills/index-network/scripts/tests/build-daily-brief-context.test.ts` — all tests pass including 2 new fetchPendingQuestionsFromMcp tests
-- [ ] `grep 'questionSource' packages/edge-city/agentvillage/skills/index-network/scripts/build-daily-brief-context.ts` — returns a match
-- [ ] `grep 'questions\?: BriefQuestion' packages/edge-city/agentvillage/skills/index-network/scripts/build-daily-brief-context.ts` — returns a match (optional field)
+- [x] `cd packages/edge-city/agentvillage && bun test skills/index-network/scripts/tests/build-daily-brief-context.test.ts` — all tests pass including 2 new fetchPendingQuestionsFromMcp tests
+- [x] `grep 'questionSource' packages/edge-city/agentvillage/skills/index-network/scripts/build-daily-brief-context.ts` — returns a match
+- [x] `grep 'questions\?: BriefQuestion' packages/edge-city/agentvillage/skills/index-network/scripts/build-daily-brief-context.ts` — returns a match (optional field)
 
 #### Manual Verification:
 - [ ] `fetchPendingQuestionsFromMcp` is exported from `build-daily-brief-context.ts` and never throws
