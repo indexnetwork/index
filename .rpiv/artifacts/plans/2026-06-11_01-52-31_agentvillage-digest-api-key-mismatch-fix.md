@@ -301,13 +301,13 @@ export async function installIndex(): Promise<void> {
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `normalizeTelegramHandle` exported: `grep -c 'export function normalizeTelegramHandle' packages/edge-city/agentvillage/install/install_index.ts` returns 1
-- [ ] `installIndex` is async: `grep -c 'export async function installIndex' packages/edge-city/agentvillage/install/install_index.ts` returns 1
-- [ ] `normalizeTelegramHandle('@alice')` → `'alice'`
-- [ ] `normalizeTelegramHandle('https://t.me/Alice/')` → `'alice'`
-- [ ] `normalizeTelegramHandle('t.me/alice')` → `'alice'`
-- [ ] `normalizeTelegramHandle('')` → `''` (empty string passthrough)
-- [ ] `normalizeTelegramHandle('ALICE')` → `'alice'` (case-insensitive)
+- [x] `normalizeTelegramHandle` exported: `grep -c 'export function normalizeTelegramHandle' packages/edge-city/agentvillage/install/install_index.ts` returns 1
+- [x] `installIndex` is async: `grep -c 'export async function installIndex' packages/edge-city/agentvillage/install/install_index.ts` returns 1
+- [x] `normalizeTelegramHandle('@alice')` → `'alice'`
+- [x] `normalizeTelegramHandle('https://t.me/Alice/')` → `'alice'`
+- [x] `normalizeTelegramHandle('t.me/alice')` → `'alice'`
+- [x] `normalizeTelegramHandle('')` → `''` (empty string passthrough)
+- [x] `normalizeTelegramHandle('ALICE')` → `'alice'` (case-insensitive)
 
 #### Manual Verification:
 - [ ] `verifyIndexIdentity` is NOT exported (internal helper)
@@ -381,10 +381,10 @@ Make `install.ts main()` async to `await installIndex()`. Add a best-effort `/ap
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `install.ts` has async main: `grep -c 'async function main' packages/edge-city/agentvillage/install/install.ts` returns 1
-- [ ] `install.ts` awaits installIndex: `grep -c 'await installIndex' packages/edge-city/agentvillage/install/install.ts` returns 1
-- [ ] `install.ts` error-catches main: `grep -c 'main().catch' packages/edge-city/agentvillage/install/install.ts` returns 1
-- [ ] digest identity log present: `grep -c "console.log.*authenticatedAs" packages/edge-city/agentvillage/skills/index-network/scripts/build-daily-brief-context.ts` returns 1
+- [x] `install.ts` has async main: `grep -c 'async function main' packages/edge-city/agentvillage/install/install.ts` returns 1
+- [x] `install.ts` awaits installIndex: `grep -c 'await installIndex' packages/edge-city/agentvillage/install/install.ts` returns 1
+- [x] `install.ts` error-catches main: `grep -c 'main().catch' packages/edge-city/agentvillage/install/install.ts` returns 1
+- [x] digest identity log present: `grep -c "console.log.*authenticatedAs" packages/edge-city/agentvillage/skills/index-network/scripts/build-daily-brief-context.ts` returns 1
 
 #### Manual Verification:
 - [ ] `installEdgeos()` and `installGeo()` still called without await (they are synchronous)
