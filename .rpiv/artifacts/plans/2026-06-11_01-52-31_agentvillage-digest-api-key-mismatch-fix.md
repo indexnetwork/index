@@ -541,8 +541,8 @@ describe('AuthController.me() — API key support (Phase 1 guard swap)', () => {
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] Test file exists: `ls backend/tests/auth-me-apikey.spec.ts` exits 0
-- [ ] Tests pass: `cd backend && bun test tests/auth-me-apikey.spec.ts`
+- [x] Test file exists: `ls backend/tests/auth-me-apikey.spec.ts` exits 0
+- [x] Tests pass: `cd backend && bun test tests/auth-me-apikey.spec.ts`
 
 #### Manual Verification:
 - [ ] Covers success path: API key resolves + `me()` returns `{ user: { id, email, socials[] } }`
