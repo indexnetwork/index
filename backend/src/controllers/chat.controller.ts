@@ -12,14 +12,16 @@ import {
 } from "../lib/router/router.decorators";
 import { chatSessionService } from "../services/chat.service";
 import { fileService } from "../services/file.service";
-import { SuggestionGenerator } from '@indexnetwork/protocol';
+import { SuggestionGenerator, ChatInterruptClassifier } from '@indexnetwork/protocol';
 import {
   createDoneEvent,
   createErrorEvent,
   createStatusEvent,
+  createSteerOrQueueEvent,
   formatSSEEvent,
   type DebugMetaDiscoveryQuestions,
 } from "../types/chat-streaming.types";
+import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
 type RouteParams = Record<string, string>;
 
@@ -45,6 +47,21 @@ function getSuggestionGenerator(): SuggestionGenerator {
     suggestionGeneratorInstance = new SuggestionGenerator();
   }
   return suggestionGeneratorInstance;
+}
+
+const interruptBodySchema = z.object({
+  sessionId: z.string(),
+  message: z.string().min(1),
+  messageId: z.string().uuid(),
+  traceSnapshot: z.array(z.string()).max(20).default([]),
+});
+
+let interruptClassifierInstance: ChatInterruptClassifier | null = null;
+function getInterruptClassifier(): ChatInterruptClassifier {
+  if (!interruptClassifierInstance) {
+    interruptClassifierInstance = new ChatInterruptClassifier();
+  }
+  return interruptClassifierInstance;
 }
 
 @Controller("/chat")
@@ -215,6 +232,12 @@ export class ChatController {
     const factory = chatSessionService.getGraphFactory();
     const useCheckpointer = body.useCheckpointer ?? true;
     const networkIdForStream = effectiveIndexId;
+    const runId = crypto.randomUUID();
+    const streamAbortController = new AbortController();
+    // Forward HTTP client disconnect into the stream abort controller
+    req.signal.addEventListener('abort', () => {
+      if (!streamAbortController.signal.aborted) streamAbortController.abort('client_disconnect');
+    }, { once: true });
 
     // User message is persisted after the stream completes (with the assistant response) so that
     // loadSessionContext during streaming does not include it and the current message is not
@@ -237,7 +260,26 @@ export class ChatController {
     const stream = new ReadableStream({
       start(controller) {
         return requestContext.run({ originUrl }, async () => {
+        let streamInterruptedBySteer = false;
+        let unsubscribeInterrupt: (() => void) | null = null;
         try {
+          // Subscribe to interrupt bus — one listener per stream, cleaned in finally
+          unsubscribeInterrupt = onChatInterrupt(sessionId, ({ decision, messageId }) => {
+            try {
+              controller.enqueue(
+                encoder.encode(
+                  formatSSEEvent(createSteerOrQueueEvent(sessionId, decision, messageId)),
+                ),
+              );
+            } catch {
+              // Stream may have already closed
+            }
+            if (decision === 'steer') {
+              streamInterruptedBySteer = true;
+              streamAbortController.abort('steer');
+            }
+          });
+
           // Send initial status
           controller.enqueue(
             encoder.encode(
@@ -249,6 +291,9 @@ export class ChatController {
 
           // Stream chat graph events with context
           let fullResponse = "";
+          // Accumulates token events as a fallback for steer-interrupted streams where
+          // response_complete may never fire. Cleared on response_reset (agent retry).
+          let partialResponse = "";
           let routingDecision: Record<string, unknown> | undefined;
           let subgraphResults: Record<string, unknown> | undefined;
           let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown; discoveryQuestions?: DebugMetaDiscoveryQuestions } | undefined;
@@ -266,18 +311,26 @@ export class ChatController {
               maxContextMessages: 20,
               networkId: networkIdForStream,
               prefillMessages: body.prefillMessages,
+              runId,
             },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             checkpointer as any,
-            req.signal,
+            streamAbortController.signal,
           )) {
+            if (streamInterruptedBySteer) break;
             if (event) {
               // response_complete is an internal event carrying the agent's
               // authoritative final text — don't forward it to the SSE client.
               if (event.type === "response_complete") {
                 fullResponse = event.response;
+                partialResponse = ""; // authoritative text is now in fullResponse
               } else {
                 controller.enqueue(encoder.encode(formatSSEEvent(event)));
+                if (event.type === "token") {
+                  partialResponse += (event as { content: string }).content;
+                } else if (event.type === "response_reset") {
+                  partialResponse = ""; // agent retrying — discard accumulated partial
+                }
               }
 
               if (event.type === "routing") {
@@ -305,6 +358,27 @@ export class ChatController {
                 decisionQuestions = (event as { questions: import("@indexnetwork/protocol").Question[] }).questions;
               }
             }
+          }
+
+          // Steer-interrupted: persist partial turn and bail (no done event emitted)
+          if (streamInterruptedBySteer) {
+            try {
+              await chatSessionService.addMessage({ sessionId, role: 'user', content: messageContent });
+              // Use authoritative fullResponse when available; fall back to accumulated
+              // partial tokens when the stream was cut before response_complete fired.
+              const interruptedContent = (fullResponse || partialResponse).trim();
+              if (interruptedContent) {
+                await chatSessionService.addMessage({
+                  sessionId,
+                  role: 'assistant',
+                  content: interruptedContent,
+                  interrupted: true,
+                });
+              }
+            } catch (persistErr) {
+              logger.error('Failed to persist interrupted turn', { sessionId, error: persistErr });
+            }
+            return; // finally block still runs → unsubscribeInterrupt + controller.close()
           }
 
           // Persist prefill messages (e.g. onboarding greeting) only for newly created sessions
@@ -372,8 +446,8 @@ export class ChatController {
             }
           }
 
-          // Skip title/suggestions generation if client disconnected
-          if (!req.signal.aborted) {
+          // Skip title/suggestions generation if client disconnected or stream was aborted
+          if (!req.signal.aborted && !streamAbortController.signal.aborted) {
             // Generate session title and suggestions in parallel
             const [sessionTitle, suggestions] = await Promise.all([
               chatSessionService.generateSessionTitle(sessionId, user.id),
@@ -404,18 +478,23 @@ export class ChatController {
             );
           }
         } catch (error) {
-          controller.enqueue(
-            encoder.encode(
-              formatSSEEvent(
-                createErrorEvent(
-                  sessionId,
-                  error instanceof Error ? error.message : "Unknown error",
-                  "STREAM_ERROR",
+          // AbortError is expected when the stream is intentionally stopped (steer
+          // interrupt, client disconnect, or stopStream). Don't surface as STREAM_ERROR.
+          if (!(error instanceof Error && error.name === 'AbortError')) {
+            controller.enqueue(
+              encoder.encode(
+                formatSSEEvent(
+                  createErrorEvent(
+                    sessionId,
+                    error instanceof Error ? error.message : "Unknown error",
+                    "STREAM_ERROR",
+                  ),
                 ),
               ),
-            ),
-          );
+            );
+          }
         } finally {
+          unsubscribeInterrupt?.();
           controller.close();
         }
         }); // requestContext.run
@@ -714,6 +793,45 @@ export class ChatController {
         { status: 500 },
       );
     }
+  }
+
+  /**
+   * Accept a mid-stream interrupt from the frontend, classify it (steer vs. queue),
+   * and emit the result onto the active SSE stream for this session.
+   *
+   * @param req - Body: { sessionId, message, messageId, traceSnapshot }
+   * @param user - The authenticated user
+   * @returns JSON `{ decision: 'steer' | 'queue', messageId }`
+   */
+  @Post("/interrupt")
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async interrupt(req: Request, user: AuthenticatedUser): Promise<Response> {
+    let body: z.infer<typeof interruptBodySchema>;
+    try {
+      const raw = await req.json();
+      const parsed = interruptBodySchema.safeParse(raw);
+      if (!parsed.success) {
+        return Response.json({ error: "Invalid request body" }, { status: 400 });
+      }
+      body = parsed.data;
+    } catch {
+      return Response.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    const { sessionId, message, messageId, traceSnapshot } = body;
+
+    const session = await chatSessionService.getSession(sessionId, user.id);
+    if (!session) {
+      return Response.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    const agentState = traceSnapshot.slice(-5).join(', ');
+    const classifier = getInterruptClassifier();
+    const decision = await classifier.classify({ message, agentState });
+
+    emitChatInterrupt(sessionId, { decision, messageId });
+
+    return Response.json({ decision, messageId });
   }
 
   @Get("/shared/:token")

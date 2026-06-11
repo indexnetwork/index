@@ -76,6 +76,10 @@ export class ChatStreamer {
       maxContextMessages?: number;
       networkId?: string;
       prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
+      /** Per-run identifier used to form a composite LangGraph thread_id (sessionId:runId).
+       * When provided, prevents stale checkpoint state from a prior run being resumed.
+       * Defaults to sessionId alone when absent (backward compatible). */
+      runId?: string;
     },
     checkpointer?: BaseCheckpointSaver,
     signal?: AbortSignal,
@@ -87,6 +91,7 @@ export class ChatStreamer {
       maxContextMessages = 20,
       networkId,
       prefillMessages,
+      runId,
     } = input;
     logger.verbose("Starting context-aware streaming", {
       userId,
@@ -118,12 +123,16 @@ export class ChatStreamer {
         totalCount: allMessages.length,
       });
 
+      // Form composite thread_id when a runId is provided
+      const threadId = runId ? `${sessionId}:${runId}` : sessionId;
+
       // Stream with context using the optional checkpointer
       yield* this.streamChatEvents(
         { userId, messages: allMessages, networkId },
         sessionId,
         checkpointer,
         signal,
+        threadId,
       );
     } catch (error) {
       logger.error("Stream error", {
@@ -157,6 +166,7 @@ export class ChatStreamer {
     sessionId: string,
     checkpointer?: BaseCheckpointSaver,
     signal?: AbortSignal,
+    threadId?: string,
   ): AsyncGenerator<ChatStreamEvent> {
     const graph = this.createStreamingGraph(checkpointer);
 
@@ -177,7 +187,7 @@ export class ChatStreamer {
       // Custom events come from config.writer() inside agentLoopNode.
       const eventStream = await graph.stream(initialState, {
         streamMode: ["custom", "updates"] as const,
-        configurable: { thread_id: sessionId, signal },
+        configurable: { thread_id: threadId ?? sessionId, signal },
         signal,
       });
 

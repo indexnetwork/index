@@ -374,6 +374,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     setScopeNetworkId,
     sessionNetworkId,
     updateSessionTitle,
+    pendingQueue,
+    cancelQueuedMessage,
+    submitMidStreamMessage,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, success: showSuccess, addNotification } = useNotifications();
@@ -934,8 +937,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       setIsInputMultiline(true);
     }
   }, [input]);
-  const isBusy = isLoading || isUploadingFiles;
-
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
@@ -962,7 +963,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSend || isBusy) return;
+    if (!canSend || isUploadingFiles) return;  // file upload blocks; stream does not
 
     const message = input.trim();
     setInput("");
@@ -980,9 +981,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         setSelectedFiles([]);
       } catch (err) {
         console.error("[AI Chat] Upload failed:", err);
-        showError(
-          err instanceof Error ? err.message : "Failed to upload file(s)",
-        );
+        showError(err instanceof Error ? err.message : "Failed to upload file(s)");
         setIsUploadingFiles(false);
         inputRef.current?.focus();
         return;
@@ -990,11 +989,17 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       setIsUploadingFiles(false);
     }
 
-    await sendMessage(
-      message || "Attached file(s).",
-      fileIds.length ? fileIds : undefined,
-      attachmentNames.length ? attachmentNames : undefined,
-    );
+    const msgContent = message || "Attached file(s).";
+    const fileArg = fileIds.length ? fileIds : undefined;
+    const nameArg = attachmentNames.length ? attachmentNames : undefined;
+
+    if (isLoading) {
+      // Mid-stream: route via interrupt flow
+      const streamingMsg = messages.find((m) => m.isStreaming);
+      submitMidStreamMessage(msgContent, streamingMsg?.traceEvents ?? [], fileArg, nameArg);
+    } else {
+      await sendMessage(msgContent, fileArg, nameArg);
+    }
     inputRef.current?.focus();
   };
 
@@ -1119,7 +1124,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               type="button"
               variant="ghost"
               size="icon"
-              disabled={isBusy}
+              disabled={isUploadingFiles}
               onClick={() => fileInputRef.current?.click()}
               className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
               title="Attach files"
@@ -1131,7 +1136,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               value={input}
               onChange={setInput}
               placeholder={CHAT_INPUT_PLACEHOLDER}
-              disabled={isBusy}
+              disabled={isUploadingFiles}
               autoFocus
               inputRef={inputRef}
               suggestionsAbove
@@ -1340,7 +1345,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       type="button"
                       variant="ghost"
                       size="icon"
-                      disabled={isBusy}
+                      disabled={isUploadingFiles}
                       onClick={() => fileInputRef.current?.click()}
                       className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
                       title="Attach files"
@@ -1351,7 +1356,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       value={input}
                       onChange={setInput}
                       placeholder={CHAT_INPUT_PLACEHOLDER}
-                      disabled={isBusy}
+                      disabled={isUploadingFiles}
                       autoFocus
                       inputRef={inputRef}
                     />
@@ -1515,7 +1520,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  disabled={isBusy}
+                  disabled={isUploadingFiles}
                   onClick={() => fileInputRef.current?.click()}
                   className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
                   title="Attach files"
@@ -1526,7 +1531,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   value={input}
                   onChange={setInput}
                   placeholder={CHAT_INPUT_PLACEHOLDER}
-                  disabled={isBusy}
+                  disabled={isUploadingFiles}
                   autoFocus
                   inputRef={inputRef}
                 />
@@ -1687,18 +1692,42 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   )}
                 >
                   {msg.role === "user" ? (
-                    <div className="max-w-[75%] bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-4xl px-4 py-1 text-sm leading-relaxed">
-                      <article className="max-w-none">
-                        <div className="chat-markdown max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {mentionsToMarkdownLinks(msg.content)}
-                          </ReactMarkdown>
-                        </div>
-                      </article>
+                    <div className="flex flex-col items-end gap-1 max-w-[75%]">
+                      {(msg.isPending || msg.isQueued) && (
+                        <span className={cn(
+                          "inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full font-medium font-ibm-plex-mono tracking-wide transition-colors duration-150",
+                          msg.isPending
+                            ? "bg-amber-50 text-amber-600 border border-amber-200 badge-classifying"
+                            : "bg-blue-50 text-blue-500 border border-blue-200",
+                        )}>
+                          {msg.isPending ? "classifying…" : "queued"}
+                          {msg.isQueued && (
+                            <button
+                              type="button"
+                              onClick={() => cancelQueuedMessage(msg.id)}
+                              className="ml-0.5 text-blue-400 hover:text-blue-700 focus:outline-none cancel-fade-in"
+                              aria-label="Cancel queued message"
+                            >
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          )}
+                        </span>
+                      )}
+                      <div className={cn(
+                        "w-fit max-w-full bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-4xl px-4 py-1 text-sm leading-relaxed transition-opacity duration-150",
+                        (msg.isPending || msg.isQueued) && "opacity-60",
+                      )}>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{ p: ({ children }) => <span className="block">{children}</span> }}
+                        >
+                          {mentionsToMarkdownLinks(msg.content)}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   ) : (
                     <div className="w-full text-gray-900">
-                      <span className="text-[10px] uppercase tracking-wider text-black font-bold mb-1 block">
+                      <span className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-ibm-plex-mono mb-1.5 block">
                         Index
                       </span>
                       {msg.traceEvents && msg.traceEvents.length > 0 && (
@@ -1758,6 +1787,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           />
                         </article>
                       </div>
+                      {msg.wasInterrupted && (
+                        <p className="text-[10px] text-gray-300 mt-1 font-ibm-plex-mono tracking-wide">{"\u2014 interrupted"}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1876,7 +1908,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           <ContentContainer>
             <SuggestionChips
               suggestions={suggestions}
-              disabled={isBusy}
+              disabled={isUploadingFiles}
               onSuggestionClick={handleSuggestionClick}
             />
             {renderInputForm()}

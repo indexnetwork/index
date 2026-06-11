@@ -54,6 +54,7 @@ function getModelConfig(config?: ModelConfig) {
     premiseIndexer:       { model: "google/gemini-2.5-flash" },
     userContextGenerator: { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 512 },
     networkRecommender:   { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 512 },
+    interruptClassifier:  { model: "google/gemini-2.5-flash", temperature: 0.0, maxTokens: 16 },
     chat: {
       model: config?.chatModel ?? process.env.CHAT_MODEL ?? "google/gemini-3-pro-preview",
       maxTokens: 8192,
