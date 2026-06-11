@@ -90,7 +90,15 @@ export class ToolService {
         onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
         onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
       },
-      findPendingQuestions: async (userId: string, filters?: { sourceType?: string; sourceId?: string }) => {
+      findPendingQuestions: async (
+        userId: string,
+        filters?: {
+          sourceType?: string;
+          sourceId?: string;
+          modes?: Array<'discovery' | 'intent' | 'profile' | 'negotiation'>;
+          limit?: number;
+        },
+      ) => {
         const rows = await questionerAdapter.findPending(userId, filters);
         return rows.map((row): PendingQuestionSummary => ({
           id: row.id,
@@ -181,7 +189,15 @@ export class ToolService {
         onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
         onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
       },
-      findPendingQuestions: async (userId: string, filters?: { sourceType?: string; sourceId?: string }) => {
+      findPendingQuestions: async (
+        userId: string,
+        filters?: {
+          sourceType?: string;
+          sourceId?: string;
+          modes?: Array<'discovery' | 'intent' | 'profile' | 'negotiation'>;
+          limit?: number;
+        },
+      ) => {
         const rows = await questionerAdapter.findPending(userId, filters);
         return rows.map((row): PendingQuestionSummary => ({
           id: row.id,
