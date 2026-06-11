@@ -49,7 +49,8 @@ export type ChatStreamEventType =
   | "chat_summarizer_end"
   | "question_generator_start"
   | "question_generator_end"
-  | "decision_questions";
+  | "decision_questions"
+  | "steer_or_queue";
 
 /**
  * Base interface for all chat stream events.
@@ -554,6 +555,15 @@ export interface DecisionQuestionsEvent extends ChatStreamEventBase {
 }
 
 /**
+ * Steer-or-queue event — injected by /chat/interrupt onto the active SSE stream.
+ */
+export interface SteerOrQueueEvent extends ChatStreamEventBase {
+  type: "steer_or_queue";
+  decision: "steer" | "queue";
+  messageId: string;
+}
+
+/**
  * Union type of all chat stream events.
  */
 export type ChatStreamEvent =
@@ -596,7 +606,8 @@ export type ChatStreamEvent =
   | ChatSummarizerEndEvent
   | QuestionGeneratorStartEvent
   | QuestionGeneratorEndEvent
-  | DecisionQuestionsEvent;
+  | DecisionQuestionsEvent
+  | SteerOrQueueEvent;
 
 /**
  * Formats a chat stream event as an SSE message. If JSON.stringify throws (e.g. circular ref,
@@ -1063,4 +1074,12 @@ export function createDecisionQuestionsEvent(
   payload: { questions: Question[] },
 ): DecisionQuestionsEvent {
   return createStreamEvent<DecisionQuestionsEvent>("decision_questions", sessionId, payload);
+}
+
+export function createSteerOrQueueEvent(
+  sessionId: string,
+  decision: "steer" | "queue",
+  messageId: string,
+): SteerOrQueueEvent {
+  return createStreamEvent<SteerOrQueueEvent>("steer_or_queue", sessionId, { decision, messageId });
 }
