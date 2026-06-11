@@ -27,16 +27,15 @@ import { validateFiles } from "@/lib/file-validation";
 import InlineDiscoveryCard from "@/components/chat/InlineDiscoveryCard";
 import { DecisionQuestions } from "@/components/DecisionQuestions";
 import InviteMessageModal from "@/components/InviteMessageModal";
-import OpportunityCard, {
-  type OpportunityCardData,
-  OpportunitySkeleton,
-} from "@/components/chat/OpportunityCardInChat";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import AssistantMessageContent, {
   parseAllBlocks,
-  type MessageSegment,
 } from "@/components/chat/AssistantMessageContent";
+import OpportunityCard, {
+  type OpportunityCardData,
+  OpportunitySkeleton,
+} from "@/components/chat/OpportunityCardInChat";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
@@ -68,7 +67,6 @@ interface PendingFile {
 interface ChatContentProps {
   sessionIdParam?: string | null;
 }
-
 export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const navigate = useNavigate();
   const sessionIdFromUrl = sessionIdParam ?? null;
@@ -240,8 +238,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     setInjectedQuestions((prev) => prev.filter((q) => q.id !== questionId));
   }, [questionsService]);
 
-  // Clear pending join IDs when stream completes (agent processed the join)
+  // Index filter state (needed before stream-end effect so refreshIndexes is in scope)
   const { indexes, refreshIndexes } = useNetworksState();
+
+  // Clear pending join IDs when stream completes and refresh sidebar
   const prevIsLoadingRef = useRef(isLoading);
   useEffect(() => {
     if (prevIsLoadingRef.current && !isLoading && networkPanelPendingJoinIds.size > 0) {

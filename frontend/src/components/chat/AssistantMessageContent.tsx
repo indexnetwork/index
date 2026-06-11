@@ -17,12 +17,8 @@ import { mentionsToMarkdownLinks } from "@/lib/mentions";
 /**
  * Ensure blockquote lines are always followed by a blank line so that
  * subsequent non-blockquote text isn't absorbed via markdown "lazy continuation".
- * - "> Retrieving…\nHere is…" → "> Retrieving…\n\nHere is…"
- * - "> Updating...Your profile now" (no newline after "...") → "> Updating...\n\nYour profile now"
  */
 function normalizeBlockquotes(text: string): string {
-  // When a blockquote line ends with "..." and more text follows on the same line (e.g. stream
-  // sent no newline), insert a blank line so the following text renders on a new line.
   let out = text.replace(/^(>.*?\.\.\.)\s*(\S.+)$/gm, "$1\n\n$2");
   out = out.replace(/^(>.*)\n(?!>|\n)/gm, "$1\n\n");
   return out;
@@ -79,7 +75,6 @@ export function parseAllBlocks(content: string): MessageSegment[] {
         ) {
           segments.push({ type: "intent_proposal", data: data as IntentProposalData });
         } else if (blockType === "intent_proposal") {
-          // Broken block (e.g. model wrote intent_proposal without calling create_intent — no proposalId)
           segments.push({
             type: "text",
             content: "This proposal couldn't be loaded as a card. Ask again to add this as a signal.",
@@ -205,15 +200,12 @@ export default function AssistantMessageContent({
 }: AssistantMessageContentProps) {
   const displayedContent = normalizeBlockquotes(mentionsToMarkdownLinks(content));
 
-  // Show cursor while streaming (before content arrives)
   const showCursor = isStreaming;
 
-  // No text yet — render a standalone blinking cursor
   if (!displayedContent && isStreaming) {
     return <span className="inline-block w-2 h-4 bg-current animate-pulse" />;
   }
 
-  // Parse opportunity and intent_proposal blocks from the displayed content; dedupe
   const segments = dedupeSegments(parseAllBlocks(displayedContent));
 
   return (
