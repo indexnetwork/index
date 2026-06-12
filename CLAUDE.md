@@ -48,6 +48,7 @@ bun run maintenance:decompose-profiles      # Backfill: decompose profiles into 
 bun run maintenance:backfill-premises       # Backfill: enqueue enrichment for users in a network
 bun run maintenance:backfill-context-hyde   # Backfill: generate HyDE docs for user contexts
 bun run maintenance:backfill-profile-questions # Backfill: enqueue profile-gap question generation for existing users
+bun run maintenance:backfill-intent-questions # Backfill: enqueue intent-refinement question generation (most recent active intent per user)
 bun run maintenance:compare-discovery       # Compare profile-HyDE vs context discovery strategies
 
 # Background workers
