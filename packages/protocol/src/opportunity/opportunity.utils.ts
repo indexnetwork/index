@@ -348,3 +348,119 @@ export function deduplicateByPerson<T extends {
   }
   return result;
 }
+
+/**
+ * Days a digest-delivered opportunity stays suppressed before it becomes
+ * eligible for a "still open" reminder re-show (when nothing fresh exists).
+ */
+export const DIGEST_REDELIVERY_COOLDOWN_DAYS = 5;
+
+/** Committed delivery row shape consumed by {@link selectDigestCandidates}. */
+export interface DigestDeliveredRow {
+  opportunityId: string;
+  deliveredAtStatus: string;
+  deliveredAt: Date;
+}
+
+/**
+ * Cross-day digest suppression for scheduled-brief candidates.
+ *
+ * Three rules, applied in order:
+ * 1. **Accepted-counterpart suppression** — a direct-connection candidate whose
+ *    counterpart the viewer has already connected with (an `accepted`
+ *    opportunity exists with that person) is dropped permanently. A new
+ *    discovery run re-minting the same person must not resurface them.
+ *    Connector-flow candidates (viewer is the introducer) are exempt: being
+ *    connected with someone doesn't make an intro ask on their behalf stale.
+ * 2. **Delivery-ledger dedup** — candidates with a committed delivery row at
+ *    the same `(opportunityId, status)` key have already been shown. While any
+ *    fresh (never-shown) candidate exists, shown ones are dropped entirely.
+ * 3. **Cooldown re-show** — when *no* fresh candidate survives, already-shown
+ *    candidates whose latest delivery is at least `cooldownDays` old are
+ *    returned instead, least-recently-shown first, flagged via
+ *    `redeliveryIds` so the digest can frame them as reminders.
+ *
+ * Pure function — callers fetch accepted counterparts and ledger rows.
+ *
+ * @param candidates - Deduped, confidence-ordered digest candidates.
+ * @param opts.viewerId - The digest recipient.
+ * @param opts.acceptedCounterpartIds - userIds the viewer already connected with.
+ * @param opts.deliveredRows - Committed ledger rows for the candidate ids.
+ * @param opts.now - Clock override for tests.
+ * @param opts.cooldownDays - Cooldown override (default {@link DIGEST_REDELIVERY_COOLDOWN_DAYS}).
+ * @returns Surviving pool plus the set of candidate ids that are cooldown re-shows.
+ */
+export function selectDigestCandidates<T extends {
+  id: string;
+  status: string;
+  actors: Array<{ userId: string; role: string }>;
+}>(
+  candidates: T[],
+  opts: {
+    viewerId: string;
+    acceptedCounterpartIds: ReadonlySet<string>;
+    deliveredRows: DigestDeliveredRow[];
+    now?: Date;
+    cooldownDays?: number;
+  },
+): { pool: T[]; redeliveryIds: Set<string> } {
+  const { viewerId, acceptedCounterpartIds } = opts;
+
+  // Rule 1: accepted-counterpart suppression (direct connections only).
+  const afterAccepted = candidates.filter((opp) => {
+    const viewerIsIntroducer = opp.actors.some(
+      (a) => a.role === 'introducer' && a.userId === viewerId,
+    );
+    if (viewerIsIntroducer) return true;
+    const counterpart = opp.actors.find(
+      (a) => a.userId !== viewerId && a.role !== 'introducer',
+    );
+    return !counterpart || !acceptedCounterpartIds.has(counterpart.userId);
+  });
+  if (afterAccepted.length < candidates.length) {
+    logger.info(
+      `[selectDigestCandidates] accepted-counterpart suppression dropped ${candidates.length - afterAccepted.length} of ${candidates.length} candidates`,
+    );
+  }
+
+  // Rule 2: delivery-ledger dedup keyed (opportunityId, deliveredAtStatus).
+  // Keep the LATEST committed delivery per key — cooldown measures time since
+  // the user last saw the card, not since they first saw it.
+  const lastDeliveredByKey = new Map<string, Date>();
+  for (const row of opts.deliveredRows) {
+    if (!(row.deliveredAt instanceof Date) || Number.isNaN(row.deliveredAt.getTime())) continue;
+    const key = `${row.opportunityId}:${row.deliveredAtStatus}`;
+    const existing = lastDeliveredByKey.get(key);
+    if (!existing || row.deliveredAt > existing) lastDeliveredByKey.set(key, row.deliveredAt);
+  }
+
+  const fresh = afterAccepted.filter((opp) => !lastDeliveredByKey.has(`${opp.id}:${opp.status}`));
+  if (fresh.length > 0) {
+    if (fresh.length < afterAccepted.length) {
+      logger.info(
+        `[selectDigestCandidates] ledger dedup dropped ${afterAccepted.length - fresh.length} already-shown candidates`,
+      );
+    }
+    return { pool: fresh, redeliveryIds: new Set<string>() };
+  }
+
+  // Rule 3: nothing fresh — re-show the least-recently-shown candidates past cooldown.
+  const cooldownMs = (opts.cooldownDays ?? DIGEST_REDELIVERY_COOLDOWN_DAYS) * 86_400_000;
+  const now = opts.now ?? new Date();
+  const cooled = afterAccepted
+    .map((opp) => ({ opp, at: lastDeliveredByKey.get(`${opp.id}:${opp.status}`) }))
+    .filter((entry): entry is { opp: T; at: Date } =>
+      entry.at instanceof Date && now.getTime() - entry.at.getTime() >= cooldownMs,
+    )
+    .sort((a, b) => a.at.getTime() - b.at.getTime());
+
+  if (cooled.length > 0) {
+    logger.info(
+      `[selectDigestCandidates] no fresh candidates — re-showing ${cooled.length} past-cooldown candidate(s)`,
+    );
+  }
+  return {
+    pool: cooled.map((entry) => entry.opp),
+    redeliveryIds: new Set(cooled.map((entry) => entry.opp.id)),
+  };
+}

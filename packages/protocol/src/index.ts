@@ -236,8 +236,11 @@ export {
   validateOpportunityActors,
   classifyOpportunity,
   selectByComposition,
+  selectDigestCandidates,
+  DIGEST_REDELIVERY_COOLDOWN_DAYS,
   FEED_SOFT_TARGETS,
 } from "./opportunity/opportunity.utils.js";
+export type { DigestDeliveredRow } from "./opportunity/opportunity.utils.js";
 export { getPrimaryActionLabel } from "./opportunity/opportunity.labels.js";
 export { computeFeedHealth } from "./opportunity/feed/feed.health.js";
 export type { FeedHealthInput, FeedHealthResult } from "./opportunity/feed/feed.health.js";

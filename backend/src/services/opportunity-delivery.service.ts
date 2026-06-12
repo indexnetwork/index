@@ -12,7 +12,7 @@
  *      committed row for the same (user, opportunity, channel, deliveredAtStatus) tuple.
  */
 
-import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -316,6 +316,53 @@ export class OpportunityDeliveryService {
     }
 
     return 'confirmed';
+  }
+
+  /**
+   * Read committed delivery rows for a set of opportunities delivered to a user
+   * on the OpenClaw channel. Used by the protocol's digest mode (`list_opportunities`
+   * with `includeDigestMarkers`) to suppress opportunities already shown to the user
+   * across days, and to pick the least-recently-shown candidate for cooldown re-shows.
+   *
+   * Multiple committed rows can exist per opportunity (one per `deliveredAtStatus`);
+   * every committed row is returned and the caller decides how to key them.
+   *
+   * @param params.userId - The user the opportunities were delivered to.
+   * @param params.opportunityIds - Candidate opportunity IDs to look up (empty array returns []).
+   * @returns Committed delivery rows: opportunityId, deliveredAtStatus, deliveredAt.
+   */
+  async getDeliveredOpportunities({
+    userId,
+    opportunityIds,
+  }: {
+    userId: string;
+    opportunityIds: string[];
+  }): Promise<Array<{ opportunityId: string; deliveredAtStatus: string; deliveredAt: Date }>> {
+    if (opportunityIds.length === 0) return [];
+
+    const rows = await db
+      .select({
+        opportunityId: opportunityDeliveries.opportunityId,
+        deliveredAtStatus: opportunityDeliveries.deliveredAtStatus,
+        deliveredAt: opportunityDeliveries.deliveredAt,
+      })
+      .from(opportunityDeliveries)
+      .where(
+        and(
+          inArray(opportunityDeliveries.opportunityId, opportunityIds),
+          eq(opportunityDeliveries.userId, userId),
+          eq(opportunityDeliveries.channel, CHANNEL),
+          isNotNull(opportunityDeliveries.deliveredAt),
+        ),
+      );
+
+    return rows
+      .filter((row): row is typeof row & { deliveredAt: Date } => row.deliveredAt != null)
+      .map((row) => ({
+        opportunityId: row.opportunityId,
+        deliveredAtStatus: row.deliveredAtStatus ?? '',
+        deliveredAt: row.deliveredAt,
+      }));
   }
 
   /**

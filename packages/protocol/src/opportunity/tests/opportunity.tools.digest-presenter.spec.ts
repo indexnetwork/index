@@ -93,7 +93,14 @@ function parseResult(text: string) {
   return JSON.parse(text) as { success: boolean; data?: Record<string, unknown>; error?: string };
 }
 
-let getOppsForUser = mock(async () => [] as Opportunity[]);
+// Candidate list returned for the digest fetch (draft/pending/latent). The
+// digest path now also fetches statuses=['accepted'] for counterpart
+// suppression — that call must return [] or candidates suppress themselves.
+let candidateOpps: Opportunity[] = [];
+const getOppsForUser = mock(async (_userId: string, filter?: { statuses?: string[] }) => {
+  if (filter?.statuses?.length === 1 && filter.statuses[0] === 'accepted') return [] as Opportunity[];
+  return candidateOpps;
+});
 let getUser = mock(async () => ({ id: testUserId, name: 'Test User' }) as UserRecord | null);
 let getProfile = mock(async () => (null) as ProfileRow | null);
 
@@ -147,7 +154,7 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
 
 describe('list_opportunities digest presenter path', () => {
   it('uses LLM presenter text when includeDigestMarkers=true and isMcp=true', async () => {
-    getOppsForUser = mock(async () => [makeOpp('opp-1', 'c-1')]);
+    candidateOpps = [makeOpp('opp-1', 'c-1')];
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);
     getProfile = mock(async () => ({ identity: { name: 'Alice', bio: '', location: '' }, userId: 'c-1' }) as ProfileRow | null);
 
@@ -177,7 +184,7 @@ describe('list_opportunities digest presenter path', () => {
   });
 
   it('skips digest cards instead of surfacing raw fallback when presenter throws', async () => {
-    getOppsForUser = mock(async () => [makeOpp('opp-2', 'c-2')]);
+    candidateOpps = [makeOpp('opp-2', 'c-2')];
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);
     getProfile = mock(async () => ({ identity: { name: 'Bob', bio: '', location: '' }, userId: 'c-2' }) as ProfileRow | null);
 
