@@ -86,6 +86,23 @@ describe('connect-link service', () => {
     expect(a.code).toBe(b.code);
   });
 
+  test('reuse refreshes preferredSurface when the new mint declares one, and omission preserves it', async () => {
+    // First mint without a surface (e.g. a caller that forgot the header → web/null stamp).
+    const a = await mintConnectLink({ userId: USER_ID, opportunityId: OPP_ID, kind: 'connect', preferredSurface: 'web' });
+
+    // Re-mint from a telegram surface — same row reused, surface refreshed.
+    const b = await mintConnectLink({ userId: USER_ID, opportunityId: OPP_ID, kind: 'connect', preferredSurface: 'telegram' });
+    expect(b.code).toBe(a.code);
+    let [row] = await db.select().from(connectLinks).where(eq(connectLinks.code, a.code));
+    expect(row.preferredSurface).toBe('telegram');
+
+    // Re-mint with no surface declared — stamp must be preserved, not nulled.
+    const c = await mintConnectLink({ userId: USER_ID, opportunityId: OPP_ID, kind: 'connect' });
+    expect(c.code).toBe(a.code);
+    [row] = await db.select().from(connectLinks).where(eq(connectLinks.code, a.code));
+    expect(row.preferredSurface).toBe('telegram');
+  });
+
   test('different kinds produce different codes for same recipient', async () => {
     const c1 = await mintConnectLink({ userId: USER_ID, opportunityId: OPP_ID, kind: 'connect' });
     const c2 = await mintConnectLink({ userId: USER_ID, opportunityId: OPP_ID, kind: 'outreach' });
