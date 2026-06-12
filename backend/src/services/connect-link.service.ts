@@ -65,7 +65,10 @@ export interface MintArgs {
 /**
  * Idempotent mint: if a non-expired link exists for (opportunityId, userId, kind),
  * return it. Otherwise insert a fresh row. Greeting is snapshotted at first mint
- * and preserved across re-mints until expiry.
+ * and preserved across re-mints until expiry. `preferredSurface`, by contrast,
+ * is refreshed on reuse when the caller supplies one: the surface should
+ * reflect where the link was most recently delivered, and this also self-heals
+ * rows that were mis-stamped by a caller that omitted its surface.
  *
  * @param args - Recipient/opportunity/kind tuple plus optional greeting snapshot.
  * @returns The short code and stored greeting (null if none was supplied at mint).
@@ -97,6 +100,15 @@ export async function mintConnectLink({
     .limit(1);
 
   if (existing && existing.expiresAt > now) {
+    // Reuse the fresh row, but let the latest delivery surface win so the
+    // click-time redirect matches where the link was actually sent. Only
+    // update when the caller declares a surface — omission keeps the stamp.
+    if (preferredSurface && existing.preferredSurface !== preferredSurface) {
+      await db
+        .update(connectLinks)
+        .set({ preferredSurface })
+        .where(eq(connectLinks.code, existing.code));
+    }
     return { code: existing.code, greeting: existing.greeting };
   }
 
