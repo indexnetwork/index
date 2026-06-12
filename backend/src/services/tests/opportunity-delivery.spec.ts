@@ -437,3 +437,101 @@ describe('countDeliveriesSince', () => {
     expect(result).toEqual({ ambient: 0, digest: 0 });
   });
 });
+
+describe('getDeliveredOpportunities', () => {
+  const svc = new OpportunityDeliveryService(
+    new StubPresenter() as never,
+    stubPresenterDb as never,
+  );
+
+  beforeEach(async () => {
+    await db.execute(sql`DELETE FROM opportunity_deliveries`);
+    await db.execute(sql`DELETE FROM opportunities`);
+  });
+
+  afterAll(async () => {
+    await db.execute(sql`DELETE FROM opportunity_deliveries`);
+    await db.execute(sql`DELETE FROM opportunities`);
+  });
+
+  it('returns [] for an empty id list without querying', async () => {
+    const userId = await seedUser();
+    const rows = await svc.getDeliveredOpportunities({ userId, opportunityIds: [] });
+    expect(rows).toEqual([]);
+  });
+
+  it('returns committed delivery rows with status and timestamp', async () => {
+    const userId = await seedUser();
+    const agentId = await seedAgent(userId);
+    const opp = await seedOpportunity([userId], 'pending');
+
+    await svc.confirmOpportunityDelivery({ opportunityId: opp, userId, agentId, trigger: 'digest' });
+
+    const rows = await svc.getDeliveredOpportunities({ userId, opportunityIds: [opp] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].opportunityId).toBe(opp);
+    expect(rows[0].deliveredAtStatus).toBe('pending');
+    expect(rows[0].deliveredAt).toBeInstanceOf(Date);
+  });
+
+  it('only returns rows for the requested ids', async () => {
+    const userId = await seedUser();
+    const agentId = await seedAgent(userId);
+    const oppA = await seedOpportunity([userId], 'pending');
+    const oppB = await seedOpportunity([userId], 'pending');
+
+    await svc.confirmOpportunityDelivery({ opportunityId: oppA, userId, agentId, trigger: 'digest' });
+    await svc.confirmOpportunityDelivery({ opportunityId: oppB, userId, agentId, trigger: 'digest' });
+
+    const rows = await svc.getDeliveredOpportunities({ userId, opportunityIds: [oppA] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].opportunityId).toBe(oppA);
+  });
+
+  it('does not return rows delivered to a different user', async () => {
+    const userId = await seedUser();
+    const otherId = await seedUser();
+    const agentId = await seedAgent(userId);
+    const opp = await seedOpportunity([userId, otherId], 'pending');
+
+    await svc.confirmOpportunityDelivery({ opportunityId: opp, userId, agentId, trigger: 'digest' });
+
+    const rows = await svc.getDeliveredOpportunities({ userId: otherId, opportunityIds: [opp] });
+    expect(rows).toEqual([]);
+  });
+
+  it('excludes uncommitted reservation rows (delivered_at IS NULL)', async () => {
+    const userId = await seedUser();
+    const agentId = await seedAgent(userId);
+    const opp = await seedOpportunity([userId], 'pending');
+
+    await db.insert(opportunityDeliveries).values({
+      opportunityId: opp,
+      userId,
+      agentId,
+      channel: 'openclaw',
+      trigger: 'pending_pickup',
+      deliveredAtStatus: 'pending',
+      reservationToken: randomUUID(),
+      reservedAt: new Date(),
+    });
+
+    const rows = await svc.getDeliveredOpportunities({ userId, opportunityIds: [opp] });
+    expect(rows).toEqual([]);
+  });
+
+  it('returns one row per deliveredAtStatus for the same opportunity', async () => {
+    const userId = await seedUser();
+    const agentId = await seedAgent(userId);
+    const opp = await seedOpportunity([userId], 'pending');
+
+    // Delivered at pending, then the opportunity advanced and was delivered at accepted.
+    await svc.confirmOpportunityDelivery({ opportunityId: opp, userId, agentId, trigger: 'digest' });
+    await db.update(opportunities).set({ status: 'accepted' }).where(eq(opportunities.id, opp));
+    await svc.confirmOpportunityDelivery({ opportunityId: opp, userId, agentId, trigger: 'accepted' });
+
+    const rows = await svc.getDeliveredOpportunities({ userId, opportunityIds: [opp] });
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((r) => r.deliveredAtStatus))).toEqual(new Set(['pending', 'accepted']));
+  });
+});
