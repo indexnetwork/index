@@ -10,6 +10,7 @@ import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import db from '../lib/drizzle/drizzle';
+import { questionerEnqueueIfEnabled } from './questioner.queue';
 import { canRunPublicProfileEnrichment, getProfileEnrichmentPolicy } from '../lib/privacy/profile-enrichment-policy';
 import { networks, userProfiles, users } from '../schemas/database.schema';
 import type { OnboardingState, ProfileEnrichmentPolicy } from '../schemas/database.schema';
@@ -336,7 +337,10 @@ export class EnrichmentQueue {
       premiseDatabase as unknown as PremiseGraphDatabase,
       embedder,
     ).createGraph();
-    const factory = new ProfileGraphFactory(database, scraper, { enrichUserProfile }, undefined, premiseGraph);
+    // Inject the env-gated questioner enqueue so profile regeneration runs
+    // (onboarding, premise cascades) generate profile-gap questions instead
+    // of silently dropping them (the gap that left prod's questions table empty).
+    const factory = new ProfileGraphFactory(database, scraper, { enrichUserProfile }, questionerEnqueueIfEnabled(), premiseGraph);
     const graph = factory.createGraph();
     return graph.invoke({ userId, operationMode });
   }

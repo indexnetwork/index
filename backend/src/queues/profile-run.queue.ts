@@ -27,6 +27,7 @@ import { cacheAdapter } from '../adapters/cache.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { profileRunAdapter } from '../adapters/profile-run.adapter';
+import { questionerEnqueueIfEnabled } from './questioner.queue';
 
 export const QUEUE_NAME = 'profile-tool-run';
 
@@ -180,7 +181,9 @@ export class ProfileRunQueue {
       chatDatabaseAdapter,
       scraperAdapter,
       enricherAdapter,
-      undefined,
+      // Env-gated questioner enqueue: async profile runs generate
+      // profile-gap questions just like the MCP composition root.
+      questionerEnqueueIfEnabled(),
       premiseGraph,
     ).createGraph();
 

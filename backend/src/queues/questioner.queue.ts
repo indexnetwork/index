@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 
 import { QuestionerAgent } from '@indexnetwork/protocol';
-import type { QuestionerInput, PersistableQuestion, QuestionGenerationResult } from '@indexnetwork/protocol';
+import type { QuestionerInput, QuestionerEnqueueFn, PersistableQuestion, QuestionGenerationResult } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
@@ -184,3 +184,20 @@ export class QuestionerQueue {
 
 /** Singleton questioner queue instance. Use for adding jobs and starting the worker. */
 export const questionerQueue = new QuestionerQueue();
+
+/**
+ * Returns the questioner enqueue callback when question generation is enabled
+ * (`QUESTIONER_ENABLED=true`), or `undefined` otherwise.
+ *
+ * Use at graph/tool composition sites (MCP composition root, background
+ * queues) so every path injects the same env-gated enqueue instead of
+ * silently dropping question generation. Reads the env at call time, so
+ * composition sites that build graphs per job pick up flag changes without
+ * a process restart ordering hazard.
+ */
+export function questionerEnqueueIfEnabled(): QuestionerEnqueueFn | undefined {
+  if (process.env.QUESTIONER_ENABLED !== 'true') return undefined;
+  return async (input) => {
+    await questionerQueue.addGenerateJob(input);
+  };
+}
