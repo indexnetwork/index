@@ -34,7 +34,7 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import type { DiscoveryRunInput } from "../shared/interfaces/discovery-run.interface.js";
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
-import { selectByComposition, deduplicateByPerson } from "./opportunity.utils.js";
+import { selectByComposition, deduplicateByPerson, selectDigestCandidates, type DigestDeliveredRow } from "./opportunity.utils.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
@@ -203,6 +203,13 @@ const CHAT_DISPLAY_LIMIT = 6;
  */
 const CHAT_FETCH_LIMIT = 30;
 
+/**
+ * How many accepted opportunities to scan when building the digest's
+ * accepted-counterpart suppression set. Wide enough to cover a month-long
+ * popup's accept history without unbounded reads.
+ */
+const ACCEPTED_SUPPRESSION_FETCH_LIMIT = 200;
+
 /** Markdown code fence (three backticks). Avoids embedding ``` in string literals so TS parser stays in sync. */
 const CODE_FENCE = String.fromCharCode(96, 96, 96);
 
@@ -336,6 +343,8 @@ type OpportunityCardLike = Record<string, unknown> & {
   acceptUrl?: string | undefined;
   profileUrl?: string | undefined;
   score?: number | undefined;
+  /** Digest-mode cooldown re-show — the user has seen this card before. */
+  redelivery?: boolean | undefined;
 };
 
 /**
@@ -384,6 +393,7 @@ export function buildOpportunityPresentation(
         if (card.acceptUrl) lines.push(`   acceptUrl: ${card.acceptUrl}`);
         if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
         if (opts.includeDigestMarkers && card.score != null) lines.push(`   confidence: ${Math.round(card.score * 100)}`);
+        if (opts.includeDigestMarkers && card.redelivery) lines.push(`   redelivery: true`);
         // Only surface opportunityId when there's no acceptUrl. Exposing the
         // UUID alongside an actionable link gives the LLM a foothold to
         // hallucinate bare `/api/opportunities/<id>/connect` URLs.
@@ -1569,12 +1579,73 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // highest-confidence opportunity per person across discovery runs.
       const deduped = deduplicateByPerson(visible, context.userId);
 
+      const isDigestMode = context.isMcp === true && query.includeDigestMarkers === true;
+
+      // ── Digest-mode cross-day suppression ──
+      // Scheduled briefs must not repeat themselves: drop candidates whose
+      // counterpart the user already connected with (accepted opportunity
+      // exists — a re-discovery run re-minting the same person must not
+      // resurface them), drop candidates already shown per the delivery
+      // ledger, and when nothing fresh remains re-show the least-recently
+      // shown candidate past the cooldown, flagged as a redelivery so the
+      // digest can frame it as a reminder. Chat mode is untouched — a user
+      // asking "show my opportunities" should always see them.
+      // Every fetch here is best-effort: a failed read degrades to no
+      // suppression rather than an empty brief.
+      let digestPool = deduped;
+      let redeliveryIds = new Set<string>();
+      if (isDigestMode && deduped.length > 0) {
+        const acceptedCounterpartIds = new Set<string>();
+        try {
+          const acceptedOpps = await database.getOpportunitiesForUser(context.userId, {
+            ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
+            statuses: ["accepted"],
+            limit: ACCEPTED_SUPPRESSION_FETCH_LIMIT,
+          });
+          for (const opp of acceptedOpps) {
+            for (const actor of opp.actors) {
+              if (actor.userId && actor.userId !== context.userId && actor.role !== "introducer") {
+                acceptedCounterpartIds.add(actor.userId);
+              }
+            }
+          }
+        } catch (err) {
+          logger.warn("digest suppression: failed to fetch accepted opportunities, skipping counterpart suppression", { err });
+        }
+
+        let deliveredRows: DigestDeliveredRow[] = [];
+        if (deps.deliveryLedger?.getDeliveredOpportunities) {
+          try {
+            const rows = await deps.deliveryLedger.getDeliveredOpportunities({
+              userId: context.userId,
+              opportunityIds: deduped.map((opp) => opp.id),
+            });
+            // Defensive Date coercion — ledger rows may cross a serialization boundary.
+            deliveredRows = rows.map((row) => ({
+              opportunityId: row.opportunityId,
+              deliveredAtStatus: row.deliveredAtStatus,
+              deliveredAt: row.deliveredAt instanceof Date ? row.deliveredAt : new Date(row.deliveredAt),
+            }));
+          } catch (err) {
+            logger.warn("digest suppression: failed to read delivery ledger, skipping shown-opportunity dedup", { err });
+          }
+        }
+
+        const digestSelection = selectDigestCandidates(deduped, {
+          viewerId: context.userId,
+          acceptedCounterpartIds,
+          deliveredRows,
+        });
+        digestPool = digestSelection.pool;
+        redeliveryIds = digestSelection.redeliveryIds;
+      }
+
       // Compose-balance across feed categories so the digest/ambient prompt
       // can fill both Section A (connection) and Section B (connector-flow).
       // Falls back to the unbalanced view when the helper has nothing to do.
-      const selected = deduped.length > 0
-        ? selectByComposition(deduped, context.userId)
-        : deduped;
+      const selected = digestPool.length > 0
+        ? selectByComposition(digestPool, context.userId)
+        : digestPool;
       const opportunities = selected.slice(0, CHAT_DISPLAY_LIMIT);
 
       if (!opportunities || opportunities.length === 0) {
@@ -1587,6 +1658,18 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             message:
               "I found opportunities, but couldn't render them. Please try again.",
             ...(listDebugSteps.length ? { debugSteps: listDebugSteps } : {}),
+          });
+        }
+        // Digest mode: distinguish "everything was already shown" from "nothing
+        // exists" so the brief omits the people section instead of prompting
+        // the user to run discovery.
+        if (isDigestMode && deduped.length > 0) {
+          return success({
+            found: false,
+            count: 0,
+            summary: "No new opportunities to show",
+            message:
+              "No new opportunities today — everything actionable has already been shown recently. Omit the people section from the digest.",
           });
         }
         return success({
@@ -1629,7 +1712,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         if (user) userMap.set(userId, user);
       });
 
-      const isDigestMode = context.isMcp === true && query.includeDigestMarkers === true;
       const cardDataList: Array<Record<string, unknown> & { opportunityId: string }> = [];
       const seenOpportunityIds = new Set<string>();
 
@@ -1747,6 +1829,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                       : undefined,
                     status: opp.status,
                     isGhost: isCounterpartGhost,
+                    ...(redeliveryIds.has(opp.id) ? { redelivery: true } : {}),
                     ...(viewerIsIntroducerHere && secondPartyNameForHeadline
                       ? {
                           secondParty: {
