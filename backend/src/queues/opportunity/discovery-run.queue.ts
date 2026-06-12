@@ -35,6 +35,7 @@ import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../
 import { resolveProtocolBaseUrl } from '../../lib/protocol-url';
 import type { ConnectLinkKind } from '../../services/connect-link.service';
 import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
+import { questionerEnqueueIfEnabled } from '../questioner.queue';
 
 export const QUEUE_NAME = 'opportunity-discovery-run';
 
@@ -226,6 +227,12 @@ export class DiscoveryRunQueue {
       },
     ).createGraph();
 
+    // Env-gated questioner enqueue: queued/async discovery runs generate
+    // discovery-mode questions exactly like synchronous MCP discover calls
+    // (the tool computes enableQuestions from ENABLE_DISCOVERY_QUESTIONS +
+    // context.isMcp, which is true here).
+    const questionerEnqueue = questionerEnqueueIfEnabled();
+
     const rawTools = new Map<string, RawToolDefinition>();
     createOpportunityTools(((opts: {
       name: string;
@@ -255,6 +262,7 @@ export class DiscoveryRunQueue {
       mintConnectLink,
       frontendUrl: process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'https://index.network',
       apiBaseUrl,
+      ...(questionerEnqueue && { questionerEnqueue }),
       graphs: {
         profile: { invoke: async () => ({}) } as CompiledGraph,
         intent: { invoke: async () => ({}) } as CompiledGraph,
