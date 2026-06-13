@@ -133,6 +133,14 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   enrichmentQueue.addEnsureProfileHydeJob({ userId, networkId, reason: 'network_membership' }).catch((err) => {
     log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, networkId, error: err });
   });
+  // Regenerate per-network user contexts so the newly joined network gets one.
+  // Without this, a user whose premises predate the membership never gets a
+  // context for this network (regen only fired on enrichment/premise changes).
+  // No-op for users with zero active premises; the premiseHash short-circuit
+  // skips networks whose context is already fresh.
+  userContextQueue.addRegenJob({ userId, reason: 'network_membership' }).catch((err) => {
+    log.job.from('NetworkMembership').error('Failed to enqueue context regen', { userId, networkId, error: err });
+  });
 };
 
 enrichmentQueue.onEnrichmentComplete = (userId: string) => {
