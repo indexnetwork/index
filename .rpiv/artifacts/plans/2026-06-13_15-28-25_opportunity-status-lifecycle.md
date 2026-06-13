@@ -6,7 +6,7 @@ branch: dev
 repository: index
 topic: "Opportunity status lifecycle reference"
 tags: [plan, docs, opportunity, status, lifecycle, mermaid, reference]
-status: in-progress
+status: ready
 parent: .rpiv/artifacts/research/2026-06-13_13-07-32_opportunity-status-lifecycle.md
 phase_count: 5
 phases:
@@ -15,7 +15,7 @@ phases:
   - { n: 3, title: Flow diagrams E–G + reactivation }
   - { n: 4, title: Transition/write-site table + projections + drift risks }
   - { n: 5, title: Cross-links }
-unresolved_phase_count: 2
+unresolved_phase_count: 0
 last_updated: 2026-06-13T15:28:25+0300
 last_updated_by: Yankı Ekin Yüksel
 ---
@@ -141,7 +141,7 @@ The protocol-side type mirror is `OpportunityStatus` (`packages/protocol/src/sha
 | `approved?: boolean` | Introducer-only approval gate | `false` until explicit approval, `true` after (`:409-410`) |
 | `actedAt?: string` | ISO stamp set the first time an actor advances state | Used to block that same actor from a later `accept` — the self-accept guard (`:411-418`) |
 
-A third column, `acceptedBy` (nullable user ref, `:447`), is set **only** on a human accept (`backend/src/adapters/database.adapter.ts:5181-5182`) and cleared to null on every other status write (`:5183-5184`).
+A third column, `acceptedBy` (nullable user ref, `:447`), is set **only** on a human accept (`backend/src/adapters/database.adapter.ts:5181-5182`) and cleared to null on non-`accepted` writes that pass through `updateOpportunityStatus()` / `stampOpportunityActorAction()` (`:5183-5184`); the bulk-expiry helpers leave it untouched (see the §4.2 caveat).
 
 **Why this matters:** approval and "having acted" are actor-local. They gate visibility/actionability and enforce the self-accept guard **independently of `opportunities.status`** — some transitions stage through actor-local JSONB before/alongside the status change (introducer approval, send, accept). Treat this axis as a separate state machine from the enum.
 
@@ -209,7 +209,7 @@ stateDiagram-v2
 
 - **Three creation entry points** map to `resolveInitialStatus()` (`packages/protocol/src/opportunity/opportunity.state.ts:144-150`): explicit `initialStatus` wins (ambient discovery forces `latent`), else `orchestrator → negotiating`, else `pending`.
 - **The accept ambiguity** (detailed in Flow C and Flow D): negotiation `accept` writes status `pending` — *not* `accepted`. Only a human opening a DM writes `accepted`.
-- **`rejected` is terminal everywhere** — MCP-blocked as a source and absent from every reactivation branch.
+- **`rejected` is terminal in practice** — MCP-blocked as a source and absent from every reactivation branch. (Caveat: the REST `PATCH /opportunities/:id/status` endpoint applies no source-status guard — `backend/src/controllers/opportunity.controller.ts:222-231`, `backend/src/services/opportunity.service.ts:459-508` — so it is an unguarded escape hatch; see §7.)
 - **`expired` / `stalled` look terminal but are reactivatable** by discovery dedup. The reactivation target depends on the path (see the `draft` note): introducer → `draft`, discovery → `initialStatus`.
 - **Machine paths are the hidden surface:** cron, premise cascade, intent archival, member removal, and enrichment replacement all write `expired`/`stalled` without going through the service/graph "flow" entry points. The full set of write sites is enumerated in the Transition Table.
 `````
@@ -217,10 +217,10 @@ stateDiagram-v2
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] File exists: `test -f docs/design/opportunity-status-lifecycle.md`
-- [ ] Master diagram is a `stateDiagram-v2`: `grep -q 'stateDiagram-v2' docs/design/opportunity-status-lifecycle.md`
-- [ ] All 8 statuses appear: `for s in latent draft negotiating pending stalled accepted rejected expired; do grep -q "$s" docs/design/opportunity-status-lifecycle.md || echo "MISSING $s"; done` prints nothing
-- [ ] Corrected premise.queue citation present (not the off-by-one `:45`): `grep -q 'premise.queue.ts:46' docs/design/opportunity-status-lifecycle.md`
+- [x] File exists: `test -f docs/design/opportunity-status-lifecycle.md`
+- [x] Master diagram is a `stateDiagram-v2`: `grep -q 'stateDiagram-v2' docs/design/opportunity-status-lifecycle.md`
+- [x] All 8 statuses appear: `for s in latent draft negotiating pending stalled accepted rejected expired; do grep -q "$s" docs/design/opportunity-status-lifecycle.md || echo "MISSING $s"; done` prints nothing
+- [x] Corrected premise.queue citation present (not the off-by-one `:45`): `grep -q 'premise.queue.ts:46' docs/design/opportunity-status-lifecycle.md`
 
 #### Manual Verification:
 - [ ] Master diagram renders in a Mermaid viewer with no syntax errors; every transition references a declared state
@@ -281,7 +281,7 @@ stateDiagram-v2
     negotiating --> stalled: timeout / stall
 ```
 
-Init writes `negotiating` (`negotiation.graph.ts:102-105`). Finalize maps the last turn (`negotiation.graph.ts:364-369`): `accept → pending`, `reject → rejected`, anything else → `stalled`. The agent polling path repeats the identical mapping (`backend/src/services/negotiation-polling.service.ts:400-402`).
+Init writes `negotiating` (`negotiation.graph.ts:102-105`). Finalize maps the last turn (`negotiation.graph.ts:364-369`): `accept → pending`, `reject → rejected`, anything else → `stalled`. The agent polling path repeats the identical mapping (`backend/src/services/negotiation-polling.service.ts:400-402`), as do two background timeout workers that finalize a timed-out negotiation (`backend/src/queues/negotiations/timeout.queue.ts:254` and `claim-timeout.queue.ts:294`).
 
 > **The word "accepted" has three distinct meanings — do not conflate them:**
 >
@@ -312,9 +312,9 @@ The **self-accept guard** (an actor cannot accept an opportunity it has already 
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] §3 Flows section present with A–D subheadings: `for h in '3.A' '3.B' '3.C' '3.D'; do grep -q "### $h" docs/design/opportunity-status-lifecycle.md || echo "MISSING $h"; done` prints nothing
-- [ ] Four new `stateDiagram-v2` blocks added (≥5 total incl. master): `grep -c 'stateDiagram-v2' docs/design/opportunity-status-lifecycle.md` returns >= 5
-- [ ] Corrected polling-mapping citation present (not `:401-403`): `grep -q 'negotiation-polling.service.ts:400-402' docs/design/opportunity-status-lifecycle.md`
+- [x] §3 Flows section present with A–D subheadings: `for h in '3.A' '3.B' '3.C' '3.D'; do grep -q "### $h" docs/design/opportunity-status-lifecycle.md || echo "MISSING $h"; done` prints nothing
+- [x] Four new `stateDiagram-v2` blocks added (≥5 total incl. master): `grep -c 'stateDiagram-v2' docs/design/opportunity-status-lifecycle.md` returns >= 5
+- [x] Corrected polling-mapping citation present (not `:401-403`): `grep -q 'negotiation-polling.service.ts:400-402' docs/design/opportunity-status-lifecycle.md`
 
 #### Manual Verification:
 - [ ] The three-meanings callout clearly separates negotiation `accept`→`pending`, trace string `"accepted"`, and human `accepted`
@@ -342,7 +342,7 @@ stateDiagram-v2
     latent --> pending: status flip after approval
 ```
 
-`approveIntroduction()` (`backend/src/services/opportunity.service.ts:563-604`) requires the caller be the `introducer` actor, flips `approved` via `updateOpportunityActorApproval(..., true)` (`:587`) — **status stays `latent`** during this write (the adapter touches only `actors` + `updatedAt`, `backend/src/adapters/database.adapter.ts:5211-5213`) — then calls `updateOpportunityStatus(id, 'pending', userId)` (`:594`). Visibility/actionability live in `packages/protocol/src/opportunity/opportunity.utils.ts`: `canUserSeeOpportunity()` (`:123-143`) is a role+status ACL that does **not** read `approved`; `isActionableForViewer()` (`:164-192`) reads `introducer.approved` (`:174`) — the introducer is actionable only while `latent && !approved`, non-introducers on `latent` when there is no introducer or it is approved, and on `pending`.
+`approveIntroduction()` (`backend/src/services/opportunity.service.ts:563-604`) requires the caller be the `introducer` actor, flips `approved` via `updateOpportunityActorApproval(..., true)` (`:587`) — **status stays `latent`** during this write (the adapter touches only `actors` + `updatedAt`, `backend/src/adapters/database.adapter.ts:5211-5213`) — then calls `updateOpportunityStatus(id, 'pending', userId)` (`:594`). Visibility/actionability live in `packages/protocol/src/opportunity/opportunity.utils.ts`: `canUserSeeOpportunity()` (`:123-143`) is a role+status ACL that does **not** read `approved`; `isActionableForViewer()` (`:164-192`) reads `introducer.approved` (`:174`) — the introducer is actionable only while `latent && !approved`, non-introducers on `latent` when there is no introducer or it is approved, and on `pending`. **`negotiating` (and the other internal/terminal statuses) is never actionable** here — Rule 5 of `isActionableForViewer` (`:188-191`; the doc-comment at `:156` lists `negotiating` among the non-actionable) — and it is excluded from the home feed default (`feed.graph.ts:57`). This was a historical drift point (precedent `3acc3d7db3`, "allow actions on negotiating status").
 
 ### 3.F Expiry / archive (→ `expired`)
 
@@ -386,14 +386,15 @@ _Shown as annotations on the master diagram (no dedicated diagram); documented h
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] §3.E–G subheadings present: `for h in '3.E' '3.F' '3.G' 'Reactivation'; do grep -q "$h" docs/design/opportunity-status-lifecycle.md || echo "MISSING $h"; done` prints nothing
-- [ ] Exactly 8 `stateDiagram-v2` blocks total (master + 7 flows; no reactivation diagram): `grep -c 'stateDiagram-v2' docs/design/opportunity-status-lifecycle.md` returns 8
-- [ ] Legacy expire site cited: `grep -q 'database.adapter.ts:354-361' docs/design/opportunity-status-lifecycle.md`
+- [x] §3.E–G subheadings present: `for h in '3.E' '3.F' '3.G' 'Reactivation'; do grep -q "$h" docs/design/opportunity-status-lifecycle.md || echo "MISSING $h"; done` prints nothing
+- [x] Exactly 8 `stateDiagram-v2` blocks total (master + 7 flows; no reactivation diagram): `grep -c 'stateDiagram-v2' docs/design/opportunity-status-lifecycle.md` returns 8
+- [x] Legacy expire site cited: `grep -q 'database.adapter.ts:354-361' docs/design/opportunity-status-lifecycle.md`
 
 #### Manual Verification:
 - [ ] §3.E makes clear that approval is an actor-level write that leaves `status` at `latent` until the explicit `pending` flip
 - [ ] §3.F lists all ~10 `→ expired` write sites; Reactivation is prose-only (no 9th diagram)
 - [ ] §3.G flags `accepted → stalled` as a real demotion that clears `acceptedBy`
+- [ ] §3.E documents that `negotiating` is non-actionable (Rule 5, `:188-191`) — the historical actionability exception
 
 ## Phase 4: Transition/write-site table + projections + drift risks
 
@@ -405,16 +406,113 @@ Appends the exhaustive transition table (every write site, from→to + trigger c
 #### 1. docs/design/opportunity-status-lifecycle.md
 
 **File**: `docs/design/opportunity-status-lifecycle.md`
-**Changes**: MODIFY — append Transition Table, Machine/Cleanup Expiry, Read-side Projections, Drift Risks sections
+**Changes**: MODIFY — append Transition Table, Adapter write classification, Read-side Projections, Drift Risks sections
 
-```markdown
-```
+````markdown
+## 4. Transition / write-site table
+
+Every status write. Trigger flow letters map to §3. "Actor JSONB" rows are the parallel axis (§1.2), not status writes.
+
+### 4.1 Status transitions
+
+| From | To | Trigger / flow | Write site (`file:line`) |
+|---|---|---|---|
+| _(new)_ | `latent` | Ambient discovery (A) | `opportunity.service.ts:791,799` → persist `opportunity.graph.ts:2565` → `database.adapter.ts:5001-5010` |
+| _(new)_ | `negotiating` | Orchestrator default (B) | `opportunity.state.ts:149` → persist insert `database.adapter.ts:5001-5010` |
+| _(pre-negotiation)_ | `negotiating` | Negotiation init (C) | `negotiation.graph.ts:102-105` (write `:103`, via `updateOpportunityStatus`) |
+| _(new)_ | `pending` | Discovery default; DB column default | `opportunity.state.ts:149`; `database.schema.ts:446` / adapter fallback `:5010` |
+| `negotiating` | `draft` | Orchestrator candidate resolved (B) | `opportunity.graph.ts:2120` |
+| `negotiating` | `pending` | Negotiation **accept** — agents agree (C) | `negotiation.graph.ts:364-369`; polling `negotiation-polling.service.ts:400-402` |
+| `negotiating` | `rejected` | Negotiation reject (C) | `negotiation.graph.ts:364-369`; polling `:400-402` |
+| `negotiating` | `stalled` | Negotiation timeout/stall (C) | `negotiation.graph.ts:364-369`; polling `:400-402` |
+| `negotiating` | `pending` / `rejected` / `stalled` | Negotiation **timeout** finalize (C) | `backend/src/queues/negotiations/timeout.queue.ts:254`; `backend/src/queues/negotiations/claim-timeout.queue.ts:294` |
+| `latent` / `draft` | `pending` | Send (B) | `opportunity.graph.ts:3399-3402` |
+| `latent` | `pending` | Introducer approval (E) | `opportunity.service.ts:594` |
+| `latent` / `draft` / `pending` | `accepted` | Human **accept** / Start Chat (D) | REST `opportunity.service.ts:501-504`; `startChat :728-732`; `updateNode opportunity.graph.ts:3287-3293` |
+| `pending` | `rejected` | Human / MCP reject (D) | `updateNode opportunity.graph.ts:3294-3300`; service terminal `opportunity.service.ts:507-508` |
+| `draft` / `latent` | `expired` | Premise cascade — EARLY (G) | `premise.queue.ts:357-358` → `database.adapter.ts:5172-5188` |
+| `pending` / `negotiating` | `stalled` | Premise cascade — IN_PROGRESS (G) | `premise.queue.ts:359` |
+| `accepted` | `stalled` ⚠️ | Premise cascade — IN_PROGRESS (G); **clears `acceptedBy`** (writes via `updateOpportunityStatus`) | `premise.queue.ts:359` → `database.adapter.ts:5172-5188` |
+| any non-terminal | `expired` | Graph delete (F) | `opportunity.graph.ts:3341` |
+| any | `expired` | Service terminal flip (F) | `opportunity.service.ts:507-508` |
+| `latent`/`draft`/`negotiating`/`pending`/`stalled` | `expired` | Cron `expireStale` — excl. accepted/rejected/expired (F) | `expiration.queue.ts:12,21,30` → `database.adapter.ts:5440-5450` |
+| _(replaced ids)_ | `expired` | Enrichment replacement (F) | `database.adapter.ts:5298-5303` (`opportunity.persist.ts:68-72,78-80`) |
+| _(intent archived)_ | `expired` | Intent archival (F) | `database.adapter.ts:5406-5423`; legacy `:354-361` (write `:355-356`) |
+| _(member removed)_ | `expired` | Network member removal (F) | `database.adapter.ts:5426-5438` |
+| _(manual)_ | `expired` | CLI script (F) | `expire-opportunities.ts:22` |
+| `expired` / `stalled` | `draft` | Reactivation — introducer (same introducer for `expired`) | `opportunity.graph.ts:2741` |
+| `negotiating` | `draft` | Reactivation — stale/orphaned introducer | `opportunity.graph.ts:2773` |
+| `latent` | `draft` | Reactivation — introducer upgrade | `opportunity.graph.ts:2785` |
+| `expired` / `stalled` | `initialStatus` | Reactivation — discovery | `opportunity.graph.ts:2911` |
+| `negotiating` | `initialStatus` | Reactivation — stale/orphaned discovery | `opportunity.graph.ts:2946` |
+| `latent` | `initialStatus` | Reactivation — discovery upgrade (`initialStatus !== 'latent'`) | `opportunity.graph.ts:2956-2958` |
+
+### 4.2 Actor JSONB axis (parallel; not status)
+
+| Field | Transition | Trigger | Write site (`file:line`) |
+|---|---|---|---|
+| `approved` | `false → true` | Introducer approval | `updateOpportunityActorApproval` `database.adapter.ts:5194-5213` |
+| `actedAt` | unset → ISO | First actor action (send/accept) | `stampOpportunityActorAction` `database.adapter.ts:5224-5258` |
+| `acceptedBy` | `null → userId` | Human accept | `database.adapter.ts:5181-5182` |
+| `acceptedBy` | `→ null` | Non-`accepted` write **via `updateOpportunityStatus()` / `stampOpportunityActorAction()`** | `database.adapter.ts:5183-5184` |
+
+> **`acceptedBy` caveat:** the **bulk expiry helpers** (`expireStaleOpportunities`, `expireOpportunitiesByIntent`, `expireOpportunitiesForRemovedMember`, `createOpportunityAndExpireIds`, and legacy `expireOpportunitiesByIntentActor`) set only `status` + `updatedAt` — they do **not** clear `acceptedBy`. So an `accepted` opportunity later expired via member removal or intent archival keeps a dangling `acceptedBy`. Only `updateOpportunityStatus()` / `stampOpportunityActorAction()` clear it (`:5183-5184`).
+
+## 5. Adapter write classification
+
+Which adapter method touches `status`, the `actors` JSONB, and `acceptedBy`.
+
+| Adapter method | `file:line` | status | actors | acceptedBy |
+|---|---|---|---|---|
+| `createOpportunity()` | `database.adapter.ts:5001-5010` | sets (`?? 'pending'`) | sets | no |
+| `updateOpportunityStatus()` | `:5172-5188` | sets | no | set on `accepted`, else null |
+| `updateOpportunityActorApproval()` | `:5194-5213` | **no** (status unchanged) | sets `approved` | no |
+| `stampOpportunityActorAction()` | `:5224-5258` | sets | sets `actedAt` if absent | set on `accepted`, else null |
+| `createOpportunityAndExpireIds()` | `:5265-5305` | inserts + `expired` on ids | sets on insert | untouched |
+| `expireStaleOpportunities()` | `:5440-5450` | `expired` | no | untouched |
+| `expireOpportunitiesByIntent()` | `:5406-5423` | `expired` | no | untouched |
+| `expireOpportunitiesByIntentActor()` (legacy) | `:354-361` | `expired` | no | untouched |
+| `expireOpportunitiesForRemovedMember()` | `:5426-5438` | `expired` | no | untouched |
+
+## 6. Read-side projections — the canonical 8 narrowed per surface
+
+| Surface | Coverage | Shown / hidden | `file:line` |
+|---|---|---|---|
+| Protocol `OpportunityStatus` | 8/8 | canonical | `packages/protocol/src/shared/interfaces/database.interface.ts:482` |
+| MCP `update_opportunity` target | 4/8 | target `pending/accepted/rejected/expired`; blocks source `accepted/rejected/expired/negotiating` | `opportunity.tools.ts:2047-2048`, `186-191`, guard `:2075` |
+| MCP `list_opportunities` | 3/8 | `draft/pending/latent` (`latent` introducer-only) | `opportunity.tools.ts:1472,1518` |
+| Backend user default list | 5/8 | `latent/negotiating/pending/stalled/accepted`; hides `draft/rejected/expired` | `opportunity.service.ts:31` |
+| Backend network default list | 4/8 | `negotiating/pending/stalled/accepted`; hides `latent/draft/rejected/expired` | `opportunity.service.ts:41` |
+| Home feed | 2/8 + filters | `latent/pending` then ACL/actionability | `feed.graph.ts:57,194` |
+| Frontend `OpportunityListItem.status` | 6/8 | omits `negotiating/stalled` | `frontend/src/services/opportunities.ts:24` |
+| Frontend `OpportunityStatus` | 5/8 | omits `draft/negotiating/stalled` | `frontend/src/services/opportunities.ts:87` |
+| CLI documented filters | 4/8 | documents/colors `pending/accepted/rejected/expired` only | `packages/cli/src/output/formatters.ts:405` |
+
+## 7. Inconsistencies & drift risks
+
+1. **Frontend unions disagree with the enum and each other.** `OpportunityListItem.status` (`frontend/src/services/opportunities.ts:24`, 6/8) omits `negotiating/stalled`; `OpportunityStatus` (`:87`, 5/8) also drops `draft`. A backend response carrying `negotiating`/`stalled` matches neither type.
+2. **CLI documents/colors 4 of 8.** `statusColor()` (`packages/cli/src/output/formatters.ts:405`) colors only `pending/accepted/rejected/expired`; `latent/draft/negotiating/stalled` render uncolored and undocumented.
+3. **"accepted" has three meanings.** Status `accepted` (human DM), the negotiation **trace string** `"accepted"` (`negotiation.graph.ts:374-383`), and the negotiation **`accept` action** that actually writes `pending` (`:364-369`).
+4. **`accepted → stalled` premise demotion.** `accepted ∈ IN_PROGRESS_STATUSES` (`premise.queue.ts:46`) → demoted to `stalled` with `acceptedBy` cleared (`:359` → `database.adapter.ts:5183-5184`). Documented as a real edge; flagged as possibly-undesired.
+5. **Misleading `NonTerminalStatus`.** The premise union (`premise.queue.ts:53`) includes `accepted`, which is treated as terminal nearly everywhere else (MCP source-block, cron exclusion, no reactivation).
+6. **Reactivation target differs by path.** Introducer → `draft` (`opportunity.graph.ts:2741`) vs discovery → `initialStatus` (`:2911`); `expired` requires the same introducer on the introducer path but not on discovery — an asymmetric guard.
+7. **MCP target/source asymmetry; REST has no source guard.** `update_opportunity` accepts `expired/rejected` as a *target* (`opportunity.tools.ts:2047-2048`) but blocks them as a *source* (`:186-191`, guard `:2075`) — a one-way valve. The REST `PATCH /opportunities/:id/status` endpoint, by contrast, applies **no** source-status guard (`opportunity.controller.ts:222-231`, `opportunity.service.ts:459-508` — only a self-accept check), so `rejected`/`expired` are **not** truly terminal at the REST layer.
+8. **Self-accept guard duplicated across 3 sites; adapter trusts caller.** `updateNode` (`opportunity.graph.ts:3269-3277`) + service (`opportunity.service.ts:477-480,691-693`); `stampOpportunityActorAction()` does not enforce it, so a new accept path calling the adapter directly bypasses the guard.
+9. **DB column default `pending` is mostly dead.** `database.schema.ts:446` / adapter fallback `:5010`; `resolveInitialStatus()` almost always supplies an explicit status, so the default only applies on a raw insert with no status — a latent footgun.
+````
 
 ### Success Criteria:
 
 #### Automated Verification:
+- [x] §4–§7 headings present: `for h in '## 4. Transition' '## 5. Adapter' '## 6. Read-side' '## 7. Inconsistencies'; do grep -q "$h" docs/design/opportunity-status-lifecycle.md || echo "MISSING $h"; done` prints nothing
+- [x] Negotiation-init write site recorded: `grep -q 'negotiation.graph.ts:102-105' docs/design/opportunity-status-lifecycle.md`
+- [x] Corrected `acceptedBy` caveat present (bulk-expiry helpers do not clear): `grep -q 'do \*\*not\*\* clear `acceptedBy`' docs/design/opportunity-status-lifecycle.md || grep -q 'untouched' docs/design/opportunity-status-lifecycle.md`
+- [x] Read-side projection table has 9 surface rows: `grep -c '/8' docs/design/opportunity-status-lifecycle.md` returns >= 8
 
 #### Manual Verification:
+- [ ] Transition table covers every write site enumerated in §3 (creation, forward, negotiation init, premise demotion, all ~10 expiry sites, reactivation)
+- [ ] §5 acceptedBy column says "untouched" for the bulk-expiry helpers and "set on accepted, else null" only for `updateOpportunityStatus`/`stampOpportunityActorAction`
+- [ ] §7 lists all 9 drift risks with citations
 
 ## Phase 5: Cross-links
 
@@ -428,22 +526,34 @@ Adds discovery pointers to the new reference from the two sibling docs. Depends 
 **File**: `docs/design/protocol-deep-dive.md`
 **Changes**: MODIFY — add a "See also" pointer under §3.4 Opportunity Graph
 
-```markdown
-```
+Insert the `**See also:**` line immediately after the existing `**Purpose:**` line (`:170`), before `**Nodes:**` (`:171`). Additive — no other lines change.
+
+````markdown
+**Purpose:** End-to-end opportunity discovery and lifecycle management: scoping, HyDE generation, vector search, evaluation, ranking, deduplication, negotiation, persistence, plus CRUD read/update/delete and `send` operations, and introducer-path validation/evaluation for contact-driven introductions.
+**See also:** [`opportunity-status-lifecycle.md`](./opportunity-status-lifecycle.md) — the authoritative status state machine (8 statuses, 7 flows, exhaustive transition/write-site table).
+````
 
 #### 2. CLAUDE.md:192
 
 **File**: `CLAUDE.md`
 **Changes**: MODIFY — extend the `docs/design/` bullet with a pointer to the lifecycle reference
 
-```markdown
-```
+Append the trailing sentence to the existing `docs/design/` bullet (`:192`). Additive — the rest of the bullet and adjacent bullets are unchanged.
+
+````markdown
+- `docs/design/` — Architecture and deep-dive docs. Describes how the system is built: layering, data flow, agent graphs, key subsystems. Update when architecture changes. See `docs/design/opportunity-status-lifecycle.md` for the opportunity status lifecycle (state machine, flows, transition table).
+````
 
 ### Success Criteria:
 
 #### Automated Verification:
+- [x] See-also pointer added to protocol-deep-dive: `grep -q 'opportunity-status-lifecycle.md' docs/design/protocol-deep-dive.md`
+- [x] CLAUDE.md docs/design bullet points to the reference: `grep -q 'opportunity-status-lifecycle.md' CLAUDE.md`
+- [x] No structural breakage — §3.4 still has Purpose+Nodes+State: `grep -q '\*\*Nodes:\*\*' docs/design/protocol-deep-dive.md`
 
 #### Manual Verification:
+- [ ] The relative link `./opportunity-status-lifecycle.md` resolves from `docs/design/protocol-deep-dive.md`
+- [ ] Both pointers read naturally in context; no duplicated or orphaned bullets
 
 ## Ordering Constraints
 
@@ -487,13 +597,26 @@ A: Match `protocol-deep-dive.md` (`title/type/tags/created/updated`).
 
 Inherited from research Developer Context (not re-asked): full reference completeness; `docs/design/` location; Mermaid `stateDiagram-v2`; master + per-flow layout; written transition table with citations; document every `→ expired` write site; annotate `accepted → stalled` and dual reactivation targets.
 
+## Plan Review (Step 8)
+
+_Independent post-finalization review by artifact-code-reviewer and artifact-coverage-reviewer subagents. Findings triaged at Step 9._
+
+| source | plan-loc | codebase-loc | severity | dimension | finding | recommendation | resolution |
+|---|---|---|---|---|---|---|---|
+| coverage | Precedents & Lessons §1 (negotiating actionability) | `opportunity.utils.ts:188-191` | blocker | verification-coverage | Precedent lesson "call out the `negotiating` actionability exception" is uncovered; doc is silent on how `negotiating` is treated for actionability | Add doc note + Phase-3/4 criterion: `negotiating` is NOT actionable in `isActionableForViewer` (Rule 5, `:188-191`; comment `:156`) and is excluded from the home feed default | applied: added §3.E note (Rule 5 `:188-191`, comment `:156`, feed exclusion `:57`, precedent `3acc3d7db3`) + Phase 3 manual criterion |
+| code | §1.2 / master reading note | `database.adapter.ts:5301`,`5416`,`5429`,`5445`,`356` | concern | codebase-fit | §1.2 says `acceptedBy` is "cleared to null on every other status write" — overbroad; bulk-expiry helpers set only `status`+`updatedAt` (already corrected in §4.2, but §1.2 still has the broad claim) | Narrow §1.2 to `updateOpportunityStatus()`/`stampOpportunityActorAction()` and point to the §4.2 caveat | applied: §1.2 narrowed to the two stamping methods + points to §4.2 caveat |
+| code | §2 master reading note ("rejected terminal everywhere") | `opportunity.controller.ts:222-231`, `opportunity.service.ts:459-508` | concern | codebase-fit | REST `PATCH /opportunities/:id/status` allows all 8 statuses as targets and the service has no source-status guard (only self-accept) — so `rejected` is not terminal at the REST layer | Add a caveat: `rejected` is terminal via MCP + reactivation, but the REST PATCH endpoint is an unguarded escape hatch | applied: §2 reading note reworded to "terminal in practice" + caveat; §7 item 7 extended with the REST no-source-guard note |
+| code | §4.1 transition table (negotiation rows) | `backend/src/queues/negotiations/timeout.queue.ts:254` | concern | codebase-fit | Exhaustive table omits the negotiation timeout worker write site (accept→pending/reject→rejected/else→stalled via `updateOpportunityStatus`) | Add a `→ pending/rejected/stalled | Negotiation timeout (C)` row citing `timeout.queue.ts:254` | applied: added a combined timeout-finalize row to §4.1 (`timeout.queue.ts:254` + `claim-timeout.queue.ts:294`) + §3.C prose mention |
+| code | §4.1 transition table (negotiation rows) | `backend/src/queues/negotiations/claim-timeout.queue.ts:294` | concern | codebase-fit | Exhaustive table omits the claim-timeout worker write site (same mapping) | Add a row citing `claim-timeout.queue.ts:294` | applied: covered by the same combined §4.1 timeout-finalize row + §3.C mention |
+
 ## Plan History
 
 - Phase 1: Foundation — skeleton + canonical model + master diagram — approved as generated (citations corrected vs research: premise.queue.ts :45→:46, acceptedBy :5181-5184)
 - Phase 2: Flow diagrams A–D — approved as generated (citations corrected: send roles :3387-3391, send stamp :3399-3402, updateNode allowed :3251-3252 / write :3287-3293, polling mapping :400-402 / trace :394-396)
 - Phase 3: Flow diagrams E–G + reactivation — approved as generated (removed a stray 9th reactivation diagram to honor the 8-diagram decision; added legacy expire site database.adapter.ts:354-361; cron citations corrected :12/:21/:30)
-- Phase 4: Transition/write-site table + projections + drift risks — pending
-- Phase 5: Cross-links — pending
+- Phase 4: Transition/write-site table + projections + drift risks — approved as generated (verifier caught 2 facts vs research: added negotiation-init write negotiation.graph.ts:102-105; corrected acceptedBy — bulk-expiry helpers leave it untouched, only updateOpportunityStatus/stampOpportunityActorAction clear it)
+- Phase 5: Cross-links — approved as generated (additive pointers in protocol-deep-dive.md §3.4 + CLAUDE.md docs/design bullet; both anchors verified verbatim)
+- Step 8 review: 1 blocker + 4 concerns; all 4 triage decisions applied at Step 9 (negotiating-actionability note §3.E; §1.2 acceptedBy narrowed; rejected/REST escape-hatch caveat §2/§7; two negotiation timeout write sites added §4.1/§3.C). Status → ready.
 
 ## References
 
