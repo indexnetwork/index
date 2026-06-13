@@ -21,6 +21,10 @@ project-local target so a machine-wide skill is never silently mutated.
 | `allowProtectedWrites` | `false` | Escape hatch — when `true`, allows editing a protected skill in place instead of migrating. Leave `false` unless explicitly intended. |
 | `features.crossLink` | `true` | Generated skills get see-also / next-step links to related skills. |
 | `features.dedup` | `true` | Before creating, scan for an overlapping skill and prefer updating it. |
+| `features.modularize` | `true` | Keep skills modular: split oversized bodies, extract shared partials, split multi-concern skills. |
+| `modularize.maxBodyLines` | `120` | Body line count above which detail should move into `references/`. |
+| `modularize.sharedDir` | `_shared` | Directory (under `target`) holding partials linked by multiple skills. |
+| `modularize.minDuplicateBlockLines` | `4` | Min lines for a duplicated block to count as a shared-partial candidate. |
 | `integrations.useTodo` | `true` | Track multi-step captures with the `todo` tool (rpiv-todo). |
 | `integrations.useAskUserQuestion` | `true` | Ask structured clarifying questions when scope/name is ambiguous (rpiv-ask-user-question). |
 | `integrations.useArgs` | `true` | Author generated skills to accept `$1` / `$@` arguments (rpiv-args). |
@@ -110,6 +114,31 @@ bun .pi/skills/learn-skill/scripts/skillctl.ts migrate <skill-name>
 This copies the protected skill directory into `target` and leaves the original
 untouched. Then apply step 3b to the **local copy**. Never edit the protected source.
 
+### 3d. Modularize (when `features.modularize`)
+
+Keep skills small and composable. Run the audit on the skill you just wrote/updated:
+
+```bash
+bun .pi/skills/learn-skill/scripts/skillctl.ts audit <skill-name>
+```
+
+Act on what it reports, across three axes:
+
+1. **Progressive-disclosure split** — if the body exceeds `maxBodyLines`, move detail
+   (long examples, reference tables, edge-case notes) into `references/*.md` and leave the
+   `SKILL.md` body lean (what + when + entry steps, linking the references). Only the
+   description is always in context, so a lean body is cheaper and triggers better.
+2. **Shared partials** — if the audit lists duplicate-block candidates, extract the shared
+   content into `<target>/<sharedDir>/<topic>.md` (a plain markdown module, **not** a skill —
+   no frontmatter, so it is never discovered as one) and link it from each skill instead of
+   copying. One source of truth for cross-cutting policy (e.g. location safety, frontmatter rules).
+3. **Composable sub-skills** — if a skill covers 2+ distinct concerns, split it into smaller
+   skills that each do one thing and cross-link (step 3a's crossLink rule). If they form a
+   pipeline and `rpiv-workflow` is installed, they can later be chained as `/skill:<name>` stages.
+
+Location safety still applies: write partials under the local `target` and edit only local
+copies — never touch protected/home skills.
+
 ### 4. Validate (and optionally review)
 
 ```bash
@@ -136,5 +165,4 @@ session you can `read` it directly.
 - Keep skills focused — one capability per skill. Split rather than bloat.
 - If nothing in the session meets the "reusable and non-obvious" bar, capture nothing
   and say so.
-- Integrations are optional. If a configured helper isn't installed, skip that step
-  silently — a missing extension must never block a capture.
+- Integrations are optional: if a configured helper isn't installed, skip it silently — a missing extension must never block a capture.

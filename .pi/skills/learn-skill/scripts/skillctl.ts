@@ -16,6 +16,8 @@
  *   bun skillctl.ts similar <terms...>     Find skills overlapping given terms (dedup aid)
  *   bun skillctl.ts plan <name> [terms..]  Dry-run: action + dedup hints + active integrations
  *   bun skillctl.ts detect                 Report which configured rpiv helpers are installed
+ *   bun skillctl.ts audit [name|all]       Modularization audit: body size, shared-partial
+ *                                          candidates (duplicate blocks), shared-dir links
  */
 
 import {
@@ -32,7 +34,8 @@ import { join, resolve, basename } from "node:path";
 const skillRoot = resolve(import.meta.dir, "..");
 const configPath = join(skillRoot, "config.json");
 
-type Features = { crossLink: boolean; dedup: boolean };
+type Features = { crossLink: boolean; dedup: boolean; modularize: boolean };
+type Modularize = { maxBodyLines: number; sharedDir: string; minDuplicateBlockLines: number };
 type Integrations = {
   useTodo: boolean;
   useAskUserQuestion: boolean;
@@ -44,6 +47,7 @@ type Config = {
   protectedLocations: string[];
   allowProtectedWrites: boolean;
   features: Features;
+  modularize: Modularize;
   integrations: Integrations;
 };
 
@@ -51,7 +55,8 @@ const DEFAULTS: Config = {
   target: ".pi/skills",
   protectedLocations: ["~/.pi/agent/skills", "~/.agents/skills"],
   allowProtectedWrites: false,
-  features: { crossLink: true, dedup: true },
+  features: { crossLink: true, dedup: true, modularize: true },
+  modularize: { maxBodyLines: 120, sharedDir: "_shared", minDuplicateBlockLines: 4 },
   integrations: { useTodo: true, useAskUserQuestion: true, useArgs: true, useAdvisor: false },
 };
 
@@ -78,6 +83,7 @@ function loadConfig(): Config {
       protectedLocations: raw.protectedLocations ?? DEFAULTS.protectedLocations,
       allowProtectedWrites: raw.allowProtectedWrites ?? DEFAULTS.allowProtectedWrites,
       features: { ...DEFAULTS.features, ...(raw.features ?? {}) },
+      modularize: { ...DEFAULTS.modularize, ...(raw.modularize ?? {}) },
       integrations: { ...DEFAULTS.integrations, ...(raw.integrations ?? {}) },
     };
   } catch {
@@ -220,6 +226,53 @@ function validate(skillFile: string): string[] {
   return errors;
 }
 
+/** SKILL.md body with frontmatter stripped. */
+function skillBody(skillFile: string): string {
+  const text = readFileSync(skillFile, "utf8");
+  return text.replace(/^---\n[\s\S]*?\n---\n?/, "");
+}
+
+/** Split a body into blocks separated by blank lines. */
+function splitBlocks(body: string): string[] {
+  return body
+    .split(/\n\s*\n/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+}
+
+function normalizeBlock(b: string): string {
+  return b
+    .split("\n")
+    .map((l) => l.trim().replace(/\s+/g, " ").toLowerCase())
+    .join("\n");
+}
+
+function blockLineCount(b: string): number {
+  return b.split("\n").filter((l) => l.trim()).length;
+}
+
+/**
+ * Find blocks that appear (normalized) in 2+ skills and are at least
+ * `minDuplicateBlockLines` lines long — candidates to extract into a shared partial.
+ */
+function duplicateBlocks(minLines: number): { skills: string[]; preview: string; lines: number }[] {
+  const map = new Map<string, { skills: Set<string>; preview: string; lines: number }>();
+  for (const s of discover()) {
+    for (const block of splitBlocks(skillBody(s.skillFile))) {
+      const lines = blockLineCount(block);
+      if (lines < minLines) continue;
+      const key = normalizeBlock(block);
+      const entry = map.get(key) ?? { skills: new Set<string>(), preview: block.split("\n")[0], lines };
+      entry.skills.add(s.name);
+      map.set(key, entry);
+    }
+  }
+  return [...map.values()]
+    .filter((e) => e.skills.size >= 2)
+    .map((e) => ({ skills: [...e.skills], preview: e.preview, lines: e.lines }))
+    .sort((a, b) => b.lines - a.lines);
+}
+
 function resolveSkillFile(pathArg: string): string {
   const p = resolve(process.cwd(), pathArg);
   if (existsSync(p) && statSync(p).isDirectory()) return join(p, "SKILL.md");
@@ -321,6 +374,41 @@ switch (cmd) {
     break;
   }
 
+  case "audit": {
+    const { maxBodyLines, sharedDir, minDuplicateBlockLines } = config.modularize;
+    const target = arg && arg !== "all" ? arg : null;
+
+    // Per-skill size + shared-link report.
+    const skills = discover().filter((s) => !target || s.name === target || basename(s.dir) === target);
+    if (target && skills.length === 0) { console.error(`skill not found: ${target}`); process.exit(1); }
+
+    console.log(`Modularization audit (maxBodyLines=${maxBodyLines}, sharedDir=${sharedDir})\n`);
+    for (const s of skills) {
+      const body = skillBody(s.skillFile);
+      const lines = body.split("\n").filter((l) => l.trim()).length;
+      const linksShared = new RegExp(`${sharedDir}/`).test(body);
+      const flags: string[] = [];
+      if (lines > maxBodyLines) flags.push(`OVER by ${lines - maxBodyLines} -> split detail into references/`);
+      if (linksShared) flags.push(`links ${sharedDir}/`);
+      console.log(`  ${s.name.padEnd(28)} ${String(lines).padStart(4)} lines  ${flags.join("; ") || "ok"}`);
+    }
+
+    // Cross-skill duplicate blocks -> shared-partial candidates.
+    const dups = duplicateBlocks(minDuplicateBlockLines).filter(
+      (d) => !target || d.skills.includes(skills[0]?.name),
+    );
+    if (dups.length) {
+      console.log(`\nShared-partial candidates (duplicate blocks ≥${minDuplicateBlockLines} lines in 2+ skills):`);
+      for (const d of dups) {
+        console.log(`  [${d.lines} lines] ${d.skills.join(", ")}`);
+        console.log(`     “${d.preview.slice(0, 70)}…”  -> extract into ${sharedDir}/`);
+      }
+    } else {
+      console.log(`\nNo cross-skill duplicate blocks ≥${minDuplicateBlockLines} lines.`);
+    }
+    break;
+  }
+
   case "detect": {
     console.log("rpiv helper integrations:");
     for (const s of integrationStatus()) {
@@ -383,6 +471,7 @@ Usage:
   bun skillctl.ts similar <terms...>  Find skills overlapping given terms (dedup aid)
   bun skillctl.ts plan <name> [terms] Dry-run: action + dedup hints + active integrations
   bun skillctl.ts detect              Report which configured rpiv helpers are installed
+  bun skillctl.ts audit [name|all]    Modularization audit: body size + shared-partial candidates
 `);
     if (cmd && cmd !== "help") process.exit(2);
 }
