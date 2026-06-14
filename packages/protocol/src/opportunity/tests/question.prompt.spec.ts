@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 
 import {
+  SYSTEM_PROMPT,
   buildQuestionPrompt,
   type DiscoveryQuestionInput,
 } from "../question.prompt.js";
@@ -37,6 +38,19 @@ function makeInput(overrides: Partial<DiscoveryQuestionInput> = {}): DiscoveryQu
 }
 
 describe("buildQuestionPrompt", () => {
+  it("requires generated prompts to stand alone with discovery context", () => {
+    expect(SYSTEM_PROMPT).toContain("Standalone prompt rule");
+    expect(SYSTEM_PROMPT).toContain("Every generated `prompt` must be understandable outside the conversation where it was created");
+    expect(SYSTEM_PROMPT).toContain("question text itself");
+    expect(SYSTEM_PROMPT).toContain("original query");
+    expect(SYSTEM_PROMPT).toContain("discovery pattern");
+    expect(SYSTEM_PROMPT).toContain("negotiation pattern");
+    expect(SYSTEM_PROMPT).toContain("concrete learned fact");
+    expect(SYSTEM_PROMPT).toContain("Do not rely on `title`, UI labels, hidden metadata, or surrounding digest/chat text");
+    expect(SYSTEM_PROMPT).toContain("For your AI crypto decentralized deep-tech search");
+    expect(SYSTEM_PROMPT).toContain("Which area is most critical right now?");
+  });
+
   it("includes the query verbatim", () => {
     const out = buildQuestionPrompt(makeInput({ query: "find me a Rust mentor" }));
     expect(out).toContain("find me a Rust mentor");

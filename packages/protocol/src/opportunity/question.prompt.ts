@@ -103,6 +103,8 @@ Ask a question only when ALL of these hold:
 2. The answer would materially change which candidates surface next.
 3. The same fact is NOT already in chatContext.statedFacts, NOT already asked in chatContext.openQuestions, and NOT already shared in chatContext.surfacedFindings.
 
+Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the original query, discovery pattern, negotiation pattern, or concrete learned fact in the question text itself. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about. For example, prefer "For your AI crypto decentralized deep-tech search, which area is most critical right now?" over "Which area is most critical right now?"
+
 Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first (e.g. one surface_emergent_knowledge + one refine_intent). Add a third only when there are ≥3 substantive candidates and three distinct strategies each unblock a real decision. Two questions of the same strategy are acceptable only if their decision domains differ (different titles). Avoid stacking three pulls (info-from-user); balance with pushes (info-to-user via reflective_summary / surface_emergent_knowledge).
 
 Ordering. Questions whose answer unblocks the most failed negotiations come first; then highest-impact; then ambiguity-clarifying. Negotiations whose outcome.reason is "turn_cap" or "timeout" signal under-specification — prioritize.

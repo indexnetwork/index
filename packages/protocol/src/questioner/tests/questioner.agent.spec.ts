@@ -51,6 +51,59 @@ function makeAgent(
   return agent;
 }
 
+function messageContent(message: unknown): string {
+  const content = (message as { content?: unknown }).content;
+  return typeof content === "string" ? content : JSON.stringify(content);
+}
+
+function modeInput(mode: QuestionerInput["mode"]): QuestionerInput {
+  const discoveryContext: DiscoveryContext = {
+    query: "find decentralized identity protocol designers",
+    sourceProfile: { name: "Dana" },
+    negotiationDigests: [],
+    summary: {
+      totalCandidates: 3,
+      opportunitiesFound: 1,
+      noOpportunityCount: 2,
+      timeoutCount: 1,
+      roleDistribution: {},
+    },
+    now: "2026-05-24T12:00:00.000Z",
+  };
+  const intentContext: IntentContext = {
+    intentId: "i-1",
+    payload: "Connect with people building decentralized identity protocols",
+    summary: "Decentralized identity protocol design collaborations",
+    userProfile: { name: "Dana" },
+  };
+  const profileContext: ProfileContext = {
+    userProfile: { name: "Dana", bio: "Builder of agent tools" },
+    gaps: ["availability"],
+    existingPremises: ["I build agent tools for event communities"],
+  };
+  const negotiationContext: NegotiationContext = {
+    negotiationId: "n-1",
+    counterpartyHint: "AI infra founder, Berlin",
+    indexContext: "AI founders community",
+    outcomeReason: "turn_cap",
+    keyTake: "Both interested but scope unclear",
+    userProfile: { name: "Dana" },
+  };
+  const contexts = {
+    discovery: discoveryContext,
+    intent: intentContext,
+    profile: profileContext,
+    negotiation: negotiationContext,
+  } satisfies Record<QuestionerInput["mode"], DiscoveryContext | IntentContext | ProfileContext | NegotiationContext>;
+  return {
+    mode,
+    userId: "user-1",
+    sourceType: "test",
+    sourceId: "test-1",
+    context: contexts[mode],
+  };
+}
+
 describe("QuestionerAgent", () => {
   it("returns null when the LLM throws", async () => {
     const agent = makeAgent(async () => { throw new Error("model down"); });
@@ -137,6 +190,32 @@ describe("QuestionerAgent", () => {
     });
     const result = await agent.invoke(makeDiscoveryInput(), { signal: controller.signal });
     expect(result).toBeNull();
+  });
+
+  it.each([
+    { mode: "discovery" as const, contextNeedles: ["find decentralized identity protocol designers", "3 candidates evaluated"] },
+    { mode: "intent" as const, contextNeedles: ["Connect with people building decentralized identity protocols", "Decentralized identity protocol design collaborations"] },
+    { mode: "profile" as const, contextNeedles: ["availability", "I build agent tools for event communities"] },
+    { mode: "negotiation" as const, contextNeedles: ["AI infra founder, Berlin", "Both interested but scope unclear"] },
+  ])("mode '$mode' sends standalone-context instructions alongside source evidence", async ({ mode, contextNeedles }) => {
+    let capturedMessages: unknown[] | undefined;
+    const agent = makeAgent(async (input) => {
+      capturedMessages = input as unknown[];
+      return { questions: [makeQuestion({ title: "Test" })] };
+    });
+
+    const result = await agent.invoke(modeInput(mode));
+
+    expect(result).not.toBeNull();
+    expect(capturedMessages).toHaveLength(2);
+    const systemPrompt = messageContent(capturedMessages![0]);
+    const humanPrompt = messageContent(capturedMessages![1]);
+    expect(systemPrompt).toContain("Standalone prompt rule");
+    expect(systemPrompt).toContain("Every generated `prompt` must be understandable outside the conversation where it was created");
+    expect(systemPrompt).toContain("question text itself");
+    for (const needle of contextNeedles) {
+      expect(humanPrompt).toContain(needle);
+    }
   });
 
   it.each(["discovery", "intent", "profile", "negotiation"] as const)("mode '%s' invokes the LLM and returns questions", async (mode) => {
