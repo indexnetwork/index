@@ -6,6 +6,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
 import { HomeGraphFactory, stripLeadingNarratorName } from '../feed/feed.graph.js';
+import { selectByComposition, classifyOpportunity, FEED_SOFT_TARGETS } from '../opportunity.utils.js';
 import type { HomeGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityCache } from '../../shared/interfaces/cache.interface.js';
@@ -28,6 +29,7 @@ function createMockDb(opportunities: Opportunity[] = []): HomeGraphDatabase {
     getActiveIntents: () => Promise.resolve([]),
     getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
     getUser: (id: string) => Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null }),
+    getNegotiationTaskForOpportunity: () => Promise.resolve(null),
   };
 }
 
@@ -142,7 +144,7 @@ describe('HomeGraph', () => {
     expect(result.error).toBeUndefined();
     expect(result.sections.length).toBeGreaterThanOrEqual(1);
     const firstItem = result.sections[0]?.items[0];
-    expect(firstItem?.narratorChip).toBeUndefined();
+    expect(firstItem?.narratorChip?.name).toBe('Index');
   }, 70000);
 
   test('actor-dedupes multiple opportunities between same actors to one card', async () => {
@@ -221,7 +223,7 @@ describe('HomeGraph', () => {
     expect(['opp-intro-a', 'opp-intro-b']).toContain(firstItem?.opportunityId);
   }, 30000);
 
-  test('shows transitional card for agent-with-introducer at accepted', async () => {
+  test('excludes accepted agent-with-introducer from the actionable home feed', async () => {
     const introducerId = 'intro-1';
     const patientId = 'patient-1';
     const agentId = 'agent-1';
@@ -245,10 +247,9 @@ describe('HomeGraph', () => {
     const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: agentId, limit: 50 });
 
     expect(result.error).toBeUndefined();
-    expect(result.meta.totalOpportunities).toBe(1);
+    expect(result.meta.totalOpportunities).toBe(0);
     const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
-    expect(totalItems).toBe(1);
-    expect(result.sections[0]?.items[0]?.opportunityId).toBe('opp-accepted-intro');
+    expect(totalItems).toBe(0);
   }, 30000);
 
   test('excludes accepted opportunities for patient role', async () => {
@@ -485,7 +486,7 @@ describe('HomeGraph caching', () => {
 
     // Pre-populate cache with a card for this opportunity
     const card = cachedCard('opp-cached', 99); // stale _cardIndex to verify recomputation
-    await cache.set(`home:card:opp-cached:${viewerId}`, card);
+    await cache.set(`home:card:opp-cached:${opp.status}:${viewerId}`, card);
 
     const graph = new HomeGraphFactory(db, cache).createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
@@ -506,7 +507,7 @@ describe('HomeGraph caching', () => {
     const cache = createMockCache();
 
     // Only cache opp1
-    await cache.set(`home:card:opp-hit:${viewerId}`, cachedCard('opp-hit', 0));
+    await cache.set(`home:card:opp-hit:${opp1.status}:${viewerId}`, cachedCard('opp-hit', 0));
 
     const graph = new HomeGraphFactory(db, cache).createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
@@ -530,7 +531,7 @@ describe('HomeGraph caching', () => {
     const cache = createMockCache();
 
     // Cache with stale _cardIndex of 42
-    await cache.set(`home:card:opp-reindex:${viewerId}`, cachedCard('opp-reindex', 42));
+    await cache.set(`home:card:opp-reindex:${opp.status}:${viewerId}`, cachedCard('opp-reindex', 42));
 
     const graph = new HomeGraphFactory(db, cache).createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
@@ -628,10 +629,6 @@ describe('Lucide icon catalog', () => {
 });
 
 // ─── Fetch limit tests ───────────────────────────────────────────────────────
-
-
-import { describe, test, expect } from 'bun:test';
-import { selectByComposition, classifyOpportunity, FEED_SOFT_TARGETS } from '../opportunity.utils.js';
 
 /**
  * Hypothesis: The bug occurs because the home graph's fetchLimit formula
@@ -749,13 +746,6 @@ describe('home feed fetch limit bug', () => {
 });
 
 // ─── Introducer name format tests ───────────────────────────────────────────
-
-
-import { describe, test, expect } from 'bun:test';
-import { HomeGraphFactory } from '../feed/feed.graph.js';
-import type { HomeGraphDatabase } from '../../shared/interfaces/database.interface.js';
-import type { Opportunity } from '../../shared/interfaces/database.interface.js';
-import type { OpportunityCache } from '../../shared/interfaces/cache.interface.js';
 
 function createIntroMockCache(): OpportunityCache {
   const store = new Map<string, unknown>();

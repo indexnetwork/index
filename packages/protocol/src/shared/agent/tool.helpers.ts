@@ -445,6 +445,22 @@ export interface ToolDeps {
   chatSession?: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
   chatSummary?: ChatSummaryReader;
+  /**
+   * Test seam for opportunity discovery helpers. Production compositions leave
+   * this unset so tools call the real discovery module directly.
+   */
+  opportunityDiscovery?: {
+    runDiscoverFromQuery?: (input: unknown) => Promise<unknown>;
+    continueDiscovery?: (input: unknown) => Promise<unknown>;
+  };
+  /**
+   * Test seam for opportunity card presentation helpers. Production
+   * compositions leave this unset so tools construct the real presenter.
+   */
+  opportunityPresentation?: {
+    createPresenter?: () => { presentHomeCard(input: unknown): Promise<unknown> };
+    gatherPresenterContext?: (...args: unknown[]) => Promise<unknown>;
+  };
   /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
   chatMessageWriter?: ChatMessageWriter;
   /** Decision-question generator. Optional; consumers fall back to no `questions`. */

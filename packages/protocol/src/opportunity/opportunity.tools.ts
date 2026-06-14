@@ -513,6 +513,18 @@ function confirmDeliveryError(
 
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const { database, userDb, systemDb, graphs, cache } = deps;
+  const runDiscoveryFromQuery =
+    (deps.opportunityDiscovery?.runDiscoverFromQuery as typeof runDiscoverFromQuery | undefined) ??
+    runDiscoverFromQuery;
+  const continueOpportunityDiscovery =
+    (deps.opportunityDiscovery?.continueDiscovery as typeof continueDiscovery | undefined) ??
+    continueDiscovery;
+  const createOpportunityPresenter =
+    (deps.opportunityPresentation?.createPresenter as (() => OpportunityPresenter) | undefined) ??
+    (() => new OpportunityPresenter());
+  const gatherOpportunityPresenterContext =
+    (deps.opportunityPresentation?.gatherPresenterContext as typeof gatherPresenterContext | undefined) ??
+    gatherPresenterContext;
 
   const discoverOpportunities = defineTool({
     name: "discover_opportunities",
@@ -739,7 +751,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const _continueTraceEmitter = requestContext.getStore()?.traceEmitter;
         const _graphStart = Date.now();
         _continueTraceEmitter?.({ type: "graph_start", name: "opportunity" });
-        const result = await continueDiscovery({
+        const result = await continueOpportunityDiscovery({
           opportunityGraph: graphs.opportunity,
           database,
           cache,
@@ -747,7 +759,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           discoveryId: query.continueFrom,
           expectedIndexId: context.networkId,
           limit: 20,
-          presenter: new OpportunityPresenter(),
+          presenter: createOpportunityPresenter(),
           useHomeCardFormat: true,
           ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
         });
@@ -1095,14 +1107,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // onCandidateResolved. Ambient/cron paths leave both falsy and use the
       // `pending` default.
       const runDiscoveryOrchestrator = !!context.sessionId || !!context.isMcp;
-      const result = await runDiscoverFromQuery({
+      const result = await runDiscoveryFromQuery({
         opportunityGraph: graphs.opportunity,
         database,
         userId: context.userId,
         query: searchQuery,
         indexScope,
         limit: 20,
-        presenter: new OpportunityPresenter(),
+        presenter: createOpportunityPresenter(),
         useHomeCardFormat: true,
         triggerIntentId,
         targetUserId: query.targetUserId?.trim() || undefined,
@@ -1743,7 +1755,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
       if (isDigestMode) {
         // ── Digest mode: use LLM presenter for rich, second-person card text ──
-        const presenter = new OpportunityPresenter();
+        const presenter = createOpportunityPresenter();
         const presenterDb: PresenterDatabase = database;
         const PRESENTER_CONCURRENCY = 6;
 
@@ -1805,7 +1817,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                 const isCounterpartGhost = counterpartUser?.isGhost ?? false;
 
                 try {
-                  const ctx = await gatherPresenterContext(
+                  const ctx = await gatherOpportunityPresenterContext(
                     presenterDb,
                     opp,
                     context.userId,

@@ -2,30 +2,18 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
-import { describe, test, expect, mock, beforeEach, afterAll } from 'bun:test';
+import { describe, test, expect, beforeEach } from 'bun:test';
+
+import { createOpportunityTools } from '../opportunity.tools.js';
 import type { DiscoverResult, FormattedDiscoveryCandidate } from '../opportunity.discover.js';
 
-// ─── Stubs captured by mock.module ──────────────────────────────────────────
+// ─── Discovery test doubles injected via ToolDeps ───────────────────────────
 
 type DiscoverInvocation = {
   negotiateTimeoutMs?: number;
 };
 let discoverCalls: DiscoverInvocation[] = [];
 let discoverResult: DiscoverResult = { found: false, count: 0, message: 'no results' };
-
-mock.module('../opportunity.discover.js', () => ({
-  runDiscoverFromQuery: async (args: Record<string, unknown>) => {
-    discoverCalls.push({
-      negotiateTimeoutMs: args?.negotiateTimeoutMs as number | undefined,
-    });
-    return discoverResult;
-  },
-  continueDiscovery: async () => ({ found: false, count: 0, message: 'no results' } satisfies DiscoverResult),
-}));
-
-afterAll(() => mock.restore());
-
-const { createOpportunityTools } = await import('../opportunity.tools.js');
 import type { ToolDeps, ResolvedToolContext } from '../../shared/agent/tool.helpers.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
 
@@ -103,6 +91,16 @@ function makeDeps(refreshed: Record<string, Opportunity['status']>): ToolDeps {
       opportunity: { invoke: async () => ({}) } as never,
       index: { invoke: async () => ({ readResult: { memberOf: [{ networkId: 'idx-1' }] } }) } as never,
     } as never,
+    opportunityDiscovery: {
+      runDiscoverFromQuery: async (args: unknown) => {
+        const input = args as Record<string, unknown>;
+        discoverCalls.push({
+          negotiateTimeoutMs: input.negotiateTimeoutMs as number | undefined,
+        });
+        return discoverResult;
+      },
+      continueDiscovery: async () => ({ found: false, count: 0, message: 'no results' } satisfies DiscoverResult),
+    },
   } as unknown as ToolDeps;
 }
 

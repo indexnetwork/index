@@ -7,6 +7,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from "bun:test";
 import { runDiscoverFromQuery } from "../opportunity.discover.js";
+import type { FormattedDiscoveryCandidate } from "../opportunity.discover.js";
 import type { ChatGraphCompositeDatabase } from "../../shared/interfaces/database.interface.js";
 
 describe("opportunity.discover", () => {
@@ -45,7 +46,7 @@ describe("opportunity.discover", () => {
       });
       expect(result.found).toBe(false);
       expect(result.count).toBe(0);
-      expect(result.message).toContain("index");
+      expect(result.message).toContain("network");
     });
 
     test("returns found: false when graph returns no opportunities", async () => {
@@ -629,13 +630,7 @@ describe("opportunity.discover", () => {
 
 // ─── Introducer cards tests (Bug 1: secondParty) ────────────────────────────
 
-
-import { describe, test, expect } from "bun:test";
-import { runDiscoverFromQuery } from "../opportunity.discover.js";
-import type { FormattedDiscoveryCandidate } from "../opportunity.discover.js";
-import type { ChatGraphCompositeDatabase } from "../../shared/interfaces/database.interface.js";
-
-const mockDatabase: ChatGraphCompositeDatabase = {
+const introducerMockDatabase: ChatGraphCompositeDatabase = {
   getProfile: async () => null,
   getUser: async () => null,
 } as unknown as ChatGraphCompositeDatabase;
@@ -646,7 +641,7 @@ describe("introducer discovery cards - secondParty (Bug 1)", () => {
   const candidateId = "candidate-match";
 
   const dbWithProfiles = {
-    ...mockDatabase,
+    ...introducerMockDatabase,
     getProfile: async (userId: string) => {
       if (userId === candidateId)
         return { embedding: [0.1, 0.2, 0.3], identity: { name: "Bob Candidate", bio: "UX researcher." }, attributes: {}, narrative: {} };
