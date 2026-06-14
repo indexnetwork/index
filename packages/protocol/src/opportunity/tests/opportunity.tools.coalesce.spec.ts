@@ -2,19 +2,9 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
-import { describe, test, expect, mock, afterAll } from 'bun:test';
-import type { DiscoverResult } from '../opportunity.discover.js';
+import { describe, test, expect } from 'bun:test';
 
-// The MCP-run branch returns before invoking discovery, but mock it so importing
-// createOpportunityTools never reaches a real LLM path.
-mock.module('../opportunity.discover.js', () => ({
-  runDiscoverFromQuery: async () => ({ found: false, count: 0, message: 'no results' } satisfies DiscoverResult),
-  continueDiscovery: async () => ({ found: false, count: 0, message: 'no results' } satisfies DiscoverResult),
-}));
-
-afterAll(() => mock.restore());
-
-const { createOpportunityTools } = await import('../opportunity.tools.js');
+import { createOpportunityTools } from '../opportunity.tools.js';
 import type { ToolDeps, ResolvedToolContext } from '../../shared/agent/tool.helpers.js';
 import type {
   CreateDiscoveryRunInput,

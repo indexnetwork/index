@@ -104,8 +104,10 @@ describe("OpportunityPresenter – sanitizer rewrites zero-count LLM output", ()
       presentation: {
         headline: "A great match",
         personalizedSummary: "You both care about design systems.",
+        digestSummary: "You might like meeting Bob because you both care about design systems.",
         suggestedAction: "Reach out to Bob.",
         narratorRemark: "Worth a look.",
+        greeting: "Saw we both care about design systems and would love to compare notes.",
         primaryActionLabel: "Start Chat",
         secondaryActionLabel: "Skip",
         mutualIntentsLabel,
