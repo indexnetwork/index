@@ -168,6 +168,7 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 **File:** `opportunity/opportunity.graph.ts`
 **Purpose:** End-to-end opportunity discovery and lifecycle management: scoping, HyDE generation, vector search, evaluation, ranking, deduplication, negotiation, persistence, plus CRUD read/update/delete and `send` operations, and introducer-path validation/evaluation for contact-driven introductions.
+**See also:** [`opportunity-status-lifecycle.md`](./opportunity-status-lifecycle.md) — the authoritative status state machine (8 statuses, 7 flows, exhaustive transition/write-site table).
 **Nodes:** `prep`, `scope`, `resolve`, `discovery`, `evaluation`, `ranking`, `intro_validation`, `intro_evaluation`, `persist`, `negotiate`, `read`, `update`, `delete_opp`, `send`
 **State:** `OpportunityGraphState` (userId, searchQuery, indexId, triggerIntentId, targetUserId, candidates, evaluatedOpportunities, trigger, dedupAlreadyAccepted, etc.)
 **Conditional edges:**

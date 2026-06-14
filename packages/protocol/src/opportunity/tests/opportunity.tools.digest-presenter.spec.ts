@@ -1,49 +1,30 @@
 // Stub API key to prevent module-level createModel() from throwing — only set when absent
 process.env.OPENROUTER_API_KEY ||= 'test-key-unused';
 
-import { mock, describe, expect, it, afterAll } from 'bun:test';
+import { mock, describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
+import { createOpportunityTools } from '../opportunity.tools.js';
 import type { PresenterDatabase } from '../opportunity.presenter.js';
 
-// ─── Module-level mocks: must run before any static import of opportunity.tools ───
+// ─── Presenter test doubles injected via ToolDeps (no cross-file module mocks) ───
 
-let presentHomeCardMock: ReturnType<typeof mock>;
-let gatherPresenterContextMock: ReturnType<typeof mock>;
-
-mock.module('../opportunity.presenter.js', () => {
-  presentHomeCardMock = mock(async () => ({
-    headline: 'Test Headline',
-    personalizedSummary: 'Test personalized summary.',
-    digestSummary: 'You might like meeting Alice because she matches your current interests.',
-    suggestedAction: 'Test action',
-    narratorRemark: 'Test narrator remark',
-    mutualIntentsLabel: undefined,
-  }));
-  gatherPresenterContextMock = mock(async (
-    presenterDb: PresenterDatabase,
-    opp: { status: string },
-    _viewerId: string,
-  ) => ({
-    opportunityStatus: opp.status,
-  }));
-
-  return {
-    OpportunityPresenter: class {
-      presentHomeCard(input: unknown) {
-        return presentHomeCardMock(input);
-      }
-    },
-    gatherPresenterContext: (...args: unknown[]) => gatherPresenterContextMock(...args),
-    PresenterDatabase: undefined as unknown as PresenterDatabase, // type-only, not consumed at runtime
-  };
-});
-
-afterAll(() => mock.restore());
-
-// ─── Imports after mocks ──────────────────────────────────────────────────────
-
-const { createOpportunityTools } = await import('../opportunity.tools.js');
-const { z } = await import('zod');
+let presentHomeCardMock = mock(async () => ({
+  headline: 'Test Headline',
+  personalizedSummary: 'Test personalized summary.',
+  digestSummary: 'You might like meeting Alice because she matches your current interests.',
+  suggestedAction: 'Test action',
+  narratorRemark: 'Test narrator remark',
+  mutualIntentsLabel: undefined,
+  greeting: '',
+}));
+let gatherPresenterContextMock = mock(async (
+  _presenterDb: PresenterDatabase,
+  opp: { status: string },
+  _viewerId: string,
+) => ({
+  opportunityStatus: opp.status,
+}));
 
 import type { ToolDeps, DefineTool } from '../../shared/agent/tool.helpers.js';
 import type {
@@ -146,6 +127,10 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
       opportunity: noopGraph,
       premise: noopGraph,
     } as unknown as ToolDeps["graphs"],
+    opportunityPresentation: {
+      createPresenter: () => ({ presentHomeCard: (input: unknown) => presentHomeCardMock(input) }),
+      gatherPresenterContext: (...args: unknown[]) => gatherPresenterContextMock(...args),
+    },
     ...overrides,
   } as ToolDeps;
 }

@@ -334,6 +334,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
       onBehalfOfUserId: USER_A,
       networkId: NET_ID,
       operationMode: 'discover' as const,
+      searchQuery: 'co-founder',
       options: { initialStatus: 'latent' as const },
     });
 

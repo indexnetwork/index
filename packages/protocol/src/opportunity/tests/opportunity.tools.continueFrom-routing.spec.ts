@@ -2,7 +2,9 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
-import { describe, test, expect, mock, beforeEach, afterAll } from 'bun:test';
+import { describe, test, expect, beforeEach } from 'bun:test';
+
+import { createOpportunityTools } from '../opportunity.tools.js';
 
 // IND-305 reproducer: the bug report shows MCP `discover_opportunities` returning
 //   { found: false, count: 0, message: "No more matching opportunities found in the remaining candidates." }
@@ -15,25 +17,6 @@ import { describe, test, expect, mock, beforeEach, afterAll } from 'bun:test';
 type ToolCallArgs = Record<string, unknown>;
 let discoverCalls: ToolCallArgs[] = [];
 let continueCalls: ToolCallArgs[] = [];
-
-mock.module('../opportunity.discover.js', () => ({
-  runDiscoverFromQuery: async (args: ToolCallArgs) => {
-    discoverCalls.push(args);
-    return { found: true, count: 0, opportunities: [], message: 'ok' };
-  },
-  continueDiscovery: async (args: ToolCallArgs) => {
-    continueCalls.push(args);
-    return {
-      found: false,
-      count: 0,
-      message: 'No more matching opportunities found in the remaining candidates.',
-    };
-  },
-}));
-
-afterAll(() => mock.restore());
-
-const { createOpportunityTools } = await import('../opportunity.tools.js');
 import type { ToolDeps, ResolvedToolContext } from '../../shared/agent/tool.helpers.js';
 
 const USER_ID = 'mcp-user-1';
@@ -59,6 +42,20 @@ function makeDeps(): ToolDeps {
       opportunity: { invoke: async () => ({}) },
       index: { invoke: async () => ({ readResult: { memberOf: [{ networkId: 'n1' }] } }) },
       networkMembership: { invoke: async () => ({}) },
+    },
+    opportunityDiscovery: {
+      runDiscoverFromQuery: async (args: unknown) => {
+        discoverCalls.push(args as ToolCallArgs);
+        return { found: true, count: 0, opportunities: [], message: 'ok' };
+      },
+      continueDiscovery: async (args: unknown) => {
+        continueCalls.push(args as ToolCallArgs);
+        return {
+          found: false,
+          count: 0,
+          message: 'No more matching opportunities found in the remaining candidates.',
+        };
+      },
     },
   } as unknown as ToolDeps;
 }

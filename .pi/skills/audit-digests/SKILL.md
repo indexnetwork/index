@@ -1,6 +1,6 @@
 ---
 name: audit-digests
-description: "Fetch daily digest cards from the agentvillage control-plane, extract embedded opportunity references, and verify that each opportunity actually belongs to the tenant who will receive it. Use when the user asks to audit digests, verify digest ownership, check for cross-user leaks in daily briefs, or asks 'do the digest opportunities belong to the right users?'"
+description: "Fetch daily digest cards from the agentvillage control-plane and audit them: verify each opportunity belongs to the receiving tenant (ownership / cross-user leaks) AND check overall card quality — broken links, hallucinated content, grammatical/template errors, out-of-order calendar events, and draft-vs-pending status gating. Use when the user asks to audit digests, verify digest ownership, check for cross-user leaks, or asks whether digest cards have problems (bad links, hallucinations, grammar, wrong opportunities)."
 ---
 
 # Audit Daily Digest Opportunity Ownership
@@ -12,6 +12,8 @@ Use this workflow to verify that opportunities embedded in agentvillage daily di
 - Railway MCP connected (for control-plane access if API key is unknown)
 - Access to the control-plane API (key stored in Railway env vars for the `control-plane` service in the `agentvillage-controlplane` project)
 - Access to the Index Network production Neon database (connection string in Railway env vars for the `protocol` service in the `Index` project)
+
+> **Railway MCP gotcha (read before fetching vars):** `railway_list_variables` may fail with `Failed to resolve environment: "<id>" not found` because it carries a stale/cached `environment_id` (e.g. the `Index` project's env id leaking into an `agentvillage-controlplane` call). Fix: call `railway_list_services` with the target project's **own** `environment_id` (the error message lists the valid ones — `agentvillage-controlplane` production is `e4e4b158-...`), then pass both `project_id` + `environment_id` + `service_id` explicitly to `railway_list_variables`. The control-plane key is `CONTROL_PLANE_API_KEY` on the `control-plane` service; the prod DB is `DATABASE_URL` on the `Index/protocol` service.
 
 ## Workflow
 
@@ -95,6 +97,21 @@ Use this workflow to verify that opportunities embedded in agentvillage daily di
     - **Stably wrong**: Always a different fixed user (suggests static misconfiguration)
     - **Varies daily**: Different wrong user each day (suggests runtime identity mixing)
 
+### Phase 4b: Card-quality checks (grammar, broken links, hallucination, ordering)
+
+Ownership is only one failure mode. To answer "are there *any* problems in the cards?", run these over **all** of today's card bodies (parse `tasks[].body` from the kanban JSON; opportunities are in `<!-- digest-opportunity:id=... -->`, questions in `<!-- digest-question:id=... -->`):
+
+1. **Link health.** Extract every URL. Categorize by host (typically `protocol.index.network/c/<code>` connect links, `index.network/u/<uuid>` profile links, the Edge City schedule host, Luma). Then:
+   - Connect links: confirm each `code` exists in `connect_links` and HTTP `302`-redirects (curl `-o /dev/null -w "%{http_code} -> %{redirect_url}"`); flag any expired (`expires_at < now`).
+   - Profile links: extract the `/u/<uuid>` UUIDs and confirm **every one is a real `users.id`** — a missing user means a hallucinated/dangling person reference.
+   - Sample the event/external links for non-200 / malformed URLs.
+2. **Template & grammar scan.** Regex every body for leak/placeholder tells: `\{[a-z_]+\}`, `\{\{`, `\[(NAME|TODO|TBD)\]`, literal `undefined`/`null`/`NaN`, no-reply/silent markers, unfilled markdown links `](\s*)`, and JSON-ish `"key":` leakage. Zero hits = clean; any hit names the offending tenant.
+3. **Hallucination / rationale fidelity.** For a sample of digest opportunities, compare the card's "… because …" sentence against the stored `opportunities.interpretation->>'reasoning'`. The card text should paraphrase the stored reasoning, not invent new claims about the person.
+4. **Chronological event ordering.** Parse the `- H:MM AM/PM —` event lines per card and check they are non-decreasing in time. A known bug: the digest appends a personalized event to the end of the calendar **without re-sorting**, so the last item (or a couple) lands out of order. Report the share of multi-event cards affected and the dominant out-of-order event title.
+5. **Status gating.** Pull `status` for every digest opportunity. Note the pending-vs-draft split — surfacing `draft` (pre-`pending`) opportunities may be unintended; raise it as a delivery-policy question even though ownership can still be correct.
+
+Classify each dimension as clean ✅ or list concrete offenders. Bundle parsing into a small Bun script over `/tmp/kanbans.json` rather than hand-grepping 150+ cards.
+
 ### Phase 5: Report
 
 11. **Produce a summary** with:
@@ -102,6 +119,7 @@ Use this workflow to verify that opportunities embedded in agentvillage daily di
     - OK count vs MISMATCH count
     - Table of mismatches: `recipient email | link issued for | opportunity status`
     - Multi-day drift pattern if analyzed
+    - **Card-quality findings** (from Phase 4b): link health, template/grammar scan result, hallucination/rationale check, event-ordering bug rate, pending-vs-draft split — each marked clean ✅ or with concrete offenders
     - Suggested next steps
 
 12. **Save the full report** to `.rpiv/artifacts/research/<date>-daily-digest-opportunity-ownership-audit.md`

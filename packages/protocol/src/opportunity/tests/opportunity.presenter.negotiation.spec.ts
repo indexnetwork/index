@@ -87,8 +87,10 @@ function capturingPresenter(fakeLLMResult?: unknown): {
         presentation: {
           headline: "Match",
           personalizedSummary: "You would both get value.",
+          digestSummary: "You might like meeting Bob because you would both get value.",
           suggestedAction: "Reach out.",
           narratorRemark: "Worth a look.",
+          greeting: "Saw we may both get value from connecting and would love to compare notes.",
           mutualIntentsLabel: "Shared interests",
         },
       }

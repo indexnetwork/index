@@ -1,0 +1,25 @@
+{
+  "$comment": "Config for the learn-skill meta-skill. 'target' is where new/migrated/updated skills are written, relative to the current project (cwd). 'protectedLocations' are NEVER modified in place; a relevant protected skill is migrated (copied) into 'target' first, then updated. 'allowProtectedWrites' is a deliberate escape hatch. 'features' toggle skill behaviors. 'modularize' tunes the split thresholds (body size, shared-partial dir name, min lines for a duplicate block to count). 'integrations' opt into rpiv helper extensions — each is only used if BOTH the flag is true AND the package is detected as installed (run `skillctl.ts detect`); otherwise it is skipped silently.",
+  "target": ".pi/skills",
+  "protectedLocations": [
+    "~/.pi/agent/skills",
+    "~/.agents/skills"
+  ],
+  "allowProtectedWrites": false,
+  "features": {
+    "crossLink": true,
+    "dedup": true,
+    "modularize": true
+  },
+  "modularize": {
+    "maxBodyLines": 120,
+    "sharedDir": "_shared",
+    "minDuplicateBlockLines": 4
+  },
+  "integrations": {
+    "useTodo": true,
+    "useAskUserQuestion": true,
+    "useArgs": true,
+    "useAdvisor": false
+  }
+}

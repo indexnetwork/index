@@ -485,8 +485,46 @@ function discoveryScopeKey(ctx: { networkId?: string; indexScope?: string[] }): 
   });
 }
 
+/**
+ * Stable, retry-classified error codes for `confirm_opportunity_delivery`.
+ *
+ * The plain `error()` envelope only carries a human message, which forced
+ * callers (the Hermes digest sweep) to treat every failure — permanent or
+ * transient — as retryable, and made "already delivered but never confirmed"
+ * impossible to distinguish from "opportunity deleted". Each code carries an
+ * explicit `retryable` flag so deterministic callers can retry transient
+ * failures and drop permanent ones instead of re-spamming the ledger.
+ */
+export type ConfirmDeliveryErrorCode =
+  | "unauthenticated"
+  | "ledger_unavailable"
+  | "invalid_opportunity_id"
+  | "opportunity_not_found"
+  | "not_authorized"
+  | "confirm_failed";
+
+function confirmDeliveryError(
+  code: ConfirmDeliveryErrorCode,
+  retryable: boolean,
+  message: string,
+): string {
+  return JSON.stringify({ success: false, error: message, code, retryable });
+}
+
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const { database, userDb, systemDb, graphs, cache } = deps;
+  const runDiscoveryFromQuery =
+    (deps.opportunityDiscovery?.runDiscoverFromQuery as typeof runDiscoverFromQuery | undefined) ??
+    runDiscoverFromQuery;
+  const continueOpportunityDiscovery =
+    (deps.opportunityDiscovery?.continueDiscovery as typeof continueDiscovery | undefined) ??
+    continueDiscovery;
+  const createOpportunityPresenter =
+    (deps.opportunityPresentation?.createPresenter as (() => OpportunityPresenter) | undefined) ??
+    (() => new OpportunityPresenter());
+  const gatherOpportunityPresenterContext =
+    (deps.opportunityPresentation?.gatherPresenterContext as typeof gatherPresenterContext | undefined) ??
+    gatherPresenterContext;
 
   const discoverOpportunities = defineTool({
     name: "discover_opportunities",
@@ -713,7 +751,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const _continueTraceEmitter = requestContext.getStore()?.traceEmitter;
         const _graphStart = Date.now();
         _continueTraceEmitter?.({ type: "graph_start", name: "opportunity" });
-        const result = await continueDiscovery({
+        const result = await continueOpportunityDiscovery({
           opportunityGraph: graphs.opportunity,
           database,
           cache,
@@ -721,7 +759,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           discoveryId: query.continueFrom,
           expectedIndexId: context.networkId,
           limit: 20,
-          presenter: new OpportunityPresenter(),
+          presenter: createOpportunityPresenter(),
           useHomeCardFormat: true,
           ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
         });
@@ -1069,14 +1107,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // onCandidateResolved. Ambient/cron paths leave both falsy and use the
       // `pending` default.
       const runDiscoveryOrchestrator = !!context.sessionId || !!context.isMcp;
-      const result = await runDiscoverFromQuery({
+      const result = await runDiscoveryFromQuery({
         opportunityGraph: graphs.opportunity,
         database,
         userId: context.userId,
         query: searchQuery,
         indexScope,
         limit: 20,
-        presenter: new OpportunityPresenter(),
+        presenter: createOpportunityPresenter(),
         useHomeCardFormat: true,
         triggerIntentId,
         targetUserId: query.targetUserId?.trim() || undefined,
@@ -1717,7 +1755,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
       if (isDigestMode) {
         // ── Digest mode: use LLM presenter for rich, second-person card text ──
-        const presenter = new OpportunityPresenter();
+        const presenter = createOpportunityPresenter();
         const presenterDb: PresenterDatabase = database;
         const PRESENTER_CONCURRENCY = 6;
 
@@ -1779,7 +1817,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                 const isCounterpartGhost = counterpartUser?.isGhost ?? false;
 
                 try {
-                  const ctx = await gatherPresenterContext(
+                  const ctx = await gatherOpportunityPresenterContext(
                     presenterDb,
                     opp,
                     context.userId,
@@ -2143,15 +2181,25 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     }),
     handler: async ({ context, query }) => {
       if (!context.isMcp || !context.agentId) {
-        return error(
+        return confirmDeliveryError(
+          "unauthenticated",
+          false,
           "confirm_opportunity_delivery is only available to authenticated agent MCP contexts.",
         );
       }
       if (!deps.deliveryLedger) {
-        return error("Delivery ledger not available in this context.");
+        return confirmDeliveryError(
+          "ledger_unavailable",
+          false,
+          "Delivery ledger not available in this context.",
+        );
       }
       if (!UUID_REGEX.test(query.opportunityId)) {
-        return error("Invalid opportunity ID format.");
+        return confirmDeliveryError(
+          "invalid_opportunity_id",
+          false,
+          "Invalid opportunity ID format.",
+        );
       }
       try {
         const result = await deps.deliveryLedger.confirmOpportunityDelivery({
@@ -2162,8 +2210,40 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         });
         return success({ status: result });
       } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        // Permanent failures — the caller MUST NOT retry. Retrying a deleted
+        // opportunity or an unauthorized actor never succeeds and only spams
+        // the ledger / MCP transport.
+        if (reason === 'opportunity_not_found') {
+          logger.warn('confirm_opportunity_delivery: opportunity not found', {
+            opportunityId: query.opportunityId,
+          });
+          return confirmDeliveryError(
+            'opportunity_not_found',
+            false,
+            'Opportunity not found — it may have been deleted. Do not retry.',
+          );
+        }
+        if (reason === 'not_authorized') {
+          logger.warn('confirm_opportunity_delivery: caller is not an actor', {
+            opportunityId: query.opportunityId,
+            userId: context.userId,
+          });
+          return confirmDeliveryError(
+            'not_authorized',
+            false,
+            'You are not an actor on this opportunity. Do not retry.',
+          );
+        }
+        // Unknown / transient (e.g. DB connectivity) — safe to retry. The
+        // ledger write is idempotent, so a retry that races a prior success
+        // returns 'already_delivered' rather than a duplicate row.
         logger.error('Failed to confirm opportunity delivery', { err });
-        return error('Failed to confirm opportunity delivery. Please try again.');
+        return confirmDeliveryError(
+          'confirm_failed',
+          true,
+          'Failed to confirm opportunity delivery — transient error, safe to retry.',
+        );
       }
     },
   });

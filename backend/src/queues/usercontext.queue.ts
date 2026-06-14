@@ -21,7 +21,7 @@ export interface UserContextJobData {
   /** User whose per-network contexts should be regenerated from active premises. */
   userId: string;
   /** What triggered the regen — for observability only. */
-  reason: 'profile_regen' | 'enrichment_complete';
+  reason: 'profile_regen' | 'enrichment_complete' | 'network_membership' | 'backfill';
 }
 
 /** Minimal premise shape needed to synthesize contexts and compute the staleness hash. */

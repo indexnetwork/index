@@ -60,3 +60,9 @@ Users define signals/intents and indexes; autonomous agents discover relevant pe
 - Use Bun test imports and mock external systems at the boundary being tested.
 - For backend/protocol graph tests, inject adapters/models rather than connecting to live services.
 </important>
+
+<important if="you are wrapping up a session where a reusable, non-obvious learning emerged">
+- If this session uncovered a reusable workflow, a fix for a recurring failure, an exact command sequence, an environment gotcha, or a convention worth keeping, run the `learn-skill` skill to capture it before ending.
+- `learn-skill` writes to the project-local `.pi/skills/` and never edits protected/home skills in place (it migrates them local first). See `.pi/skills/learn-skill/SKILL.md`.
+- Skip silently when nothing meets the "reusable and non-obvious" bar — do not capture one-off facts.
+</important>

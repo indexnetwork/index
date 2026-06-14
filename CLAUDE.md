@@ -189,7 +189,7 @@ index/
 
 ### Documentation Directories
 
-- `docs/design/` — Architecture and deep-dive docs. Describes how the system is built: layering, data flow, agent graphs, key subsystems. Update when architecture changes.
+- `docs/design/` — Architecture and deep-dive docs. Describes how the system is built: layering, data flow, agent graphs, key subsystems. Update when architecture changes. See `docs/design/opportunity-status-lifecycle.md` for the opportunity status lifecycle (state machine, flows, transition table).
 - `docs/domain/` — Domain concept docs. Explains the business model: what intents, indexes, opportunities, profiles, contacts are and how they relate. Update when domain model changes.
 - `docs/specs/` — API and CLI specs. Describes external interfaces: endpoints, CLI commands, input/output contracts. Update when public interfaces change.
 - `docs/guides/` — Setup and usage guides for developers. Update when dev workflow or environment setup changes.
@@ -483,3 +483,18 @@ gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies -f body="..
 # Request a Copilot review on an existing PR
 gh pr edit PR-NUMBER --add-reviewer @copilot
 ```
+
+## Session Learning Capture
+
+When wrapping up a session that uncovered something **reusable and non-obvious** — a
+workflow, a fix for a recurring failure, an exact command sequence, an environment
+gotcha, or a convention — run the `learn-skill` skill to persist it before ending.
+
+- `learn-skill` writes to the project-local `.pi/skills/` and **never edits
+  protected/home skills in place** (it migrates them local first, then updates the copy).
+- It is configurable via `.pi/skills/learn-skill/config.json` (target, protected
+  locations, dedup/cross-link features, and rpiv integrations: todo,
+  ask-user-question, args, advisor).
+- Use `.pi/skills/pi-skill-authoring` for the mechanics of writing a correct `SKILL.md`.
+- Skip silently when nothing meets the "reusable and non-obvious" bar — never capture
+  one-off facts.
