@@ -1,6 +1,49 @@
 import { describe, it, expect } from "bun:test";
 import { getPreset } from "../questioner.presets.js";
 
+const standaloneModeExpectations = [
+  {
+    mode: "discovery" as const,
+    anchors: ["original query", "discovery pattern", "negotiation pattern", "concrete learned fact"],
+    positiveExample: "For your AI crypto decentralized deep-tech search",
+    negativeExample: "Which area is most critical right now?",
+  },
+  {
+    mode: "intent" as const,
+    anchors: ["source intent/topic", "intent or summary"],
+    positiveExample: "For your decentralized identity protocol-design search",
+    negativeExample: "What kind of collaboration are you looking for?",
+  },
+  {
+    mode: "profile" as const,
+    anchors: ["profile signal or gap", "current profile", "existing premises", "identified gaps"],
+    positiveExample: "To improve matches from your founder/operator profile",
+    negativeExample: "What kind of role are you looking for?",
+  },
+  {
+    mode: "negotiation" as const,
+    anchors: ["stalled negotiation context", "counterparty hint", "community", "key takeaway"],
+    positiveExample: "For the stalled match with an AI infra founder",
+    negativeExample: "Which role is a better fit for your immediate needs?",
+  },
+];
+
+describe("standalone prompt contract", () => {
+  it.each(standaloneModeExpectations)("mode '$mode' requires self-contained generated prompt text", ({ mode, anchors, positiveExample, negativeExample }) => {
+    const preset = getPreset(mode);
+
+    expect(preset.systemPrompt).toContain("Standalone prompt rule");
+    expect(preset.systemPrompt).toContain("Every generated `prompt` must be understandable outside the conversation where it was created");
+    expect(preset.systemPrompt).toContain("question text itself");
+    expect(preset.systemPrompt).toContain("Do not rely on `title`, UI labels, hidden metadata, or surrounding digest/chat text");
+    expect(preset.systemPrompt).toContain(positiveExample);
+    expect(preset.systemPrompt).toContain(negativeExample);
+    for (const anchor of anchors) {
+      expect(preset.systemPrompt).toContain(anchor);
+    }
+  });
+});
+
 describe("getPreset", () => {
   it("returns the discovery preset with systemPrompt and buildPrompt", () => {
     const preset = getPreset("discovery");
@@ -30,6 +73,12 @@ describe("getPreset", () => {
     expect(result).toContain("Alice");
   });
 
+  it("requires discovery prompts to include source context", () => {
+    const preset = getPreset("discovery");
+    expect(preset.systemPrompt).toContain("Standalone prompt rule");
+    expect(preset.systemPrompt).toContain("original query");
+    expect(preset.systemPrompt).toContain("discovery pattern");
+  });
 });
 
 describe("intent preset", () => {
@@ -51,6 +100,14 @@ describe("intent preset", () => {
     expect(typeof result).toBe("string");
     expect(result).toContain("cofounder");
     expect(result).toContain("Alice");
+  });
+
+  it("requires intent prompts to naturally include intent context", () => {
+    const preset = getPreset("intent");
+    expect(preset.systemPrompt).toContain("Standalone prompt rule");
+    expect(preset.systemPrompt).toContain("source intent/topic");
+    expect(preset.systemPrompt).toContain("What kind of collaboration are you looking for?");
+    expect(preset.systemPrompt).toContain("decentralized identity protocol-design search");
   });
 });
 
@@ -112,6 +169,13 @@ describe("profile preset", () => {
     const preset = getPreset("profile");
     expect(preset.systemPrompt).toContain("premises");
   });
+
+  it("requires profile prompts to naturally include profile context", () => {
+    const preset = getPreset("profile");
+    expect(preset.systemPrompt).toContain("Standalone prompt rule");
+    expect(preset.systemPrompt).toContain("profile signal or gap");
+    expect(preset.systemPrompt).toContain("To improve matches from your founder/operator profile");
+  });
 });
 
 describe("negotiation preset", () => {
@@ -137,5 +201,12 @@ describe("negotiation preset", () => {
     expect(result).toContain("turn_cap");
     expect(result).toContain("AI infra founder");
     expect(result).toContain("Alice");
+  });
+
+  it("requires negotiation prompts to naturally include stall context", () => {
+    const preset = getPreset("negotiation");
+    expect(preset.systemPrompt).toContain("Standalone prompt rule");
+    expect(preset.systemPrompt).toContain("stalled negotiation context");
+    expect(preset.systemPrompt).toContain("For the stalled match with an AI infra founder");
   });
 });
