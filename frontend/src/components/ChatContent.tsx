@@ -579,15 +579,20 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       const res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, networkId });
       setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
       setProposalIntentMap((prev) => ({ ...prev, [proposalId]: res.intentId }));
+      // Outcome-aware feedback: a network-scoped create lands directly in that
+      // network; an unscoped create is evaluated against all the user's
+      // networks asynchronously, so set expectations rather than implying it's
+      // already broadcasting somewhere specific.
+      const targetNetwork = networkId ? indexes.find((i) => i.id === networkId) : undefined;
       addNotification({
         type: "intent_broadcast",
-        title: "Broadcasting Signal",
+        title: targetNetwork ? `Broadcasting to ${targetNetwork.title}` : "Evaluating networks…",
         message: description,
         duration: 10000,
         onAction: () => archiveProposalIntent(proposalId, res.intentId),
       });
     },
-    [addNotification, archiveProposalIntent],
+    [addNotification, archiveProposalIntent, indexes],
   );
 
   const handleIntentProposalReject = useCallback(

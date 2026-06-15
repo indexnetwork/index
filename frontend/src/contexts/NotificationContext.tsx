@@ -232,7 +232,7 @@ function IntentBroadcastToast({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
             </span>
-            Broadcasting Signal
+            {notification.title || "Broadcasting Signal"}
           </div>
           <p className="text-[13px] text-[#3D3D3D] leading-relaxed mt-0.5 line-clamp-2">
             {notification.message || notification.title}
