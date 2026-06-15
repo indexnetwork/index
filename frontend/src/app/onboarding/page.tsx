@@ -167,10 +167,9 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (prevLoadingRef.current && !isLoading) {
       refetchUser();
-      if (pendingNetworkJoinIds.size > 0) setPendingNetworkJoinIds(new Set());
     }
     prevLoadingRef.current = isLoading;
-  }, [isLoading, refetchUser, pendingNetworkJoinIds.size]);
+  }, [isLoading, refetchUser]);
 
 
 
