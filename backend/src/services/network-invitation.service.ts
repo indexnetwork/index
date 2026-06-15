@@ -236,6 +236,10 @@ class NetworkInvitationService {
       .values({
         email,
         name: name ?? email.split('@')[0],
+        // Experiment/AgentVillage provisioning proves the invitee can receive
+        // this network-scoped key, but it does not create a full index.network
+        // browser session. Keep the legacy Better Auth flag for compatibility;
+        // authorization must continue to come from JWT sessions or scoped keys.
         emailVerified: true,
         isGhost: false,
       })

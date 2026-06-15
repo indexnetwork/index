@@ -275,7 +275,11 @@ export class OpportunityController {
   }
 
   /**
-   * POST /opportunities/:id/connect-token — mint a short-lived JWT for the connect redirect.
+   * POST /opportunities/:id/connect-token — legacy helper that mints a
+   * short-lived JWT for the direct `/opportunities/:id/connect?token=...`
+   * redirect. New share surfaces should prefer `/opportunities/:id/connect-link`,
+   * which returns an opaque `/c/:code` URL that binds resolution to the
+   * authenticated recipient session.
    * Requires x-api-key (agent polling) or session auth.
    */
   @Post('/:id/connect-token')
@@ -348,8 +352,11 @@ export class OpportunityController {
   }
 
   /**
-   * GET /opportunities/:id/connect — verify JWT, accept opportunity, redirect to Telegram or web chat.
-   * No guard: authentication is via the token query parameter.
+   * GET /opportunities/:id/connect — legacy direct-token accept redirect.
+   * No guard: authorization is via the signed token query parameter. This path
+   * intentionally does not require a browser session; user-facing share links
+   * should prefer the `/c/:code` short-link flow when recipient session binding
+   * is required.
    */
   @Get('/:id/connect')
   @UseGuards(RateLimit('read'))

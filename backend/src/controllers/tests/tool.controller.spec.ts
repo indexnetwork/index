@@ -28,13 +28,13 @@ describe("ToolController Integration", () => {
   });
 
   /** Helper to invoke a tool and return parsed JSON. */
-  async function invokeTool(toolName: string, query: Record<string, unknown> = {}) {
+  async function invokeTool(toolName: string, query: Record<string, unknown> = {}, user: AuthenticatedUser = mockUser()) {
     const req = new Request(`http://localhost/api/tools/${toolName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
     });
-    const res = await controller.invoke(req, mockUser(), { toolName });
+    const res = await controller.invoke(req, user, { toolName });
     const data = await res.json() as Record<string, unknown>;
     return { status: res.status, data };
   }
@@ -46,6 +46,7 @@ describe("ToolController Integration", () => {
       intro: "Integration test user for ToolController",
     });
     testUserId = userA.id;
+    await userAdapter.update(testUserId, { onboarding: { completedAt: new Date().toISOString() } });
 
     const userB = await userAdapter.create({
       email: testEmailB,
@@ -112,6 +113,19 @@ describe("ToolController Integration", () => {
     expect(status).toBe(200);
     expect(data).toBeDefined();
     console.log("read_intents result:", JSON.stringify(data).slice(0, 200));
+  }, 60_000);
+
+  test("POST /tools blocks non-onboarding tools for incomplete users", async () => {
+    const { status, data } = await invokeTool("list_contacts", {}, {
+      id: testUserBId,
+      email: testEmailB,
+      name: "Test Tool User B",
+    });
+
+    expect(status).toBe(200);
+    expect(data.success).toBe(false);
+    expect(data.error).toBe("Onboarding required");
+    expect(String(data.message)).toContain("complete_onboarding");
   }, 60_000);
 
   test("POST /tools/unknown_tool should return 404 error", async () => {

@@ -271,7 +271,6 @@ describe("ONBOARDING_ALLOWED", () => {
       "read_networks",
       "create_network_membership",
       "create_intent",
-      "discover_opportunities",
       "read_user_profiles",
     ];
     for (const tool of expected) {
@@ -286,7 +285,7 @@ describe("ONBOARDING_ALLOWED", () => {
   });
 
   test("does not contain non-onboarding tools", () => {
-    for (const tool of ["list_contacts", "update_intent", "delete_network"]) {
+    for (const tool of ["list_contacts", "update_intent", "delete_network", "discover_opportunities"]) {
       expect(ONBOARDING_ALLOWED.has(tool)).toBe(false);
     }
   });

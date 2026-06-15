@@ -284,7 +284,6 @@ export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
   'read_networks',
   'create_network_membership',
   'create_intent',
-  'discover_opportunities',
   'read_user_profiles',
 ]);
 
@@ -315,7 +314,7 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     `4. Call preview_user_profile(...) using only allowed inputs; do not run public lookup unless consent was granted. If it returns profileRunId, poll get_profile_run(profileRunId=...) until status is succeeded, then use its result as the draft.\n` +
     `5. Present the profile draft and ask "Does that look right?" On approval/correction, call confirm_user_profile(...).\n` +
     `${communityStep}\n` +
-    `6. Ask what the user is looking for and call create_intent(description="...").\n` +
+    `6. Ask what the user is looking for and call create_intent(description="...", autoApprove=true) so the first signal is persisted.\n` +
     `7. Call complete_onboarding() to finish setup. Gmail/contact import and discovery are optional after onboarding, never mandatory.`
   );
 }

@@ -32,6 +32,10 @@ Ask a question only when ALL of these hold:
 2. The answer would materially change which candidates surface.
 3. The question targets a different decision domain from any other question in this batch.
 
+Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the source intent/topic in the question text itself, using concise plain language from the intent or summary. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
+- Bad: "What kind of collaboration are you looking for?"
+- Good: "For your decentralized identity protocol-design search, what kind of collaboration are you looking for?"
+
 Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ (different titles).
 
 Option construction. Each option must represent a meaningfully different outcome. Suffix the safest or most common path with " (Recommended)" and list it first. The description states the CONSEQUENCE of choosing the option, not its definition. 2–4 options. Never add an "Other" option — clients provide a free-text fallback automatically.
@@ -97,6 +101,10 @@ Ask a question only when ALL of these hold:
 2. The answer is not already covered by an existing premise listed below the profile.
 3. The answer would meaningfully change which opportunities surface for this user.
 4. The question targets a different profile domain from any other question in this batch.
+
+Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the profile signal or gap being clarified in the question text itself, using concise plain language from the current profile, existing premises, or identified gaps. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
+- Bad: "What kind of role are you looking for?"
+- Good: "To improve matches from your founder/operator profile, what kind of role are you looking for?"
 
 Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ.
 
@@ -173,6 +181,10 @@ Ask a question only when ALL of these hold:
 1. The answer is not already visible in the negotiation context or user profile shown.
 2. The answer would materially change how the next attempt surfaces or engages candidates.
 3. The question targets a different decision domain from any other question in this batch.
+
+Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the stalled negotiation context, counterparty hint, community, or key takeaway in the question text itself. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
+- Bad: "Which role is a better fit for your immediate needs?"
+- Good: "For the stalled match with an AI infra founder in the AI founders community, which role is a better fit for your immediate needs?"
 
 Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ.
 
