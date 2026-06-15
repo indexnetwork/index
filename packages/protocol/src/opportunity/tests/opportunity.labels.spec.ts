@@ -3,13 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
-import {
-  MINIMAL_MAIN_TEXT_MAX_CHARS,
-  PRIMARY_ACTION_LABEL_INTRODUCER,
-  PRIMARY_ACTION_LABEL_DEFAULT,
-  SECONDARY_ACTION_LABEL,
-  getPrimaryActionLabel,
-} from "../opportunity.labels.js";
+import { MINIMAL_MAIN_TEXT_MAX_CHARS, PRIMARY_ACTION_LABEL_INTRODUCER, PRIMARY_ACTION_LABEL_DEFAULT, SECONDARY_ACTION_LABEL, getPrimaryActionLabel } from "../opportunity.labels.js";
 
 describe('opportunity.constants', () => {
   it('MINIMAL_MAIN_TEXT_MAX_CHARS is a positive number', () => {

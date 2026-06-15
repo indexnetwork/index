@@ -1,25 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
 
-import {
-  RESET,
-  BOLD,
-  RED,
-  GREEN,
-  YELLOW,
-  CYAN,
-  GRAY,
-  error,
-  success,
-  info,
-  warn,
-  dim,
-  heading,
-  humanizeToolName,
-  wordWrap,
-  confidenceBar,
-  padTo,
-  stripAnsi,
-} from "../src/output/base";
+import { RESET, BOLD, RED, GREEN, YELLOW, CYAN, GRAY, error, success, info, warn, dim, heading, humanizeToolName, wordWrap, confidenceBar, padTo, stripAnsi } from "../src/output/base";
 
 // ── Basic message helpers ───────────────────────────────────────────
 

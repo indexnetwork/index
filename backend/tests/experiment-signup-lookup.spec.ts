@@ -6,17 +6,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { experimentService, SignupNotCompleteError } from '../src/services/experiment.service';
 import db from '../src/lib/drizzle/drizzle';
-import {
-  agentPermissions,
-  agents,
-  apikeys,
-  networkMembers,
-  networks,
-  personalNetworks,
-  userProfiles,
-  userSocials,
-  users,
-} from '../src/schemas/database.schema';
+import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, userProfiles, userSocials, users } from '../src/schemas/database.schema';
 import { generateMasterKey } from '../src/lib/experiment/master-key';
 import { NetworkController } from '../src/controllers/network.controller';
 

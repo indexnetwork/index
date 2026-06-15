@@ -15,24 +15,9 @@
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import type { Id } from '../shared/interfaces/database.interface.js';
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
-import {
-  OpportunityGraphState,
-  type IndexedIntent,
-  type SourceProfileData,
-  type TargetNetwork,
-  type CandidateMatch,
-  type EvaluatedCandidate,
-  type EvaluatedOpportunity,
-  type EvaluatedOpportunityActor,
-} from './opportunity.state.js';
+import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type TargetNetwork, type CandidateMatch, type EvaluatedCandidate, type EvaluatedOpportunity, type EvaluatedOpportunityActor } from './opportunity.state.js';
 import { resolveInitialStatus } from './opportunity.state.js';
-import {
-  OpportunityEvaluator,
-  type CandidateProfile,
-  type EvaluatedOpportunityWithActors,
-  type EvaluatorEntity,
-  type EvaluatorInput,
-} from './opportunity.evaluator.js';
+import { OpportunityEvaluator, type CandidateProfile, type EvaluatedOpportunityWithActors, type EvaluatorEntity, type EvaluatorInput } from './opportunity.evaluator.js';
 import type { OpportunityGraphDatabase } from '../shared/interfaces/database.interface.js';
 import { IntentIndexer } from '../intent/intent.indexer.js';
 import { getModelName } from '../shared/agent/model.config.js';
@@ -59,21 +44,12 @@ export type OpportunityEvaluatorLike = {
   }>>;
 };
 import type { Embedder, LensEmbedding } from '../shared/interfaces/embedder.interface.js';
-import type {
-  CreateOpportunityData,
-  Opportunity,
-  OpportunityActor,
-  ActiveIntent,
-} from '../shared/interfaces/database.interface.js';
+import type { CreateOpportunityData, Opportunity, OpportunityActor, ActiveIntent } from '../shared/interfaces/database.interface.js';
 import { persistOpportunities } from './opportunity.persist.js';
 import { INTRODUCER_DISCOVERY_SOURCE } from './opportunity.introducer.js';
 import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from "../negotiation/negotiation.graph.js";
 import { AMBIENT_PARK_WINDOW_MS } from "../negotiation/negotiation.tools.js";
-import {
-  buildDiscoverySummary,
-  toDiscoveryNegotiation,
-  type NegotiationResolution,
-} from "./negotiation-summary.builder.js";
+import { buildDiscoverySummary, toDiscoveryNegotiation, type NegotiationResolution } from "./negotiation-summary.builder.js";
 import type { NegotiationGraphLike } from "../negotiation/negotiation.state.js";
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { protocolLogger, withCallLogging } from '../shared/observability/protocol.logger.js';
@@ -81,11 +57,7 @@ import { timed } from '../shared/observability/performance.js';
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { requestContext } from "../shared/observability/request-context.js";
 import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
-import {
-  mergeOpportunityEvidence,
-  withCandidateEvidence,
-  withMatchedStrategies,
-} from './opportunity.evidence.js';
+import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from './opportunity.evidence.js';
 
 const logger = protocolLogger('OpportunityGraph');
 
@@ -436,7 +408,7 @@ export class OpportunityGraphFactory {
           });
 
           // ── Populate index relevancy scores for dedup tie-breaking ──
-          let indexRelevancyScores: Record<string, number> = {};
+          const indexRelevancyScores: Record<string, number> = {};
 
           if (state.triggerIntentId) {
             // Background path: look up persisted scores from intent_indexes

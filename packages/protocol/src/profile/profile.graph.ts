@@ -151,7 +151,7 @@ export class ProfileGraphFactory {
 
           // If we need to scrape, check if we have sufficient user information
           let needsUserInfo = false;
-          let missingUserInfo: string[] = [];
+          const missingUserInfo: string[] = [];
 
           if (willNeedScraping) {
             logger.verbose("Will need scraping - checking user information...");

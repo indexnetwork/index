@@ -15,15 +15,7 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import {
-  OpportunityPresenter,
-  canUserSeeOpportunity,
-  classifyOpportunity,
-  gatherPresenterContext,
-  getOrCreateDeliveryCardBatch,
-  isActionableForViewer,
-  type PresenterDatabase,
-} from '@indexnetwork/protocol';
+import { OpportunityPresenter, canUserSeeOpportunity, classifyOpportunity, gatherPresenterContext, getOrCreateDeliveryCardBatch, isActionableForViewer, type PresenterDatabase } from '@indexnetwork/protocol';
 
 import type { Cache } from '../adapters/cache.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';

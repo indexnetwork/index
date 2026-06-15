@@ -14,14 +14,7 @@ import type { Cache } from "../shared/interfaces/cache.interface.js";
 import type { OpportunityGraphOptions, CandidateMatch, SourceProfileData } from "./opportunity.state.js";
 import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
-import {
-  OpportunityPresenter,
-  gatherPresenterContext,
-  type OpportunityPresentationResult,
-  type HomeCardPresentationResult,
-  type HomeCardLLMResult,
-  type HomeCardPresenterInput,
-} from "./opportunity.presenter.js";
+import { OpportunityPresenter, gatherPresenterContext, type OpportunityPresentationResult, type HomeCardPresentationResult, type HomeCardLLMResult, type HomeCardPresenterInput } from "./opportunity.presenter.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportunity.presentation.js";
 import { protocolLogger, withCallLogging } from "../shared/observability/protocol.logger.js";

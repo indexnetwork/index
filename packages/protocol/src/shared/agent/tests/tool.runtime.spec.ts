@@ -3,12 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { invokeWithAbortSignal } from "../model-signal.js";
 import { requestContext } from "../../observability/request-context.js";
 import type { ResolvedToolContext } from "../tool.helpers.js";
-import {
-  ToolRuntimeError,
-  getToolTimeoutPolicy,
-  invokeToolRuntime,
-  toolRuntimeErrorToResult,
-} from "../tool.runtime.js";
+import { ToolRuntimeError, getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } from "../tool.runtime.js";
 
 const context = {
   userId: "user-1",

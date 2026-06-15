@@ -1,11 +1,4 @@
-import type {
-  NetworkAssignmentMetadata,
-  NetworkAssignmentMode,
-  NetworkAssignmentPromptPresence,
-  NetworkAssignmentRawScores,
-  NetworkAssignmentResourceType,
-  NetworkAssignmentScope,
-} from "../schemas/network-assignment.schema.js";
+import type { NetworkAssignmentMetadata, NetworkAssignmentMode, NetworkAssignmentPromptPresence, NetworkAssignmentRawScores, NetworkAssignmentResourceType, NetworkAssignmentScope } from "../schemas/network-assignment.schema.js";
 
 /** Centralized default for unified premise/intent network assignment. */
 export const DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD = 0.7;

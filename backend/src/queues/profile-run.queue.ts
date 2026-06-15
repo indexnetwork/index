@@ -1,22 +1,7 @@
 import { Job } from 'bullmq';
 
-import {
-  PremiseGraphFactory,
-  ProfileGraphFactory,
-  createProfileTools,
-  getToolTimeoutPolicy,
-  requestContext,
-  resolveChatContext,
-} from '@indexnetwork/protocol';
-import type {
-  CompiledGraph,
-  PremiseGraphDatabase,
-  ProfileRunInput,
-  ProfileRunRecord,
-  RawToolDefinition,
-  ResolvedToolContext,
-  ToolDeps,
-} from '@indexnetwork/protocol';
+import { PremiseGraphFactory, ProfileGraphFactory, createProfileTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
+import type { CompiledGraph, PremiseGraphDatabase, ProfileRunInput, ProfileRunRecord, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';

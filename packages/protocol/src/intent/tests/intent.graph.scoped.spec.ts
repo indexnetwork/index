@@ -8,12 +8,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { IntentGraphFactory } from '../intent.graph.js';
-import type {
-  IntentGraphDatabase,
-  ActiveIntent,
-  CreatedIntent,
-  ArchiveResult,
-} from '../../shared/interfaces/database.interface.js';
+import type { IntentGraphDatabase, ActiveIntent, CreatedIntent, ArchiveResult } from '../../shared/interfaces/database.interface.js';
 
 const PERSONAL = 'personal-idx';
 const EDGE_CITY = 'edge-city-idx';

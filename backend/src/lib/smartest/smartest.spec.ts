@@ -7,12 +7,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import {
-  runScenario,
-  defineScenario,
-  expectSmartest,
-  defaultGeneratorRegistry,
-} from './index';
+import { runScenario, defineScenario, expectSmartest, defaultGeneratorRegistry } from './index';
 import type { SmartestScenario } from './smartest.types';
 import { resolveFixtures, resolveInputRefs, isGeneratorDef } from './smartest.fixtures';
 

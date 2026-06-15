@@ -12,13 +12,7 @@ import { traceAppOperation } from '../lib/sentry-performance';
 import { normalizeEmbedding } from '../lib/embedding/vector';
 import { normalizeTelegramSocialValue } from '../lib/telegram/socials';
 import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
-import type {
-  Conversation,
-  ConversationParticipant,
-  Message,
-  Task,
-  Artifact,
-} from '../schemas/conversation.schema';
+import type { Conversation, ConversationParticipant, Message, Task, Artifact } from '../schemas/conversation.schema';
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
 import { NetworkMembershipEvents } from '../events/network_membership.event';

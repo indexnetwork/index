@@ -8,15 +8,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, expect, it, mock } from 'bun:test';
 import type { Job } from 'bullmq';
-import {
-  createQueueAdapter,
-  wrapQueue,
-  createIntentQueueAdapter,
-  createOpportunityQueueAdapter,
-  createProfileQueueAdapter,
-  createNewsletterQueueAdapter,
-  type NewsletterJobDataUnion,
-} from '../queue.adapter';
+import { createQueueAdapter, wrapQueue, createIntentQueueAdapter, createOpportunityQueueAdapter, createProfileQueueAdapter, createNewsletterQueueAdapter, type NewsletterJobDataUnion } from '../queue.adapter';
 
 describe('QueueAdapter', () => {
   describe('createQueueAdapter', () => {

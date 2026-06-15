@@ -21,10 +21,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import {
-  IntegrationSyncQueue,
-  QUEUE_NAME,
-} from '../integration.queue';
+import { IntegrationSyncQueue, QUEUE_NAME } from '../integration.queue';
 import type { IntegrationSyncQueueDeps } from '../integration.queue';
 
 /** Helper to build a mock DB adapter with sensible defaults. */

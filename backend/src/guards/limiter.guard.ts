@@ -2,12 +2,7 @@ import { SYSTEM_AGENT_IDS } from '@indexnetwork/protocol';
 
 import type { Guard } from '../lib/router/router.decorators';
 import { resolveIdentifier, sha256Truncated } from '../lib/limiter/identifier';
-import {
-  getStorage,
-  resolveClassConfig,
-  isLimiterDisabled,
-  type LimiterClass,
-} from '../lib/limiter';
+import { getStorage, resolveClassConfig, isLimiterDisabled, type LimiterClass } from '../lib/limiter';
 import type { HitResult } from '../lib/limiter';
 import { RateLimiterError } from '../lib/limiter/error';
 import { log } from '../lib/log';

@@ -20,14 +20,7 @@
  *                                          candidates (duplicate blocks), shared-dir links
  */
 
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  mkdirSync,
-  cpSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, cpSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, basename } from "node:path";
 

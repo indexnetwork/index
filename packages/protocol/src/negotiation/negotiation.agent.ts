@@ -1,12 +1,6 @@
 import { createModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
-import {
-  SystemNegotiationTurnSchema,
-  FinalNegotiationTurnSchema,
-  type NegotiationTurn,
-  type UserNegotiationContext,
-  type SeedAssessment,
-} from "./negotiation.state.js";
+import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment } from "./negotiation.state.js";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 
 const SYSTEM_PROMPT = `You are the Index Negotiator, an AI agent acting on behalf of {userName}. You represent their interests in a bilateral negotiation about a potential connection on a discovery network.

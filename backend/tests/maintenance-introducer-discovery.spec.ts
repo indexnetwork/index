@@ -2,12 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect, mock } from 'bun:test';
-import {
-  MaintenanceGraphFactory,
-  type MaintenanceGraphDatabase,
-  type MaintenanceGraphCache,
-  type MaintenanceGraphQueue,
-} from '@indexnetwork/protocol';
+import { MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue } from '@indexnetwork/protocol';
 
 describe('MaintenanceGraph — Introducer Discovery', () => {
   const userId = 'test-user';

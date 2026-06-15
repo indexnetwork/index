@@ -22,10 +22,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import {
-  ProfileQueue,
-  QUEUE_NAME,
-} from '../profile.queue';
+import { ProfileQueue, QUEUE_NAME } from '../profile.queue';
 
 describe('ProfileQueue', () => {
   describe('addEnsureProfileHydeJob', () => {

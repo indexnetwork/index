@@ -4,14 +4,7 @@
  * optionally merge into a single enriched opportunity and expire the old one(s).
  */
 
-import type {
-  CreateOpportunityData,
-  Opportunity,
-  OpportunityActor,
-  OpportunityInterpretation,
-  OpportunitySignal,
-  OpportunityStatus,
-} from '../shared/interfaces/database.interface.js';
+import type { CreateOpportunityData, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunitySignal, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
 import type { Embedder } from '../shared/interfaces/embedder.interface.js';
 import type { Id } from '../shared/interfaces/database.interface.js';

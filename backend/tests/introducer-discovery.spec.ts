@@ -2,17 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect, mock } from 'bun:test';
-import {
-  selectContactsForDiscovery,
-  shouldRunIntroducerDiscovery,
-  runIntroducerDiscovery,
-  MAX_CONTACTS_PER_CYCLE,
-  MAX_CANDIDATES_PER_CONTACT,
-  INTRODUCER_DISCOVERY_SOURCE,
-  type IntroducerDiscoveryDatabase,
-  type IntroducerDiscoveryQueue,
-  type ContactWithIntents,
-} from '@indexnetwork/protocol';
+import { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE, type IntroducerDiscoveryDatabase, type IntroducerDiscoveryQueue, type ContactWithIntents } from '@indexnetwork/protocol';
 
 describe('IntroducerDiscovery', () => {
   const userId = 'user-introducer';

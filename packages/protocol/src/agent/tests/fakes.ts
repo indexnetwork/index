@@ -4,16 +4,7 @@
  * implemented — unused methods throw if called so tests fail loudly.
  */
 
-import type {
-  AgentDatabase,
-  AgentPermissionRecord,
-  AgentRecord,
-  AgentTransportRecord,
-  AgentWithRelations,
-  CreateAgentInput,
-  CreateTransportInput,
-  GrantPermissionInput,
-} from '../../shared/interfaces/agent.interface.js';
+import type { AgentDatabase, AgentPermissionRecord, AgentRecord, AgentTransportRecord, AgentWithRelations, CreateAgentInput, CreateTransportInput, GrantPermissionInput } from '../../shared/interfaces/agent.interface.js';
 
 export interface SeedAgentInput {
   id: string;

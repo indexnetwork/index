@@ -4,10 +4,7 @@ import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import OpportunityCard, {
-  type OpportunityCardData,
-  OpportunitySkeleton,
-} from "@/components/chat/OpportunityCardInChat";
+import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { apiUrl } from "@/lib/api";
 
 interface SharedMessage {

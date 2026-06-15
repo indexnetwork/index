@@ -1,27 +1,7 @@
 import { Job } from 'bullmq';
 
-import {
-  HydeGenerator,
-  HydeGraphFactory,
-  LensInferrer,
-  OpportunityGraphFactory,
-  createOpportunityTools,
-  getToolTimeoutPolicy,
-  requestContext,
-  resolveChatContext,
-} from '@indexnetwork/protocol';
-import type {
-  AgentDispatcher,
-  CompiledGraph,
-  DiscoveryRunInput,
-  DiscoveryRunRecord,
-  HydeGraphDatabase,
-  NegotiationGraphLike,
-  OpportunityGraphDatabase,
-  RawToolDefinition,
-  ResolvedToolContext,
-  ToolDeps,
-} from '@indexnetwork/protocol';
+import { HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
+import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import { captureAppException } from '../../lib/sentry';

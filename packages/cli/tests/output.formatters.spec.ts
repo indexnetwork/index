@@ -1,19 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
 
-import {
-  profileCard,
-  sessionTable,
-  intentTable,
-  intentCard,
-  opportunityTable,
-  opportunityCard,
-  networkTable,
-  networkCard,
-  memberTable,
-  conversationTable,
-  conversationCard,
-  messageList,
-} from "../src/output/formatters";
+import { profileCard, sessionTable, intentTable, intentCard, opportunityTable, opportunityCard, networkTable, networkCard, memberTable, conversationTable, conversationCard, messageList } from "../src/output/formatters";
 import { stripAnsi } from "../src/output/base";
 import type { Intent, Opportunity, Conversation, ConversationMessage } from "../src/types";
 

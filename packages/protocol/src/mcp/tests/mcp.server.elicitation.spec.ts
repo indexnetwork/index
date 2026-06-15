@@ -5,10 +5,7 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, it, expect } from "bun:test";
-import {
-  extractDecisionQuestions,
-  renderQuestionsEnvelope,
-} from "../mcp.server.js";
+import { extractDecisionQuestions, renderQuestionsEnvelope } from "../mcp.server.js";
 import type { Question } from "../../shared/schemas/question.schema.js";
 
 const sampleQ: Question = {

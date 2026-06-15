@@ -10,11 +10,7 @@ config({ path: '.env.test', override: true });
 import { afterAll, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext } from '../opportunity.graph.js';
 import type { Id } from '../../types/common.types.js';
-import type {
-  OpportunityGraphDatabase,
-  OpportunityActor,
-  Opportunity,
-} from '../../shared/interfaces/database.interface.js';
+import type { OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { SourceProfileData } from '../opportunity.state.js';
 import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from '../opportunity.evaluator.js';

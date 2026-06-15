@@ -3,14 +3,7 @@
  * All in-memory; no file I/O.
  */
 
-import type {
-  FixtureDef,
-  GeneratorDef,
-  GeneratorParams,
-  GeneratorRegistry,
-  ResolvedFixtures,
-  SmartestScenario,
-} from './smartest.types';
+import type { FixtureDef, GeneratorDef, GeneratorParams, GeneratorRegistry, ResolvedFixtures, SmartestScenario } from './smartest.types';
 
 const FIXTURE_REF_PREFIX = '@fixtures.';
 

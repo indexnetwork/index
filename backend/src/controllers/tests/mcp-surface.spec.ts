@@ -1,11 +1,6 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
-import {
-  findTelegramHandleMismatch,
-  parseClientSurface,
-  resolveMcpApiKeyPrincipal,
-  telegramHandleFromRequest,
-} from '../mcp.controller';
+import { findTelegramHandleMismatch, parseClientSurface, resolveMcpApiKeyPrincipal, telegramHandleFromRequest } from '../mcp.controller';
 
 function requestWithHeaders(headers: Record<string, string>): Request {
   return new Request('https://protocol.index.network/mcp', { headers });

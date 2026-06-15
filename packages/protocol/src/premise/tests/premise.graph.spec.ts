@@ -4,10 +4,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, it, expect } from "bun:test";
 import { PremiseGraphFactory } from "../premise.graph.js";
-import type {
-  PremiseGraphDatabase,
-  PremiseRecord,
-} from "../../shared/interfaces/database.interface.js";
+import type { PremiseGraphDatabase, PremiseRecord } from "../../shared/interfaces/database.interface.js";
 import type { Embedder } from "../../shared/interfaces/embedder.interface.js";
 
 function createMockDatabase(): PremiseGraphDatabase {

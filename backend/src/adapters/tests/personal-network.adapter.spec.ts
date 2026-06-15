@@ -15,20 +15,8 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, and, inArray } from 'drizzle-orm';
 
 import db from '../../lib/drizzle/drizzle';
-import {
-  users,
-  userProfiles,
-  networks,
-  networkMembers,
-  intents,
-  intentNetworks,
-  personalNetworks,
-} from '../../schemas/database.schema';
-import {
-  ensurePersonalNetwork,
-  getPersonalIndexId,
-  ChatDatabaseAdapter,
-} from '../database.adapter';
+import { users, userProfiles, networks, networkMembers, intents, intentNetworks, personalNetworks } from '../../schemas/database.schema';
+import { ensurePersonalNetwork, getPersonalIndexId, ChatDatabaseAdapter } from '../database.adapter';
 import { NetworkService } from '../../services/network.service';
 
 const TEST_PREFIX = 'personal_idx_' + Date.now() + '_';

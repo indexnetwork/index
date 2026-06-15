@@ -498,7 +498,7 @@ export class IntentGraphFactory {
     /** Strip URLs and "More details at [url]" from intent payloads before persisting. */
     const sanitizePayload = (payload: string): string => {
       if (!payload || typeof payload !== "string") return payload;
-      let out = payload
+      const out = payload
         .replace(/\s*More details at\s*:?\s*https?:\/\/[^\s"'<>)\]]+/gi, "")
         .replace(/\s*See\s+https?:\/\/[^\s"'<>)\]]+\s+for\s+more[^.]*\.?/gi, "")
         .replace(/https?:\/\/[^\s"'<>)\]]+/g, "")

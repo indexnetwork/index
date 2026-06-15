@@ -1,14 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
-import {
-  Loader2,
-  Sparkles,
-  ArrowUp,
-  Handshake,
-  Clock,
-  TrendingUp,
-} from "lucide-react";
+import { Loader2, Sparkles, ArrowUp, Handshake, Clock, TrendingUp } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers } from "@/contexts/APIContext";
 import UserAvatar from "@/components/UserAvatar";

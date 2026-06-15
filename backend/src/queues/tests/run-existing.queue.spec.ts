@@ -21,12 +21,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import {
-  NegotiationRunExistingQueue,
-  QUEUE_NAME,
-  type RunExistingDeps,
-  type RunExistingGraphInvokeOptions,
-} from '../negotiations/run-existing.queue';
+import { NegotiationRunExistingQueue, QUEUE_NAME, type RunExistingDeps, type RunExistingGraphInvokeOptions } from '../negotiations/run-existing.queue';
 
 describe('NegotiationRunExistingQueue', () => {
   describe('constructor and static', () => {

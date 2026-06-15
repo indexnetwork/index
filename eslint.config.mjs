@@ -1,6 +1,7 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 import boundaries from "eslint-plugin-boundaries";
+import importNewlines from "eslint-plugin-import-newlines";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 
@@ -25,7 +26,12 @@ export default tseslint.config(
   // ── Shared TypeScript rules ─────────────────────────────────────────
   {
     files: ["**/*.ts", "**/*.tsx"],
+    plugins: { "import-newlines": importNewlines },
     rules: {
+      // Keep every import on a single line (auto-fixable).
+      // High thresholds mean an import is only ever broken if it has >100
+      // specifiers or exceeds 100k chars — i.e. effectively never.
+      "import-newlines/enforce": ["error", { items: 100, "max-len": 100000 }],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": [
         "warn",

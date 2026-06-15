@@ -4,14 +4,7 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import {
-  HydeGraphFactory,
-  HydeGenerator,
-  LensInferrer,
-  IntentIndexer,
-  buildNetworkAssignmentDecision,
-  resolveAssignmentNetworkScope,
-} from '@indexnetwork/protocol';
+import { HydeGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, buildNetworkAssignmentDecision, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput } from '@indexnetwork/protocol';
 import { fromIntentQueue } from './opportunity/from-intent.queue';
 

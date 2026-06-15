@@ -66,14 +66,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import {
-  NotificationQueue,
-  QUEUE_NAME,
-  type NotificationJobData,
-  type NotificationPriority,
-  type NotificationQueueDatabase,
-  queueOpportunityNotification,
-} from '../notification.queue';
+import { NotificationQueue, QUEUE_NAME, type NotificationJobData, type NotificationPriority, type NotificationQueueDatabase, queueOpportunityNotification } from '../notification.queue';
 import { onTelegramNotification } from '../../lib/notification-events';
 
 const asNotifDb = (db: { getOpportunity: (id: string) => Promise<unknown> }): NotificationQueueDatabase => ({

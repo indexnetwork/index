@@ -24,12 +24,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import {
-  IntentQueue,
-  QUEUE_NAME,
-  type IntentJobPayload,
-  type IntentQueueDatabase,
-} from '../intent.queue';
+import { IntentQueue, QUEUE_NAME, type IntentJobPayload, type IntentQueueDatabase } from '../intent.queue';
 import { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD } from '@indexnetwork/protocol';
 
 /** Cast a plain object to IntentQueueDatabase for tests and provide assignment-policy defaults. */

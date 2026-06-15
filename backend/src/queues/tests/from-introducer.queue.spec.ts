@@ -26,12 +26,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import {
-  FromIntroducerQueue,
-  QUEUE_NAME,
-  type FromIntroducerDatabase,
-  type FromIntroducerGraphInvokeOptions,
-} from '../opportunity/from-introducer.queue';
+import { FromIntroducerQueue, QUEUE_NAME, type FromIntroducerDatabase, type FromIntroducerGraphInvokeOptions } from '../opportunity/from-introducer.queue';
 
 const asDb = (db: unknown): FromIntroducerDatabase => db as FromIntroducerDatabase;
 

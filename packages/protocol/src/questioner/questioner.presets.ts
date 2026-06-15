@@ -5,10 +5,7 @@
  * until their implementation slices land.
  */
 import type { QuestionMode } from "../shared/schemas/question.schema.js";
-import {
-  SYSTEM_PROMPT as DISCOVERY_SYSTEM_PROMPT,
-  buildQuestionPrompt as buildDiscoveryPrompt,
-} from "../opportunity/question.prompt.js";
+import { SYSTEM_PROMPT as DISCOVERY_SYSTEM_PROMPT, buildQuestionPrompt as buildDiscoveryPrompt } from "../opportunity/question.prompt.js";
 
 import type { IntentContext, NegotiationContext, ProfileContext } from "./questioner.types.js";
 

@@ -1,14 +1,7 @@
 import type { EvaluatedOpportunityWithActors } from "../../src/opportunity/opportunity.evaluator.js";
 
 import { MATCHING_MIN_SCORE } from "./matching.constants.js";
-import type {
-  MatchingCase,
-  CandidateExpectation,
-  AssertionResult,
-  CandidateOutcome,
-  RunResult,
-  CaseResult,
-} from "./matching.types.js";
+import type { MatchingCase, CandidateExpectation, AssertionResult, CandidateOutcome, RunResult, CaseResult } from "./matching.types.js";
 
 /** Grades a natural-language criterion. Returns true on pass. Injected for testability. */
 export type Judge = (output: unknown, criteria: string) => Promise<boolean>;

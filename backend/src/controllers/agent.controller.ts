@@ -6,12 +6,7 @@ import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { AgentTestMessageService } from '../services/agent-test-message.service';
 import { agentService } from '../services/agent.service';
-import {
-  negotiationPollingService,
-  NotFoundError,
-  ConflictError,
-  UnauthorizedError,
-} from '../services/negotiation-polling.service';
+import { negotiationPollingService, NotFoundError, ConflictError, UnauthorizedError } from '../services/negotiation-polling.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 
 const agentTestMessageService = new AgentTestMessageService();

@@ -5,12 +5,7 @@
 
 import { z } from 'zod';
 
-import {
-  chatDatabaseAdapter,
-  createUserDatabase,
-  createSystemDatabase,
-  conversationDatabaseAdapter,
-} from '../adapters/database.adapter';
+import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase, conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';

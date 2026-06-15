@@ -21,13 +21,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import {
-  UserContextQueue,
-  QUEUE_NAME,
-  computePremiseHash,
-  type ContextPremise,
-  type UserContextQueueDeps,
-} from '../usercontext.queue';
+import { UserContextQueue, QUEUE_NAME, computePremiseHash, type ContextPremise, type UserContextQueueDeps } from '../usercontext.queue';
 
 describe('UserContextQueue', () => {
   it('exposes QUEUE_NAME on class', () => {

@@ -17,73 +17,28 @@ import { describe, it, expect } from 'bun:test';
 // ─────────────────────────────────────────────────────────────────────────────
 // Protocol interface types (the canonical contracts)
 // ─────────────────────────────────────────────────────────────────────────────
-import type {
-  Cache as ProtocolCache,
-  CacheOptions as ProtocolCacheOptions,
-} from '@indexnetwork/protocol';
+import type { Cache as ProtocolCache, CacheOptions as ProtocolCacheOptions } from '@indexnetwork/protocol';
 
-import type {
-  LensEmbedding as ProtocolLensEmbedding,
-  HydeSearchOptions as ProtocolHydeSearchOptions,
-  HydeCandidate as ProtocolHydeCandidate,
-  VectorSearchResult as ProtocolVectorSearchResult,
-  VectorStoreOption as ProtocolVectorStoreOption,
-} from '@indexnetwork/protocol';
+import type { LensEmbedding as ProtocolLensEmbedding, HydeSearchOptions as ProtocolHydeSearchOptions, HydeCandidate as ProtocolHydeCandidate, VectorSearchResult as ProtocolVectorSearchResult, VectorStoreOption as ProtocolVectorStoreOption } from '@indexnetwork/protocol';
 
-import type {
-  IntegrationAdapter as ProtocolIntegrationAdapter,
-  IntegrationSession as ProtocolIntegrationSession,
-  IntegrationSessionOptions as ProtocolIntegrationSessionOptions,
-  ToolActionResponse as ProtocolToolActionResponse,
-  IntegrationConnection as ProtocolIntegrationConnection,
-} from '@indexnetwork/protocol';
+import type { IntegrationAdapter as ProtocolIntegrationAdapter, IntegrationSession as ProtocolIntegrationSession, IntegrationSessionOptions as ProtocolIntegrationSessionOptions, ToolActionResponse as ProtocolToolActionResponse, IntegrationConnection as ProtocolIntegrationConnection } from '@indexnetwork/protocol';
 
-import type {
-  UserDatabase as ProtocolUserDatabase,
-  SystemDatabase as ProtocolSystemDatabase,
-} from '@indexnetwork/protocol';
+import type { UserDatabase as ProtocolUserDatabase, SystemDatabase as ProtocolSystemDatabase } from '@indexnetwork/protocol';
 
-import type {
-  QuestionerDatabase as ProtocolQuestionerDatabase,
-  PersistableQuestion as ProtocolPersistableQuestion,
-  PersistedQuestion as ProtocolPersistedQuestion,
-  QuestionFilters as ProtocolQuestionFilters,
-} from '@indexnetwork/protocol';
+import type { QuestionerDatabase as ProtocolQuestionerDatabase, PersistableQuestion as ProtocolPersistableQuestion, PersistedQuestion as ProtocolPersistedQuestion, QuestionFilters as ProtocolQuestionFilters } from '@indexnetwork/protocol';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Adapter local types (the structurally-aligned copies)
 // ─────────────────────────────────────────────────────────────────────────────
-import type {
-  Cache as AdapterCache,
-  CacheOptions as AdapterCacheOptions,
-} from '../cache.adapter';
+import type { Cache as AdapterCache, CacheOptions as AdapterCacheOptions } from '../cache.adapter';
 
-import type {
-  LensEmbedding as AdapterLensEmbedding,
-  HydeSearchOptions as AdapterHydeSearchOptions,
-  HydeCandidate as AdapterHydeCandidate,
-  VectorSearchResult as AdapterVectorSearchResult,
-  VectorStoreOption as AdapterVectorStoreOption,
-} from '../embedder.adapter';
+import type { LensEmbedding as AdapterLensEmbedding, HydeSearchOptions as AdapterHydeSearchOptions, HydeCandidate as AdapterHydeCandidate, VectorSearchResult as AdapterVectorSearchResult, VectorStoreOption as AdapterVectorStoreOption } from '../embedder.adapter';
 
-import type {
-  IntegrationAdapter as AdapterIntegrationAdapter,
-  IntegrationSession as AdapterIntegrationSession,
-  IntegrationSessionOptions as AdapterIntegrationSessionOptions,
-  ToolActionResponse as AdapterToolActionResponse,
-  IntegrationConnection as AdapterIntegrationConnection,
-} from '../integration.adapter';
+import type { IntegrationAdapter as AdapterIntegrationAdapter, IntegrationSession as AdapterIntegrationSession, IntegrationSessionOptions as AdapterIntegrationSessionOptions, ToolActionResponse as AdapterToolActionResponse, IntegrationConnection as AdapterIntegrationConnection } from '../integration.adapter';
 
-import {
-  createUserDatabase,
-  createSystemDatabase,
-} from '../database.adapter';
+import { createUserDatabase, createSystemDatabase } from '../database.adapter';
 
-import type {
-  AdapterPersistableQuestion,
-  AdapterPersistedQuestion,
-  AdapterQuestionFilters,
-} from '../questioner.adapter';
+import type { AdapterPersistableQuestion, AdapterPersistedQuestion, AdapterQuestionFilters } from '../questioner.adapter';
 import { QuestionerAdapter } from '../questioner.adapter';
 
 // ═══════════════════════════════════════════════════════════════════════════════

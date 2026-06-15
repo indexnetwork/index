@@ -18,11 +18,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 
 import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 import { buildSystemContent } from "../chat.prompt.js";
-import {
-  extractRecentToolCalls,
-  resolveModules,
-  type IterationContext,
-} from "../chat.prompt.modules.js";
+import { extractRecentToolCalls, resolveModules, type IterationContext } from "../chat.prompt.modules.js";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -417,12 +413,7 @@ import { assertLLM } from "../../shared/agent/tests/llm-assert.js";
 import { ChatGraphFactory } from "../chat.graph.js";
 import type { Embedder } from "../../shared/interfaces/embedder.interface.js";
 import type { Scraper } from "../../shared/interfaces/scraper.interface.js";
-import {
-  createChatGraphMockDb,
-  mockProfile,
-  mockActiveIntent,
-  createMockProtocolDeps,
-} from "./chat.graph.mocks.js";
+import { createChatGraphMockDb, mockProfile, mockActiveIntent, createMockProtocolDeps } from "./chat.graph.mocks.js";
 import type { ChatSessionReader } from "../../shared/interfaces/chat-session.interface.js";
 import type { NetworkMembership } from "../../shared/interfaces/database.interface.js";
 

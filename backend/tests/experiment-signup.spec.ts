@@ -7,17 +7,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { experimentService } from '../src/services/experiment.service';
 import { AuthOrApiKeyGuard } from '../src/guards/auth.guard';
 import db from '../src/lib/drizzle/drizzle';
-import {
-  agentPermissions,
-  agents,
-  apikeys,
-  networkMembers,
-  networks,
-  personalNetworks,
-  userProfiles,
-  userSocials,
-  users,
-} from '../src/schemas/database.schema';
+import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, userProfiles, userSocials, users } from '../src/schemas/database.schema';
 
 const cleanup: Array<() => Promise<void>> = [];
 

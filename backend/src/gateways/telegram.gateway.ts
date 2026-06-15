@@ -1,12 +1,7 @@
 import { log } from '../lib/log';
 import { onTelegramNotification, type TelegramNotificationPayload } from '../lib/notification-events';
 import type { TelegramPrefs } from '../schemas/database.schema';
-import {
-  parseResponseSegments,
-  hasStructuredBlocks,
-  formatOpportunityCardHtml,
-  formatOpportunityCardPlainText,
-} from '../lib/telegram/formatter';
+import { parseResponseSegments, hasStructuredBlocks, formatOpportunityCardHtml, formatOpportunityCardPlainText } from '../lib/telegram/formatter';
 import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 
 const logger = log.lib.from('telegram.gateway');

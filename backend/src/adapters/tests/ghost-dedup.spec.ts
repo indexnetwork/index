@@ -6,15 +6,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, and, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
-import {
-  users,
-  userProfiles,
-  userSocials,
-  networks,
-  networkMembers,
-  intents,
-  opportunities,
-} from '../../schemas/database.schema';
+import { users, userProfiles, userSocials, networks, networkMembers, intents, opportunities } from '../../schemas/database.schema';
 import { ProfileDatabaseAdapter } from '../database.adapter';
 
 const TEST_PREFIX = 'ghost_dedup_spec_' + Date.now() + '_';

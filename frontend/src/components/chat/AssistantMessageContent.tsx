@@ -2,14 +2,8 @@ import type { ComponentType, ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Loader2 } from "lucide-react";
-import OpportunityCard, {
-  type OpportunityCardData,
-  OpportunitySkeleton,
-} from "@/components/chat/OpportunityCardInChat";
-import IntentProposalCard, {
-  type IntentProposalData,
-  IntentProposalSkeleton,
-} from "@/components/chat/IntentProposalCard";
+import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
+import IntentProposalCard, { type IntentProposalData, IntentProposalSkeleton } from "@/components/chat/IntentProposalCard";
 import NetworksPanel from "@/components/chat/NetworksPanel";
 import { cn } from "@/lib/utils";
 import { mentionsToMarkdownLinks } from "@/lib/mentions";

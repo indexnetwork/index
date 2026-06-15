@@ -4,10 +4,7 @@ import { PremiseGraphState } from "./premise.state.js";
 import { PremiseAnalyzer } from "./premise.analyzer.js";
 import { PremiseIndexer } from "./premise.indexer.js";
 
-import {
-  buildNetworkAssignmentDecision,
-  resolveAssignmentNetworkScope,
-} from "../shared/assignment/network-assignment.policy.js";
+import { buildNetworkAssignmentDecision, resolveAssignmentNetworkScope } from "../shared/assignment/network-assignment.policy.js";
 import { getAbortSignalConfig } from "../shared/agent/model-signal.js";
 import type { PremiseGraphDatabase, PremiseAnalysis } from "../shared/interfaces/database.interface.js";
 import type { Embedder } from "../shared/interfaces/embedder.interface.js";

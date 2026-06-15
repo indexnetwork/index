@@ -18,7 +18,7 @@ let presentHomeCardMock = mock(async () => ({
   mutualIntentsLabel: undefined,
   greeting: '',
 }));
-let gatherPresenterContextMock = mock(async (
+const gatherPresenterContextMock = mock(async (
   _presenterDb: PresenterDatabase,
   opp: { status: string },
   _viewerId: string,
@@ -27,12 +27,7 @@ let gatherPresenterContextMock = mock(async (
 }));
 
 import type { ToolDeps, DefineTool } from '../../shared/agent/tool.helpers.js';
-import type {
-  ChatGraphCompositeDatabase,
-  Opportunity,
-  UserRecord,
-  ProfileRow,
-} from '../../shared/interfaces/database.interface.js';
+import type { ChatGraphCompositeDatabase, Opportunity, UserRecord, ProfileRow } from '../../shared/interfaces/database.interface.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

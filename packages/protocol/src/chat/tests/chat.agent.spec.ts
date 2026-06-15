@@ -82,10 +82,7 @@ mock.module("../../shared/agent/tool.factory", () => ({
   createChatTools: async () => createMockTools(),
 }));
 
-import {
-  AIMessageChunk,
-  HumanMessage,
-} from "@langchain/core/messages";
+import { AIMessageChunk, HumanMessage } from "@langchain/core/messages";
 import { ChatAgent, type AgentStreamEvent } from "../chat.agent.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

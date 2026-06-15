@@ -5,16 +5,8 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import {
-  HomeGraphFactory,
-  DEFAULT_HOME_STATUSES,
-  ALL_OPPORTUNITY_STATUSES,
-} from '../feed/feed.graph.js';
-import type {
-  HomeGraphDatabase,
-  Opportunity,
-  OpportunityStatus,
-} from '../../shared/interfaces/database.interface.js';
+import { HomeGraphFactory, DEFAULT_HOME_STATUSES, ALL_OPPORTUNITY_STATUSES } from '../feed/feed.graph.js';
+import type { HomeGraphDatabase, Opportunity, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityCache } from '../../shared/interfaces/cache.interface.js';
 
 function createMockCache(): OpportunityCache {

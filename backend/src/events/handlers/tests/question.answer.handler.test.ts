@@ -1,8 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import {
-  handleQuestionAnswered,
-  type QuestionAnswerHandlerDeps,
-} from "../question.answer.handler";
+import { handleQuestionAnswered, type QuestionAnswerHandlerDeps } from "../question.answer.handler";
 
 function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswerHandlerDeps {
   return {

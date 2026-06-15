@@ -1,22 +1,9 @@
 import type { ChatOpenAI } from "@langchain/openai";
-import {
-  AIMessage,
-  BaseMessage,
-  SystemMessage,
-  ToolMessage,
-  AIMessageChunk,
-} from "@langchain/core/messages";
-import {
-  createChatTools,
-  type ToolContext,
-  type ResolvedToolContext,
-} from "../shared/agent/tool.factory.js";
+import { AIMessage, BaseMessage, SystemMessage, ToolMessage, AIMessageChunk } from "@langchain/core/messages";
+import { createChatTools, type ToolContext, type ResolvedToolContext } from "../shared/agent/tool.factory.js";
 import { resolveChatContext } from "../shared/agent/tool.helpers.js";
 import { ITERATION_NUDGE, buildSystemContent } from "./chat.prompt.js";
-import {
-  extractRecentToolCalls,
-  type IterationContext,
-} from "./chat.prompt.modules.js";
+import { extractRecentToolCalls, type IterationContext } from "./chat.prompt.modules.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { createModel, type ModelConfig } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";

@@ -30,16 +30,7 @@ import { CASES } from "./matching.cases.js";
 import { runCase } from "./matching.runner.js";
 import { scoreCase, type Judge } from "./matching.scorer.js";
 import { formatCaseList, hasRule, parseTier, selectCases } from "./matching.selection.js";
-import {
-  buildScorecard,
-  computeRollingBaseline,
-  diffBaseline,
-  formatConsole,
-  readBaseline,
-  writeBaseline,
-  writeHtmlReport,
-  writeRunReport,
-} from "./matching.reporter.js";
+import { buildScorecard, computeRollingBaseline, diffBaseline, formatConsole, readBaseline, writeBaseline, writeHtmlReport, writeRunReport } from "./matching.reporter.js";
 import type { CaseResult } from "./matching.types.js";
 
 const DEFAULT_ALPHA = 0.05;

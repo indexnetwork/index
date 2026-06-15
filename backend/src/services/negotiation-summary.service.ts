@@ -5,11 +5,7 @@
  * OPENROUTER_API_KEY. Tests inject a fake.
  */
 import { NegotiationSummarizer } from "@indexnetwork/protocol";
-import type {
-  DiscoveryNegotiation,
-  DiscoveryNegotiationDigest,
-  NegotiationSummaryReader,
-} from "@indexnetwork/protocol";
+import type { DiscoveryNegotiation, DiscoveryNegotiationDigest, NegotiationSummaryReader } from "@indexnetwork/protocol";
 
 import { log } from "../lib/log";
 

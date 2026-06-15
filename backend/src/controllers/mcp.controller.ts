@@ -4,21 +4,12 @@
  */
 
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import {
-  McpServer,
-  WebStandardStreamableHTTPServerTransport,
-} from '@modelcontextprotocol/server';
+import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
 import { cacheAdapter, hydeCacheAdapter } from '../adapters/cache.adapter';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { ComposioIntegrationAdapter } from '../adapters/integration.adapter';
-import {
-  chatDatabaseAdapter,
-  conversationDatabaseAdapter,
-  ChatDatabaseAdapter,
-  createUserDatabase,
-  createSystemDatabase,
-} from '../adapters/database.adapter';
+import { chatDatabaseAdapter, conversationDatabaseAdapter, ChatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentQueue } from '../queues/intent.queue';
