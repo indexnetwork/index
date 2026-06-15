@@ -1,18 +1,5 @@
-import {
-  agentDatabaseAdapter,
-  type AgentPermissionRow,
-  type AgentRegistryStore,
-  type AgentScope,
-  type AgentRow,
-  type AgentTransportRow,
-  type AgentWithRelations,
-  type PermissionScope,
-  type TransportChannel,
-} from '../adapters/agent.database.adapter';
-import {
-  agentTokenAdapter,
-  type AgentTokenStore,
-} from '../adapters/agent-token.adapter';
+import { agentDatabaseAdapter, type AgentPermissionRow, type AgentRegistryStore, type AgentScope, type AgentRow, type AgentTransportRow, type AgentWithRelations, type PermissionScope, type TransportChannel } from '../adapters/agent.database.adapter';
+import { agentTokenAdapter, type AgentTokenStore } from '../adapters/agent-token.adapter';
 import { userDatabaseAdapter } from '../adapters/database.adapter';
 import { log } from '../lib/log';
 

@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import {
-  canRunPublicProfileEnrichment,
-  hasEdgeosImportConsent,
-  hasPublicProfileLookupConsent,
-  isConsentRequiredPolicy,
-  normalizeProfileEnrichmentPolicy,
-} from './profile-enrichment-policy';
+import { canRunPublicProfileEnrichment, hasEdgeosImportConsent, hasPublicProfileLookupConsent, isConsentRequiredPolicy, normalizeProfileEnrichmentPolicy } from './profile-enrichment-policy';
 import type { OnboardingState } from '../../schemas/database.schema';
 
 const granted: OnboardingState = {

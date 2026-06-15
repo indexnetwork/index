@@ -10,25 +10,8 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
-import {
-  users,
-  userProfiles,
-  userSocials,
-  networks,
-  networkMembers,
-  intents,
-  intentNetworks,
-  premises,
-  opportunities,
-} from '../../schemas/database.schema';
-import {
-  IntentDatabaseAdapter,
-  ChatDatabaseAdapter,
-  ProfileDatabaseAdapter,
-  OpportunityDatabaseAdapter,
-  NetworkGraphDatabaseAdapter,
-  HydeDatabaseAdapter,
-} from '../database.adapter';
+import { users, userProfiles, userSocials, networks, networkMembers, intents, intentNetworks, premises, opportunities } from '../../schemas/database.schema';
+import { IntentDatabaseAdapter, ChatDatabaseAdapter, ProfileDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
 

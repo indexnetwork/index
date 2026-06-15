@@ -5,59 +5,10 @@
  * common error patterns (401, network errors).
  */
 
-import type {
-  ChatSession,
-  UserProfile,
-  StreamChatParams,
-  UserData,
-  Intent,
-  ListIntentsOptions,
-  IntentListResult,
-  OpportunityListOptions,
-  Opportunity,
-  OpportunityDetail,
-  Network,
-  NetworkMember,
-  SearchedUser,
-  AddMemberResult,
-  Conversation,
-  ConversationMessage,
-  Negotiation,
-  NegotiationListOptions,
-  ToolResult,
-} from "./types";
+import type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, SearchedUser, AddMemberResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, ToolResult } from "./types";
 
 // Re-export all types for backward compatibility
-export type {
-  ChatSession,
-  UserProfile,
-  StreamChatParams,
-  UserData,
-  Intent,
-  ListIntentsOptions,
-  IntentListResult,
-  OpportunityListOptions,
-  Opportunity,
-  OpportunityActor,
-  OpportunityInterpretation,
-  OpportunityDetection,
-  OpportunityDetail,
-  OpportunityParty,
-  Network,
-  NetworkMember,
-  SearchedUser,
-  AddMemberResult,
-  ConversationParticipant,
-  Conversation,
-  MessagePart,
-  ConversationMessage,
-  Negotiation,
-  NegotiationListOptions,
-  NegotiationSpeaker,
-  NegotiationTurn,
-  NegotiationOutcome,
-  ToolResult,
-} from "./types";
+export type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, SearchedUser, AddMemberResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, ToolResult } from "./types";
 
 export class ApiClient {
   private readonly baseUrl: string;

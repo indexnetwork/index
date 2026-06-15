@@ -26,13 +26,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import {
-  FromIntentQueue,
-  QUEUE_NAME,
-  type FromIntentJobData,
-  type FromIntentDatabase,
-  type FromIntentGraphInvokeOptions,
-} from '../opportunity/from-intent.queue';
+import { FromIntentQueue, QUEUE_NAME, type FromIntentJobData, type FromIntentDatabase, type FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
 
 const asDb = (db: unknown): FromIntentDatabase => db as FromIntentDatabase;
 

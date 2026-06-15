@@ -4,21 +4,8 @@ import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
 import { canUserSeeOpportunity, isActionableForViewer } from '@indexnetwork/protocol';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
-import {
-  intents,
-  hydeDocuments,
-  intentNetworks,
-  networks,
-  networkMembers,
-  opportunities,
-} from '../schemas/database.schema';
-import {
-  conversations,
-  conversationParticipants,
-  conversationMetadata,
-  messages,
-  tasks,
-} from '../schemas/conversation.schema';
+import { intents, hydeDocuments, intentNetworks, networks, networkMembers, opportunities } from '../schemas/database.schema';
+import { conversations, conversationParticipants, conversationMetadata, messages, tasks } from '../schemas/conversation.schema';
 import { debugService } from '../services/debug.service';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';

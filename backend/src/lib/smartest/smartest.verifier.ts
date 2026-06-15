@@ -7,11 +7,7 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
 import { getSmartestVerifierModel } from './smartest.config';
 import type { VerificationResult } from './smartest.types';
-import {
-  SMARTEST_VERIFIER_SYSTEM_PROMPT,
-  buildVerifierUserMessage,
-  smartestVerifierOutputSchema,
-} from './smartest.verifier.prompt';
+import { SMARTEST_VERIFIER_SYSTEM_PROMPT, buildVerifierUserMessage, smartestVerifierOutputSchema } from './smartest.verifier.prompt';
 
 /**
  * Truncate output for LLM verification so large conversation/tool payloads don't blow context.

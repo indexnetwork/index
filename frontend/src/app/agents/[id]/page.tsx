@@ -3,23 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as Dialog from "@radix-ui/react-dialog";
-import {
-  Loader2,
-  ArrowLeft,
-  Bot,
-  Handshake,
-  TrendingUp,
-  Clock,
-  KeyRound,
-  Shield,
-  Plus,
-  Trash2,
-  Copy,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Send,
-} from "lucide-react";
+import { Loader2, ArrowLeft, Bot, Handshake, TrendingUp, Clock, KeyRound, Shield, Plus, Trash2, Copy, Check, ChevronDown, ChevronRight, Send } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents, useUsers } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";

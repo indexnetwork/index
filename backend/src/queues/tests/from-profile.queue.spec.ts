@@ -25,11 +25,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import {
-  FromProfileQueue,
-  QUEUE_NAME,
-  type FromProfileJobData,
-} from '../opportunity/from-profile.queue';
+import { FromProfileQueue, QUEUE_NAME, type FromProfileJobData } from '../opportunity/from-profile.queue';
 
 describe('FromProfileQueue', () => {
   describe('constructor and static', () => {

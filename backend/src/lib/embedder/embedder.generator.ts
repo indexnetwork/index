@@ -5,11 +5,7 @@
 import OpenAI from 'openai';
 
 import { log } from '../log';
-import {
-  OPENROUTER_EMBEDDING_BASE_URL,
-  OPENROUTER_EMBEDDING_DIMENSIONS,
-  OPENROUTER_EMBEDDING_MODEL,
-} from './embedder.config';
+import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from './embedder.config';
 import { EmbeddingGenerator } from './embedder.types';
 
 const logger = log.lib.from('embedder.generator');

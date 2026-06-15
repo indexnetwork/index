@@ -12,15 +12,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { networkInvitationService } from '../src/services/network-invitation.service';
 import db from '../src/lib/drizzle/drizzle';
-import {
-  agentPermissions,
-  agents,
-  apikeys,
-  networkMembers,
-  networks,
-  personalNetworks,
-  users,
-} from '../src/schemas/database.schema';
+import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, users } from '../src/schemas/database.schema';
 
 const cleanup: Array<() => Promise<void>> = [];
 

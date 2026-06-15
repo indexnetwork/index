@@ -1,11 +1,7 @@
 import { log } from '../lib/log';
 
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
-import type {
-  AdapterQuestionAnswer,
-  AdapterQuestionFilters,
-  AdapterPersistedQuestion,
-} from '../adapters/questioner.adapter';
+import type { AdapterQuestionAnswer, AdapterQuestionFilters, AdapterPersistedQuestion } from '../adapters/questioner.adapter';
 import db from '../lib/drizzle/drizzle';
 
 // Re-export adapter types so the controller layer can reference them without

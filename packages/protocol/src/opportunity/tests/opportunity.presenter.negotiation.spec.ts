@@ -4,10 +4,7 @@ config({ path: ".env.test", override: true });
 import { describe, expect, it, mock } from "bun:test";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-import {
-  OpportunityPresenter,
-  type HomeCardPresenterInput,
-} from "../opportunity.presenter.js";
+import { OpportunityPresenter, type HomeCardPresenterInput } from "../opportunity.presenter.js";
 import type { NegotiationContext } from "../negotiation-context.loader.js";
 
 type PresenterWithInvokeOverride = {

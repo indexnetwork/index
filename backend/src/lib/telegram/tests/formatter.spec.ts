@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import {
-  parseResponseSegments,
-  hasStructuredBlocks,
-  formatOpportunityCardHtml,
-  formatOpportunityCardPlainText,
-  type ResponseSegment,
-} from '../formatter';
+import { parseResponseSegments, hasStructuredBlocks, formatOpportunityCardHtml, formatOpportunityCardPlainText, type ResponseSegment } from '../formatter';
 
 // ── parseResponseSegments ──────────────────────────────────────────────────────
 

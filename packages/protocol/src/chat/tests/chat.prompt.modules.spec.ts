@@ -8,12 +8,7 @@ import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 import { buildSystemContent } from "../chat.prompt.js";
-import {
-  extractRecentToolCalls,
-  resolveModules,
-  PROMPT_MODULES,
-  type IterationContext,
-} from "../chat.prompt.modules.js";
+import { extractRecentToolCalls, resolveModules, PROMPT_MODULES, type IterationContext } from "../chat.prompt.modules.js";
 
 describe("extractRecentToolCalls", () => {
   test("returns empty array when no tool calls in messages", () => {

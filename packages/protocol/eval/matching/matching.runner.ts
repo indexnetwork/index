@@ -1,13 +1,6 @@
-import type {
-  EvaluatorInput,
-  EvaluatedOpportunityWithActors,
-} from "../../src/opportunity/opportunity.evaluator.js";
+import type { EvaluatorInput, EvaluatedOpportunityWithActors } from "../../src/opportunity/opportunity.evaluator.js";
 
-import {
-  MATCHING_EVAL_MAX_ATTEMPTS,
-  MATCHING_EVAL_RETRY_DELAY_MS,
-  MATCHING_MIN_SCORE,
-} from "./matching.constants.js";
+import { MATCHING_EVAL_MAX_ATTEMPTS, MATCHING_EVAL_RETRY_DELAY_MS, MATCHING_MIN_SCORE } from "./matching.constants.js";
 import type { MatchingCase } from "./matching.types.js";
 
 /** Minimal evaluator surface the runner needs (real OpportunityEvaluator satisfies this). */

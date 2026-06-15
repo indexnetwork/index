@@ -10,13 +10,7 @@ config({ path: '.env.test', override: true });
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import db from '../../lib/drizzle/drizzle';
-import {
-  users,
-  userProfiles,
-  networks,
-  networkMembers,
-  personalNetworks,
-} from '../../schemas/database.schema';
+import { users, userProfiles, networks, networkMembers, personalNetworks } from '../../schemas/database.schema';
 import { ContactService } from '../contact.service';
 
 const TEST_PREFIX = 'contact_svc_v2_' + Date.now() + '_';

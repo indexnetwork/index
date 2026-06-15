@@ -2,20 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdir, rm, unlink } from "node:fs/promises";
-import {
-  binomialCI,
-  binomialPValue,
-  binomialSignificance,
-  predictivePValue,
-  buildScorecard,
-  computeRollingBaseline,
-  diffBaseline,
-  formatConsole,
-  renderHtml,
-  writeBaseline,
-  writeRunReport,
-  readBaseline,
-} from "../matching.reporter.js";
+import { binomialCI, binomialPValue, binomialSignificance, predictivePValue, buildScorecard, computeRollingBaseline, diffBaseline, formatConsole, renderHtml, writeBaseline, writeRunReport, readBaseline } from "../matching.reporter.js";
 import type { CaseResult, MatchingCase, Scorecard } from "../matching.types.js";
 
 const caseResult = (caseId: string, rule: CaseResult["rule"], passRate: number): CaseResult => ({

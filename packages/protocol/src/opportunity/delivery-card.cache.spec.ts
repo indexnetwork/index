@@ -74,7 +74,7 @@ describe('getOrCreateDeliveryCardBatch', () => {
     };
 
     let presentCalledCount = 0;
-    let setCalls: any[] = [];
+    const setCalls: any[] = [];
 
     const mockCache: Cache = {
       get: mock(() => Promise.resolve(null)),
@@ -167,7 +167,7 @@ describe('getOrCreateDeliveryCardBatch', () => {
       narratorRemark: 'Cached remark',
     };
     let presentCalledCount = 0;
-    let setCalls: any[] = [];
+    const setCalls: any[] = [];
 
     const mockCache: Cache = {
       get: mock(() => Promise.resolve(null)),

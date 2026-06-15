@@ -4,11 +4,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, test } from "bun:test";
 import type { ChatGraphCompositeDatabase } from "../../interfaces/database.interface.js";
-import {
-  ChatContextAccessError,
-  redactSensitiveFields,
-  resolveChatContext,
-} from "../tool.helpers.js";
+import { ChatContextAccessError, redactSensitiveFields, resolveChatContext } from "../tool.helpers.js";
 
 const userId = "00000000-0000-4000-8000-000000000111";
 const networkId = "00000000-0000-4000-8000-000000000222";

@@ -32,23 +32,39 @@ const tools = await createChatTools({
 
 ### 2. Implement the adapters
 
-The package defines interfaces — your application provides the concrete implementations:
+The package defines interfaces — your application provides the concrete implementations.
+
+**Required** (always needed by `createChatTools`):
 
 | Interface | Responsibility |
 |---|---|
-| `ChatGraphCompositeDatabase` | Core data access (users, intents, indexes, opportunities) |
+| `ChatGraphCompositeDatabase` | Core data access (users, intents, indexes/networks, opportunities) |
+| `UserDatabase` / `SystemDatabase` | Context-bound databases built by `createUserDatabase` / `createSystemDatabase` |
 | `Embedder` | Vector embeddings for semantic search |
 | `Scraper` | Web content extraction |
-| `Cache` / `HydeCache` | Result caching |
+| `Cache` / `HydeCache` | Result caching (HyDE may share the general cache) |
 | `IntegrationAdapter` | OAuth and external tool actions |
-| `ContactServiceAdapter` | Contact management |
 | `IntentGraphQueue` | Background intent processing queue |
+| `ContactServiceAdapter` | Contact management |
 | `ChatSessionReader` | Load conversation history |
 | `ProfileEnricher` | Enrich profiles from external sources |
 | `NegotiationGraphDatabase` | Negotiation state persistence |
+
+**Optional** (enable specific capabilities; omit to run without that feature):
+
+| Interface | Responsibility |
+|---|---|
 | `AgentDatabase` | Agent registry CRUD (agents, transports, permissions) |
-| `AgentDispatcher` | Resolves and invokes agents during negotiation turns |
-| `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request |
+| `AgentDispatcher` | Resolves and invokes personal agents during negotiation turns — required to register the negotiation tools |
+| `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request (MCP server only) |
+| `DeliveryLedger` | Commits OpenClaw opportunity-delivery rows |
+| `DiscoveryRunStore` / `DiscoveryRunQueue` | Persist and execute async MCP discovery runs |
+| `ProfileRunStore` / `ProfileRunQueue` | Persist and execute async MCP profile builds |
+| `MintConnectLink` | Mints short connect links for opportunity accepts |
+| `ChatSummaryReader` | Read-through chat-session digest |
+| `ChatMessageWriter` | Writes user messages into the most-recent chat session (MCP elicitation) |
+| `QuestionGeneratorReader` / `QuestionerDatabase` | Decision-question generation and persistence |
+| `NegotiationSummaryReader` | Negotiation-digest summarization (falls back to deterministic digests) |
 
 All interfaces are exported from the package root — import them with `import type { ... } from "@indexnetwork/protocol"`.
 
@@ -61,36 +77,84 @@ import { createChatTools } from "@indexnetwork/protocol";
 
 const tools = await createChatTools({
   userId: "user-uuid",
-  sessionId: "chat-session-id",
-  indexId: "optional-index-uuid",   // scope tools to a specific index
-  database,
-  embedder,
-  scraper,
-  cache,
-  hydeCache,
-  integration,
-  intentQueue,
-  contactService,
-  chatSession,
-  enricher,
-  negotiationDatabase,
-  integrationImporter,
-  createUserDatabase,
-  createSystemDatabase,
+
+  // ── Required adapters ──
+  database,             // ChatGraphCompositeDatabase
+  embedder,             // Embedder
+  scraper,              // Scraper
+  cache,                // Cache
+  hydeCache,            // HydeCache
+  integration,          // IntegrationAdapter
+  intentQueue,          // IntentGraphQueue
+  contactService,       // ContactServiceAdapter
+  chatSession,          // ChatSessionReader
+  enricher,             // ProfileEnricher
+  negotiationDatabase,  // NegotiationGraphDatabase
+  integrationImporter,  // bulk contact import
+  createUserDatabase,   // (db, userId) => UserDatabase
+  createSystemDatabase, // (db, userId, indexScope, embedder?) => SystemDatabase
+
+  // ── Optional scoping ──
+  networkId: "optional-network-uuid", // scope tools to a specific index/network
+  sessionId: "chat-session-id",       // enables draft opportunities with conversation context
+
+  // ── Optional capabilities (enable when the host supports them) ──
+  agentDatabase,        // AgentDatabase — agent registry
+  agentDispatcher,      // AgentDispatcher — routes negotiation turns to personal agents
+  deliveryLedger,       // DeliveryLedger — OpenClaw delivery commits
+  discoveryRuns,        // DiscoveryRunStore + discoveryRunQueue — async MCP discovery
+  profileRuns,          // ProfileRunStore + profileRunQueue — async MCP profile builds
+  mintConnectLink,      // short connect links for opportunity accepts
+  modelConfig,          // override chat model / reasoning effort (see above)
 });
 
 // tools is an array of LangChain Tool objects ready to bind to an agent
 ```
 
+`createChatTools` accepts a single `ToolContext` object. The required adapters
+above are always needed; the optional capabilities default to a degraded-but-
+functional mode when omitted (e.g. without `agentDispatcher` the negotiation
+tools are not registered, and without `discoveryRuns` MCP discovery runs
+synchronously).
+
 ## Graphs
 
-For direct graph invocation (bypassing the tool layer), factory classes are exported for each workflow:
+For direct graph invocation (bypassing the tool layer), a `*GraphFactory` class is exported for each workflow:
 
 ```typescript
-import { ChatGraphFactory, IntentGraphFactory, OpportunityGraphFactory } from "@indexnetwork/protocol";
+import {
+  ChatGraphFactory,
+  IntentGraphFactory,
+  OpportunityGraphFactory,
+  ProfileGraphFactory,
+  PremiseGraphFactory,
+  NegotiationGraphFactory,
+  HydeGraphFactory,
+  NetworkGraphFactory,
+  NetworkMembershipGraphFactory,
+  IntentNetworkGraphFactory,
+  HomeGraphFactory,
+  MaintenanceGraphFactory,
+} from "@indexnetwork/protocol";
 ```
 
-Each factory exposes a `.createGraph()` method that returns a compiled LangGraph ready for `.invoke()`.
+Each factory takes its typed dependencies in the constructor and exposes a
+`.createGraph()` method that returns a compiled LangGraph ready for `.invoke()`.
+
+| Factory | Workflow |
+|---|---|
+| `ChatGraphFactory` | ReAct chat loop — LLM calls tools, responds to the user |
+| `IntentGraphFactory` | Clarify, infer, verify felicity, reconcile, and persist intents |
+| `OpportunityGraphFactory` | HyDE-based discovery: search, evaluate (valency), rank, persist |
+| `ProfileGraphFactory` | Generate/update user profiles with scraping and embedding |
+| `PremiseGraphFactory` | Decompose and index a user's premises |
+| `NegotiationGraphFactory` | Multi-turn bilateral negotiation flows |
+| `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
+| `NetworkGraphFactory` | Manage index/network CRUD |
+| `NetworkMembershipGraphFactory` | Manage index/network member join/leave |
+| `IntentNetworkGraphFactory` | Evaluate and assign/unassign intents to indexes |
+| `HomeGraphFactory` | Categorize and curate home-feed content |
+| `MaintenanceGraphFactory` | Periodic maintenance (feed health, opportunity expiration) |
 
 ## MCP server
 
@@ -165,7 +229,7 @@ git push <remote> dev
 git push <remote> main
 ```
 
-`dev` publishes prerelease versions derived from `package.json` using npm's `rc` tag, for example `0.4.0-rc.123.1`. `main` publishes the base version from `package.json` to `latest`.
+`dev` publishes prerelease versions derived from `package.json` using npm's `rc` tag, for example `3.6.3-rc.123.1`. `main` publishes the base version from `package.json` to `latest` only when that version is not already on npm.
 
 Or publish manually from `packages/protocol/`:
 

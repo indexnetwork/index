@@ -1,11 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import {
-  buildNetworkAssignmentDecision,
-  classifyPromptPresence,
-  DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD,
-  resolveAssignmentNetworkScope,
-} from "../network-assignment.policy.js";
+import { buildNetworkAssignmentDecision, classifyPromptPresence, DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope } from "../network-assignment.policy.js";
 
 
 describe("network-assignment.policy", () => {

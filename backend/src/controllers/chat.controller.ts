@@ -4,23 +4,11 @@ import { AuthGuard, type AuthenticatedUser } from "../guards/auth.guard";
 import { RateLimit } from "../guards/limiter.guard";
 import { requestContext } from "../lib/request-context";
 import { log } from "../lib/log";
-import {
-  Controller,
-  Get,
-  Post,
-  UseGuards,
-} from "../lib/router/router.decorators";
+import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorators";
 import { chatSessionService } from "../services/chat.service";
 import { fileService } from "../services/file.service";
 import { SuggestionGenerator, ChatInterruptClassifier } from '@indexnetwork/protocol';
-import {
-  createDoneEvent,
-  createErrorEvent,
-  createStatusEvent,
-  createSteerOrQueueEvent,
-  formatSSEEvent,
-  type DebugMetaDiscoveryQuestions,
-} from "../types/chat-streaming.types";
+import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent, type DebugMetaDiscoveryQuestions } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
 type RouteParams = Record<string, string>;

@@ -7,24 +7,7 @@
 
 import type { Intent, Opportunity, OpportunityDetail, Conversation, ConversationMessage } from "../types";
 
-import {
-  RESET,
-  BOLD,
-  DIM,
-  RED,
-  GREEN,
-  YELLOW,
-  BLUE,
-  CYAN,
-  WHITE,
-  GRAY,
-  AGENT_TEXT,
-  dim,
-  wordWrap,
-  confidenceBar,
-  padTo,
-  stripAnsi,
-} from "./base";
+import { RESET, BOLD, DIM, RED, GREEN, YELLOW, BLUE, CYAN, WHITE, GRAY, AGENT_TEXT, dim, wordWrap, confidenceBar, padTo, stripAnsi } from "./base";
 
 // ── Profile card ────────────────────────────────────────────────────
 

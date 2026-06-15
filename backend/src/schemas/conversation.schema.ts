@@ -1,13 +1,4 @@
-import {
-  pgTable,
-  pgEnum,
-  text,
-  timestamp,
-  jsonb,
-  index,
-  primaryKey,
-  uniqueIndex,
-} from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, jsonb, index, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
 // ─────────────────────────────────────────────────────────────────────────────

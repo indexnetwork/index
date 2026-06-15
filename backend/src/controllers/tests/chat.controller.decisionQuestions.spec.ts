@@ -12,10 +12,7 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import {
-  createDoneEvent,
-  formatSSEEvent,
-} from "../../types/chat-streaming.types";
+import { createDoneEvent, formatSSEEvent } from "../../types/chat-streaming.types";
 import type { Question } from "@indexnetwork/protocol";
 
 // ── Minimal event types matching the production shape ─────────────────────────

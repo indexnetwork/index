@@ -16,22 +16,12 @@
 import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-import {
-  QuestionGeneratorResponseSchema,
-  type Question,
-  type QuestionGenerationResult,
-  type QuestionStrategy,
-  type QuestionWithStrategy,
-} from "../shared/schemas/question.schema.js";
+import { QuestionGeneratorResponseSchema, type Question, type QuestionGenerationResult, type QuestionStrategy, type QuestionWithStrategy } from "../shared/schemas/question.schema.js";
 import { createModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
-import {
-  SYSTEM_PROMPT,
-  buildQuestionPrompt,
-  type DiscoveryQuestionInput,
-} from "./question.prompt.js";
+import { SYSTEM_PROMPT, buildQuestionPrompt, type DiscoveryQuestionInput } from "./question.prompt.js";
 
 const logger = protocolLogger("QuestionGenerator");
 

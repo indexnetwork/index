@@ -5,10 +5,7 @@ process.env.OPENROUTER_API_KEY ??= 'test';
 import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
 import type { Id } from '../../types/common.types.js';
-import type {
-  OpportunityGraphDatabase,
-  Opportunity,
-} from '../../shared/interfaces/database.interface.js';
+import type { OpportunityGraphDatabase, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
 

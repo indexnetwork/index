@@ -1,9 +1,7 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 
 import { IntentIndexer } from "../../intent/intent.indexer.js";
-import {
-  buildNetworkAssignmentDecision,
-} from "../../shared/assignment/network-assignment.policy.js";
+import { buildNetworkAssignmentDecision } from "../../shared/assignment/network-assignment.policy.js";
 import type { IntentNetworkGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { timed } from "../../shared/observability/performance.js";
@@ -11,12 +9,7 @@ import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../chat/chat-streaming.types.js";
 import { renderNetworkContext } from "../../shared/network/metadata.renderer.js";
 
-import {
-  IntentNetworkGraphState,
-  type IntentForIndexing,
-  type IndexMemberContext,
-  type AssignmentResult,
-} from "./indexer.state.js";
+import { IntentNetworkGraphState, type IntentForIndexing, type IndexMemberContext, type AssignmentResult } from "./indexer.state.js";
 
 const logger = protocolLogger("IntentNetworkGraphFactory");
 

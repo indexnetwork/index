@@ -22,6 +22,7 @@ type LibrarySourceIntent = {
   sourceName: string;
   sourceValue: string | null;
   sourceMeta: string | null;
+  networks?: { id: string; title: string }[];
 };
 
 type FileItem = {

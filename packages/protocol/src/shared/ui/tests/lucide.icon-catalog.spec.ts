@@ -3,13 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
-import {
-  DEFAULT_HOME_SECTION_ICON,
-  HOME_SECTION_ICON_NAMES,
-  normalizeIconName,
-  resolveHomeSectionIcon,
-  getIconNamesForPrompt,
-} from "../lucide.icon-catalog.js";
+import { DEFAULT_HOME_SECTION_ICON, HOME_SECTION_ICON_NAMES, normalizeIconName, resolveHomeSectionIcon, getIconNamesForPrompt } from "../lucide.icon-catalog.js";
 
 describe('lucide.icon-catalog', () => {
   describe('normalizeIconName', () => {

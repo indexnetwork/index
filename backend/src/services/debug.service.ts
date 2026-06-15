@@ -1,13 +1,7 @@
 import { eq, and, sql, ne, isNull, isNotNull, count } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
-import {
-  intents,
-  intentNetworks,
-  networks,
-  networkMembers,
-  userProfiles,
-} from '../schemas/database.schema';
+import { intents, intentNetworks, networks, networkMembers, userProfiles } from '../schemas/database.schema';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';

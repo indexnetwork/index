@@ -3,11 +3,7 @@
  * Used by the opportunity graph persist node and by the manual opportunity service for consistency.
  */
 
-import type {
-  CreateOpportunityData,
-  Opportunity,
-  OpportunityStatus,
-} from '../shared/interfaces/database.interface.js';
+import type { CreateOpportunityData, Opportunity, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 import type { Embedder } from '../shared/interfaces/embedder.interface.js';
 import type { EnricherDatabase } from './opportunity.enricher.js';
 import { enrichOrCreate } from './opportunity.enricher.js';

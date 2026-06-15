@@ -4,14 +4,7 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import {
-  HydeGraphFactory,
-  HydeGenerator,
-  LensInferrer,
-  IntentIndexer,
-  buildNetworkAssignmentDecision,
-  resolveAssignmentNetworkScope,
-} from '@indexnetwork/protocol';
+import { HydeGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, buildNetworkAssignmentDecision, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput } from '@indexnetwork/protocol';
 import { fromIntentQueue } from './opportunity/from-intent.queue';
 
@@ -123,7 +116,7 @@ export class IntentQueue implements IntentGraphQueue {
    * @returns The BullMQ job
    */
   async addJob(
-    name: 'generate_hyde' | 'delete_hyde',
+    name: 'generate_hyde' | 'delete_hyde' | 'reconcile_intent_networks',
     data: IntentJobData | IntentDeleteData,
     options?: { jobId?: string; priority?: number }
   ): Promise<Job<IntentJobPayload>> {
@@ -147,12 +140,60 @@ export class IntentQueue implements IntentGraphQueue {
       case 'generate_hyde':
         await this.handleGenerateHyde(data as IntentJobData);
         break;
+      case 'reconcile_intent_networks':
+        await this.handleReconcileNetworks(data as IntentJobData);
+        break;
       case 'delete_hyde':
         await this.handleDeleteHyde(data as IntentDeleteData);
         break;
       default:
         this.queueLogger.warn(`[IntentProcessor] Unknown job name: ${name}`);
     }
+  }
+
+  /**
+   * Enqueue an assignment-only reconciliation for an intent. Unlike
+   * {@link addGenerateHydeJob} this never regenerates HyDE docs or runs
+   * opportunity discovery — it only (re)evaluates and writes intent_networks
+   * rows. Used by network-join backfill and the orphan-reconcile sweep.
+   *
+   * @param data - intentId, userId, and optional networkScopeId to restrict the
+   *   evaluated network set (defaults to all assignment-eligible memberships).
+   * @returns The BullMQ job.
+   */
+  addReconcileJob(data: IntentJobData): Promise<Job<IntentJobPayload>> {
+    return this.addJob('reconcile_intent_networks', data, {
+      jobId: `reconcile-${data.intentId}-${data.networkScopeId ?? 'global'}`,
+    });
+  }
+
+  /**
+   * Enqueue a network-scoped reconcile for every active intent a user owns.
+   *
+   * This is the join-time half of the protocol rule "membership re-evaluates a
+   * member's existing intents against the network": intents created before the
+   * user joined never get an assignment pass for the new network otherwise.
+   * Driven by the `NetworkMembershipEvents.onMemberAdded` hook so it fires for
+   * every membership path (REST self-join, owner-add, and the protocol
+   * `create_network_membership` graph) — all converge on `addMemberToNetwork`.
+   * Best-effort per intent; assignment-only (no HyDE/opportunity side effects).
+   *
+   * @param userId - The member whose existing intents should be re-evaluated.
+   * @param networkId - The joined network; scopes evaluation to it.
+   * @returns The number of reconcile jobs enqueued.
+   */
+  async addNetworkReconcileForUser(userId: string, networkId: string): Promise<number> {
+    const db = this.deps?.database ?? this.database;
+    const intents = await db.getActiveIntents(userId);
+    await Promise.all(
+      intents.map((i) =>
+        this.addReconcileJob({ intentId: i.id, userId, networkScopeId: networkId }).catch((err) =>
+          this.logger.warn('[IntentReconcile] enqueue failed', { intentId: i.id, networkId, userId, error: err }),
+        ),
+      ),
+    );
+    this.logger.info('[IntentReconcile] Enqueued network reconcile for member', { userId, networkId, intentCount: intents.length });
+    return intents.length;
   }
 
   /**
@@ -204,80 +245,8 @@ export class IntentQueue implements IntentGraphQueue {
     }
     this.logger.info('[IntentHyde] Starting HyDE generation', { intentId, userId });
     this.logger.debug('[IntentHyde] Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
-    let assignedIndexCount = 0;
-    try {
-      const membershipNetworkIds = await db.getAssignmentNetworkIdsForUser(userId);
-      const userIndexIds = resolveAssignmentNetworkScope({ memberships: membershipNetworkIds, networkScopeId });
-      this.logger.info('[IntentHyde] User assignment networks found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
-
-      // Instantiate once per job run so the same withStructuredOutput binding
-      // is reused across all network evaluations in the Promise.all below.
-      const defaultIndexer = this.deps?.evaluateIntentAssignment ? null : new IntentIndexer();
-      const evaluateIntentAssignment = this.deps?.evaluateIntentAssignment ?? ((opts: {
-        intent: string;
-        indexPrompt: string | null;
-        memberPrompt: string | null;
-        sourceName?: string | null;
-      }) => defaultIndexer!.invoke(opts.intent, opts.indexPrompt, opts.memberPrompt, opts.sourceName ?? null));
-
-      const sourceName = intent.sourceType
-        ? `${intent.sourceType}:${intent.sourceId ?? ''}`
-        : undefined;
-
-      const scoringResults = await Promise.all(
-        userIndexIds.map(async (networkId) => {
-          const ctx = await db.getNetworkAssignmentContext(networkId, userId);
-          if (!ctx) {
-            this.logger.warn('[IntentHyde] Assignment context missing for index, skipping fail-closed', { intentId, userId, networkId });
-            return null;
-          }
-          const indexPrompt = ctx.indexPrompt ?? null;
-          const memberPrompt = ctx.memberPrompt ?? null;
-          const hasPrompts = !!indexPrompt?.trim() || !!memberPrompt?.trim();
-          let result: IntentIndexerOutput | null = null;
-          if (hasPrompts) {
-            try {
-              result = await evaluateIntentAssignment({ intent: intent.payload, indexPrompt, memberPrompt, sourceName });
-            } catch (err) {
-              this.logger.warn('[IntentHyde] IntentIndexer failed for index', { intentId, networkId, error: err });
-            }
-          }
-
-          const decision = buildNetworkAssignmentDecision({
-            resourceType: 'intent',
-            mode: 'automatic',
-            scope: networkScopeId ? 'network' : 'global',
-            indexPrompt,
-            memberPrompt,
-            rawScores: result ? { indexScore: result.indexScore, memberScore: result.memberScore } : undefined,
-            evaluator: 'intent-indexer',
-            source: 'intent-hyde-queue',
-            reason: result?.reasoning,
-            createdAt: new Date().toISOString(),
-          });
-          return { networkId, decision };
-        })
-      );
-
-      for (const scoringResult of scoringResults) {
-        if (!scoringResult) continue;
-        const { networkId, decision } = scoringResult;
-        if (!decision.assigned) continue;
-        try {
-          await db.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
-          assignedIndexCount++;
-        } catch (assignErr) {
-          this.logger.debug('[IntentHyde] Assign intent to index skipped', { intentId, networkId, error: assignErr });
-        }
-      }
-    } catch (err) {
-      this.logger.warn('[IntentHyde] Failed to assign intent to user indexes', {
-        intentId,
-        userId,
-        error: err,
-      });
-    }
-    this.logger.info('[IntentHyde] Index assignment complete', { intentId, assignedIndexCount });
+    const { assignedNetworkIds } = await this.assignIntentToNetworks(intentId, userId, { networkScopeId });
+    this.logger.info('[IntentHyde] Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
 
     // Fetch discoverer profile + active intents for HyDE context (best-effort)
     let profileContext: string | undefined;
@@ -353,6 +322,128 @@ export class IntentQueue implements IntentGraphQueue {
     }).catch((err: unknown) =>
       this.logger.error('[IntentHyde] Failed to enqueue opportunity discovery', { intentId, error: err })
     );
+  }
+
+  /**
+   * Resolve the user's eligible networks (respecting optional scope), score the
+   * intent against each, and upsert intent_networks rows for assigned networks.
+   *
+   * Pure assignment: no HyDE regeneration and no opportunity discovery, so it is
+   * safe to call for reconciliation/backfill without spamming users with new
+   * opportunity notifications on existing intents. Idempotent —
+   * {@link ChatDatabaseAdapter.assignIntentToNetwork} upserts on
+   * (intentId, networkId).
+   *
+   * @param intentId - Intent to assign.
+   * @param userId - Owner of the intent.
+   * @param opts - Optional `networkScopeId` to restrict the evaluated set and a
+   *   `source` tag recorded in assignment metadata.
+   * @returns Assigned network IDs and the number of networks evaluated.
+   */
+  private async assignIntentToNetworks(
+    intentId: string,
+    userId: string,
+    opts?: { networkScopeId?: string; source?: string },
+  ): Promise<{ assignedNetworkIds: string[]; evaluatedCount: number }> {
+    const networkScopeId = opts?.networkScopeId;
+    const source = opts?.source ?? 'intent-hyde-queue';
+    const db = this.deps?.database ?? this.database;
+    const intent = await db.getIntentForIndexing(intentId);
+    if (!intent) {
+      this.logger.warn('[IntentAssign] Intent not found, skipping', { intentId });
+      return { assignedNetworkIds: [], evaluatedCount: 0 };
+    }
+
+    const assignedNetworkIds: string[] = [];
+    let evaluatedCount = 0;
+    try {
+      const membershipNetworkIds = await db.getAssignmentNetworkIdsForUser(userId);
+      const userIndexIds = resolveAssignmentNetworkScope({ memberships: membershipNetworkIds, networkScopeId });
+      evaluatedCount = userIndexIds.length;
+      this.logger.info('[IntentAssign] User assignment networks found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
+
+      // Instantiate once per run so the same withStructuredOutput binding is
+      // reused across all network evaluations in the Promise.all below.
+      const defaultIndexer = this.deps?.evaluateIntentAssignment ? null : new IntentIndexer();
+      const evaluateIntentAssignment = this.deps?.evaluateIntentAssignment ?? ((o: {
+        intent: string;
+        indexPrompt: string | null;
+        memberPrompt: string | null;
+        sourceName?: string | null;
+      }) => defaultIndexer!.invoke(o.intent, o.indexPrompt, o.memberPrompt, o.sourceName ?? null));
+
+      const sourceName = intent.sourceType
+        ? `${intent.sourceType}:${intent.sourceId ?? ''}`
+        : undefined;
+
+      const scoringResults = await Promise.all(
+        userIndexIds.map(async (networkId) => {
+          const ctx = await db.getNetworkAssignmentContext(networkId, userId);
+          if (!ctx) {
+            this.logger.warn('[IntentAssign] Assignment context missing for network, skipping fail-closed', { intentId, userId, networkId });
+            return null;
+          }
+          const indexPrompt = ctx.indexPrompt ?? null;
+          const memberPrompt = ctx.memberPrompt ?? null;
+          const hasPrompts = !!indexPrompt?.trim() || !!memberPrompt?.trim();
+          let result: IntentIndexerOutput | null = null;
+          if (hasPrompts) {
+            try {
+              result = await evaluateIntentAssignment({ intent: intent.payload, indexPrompt, memberPrompt, sourceName });
+            } catch (err) {
+              this.logger.warn('[IntentAssign] IntentIndexer failed for network', { intentId, networkId, error: err });
+            }
+          }
+
+          const decision = buildNetworkAssignmentDecision({
+            resourceType: 'intent',
+            mode: 'automatic',
+            scope: networkScopeId ? 'network' : 'global',
+            indexPrompt,
+            memberPrompt,
+            rawScores: result ? { indexScore: result.indexScore, memberScore: result.memberScore } : undefined,
+            evaluator: 'intent-indexer',
+            source,
+            reason: result?.reasoning,
+            createdAt: new Date().toISOString(),
+          });
+          return { networkId, decision };
+        })
+      );
+
+      for (const scoringResult of scoringResults) {
+        if (!scoringResult) continue;
+        const { networkId, decision } = scoringResult;
+        if (!decision.assigned) continue;
+        try {
+          await db.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
+          assignedNetworkIds.push(networkId);
+        } catch (assignErr) {
+          this.logger.debug('[IntentAssign] Assign intent to network skipped', { intentId, networkId, error: assignErr });
+        }
+      }
+    } catch (err) {
+      this.logger.warn('[IntentAssign] Failed to assign intent to user networks', { intentId, userId, error: err });
+    }
+
+    if (assignedNetworkIds.length === 0) {
+      // Explicit orphan signal: an intent registered to no network is invisible
+      // in every network UI. Surface it so it can be alerted on or swept rather
+      // than silently lost.
+      this.logger.warn('[IntentAssign] Intent assigned to NO networks', { intentId, userId, networkScopeId, evaluatedCount });
+    }
+    return { assignedNetworkIds, evaluatedCount };
+  }
+
+  /**
+   * Handle a `reconcile_intent_networks` job: run assignment only, with no HyDE
+   * regeneration or opportunity discovery. Idempotent and safe to re-run.
+   *
+   * @param data - intentId, userId, and optional networkScopeId.
+   */
+  private async handleReconcileNetworks(data: IntentJobData): Promise<void> {
+    const { intentId, userId, networkScopeId } = data;
+    await this.assignIntentToNetworks(intentId, userId, { networkScopeId, source: 'intent-reconcile-queue' });
   }
 
   private async handleDeleteHyde(data: IntentDeleteData): Promise<void> {

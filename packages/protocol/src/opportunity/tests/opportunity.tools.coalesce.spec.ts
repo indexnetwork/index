@@ -6,10 +6,7 @@ import { describe, test, expect } from 'bun:test';
 
 import { createOpportunityTools } from '../opportunity.tools.js';
 import type { ToolDeps, ResolvedToolContext } from '../../shared/agent/tool.helpers.js';
-import type {
-  CreateDiscoveryRunInput,
-  DiscoveryRunRecord,
-} from '../../shared/interfaces/discovery-run.interface.js';
+import type { CreateDiscoveryRunInput, DiscoveryRunRecord } from '../../shared/interfaces/discovery-run.interface.js';
 
 function parseToolResult(raw: string) {
   return JSON.parse(raw) as {

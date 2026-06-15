@@ -1,11 +1,4 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useEffect,
-  useRef,
-} from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { apiClient } from '@/lib/api';
 import { getJwtToken } from '@/lib/auth-client';
 import { useAuthContext } from '@/contexts/AuthContext';

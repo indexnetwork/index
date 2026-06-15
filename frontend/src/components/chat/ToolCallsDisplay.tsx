@@ -1,20 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  Loader2,
-  ChevronDown,
-  ChevronRight,
-  Square,
-  Circle,
-  AlertTriangle,
-  Wrench,
-  Workflow,
-  Bot,
-  Sparkles,
-  MessagesSquare,
-  ArrowLeftRight,
-  RotateCw,
-  XCircle,
-} from "lucide-react";
+import { Loader2, ChevronDown, ChevronRight, Square, Circle, AlertTriangle, Wrench, Workflow, Bot, Sparkles, MessagesSquare, ArrowLeftRight, RotateCw, XCircle } from "lucide-react";
 import type { TraceEvent } from "@/contexts/AIChatContext";
 import { cn } from "@/lib/utils";
 

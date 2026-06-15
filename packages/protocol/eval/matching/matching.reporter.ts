@@ -1,15 +1,6 @@
 import { readdir } from "node:fs/promises";
 
-import type {
-  CaseResult,
-  RuleResult,
-  Scorecard,
-  Rule,
-  MatchingCase,
-  CandidateExpectation,
-  CandidateOutcome,
-  AssertionKind,
-} from "./matching.types.js";
+import type { CaseResult, RuleResult, Scorecard, Rule, MatchingCase, CandidateExpectation, CandidateOutcome, AssertionKind } from "./matching.types.js";
 
 // ── Statistical helpers ─────────────────────────────────────────────────────
 

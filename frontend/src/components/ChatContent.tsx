@@ -1,20 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGmailConnect } from "@/hooks/useGmailConnect";
 import { useNavigate } from "react-router";
-import {
-  ArrowUp,
-  Pencil,
-  Paperclip,
-  Square,
-  X,
-  Globe,
-  ChevronDown,
-  Lock,
-  ChevronLeft,
-  Share2,
-  Check,
-  Users,
-} from "lucide-react";
+import { ArrowUp, Pencil, Paperclip, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
 import { useAIChat } from "@/contexts/AIChatContext";
@@ -29,13 +16,8 @@ import { DecisionQuestions } from "@/components/DecisionQuestions";
 import InviteMessageModal from "@/components/InviteMessageModal";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
-import AssistantMessageContent, {
-  parseAllBlocks,
-} from "@/components/chat/AssistantMessageContent";
-import OpportunityCard, {
-  type OpportunityCardData,
-  OpportunitySkeleton,
-} from "@/components/chat/OpportunityCardInChat";
+import AssistantMessageContent, { parseAllBlocks } from "@/components/chat/AssistantMessageContent";
+import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
@@ -597,15 +579,20 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       const res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, networkId });
       setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
       setProposalIntentMap((prev) => ({ ...prev, [proposalId]: res.intentId }));
+      // Outcome-aware feedback: a network-scoped create lands directly in that
+      // network; an unscoped create is evaluated against all the user's
+      // networks asynchronously, so set expectations rather than implying it's
+      // already broadcasting somewhere specific.
+      const targetNetwork = networkId ? indexes.find((i) => i.id === networkId) : undefined;
       addNotification({
         type: "intent_broadcast",
-        title: "Broadcasting Signal",
+        title: targetNetwork ? `Broadcasting to ${targetNetwork.title}` : "Evaluating networks…",
         message: description,
         duration: 10000,
         onAction: () => archiveProposalIntent(proposalId, res.intentId),
       });
     },
-    [addNotification, archiveProposalIntent],
+    [addNotification, archiveProposalIntent, indexes],
   );
 
   const handleIntentProposalReject = useCallback(

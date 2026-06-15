@@ -5,11 +5,7 @@
  * so module load never demands `OPENROUTER_API_KEY`. Tests inject a fake.
  */
 import { QuestionGenerator } from "@indexnetwork/protocol";
-import type {
-  DiscoveryQuestionInput,
-  QuestionGenerationResult,
-  QuestionGeneratorReader,
-} from "@indexnetwork/protocol";
+import type { DiscoveryQuestionInput, QuestionGenerationResult, QuestionGeneratorReader } from "@indexnetwork/protocol";
 
 import { log } from "../lib/log";
 

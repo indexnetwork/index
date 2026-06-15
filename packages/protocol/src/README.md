@@ -6,23 +6,31 @@ This is the protocol layer: LangGraph workflows, AI agents, chat tools, and supp
 
 ```
 packages/protocol/src/
-  chat/             Chat graph, agent, prompt, streaming, suggestions, title generation
+  agent/            Agent-registry tools (register/list/update/delete, grant/revoke permission)
+  chat/             Chat graph, agent, prompt modules, streaming, suggestions, title, summarizer, interrupt classifier
   contact/          Contact invites and contact tools
+  context/          User Context generator (premise → network-scoped context paragraphs)
   integration/      Integration sync tools
-  intent/           Intent graph, inferrer, verifier, reconciler, clarifier, indexer
+  intent/           Intent graph, inferrer, verifier, reconciler, clarifier, specificity, indexer
   maintenance/      Maintenance graph (feed health, opportunity expiration)
-  mcp/              MCP server
-  negotiation/      Negotiation graph, proposer, responder, insights generator
-  network/          Network (index) graph, membership graph, intent-index (indexer) graph, tools
-  opportunity/      Opportunity graph, evaluator, presenter, enricher, discover, utils
+  mcp/              MCP server + elicitation builder/dispatcher
+  negotiation/      Negotiation graph, agent (IndexNegotiator), insight + summarizer, tools
+  network/          Network (index) graph, membership graph, intent-index (indexer) graph, recommender, tools
+  opportunity/      Opportunity graph, evaluator, presenter, enricher, discover, evidence, introducer, delivery card, utils
     feed/           Home feed graph, feed categorizer, feed health
-  profile/          Profile graph, generator, hyde generator, enricher, tools
+  premise/          Premise graph, decomposer, analyzer, indexer, tools
+  profile/          Profile graph, generator, enricher, tools
+  questioner/       Questioner agent (mode-driven decision-question generation), presets, tools
   shared/
-    agent/          Model config, response streamer, tool factory/helpers/registry
+    agent/          Model config/signal, response streamer, tool factory/helpers/registry/runtime
+    assignment/     Network-assignment policy (threshold scoring, scope resolution)
     hyde/           HyDE graph, generator, strategies, lens inferrer
-    interfaces/     Adapter contracts (database, embedder, cache, queue, scraper, etc.)
-    observability/  Logger, request context, performance, log utilities
+    interfaces/     Adapter contracts (database, embedder, cache, queue, scraper, agent, runs, etc.)
+    network/        Network metadata renderer
+    observability/  Logger, request context, performance, trace, debug-meta sanitizer
+    schemas/        Shared Zod schemas (question, profile, negotiation, network-assignment, etc.)
     ui/             Lucide icon catalog
+    utils/          Telegram-handle and social-label helpers
   docs/             Design papers (linguistic and semantic governance theory)
 ```
 
@@ -32,7 +40,8 @@ packages/protocol/src/
 |-------|------|---------|
 | Chat | `chat/chat.graph.ts` | ReAct agent loop — LLM calls tools, responds to user |
 | Intent | `intent/intent.graph.ts` | Clarify, infer, verify felicity conditions, reconcile, and persist intents |
-| Profile | `profile/profile.graph.ts` | Generate/update user profiles with scraping and embedding |
+| Profile | `profile/profile.graph.ts` | Generate/update user profiles with scraping and embedding (decomposes into premises) |
+| Premise | `premise/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
 | Opportunity | `opportunity/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
 | HyDE | `shared/hyde/hyde.graph.ts` | Generate hypothetical documents (Mirror, Reciprocal, Neighborhood) and embed them (cache-aware) |
 | Network | `network/network.graph.ts` | Manage index CRUD |
@@ -51,14 +60,21 @@ packages/protocol/src/
 | Chat Prompt Modules | `chat/chat.prompt.modules.ts` | Chat graph — composable prompt modules |
 | Title Generator | `chat/chat.title.generator.ts` | Chat service — generates conversation titles |
 | Chat Suggester | `chat/chat.suggester.ts` | Chat — generates proactive reply suggestions |
+| Chat Summarizer | `chat/chat.summarizer.ts` | Chat — produces a read-through digest of a chat session |
+| Chat Interrupt Classifier | `chat/chat.interrupt.classifier.ts` | Chat — classifies whether a new message interrupts an in-flight turn |
 | Intent Clarifier | `intent/intent.clarifier.ts` | Intent tools — checks specificity (entropy threshold) before persisting |
 | Intent Inferrer | `intent/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
 | Intent Reconciler | `intent/intent.reconciler.ts` | Intent graph — determines create/update/expire action (Donnellan's distinction) |
 | Intent Verifier | `intent/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
 | Intent Indexer | `intent/intent.indexer.ts` | Intent Index graph — scores intent-index fit as relevancy score |
 | Profile Generator | `profile/profile.generator.ts` | Profile graph — generates structured identity from raw data |
-| Profile HyDE Generator | `profile/profile.hyde.generator.ts` | Profile graph — generates HyDE documents for profiles |
 | Profile Enricher | `profile/profile.enricher.ts` | Profile enrichment — display name and metadata enrichment |
+| Premise Decomposer | `premise/premise.decomposer.ts` | Premise graph — decomposes free text into atomic, first-person self-descriptive premises |
+| Premise Analyzer | `premise/premise.analyzer.ts` | Premise graph — classifies the premise speech act (declarative/assertive) and scores felicity |
+| Premise Indexer | `premise/premise.indexer.ts` | Premise graph — embeds premises and scores network fit for assignment |
+| User Context Generator | `context/context.generator.ts` | Enrichment / UserContextQueue — synthesizes network-scoped context paragraphs from a user's premises |
+| Questioner Agent | `questioner/questioner.agent.ts` | Questioner queue — mode-driven structured decision-question generation (profile/intent/negotiation/discovery) |
+| Network Recommender | `network/network.recommender.ts` | Network flows — recommends networks for a user/intent |
 | HyDE Generator | `shared/hyde/hyde.generator.ts` | HyDE graph — generates hypothetical match documents per strategy |
 | HyDE Strategies | `shared/hyde/hyde.strategies.ts` | HyDE graph — LLM-selected strategy registry |
 | Lens Inferrer | `shared/hyde/lens.inferrer.ts` | HyDE graph — infers target corpus (profiles vs. intents) per strategy |
@@ -66,22 +82,32 @@ packages/protocol/src/
 | Opportunity Presenter | `opportunity/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 | Feed Categorizer | `opportunity/feed/feed.categorizer.ts` | Feed graph — classifies and curates feed items |
 | Opportunity Introducer | `opportunity/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
+| Opportunity Question Generator | `opportunity/question.generator.ts` | Discovery — generates clarifying questions that sharpen a discovery query |
 | Contact Inviter | `contact/contact.inviter.ts` | Invite flow — generates personalized invite messages |
-| Negotiation Proposer | `negotiation/negotiation.proposer.ts` | Negotiation graph — drafts negotiation proposals |
-| Negotiation Responder | `negotiation/negotiation.responder.ts` | Negotiation graph — evaluates and responds to proposals |
+| Index Negotiator | `negotiation/negotiation.agent.ts` | Negotiation graph — system AI that drafts/evaluates a turn when no personal agent responds |
 | Negotiation Insights Generator | `negotiation/insight.generator.ts` | Negotiation graph — synthesizes negotiation session insights |
+| Negotiation Summarizer | `negotiation/negotiation.summarizer.ts` | Negotiation — builds the discovery negotiation digest (deterministic fallback when LLM unavailable) |
 
 ## Tools (Chat)
 
+Tools are registered in `shared/agent/tool.registry.ts` and assembled per session by `shared/agent/tool.factory.ts`.
+
 | File | Tools |
 |------|-------|
-| `profile/profile.tools.ts` | `read_user_profiles`, `create_user_profile`, `update_user_profile`, `complete_onboarding` |
-| `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
-| `network/network.tools.ts` | `read_networks`, `read_network_memberships`, `create_network`, `update_network`, `delete_network`, `create_network_membership`, `delete_network_membership` |
-| `opportunity/opportunity.tools.ts` | `discover_opportunities`, `list_opportunities`, `update_opportunity` |
-| `contact/contact.tools.ts` | `import_contacts`, `list_contacts`, `add_contact`, `remove_contact` |
+| `profile/profile.tools.ts` | `read_user_profiles`, `preview_user_profile`, `confirm_user_profile`, `create_user_profile`, `update_user_profile`, `record_onboarding_privacy_consent`, `complete_onboarding`, `get_profile_run`, `cancel_profile_run` |
+| `premise/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
+| `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
+| `network/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
+| `opportunity/opportunity.tools.ts` | `discover_opportunities`, `get_discovery_run`, `cancel_discovery_run`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
+| `contact/contact.tools.ts` | `import_contacts`, `list_contacts`, `add_contact`, `remove_contact`, `search_contacts` |
 | `integration/integration.tools.ts` | `import_gmail_contacts` |
+| `agent/agent.tools.ts` | `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
+| `negotiation/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
+| `questioner/questioner.tools.ts` | `read_pending_questions` |
 | `shared/agent/utility.tools.ts` | `scrape_url`, `read_docs` |
+
+¹ `confirm_opportunity_delivery` is an OpenClaw delivery-ledger write — it is filtered out of regular chat sessions and only reachable over MCP.
+² Negotiation tools are only registered when an `agentDispatcher` is provided.
 
 ## Core Concepts
 
@@ -90,7 +116,9 @@ The system models human collaboration through a linguistic and information-theor
 | Concept | Description |
 |---------|-------------|
 | **User** | Identity (session auth). Has one profile and many intents. Member of indexes. |
-| **Profile** | User's identity, narrative, skills, interests. Provides the **constitutive context** — what the user *is* and therefore has the *authority* to do. Has vector embedding and HyDE embeddings for semantic matching. |
+| **Profile** | User's identity, narrative, skills, interests. Provides the **constitutive context** — what the user *is* and therefore has the *authority* to do. Has vector embedding and HyDE embeddings for semantic matching. Decomposed into premises during enrichment. |
+| **Premise** | A **declarative or assertive speech act** about the self — an atomic, first-person proposition a user asserts about who they are ("I am a climate-tech founder", "I hold a PhD in computational biology"). Premises are *conditions of possibility*: facts that ground discovery, as opposed to intents, which are desires/requests. They are decomposed from profile/free-text input, classified and felicity-scored by the Premise Analyzer, embedded, and assigned to networks. The premise graph (`premise/premise.graph.ts`) owns their create/update/query lifecycle, and premise changes cascade into profile and user-context regeneration. |
+| **User Context** | A network-scoped synthetic paragraph synthesized from a user's premises by the `UserContextGenerator`, stored with its embedding. The opportunity graph uses contexts for **context-to-intent discovery** — it loads a user's contexts and searches for matching intents, running alongside profile-HyDE discovery as a complementary strategy. Regenerated whenever the user's premises change. |
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
 | **Index** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is index-scoped — opportunities only arise between intents that share an index. |
 | **Opportunity** | A **semantic intersection**: the point where a candidate's constitutive facts (profile/intent) satisfy the propositional content of a source intent. Scored by the Opportunity Evaluator using **valency** (argument-role fit) and **constraint satisfaction**. Presented with dual descriptions per **Grice's Maxim of Relation** — one framed for the source, one for the candidate. |
@@ -301,6 +329,15 @@ Handled by the **Intent Graph**:
 4. **Reconciliation**: `IntentReconciler` applies Donnellan's distinction — referential intents (user has a specific target in mind) update an existing record; attributive intents (any member of a class) create a new one if sufficiently different.
 5. **Persistence**: Executor writes the intent with `semanticEntropy`, `referentialAnchor`, `speechActType`, and `felicityScores` fields.
 
+### Premise & Context Lifecycle
+
+Handled by the **Premise Graph**, **Profile Graph**, and **User Context Generator**:
+1. **Decomposition**: `PremiseDecomposer` splits profile data or free text into atomic, first-person, non-redundant premises.
+2. **Analysis**: `PremiseAnalyzer` classifies each premise's speech act (declarative vs. assertive) and scores its felicity conditions — premises are the *constitutive* facts that establish what a user has the authority to do.
+3. **Indexing & assignment**: `PremiseIndexer` embeds each premise and scores network fit; the shared network-assignment policy (`shared/assignment/network-assignment.policy.ts`) decides which networks the premise is assigned to.
+4. **Context synthesis**: premise changes cascade into the `UserContextGenerator`, which regenerates the user's network-scoped context paragraph (plus embedding and HyDE docs). Cold-start mode synthesizes from all premises; incremental mode applies a single add/update/retract/expire to the existing context.
+5. **Discovery feed**: stored context embeddings power **context-to-intent discovery** in the opportunity graph, complementing profile-HyDE matching.
+
 ### HyDE Pipeline
 
 Handled by the **HyDE Graph** and **Profile Graph**:
@@ -314,7 +351,7 @@ Handled by the **HyDE Graph** and **Profile Graph**:
 Handled by the **Opportunity Graph**:
 1. **Prep**: Load user's indexed intents and HyDE documents.
 2. **Scope**: Determine target indexes (single or all).
-3. **Discovery**: Vector similarity search using HyDE embeddings within index scope. Both source and candidate require HyDE documents.
+3. **Discovery**: Vector similarity search within index scope. Two complementary strategies run and merge: **profile-HyDE** matching (both source and candidate require HyDE documents) and **context-to-intent** matching (a user's network-scoped context embeddings are searched against candidate intents).
 4. **Evaluation**: `OpportunityEvaluator` scores each candidate pair via **valency** (does the candidate fill the argument slot of the source's goal verb?) and **constraint satisfaction** (does the candidate's constitutive context match all extracted constraints?). Assigns role: Agent, Patient, or Peer.
 5. **Presentation**: `OpportunityPresenter` generates two descriptions per Grice's Maxim of Relation — one from the source's frame, one from the candidate's frame.
 6. **Persist**: Opportunities created as `latent` with actor roles. Role determines tier-0 visibility (see Opportunity Lifecycle above).
@@ -338,18 +375,35 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 |------|---------|
 | `shared/observability/protocol.logger.ts` | Protocol-layer logging with call-scoped tracing |
 | `shared/agent/model.config.ts` | Centralized model and OpenRouter configuration |
+| `shared/agent/model-signal.ts` | Abort-signal-aware model invocation helper |
+| `shared/agent/tool.runtime.ts` | Per-tool timeout/output-budget runtime and stable error envelopes |
 | `shared/agent/response.streamer.ts` | SSE streaming for chat responses |
+| `shared/assignment/network-assignment.policy.ts` | Threshold-based network-assignment scoring and scope resolution |
+| `shared/network/metadata.renderer.ts` | Renders network metadata into prompt context |
 | `chat/chat.utils.ts` | Token counting and context window management |
 | `opportunity/opportunity.discover.ts` | Ad-hoc discovery from chat queries |
 | `opportunity/opportunity.presentation.ts` | Pure card text generation for opportunity display |
 | `opportunity/opportunity.enricher.ts` | Enrich opportunity records with profile data |
 | `opportunity/opportunity.utils.ts` | HyDE strategy selection and actor role derivation |
 | `opportunity/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
+| `opportunity/opportunity.evidence.ts` | Builds and merges per-candidate opportunity evidence |
+| `opportunity/delivery-card.cache.ts` | Cached delivery-card batch builder for opportunity delivery |
 | `opportunity/feed/feed.health.ts` | Feed health metrics computation |
 | `opportunity/opportunity.labels.ts` | Opportunity status and role label constants |
 
 ## Data Model
 
-Full schema: `protocol/src/schemas/database.schema.ts`
+This package is adapter-free and owns **no** schema — it accesses data only through the
+interfaces in `shared/interfaces/`. The canonical Drizzle schema lives in the backend at
+`backend/src/schemas/database.schema.ts`.
 
-Core tables: `users`, `user_profiles`, `intents`, `indexes`, `index_members`, `intent_indexes`, `opportunities`, `hyde_documents`, `chat_sessions`, `chat_messages`.
+Core tables the protocol interfaces read/write:
+
+- **Identity & profile**: `users`, `user_profiles`, `user_socials`, `premises`, `premise_networks`, `user_contexts`
+- **Intents & networks**: `intents`, `networks`, `network_members`, `intent_networks`, `personal_networks`
+- **Opportunities & discovery**: `opportunities`, `hyde_documents`, `opportunity_discovery_runs`, `profile_tool_runs`, `questions`
+- **Agents**: `agents`, `agent_transports`, `agent_permissions`, `apikey`
+
+> Terminology note: "index" and "network" refer to the same concept. The product
+> surface says *index*; the current schema and most tool names use **network**
+> (`networks`, `network_members`, `intent_networks`).

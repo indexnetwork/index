@@ -1,14 +1,7 @@
 import { z } from "zod";
 import type { ModelConfig } from "./model.config.js";
 import type { ProfileDocument } from "../schemas/profile.schema.js";
-import type {
-  ChatGraphCompositeDatabase,
-  NetworkMembership,
-  UserRecord,
-  UserDatabase,
-  SystemDatabase,
-  NegotiationGraphDatabase,
-} from "../interfaces/database.interface.js";
+import type { ChatGraphCompositeDatabase, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../interfaces/database.interface.js";
 import type { Scraper } from "../interfaces/scraper.interface.js";
 import type { Cache, HydeCache } from "../interfaces/cache.interface.js";
 import type { CompiledOpportunityGraph } from "../../opportunity/opportunity.discover.js";

@@ -1,8 +1,4 @@
-import type {
-  AgentDispatcher,
-  AgentDispatchResult,
-  NegotiationTurnPayload,
-} from '@indexnetwork/protocol';
+import type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from '@indexnetwork/protocol';
 import type { NegotiationTimeoutQueue } from '@indexnetwork/protocol';
 
 import type { AgentWithRelations } from '../adapters/agent.database.adapter';

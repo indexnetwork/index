@@ -15,13 +15,7 @@ import { StateGraph, START, END } from '@langchain/langgraph';
 
 import type { HomeGraphDatabase, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityCache } from '../../shared/interfaces/cache.interface.js';
-import {
-  HomeGraphState,
-  type HomeCardItem,
-  type HomeSection,
-  type HomeSectionProposal,
-  type HomeSectionItem,
-} from './feed.state.js';
+import { HomeGraphState, type HomeCardItem, type HomeSection, type HomeSectionProposal, type HomeSectionItem } from './feed.state.js';
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../opportunity.presenter.js';
 import { loadNegotiationContext } from '../negotiation-context.loader.js';
 import { HomeCategorizerAgent } from './feed.categorizer.js';

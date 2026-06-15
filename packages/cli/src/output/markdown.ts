@@ -10,19 +10,7 @@
  * (intent_proposal, opportunity).
  */
 
-import {
-  RESET,
-  BOLD,
-  ITALIC,
-  WHITE,
-  CYAN,
-  BLUE,
-  MAGENTA,
-  GRAY,
-  AGENT_TEXT,
-  wordWrap,
-  confidenceBar,
-} from "./base";
+import { RESET, BOLD, ITALIC, WHITE, CYAN, BLUE, MAGENTA, GRAY, AGENT_TEXT, wordWrap, confidenceBar } from "./base";
 
 export class MarkdownRenderer {
   private buffer = "";

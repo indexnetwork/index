@@ -1,12 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import {
-  generateKeyPair,
-  SignJWT,
-  createLocalJWKSet,
-  exportJWK,
-  jwtVerify,
-  errors as joseErrors,
-} from 'jose';
+import { generateKeyPair, SignJWT, createLocalJWKSet, exportJWK, jwtVerify, errors as joseErrors } from 'jose';
 
 import { BASE_URL, JWT_AUDIENCE } from '../src/lib/betterauth/betterauth';
 

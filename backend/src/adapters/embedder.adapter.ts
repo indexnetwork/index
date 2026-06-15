@@ -5,11 +5,7 @@
 
 import OpenAI from 'openai';
 import { and, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
-import {
-  OPENROUTER_EMBEDDING_BASE_URL,
-  OPENROUTER_EMBEDDING_DIMENSIONS,
-  OPENROUTER_EMBEDDING_MODEL,
-} from '../lib/embedder/embedder.config';
+import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../lib/embedder/embedder.config';
 import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
 import * as schema from '../schemas/database.schema';

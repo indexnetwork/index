@@ -3,14 +3,7 @@
  * the QuestionerAgent. Implementations live in the backend and are injected
  * into ProtocolDeps.
  */
-import type {
-  Question,
-  QuestionMode,
-  QuestionStrategy,
-  QuestionDetection,
-  QuestionActor,
-  QuestionAnswer,
-} from "../schemas/question.schema.js";
+import type { Question, QuestionMode, QuestionStrategy, QuestionDetection, QuestionActor, QuestionAnswer } from "../schemas/question.schema.js";
 
 /** Shape accepted by `persist()` — everything needed to insert a question row. */
 export interface PersistableQuestion {

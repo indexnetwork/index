@@ -11,14 +11,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
-import {
-  users,
-  userProfiles,
-  networks,
-  networkMembers,
-  intents,
-  intentNetworks,
-} from '../../schemas/database.schema';
+import { users, userProfiles, networks, networkMembers, intents, intentNetworks } from '../../schemas/database.schema';
 import { EmbedderAdapter } from '../embedder.adapter';
 
 const TEST_PREFIX = 'embedder_spec_' + Date.now() + '_';

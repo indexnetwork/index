@@ -4,23 +4,11 @@ export { createChatTools } from "./shared/agent/tool.factory.js";
 export { getModelName } from "./shared/agent/model.config.js";
 export type { ChatTools } from "./shared/agent/tool.factory.js";
 export type { ModelConfig, ModelSettings } from "./shared/agent/model.config.js";
-export type {
-  ToolContext,
-  ResolvedToolContext,
-  ToolDeps,
-  ProtocolDeps,
-  RawToolDefinition,
-  CompiledGraph,
-} from "./shared/agent/tool.helpers.js";
+export type { ToolContext, ResolvedToolContext, ToolDeps, ProtocolDeps, RawToolDefinition, CompiledGraph } from "./shared/agent/tool.helpers.js";
 export { ChatContextAccessError, resolveChatContext } from "./shared/agent/tool.helpers.js";
 export { requestContext } from "./shared/observability/request-context.js";
 export { setTimingWrapper } from "./shared/observability/performance.js";
-export {
-  ToolRuntimeError,
-  getToolTimeoutPolicy,
-  invokeToolRuntime,
-  toolRuntimeErrorToResult,
-} from "./shared/agent/tool.runtime.js";
+export { ToolRuntimeError, getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } from "./shared/agent/tool.runtime.js";
 export type { ToolRuntimeErrorCode, ToolTimeoutClass, ToolTimeoutPolicy } from "./shared/agent/tool.runtime.js";
 
 // ─── Interfaces (implement these to wire up your infrastructure) ───────────────
@@ -31,12 +19,7 @@ export type * from "./shared/interfaces/chat-session.interface.js";
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
 export type { ChatMessageWriter } from "./shared/interfaces/chat-message-writer.interface.js";
 export type { QuestionGeneratorReader } from "./shared/interfaces/question-generator.interface.js";
-export type {
-  QuestionerDatabase,
-  PersistableQuestion,
-  PersistedQuestion,
-  QuestionFilters,
-} from "./shared/interfaces/questioner.interface.js";
+export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters } from "./shared/interfaces/questioner.interface.js";
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer, buildFallbackDigest } from "./negotiation/negotiation.summarizer.js";
@@ -54,105 +37,22 @@ export type * from "./shared/interfaces/discovery-run.interface.js";
 export type * from "./shared/interfaces/profile-run.interface.js";
 export type * from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
-export type {
-  AgentRecord,
-  AgentTransportRecord,
-  AgentPermissionRecord,
-  AgentWithRelations,
-  CreateAgentInput,
-  CreateTransportInput,
-  GrantPermissionInput,
-  AgentDatabase,
-} from './shared/interfaces/agent.interface.js';
+export type { AgentRecord, AgentTransportRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, CreateTransportInput, GrantPermissionInput, AgentDatabase } from './shared/interfaces/agent.interface.js';
 export { SYSTEM_AGENT_IDS } from './shared/interfaces/agent.interface.js';
 
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
-export {
-  ChatContextDigestSchema,
-  type ChatContextDigest,
-} from "./shared/schemas/chat-context.schema.js";
-export {
-  QuestionOptionSchema,
-  QuestionSchema,
-  QuestionStrategySchema,
-  QuestionWithStrategySchema,
-  QuestionGeneratorResponseSchema,
-  QuestionModeSchema,
-  QuestionDetectionSchema,
-  QuestionActorSchema,
-  QuestionAnswerSchema,
-  type Question,
-  type QuestionOption,
-  type QuestionStrategy,
-  type QuestionWithStrategy,
-  type QuestionGeneratorResponse,
-  type QuestionGenerationResult,
-  type QuestionMode,
-  type QuestionDetection,
-  type QuestionActor,
-  type QuestionAnswer,
-} from "./shared/schemas/question.schema.js";
+export { ChatContextDigestSchema, type ChatContextDigest } from "./shared/schemas/chat-context.schema.js";
+export { QuestionOptionSchema, QuestionSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema, type Question, type QuestionOption, type QuestionStrategy, type QuestionWithStrategy, type QuestionGeneratorResponse, type QuestionGenerationResult, type QuestionMode, type QuestionDetection, type QuestionActor, type QuestionAnswer } from "./shared/schemas/question.schema.js";
 export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
 export type { McpAuthInput } from "./shared/schemas/mcp-auth.schema.js";
-export {
-  ProfileIdentitySchema,
-  ProfileNarrativeSchema,
-  ProfileAttributesSchema,
-  ProfileDocumentSchema,
-  type ProfileDocument,
-} from "./shared/schemas/profile.schema.js";
-export type {
-  DiscoverySourceProfile,
-  DiscoverySummary,
-  DiscoveryNegotiation,
-  DiscoveryTurn,
-  DiscoveryOutcome,
-  DiscoveryQuestionInput,
-  NegotiationRole,
-} from "./shared/schemas/discovery-question.schema.js";
-export {
-  NetworkAssignmentResourceTypeSchema,
-  NetworkAssignmentModeSchema,
-  NetworkAssignmentScopeSchema,
-  NetworkAssignmentPromptPresenceSchema,
-  NetworkAssignmentPolicySchema,
-  NetworkAssignmentRawScoresSchema,
-  NetworkAssignmentMetadataSchema,
-  OpportunityEvidenceKindSchema,
-  OpportunityEvidenceSchema,
-} from "./shared/schemas/network-assignment.schema.js";
-export type {
-  NetworkAssignmentResourceType,
-  NetworkAssignmentMode,
-  NetworkAssignmentScope,
-  NetworkAssignmentPromptPresence,
-  NetworkAssignmentPolicy,
-  NetworkAssignmentRawScores,
-  NetworkAssignmentMetadata,
-  OpportunityEvidenceKind,
-  OpportunityEvidence,
-} from "./shared/schemas/network-assignment.schema.js";
-export {
-  DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD,
-  classifyPromptPresence,
-  resolveAssignmentNetworkScope,
-  buildNetworkAssignmentDecision,
-  combineAssignmentScores,
-} from "./shared/assignment/network-assignment.policy.js";
-export type {
-  PromptPresenceInput,
-  ResolveAssignmentNetworkScopeArgs,
-  BuildNetworkAssignmentDecisionArgs,
-  NetworkAssignmentDecision,
-} from "./shared/assignment/network-assignment.policy.js";
-export {
-  buildCandidateEvidence,
-  withCandidateEvidence,
-  mergeOpportunityEvidence,
-  withMatchedStrategies,
-  renderOpportunityEvidenceForPrompt,
-} from "./opportunity/opportunity.evidence.js";
+export { ProfileIdentitySchema, ProfileNarrativeSchema, ProfileAttributesSchema, ProfileDocumentSchema, type ProfileDocument } from "./shared/schemas/profile.schema.js";
+export type { DiscoverySourceProfile, DiscoverySummary, DiscoveryNegotiation, DiscoveryTurn, DiscoveryOutcome, DiscoveryQuestionInput, NegotiationRole } from "./shared/schemas/discovery-question.schema.js";
+export { NetworkAssignmentResourceTypeSchema, NetworkAssignmentModeSchema, NetworkAssignmentScopeSchema, NetworkAssignmentPromptPresenceSchema, NetworkAssignmentPolicySchema, NetworkAssignmentRawScoresSchema, NetworkAssignmentMetadataSchema, OpportunityEvidenceKindSchema, OpportunityEvidenceSchema } from "./shared/schemas/network-assignment.schema.js";
+export type { NetworkAssignmentResourceType, NetworkAssignmentMode, NetworkAssignmentScope, NetworkAssignmentPromptPresence, NetworkAssignmentPolicy, NetworkAssignmentRawScores, NetworkAssignmentMetadata, OpportunityEvidenceKind, OpportunityEvidence } from "./shared/schemas/network-assignment.schema.js";
+export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, classifyPromptPresence, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision, combineAssignmentScores } from "./shared/assignment/network-assignment.policy.js";
+export type { PromptPresenceInput, ResolveAssignmentNetworkScopeArgs, BuildNetworkAssignmentDecisionArgs, NetworkAssignmentDecision } from "./shared/assignment/network-assignment.policy.js";
+export { buildCandidateEvidence, withCandidateEvidence, mergeOpportunityEvidence, withMatchedStrategies, renderOpportunityEvidenceForPrompt } from "./opportunity/opportunity.evidence.js";
 export type { EvidenceCandidateInput } from "./opportunity/opportunity.evidence.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
@@ -165,11 +65,7 @@ export { NetworkMembershipGraphFactory } from "./network/membership/membership.g
 export { IntentGraphFactory } from "./intent/intent.graph.js";
 export { IntentNetworkGraphFactory } from "./network/indexer/indexer.graph.js";
 export { MaintenanceGraphFactory } from "./maintenance/maintenance.graph.js";
-export type {
-  MaintenanceGraphDatabase,
-  MaintenanceGraphCache,
-  MaintenanceGraphQueue,
-} from "./maintenance/maintenance.graph.js";
+export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./maintenance/maintenance.graph.js";
 export { NegotiationGraphFactory, createDefaultNegotiationGraph, negotiateCandidates } from "./negotiation/negotiation.graph.js";
 export { OpportunityGraphFactory } from "./opportunity/opportunity.graph.js";
 export { ProfileGraphFactory } from "./profile/profile.graph.js";
@@ -204,23 +100,11 @@ export { IndexNegotiator } from "./negotiation/negotiation.agent.js";
 export type { NegotiationAgentInput } from "./negotiation/negotiation.agent.js";
 export { QuestionerAgent } from "./questioner/questioner.agent.js";
 export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";
-export type {
-  QuestionerInput,
-  QuestionerContext,
-  QuestionerEnqueuePayload,
-  QuestionerEnqueueFn,
-  DiscoveryContext,
-  IntentContext,
-  ProfileContext,
-  NegotiationContext,
-} from "./questioner/questioner.types.js";
+export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext } from "./questioner/questioner.types.js";
 export { getPreset } from "./questioner/questioner.presets.js";
 export type { QuestionerPreset } from "./questioner/questioner.presets.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
-export type {
-  EvaluatorInput,
-  OpportunityEvaluatorOptionsConstructor,
-} from "./opportunity/opportunity.evaluator.js";
+export type { EvaluatorInput, OpportunityEvaluatorOptionsConstructor } from "./opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/opportunity.presenter.js";
 export { createOpportunityTools } from "./opportunity/opportunity.tools.js";
 export { createProfileTools } from "./profile/profile.tools.js";
@@ -230,43 +114,18 @@ export { QuestionGenerator } from "./opportunity/question.generator.js";
 // ─── Support utilities ────────────────────────────────────────────────────────
 
 export { renderNetworkContext } from './shared/network/metadata.renderer.js';
-export {
-  canUserSeeOpportunity,
-  isActionableForViewer,
-  validateOpportunityActors,
-  classifyOpportunity,
-  selectByComposition,
-  selectDigestCandidates,
-  DIGEST_REDELIVERY_COOLDOWN_DAYS,
-  FEED_SOFT_TARGETS,
-} from "./opportunity/opportunity.utils.js";
+export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors, classifyOpportunity, selectByComposition, selectDigestCandidates, DIGEST_REDELIVERY_COOLDOWN_DAYS, FEED_SOFT_TARGETS } from "./opportunity/opportunity.utils.js";
 export type { DigestDeliveredRow } from "./opportunity/opportunity.utils.js";
 export { getPrimaryActionLabel } from "./opportunity/opportunity.labels.js";
 export { computeFeedHealth } from "./opportunity/feed/feed.health.js";
 export type { FeedHealthInput, FeedHealthResult } from "./opportunity/feed/feed.health.js";
-export {
-  selectContactsForDiscovery,
-  shouldRunIntroducerDiscovery,
-  runIntroducerDiscovery,
-  MAX_CONTACTS_PER_CYCLE,
-  MAX_CANDIDATES_PER_CONTACT,
-  INTRODUCER_DISCOVERY_SOURCE,
-} from "./opportunity/opportunity.introducer.js";
-export type {
-  IntroducerDiscoveryDatabase,
-  IntroducerDiscoveryQueue,
-  ContactWithIntents,
-} from "./opportunity/opportunity.introducer.js";
+export { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE } from "./opportunity/opportunity.introducer.js";
+export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWithIntents } from "./opportunity/opportunity.introducer.js";
 export { persistOpportunities } from "./opportunity/opportunity.persist.js";
 export { presentOpportunity } from "./opportunity/opportunity.presentation.js";
 export type { UserInfo } from "./opportunity/opportunity.presentation.js";
 export { stripUuids, stripIntroducerMentions } from "./opportunity/opportunity.presentation.js";
-export {
-  getOrCreateDeliveryCardBatch,
-  DELIVERY_CARD_CACHE_TTL,
-  type CachedDeliveryCard,
-  type OpportunityWithContext,
-} from "./opportunity/delivery-card.cache.js";
+export { getOrCreateDeliveryCardBatch, DELIVERY_CARD_CACHE_TTL, type CachedDeliveryCard, type OpportunityWithContext } from "./opportunity/delivery-card.cache.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
 
@@ -285,12 +144,7 @@ export type { ElicitResultLike, ElicitInputFn, DispatchElicitationsParams } from
 
 // ─── States (for advanced graph consumers) ────────────────────────────────────
 
-export type {
-  UserNegotiationContext,
-  NegotiationTurn,
-  NegotiationOutcome,
-  SeedAssessment,
-} from "./shared/schemas/negotiation-state.schema.js";
+export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./shared/schemas/negotiation-state.schema.js";
 export type { NegotiationGraphLike } from "./negotiation/negotiation.state.js";
 
 // ─── Streamers ────────────────────────────────────────────────────────────────

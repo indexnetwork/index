@@ -10,7 +10,7 @@ import { handleLogin } from "../src/login.command";
 
 function createFakeLoginServer() {
   let handler: ((req: IncomingMessage, res: ServerResponse) => void | Promise<void>) | undefined;
-  let port = 43123;
+  const port = 43123;
 
   return {
     factory(nextHandler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>) {

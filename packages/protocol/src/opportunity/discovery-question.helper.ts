@@ -6,11 +6,7 @@
 import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
 import type { DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
 import type { SourceProfileData } from "./opportunity.state.js";
-import type {
-  DiscoveryQuestionInput,
-  DiscoverySourceProfile,
-  DiscoverySummary,
-} from "./question.prompt.js";
+import type { DiscoveryQuestionInput, DiscoverySourceProfile, DiscoverySummary } from "./question.prompt.js";
 
 export interface BuildDiscoveryQuestionInputArgs {
   query: string;

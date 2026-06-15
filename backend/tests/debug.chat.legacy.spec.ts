@@ -8,12 +8,7 @@ import { eq } from 'drizzle-orm';
 import { DebugController } from '../src/controllers/debug.controller';
 import db from '../src/lib/drizzle/drizzle';
 import { opportunities, users } from '../src/schemas/database.schema';
-import {
-  conversationParticipants,
-  conversations,
-  messages,
-  tasks,
-} from '../src/schemas/conversation.schema';
+import { conversationParticipants, conversations, messages, tasks } from '../src/schemas/conversation.schema';
 
 // ---------------------------------------------------------------------------
 // Helpers

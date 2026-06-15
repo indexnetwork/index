@@ -2,15 +2,7 @@ import '../src/startup.env';
 
 import { beforeEach, describe, expect, it } from 'bun:test';
 
-import {
-  SYSTEM_AGENT_IDS,
-  type AgentPermissionRow,
-  type AgentRegistryStore,
-  type AgentRow,
-  type AgentScope,
-  type AgentTransportRow,
-  type AgentWithRelations,
-} from '../src/adapters/agent.database.adapter';
+import { SYSTEM_AGENT_IDS, type AgentPermissionRow, type AgentRegistryStore, type AgentRow, type AgentScope, type AgentTransportRow, type AgentWithRelations } from '../src/adapters/agent.database.adapter';
 import type { AgentTokenStore } from '../src/adapters/agent-token.adapter';
 import { AgentController } from '../src/controllers/agent.controller';
 import { PERSONAL_AGENT_DEFAULT_ACTIONS, AgentService, type AgentServiceStore } from '../src/services/agent.service';

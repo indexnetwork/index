@@ -4,12 +4,7 @@
  * so tests can use expectSmartest(result) and get a single, bun-test-friendly failure message.
  */
 
-import type {
-  RunScenarioResult,
-  RunScenarioOptions,
-  RunScenarioReport,
-  SmartestScenario,
-} from './smartest.types';
+import type { RunScenarioResult, RunScenarioOptions, RunScenarioReport, SmartestScenario } from './smartest.types';
 import { resolveFixtures, resolveInputRefs } from './smartest.fixtures';
 import { mergeGeneratorRegistry } from './smartest.generators';
 import { getSmartestVerifierModel } from './smartest.config';

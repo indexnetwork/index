@@ -1,12 +1,6 @@
 import { useMemo } from 'react';
 import { useAuthenticatedAPI, apiClient } from '../lib/api';
-import {
-  Network,
-  PaginatedResponse,
-  APIResponse,
-  CreateNetworkRequest,
-  UpdateNetworkRequest
-} from '../types';
+import { Network, PaginatedResponse, APIResponse, CreateNetworkRequest, UpdateNetworkRequest } from '../types';
 
 // Re-export types for convenience
 export type { Network };

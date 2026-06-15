@@ -1,9 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import {
-  toDiscoveryNegotiation,
-  buildDiscoverySummary,
-  type NegotiationResolution,
-} from "../negotiation-summary.builder.js";
+import { toDiscoveryNegotiation, buildDiscoverySummary, type NegotiationResolution } from "../negotiation-summary.builder.js";
 
 const baseResolution: NegotiationResolution = {
   candidateUserId: "cand-1",

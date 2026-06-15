@@ -6,15 +6,7 @@ import { eq } from 'drizzle-orm';
 import { ConnectLinkController } from '../src/controllers/connect-link.controller';
 import type { AuthenticatedUser } from '../src/guards/auth.guard';
 import db from '../src/lib/drizzle/drizzle';
-import {
-  connectLinks,
-  networkMembers,
-  networks,
-  opportunities,
-  personalNetworks,
-  userSocials,
-  users,
-} from '../src/schemas/database.schema';
+import { connectLinks, networkMembers, networks, opportunities, personalNetworks, userSocials, users } from '../src/schemas/database.schema';
 import { mintConnectLink } from '../src/services/connect-link.service';
 
 const FRONTEND_URL = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network')

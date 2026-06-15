@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { RotateCcw } from "lucide-react";
-import IntentProposalCard, {
-  type IntentProposalData,
-} from "@/components/chat/IntentProposalCard";
+import IntentProposalCard, { type IntentProposalData } from "@/components/chat/IntentProposalCard";
 import { useNotifications } from "@/contexts/NotificationContext";
 
 const MOCK_CARD: IntentProposalData = {

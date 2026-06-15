@@ -24,12 +24,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import {
-  IntentQueue,
-  QUEUE_NAME,
-  type IntentJobPayload,
-  type IntentQueueDatabase,
-} from '../intent.queue';
+import { IntentQueue, QUEUE_NAME, type IntentJobPayload, type IntentQueueDatabase } from '../intent.queue';
 import { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD } from '@indexnetwork/protocol';
 
 /** Cast a plain object to IntentQueueDatabase for tests and provide assignment-policy defaults. */
@@ -96,6 +91,47 @@ describe('IntentQueue', () => {
       const queue = new IntentQueue();
       await queue.addDeleteHydeJob({ intentId: 'i1' });
       expect(mockAdd).toHaveBeenCalledWith('delete_hyde', { intentId: 'i1' }, expect.any(Object));
+    });
+
+    it('addReconcileJob delegates to addJob with a global jobId', async () => {
+      const queue = new IntentQueue();
+      await queue.addReconcileJob({ intentId: 'i1', userId: 'u1' });
+      expect(mockAdd).toHaveBeenCalledWith(
+        'reconcile_intent_networks',
+        { intentId: 'i1', userId: 'u1' },
+        expect.objectContaining({ jobId: 'reconcile-i1-global' }),
+      );
+    });
+
+    it('addReconcileJob scopes the jobId to the network when provided', async () => {
+      const queue = new IntentQueue();
+      await queue.addReconcileJob({ intentId: 'i1', userId: 'u1', networkScopeId: 'net-x' });
+      expect(mockAdd).toHaveBeenCalledWith(
+        'reconcile_intent_networks',
+        { intentId: 'i1', userId: 'u1', networkScopeId: 'net-x' },
+        expect.objectContaining({ jobId: 'reconcile-i1-net-x' }),
+      );
+    });
+
+    it('addNetworkReconcileForUser enqueues a network-scoped reconcile per active intent', async () => {
+      const getActiveIntents = mock(async () => [
+        { id: 'i1', payload: 'p1', summary: null, createdAt: new Date() },
+        { id: 'i2', payload: 'p2', summary: null, createdAt: new Date() },
+      ]);
+      const queue = new IntentQueue({ database: asIntentDb({ getActiveIntents } as Partial<IntentQueueDatabase>) });
+      const count = await queue.addNetworkReconcileForUser('u1', 'net-1');
+      expect(count).toBe(2);
+      expect(getActiveIntents).toHaveBeenCalledWith('u1');
+      expect(mockAdd).toHaveBeenCalledWith(
+        'reconcile_intent_networks',
+        { intentId: 'i1', userId: 'u1', networkScopeId: 'net-1' },
+        expect.objectContaining({ jobId: 'reconcile-i1-net-1' }),
+      );
+      expect(mockAdd).toHaveBeenCalledWith(
+        'reconcile_intent_networks',
+        { intentId: 'i2', userId: 'u1', networkScopeId: 'net-1' },
+        expect.objectContaining({ jobId: 'reconcile-i2-net-1' }),
+      );
     });
   });
 
@@ -353,6 +389,44 @@ describe('IntentQueue', () => {
         expect(assignIntentToNetwork.mock.calls.map((call) => call[1])).toEqual(['net-a']);
         expect(evaluateIntentAssignment).not.toHaveBeenCalled();
       });
+    });
+
+    it('reconcile_intent_networks: assigns networks with no HyDE or opportunity side effects', async () => {
+      const invokeHyde = mock(async () => {});
+      const addOpportunityJob = mock(async () => ({}));
+      const assignIntentToNetwork = mock(async () => {});
+      const db = {
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build AI tools', userId: 'u1', sourceType: null, sourceId: null }),
+        getAssignmentNetworkIdsForUser: async () => ['n1', 'n2'],
+        getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
+        assignIntentToNetwork,
+        deleteHydeDocumentsForSource: async () => 0,
+      };
+      const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde, addOpportunityJob });
+      await queue.processJob('reconcile_intent_networks', { intentId: 'i1', userId: 'u1' });
+
+      expect(assignIntentToNetwork.mock.calls.map((c) => c[1]).sort()).toEqual(['n1', 'n2']);
+      // Pure assignment: reconcile must never regenerate HyDE or trigger discovery.
+      expect(invokeHyde).not.toHaveBeenCalled();
+      expect(addOpportunityJob).not.toHaveBeenCalled();
+      expect(assignIntentToNetwork.mock.calls[0][3]).toMatchObject({ source: 'intent-reconcile-queue', assigned: true });
+    });
+
+    it('reconcile_intent_networks: networkScopeId restricts evaluation to that network', async () => {
+      const assignIntentToNetwork = mock(async () => {});
+      const getNetworkAssignmentContext = mock(async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }));
+      const db = {
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        getAssignmentNetworkIdsForUser: async () => ['net-a', 'net-b'],
+        getNetworkAssignmentContext,
+        assignIntentToNetwork,
+        deleteHydeDocumentsForSource: async () => 0,
+      };
+      const queue = new IntentQueue({ database: asIntentDb(db) });
+      await queue.processJob('reconcile_intent_networks', { intentId: 'i1', userId: 'u1', networkScopeId: 'net-b' });
+
+      expect(getNetworkAssignmentContext).toHaveBeenCalledTimes(1);
+      expect(assignIntentToNetwork.mock.calls.map((c) => c[1])).toEqual(['net-b']);
     });
 
     it('delete_hyde: calls deleteHydeDocumentsForSource', async () => {
