@@ -193,7 +193,7 @@ describe("QuestionerAgent", () => {
   });
 
   it.each([
-    { mode: "discovery" as const, contextNeedles: ["find decentralized identity protocol designers", "3 candidates evaluated"] },
+    { mode: "discovery" as const, contextNeedles: ["find decentralized identity protocol designers", "3 people reviewed"] },
     { mode: "intent" as const, contextNeedles: ["Connect with people building decentralized identity protocols", "Decentralized identity protocol design collaborations"] },
     { mode: "profile" as const, contextNeedles: ["availability", "I build agent tools for event communities"] },
     { mode: "negotiation" as const, contextNeedles: ["AI infra founder, Berlin", "Both interested but scope unclear"] },
