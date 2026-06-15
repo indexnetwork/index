@@ -44,7 +44,7 @@ describe("buildQuestionPrompt", () => {
     expect(SYSTEM_PROMPT).toContain("question text itself");
     expect(SYSTEM_PROMPT).toContain("original query");
     expect(SYSTEM_PROMPT).toContain("discovery pattern");
-    expect(SYSTEM_PROMPT).toContain("negotiation pattern");
+    expect(SYSTEM_PROMPT).toContain("connection pattern");
     expect(SYSTEM_PROMPT).toContain("concrete learned fact");
     expect(SYSTEM_PROMPT).toContain("Do not rely on `title`, UI labels, hidden metadata, or surrounding digest/chat text");
     expect(SYSTEM_PROMPT).toContain("For your AI crypto decentralized deep-tech search");
@@ -56,7 +56,7 @@ describe("buildQuestionPrompt", () => {
     expect(out).toContain("find me a Rust mentor");
   });
 
-  it("includes the summary counters", () => {
+  it("includes the summary counters using user-facing language", () => {
     const out = buildQuestionPrompt(makeInput({
       summary: {
         totalCandidates: 5,
@@ -66,10 +66,13 @@ describe("buildQuestionPrompt", () => {
         roleDistribution: { peer: 3, agent: 1, patient: 1 },
       },
     }));
-    expect(out).toContain("5 candidates evaluated");
-    expect(out).toContain("2 opportunities found");
-    expect(out).toContain("3 ended without opportunity");
-    expect(out).toContain("1 hit turn-cap/timeout");
+    expect(out).toContain("5 people reviewed");
+    expect(out).toContain("2 promising connections found");
+    expect(out).toContain("3 reviews did not find enough fit");
+    expect(out).toContain("1 needed more detail or time");
+    expect(out).toContain("3 mutual collaborations");
+    expect(out).toContain("1 where the user could offer help or expertise");
+    expect(out).toContain("1 where the user seemed to be seeking help or expertise");
   });
 
   it("indicates absent chat context", () => {
@@ -81,14 +84,14 @@ describe("buildQuestionPrompt", () => {
     const chatContext: ChatContextDigest = {
       statedFacts: ["Pre-revenue", "Based in Berlin"],
       openQuestions: ["What stage?"],
-      rejectionReasons: ["All US-based candidates"],
-      surfacedFindings: ["Two candidates mentioned the same VC"],
+      rejectionReasons: ["All US-based people"],
+      surfacedFindings: ["Two people mentioned the same VC"],
     };
     const out = buildQuestionPrompt(makeInput({ chatContext }));
     expect(out).toContain("Pre-revenue");
     expect(out).toContain("What stage?");
-    expect(out).toContain("All US-based candidates");
-    expect(out).toContain("Two candidates mentioned the same VC");
+    expect(out).toContain("All US-based people");
+    expect(out).toContain("Two people mentioned the same VC");
   });
 
   it("includes the now timestamp", () => {
@@ -101,7 +104,7 @@ describe("buildQuestionPrompt", () => {
       negotiationDigests: [makeDigest({
         counterpartyHint: "AI infra founder, Berlin",
         indexContext: "Builders network",
-        keyTake: "Multiple candidates flagged a Series A funding gap.",
+        keyTake: "Multiple people flagged a Series A funding gap.",
       })],
     }));
     expect(out).toContain("AI infra founder, Berlin");
@@ -109,25 +112,36 @@ describe("buildQuestionPrompt", () => {
     expect(out).toContain("Series A funding gap");
   });
 
-  it("renders zero negotiations as '(no negotiations)'", () => {
+  it("renders zero connection reviews without internal negotiation language", () => {
     const out = buildQuestionPrompt(makeInput({ negotiationDigests: [] }));
-    expect(out).toContain("(no negotiations)");
+    expect(out).toContain("(no connection reviews)");
+    expect(out).not.toContain("(no negotiations)");
   });
 
-  it("renders outcomeReason when present", () => {
+  it("redacts internal outcome reasons", () => {
     const out = buildQuestionPrompt(makeInput({
       negotiationDigests: [makeDigest({ outcomeReason: "turn_cap" })],
     }));
-    expect(out).toContain("turn_cap");
+    expect(out).toContain("needed more detail");
+    expect(out).not.toContain("turn_cap");
   });
 
-  it("renders suggestedRoles when present", () => {
+  it("renders suggestedRoles as user-facing relationship signals", () => {
     const out = buildQuestionPrompt(makeInput({
       negotiationDigests: [makeDigest({
         suggestedRoles: { ownUser: "agent", otherUser: "patient" },
       })],
+      summary: {
+        totalCandidates: 1,
+        opportunitiesFound: 1,
+        noOpportunityCount: 0,
+        timeoutCount: 0,
+        roleDistribution: { agent: 1 },
+      },
     }));
-    expect(out).toContain("agent");
-    expect(out).toContain("patient");
+    expect(out).toContain("the user could offer help or expertise");
+    expect(out).not.toContain("roles=");
+    expect(out).not.toContain("agent");
+    expect(out).not.toContain("patient");
   });
 });

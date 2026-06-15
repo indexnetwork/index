@@ -89,34 +89,36 @@ export interface DiscoveryQuestionInput {
 }
 
 /** @deprecated Use QuestionerAgent and questioner presets instead. Will be removed in a future version. */
-export const SYSTEM_PROMPT = `You sit between a human and a discovery protocol that just ran negotiations on their behalf. Your job: surface the minimum set of structured decision questions the human must answer to make the next discovery turn sharper, or improve their outlook on the intent.
+export const SYSTEM_PROMPT = `You help write user-facing follow-up questions after Index has reviewed potential connections for a human. Your job: surface the minimum set of structured decision questions the human must answer to make the next discovery turn sharper, or improve their outlook on the intent.
 
 You may pick from five strategies. Choose contextually; mix when multiple questions genuinely complement.
 - refine_intent: ask the user to sharpen or pivot their original signal.
 - surface_missing_detail: ask for one concrete missing input (stage, location, timing, scope, …).
-- open_adjacent_thread: offer a pivot suggested by recurring counterparty signals.
-- reflective_summary: mirror what the negotiations revealed and ask the user to decide.
-- surface_emergent_knowledge: cite a fact you learned from negotiations and ask the user to decide in light of it.
+- open_adjacent_thread: offer a pivot suggested by recurring connection signals.
+- reflective_summary: mirror what the connection review revealed and ask the user to decide.
+- surface_emergent_knowledge: cite a fact you learned from the connection review and ask the user to decide in light of it.
 
 Ask a question only when ALL of these hold:
-1. The agent cannot resolve the decision autonomously from the evidence shown.
-2. The answer would materially change which candidates surface next.
+1. Index cannot resolve the decision autonomously from the evidence shown.
+2. The answer would materially change which people surface next.
 3. The same fact is NOT already in chatContext.statedFacts, NOT already asked in chatContext.openQuestions, and NOT already shared in chatContext.surfacedFindings.
 
-Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the original query, discovery pattern, negotiation pattern, or concrete learned fact in the question text itself. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about. For example, prefer "For your AI crypto decentralized deep-tech search, which area is most critical right now?" over "Which area is most critical right now?"
+Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the original query, discovery pattern, connection pattern, or concrete learned fact in the question text itself. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about. For example, prefer "For your AI crypto decentralized deep-tech search, which area is most critical right now?" over "Which area is most critical right now?"
 
-Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first (e.g. one surface_emergent_knowledge + one refine_intent). Add a third only when there are ≥3 substantive candidates and three distinct strategies each unblock a real decision. Two questions of the same strategy are acceptable only if their decision domains differ (different titles). Avoid stacking three pulls (info-from-user); balance with pushes (info-to-user via reflective_summary / surface_emergent_knowledge).
+Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first (e.g. one surface_emergent_knowledge + one refine_intent). Add a third only when there are ≥3 substantive people reviewed and three distinct strategies each unblock a real decision. Two questions of the same strategy are acceptable only if their decision domains differ (different titles). Avoid stacking three pulls (info-from-user); balance with pushes (info-to-user via reflective_summary / surface_emergent_knowledge).
 
-Ordering. Questions whose answer unblocks the most failed negotiations come first; then highest-impact; then ambiguity-clarifying. Negotiations whose outcome.reason is "turn_cap" or "timeout" signal under-specification — prioritize.
+Ordering. Questions whose answer unblocks the most connection reviews come first; then highest-impact; then ambiguity-clarifying. Reviews that needed more detail or ran out of time signal under-specification — prioritize.
 
-Option construction. Each option must represent a meaningfully different outcome. Suffix the safest path with " (Recommended)" and list it first. The description states the CONSEQUENCE of choosing the option, not its definition. 2–4 options. Never add an "Other" option — clients provide a free-text fallback automatically. For surface_emergent_knowledge questions, anchor the prompt in the concrete cited fact ("Multiple candidates flagged that…") and let the options represent decisions in light of that fact, not different versions of the fact.
+User-facing language. Every title, prompt, option label, and option description is shown directly to the user. Never mention raw protocol mechanics or internal labels such as "agent", "patient", "peer", "suggestedRoles", "role distribution", "counterparty", "negotiation", "turn_cap", "timeout", or "candidate". Use natural language instead: people, matches, connections, mutual collaboration, someone who can help, or someone seeking help.
+
+Option construction. Each option must represent a meaningfully different outcome. Suffix the safest path with " (Recommended)" and list it first. The description states the CONSEQUENCE of choosing the option, not its definition. 2–4 options. Never add an "Other" option — clients provide a free-text fallback automatically. For surface_emergent_knowledge questions, anchor the prompt in the concrete cited fact ("Multiple people flagged that…") and let the options represent decisions in light of that fact, not different versions of the fact.
 
 Title rules. ≤12 chars. Noun of the decision domain. Discovery examples: "Stage", "Timing", "Role", "Location", "Stack", "Budget", "Scope", "Format".
 
 Anti-patterns — never do these.
 - Don't ask procedural confirmations ("Should I look again?").
 - Don't ask about hypothetical edge cases that didn't occur.
-- Don't ask about specific candidate identities; treat counterpartyHint as the only allowed reference.
+- Don't ask about specific person identities; treat the provided person summary as the only allowed reference.
 - Don't repeat anything in chatContext.openQuestions.
 - Don't re-surface anything in chatContext.surfacedFindings.
 - Don't ask for facts in chatContext.statedFacts.
@@ -130,11 +132,11 @@ Output. Return at most 3 entries in the "questions" array. Each entry must inclu
  */
 export function buildQuestionPrompt(input: DiscoveryQuestionInput): string {
   const profileSummary = renderProfile(input.sourceProfile);
-  const negotiationBlocks = renderDiscoveryNegotiationDigests(input.negotiationDigests);
+  const connectionReviewBlocks = renderConnectionReviewDigests(input.negotiationDigests);
   const chatContextBlock = input.chatContext
     ? renderDigest(input.chatContext)
     : "(no chat context available)";
-  const roleDistribution = renderRoleDistribution(input.summary.roleDistribution);
+  const engagementPattern = renderEngagementPattern(input.summary.roleDistribution);
 
   return [
     "## Seeker's query",
@@ -144,13 +146,13 @@ export function buildQuestionPrompt(input: DiscoveryQuestionInput): string {
     profileSummary,
     "",
     "## This discovery turn",
-    `- ${input.summary.totalCandidates} candidates evaluated`,
-    `- ${input.summary.opportunitiesFound} opportunities found`,
-    `- ${input.summary.noOpportunityCount} ended without opportunity (${input.summary.timeoutCount} hit turn-cap/timeout)`,
-    `- Role distribution across outcomes: ${roleDistribution}`,
+    `- ${input.summary.totalCandidates} people reviewed`,
+    `- ${input.summary.opportunitiesFound} promising connections found`,
+    `- ${input.summary.noOpportunityCount} reviews did not find enough fit (${input.summary.timeoutCount} needed more detail or time)`,
+    `- Engagement pattern: ${engagementPattern}`,
     "",
-    "## Negotiation evidence (compact digests)",
-    negotiationBlocks,
+    "## Connection review evidence (compact digests)",
+    connectionReviewBlocks,
     "",
     "## What the user has already said in this session",
     chatContextBlock,
@@ -170,18 +172,18 @@ export function buildQuestionPrompt(input: DiscoveryQuestionInput): string {
  * is fixed-size (≤ ~400 chars after rendering), so the rendered block scales
  * linearly with candidate count: 10 candidates ≈ 4 KB, well within budget.
  */
-function renderDiscoveryNegotiationDigests(digests: DiscoveryNegotiationDigest[]): string {
-  if (digests.length === 0) return "(no negotiations)";
+function renderConnectionReviewDigests(digests: DiscoveryNegotiationDigest[]): string {
+  if (digests.length === 0) return "(no connection reviews)";
   return digests
     .map((d) => {
-      const reasonSuffix = d.outcomeReason ? ` (${d.outcomeReason})` : "";
-      const rolesSuffix = d.suggestedRoles
-        ? ` — roles=${d.suggestedRoles.ownUser}↔${d.suggestedRoles.otherUser}`
-        : "";
+      const relationshipSignal = d.suggestedRoles
+        ? [`  Relationship signal: ${renderRelationshipSignal(d.suggestedRoles)}`]
+        : [];
       return [
-        `- Counterparty: ${d.counterpartyHint}`,
-        `  Index: ${d.indexContext}`,
-        `  Outcome: ${d.outcomeRole}${reasonSuffix}${rolesSuffix}`,
+        `- Person: ${d.counterpartyHint}`,
+        `  Community context: ${d.indexContext}`,
+        `  Outcome: ${renderOutcome(d)}`,
+        ...relationshipSignal,
         `  Take: ${d.keyTake}`,
       ].join("\n");
     })
@@ -198,11 +200,54 @@ function renderProfile(p: DiscoverySourceProfile): string {
   return lines.length > 0 ? lines.join("\n") : "(no profile data)";
 }
 
-function renderRoleDistribution(dist: Partial<Record<NegotiationRole, number>>): string {
-  const entries = (Object.entries(dist) as Array<[NegotiationRole, number]>)
-    .filter(([, n]) => n > 0);
-  if (entries.length === 0) return "(none)";
-  return entries.map(([role, n]) => `${role}=${n}`).join(", ");
+function renderEngagementPattern(dist: Partial<Record<NegotiationRole, number>>): string {
+  const parts: string[] = [];
+  if ((dist.peer ?? 0) > 0) {
+    parts.push(`${dist.peer} mutual collaboration${dist.peer === 1 ? "" : "s"}`);
+  }
+  if ((dist.agent ?? 0) > 0) {
+    parts.push(`${dist.agent} where the user could offer help or expertise`);
+  }
+  if ((dist.patient ?? 0) > 0) {
+    parts.push(`${dist.patient} where the user seemed to be seeking help or expertise`);
+  }
+  return parts.length > 0 ? parts.join(", ") : "(no engagement pattern available)";
+}
+
+function renderOutcome(digest: DiscoveryNegotiationDigest): string {
+  const outcome = digest.outcomeRole === "opportunity"
+    ? "promising connection"
+    : "not enough fit";
+  const reason = renderOutcomeReason(digest.outcomeReason);
+  return reason ? `${outcome} (${reason})` : outcome;
+}
+
+function renderOutcomeReason(reason: DiscoveryNegotiationDigest["outcomeReason"]): string {
+  switch (reason) {
+    case "turn_cap":
+      return "needed more detail";
+    case "timeout":
+      return "ran out of time";
+    case "rejected":
+      return "not enough mutual interest";
+    case "stalled":
+      return "stalled";
+    case null:
+      return "";
+  }
+}
+
+function renderRelationshipSignal(roles: NonNullable<DiscoveryNegotiationDigest["suggestedRoles"]>): string {
+  if (roles.ownUser === "peer" && roles.otherUser === "peer") return "mutual collaboration";
+  if (roles.ownUser === "agent" && roles.otherUser === "patient") {
+    return "the user could offer help or expertise";
+  }
+  if (roles.ownUser === "patient" && roles.otherUser === "agent") {
+    return "the user seemed to be seeking help or expertise";
+  }
+  if (roles.ownUser === "agent") return "the user could offer help or expertise";
+  if (roles.ownUser === "patient") return "the user seemed to be seeking help or expertise";
+  return "collaboration fit";
 }
 
 function renderDigest(d: ChatContextDigest): string {

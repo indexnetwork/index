@@ -4,7 +4,7 @@ import { getPreset } from "../questioner.presets.js";
 const standaloneModeExpectations = [
   {
     mode: "discovery" as const,
-    anchors: ["original query", "discovery pattern", "negotiation pattern", "concrete learned fact"],
+    anchors: ["original query", "discovery pattern", "connection pattern", "concrete learned fact"],
     positiveExample: "For your AI crypto decentralized deep-tech search",
     negativeExample: "Which area is most critical right now?",
   },
