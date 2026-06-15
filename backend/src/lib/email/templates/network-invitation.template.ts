@@ -18,8 +18,9 @@ const REFRESH_NOTE = 'Your previous key has been revoked. Use the key below goin
 
 /**
  * Plain-text + HTML invitation that delivers the user's raw API key. Possession
- * of this email is the user's verification — the key is bound to a single
- * network via the agent's `agent_permissions.scope='network'` row.
+ * of this email verifies delivery of the scoped key only — it is not a general
+ * index.network account verification. The key is bound to a single network via
+ * the agent's `agent_permissions.scope='network'` row.
  *
  * When `isResend` is true, the subject and body are switched to the "refreshed
  * key" variant. This is sent by `networkInvitationService.resendInvite`.
