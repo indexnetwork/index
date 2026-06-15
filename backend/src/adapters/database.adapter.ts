@@ -10,6 +10,7 @@ import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
 import { normalizeEmbedding } from '../lib/embedding/vector';
+import { normalizeTelegramSocialValue } from '../lib/telegram/socials';
 import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
 import type {
   Conversation,
@@ -4536,12 +4537,14 @@ export class ProfileDatabaseAdapter {
           .map(s => {
             const value = s.value.trim();
             const detected = detectSocialLabel(value);
-            return {
-              userId,
-              label: detected === 'custom' ? s.label : detected,
-              value,
-            };
-          });
+            const label = detected === 'custom' ? s.label : detected;
+            if (label.trim().toLowerCase() === 'telegram') {
+              const telegramHandle = normalizeTelegramSocialValue(value);
+              return telegramHandle ? { userId, label: 'telegram', value: telegramHandle } : null;
+            }
+            return { userId, label, value };
+          })
+          .filter((s): s is { userId: string; label: string; value: string } => s !== null);
 
         // Dedup: for non-custom labels the unique index allows only one row per label.
         // Keep the first occurrence (explicit field) and drop later duplicates.

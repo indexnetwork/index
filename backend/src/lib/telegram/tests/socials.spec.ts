@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
-import { mergeTelegramHandleIntoSocials } from '../socials';
+import { mergeTelegramHandleIntoSocials, normalizeTelegramSocialValue } from '../socials';
+
+describe('normalizeTelegramSocialValue', () => {
+  test('stores Telegram handles as bare routable handles', () => {
+    expect(normalizeTelegramSocialValue('@alice_tg')).toBe('alice_tg');
+    expect(normalizeTelegramSocialValue('https://t.me/alice_tg?start=1')).toBe('alice_tg');
+    expect(normalizeTelegramSocialValue('Alice Example')).toBeNull();
+  });
+});
 
 describe('mergeTelegramHandleIntoSocials', () => {
   test('adds Telegram while preserving unrelated socials', () => {
@@ -24,6 +32,14 @@ describe('mergeTelegramHandleIntoSocials', () => {
       { label: 'github', value: 'alice-gh' },
       { label: 'telegram', value: 'new_tg' },
     ]);
+  });
+
+  test('normalizes Telegram handle before storing', () => {
+    const merged = mergeTelegramHandleIntoSocials([
+      { label: 'github', value: 'alice-gh' },
+    ], '@alice_tg');
+
+    expect(merged).toContainEqual({ label: 'telegram', value: 'alice_tg' });
   });
 
   test('returns null when Telegram handle is already unchanged', () => {
