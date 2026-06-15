@@ -155,6 +155,13 @@ interface IntentListRow {
   archivedAt: Date | null;
   sourceType: string | null;
   sourceId: string | null;
+  /**
+   * Networks this intent is currently registered to. Empty when the intent is
+   * still being evaluated (HyDE assignment not yet run) or genuinely matched
+   * nothing — the frontend distinguishes those two via the intent's age. Lets
+   * the UI surface orphaned intents instead of hiding the assignment outcome.
+   */
+  networks: { id: string; title: string }[];
 }
 // Shapes matching schemas/database.schema userProfiles columns (no lib/protocol import)
 interface ProfileIdentity {
@@ -471,7 +478,43 @@ export class IntentDatabaseAdapter {
       db.select({ count: count() }).from(schema.intents).where(where),
     ]);
 
-    return { rows, total: Number(totalResult[0]?.count ?? 0) };
+    const withNetworks = await this.attachIntentNetworks(rows);
+    return { rows: withNetworks, total: Number(totalResult[0]?.count ?? 0) };
+  }
+
+  /**
+   * Attach each intent's registered networks (excluding soft-deleted networks)
+   * to a page of list rows in a single grouped query. Intents with no
+   * membership get an empty array, which the UI reads as "pending or orphaned".
+   *
+   * @param rows - The paginated intent rows to enrich (mutated copies returned).
+   * @returns The same rows, each with a populated `networks` array.
+   */
+  private async attachIntentNetworks(
+    rows: Omit<IntentListRow, 'networks'>[],
+  ): Promise<IntentListRow[]> {
+    if (rows.length === 0) return [];
+    const intentIds = rows.map(r => r.id);
+    const memberships = await db
+      .select({
+        intentId: schema.intentNetworks.intentId,
+        networkId: schema.networks.id,
+        title: schema.networks.title,
+      })
+      .from(schema.intentNetworks)
+      .innerJoin(schema.networks, eq(schema.intentNetworks.networkId, schema.networks.id))
+      .where(and(
+        inArray(schema.intentNetworks.intentId, intentIds),
+        isNull(schema.networks.deletedAt),
+      ));
+
+    const byIntent = new Map<string, { id: string; title: string }[]>();
+    for (const m of memberships) {
+      const list = byIntent.get(m.intentId) ?? [];
+      list.push({ id: m.networkId, title: m.title });
+      byIntent.set(m.intentId, list);
+    }
+    return rows.map(r => ({ ...r, networks: byIntent.get(r.id) ?? [] }));
   }
 
   async getIntentById(intentId: string, userId: string): Promise<IntentListRow | null> {
@@ -491,7 +534,9 @@ export class IntentDatabaseAdapter {
       .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
       .limit(1);
 
-    return row[0] ?? null;
+    if (!row[0]) return null;
+    const [withNetworks] = await this.attachIntentNetworks(row);
+    return withNetworks;
   }
 
   /**
