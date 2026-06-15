@@ -38,6 +38,7 @@
     "maintenance:backfill-context-hyde": "bun ./src/cli/backfill-context-hyde.ts",
     "maintenance:backfill-profile-questions": "bun ./src/cli/backfill-profile-questions.ts",
     "maintenance:backfill-intent-questions": "bun ./src/cli/backfill-intent-questions.ts",
+    "maintenance:backfill-intent-networks": "bun ./src/cli/backfill-intent-networks.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",
     "test:raw": "NODE_ENV=test bun test"
