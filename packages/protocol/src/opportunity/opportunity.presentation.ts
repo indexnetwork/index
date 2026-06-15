@@ -127,6 +127,36 @@ export function stripUuids(text: string): string {
 }
 
 /**
+ * Truncate user-facing text to at most `maxChars` without cutting mid-word.
+ *
+ * Prefers a sentence boundary, then a word boundary, and only falls back to a
+ * hard slice if no boundary exists within the limit. An ellipsis is appended
+ * when the text is actually shortened. Used by presenter fallbacks so a degraded
+ * card never shows a sentence chopped mid-word (e.g. "His focus on 'indiv").
+ */
+export function truncateAtBoundary(text: string, maxChars: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+
+  const slice = trimmed.slice(0, maxChars);
+
+  // Prefer ending on the last completed sentence within the limit.
+  const lastSentence = Math.max(
+    slice.lastIndexOf(". "),
+    slice.lastIndexOf("! "),
+    slice.lastIndexOf("? "),
+  );
+  if (lastSentence >= maxChars * 0.5) {
+    return slice.slice(0, lastSentence + 1).trim();
+  }
+
+  // Otherwise back off to the last whole word and add an ellipsis.
+  const lastSpace = slice.lastIndexOf(" ");
+  const body = lastSpace > 0 ? slice.slice(0, lastSpace) : slice;
+  return body.replace(/[\s,;:.!?'"-]+$/, "").trim() + "\u2026";
+}
+
+/**
  * Strips introducer mentions from opportunity summary text.
  * Removes patterns like:
  * - "[Introducer] introduced you to [Counterpart]"

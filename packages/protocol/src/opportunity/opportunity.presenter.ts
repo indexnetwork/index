@@ -19,7 +19,7 @@ import { viewerCentricCardSummary } from "./opportunity.presentation.js";
 import type { Opportunity } from "../shared/interfaces/database.interface.js";
 import type { ChatGraphCompositeDatabase } from "../shared/interfaces/database.interface.js";
 import type { NegotiationContext } from "./negotiation-context.loader.js";
-import { stripUuids, stripIntroducerMentions } from "./opportunity.presentation.js";
+import { stripUuids, stripIntroducerMentions, truncateAtBoundary } from "./opportunity.presentation.js";
 
 /**
  * Minimal database interface required by gatherPresenterContext.
@@ -354,13 +354,16 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
       logger.warn(
         "[OpportunityPresenter.present] LLM failed, returning fallback",
         {
+          event: "presenter_fallback",
+          presenter: "opportunity",
+          reason: timeoutReason ? "timeout" : "parse_error",
           message,
           timeoutReason,
         },
       );
       return {
         headline: "A promising connection",
-        personalizedSummary: stripUuids(input.matchReasoning.slice(0, 300)),
+        personalizedSummary: truncateAtBoundary(stripUuids(input.matchReasoning), 300),
         suggestedAction: "Take a look and decide whether to reach out.",
         greeting: "",
       };
@@ -451,11 +454,14 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
       logger.warn(
         "[OpportunityPresenter.presentHomeCard] LLM failed, returning fallback",
         {
+          event: "presenter_fallback",
+          presenter: "home_card",
+          reason: timeoutReason ? "timeout" : "parse_error",
           message,
           timeoutReason,
         },
       );
-      let fallbackSummary = stripUuids(input.matchReasoning.slice(0, 300));
+      let fallbackSummary = truncateAtBoundary(stripUuids(input.matchReasoning), 300);
       if (input.isIntroduction && input.introducerName) {
         fallbackSummary = stripIntroducerMentions(fallbackSummary, input.introducerName);
       }

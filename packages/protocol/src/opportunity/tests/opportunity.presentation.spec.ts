@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import { presentOpportunity } from '../opportunity.presentation.js';
+import { presentOpportunity, truncateAtBoundary } from '../opportunity.presentation.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
 
 describe('presentOpportunity', () => {
@@ -81,5 +81,37 @@ describe('presentOpportunity', () => {
     if (result.description.length >= 100) {
       expect(result.description.slice(-3)).toBe('...');
     }
+  });
+});
+
+describe('truncateAtBoundary', () => {
+  test('returns text unchanged when within the limit', () => {
+    const text = 'Short and sweet.';
+    expect(truncateAtBoundary(text, 300)).toBe(text);
+  });
+
+  test('never cuts mid-word', () => {
+    const text =
+      "Eric is a computational neuroscientist with a background in engineering and explicitly develops systems for humans to better understand and interact with AI. His focus on individual cognition makes this a strong match.";
+    const out = truncateAtBoundary(text, 120);
+    expect(out.length).toBeLessThanOrEqual(120);
+    // The last token must be a complete word from the source, not a fragment.
+    const lastWord = out.replace(/[\u2026.!?]+$/, '').trim().split(/\s+/).pop() ?? '';
+    expect(text).toContain(lastWord);
+  });
+
+  test('prefers a sentence boundary when one is available', () => {
+    const text =
+      'You both work on developer tooling. They are hiring a founding engineer right now and could use your distributed-systems background.';
+    const out = truncateAtBoundary(text, 60);
+    expect(out).toBe('You both work on developer tooling.');
+  });
+
+  test('falls back to a word boundary with an ellipsis', () => {
+    const text =
+      'Acomplicatedrunonphrasewithoutanyearlysentencebreak that keeps going well past the limit and onward';
+    const out = truncateAtBoundary(text, 40);
+    expect(out.length).toBeLessThanOrEqual(41); // body + ellipsis char
+    expect(out.endsWith('\u2026')).toBe(true);
   });
 });

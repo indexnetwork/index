@@ -51,6 +51,10 @@ Sentry.init({
 
   integrations: (defaultIntegrations) => [
     ...defaultIntegrations.filter((integration) => !['LangChain', 'LangGraph', 'PostgresJs'].includes(integration.name)),
+    // Forward console.warn/error into Sentry Logs (not issues) so structured
+    // protocol signals — e.g. presenter_fallback — become queryable in the
+    // logs dataset without creating issue noise. Requires enableLogs below.
+    Sentry.consoleLoggingIntegration({ levels: ['warn', 'error'] }),
     Sentry.langChainIntegration({
       recordInputs: false,
       recordOutputs: false,
