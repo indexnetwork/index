@@ -12,6 +12,22 @@ import {
 
 import type { IntentContext, NegotiationContext, ProfileContext } from "./questioner.types.js";
 
+/**
+ * Shared rule block appended to every questioner system prompt. Enforces that
+ * the generated `prompt` resolves on its own — no demonstratives/anaphora that
+ * point at people, events, or prior turns the reader cannot see — and never
+ * narrates Index's own matching pipeline. Closes the referential-leak class
+ * surfaced in digest audits ("…with these builders?", "the previous
+ * negotiation stalled because the counterparty didn't mention …").
+ */
+const REFERENTIAL_CLOSURE_RULES = `Referential closure. The prompt must resolve entirely on its own, with no dangling references. The reader sees ONLY the question text — never the people you reviewed, the counterparty, the events on their calendar, or this conversation. Do not use demonstratives or definite anaphora that point at things the reader cannot see: "these builders", "those founders", "these researchers", "these conversations", "this lunch", "the speaker". If you reference a person, name them. If you reference a group, restate the concrete shared attribute inside the question itself ("founders working on decentralized identity"), never "these founders". Never imply a list, set, or prior exchange the reader is not currently looking at.
+- Bad: "What kind of collaboration are you looking for with these builders?"
+- Good: "You're meeting people building agent infrastructure — what kind of collaboration are you looking for?"
+
+No process narration. Never describe Index's own activity or internal state. Forbidden: "the previous negotiation", "the negotiation stalled", "opportunities found so far", "my search", "the counterparty", "candidates reviewed", restating why a match did or did not happen, or quoting words a counterparty did or did not use. Ask about the user's goal or intent directly, never about the matching pipeline.
+- Bad: "The previous negotiation stalled because the counterparty didn't mention 'matchmaking'. Should I broaden the search?"
+- Good: "Do you want to focus on dedicated matchmakers, or also people interested in relationships more broadly?"`;
+
 export interface QuestionerPreset {
   /** The LLM system prompt for this mode. */
   systemPrompt: string;
@@ -35,6 +51,8 @@ Ask a question only when ALL of these hold:
 Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the source intent/topic in the question text itself, using concise plain language from the intent or summary. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
 - Bad: "What kind of collaboration are you looking for?"
 - Good: "For your decentralized identity protocol-design search, what kind of collaboration are you looking for?"
+
+${REFERENTIAL_CLOSURE_RULES}
 
 Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ (different titles).
 
@@ -105,6 +123,8 @@ Ask a question only when ALL of these hold:
 Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the profile signal or gap being clarified in the question text itself, using concise plain language from the current profile, existing premises, or identified gaps. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
 - Bad: "What kind of role are you looking for?"
 - Good: "To improve matches from your founder/operator profile, what kind of role are you looking for?"
+
+${REFERENTIAL_CLOSURE_RULES}
 
 Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ.
 
@@ -182,9 +202,11 @@ Ask a question only when ALL of these hold:
 2. The answer would materially change how the next attempt surfaces or engages candidates.
 3. The question targets a different decision domain from any other question in this batch.
 
-Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the stalled negotiation context, counterparty hint, community, or key takeaway in the question text itself. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
+Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the user's underlying goal or topic and the relevant community in the question text itself, in plain language drawn from their intent or profile — NOT the mechanics of the match attempt. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
 - Bad: "Which role is a better fit for your immediate needs?"
-- Good: "For the stalled match with an AI infra founder in the AI founders community, which role is a better fit for your immediate needs?"
+- Good: "For your search for AI infrastructure collaborators in the AI founders community, what kind of working relationship fits your immediate needs?"
+
+${REFERENTIAL_CLOSURE_RULES}
 
 Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ.
 
