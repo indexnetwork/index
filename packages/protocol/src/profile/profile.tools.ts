@@ -1228,10 +1228,10 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     name: "complete_onboarding",
     description:
       "Marks the user's onboarding as complete, unlocking full platform access. This is the final step in the new-user setup flow.\n\n" +
-      "**Prerequisites:** The user must have a profile (created via create_user_profile) AND must have explicitly confirmed it " +
-      "(said 'yes', 'looks good', 'that's right', or similar). Do NOT call this until the user confirms.\n\n" +
-      "**What happens:** Sets completedAt timestamp on the user's onboarding record.\n\n" +
-      "**Workflow:** create_user_profile() -> user confirms preview -> create_user_profile(confirm=true) -> user confirms saved profile -> complete_onboarding()\n\n" +
+      "**Prerequisites:** The user must have a confirmed profile AND at least one active intent/signal. The profile must be shown to the user and explicitly approved " +
+      "(said 'yes', 'looks good', 'that's right', or similar). The first signal must be persisted before this tool is called; MCP/onboarding agents should call create_intent(..., autoApprove=true).\n\n" +
+      "**What happens:** Validates that the confirmed profile and first active intent exist, then sets completedAt timestamp on the user's onboarding record.\n\n" +
+      "**Workflow:** create_user_profile() -> user confirms preview -> create_user_profile(confirm=true) -> create_intent(..., autoApprove=true) -> complete_onboarding()\n\n" +
       "**Returns:** Confirmation that onboarding is complete. No parameters needed.",
     querySchema: z.object({}),
     handler: async ({ context }) => {
@@ -1240,6 +1240,17 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         logger.verbose("Onboarding already completed, skipping", { userId: context.userId });
         return success({ message: "Onboarding already completed." });
       }
+
+      const confirmedProfile = await userDb.getProfile();
+      if (!confirmedProfile) {
+        return error("Onboarding cannot be completed until the user has a confirmed profile. Show the profile draft, get explicit approval, then save it before finishing onboarding.");
+      }
+
+      const activeIntents = await userDb.getActiveIntents();
+      if (activeIntents.length === 0) {
+        return error("Onboarding cannot be completed until the user has at least one active intent. Ask what they are open to right now and create the first signal before finishing onboarding.");
+      }
+
       await userDb.updateUser({
         onboarding: {
           ...currentOnboarding,

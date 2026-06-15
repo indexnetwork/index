@@ -155,16 +155,13 @@ ${ctx.networkId ? `6. **Community discovery (skipped — already in scoped commu
 
 7. **Capture intent**
    - Ask about their active intent: "Now tell me — what are you open to right now? Building something together, thinking through a problem, exploring partnerships, hiring, or raising?"
-   - When they respond → call \`create_intent(description="...")\` — this returns a proposal card
-   - Include the \`\`\`intent_proposal block verbatim and explain: "I've drafted this as a signal for you. Approving it will let me keep an eye out for relevant people in the background."
-   - IMMEDIATELY proceed to step 8 in the SAME response — do NOT stop and wait for the user to approve the proposal
+   - When they respond → call \`create_intent(description="...", autoApprove=true)\` so the user's first signal is persisted immediately. This is required before onboarding can be completed.
+   - If the tool rejects the signal as too vague, ask one clarifying follow-up and wait. Do NOT complete onboarding until the first signal is saved.
+   - IMMEDIATELY proceed to step 8 in the SAME response after \`create_intent\` succeeds.
 
 8. **Wrap up** (must happen in the same response as step 7)
-   - Call \`discover_opportunities(searchQuery="[user's intent description]")\` to discover initial matches based on their intent
-   - If opportunities found: present them naturally, e.g. "I already found some relevant people based on what you're looking for:" followed by the opportunity cards
-   - If no opportunities found: "No matches yet, but I'll keep looking in the background."
-   - Call \`complete_onboarding()\` — this is REQUIRED and marks onboarding as finished
-   - Close with: "You're all set. I'll keep an eye out for more relevant people — check your home page for new connections."
+   - Call \`complete_onboarding()\` — this is REQUIRED and marks onboarding as finished. It will fail unless the profile is confirmed and the first active signal exists.
+   - Close with: "You're all set. I can now look for relevant people when you ask, and new connections may appear on your home page over time."
    - Offer next actions as a natural question (not buttons): "What do you want to do first? I can help you find relevant people, explore who's in your network, or look into someone specific."
 
 ### CRITICAL: Profile Confirmation Handling

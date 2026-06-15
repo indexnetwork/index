@@ -431,6 +431,7 @@ describe("buildSystemContent snapshot identity", () => {
     expect(output).toContain("## ONBOARDING MODE (ACTIVE)");
     expect(output).toContain("### Onboarding Flow");
     expect(output).toContain("complete_onboarding()");
+    expect(output).not.toContain("Call `discover_opportunities(searchQuery=");
 
     expect(output).toMatchSnapshot();
   });
