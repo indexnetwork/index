@@ -117,6 +117,27 @@ describe('IntentQueue', () => {
         expect.objectContaining({ jobId: 'reconcile-i1-net-x' }),
       );
     });
+
+    it('addNetworkReconcileForUser enqueues a network-scoped reconcile per active intent', async () => {
+      const getActiveIntents = mock(async () => [
+        { id: 'i1', payload: 'p1', summary: null, createdAt: new Date() },
+        { id: 'i2', payload: 'p2', summary: null, createdAt: new Date() },
+      ]);
+      const queue = new IntentQueue({ database: asIntentDb({ getActiveIntents } as Partial<IntentQueueDatabase>) });
+      const count = await queue.addNetworkReconcileForUser('u1', 'net-1');
+      expect(count).toBe(2);
+      expect(getActiveIntents).toHaveBeenCalledWith('u1');
+      expect(mockAdd).toHaveBeenCalledWith(
+        'reconcile_intent_networks',
+        { intentId: 'i1', userId: 'u1', networkScopeId: 'net-1' },
+        expect.objectContaining({ jobId: 'reconcile-i1-net-1' }),
+      );
+      expect(mockAdd).toHaveBeenCalledWith(
+        'reconcile_intent_networks',
+        { intentId: 'i2', userId: 'u1', networkScopeId: 'net-1' },
+        expect.objectContaining({ jobId: 'reconcile-i2-net-1' }),
+      );
+    });
   });
 
   describe('processJob', () => {

@@ -175,6 +175,35 @@ export class IntentQueue implements IntentGraphQueue {
   }
 
   /**
+   * Enqueue a network-scoped reconcile for every active intent a user owns.
+   *
+   * This is the join-time half of the protocol rule "membership re-evaluates a
+   * member's existing intents against the network": intents created before the
+   * user joined never get an assignment pass for the new network otherwise.
+   * Driven by the `NetworkMembershipEvents.onMemberAdded` hook so it fires for
+   * every membership path (REST self-join, owner-add, and the protocol
+   * `create_network_membership` graph) — all converge on `addMemberToNetwork`.
+   * Best-effort per intent; assignment-only (no HyDE/opportunity side effects).
+   *
+   * @param userId - The member whose existing intents should be re-evaluated.
+   * @param networkId - The joined network; scopes evaluation to it.
+   * @returns The number of reconcile jobs enqueued.
+   */
+  async addNetworkReconcileForUser(userId: string, networkId: string): Promise<number> {
+    const db = this.deps?.database ?? this.database;
+    const intents = await db.getActiveIntents(userId);
+    await Promise.all(
+      intents.map((i) =>
+        this.addReconcileJob({ intentId: i.id, userId, networkScopeId: networkId }).catch((err) =>
+          this.logger.warn('[IntentReconcile] enqueue failed', { intentId: i.id, networkId, userId, error: err }),
+        ),
+      ),
+    );
+    this.logger.info('[IntentReconcile] Enqueued network reconcile for member', { userId, networkId, intentCount: intents.length });
+    return intents.length;
+  }
+
+  /**
    * Run HyDE generation for an intent synchronously (e.g. during db-seed).
    * When skipOpportunity is true, does not enqueue opportunity discovery — use for seed to avoid matching test users.
    * @param data - intentId and userId

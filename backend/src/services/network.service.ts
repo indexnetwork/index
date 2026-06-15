@@ -7,7 +7,6 @@ import { generateMasterKey } from '../lib/experiment/master-key';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { networkMasterKeyRotatedTemplate } from '../lib/email/templates/network-master-key-rotated.template';
 import { validateKey } from '../lib/keys';
-import { intentQueue } from '../queues/intent.queue';
 import * as schema from '../schemas/database.schema';
 import { ContextInjectionSchema, ProfileEnrichmentPolicySchema, validateNetworkMetadata } from '../schemas/network.validation';
 
@@ -184,34 +183,7 @@ export class NetworkService {
   async addMember(networkId: string, userId: string, requestingUserId: string, role: 'owner' | 'member' = 'member') {
     logger.verbose('[NetworkService] Adding member', { networkId, userId, role });
     await this.assertNotPersonal(networkId);
-    const result = await this.adapter.addMemberForOwner(networkId, userId, requestingUserId, role);
-    await this.enqueueNetworkBackfill(networkId, userId);
-    return result;
-  }
-
-  /**
-   * Re-evaluate a user's existing active intents against a network they just
-   * joined, so intents created before joining get a chance to register in the
-   * new network. Best-effort and assignment-only (no HyDE/opportunity side
-   * effects); never throws into the join flow.
-   *
-   * @param networkId - The network the user just joined / was added to.
-   * @param userId - The joining user whose intents should be re-evaluated.
-   */
-  private async enqueueNetworkBackfill(networkId: string, userId: string): Promise<void> {
-    try {
-      const intents = await this.adapter.getActiveIntents(userId);
-      await Promise.all(
-        intents.map((i) =>
-          intentQueue
-            .addReconcileJob({ intentId: i.id, userId, networkScopeId: networkId })
-            .catch((err) => logger.warn('[NetworkBackfill] enqueue failed', { intentId: i.id, networkId, userId, error: err })),
-        ),
-      );
-      logger.info('[NetworkBackfill] Enqueued reconcile for joined network', { networkId, userId, intentCount: intents.length });
-    } catch (err) {
-      logger.warn('[NetworkBackfill] Failed to enqueue network backfill', { networkId, userId, error: err });
-    }
+    return this.adapter.addMemberForOwner(networkId, userId, requestingUserId, role);
   }
 
   /**
@@ -338,7 +310,6 @@ export class NetworkService {
   async joinPublicNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Joining public index', { networkId, userId });
     await this.adapter.joinPublicNetwork(networkId, userId);
-    await this.enqueueNetworkBackfill(networkId, userId);
     return this.adapter.getNetworkDetail(networkId, userId);
   }
 

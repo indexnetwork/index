@@ -127,35 +127,44 @@ addReconcileJob(d: IntentReconcileData) {
 This is the shared primitive used by both backfill-on-join and the safety-net
 sweep below.
 
-### 3. Backfill-on-join
+### 3. Backfill-on-join (membership-event seam)
 
-When a user joins / is added to a non-personal network, enqueue a
-network-scoped reconcile for each of their active intents so existing intents
-get a chance to land in the newly-joined network.
+"Joining a network re-evaluates the member's existing intents against it" is a
+**protocol-level definition of membership**, not application glue. It must fire
+for *every* membership path, not just one backend service method. All paths —
+REST self-join (`joinPublicNetwork`), owner-add (`addMemberForOwner`), and the
+protocol `create_network_membership` graph (`addMemberNode`) — converge on the
+adapter method `ChatDatabaseAdapter.addMemberToNetwork`, which emits
+`NetworkMembershipEvents.onMemberAdded(userId, networkId)` exactly once per
+genuinely-new member. That event is the single canonical seam (it already
+drives profile-HyDE and user-context regen on join).
 
-Hook points (producers only — `NetworkService` already imports queues):
-
-- `network.service.ts:joinPublicNetwork`
-- `network.service.ts:addMember`
+Wire the reconcile into the existing `onMemberAdded` handler in `main.ts`, and
+encapsulate the per-intent fan-out in the queue so the composition root stays a
+thin wiring line:
 
 ```ts
-async joinPublicNetwork(networkId: string, userId: string) {
-  await this.adapter.joinPublicNetwork(networkId, userId);
-  await this.enqueueNetworkBackfill(networkId, userId); // best-effort, catches errors
-  return this.adapter.getNetworkDetail(networkId, userId);
+// IntentQueue
+async addNetworkReconcileForUser(userId: string, networkId: string): Promise<number> {
+  const db = this.deps?.database ?? this.database;
+  const intents = await db.getActiveIntents(userId);
+  await Promise.all(intents.map(i =>
+    this.addReconcileJob({ intentId: i.id, userId, networkScopeId: networkId })
+      .catch(err => this.logger.warn('[IntentReconcile] enqueue failed', { intentId: i.id, networkId, userId, error: err }))
+  ));
+  return intents.length;
 }
 
-private async enqueueNetworkBackfill(networkId: string, userId: string) {
-  const intents = await this.adapter.getActiveIntents(userId); // id + userId
-  await Promise.all(intents.map(i =>
-    intentQueue.addReconcileJob({ intentId: i.id, userId, networkScopeId: networkId })
-      .catch(err => logger.warn('[NetworkBackfill] enqueue failed', { intentId: i.id, networkId, err }))
-  ));
-}
+// main.ts — NetworkMembershipEvents.onMemberAdded handler
+intentQueue.addNetworkReconcileForUser(userId, networkId).catch((err) => {
+  log.job.from('NetworkMembership').error('Failed to enqueue intent network reconcile', { userId, networkId, error: err });
+});
 ```
 
-Scoping to `networkId` keeps it cheap (one network evaluated per intent) and
-avoids re-touching unrelated memberships.
+Do **not** put this in `NetworkService.joinPublicNetwork`/`addMember` — that
+would cover only the REST path and duplicate a definition the protocol/membership
+layer already owns. Scoping to `networkId` keeps it cheap (one network evaluated
+per intent) and avoids re-touching unrelated memberships.
 
 ### 4. Safety-net reconciliation sweep (catches everything else)
 
@@ -205,7 +214,7 @@ human-initiated, in-network creation.
 | File | Change |
 |---|---|
 | `backend/src/queues/intent.queue.ts` | Extract `assignIntentToNetworks`; add `reconcile_intent_networks` job + `addReconcileJob`; orphan warning/metric |
-| `backend/src/services/network.service.ts` | Enqueue network-scoped backfill on `joinPublicNetwork` + `addMember` |
+| `backend/src/main.ts` | Enqueue network-scoped reconcile from the `NetworkMembershipEvents.onMemberAdded` handler (covers REST + protocol membership paths uniformly) |
 | `backend/src/adapters/database.adapter.ts` | Add `getOrphanedActiveIntents`; ensure `getActiveIntents` returns `{id,userId}` |
 | `backend/src/queues/*` (cron) | Register orphan-reconcile sweep; wire `startCrons`/`close` in `main.ts` |
 | `backend/src/queues/tests/intent.queue.spec.ts` | Tests: assignment core extraction, reconcile job assigns without HyDE/opportunity, orphan warning fires |
@@ -216,8 +225,8 @@ human-initiated, in-network creation.
   prompted ones, returns empty + warns when nothing matches.
 - Unit: `reconcile_intent_networks` writes rows but never calls `invokeHyde` or
   the opportunity enqueue (assert mocks not called).
-- Unit: `joinPublicNetwork` enqueues one reconcile per active intent scoped to
-  the joined network.
+- Unit: `addNetworkReconcileForUser` enqueues one network-scoped reconcile per
+  active intent (the join-time fan-out, driven by `onMemberAdded`).
 - Integration: orphan sweep query returns only zero-row active intents and is
   idempotent across runs.
 
