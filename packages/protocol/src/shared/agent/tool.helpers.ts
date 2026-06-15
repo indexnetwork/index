@@ -213,7 +213,10 @@ export interface ToolContext {
   profileRuns?: ProfileRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
   profileRunQueue?: ProfileRunQueue;
-  /** Mints a short-lived connect token for opportunity accept links (optional — absent in non-MCP contexts). */
+  /**
+   * Legacy direct-token minting for opportunity accept redirects.
+   * Prefer `mintConnectLink` for user-facing links.
+   */
   mintConnectToken?: (userId: string, opportunityId: string) => Promise<string>;
   /** Mints (or reuses) a short connect link, snapshotting the greeting (optional — absent in non-MCP contexts). */
   mintConnectLink?: MintConnectLink;
@@ -509,7 +512,10 @@ export interface ToolDeps {
   profileRuns?: ProfileRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
   profileRunQueue?: ProfileRunQueue;
-  /** Mints a short-lived connect token for opportunity accept links (optional — absent in non-MCP contexts). */
+  /**
+   * Legacy direct-token minting for opportunity accept redirects.
+   * Prefer `mintConnectLink` for user-facing links.
+   */
   mintConnectToken?: (userId: string, opportunityId: string) => Promise<string>;
   /** Mints (or reuses) a short connect link, snapshotting the greeting (optional — absent in non-MCP contexts). */
   mintConnectLink?: MintConnectLink;
