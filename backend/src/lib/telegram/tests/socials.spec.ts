@@ -8,6 +8,13 @@ describe('normalizeTelegramSocialValue', () => {
     expect(normalizeTelegramSocialValue('https://t.me/alice_tg?start=1')).toBe('alice_tg');
     expect(normalizeTelegramSocialValue('Alice Example')).toBeNull();
   });
+
+  test('folds case so @Seref and seref are the same canonical handle', () => {
+    // Telegram usernames are case-insensitive; a case-only difference is not drift.
+    expect(normalizeTelegramSocialValue('@Seref')).toBe('seref');
+    expect(normalizeTelegramSocialValue('seref')).toBe('seref');
+    expect(normalizeTelegramSocialValue('https://t.me/Alice_TG')).toBe('alice_tg');
+  });
 });
 
 describe('mergeTelegramHandleIntoSocials', () => {
