@@ -54,6 +54,8 @@ describe("onboarding privacy profile tools", () => {
   let tools: CapturedTool[];
   let onboarding: ResolvedToolContext["user"]["onboarding"];
   let currentUser: ResolvedToolContext["user"];
+  let currentProfile: Record<string, unknown> | null;
+  let activeIntents: Array<{ id: string; payload: string; summary: string | null; createdAt: Date }>;
 
   const context = (): ResolvedToolContext => ({
     userId: "u1",
@@ -63,13 +65,17 @@ describe("onboarding privacy profile tools", () => {
   beforeEach(() => {
     generatedInputs = [];
     onboarding = {};
+    currentProfile = null;
+    activeIntents = [];
     currentUser = { id: "u1", name: "Alice", email: "alice@example.com", location: "Healdsburg", intro: null, socials: [], onboarding };
     updateUser = mock(async (data: { onboarding?: typeof onboarding }) => {
       if (data.onboarding) onboarding = data.onboarding;
       currentUser = { ...currentUser, ...data, onboarding };
       return currentUser;
     });
-    saveProfile = mock(async () => {});
+    saveProfile = mock(async (profile: Record<string, unknown>) => {
+      currentProfile = profile;
+    });
     setUserSocials = mock(async () => {});
     enricher = mock(async () => ({
       confidentMatch: true,
@@ -85,7 +91,8 @@ describe("onboarding privacy profile tools", () => {
       userDb: {
         getUser: async () => ({ ...currentUser, onboarding }),
         updateUser,
-        getProfile: async () => null,
+        getProfile: async () => currentProfile,
+        getActiveIntents: async () => activeIntents,
         saveProfile,
         setUserSocials,
         getUserSocials: async () => [],
@@ -322,5 +329,49 @@ describe("onboarding privacy profile tools", () => {
       { type: "graph_start", name: "profile" },
       { type: "graph_end", name: "profile" },
     ]);
+  });
+
+  it("refuses to complete onboarding without a confirmed profile", async () => {
+    const tool = tools.find((t) => t.name === "complete_onboarding")!;
+    activeIntents = [{ id: "intent-1", payload: "Looking for collaborators", summary: null, createdAt: new Date("2026-05-29T00:00:00.000Z") }];
+
+    const result = parseToolResult(await tool.handler({ context: context(), query: {} }));
+
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain("confirmed profile");
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it("refuses to complete onboarding without an active intent", async () => {
+    const tool = tools.find((t) => t.name === "complete_onboarding")!;
+    currentProfile = {
+      userId: "u1",
+      identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
+      narrative: { context: "Alice builds tools." },
+      attributes: { skills: ["TypeScript"], interests: ["agents"] },
+    };
+
+    const result = parseToolResult(await tool.handler({ context: context(), query: {} }));
+
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain("active intent");
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it("completes onboarding after profile confirmation and first active intent", async () => {
+    const tool = tools.find((t) => t.name === "complete_onboarding")!;
+    currentProfile = {
+      userId: "u1",
+      identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
+      narrative: { context: "Alice builds tools." },
+      attributes: { skills: ["TypeScript"], interests: ["agents"] },
+    };
+    activeIntents = [{ id: "intent-1", payload: "Looking for collaborators", summary: null, createdAt: new Date("2026-05-29T00:00:00.000Z") }];
+
+    const result = parseToolResult(await tool.handler({ context: context(), query: {} }));
+
+    expect(result.success).toBe(true);
+    expect(onboarding?.completedAt).toBeDefined();
+    expect(updateUser).toHaveBeenCalledTimes(1);
   });
 });
