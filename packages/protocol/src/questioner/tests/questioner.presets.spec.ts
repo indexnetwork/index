@@ -22,11 +22,14 @@ const standaloneModeExpectations = [
   },
   {
     mode: "negotiation" as const,
-    anchors: ["stalled negotiation context", "counterparty hint", "community", "key takeaway"],
-    positiveExample: "For the stalled match with an AI infra founder",
+    anchors: ["underlying goal or topic", "relevant community", "intent or profile"],
+    positiveExample: "For your search for AI infrastructure collaborators in the AI founders community",
     negativeExample: "Which role is a better fit for your immediate needs?",
   },
 ];
+
+// Modes whose prompts must carry the shared referential-closure guardrail.
+const ALL_MODES = ["discovery", "intent", "profile", "negotiation"] as const;
 
 describe("standalone prompt contract", () => {
   it.each(standaloneModeExpectations)("mode '$mode' requires self-contained generated prompt text", ({ mode, anchors, positiveExample, negativeExample }) => {
@@ -203,10 +206,23 @@ describe("negotiation preset", () => {
     expect(result).toContain("Alice");
   });
 
-  it("requires negotiation prompts to naturally include stall context", () => {
+  it("requires negotiation prompts to anchor on the user's goal, not the match mechanics", () => {
     const preset = getPreset("negotiation");
     expect(preset.systemPrompt).toContain("Standalone prompt rule");
-    expect(preset.systemPrompt).toContain("stalled negotiation context");
-    expect(preset.systemPrompt).toContain("For the stalled match with an AI infra founder");
+    expect(preset.systemPrompt).toContain("underlying goal or topic");
+    expect(preset.systemPrompt).toContain("For your search for AI infrastructure collaborators in the AI founders community");
+    // Must NOT instruct the model to restate the stalled-negotiation mechanics.
+    expect(preset.systemPrompt).not.toContain("stalled negotiation context");
+  });
+});
+
+describe("referential closure contract", () => {
+  it.each(ALL_MODES)("mode '%s' forbids dangling references and process narration", (mode) => {
+    const preset = getPreset(mode);
+    expect(preset.systemPrompt).toContain("Referential closure");
+    expect(preset.systemPrompt).toContain("No process narration");
+    // The canonical defect examples must be named as anti-patterns.
+    expect(preset.systemPrompt).toContain("these builders");
+    expect(preset.systemPrompt).toContain("the counterparty");
   });
 });
