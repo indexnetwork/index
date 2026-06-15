@@ -48,10 +48,12 @@ export async function ensurePersonalNetwork(userId: string): Promise<string> {
 
   const networkId = crypto.randomUUID();
 
+  // Personal indexes are prompt-less by default so the assignment policy treats
+  // them as "no filtration" (score 1.0) — every one of the owner's intents lands
+  // in their own personal index. The owner may later set a prompt to curate it.
   await db.insert(schema.networks).values({
     id: networkId,
     title: 'My Network',
-    prompt: 'Personal index containing the owner\'s imported contacts for network-scoped discovery.',
     isPersonal: true,
   }).onConflictDoNothing();
 
