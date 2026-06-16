@@ -169,6 +169,20 @@ export class NetworkService {
   }
 
   /**
+   * Rotate a network's invitation link, issuing a fresh code. Owner-only.
+   * Works regardless of join policy; previously shared links stop resolving.
+   * @param networkId - The network whose invitation link should be rotated
+   * @param userId - The caller; must be an owner of the network
+   * @returns The updated network with the new invitation code
+   * @throws Error if the network is personal or the caller is not an owner
+   */
+  async regenerateInvitationLink(networkId: string, userId: string) {
+    await this.assertNotPersonal(networkId);
+    logger.verbose('[NetworkService] Regenerating invitation link', { networkId, userId });
+    return this.adapter.regenerateInvitationLink(networkId, userId);
+  }
+
+  /**
    * Search users within the caller's personal index members,
    * optionally excluding existing members of a target index.
    */

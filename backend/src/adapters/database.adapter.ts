@@ -2228,6 +2228,18 @@ export class ChatDatabaseAdapter {
 
     await db.update(networks).set(updateData).where(eq(networks.id, networkId));
 
+    return this.loadNetworkSettingsDTO(networkId);
+  }
+
+  /**
+   * Re-select a network after a settings/permissions mutation and map it to the
+   * canonical settings DTO (owner info, permissions, member/intent counts).
+   * Shared by {@link updateIndexSettings} and {@link regenerateInvitationLink}.
+   * @param networkId - The network to load
+   * @returns The canonical network settings DTO
+   * @throws Error if the network cannot be found after the update
+   */
+  private async loadNetworkSettingsDTO(networkId: string) {
     const [updatedRow] = await db
       .select({
         id: networks.id,
@@ -2291,6 +2303,44 @@ export class ChatDatabaseAdapter {
       user: { id: updatedRow.ownerId, name: updatedRow.userName, avatar: updatedRow.userAvatar },
       _count: { members: memberCount },
     };
+  }
+
+  /**
+   * Rotate a network's invitation link, issuing a fresh UUID code. Owner-only.
+   * Works regardless of join policy and preserves all other permission fields.
+   * Once rotated, any previously shared link stops resolving.
+   * @param networkId - The network whose invitation code should be rotated
+   * @param requestingUserId - The caller; must be an owner of the network
+   * @returns The updated network settings DTO carrying the new invitation code
+   * @throws Error if the caller is not an owner or the network does not exist
+   */
+  async regenerateInvitationLink(networkId: string, requestingUserId: string) {
+    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
+    if (!isOwner) {
+      throw new Error('Access denied: Not an owner of this index');
+    }
+
+    const [existing] = await db.select().from(networks).where(eq(networks.id, networkId)).limit(1);
+    if (!existing) {
+      throw new Error('Index not found');
+    }
+
+    const currentPerms = (existing.permissions as schema.NetworkPermissionsState | null) ?? {
+      joinPolicy: 'invite_only',
+      invitationLink: null,
+      allowGuestVibeCheck: false,
+    };
+    const updatedPermissions: schema.NetworkPermissionsState = {
+      ...currentPerms,
+      invitationLink: { code: crypto.randomUUID() },
+    };
+
+    await db
+      .update(networks)
+      .set({ permissions: updatedPermissions, updatedAt: new Date() })
+      .where(eq(networks.id, networkId));
+
+    return this.loadNetworkSettingsDTO(networkId);
   }
 
   async softDeleteNetwork(networkId: string): Promise<void> {

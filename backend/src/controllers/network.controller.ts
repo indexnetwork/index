@@ -850,6 +850,36 @@ export class NetworkController {
   }
 
   /**
+   * Rotate a network's invitation link, issuing a fresh code. Owner-only.
+   * The previously shared link stops resolving once rotated.
+   */
+  @Patch('/:id/regenerate-invitation')
+  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  async regenerateInvitation(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      const result = await networkService.regenerateInvitationLink(params.id, user.id);
+      logger.verbose('Invitation link regenerated for network', { networkId: params.id });
+      return Response.json({ network: result });
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (msg.includes('not found')) {
+        return new Response(JSON.stringify({ error: 'Network not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Get public networks that the user has not joined (discovery).
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
