@@ -141,6 +141,13 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   userContextQueue.addRegenJob({ userId, reason: 'network_membership' }).catch((err) => {
     log.job.from('NetworkMembership').error('Failed to enqueue context regen', { userId, networkId, error: err });
   });
+  // Re-evaluate the member's pre-existing intents against the joined network.
+  // Intents created before joining never get an assignment pass for this network
+  // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
+  // regen / opportunity discovery); scoped to this network.
+  intentQueue.addNetworkReconcileForUser(userId, networkId).catch((err) => {
+    log.job.from('NetworkMembership').error('Failed to enqueue intent network reconcile', { userId, networkId, error: err });
+  });
 };
 
 enrichmentQueue.onEnrichmentComplete = (userId: string) => {

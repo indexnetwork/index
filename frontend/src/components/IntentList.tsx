@@ -1,8 +1,32 @@
 import { useMemo } from 'react';
-import { Calendar, Trash2, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare } from 'lucide-react';
+import { Calendar, Trash2, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Network, AlertTriangle } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { DebugCopyButton } from './DebugCopyButton';
+
+/**
+ * Grace window after creation during which an intent with zero network
+ * memberships is shown as "Evaluating…" rather than "Not in any network".
+ * Network assignment runs async (HyDE queue) shortly after creation, so a
+ * freshly-created intent legitimately has no memberships for a short while.
+ */
+const NETWORK_EVAL_GRACE_MS = 10 * 60 * 1000;
+
+interface IntentNetwork {
+  id: string;
+  title: string;
+}
+
+/**
+ * Whether an intent is still within the post-creation grace window, during
+ * which zero memberships reads as "evaluating" rather than "orphaned".
+ * A plain (non-component) function so the render-time clock read stays out of
+ * component bodies — mirrors `NegotiationHistory.timeAgo`.
+ */
+function isWithinEvalGrace(createdAt: string): boolean {
+  const ageMs = Date.now() - new Date(createdAt).getTime();
+  return Number.isFinite(ageMs) && ageMs < NETWORK_EVAL_GRACE_MS;
+}
 
 interface BaseIntent {
   id: string;
@@ -14,6 +38,63 @@ interface BaseIntent {
   sourceName?: string;
   sourceValue?: string | null;
   sourceMeta?: string | null;
+  /**
+   * Networks this intent is registered to. `undefined` means the caller did
+   * not supply membership data (membership UI is suppressed); an empty array
+   * means the intent is registered to no networks (pending or orphaned).
+   */
+  networks?: IntentNetwork[];
+}
+
+/**
+ * Renders an intent's network membership as chips, or a pending/orphaned badge
+ * when it belongs to none. Returns null when membership data wasn't provided,
+ * so callers that don't fetch memberships render nothing extra.
+ */
+function NetworkMembership({ networks, createdAt }: { networks?: IntentNetwork[]; createdAt: string }) {
+  if (networks === undefined) return null;
+
+  if (networks.length > 0) {
+    const shown = networks.slice(0, 2);
+    const extra = networks.length - shown.length;
+    return (
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {shown.map((n) => (
+          <span
+            key={n.id}
+            className="flex items-center gap-1 text-xs text-blue-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100"
+          >
+            <Network className="w-3 h-3 shrink-0" />
+            <span className="max-w-[140px] truncate">{n.title}</span>
+          </span>
+        ))}
+        {extra > 0 && (
+          <span className="text-xs text-blue-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100">
+            +{extra}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (isWithinEvalGrace(createdAt)) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-gray-100/50 border border-gray-100">
+        <span className="h-2.5 w-2.5 border border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+        Evaluating…
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="flex items-center gap-1 text-xs text-amber-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200"
+      title="This intent isn't registered to any network yet. It will be re-evaluated when you join a matching network."
+    >
+      <AlertTriangle className="w-3 h-3 shrink-0" />
+      Not in any network
+    </span>
+  );
 }
 
 interface IntentListProps<T extends BaseIntent> {
@@ -128,6 +209,9 @@ export default function IntentList<T extends BaseIntent>({
                       New
                     </span>
                   )}
+
+                  {/* Network membership: chips, or pending/orphaned badge */}
+                  <NetworkMembership networks={intent.networks} createdAt={intent.createdAt} />
                 </div>
               </div>
 

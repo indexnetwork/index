@@ -125,7 +125,20 @@ export class NetworkService {
    */
   async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; type?: 'community' | 'event'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
     logger.verbose('[NetworkService] Updating index', { networkId, userId });
-    await this.assertNotPersonal(networkId);
+    if (await this.adapter.isPersonalNetwork(networkId)) {
+      // Personal indexes can't be renamed/deleted/repurposed (see assertNotPersonal),
+      // but the owner may set or clear a discovery prompt to curate what auto-assigns
+      // into My Network. Restrict edits to the prompt field only; ownership is
+      // enforced inside updateIndexSettings.
+      const editableForPersonal = new Set<string>(['prompt']);
+      const rejected = Object.keys(data).filter(
+        (k) => (data as Record<string, unknown>)[k] !== undefined && !editableForPersonal.has(k),
+      );
+      if (rejected.length > 0) {
+        throw new Error(`Access denied: personal indexes only allow editing the prompt (rejected: ${rejected.join(', ')}).`);
+      }
+      return this.adapter.updateIndexSettings(networkId, userId, { prompt: data.prompt });
+    }
     if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
       await this.assertJoinPolicyNotLockedByExperiment(networkId);
     }

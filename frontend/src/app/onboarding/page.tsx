@@ -59,7 +59,7 @@ Let's get you set up.`;
 
 function buildGreeting(hasName: boolean, userName?: string): string {
   return hasName
-    ? `${GREETING_PREAMBLE}\nYou're ${userName}, right? Is that right?`
+    ? `${GREETING_PREAMBLE}\nYou're ${userName}, right?`
     : `${GREETING_PREAMBLE} What's your name, and what's your LinkedIn, Twitter/X, or GitHub?`;
 }
 
@@ -167,10 +167,9 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (prevLoadingRef.current && !isLoading) {
       refetchUser();
-      if (pendingNetworkJoinIds.size > 0) setPendingNetworkJoinIds(new Set());
     }
     prevLoadingRef.current = isLoading;
-  }, [isLoading, refetchUser, pendingNetworkJoinIds.size]);
+  }, [isLoading, refetchUser]);
 
 
 

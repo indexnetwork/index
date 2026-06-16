@@ -4,7 +4,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { IntentController } from "../intent.controller";
-import { IntentDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter } from "../../adapters/database.adapter";
+import { IntentDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -105,6 +105,39 @@ describe("IntentDatabaseAdapter Integration", () => {
     });
 
     expect(updated).toBeNull();
+  });
+
+  test("listIntents attaches an empty networks array for an intent in no networks", async () => {
+    const { rows } = await adapter.listIntents(testUserId, { page: 1, limit: 10, archived: false });
+    const row = rows.find((r) => r.id === testIntentId);
+    expect(row).toBeDefined();
+    expect(row!.networks).toEqual([]);
+  });
+
+  test("listIntents attaches assigned networks and excludes soft-deleted ones", async () => {
+    const chatAdapter = new ChatDatabaseAdapter();
+    const indexAdapter = new NetworkGraphDatabaseAdapter();
+    const live = await chatAdapter.createNetwork({ title: `Intent-Net Live ${Date.now()}` });
+    const removed = await chatAdapter.createNetwork({ title: `Intent-Net Removed ${Date.now()}` });
+    try {
+      await adapter.assignIntentToNetwork(testIntentId, live.id);
+      await adapter.assignIntentToNetwork(testIntentId, removed.id);
+      await chatAdapter.softDeleteNetwork(removed.id);
+
+      const { rows } = await adapter.listIntents(testUserId, { page: 1, limit: 10, archived: false });
+      const row = rows.find((r) => r.id === testIntentId);
+      expect(row).toBeDefined();
+      // Only the live network is attached; the soft-deleted one is excluded.
+      expect(row!.networks).toEqual([{ id: live.id, title: live.title }]);
+
+      // getIntentById carries the same membership data.
+      const single = await adapter.getIntentById(testIntentId, testUserId);
+      expect(single!.networks).toEqual([{ id: live.id, title: live.title }]);
+    } finally {
+      // deleteNetworkAndMembers also clears the intent_networks rows for each network.
+      await indexAdapter.deleteNetworkAndMembers(live.id).catch(() => {});
+      await indexAdapter.deleteNetworkAndMembers(removed.id).catch(() => {});
+    }
   });
 
   test("archiveIntent should set archivedAt timestamp", async () => {
