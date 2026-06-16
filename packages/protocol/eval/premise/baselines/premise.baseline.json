@@ -1,0 +1,640 @@
+{
+  "generatedAt": "2026-06-16T15:27:23.785Z",
+  "model": "google/gemini-2.5-flash / google/gemini-2.5-flash",
+  "runs": 3,
+  "aggregatePassRate": 1,
+  "rules": [
+    {
+      "rule": "atomicity",
+      "caseCount": 2,
+      "passRate": 1
+    },
+    {
+      "rule": "tier_classification",
+      "caseCount": 1,
+      "passRate": 1
+    },
+    {
+      "rule": "intent_exclusion",
+      "caseCount": 1,
+      "passRate": 1
+    },
+    {
+      "rule": "empty_input",
+      "caseCount": 1,
+      "passRate": 1
+    },
+    {
+      "rule": "speech_act",
+      "caseCount": 2,
+      "passRate": 1
+    },
+    {
+      "rule": "felicity_calibration",
+      "caseCount": 2,
+      "passRate": 1
+    },
+    {
+      "rule": "entropy",
+      "caseCount": 1,
+      "passRate": 1
+    }
+  ],
+  "cases": [
+    {
+      "caseId": "atomicity/compound-split",
+      "rule": "atomicity",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 4–7 premises, got 5"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 4–7 premises, got 5"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 4–7 premises, got 5"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "atomicity/third-person-to-first",
+      "rule": "atomicity",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 3–6 premises, got 4"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 3–6 premises, got 4"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 3–6 premises, got 4"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "tier_classification/founder-raising",
+      "rule": "tier_classification",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 3–∞ premises, got 4"
+            },
+            {
+              "kind": "tier",
+              "passed": true,
+              "detail": "expected ≥2 assertive, got 3"
+            },
+            {
+              "kind": "tier",
+              "passed": true,
+              "detail": "expected ≥1 contextual, got 1"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 3–∞ premises, got 4"
+            },
+            {
+              "kind": "tier",
+              "passed": true,
+              "detail": "expected ≥2 assertive, got 3"
+            },
+            {
+              "kind": "tier",
+              "passed": true,
+              "detail": "expected ≥1 contextual, got 1"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 3–∞ premises, got 4"
+            },
+            {
+              "kind": "tier",
+              "passed": true,
+              "detail": "expected ≥2 assertive, got 3"
+            },
+            {
+              "kind": "tier",
+              "passed": true,
+              "detail": "expected ≥1 contextual, got 1"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "intent_exclusion/skip-desires",
+      "rule": "intent_exclusion",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 2–4 premises, got 2"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            },
+            {
+              "kind": "exclusion",
+              "passed": true,
+              "detail": "judge: excluded content absent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 2–4 premises, got 2"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            },
+            {
+              "kind": "exclusion",
+              "passed": true,
+              "detail": "judge: excluded content absent"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "count",
+              "passed": true,
+              "detail": "expected 2–4 premises, got 2"
+            },
+            {
+              "kind": "first_person",
+              "passed": true,
+              "detail": "all premises first-person"
+            },
+            {
+              "kind": "coverage",
+              "passed": true,
+              "detail": "judge: all facts covered"
+            },
+            {
+              "kind": "exclusion",
+              "passed": true,
+              "detail": "judge: excluded content absent"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "empty_input/greeting",
+      "rule": "empty_input",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "empty",
+              "passed": true,
+              "detail": "expected no premises, got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "empty",
+              "passed": true,
+              "detail": "expected no premises, got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "empty",
+              "passed": true,
+              "detail": "expected no premises, got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "speech_act/declarative-identity",
+      "rule": "speech_act",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "speech_act",
+              "passed": true,
+              "detail": "expected DECLARATIVE, got DECLARATIVE"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "speech_act",
+              "passed": true,
+              "detail": "expected DECLARATIVE, got DECLARATIVE"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "speech_act",
+              "passed": true,
+              "detail": "expected DECLARATIVE, got DECLARATIVE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "speech_act/assertive-capability",
+      "rule": "speech_act",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "speech_act",
+              "passed": true,
+              "detail": "expected ASSERTIVE, got ASSERTIVE"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "speech_act",
+              "passed": true,
+              "detail": "expected ASSERTIVE, got ASSERTIVE"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "speech_act",
+              "passed": true,
+              "detail": "expected ASSERTIVE, got ASSERTIVE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "felicity_calibration/specific-high-clarity",
+      "rule": "felicity_calibration",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "clarity",
+              "passed": true,
+              "detail": "expected clarity in [65,100], got 100"
+            },
+            {
+              "kind": "entropy",
+              "passed": true,
+              "detail": "expected entropy in [0,0.45], got 0.05"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "clarity",
+              "passed": true,
+              "detail": "expected clarity in [65,100], got 100"
+            },
+            {
+              "kind": "entropy",
+              "passed": true,
+              "detail": "expected entropy in [0,0.45], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "clarity",
+              "passed": true,
+              "detail": "expected clarity in [65,100], got 100"
+            },
+            {
+              "kind": "entropy",
+              "passed": true,
+              "detail": "expected entropy in [0,0.45], got 0.05"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "felicity_calibration/grandiose-low-authority",
+      "rule": "felicity_calibration",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "authority",
+              "passed": true,
+              "detail": "expected authority in [0,45], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "authority",
+              "passed": true,
+              "detail": "expected authority in [0,45], got 0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "authority",
+              "passed": true,
+              "detail": "expected authority in [0,45], got 0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "entropy/vague-high-entropy",
+      "rule": "entropy",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "clarity",
+              "passed": true,
+              "detail": "expected clarity in [0,45], got 20"
+            },
+            {
+              "kind": "entropy",
+              "passed": true,
+              "detail": "expected entropy in [0.6,1], got 1"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "clarity",
+              "passed": true,
+              "detail": "expected clarity in [0,45], got 5"
+            },
+            {
+              "kind": "entropy",
+              "passed": true,
+              "detail": "expected entropy in [0.6,1], got 0.99"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "clarity",
+              "passed": true,
+              "detail": "expected clarity in [0,45], got 20"
+            },
+            {
+              "kind": "entropy",
+              "passed": true,
+              "detail": "expected entropy in [0.6,1], got 1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -49,3 +49,5 @@ packages/protocol/CLAUDE.md
 # ===================
 *.report.md
 packages/protocol/eval/matching/runs/
+packages/protocol/eval/premise/runs/
+packages/protocol/eval/profile/runs/
