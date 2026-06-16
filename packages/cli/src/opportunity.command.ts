@@ -96,24 +96,18 @@ export async function handleOpportunity(
         // Remaining positionals after userB serve as a hint for the introduction
         const hint = options.positionals?.slice(1).join(" ") || undefined;
         await discoverIntroduction(client, userA, userB, hint, options.json);
-      } else if (options.target) {
-        if (!options.json) output.info("Discovering opportunities...");
-        const result = await client.callTool("discover_opportunities", {
-          targetUserId: options.target,
-          searchQuery: query,
-        });
-        if (options.json) { console.log(JSON.stringify(result)); return; }
-        if (!result.success) { output.error(result.error ?? "Discovery failed", 1); return; }
-        output.success("Discovery complete.");
-        renderDiscovery(result.data as { message?: string });
-      } else {
-        if (!options.json) output.info("Discovering opportunities...");
-        const result = await client.callTool("discover_opportunities", { searchQuery: query });
-        if (options.json) { console.log(JSON.stringify(result)); return; }
-        if (!result.success) { output.error(result.error ?? "Discovery failed", 1); return; }
-        output.success("Discovery complete.");
-        renderDiscovery(result.data as { message?: string });
+        return;
       }
+
+      if (!options.json) output.info("Discovering opportunities...");
+      const result = await client.callTool("discover_opportunities", {
+        ...(options.target ? { targetUserId: options.target } : {}),
+        searchQuery: query,
+      });
+      if (options.json) { console.log(JSON.stringify(result)); return; }
+      if (!result.success) { output.error(result.error ?? "Discovery failed", 1); return; }
+      output.success("Discovery complete.");
+      renderDiscovery(result.data as { message?: string });
       return;
     }
 

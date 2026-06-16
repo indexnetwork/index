@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 
-import { parseSSEEvents, type SSEEvent } from "../src/sse.parser";
+import { parseSSEEvents } from "../src/sse.parser";
 
 describe("parseSSEEvents", () => {
   it("parses a single complete event", () => {

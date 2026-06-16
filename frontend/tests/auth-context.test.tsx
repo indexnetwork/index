@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router';
+import { screen } from '@testing-library/react';
+import { useLocation } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { AuthProvider } from '@/contexts/AuthContext';
+import { renderWithRouter } from '@/test/test-utils';
 
 const mocks = vi.hoisted(() => {
   const apiClient = {
@@ -57,12 +58,11 @@ function LocationProbe() {
 }
 
 function renderAuthProviderAt(route: string) {
-  return render(
-    <MemoryRouter initialEntries={[route]}>
-      <AuthProvider>
-        <LocationProbe />
-      </AuthProvider>
-    </MemoryRouter>
+  return renderWithRouter(
+    <AuthProvider>
+      <LocationProbe />
+    </AuthProvider>,
+    { route }
   );
 }
 

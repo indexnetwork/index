@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 
 import { parseArgs } from "../src/args.parser";
 import { ApiClient } from "../src/api.client";
-import { profileCard } from "../src/output";
+import { profileCard, stripAnsi } from "../src/output";
 import { createMockServer } from "./helpers/mock-http";
 
 describe("parseArgs — profile command", () => {
@@ -167,8 +167,7 @@ describe("profileCard", () => {
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: null,
     });
-    // eslint-disable-next-line no-control-regex
-    const plain = output.replace(/\x1b\[[0-9;]*m/g, "");
+    const plain = stripAnsi(output);
     expect(plain).toContain("Bob");
     expect(plain).toContain("Berlin, DE");
     expect(plain).toContain("Developer");

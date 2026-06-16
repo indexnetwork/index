@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
+import { describe, it, expect, spyOn } from "bun:test";
 
 import { MarkdownRenderer } from "../src/output/markdown";
 import { stripAnsi } from "../src/output/base";

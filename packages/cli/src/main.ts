@@ -267,12 +267,17 @@ async function runLogin(apiUrlOverride?: string, appUrlOverride?: string, manual
   output.dim(`If the browser does not open, visit:\n  ${authUrl}\n`);
 
   try {
-    const opener =
-      process.platform === "darwin"
-        ? "open"
-        : process.platform === "linux"
-          ? "xdg-open"
-          : null;
+    let opener: string | null;
+    switch (process.platform) {
+      case "darwin":
+        opener = "open";
+        break;
+      case "linux":
+        opener = "xdg-open";
+        break;
+      default:
+        opener = null;
+    }
 
     if (opener) {
       // Fire-and-forget: detach and ignore I/O so the browser launcher

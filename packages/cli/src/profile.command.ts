@@ -9,18 +9,6 @@
 import type { ApiClient } from "./api.client";
 import * as output from "./output";
 
-const _PROFILE_HELP = `
-Usage:
-  index profile                                   Show your profile
-  index profile show <user-id>                    Show another user's profile
-  index profile sync                              Regenerate your profile
-  index profile search <query>                    Search user profiles
-  index profile create [--linkedin <url>] [--github <url>] [--twitter <url>]
-                                                  Create your profile from social URLs
-  index profile update <action> [--details <text>]
-                                                  Update your profile
-`;
-
 /**
  * Route a profile subcommand to the appropriate handler.
  *

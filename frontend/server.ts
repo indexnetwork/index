@@ -1,9 +1,8 @@
 import { readFileSync, existsSync, statSync } from "fs";
 import { join, extname } from "path";
-import { buildMetaMap, type PageMeta } from "./meta.config";
+import { buildMetaMap, ORIGIN, type PageMeta } from "./meta.config";
 
 const DIST = join(import.meta.dir, "dist");
-const ORIGIN = process.env.APP_URL || "https://index.network";
 const template = readFileSync(join(DIST, "index.html"), "utf-8");
 const metaMap = buildMetaMap(DIST);
 
