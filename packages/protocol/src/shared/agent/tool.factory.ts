@@ -62,6 +62,7 @@ export async function createChatTools(
       userId: deps.userId,
       networkId: deps.networkId,
       sessionId: deps.sessionId,
+      contactsEnabled: deps.contactsEnabled,
     }));
 
   // Allow callers (e.g. MCP server, tests) to override the computed indexScope

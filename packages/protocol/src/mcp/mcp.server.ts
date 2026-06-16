@@ -537,7 +537,7 @@ export function createMcpServer(
           }
 
           // Resolve chat context for the user (mark as MCP — no interactive UI available)
-          const context = await resolveChatContext({ database: deps.database, userId });
+          const context = await resolveChatContext({ database: deps.database, userId, contactsEnabled: deps.contactsEnabled });
           reportContext = context;
           context.isMcp = true;
           if (agentId) {

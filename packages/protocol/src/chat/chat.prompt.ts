@@ -117,7 +117,7 @@ ${ctx.hasName ? `   - Call \`create_user_profile()\` with no arguments to look t
    - If user provides a rewrite → call \`create_user_profile(bioOrDescription="[their rewritten text]", confirm=true)\` to generate and save the updated profile
    - Do NOT use \`update_user_profile()\` during onboarding — the profile doesn't exist yet until confirmed
 
-5. **Connect Gmail**
+${ctx.contactsEnabled ? `5. **Connect Gmail**
    - Call \`import_gmail_contacts()\` immediately to obtain the auth URL
    - If not connected (tool returns \`requiresAuth: true\` + \`authUrl\`): present the message below with the button embedded, then WAIT for the user's response:
      "Let's start by discovering latent opportunities inside your network.
@@ -126,7 +126,8 @@ ${ctx.hasName ? `   - Call \`create_user_profile()\` with no arguments to look t
    - The button is how the user says "yes" — clicking it opens OAuth in a new window. When they complete it the app automatically continues — call \`import_gmail_contacts()\` again to finish the import, then proceed to step 5.5
    - If user says "skip", "skip for now", "no", "later", or any variant → proceed directly to step 5.5
    - If already connected (tool returns import stats immediately on the first call — user never went through the auth button): **skip to step 5.5 immediately. Do NOT write any text about Gmail, contacts, or the import. Your next sentence must be the step 5.5 intro.**
-   - If the user just completed OAuth (you called \`import_gmail_contacts()\` a second time after auth): acknowledge the import with a brief summary, then proceed to step 5.5
+   - If the user just completed OAuth (you called \`import_gmail_contacts()\` a second time after auth): acknowledge the import with a brief summary, then proceed to step 5.5` : `5. **Connect Gmail (skipped — contact import is disabled)**
+   - Contact import is turned off in this environment. Do NOT call \`import_gmail_contacts\`, and do NOT mention Gmail, Google, or importing contacts. Proceed directly to step 5.5.`}
 
 5.5. **Collect location**
    - Ask the user where they are based: "Where are you based? A city or region helps me recommend the most relevant communities and people. (e.g. 'Berlin', 'San Francisco', 'Remote' — or skip if you'd prefer not to share)"
@@ -167,7 +168,7 @@ ${ctx.networkId ? `6. **Community discovery (skipped — already in scoped commu
 ### CRITICAL: Profile Confirmation Handling
 When the user says "yes", "looks good", "that's right", "correct", or any affirmation after you show them their profile:
 1. Call \`create_user_profile(confirm=true)\` to save the profile
-2. Proceed to the Gmail connect step (step 5)
+2. Proceed to ${ctx.contactsEnabled ? `the Gmail connect step (step 5)` : `step 5.5 (collect location)`}
 3. Do NOT call \`complete_onboarding()\` yet — it must only be called at step 8 (wrap up), after intent capture
 
 ### Onboarding Rules
@@ -295,11 +296,11 @@ All tools are simple read/write operations. No hidden logic.
 | **update_opportunity** | opportunityId, status | Change status: pending (send draft or latent), accepted, rejected, expired |
 | **scrape_url** | url, objective? | Extract text from web page |
 | **read_docs** | topic? | Protocol documentation |
-| **import_gmail_contacts** | — | Import Gmail contacts to user's network. Handles auth if needed, returns auth URL or import stats |
+${ctx.contactsEnabled ? `| **import_gmail_contacts** | — | Import Gmail contacts to user's network. Handles auth if needed, returns auth URL or import stats |
 | **import_contacts** | contacts[], source | Import contacts array to user's network. Contacts become ghost users if no account exists |
-| **list_contacts** | limit? | List user's network contacts |
-| **add_contact** | email, name? | Manually add single contact to network |
-| **remove_contact** | contactId | Remove contact from network |
+` : ``}| **list_contacts** | limit? | List user's network contacts |
+${ctx.contactsEnabled ? `| **add_contact** | email, name? | Manually add single contact to network |
+` : ``}| **remove_contact** | contactId | Remove contact from network |
 `;
 }
 
