@@ -25,17 +25,16 @@ export interface RunCaseOptions {
 }
 
 /**
- * The presenter swallows LLM timeouts/failures and returns a fixed fallback card
- * (headline "A promising connection", the raw matchReasoning as summary, empty
- * greeting). That degraded path is a resilience concern, not card quality — detect
- * it so the runner retries and the eval measures the real model output.
+ * The presenter swallows LLM timeouts/failures and returns a fixed fallback card:
+ * headline "A promising connection", the raw matchReasoning as the summary, and an
+ * empty greeting (both the party and introducer fallback branches share this — only
+ * the suggestedAction copy differs between them). That degraded path is a resilience
+ * concern, not card quality, so detect it and let the runner retry past it so the
+ * eval measures real model output. A genuine card always populates the greeting and
+ * never reuses the fixed fallback headline, so this signature does not false-positive.
  */
-function isFallbackCard(p: { headline: string; suggestedAction: string; greeting: string }): boolean {
-  return (
-    p.headline === "A promising connection" &&
-    p.suggestedAction === "Take a look and decide whether to reach out." &&
-    p.greeting === ""
-  );
+function isFallbackCard(p: { headline: string; greeting: string }): boolean {
+  return p.headline === "A promising connection" && p.greeting === "";
 }
 
 /** Invoke the presenter once and normalize its card output (collecting leakage findings). */
