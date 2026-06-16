@@ -809,7 +809,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         if (githubUrl) newSocials.push({ label: 'github', value: githubUrl });
         if (twitterUrl) newSocials.push({ label: 'twitter', value: twitterUrl });
         if (websites?.length) {
-          for (const w of websites) newSocials.push({ label: detectSocialLabel(w) === 'custom' ? 'custom' : detectSocialLabel(w), value: w });
+          for (const w of websites) newSocials.push({ label: detectSocialLabel(w), value: w });
         }
         await mergeUserSocials(newSocials);
       }

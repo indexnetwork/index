@@ -1,4 +1,4 @@
-import { Embedder, EmbeddingGenerator, VectorSearchResult, VectorStoreOption } from './embedder.types';
+import { Embedder, EmbeddingGenerateOptions, EmbeddingGenerator, VectorSearchResult, VectorStoreOption } from './embedder.types';
 import { OpenRouterGenerator } from './embedder.generator';
 
 export interface IndexEmbedderOptions {
@@ -30,7 +30,7 @@ export class IndexEmbedder implements Embedder {
   /**
    * Generates embeddings using the internal generator.
    */
-  async generate(text: string | string[], dimensions: number = 2000, options?: { signal?: AbortSignal }): Promise<number[] | number[][]> {
+  async generate(text: string | string[], dimensions: number = 2000, options?: EmbeddingGenerateOptions): Promise<number[] | number[][]> {
     return this.generator.generate(text, dimensions, options);
   }
 

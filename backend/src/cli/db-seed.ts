@@ -331,8 +331,6 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     if (!silent) console.log('Creating indexes...');
 
     // Create all indexes
-    let _indexesCreated = 0;
-    let _indexesExisted = 0;
     for (let i = 0; i < SEED_INDEXES.length; i++) {
       const idx = SEED_INDEXES[i];
       try {
@@ -347,10 +345,8 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
             allowGuestVibeCheck: false,
           },
         });
-        _indexesCreated++;
         if (!silent) console.log(`  Index ${i + 1}/${SEED_INDEXES.length}: ${idx.title} — created`);
       } catch {
-        _indexesExisted++;
         if (!silent) console.log(`  Index ${i + 1}/${SEED_INDEXES.length}: ${idx.title} — already exists`);
       }
     }

@@ -70,10 +70,7 @@ export class NetworkController {
     };
 
     if (!body.title) {
-      return new Response(JSON.stringify({ error: 'title is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'title is required' }, { status: 400 });
     }
 
     if (body.isExperiment) {
@@ -132,16 +129,10 @@ export class NetworkController {
     };
 
     if (!body.email || typeof body.email !== 'string') {
-      return new Response(JSON.stringify({ error: 'email is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'email is required' }, { status: 400 });
     }
     if (!EMAIL_REGEX.test(body.email)) {
-      return new Response(JSON.stringify({ error: 'Invalid email format' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
     const trimmedField = (
@@ -151,18 +142,12 @@ export class NetworkController {
     ): { value: string | undefined } | Response => {
       if (raw === undefined) return { value: undefined };
       if (typeof raw !== 'string') {
-        return new Response(JSON.stringify({ error: `${field} must be a string` }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: `${field} must be a string` }, { status: 400 });
       }
       const trimmed = raw.trim();
       if (trimmed.length === 0) return { value: undefined };
       if (trimmed.length > cap) {
-        return new Response(JSON.stringify({ error: `${field} exceeds maximum length of ${cap}` }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: `${field} exceeds maximum length of ${cap}` }, { status: 400 });
       }
       return { value: trimmed };
     };
@@ -181,16 +166,10 @@ export class NetworkController {
     let socials: { label: string; value: string }[] | undefined;
     if (body.socials !== undefined) {
       if (!Array.isArray(body.socials)) {
-        return new Response(JSON.stringify({ error: 'socials must be an array' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: 'socials must be an array' }, { status: 400 });
       }
       if ((body.socials as unknown[]).length > 32) {
-        return new Response(JSON.stringify({ error: 'socials exceeds maximum of 32 entries' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: 'socials exceeds maximum of 32 entries' }, { status: 400 });
       }
       const parsed: { label: string; value: string }[] = [];
       for (const entry of body.socials as unknown[]) {
@@ -200,31 +179,19 @@ export class NetworkController {
           typeof (entry as Record<string, unknown>).label !== 'string' ||
           typeof (entry as Record<string, unknown>).value !== 'string'
         ) {
-          return new Response(JSON.stringify({ error: 'Each social entry must have label (string) and value (string)' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
+          return Response.json({ error: 'Each social entry must have label (string) and value (string)' }, { status: 400 });
         }
         const { label: rawLabel, value: rawValue } = entry as { label: string; value: string };
         const label = rawLabel.trim();
         const value = rawValue.trim();
         if (label.length === 0 || value.length === 0) {
-          return new Response(JSON.stringify({ error: 'social entries must have non-empty label and value' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
+          return Response.json({ error: 'social entries must have non-empty label and value' }, { status: 400 });
         }
         if (label.length > 64) {
-          return new Response(JSON.stringify({ error: 'social label exceeds maximum length of 64' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
+          return Response.json({ error: 'social label exceeds maximum length of 64' }, { status: 400 });
         }
         if (value.length > 256) {
-          return new Response(JSON.stringify({ error: 'social value exceeds maximum length of 256' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
+          return Response.json({ error: 'social value exceeds maximum length of 256' }, { status: 400 });
         }
         parsed.push({ label, value });
       }
@@ -245,10 +212,7 @@ export class NetworkController {
       );
     } catch (err: unknown) {
       logger.error('Experiment signup failed', { networkId: network.id, error: errorMessage(err) });
-      return new Response(JSON.stringify({ error: 'Signup failed' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'Signup failed' }, { status: 500 });
     }
   }
 
@@ -272,23 +236,14 @@ export class NetworkController {
 
     const body = await req.json().catch(() => null) as { email?: string } | null;
     if (!body || typeof body.email !== 'string') {
-      return new Response(JSON.stringify({ error: 'email is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'email is required' }, { status: 400 });
     }
     const normalizedEmail = body.email.toLowerCase().trim();
     if (normalizedEmail.length === 0) {
-      return new Response(JSON.stringify({ error: 'email is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'email is required' }, { status: 400 });
     }
     if (!EMAIL_REGEX.test(normalizedEmail)) {
-      return new Response(JSON.stringify({ error: 'Invalid email format' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
     try {
@@ -296,16 +251,10 @@ export class NetworkController {
       return Response.json(result, { status: 200 });
     } catch (err: unknown) {
       if (err instanceof SignupNotCompleteError) {
-        return new Response(
-          JSON.stringify({ error: 'User has not completed signup for this network' }),
-          { status: 409, headers: { 'Content-Type': 'application/json' } },
-        );
+        return Response.json({ error: 'User has not completed signup for this network' }, { status: 409 });
       }
       logger.error('Signup lookup failed', { networkId: network.id, error: errorMessage(err) });
-      return new Response(JSON.stringify({ error: 'Lookup failed' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'Lookup failed' }, { status: 500 });
     }
   }
 
@@ -352,10 +301,7 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       throw err;
     }
@@ -369,28 +315,19 @@ export class NetworkController {
   async addMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     const body = await req.json().catch(() => ({})) as { userId?: string; permissions?: string[] };
     if (!body.userId) {
-      return new Response(JSON.stringify({ error: 'userId is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'userId is required' }, { status: 400 });
     }
     try {
       await assertAgentNetworkScope(req, params.id);
       let role: 'owner' | 'member' = 'member';
       if (body.permissions !== undefined) {
         if (!Array.isArray(body.permissions)) {
-          return new Response(JSON.stringify({ error: "permissions must be an array" }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
+          return Response.json({ error: "permissions must be an array" }, { status: 400 });
         }
         const isOwnerRole = body.permissions.length === 1 && body.permissions[0] === 'owner';
         const isMemberRole = body.permissions.length === 1 && body.permissions[0] === 'member';
         if (!isOwnerRole && !isMemberRole) {
-          return new Response(JSON.stringify({ error: "permissions must be exactly ['owner'] or ['member']" }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
+          return Response.json({ error: "permissions must be exactly ['owner'] or ['member']" }, { status: 400 });
         }
         role = isOwnerRole ? 'owner' : 'member';
       }
@@ -399,10 +336,7 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       throw err;
     }
@@ -417,19 +351,13 @@ export class NetworkController {
   async updateMemberRole(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     const body = await req.json().catch(() => ({})) as { permissions?: string[] };
     if (!body.permissions || !Array.isArray(body.permissions)) {
-      return new Response(JSON.stringify({ error: 'permissions array is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'permissions array is required' }, { status: 400 });
     }
     // Strict validation: only ['owner'] or ['member'] are accepted
     const isOwnerRole = body.permissions.length === 1 && body.permissions[0] === 'owner';
     const isMemberRole = body.permissions.length === 1 && body.permissions[0] === 'member';
     if (!isOwnerRole && !isMemberRole) {
-      return new Response(JSON.stringify({ error: "permissions must be exactly ['owner'] or ['member']" }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: "permissions must be exactly ['owner'] or ['member']" }, { status: 400 });
     }
     const role = isOwnerRole ? 'owner' as const : 'member' as const;
     try {
@@ -440,22 +368,13 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       if (msg === 'Member not found') {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 404 });
       }
       if (msg === 'Cannot demote the last owner' || msg === 'Cannot change role of a contact' || msg === 'Cannot change your own role') {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 400 });
       }
       throw err;
     }
@@ -475,22 +394,13 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       if (msg === 'Member not found') {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 404 });
       }
       if (msg === 'Cannot remove yourself from the network') {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 400 });
       }
       throw err;
     }
@@ -781,10 +691,7 @@ export class NetworkController {
       };
 
       if ('isExperiment' in body || 'experimentMasterKeyHash' in body) {
-        return new Response(JSON.stringify({ error: 'Cannot modify experiment settings after creation' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: 'Cannot modify experiment settings after creation' }, { status: 400 });
       }
 
       const result = await networkService.updateNetwork(params.id, user.id, body);
@@ -793,16 +700,10 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       if (msg.includes('Cannot modify join policy on experiment networks')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 400 });
       }
       if (err instanceof ZodError) {
         return Response.json({ error: 'Validation failed', details: err.issues }, { status: 400 });
@@ -822,10 +723,7 @@ export class NetworkController {
       const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; contextInjection?: { discovery: boolean }; profileEnrichment?: 'auto' | 'consent_required' | 'disabled' };
 
       if ('isExperiment' in body || 'experimentMasterKeyHash' in body) {
-        return new Response(JSON.stringify({ error: 'Cannot modify experiment settings after creation' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: 'Cannot modify experiment settings after creation' }, { status: 400 });
       }
 
       const result = await networkService.updatePermissions(params.id, user.id, body);
@@ -834,16 +732,10 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       if (msg.includes('Cannot modify join policy on experiment networks')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 400 });
       }
       throw err;
     }
@@ -917,10 +809,7 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       throw err;
     }
@@ -941,16 +830,10 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('not found')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 404 });
       }
       if (msg.includes('not public')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       throw err;
     }
@@ -971,10 +854,7 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Not a member')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       throw err;
     }
@@ -995,10 +875,7 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Access denied') || msg.includes('Not a member')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       throw err;
     }
@@ -1019,16 +896,10 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('not found') || msg.includes('not a member')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 404 });
       }
       if (msg.includes('Cannot leave')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 400 });
       }
       throw err;
     }
@@ -1044,10 +915,7 @@ export class NetworkController {
   async getNetworkByShareCode(_req: Request, _user: unknown, params: Record<string, string>) {
     const network = await networkService.getNetworkByShareCode(params.code);
     if (!network) {
-      return new Response(JSON.stringify({ error: 'Invalid or expired invitation link' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'Invalid or expired invitation link' }, { status: 404 });
     }
     return Response.json({ network });
   }
@@ -1066,10 +934,7 @@ export class NetworkController {
       const msg = errorMessage(err);
       const isKnownError = msg.includes('Invalid or expired invitation link');
       logger.warn('Failed to accept invitation', { error: msg, userId: user.id });
-      return new Response(JSON.stringify({ error: isKnownError ? msg : 'Failed to accept invitation' }), {
-        status: isKnownError ? 400 : 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: isKnownError ? msg : 'Failed to accept invitation' }, { status: isKnownError ? 400 : 500 });
     }
   }
 
@@ -1083,10 +948,7 @@ export class NetworkController {
     await assertAgentNetworkScope(req, params.id);
     const network = await networkService.getPublicNetworkById(params.id);
     if (!network) {
-      return new Response(JSON.stringify({ error: 'Network not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Response.json({ error: 'Network not found' }, { status: 404 });
     }
     return Response.json({ network });
   }
@@ -1139,19 +1001,13 @@ export class NetworkController {
       await assertAgentNetworkScope(req, params.id);
       const network = await networkService.getNetworkById(params.id, user.id);
       if (!network) {
-        return new Response(JSON.stringify({ error: 'Network not found' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: 'Network not found' }, { status: 404 });
       }
       return Response.json({ network });
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return Response.json({ error: msg }, { status: 403 });
       }
       throw err;
     }

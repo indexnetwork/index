@@ -364,37 +364,35 @@ export class EmbedderAdapter {
       sql`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector) >= ${minScore}`,
     ];
 
-    const results =
-      filter?.indexScope && Array.isArray(filter.indexScope)
-        ? await db
-            .select({
-              userId: userProfiles.userId,
-              identity: userProfiles.identity,
-              narrative: userProfiles.narrative,
-              attributes: userProfiles.attributes,
-              similarity: sql<number>`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector)`,
-            })
-            .from(hydeDocuments)
-            .innerJoin(networkMembers, eq(hydeDocuments.sourceId, networkMembers.userId))
-            .innerJoin(userProfiles, eq(userProfiles.userId, hydeDocuments.sourceId))
-            .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
-            .where(and(...baseConditions, inArray(networkMembers.networkId, filter.indexScope as string[])))
-            .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
-            .limit(limit)
-        : await db
-            .select({
-              userId: userProfiles.userId,
-              identity: userProfiles.identity,
-              narrative: userProfiles.narrative,
-              attributes: userProfiles.attributes,
-              similarity: sql<number>`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector)`,
-            })
-            .from(hydeDocuments)
-            .innerJoin(userProfiles, eq(userProfiles.userId, hydeDocuments.sourceId))
-            .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
-            .where(and(...baseConditions))
-            .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
-            .limit(limit);
+    const scopedIndexes =
+      filter?.indexScope && Array.isArray(filter.indexScope) ? (filter.indexScope as string[]) : null;
+
+    const selection = {
+      userId: userProfiles.userId,
+      identity: userProfiles.identity,
+      narrative: userProfiles.narrative,
+      attributes: userProfiles.attributes,
+      similarity: sql<number>`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector)`,
+    };
+
+    const results = scopedIndexes
+      ? await db
+          .select(selection)
+          .from(hydeDocuments)
+          .innerJoin(networkMembers, eq(hydeDocuments.sourceId, networkMembers.userId))
+          .innerJoin(userProfiles, eq(userProfiles.userId, hydeDocuments.sourceId))
+          .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
+          .where(and(...baseConditions, inArray(networkMembers.networkId, scopedIndexes)))
+          .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
+          .limit(limit)
+      : await db
+          .select(selection)
+          .from(hydeDocuments)
+          .innerJoin(userProfiles, eq(userProfiles.userId, hydeDocuments.sourceId))
+          .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
+          .where(and(...baseConditions))
+          .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
+          .limit(limit);
 
     return results.map((r) => ({
       item: {
@@ -422,46 +420,33 @@ export class EmbedderAdapter {
       sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
     ];
 
-    if (filter?.indexScope && Array.isArray(filter.indexScope)) {
-      const results = await db
-        .select({
-          id: intents.id,
-          payload: intents.payload,
-          summary: intents.summary,
-          userId: intents.userId,
-          similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
-        })
-        .from(intents)
-        .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
-        .innerJoin(schema.users, eq(intents.userId, schema.users.id))
-        .where(and(...baseConditions, inArray(intentNetworks.networkId, filter.indexScope as string[])))
-        .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
-        .limit(limit);
+    const scopedIndexes =
+      filter?.indexScope && Array.isArray(filter.indexScope) ? (filter.indexScope as string[]) : null;
 
-      return results.map((r) => ({
-        item: {
-          id: r.id,
-          payload: r.payload,
-          summary: r.summary,
-          userId: r.userId,
-        },
-        score: r.similarity,
-      }));
-    }
+    const selection = {
+      id: intents.id,
+      payload: intents.payload,
+      summary: intents.summary,
+      userId: intents.userId,
+      similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
+    };
 
-    const results = await db
-      .select({
-        id: intents.id,
-        payload: intents.payload,
-        summary: intents.summary,
-        userId: intents.userId,
-        similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
-      })
-      .from(intents)
-      .innerJoin(schema.users, eq(intents.userId, schema.users.id))
-      .where(and(...baseConditions))
-      .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
-      .limit(limit);
+    const results = scopedIndexes
+      ? await db
+          .select(selection)
+          .from(intents)
+          .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
+          .innerJoin(schema.users, eq(intents.userId, schema.users.id))
+          .where(and(...baseConditions, inArray(intentNetworks.networkId, scopedIndexes)))
+          .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
+          .limit(limit)
+      : await db
+          .select(selection)
+          .from(intents)
+          .innerJoin(schema.users, eq(intents.userId, schema.users.id))
+          .where(and(...baseConditions))
+          .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
+          .limit(limit);
 
     return results.map((r) => ({
       item: {

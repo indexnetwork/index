@@ -25,11 +25,16 @@ export interface DiscoverResult {
   intents: DiscoverStake[];
 }
 
+export interface DiscoverSource {
+  type: 'file' | 'integration' | 'link' | 'discovery_form';
+  id: string;
+}
+
 export interface DiscoverFilters {
   intentIds?: string[];
   userIds?: string[];
   networkIds?: string[];
-  sources?: Array<{ type: 'file' | 'integration' | 'link' | 'discovery_form'; id: string }>;
+  sources?: DiscoverSource[];
   excludeDiscovered?: boolean;
   page?: number;
   limit?: number;
@@ -47,7 +52,7 @@ export interface DiscoverResponse {
     intentIds: string[] | null;
     userIds: string[] | null;
     networkIds: string[] | null;
-    sources: Array<{ type: 'file' | 'integration' | 'link' | 'discovery_form'; id: string }> | null;
+    sources: DiscoverSource[] | null;
     excludeDiscovered?: boolean;
   };
 }

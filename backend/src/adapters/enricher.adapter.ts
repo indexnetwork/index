@@ -7,8 +7,7 @@ import { enrichUserProfile as parallelEnrichUserProfile, type ParallelSearchRequ
  * verified at the composition root (mcp.controller.ts) via TypeScript duck typing.
  */
 export const enricherAdapter: { enrichUserProfile: (request: ParallelSearchRequestStruct) => Promise<ParallelEnrichmentResult | null> } = {
-  async enrichUserProfile(request: ParallelSearchRequestStruct): Promise<ParallelEnrichmentResult | null> {
-    const result = await parallelEnrichUserProfile(request);
-    return result;
+  enrichUserProfile(request: ParallelSearchRequestStruct): Promise<ParallelEnrichmentResult | null> {
+    return parallelEnrichUserProfile(request);
   },
 };

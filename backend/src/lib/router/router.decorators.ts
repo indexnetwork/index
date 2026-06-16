@@ -81,35 +81,19 @@ export function Controller(prefix: string = ''): ClassDecorator {
   };
 }
 
-export function Post(path: string = ''): MethodDecorator {
-  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    RouteRegistry.registerRoute(target, 'POST', path, propertyKey);
+function createMethodDecorator(method: Method) {
+  return (path: string = ''): MethodDecorator => {
+    return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+      RouteRegistry.registerRoute(target, method, path, propertyKey);
+    };
   };
 }
 
-export function Get(path: string = ''): MethodDecorator {
-  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    RouteRegistry.registerRoute(target, 'GET', path, propertyKey);
-  };
-}
-
-export function Put(path: string = ''): MethodDecorator {
-  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    RouteRegistry.registerRoute(target, 'PUT', path, propertyKey);
-  };
-}
-
-export function Delete(path: string = ''): MethodDecorator {
-  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    RouteRegistry.registerRoute(target, 'DELETE', path, propertyKey);
-  };
-}
-
-export function Patch(path: string = ''): MethodDecorator {
-  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    RouteRegistry.registerRoute(target, 'PATCH', path, propertyKey);
-  };
-}
+export const Post = createMethodDecorator('POST');
+export const Get = createMethodDecorator('GET');
+export const Put = createMethodDecorator('PUT');
+export const Delete = createMethodDecorator('DELETE');
+export const Patch = createMethodDecorator('PATCH');
 
 export function UseGuards(...guards: Guard[]): MethodDecorator {
   return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {

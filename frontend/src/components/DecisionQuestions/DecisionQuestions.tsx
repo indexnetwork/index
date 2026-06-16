@@ -71,11 +71,7 @@ export function DecisionQuestions({
                 aria-label={`Step ${i + 1}${i === safeStep ? ' (current)' : ''}`}
                 className={
                   'h-1.5 w-6 rounded-full ' +
-                  (i < safeStep
-                    ? 'bg-[#041729]'
-                    : i === safeStep
-                      ? 'bg-[#041729]'
-                      : 'bg-[#E8E8E8]')
+                  (i <= safeStep ? 'bg-[#041729]' : 'bg-[#E8E8E8]')
                 }
               />
             ))}

@@ -86,6 +86,21 @@ interface ChatCardCached {
   acceptedAt: string | null;
 }
 
+/**
+ * Resolve the counterpart actor for a viewer: the first non-introducer actor
+ * other than the viewer, falling back to the first non-viewer actor of any role.
+ * Returns `undefined` when the viewer is the only actor.
+ */
+function resolveCounterpart<A extends { userId: string; role: string }>(
+  actors: A[],
+  viewerId: string,
+): A | undefined {
+  return (
+    actors.find((a) => a.role !== 'introducer' && a.userId !== viewerId)
+    ?? actors.find((a) => a.userId !== viewerId)
+  );
+}
+
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
   private cache: OpportunityCache;
@@ -302,9 +317,7 @@ export class OpportunityService {
     await Promise.all(lookups);
 
     return rows.map((opp) => {
-      const counterpart = opp.actors.find(
-        (a) => a.role !== 'introducer' && a.userId !== userId,
-      ) ?? opp.actors.find((a) => a.userId !== userId);
+      const counterpart = resolveCounterpart(opp.actors, userId);
       const enrichedActors = opp.actors.map((a) => ({
         ...a,
         name: userMap.get(a.userId) ?? undefined,
@@ -480,8 +493,7 @@ export class OpportunityService {
     }
 
     const counterpart = status === 'accepted'
-      ? (opp.actors.find((actor) => actor.role !== 'introducer' && actor.userId !== userId)
-          ?? opp.actors.find((actor) => actor.userId !== userId))
+      ? resolveCounterpart(opp.actors, userId)
       : undefined;
 
     if (counterpart) {
@@ -653,9 +665,7 @@ export class OpportunityService {
       if (!isActor) {
         return { error: 'Not authorized to start chat for this opportunity', status: 403 };
       }
-      const counterpart =
-        opp.actors.find((a) => a.role !== 'introducer' && a.userId !== userId)
-        ?? opp.actors.find((a) => a.userId !== userId);
+      const counterpart = resolveCounterpart(opp.actors, userId);
       if (!counterpart) {
         return { error: 'Opportunity has no counterpart to chat with', status: 400 };
       }
@@ -692,9 +702,7 @@ export class OpportunityService {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
     }
 
-    const counterpart =
-      opp.actors.find((a) => a.role !== 'introducer' && a.userId !== userId)
-      ?? opp.actors.find((a) => a.userId !== userId);
+    const counterpart = resolveCounterpart(opp.actors, userId);
     if (!counterpart) {
       return { error: 'Opportunity has no counterpart to chat with', status: 400 };
     }
@@ -1048,9 +1056,7 @@ export class OpportunityService {
       return { error: 'Not authorized to view this opportunity', status: 403 };
     }
 
-    const counterpart = opp.actors.find(
-      (a) => a.role !== 'introducer' && a.userId !== viewerId
-    ) ?? opp.actors.find((a) => a.userId !== viewerId);
+    const counterpart = resolveCounterpart(opp.actors, viewerId);
 
     if (!counterpart) {
       return { error: 'No counterpart found', status: 400 };
@@ -1162,9 +1168,7 @@ export class OpportunityService {
   async getCounterpartTelegramHandleForOpp(opportunityId: string, viewerUserId: string): Promise<string | null> {
     const opp = await this.db.getOpportunity(opportunityId);
     if (!opp) return null;
-    const counterpart =
-      opp.actors.find((a) => a.role !== 'introducer' && a.userId !== viewerUserId)
-      ?? opp.actors.find((a) => a.userId !== viewerUserId);
+    const counterpart = resolveCounterpart(opp.actors, viewerUserId);
     if (!counterpart) return null;
     return this.getCounterpartTelegramHandle(counterpart.userId);
   }
@@ -1186,9 +1190,7 @@ export class OpportunityService {
   async getConversationIdForOpp(opportunityId: string, viewerUserId: string): Promise<string | null> {
     const opp = await this.db.getOpportunity(opportunityId);
     if (!opp) return null;
-    const counterpart =
-      opp.actors.find((a) => a.role !== 'introducer' && a.userId !== viewerUserId)
-      ?? opp.actors.find((a) => a.userId !== viewerUserId);
+    const counterpart = resolveCounterpart(opp.actors, viewerUserId);
     if (!counterpart) return null;
     try {
       const dm = await this.db.getOrCreateDM(viewerUserId, counterpart.userId);

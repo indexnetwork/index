@@ -1,4 +1,4 @@
-import { eq, and, sql, ne, isNull, isNotNull, count } from 'drizzle-orm';
+import { eq, and, sql, ne, isNull, isNotNull, count, inArray } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { intents, intentNetworks, networks, networkMembers, userProfiles } from '../schemas/database.schema';
@@ -120,7 +120,7 @@ export class DebugService {
         .from(networkMembers)
         .where(
           and(
-            sql`${networkMembers.networkId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            inArray(networkMembers.networkId, userIndexIds),
             ne(networkMembers.userId, userId),
           ),
         );
@@ -132,7 +132,7 @@ export class DebugService {
         .innerJoin(networkMembers, eq(userProfiles.userId, networkMembers.userId))
         .where(
           and(
-            sql`${networkMembers.networkId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            inArray(networkMembers.networkId, userIndexIds),
             ne(userProfiles.userId, userId),
           ),
         );
@@ -144,7 +144,7 @@ export class DebugService {
         .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
         .where(
           and(
-            sql`${intentNetworks.networkId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            inArray(intentNetworks.networkId, userIndexIds),
             ne(intents.userId, userId),
             isNull(intents.archivedAt),
             isNotNull(intents.embedding),

@@ -45,10 +45,12 @@ async function main() {
     process.exit(1);
   }
 
+  const involvesUser = sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`;
+
   const oppRows = await db
     .select({ id: opportunities.id })
     .from(opportunities)
-    .where(sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`);
+    .where(involvesUser);
   const oppIds = oppRows.map((o) => o.id);
 
   if (oppIds.length > 0) {
@@ -68,7 +70,7 @@ async function main() {
 
   const deleted = await db
     .delete(opportunities)
-    .where(sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`)
+    .where(involvesUser)
     .returning({ id: opportunities.id });
   console.log(`[rediscover] Deleted ${deleted.length} opportunity row(s) involving user ${userId}.`);
 

@@ -23,6 +23,70 @@ const AddContactBodySchema = z.object({
 
 const BATCH_MAX_IDS = 100;
 
+type NegotiationRow = Awaited<ReturnType<TaskService['getNegotiationsByUser']>>[number];
+type NegotiationMessages = Awaited<ReturnType<TaskService['getMessagesByTaskIds']>>;
+type SpeakerUser = { id: string; name: string; avatar: string | null };
+
+type NegotiationTurnData = { action?: string; assessment?: { reasoning?: string; suggestedRoles?: { ownUser?: string; otherUser?: string } } };
+type NegotiationOutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
+
+/**
+ * Maps a negotiation task row into the API negotiation DTO.
+ * @param row - Negotiation task with its outcome artifact
+ * @param messagesMap - Messages keyed by task id (turn data source)
+ * @param userMap - Participant users keyed by id (counterparty + speaker resolution)
+ * @param selfId - The id treated as "self" for counterparty/role selection
+ * @returns Negotiation DTO with counterparty, outcome, and turns
+ */
+function mapNegotiationRow(
+  row: NegotiationRow,
+  messagesMap: NegotiationMessages,
+  userMap: ReadonlyMap<string, SpeakerUser>,
+  selfId: string,
+) {
+  const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
+  const counterpartyId = meta?.sourceUserId === selfId ? meta?.candidateUserId : meta?.sourceUserId;
+  const counterparty = counterpartyId ? userMap.get(counterpartyId) : null;
+
+  const outcomePart = (row.artifact?.parts as NegotiationOutcomePart[] | null)?.find((p) => p.kind === 'data');
+  const outcomeData = outcomePart?.data;
+  const viewerRole = outcomeData?.agreedRoles?.find((r) => r.userId === selfId)?.role ?? null;
+
+  const rawMessages = messagesMap.get(row.id) ?? [];
+  const turns = rawMessages.map((msg) => {
+    const agentUserId = msg.senderId.replace(/^agent:/, '');
+    const speakerUser = userMap.get(agentUserId);
+    const dataPart = (msg.parts as Array<{ kind?: string; data?: NegotiationTurnData }>).find((p) => p.kind === 'data');
+    const turn = dataPart?.data;
+    return {
+      speaker: speakerUser
+        ? { id: speakerUser.id, name: speakerUser.name, avatar: speakerUser.avatar }
+        : { id: agentUserId, name: 'Unknown', avatar: null },
+      action: turn?.action ?? 'unknown',
+      reasoning: turn?.assessment?.reasoning ?? '',
+      suggestedRoles: turn?.assessment?.suggestedRoles ?? null,
+      createdAt: msg.createdAt.toISOString(),
+    };
+  });
+
+  return {
+    id: row.id,
+    counterparty: counterparty
+      ? { id: counterparty.id, name: counterparty.name, avatar: counterparty.avatar }
+      : { id: counterpartyId ?? 'unknown', name: 'Unknown user', avatar: null },
+    outcome: outcomeData
+      ? {
+          hasOpportunity: outcomeData.hasOpportunity ?? outcomeData.consensus ?? false,
+          role: viewerRole,
+          turnCount: outcomeData.turnCount ?? 0,
+          reason: outcomeData.reason,
+        }
+      : null,
+    turns,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 @Controller('/users')
 export class UserController {
   constructor(
@@ -152,49 +216,7 @@ export class UserController {
         : [];
       const userMap = new Map(participantUsers.map((u) => [u.id, u]));
 
-      type TurnData = { action?: string; assessment?: { reasoning?: string; suggestedRoles?: { ownUser?: string; otherUser?: string } } };
-      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
-
-      const counterpartyId = meta?.sourceUserId === viewer.id ? meta?.candidateUserId : meta?.sourceUserId;
-      const counterparty = counterpartyId ? userMap.get(counterpartyId) : null;
-
-      const outcomePart = (row.artifact?.parts as OutcomePart[] | null)?.find((p) => p.kind === 'data');
-      const outcomeData = outcomePart?.data;
-      const viewerRole = outcomeData?.agreedRoles?.find((r) => r.userId === viewer.id)?.role ?? null;
-
-      const rawMessages = messagesMap.get(row.id) ?? [];
-      const turns = rawMessages.map((msg) => {
-        const agentUserId = msg.senderId.replace(/^agent:/, '');
-        const speakerUser = userMap.get(agentUserId);
-        const dataPart = (msg.parts as Array<{ kind?: string; data?: TurnData }>).find((p) => p.kind === 'data');
-        const turn = dataPart?.data;
-        return {
-          speaker: speakerUser
-            ? { id: speakerUser.id, name: speakerUser.name, avatar: speakerUser.avatar }
-            : { id: agentUserId, name: 'Unknown', avatar: null },
-          action: turn?.action ?? 'unknown',
-          reasoning: turn?.assessment?.reasoning ?? '',
-          suggestedRoles: turn?.assessment?.suggestedRoles ?? null,
-          createdAt: msg.createdAt.toISOString(),
-        };
-      });
-
-      const negotiation = {
-        id: row.id,
-        counterparty: counterparty
-          ? { id: counterparty.id, name: counterparty.name, avatar: counterparty.avatar }
-          : { id: counterpartyId ?? 'unknown', name: 'Unknown user', avatar: null },
-        outcome: outcomeData
-          ? {
-              hasOpportunity: outcomeData.hasOpportunity ?? outcomeData.consensus ?? false,
-              role: viewerRole,
-              turnCount: outcomeData.turnCount ?? 0,
-              reason: outcomeData.reason,
-            }
-          : null,
-        turns,
-        createdAt: row.createdAt.toISOString(),
-      };
+      const negotiation = mapNegotiationRow(row, messagesMap, userMap, viewer.id);
 
       return Response.json({ negotiation }, { status: 201 });
     } catch (err) {
@@ -252,53 +274,7 @@ export class UserController {
         : [];
       const userMap = new Map(participantUsers.map((u) => [u.id, u]));
 
-      type TurnData = { action?: string; assessment?: { reasoning?: string; suggestedRoles?: { ownUser?: string; otherUser?: string } } };
-      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
-
-      const negotiations = rows.map((row) => {
-        const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
-        const counterpartyId = meta?.sourceUserId === params.userId ? meta?.candidateUserId : meta?.sourceUserId;
-        const counterparty = counterpartyId ? userMap.get(counterpartyId) : null;
-
-        const outcomePart = (row.artifact?.parts as OutcomePart[] | null)?.find((p) => p.kind === 'data');
-        const outcomeData = outcomePart?.data;
-        const viewerRole = outcomeData?.agreedRoles?.find((r) => r.userId === params.userId)?.role ?? null;
-
-        const rawMessages = messagesMap.get(row.id) ?? [];
-        const turns = rawMessages.map((msg) => {
-          const agentUserId = msg.senderId.replace(/^agent:/, '');
-          const speakerUser = userMap.get(agentUserId);
-          const dataPart = (msg.parts as Array<{ kind?: string; data?: TurnData }>).find((p) => p.kind === 'data');
-          const turn = dataPart?.data;
-
-          return {
-            speaker: speakerUser
-              ? { id: speakerUser.id, name: speakerUser.name, avatar: speakerUser.avatar }
-              : { id: agentUserId, name: 'Unknown', avatar: null },
-            action: turn?.action ?? 'unknown',
-            reasoning: turn?.assessment?.reasoning ?? '',
-            suggestedRoles: turn?.assessment?.suggestedRoles ?? null,
-            createdAt: msg.createdAt.toISOString(),
-          };
-        });
-
-        return {
-          id: row.id,
-          counterparty: counterparty
-            ? { id: counterparty.id, name: counterparty.name, avatar: counterparty.avatar }
-            : { id: counterpartyId ?? 'unknown', name: 'Unknown user', avatar: null },
-          outcome: outcomeData
-            ? {
-                hasOpportunity: outcomeData.hasOpportunity ?? outcomeData.consensus ?? false,
-                role: viewerRole,
-                turnCount: outcomeData.turnCount ?? 0,
-                reason: outcomeData.reason,
-              }
-            : null,
-          turns,
-          createdAt: row.createdAt.toISOString(),
-        };
-      });
+      const negotiations = rows.map((row) => mapNegotiationRow(row, messagesMap, userMap, params.userId));
 
       return Response.json({ negotiations });
     } catch (err) {

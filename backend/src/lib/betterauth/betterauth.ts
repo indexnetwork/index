@@ -68,6 +68,7 @@ export function createAuth(deps: AuthDeps) {
   // Snapshot auth_write config once so all customRules entries use a consistent
   // value (resolveClassConfig reads env vars on every call).
   const authWrite = resolveClassConfig("auth_write");
+  const authWriteRule = { window: authWrite.windowSec, max: authWrite.perMinute };
 
   return betterAuth({
     baseURL: BASE_URL,
@@ -125,12 +126,12 @@ export function createAuth(deps: AuthDeps) {
       // not multi-instance safe).
       ...(secondaryStorage ? { storage: "secondary-storage" as const } : {}),
       customRules: {
-        "/sign-in/email":      { window: authWrite.windowSec, max: authWrite.perMinute },
-        "/sign-up/email":      { window: authWrite.windowSec, max: authWrite.perMinute },
-        "/sign-in/magic-link": { window: authWrite.windowSec, max: authWrite.perMinute },
-        "/forget-password":    { window: authWrite.windowSec, max: authWrite.perMinute },
-        "/reset-password":     { window: authWrite.windowSec, max: authWrite.perMinute },
-        "/verify-email":       { window: authWrite.windowSec, max: authWrite.perMinute },
+        "/sign-in/email":      authWriteRule,
+        "/sign-up/email":      authWriteRule,
+        "/sign-in/magic-link": authWriteRule,
+        "/forget-password":    authWriteRule,
+        "/reset-password":     authWriteRule,
+        "/verify-email":       authWriteRule,
       },
     },
     emailAndPassword: { enabled: process.env.NODE_ENV !== 'production' },

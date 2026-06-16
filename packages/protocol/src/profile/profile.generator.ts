@@ -48,7 +48,7 @@ export class ProfileGenerator {
   }
 
   private toString(profile: Profile): string {
-    const textToEmbed = [
+    return [
       '# Identity',
       '## Name', profile.identity.name,
       '## Bio', profile.identity.bio,
@@ -59,8 +59,6 @@ export class ProfileGenerator {
       '## Interests', profile.attributes.interests.join(', '),
       '## Skills', profile.attributes.skills.join(', ')
     ].join('\n');
-
-    return textToEmbed;
   }
 
   @Timed()

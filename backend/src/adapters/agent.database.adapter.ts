@@ -318,41 +318,32 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
   async grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRow> {
     const isGlobal = (input.scope ?? 'global') === 'global';
 
-    if (isGlobal) {
-      const [row] = await db
-        .insert(schema.agentPermissions)
-        .values({
-          agentId: input.agentId,
-          userId: input.userId,
-          scope: 'global',
-          scopeId: null,
-          actions: input.actions,
-        })
-        .onConflictDoUpdate({
-          target: [schema.agentPermissions.agentId, schema.agentPermissions.userId],
-          targetWhere: sql`${schema.agentPermissions.scope} = 'global'`,
-          set: { actions: input.actions },
-        })
-        .returning();
-
-      logger.info('Granted agent permission', {
-        agentId: input.agentId,
-        permissionId: row.id,
-        userId: input.userId,
-      });
-      return this.toPermissionRow(row);
-    }
-
-    const [row] = await db
-      .insert(schema.agentPermissions)
-      .values({
-        agentId: input.agentId,
-        userId: input.userId,
-        scope: input.scope!,
-        scopeId: input.scopeId ?? null,
-        actions: input.actions,
-      })
-      .returning();
+    const [row] = isGlobal
+      ? await db
+          .insert(schema.agentPermissions)
+          .values({
+            agentId: input.agentId,
+            userId: input.userId,
+            scope: 'global',
+            scopeId: null,
+            actions: input.actions,
+          })
+          .onConflictDoUpdate({
+            target: [schema.agentPermissions.agentId, schema.agentPermissions.userId],
+            targetWhere: sql`${schema.agentPermissions.scope} = 'global'`,
+            set: { actions: input.actions },
+          })
+          .returning()
+      : await db
+          .insert(schema.agentPermissions)
+          .values({
+            agentId: input.agentId,
+            userId: input.userId,
+            scope: input.scope!,
+            scopeId: input.scopeId ?? null,
+            actions: input.actions,
+          })
+          .returning();
 
     logger.info('Granted agent permission', {
       agentId: input.agentId,

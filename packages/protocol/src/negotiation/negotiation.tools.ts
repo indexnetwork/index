@@ -41,6 +41,16 @@ function readTaskNetworkId(meta: {
 
 const SCOPE_DENIAL = 'Access denied: this negotiation is not in your bound network scope.';
 
+/** Extracts the ordered NegotiationTurn list from A2A message data parts. */
+function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {
+  return messages
+    .map((m) => {
+      const dp = (m.parts as Array<{ kind?: string; data?: unknown }>)?.find((p) => p.kind === 'data');
+      return dp?.data as NegotiationTurn;
+    })
+    .filter(Boolean);
+}
+
 /**
  * Creates negotiation MCP tools for external agent access.
  * Exposes negotiation state for listing, reading, and responding to bilateral negotiations.
@@ -454,10 +464,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         // ── Handle accept/reject: finalize immediately ──
         if (query.action === 'accept' || query.action === 'reject') {
           const allMessages = [...messages, { id: turnMessage.id, senderId: turnMessage.senderId, role: turnMessage.role, parts: turnMessage.parts as unknown[], createdAt: turnMessage.createdAt }];
-          const history: NegotiationTurn[] = allMessages.map(m => {
-            const dp = (m.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data');
-            return dp?.data as NegotiationTurn;
-          }).filter(Boolean);
+          const history: NegotiationTurn[] = turnsFromMessages(allMessages);
 
           const nextSpeaker = currentSpeaker === 'source' ? 'candidate' : 'source';
           const outcome = buildNegotiationOutcome(history, newTurnCount, query.action, meta.sourceUserId!, meta.candidateUserId!, nextSpeaker);
@@ -486,10 +493,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         if (newTurnCount >= maxTurns) {
           // Max turns reached — finalize with turn_cap
           const allMessages = [...messages, { id: turnMessage.id, senderId: turnMessage.senderId, role: turnMessage.role, parts: turnMessage.parts as unknown[], createdAt: turnMessage.createdAt }];
-          const history: NegotiationTurn[] = allMessages.map(m => {
-            const dp = (m.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data');
-            return dp?.data as NegotiationTurn;
-          }).filter(Boolean);
+          const history: NegotiationTurn[] = turnsFromMessages(allMessages);
 
           const nextSpeakerForCap = currentSpeaker === 'source' ? 'candidate' : 'source';
           const outcome = buildNegotiationOutcome(history, newTurnCount, 'counter', meta.sourceUserId!, meta.candidateUserId!, nextSpeakerForCap);
@@ -517,10 +521,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
 
         // Build the current turn history for dispatcher payload
         const allMessagesWithTurn = [...messages, { id: turnMessage.id, senderId: turnMessage.senderId, role: turnMessage.role, parts: turnMessage.parts as unknown[], createdAt: turnMessage.createdAt }];
-        const historyForDispatch: NegotiationTurn[] = allMessagesWithTurn.map(m => {
-          const dp = (m.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data');
-          return dp?.data as NegotiationTurn;
-        }).filter(Boolean);
+        const historyForDispatch: NegotiationTurn[] = turnsFromMessages(allMessagesWithTurn);
 
         const isFinalTurn = newTurnCount + 1 >= maxTurns;
 

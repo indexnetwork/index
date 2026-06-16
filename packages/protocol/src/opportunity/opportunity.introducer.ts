@@ -128,7 +128,6 @@ export async function runIntroducerDiscovery(
   }
 
   const bucket = Math.floor(Date.now() / (12 * 60 * 60 * 1000)); // 12h dedup bucket
-  let jobsEnqueued = 0;
 
   const results = await Promise.allSettled(
     contacts.map(async (contact) => {
@@ -164,7 +163,7 @@ export async function runIntroducerDiscovery(
       logger.error(`[IntroducerDiscovery] Job enqueue failed: ${errMsg}`);
     }
   }
-  jobsEnqueued = results.filter((r) => r.status === 'fulfilled' && r.value).length;
+  const jobsEnqueued = results.filter((r) => r.status === 'fulfilled' && r.value).length;
 
   logger.info(`[IntroducerDiscovery] Discovery cycle complete — userId=${userId} contactsEvaluated=${contacts.length} jobsEnqueued=${jobsEnqueued}`);
 

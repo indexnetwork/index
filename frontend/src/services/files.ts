@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { useAuthenticatedAPI } from '../lib/api';
 import { FileRecord, FileUploadResponse } from '../types';
 

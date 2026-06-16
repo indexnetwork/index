@@ -89,14 +89,13 @@ export class IntentClarifier {
     );
   }
 
-  @Timed()
-  public async invoke(
+  /** Build the shared user prompt with intent, profile, and active-intent context. */
+  private buildPrompt(
     description: string,
     profileContext: string,
     activeIntentsContext: string
-  ): Promise<IntentClarifierOutput> {
-    try {
-      const prompt = `
+  ): string {
+    return `
 # User Input Intent
 ${description}
 
@@ -106,6 +105,16 @@ ${profileContext || "none"}
 # Active Intents
 ${activeIntentsContext || "none"}
 `;
+  }
+
+  @Timed()
+  public async invoke(
+    description: string,
+    profileContext: string,
+    activeIntentsContext: string
+  ): Promise<IntentClarifierOutput> {
+    try {
+      const prompt = this.buildPrompt(description, profileContext, activeIntentsContext);
 
       const result = await invokeWithAbortSignal(this.model, [
         new SystemMessage(systemPrompt),
@@ -143,16 +152,7 @@ ${activeIntentsContext || "none"}
     activeIntentsContext: string
   ): Promise<string | null> {
     try {
-      const prompt = `
-# User Input Intent
-${description}
-
-# User Profile
-${profileContext || "none"}
-
-# Active Intents
-${activeIntentsContext || "none"}
-`;
+      const prompt = this.buildPrompt(description, profileContext, activeIntentsContext);
       const output = await invokeWithAbortSignal(this.suggestionModel, [
         new SystemMessage(suggestionPrompt),
         new HumanMessage(prompt),
@@ -172,16 +172,7 @@ ${activeIntentsContext || "none"}
     activeIntentsContext: string
   ): Promise<{ suggestedDescription: string; clarificationMessage: string } | null> {
     try {
-      const prompt = `
-# User Input Intent
-${description}
-
-# User Profile
-${profileContext || "none"}
-
-# Active Intents
-${activeIntentsContext || "none"}
-`;
+      const prompt = this.buildPrompt(description, profileContext, activeIntentsContext);
       const output = await invokeWithAbortSignal(this.clarificationDraftModel, [
         new SystemMessage(clarificationDraftPrompt),
         new HumanMessage(prompt),

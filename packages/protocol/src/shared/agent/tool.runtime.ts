@@ -96,11 +96,17 @@ export function getToolTimeoutPolicy(toolName: string): ToolTimeoutPolicy {
       ? "async_candidate"
       : "bounded_slow";
 
-  const classDefault = classification === "fast"
-    ? parsePositiveIntEnv("MCP_TOOL_TIMEOUT_FAST_MS", FAST_TIMEOUT_MS)
-    : classification === "async_candidate"
-      ? parsePositiveIntEnv("MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS", ASYNC_CANDIDATE_TIMEOUT_MS)
-      : parsePositiveIntEnv("MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS", BOUNDED_SLOW_TIMEOUT_MS);
+  let classDefault: number;
+  switch (classification) {
+    case "fast":
+      classDefault = parsePositiveIntEnv("MCP_TOOL_TIMEOUT_FAST_MS", FAST_TIMEOUT_MS);
+      break;
+    case "async_candidate":
+      classDefault = parsePositiveIntEnv("MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS", ASYNC_CANDIDATE_TIMEOUT_MS);
+      break;
+    default:
+      classDefault = parsePositiveIntEnv("MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS", BOUNDED_SLOW_TIMEOUT_MS);
+  }
 
   const defaultMaxOutputBytes = parsePositiveIntEnv("MCP_TOOL_MAX_OUTPUT_BYTES", DEFAULT_MAX_OUTPUT_BYTES);
 
@@ -121,6 +127,19 @@ export class ToolRuntimeError extends Error {
     super(message);
     this.name = "ToolRuntimeError";
   }
+}
+
+/** Builds the typed timeout/cancellation error shared by the abort race and catch paths. */
+function makeAbortError(timedOut: boolean, toolName: string, policy: ToolTimeoutPolicy): ToolRuntimeError {
+  const code: ToolRuntimeErrorCode = timedOut ? "TOOL_TIMEOUT" : "TOOL_CANCELLED";
+  return new ToolRuntimeError(
+    code,
+    code === "TOOL_TIMEOUT"
+      ? `Tool ${toolName} timed out after ${policy.timeoutMs}ms.`
+      : `Tool ${toolName} was cancelled before it completed.`,
+    toolName,
+    policy,
+  );
 }
 
 function combineSignals(signals: Array<AbortSignal | undefined>): {
@@ -177,15 +196,7 @@ async function invokeToolRuntimeInner(input: ToolInvocationRuntimeInput): Promis
   let removeAbortListener = () => {};
   const abortPromise = new Promise<never>((_, reject) => {
     const onAbort = () => {
-      const code: ToolRuntimeErrorCode = timedOut ? "TOOL_TIMEOUT" : "TOOL_CANCELLED";
-      reject(new ToolRuntimeError(
-        code,
-        code === "TOOL_TIMEOUT"
-          ? `Tool ${input.toolName} timed out after ${policy.timeoutMs}ms.`
-          : `Tool ${input.toolName} was cancelled before it completed.`,
-        input.toolName,
-        policy,
-      ));
+      reject(makeAbortError(timedOut, input.toolName, policy));
     };
     combined.signal.addEventListener("abort", onAbort, { once: true });
     removeAbortListener = () => combined.signal.removeEventListener("abort", onAbort);
@@ -215,15 +226,7 @@ async function invokeToolRuntimeInner(input: ToolInvocationRuntimeInput): Promis
   } catch (err) {
     if (err instanceof ToolRuntimeError) throw err;
     if (combined.signal.aborted) {
-      const code: ToolRuntimeErrorCode = timedOut ? "TOOL_TIMEOUT" : "TOOL_CANCELLED";
-      throw new ToolRuntimeError(
-        code,
-        code === "TOOL_TIMEOUT"
-          ? `Tool ${input.toolName} timed out after ${policy.timeoutMs}ms.`
-          : `Tool ${input.toolName} was cancelled before it completed.`,
-        input.toolName,
-        policy,
-      );
+      throw makeAbortError(timedOut, input.toolName, policy);
     }
     throw err;
   } finally {

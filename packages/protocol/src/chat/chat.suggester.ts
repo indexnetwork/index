@@ -84,7 +84,7 @@ export class SuggestionGenerator {
       }
       const out: ChatSuggestion[] = parsed.data.suggestions.map((s) => ({
         label: s.label,
-        type: s.type as "direct" | "prompt",
+        type: s.type,
         ...(s.type === "direct" && s.followupText != null && { followupText: s.followupText }),
         ...(s.type === "prompt" && s.prefill != null && { prefill: s.prefill }),
       }));

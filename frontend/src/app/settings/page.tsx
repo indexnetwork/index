@@ -60,11 +60,7 @@ export default function ProfilePage() {
 
   const setActiveTab = (v: string) => {
     if (!isSettingsTab(v)) return;
-    if (v === "profile") {
-      setSearchParams({}, { replace: true });
-    } else {
-      setSearchParams({ tab: v }, { replace: true });
-    }
+    setSearchParams(v === "profile" ? {} : { tab: v }, { replace: true });
   };
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);

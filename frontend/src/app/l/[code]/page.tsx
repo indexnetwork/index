@@ -145,6 +145,45 @@ export default function InvitationPage() {
     openLoginModal();
   };
 
+  const renderInviteCard = (button: React.ReactNode) => (
+    <ContentContainer>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
+          You're invited to join
+        </h1>
+        <p className="text-black text-[14px] font-ibm-plex-mono">
+          Connect with others who share your intent — discover relevant matches inside this private network.
+        </p>
+      </div>
+
+      {state.index && (
+        <div className="bg-white border border-gray-200 rounded-lg p-8 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Lock className="h-5 w-5 text-black" />
+            <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">
+              Private Network
+            </h2>
+          </div>
+
+          <h2 className="text-3xl font-bold text-black mb-6 font-ibm-plex-mono">
+            {state.index.title}
+          </h2>
+
+          {state.index._count && (
+            <div className="flex items-center gap-2 text-gray-600">
+              <Users className="h-4 w-4" />
+              <span className="text-sm font-ibm-plex-mono">
+                {state.index._count.members} {state.index._count.members === 1 ? 'member' : 'members'}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="max-w-md">{button}</div>
+    </ContentContainer>
+  );
+
   const renderContent = () => {
     switch (state.step) {
       case 'loading':
@@ -181,97 +220,23 @@ export default function InvitationPage() {
         );
 
       case 'auth-required':
-        return (
-          <ContentContainer>
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
-                You're invited to join
-              </h1>
-              <p className="text-black text-[14px] font-ibm-plex-mono">
-                Connect with others who share your intent — discover relevant matches inside this private network.
-              </p>
-            </div>
-            
-            {state.index && (
-              <div className="bg-white border border-gray-200 rounded-lg p-8 mb-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <Lock className="h-5 w-5 text-black" />
-                  <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">
-                    Private Network
-                  </h2>
-                </div>
-                
-                <h2 className="text-3xl font-bold text-black mb-6 font-ibm-plex-mono">
-                  {state.index.title}
-                </h2>
-                
-                {state.index._count && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Users className="h-4 w-4" />
-                    <span className="text-sm font-ibm-plex-mono">
-                      {state.index._count.members} {state.index._count.members === 1 ? 'member' : 'members'}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            <div className="max-w-md">
-              <Button
-                onClick={handleLogin}
-                className=" bg-[#041729] text-white hover:bg-[#0a2d4a] font-ibm-plex-mono"
-              >
-                Sign in to accept invitation
-              </Button>
-            </div>
-          </ContentContainer>
+        return renderInviteCard(
+          <Button
+            onClick={handleLogin}
+            className=" bg-[#041729] text-white hover:bg-[#0a2d4a] font-ibm-plex-mono"
+          >
+            Sign in to accept invitation
+          </Button>
         );
 
       case 'ready-to-join':
-        return (
-          <ContentContainer>
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
-                You're invited to join
-              </h1>
-              <p className="text-black text-[14px] font-ibm-plex-mono">
-                Connect with others who share your intent — discover relevant matches inside this private network.
-              </p>
-            </div>
-            
-            {state.index && (
-              <div className="bg-white border border-gray-200 rounded-lg p-8 mb-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <Lock className="h-5 w-5 text-black" />
-                  <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">
-                    Private Network
-                  </h2>
-                </div>
-                
-                <h2 className="text-3xl font-bold text-black mb-6 font-ibm-plex-mono">
-                  {state.index.title}
-                </h2>
-                
-                {state.index._count && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Users className="h-4 w-4" />
-                    <span className="text-sm font-ibm-plex-mono">
-                      {state.index._count.members} {state.index._count.members === 1 ? 'member' : 'members'}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            <div className="max-w-md">
-              <Button
-                onClick={handleJoinIndex}
-                className="w-full bg-[#041729] text-white hover:bg-[#0a2d4a] font-ibm-plex-mono"
-              >
-                Accept invitation & join
-              </Button>
-            </div>
-          </ContentContainer>
+        return renderInviteCard(
+          <Button
+            onClick={handleJoinIndex}
+            className="w-full bg-[#041729] text-white hover:bg-[#0a2d4a] font-ibm-plex-mono"
+          >
+            Accept invitation & join
+          </Button>
         );
 
       case 'joining':

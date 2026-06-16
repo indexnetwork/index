@@ -56,10 +56,7 @@ export class ChatInterruptClassifier {
         ),
       ]);
 
-      const text =
-        typeof response.content === "string"
-          ? response.content.trim().toLowerCase()
-          : String(response.content ?? "").trim().toLowerCase();
+      const text = String(response.content ?? "").trim().toLowerCase();
 
       if (text.startsWith("queue")) return "queue";
       // Default to steer on any ambiguity or unexpected output

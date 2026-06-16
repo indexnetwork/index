@@ -29,16 +29,9 @@ const LOG_CONTEXT_NAMES = new Set<string>([
   'protocol', 'route', 'router', 'server', 'lib',
 ]);
 
-/**
- * Parse LOG_FILTER env var. Comma-separated list of context names; only those loggers will emit.
- * Example: LOG_FILTER=graph or LOG_FILTER=graph,protocol
- * If unset or empty, all contexts are allowed.
- */
-function envContextFilter(): Set<LogContext> | null {
-  const raw = (process.env.LOG_FILTER || '').trim();
-  if (!raw) return null;
-  const names = raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-  if (names.length === 0) return null;
+/** Parse a comma-separated list of context names into a Set, or null if none are valid. */
+function parseContextFilter(raw: string | null | undefined): Set<LogContext> | null {
+  const names = (raw || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
   const allowed = new Set<LogContext>();
   for (const name of names) {
     if (LOG_CONTEXT_NAMES.has(name)) allowed.add(name as LogContext);
@@ -46,19 +39,19 @@ function envContextFilter(): Set<LogContext> | null {
   return allowed.size > 0 ? allowed : null;
 }
 
+/**
+ * Parse LOG_FILTER env var. Comma-separated list of context names; only those loggers will emit.
+ * Example: LOG_FILTER=graph or LOG_FILTER=graph,protocol
+ * If unset or empty, all contexts are allowed.
+ */
+function envContextFilter(): Set<LogContext> | null {
+  return parseContextFilter(process.env.LOG_FILTER);
+}
+
 let contextFilter: Set<LogContext> | null = envContextFilter();
 
 export function setContextFilter(filter: string | null) {
-  if (filter === null || !filter.trim()) {
-    contextFilter = null;
-    return;
-  }
-  const names = filter.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const allowed = new Set<LogContext>();
-  for (const name of names) {
-    if (LOG_CONTEXT_NAMES.has(name)) allowed.add(name as LogContext);
-  }
-  contextFilter = allowed.size > 0 ? allowed : null;
+  contextFilter = parseContextFilter(filter);
 }
 
 function shouldLogByContext(context: LogContext | undefined): boolean {
@@ -298,46 +291,32 @@ export type LoggerWithSource = {
   error: LogMethod;
 };
 
+/** Per-level console sink. verbose/debug both route to console.debug. */
+const LEVEL_CONSOLE: Record<LogLevel, (line: string) => void> = {
+  verbose: (line) => console.debug(line),
+  debug: (line) => console.debug(line),
+  info: (line) => console.info(line),
+  warn: (line) => console.warn(line),
+  error: (line) => console.error(line),
+};
+
 function createLogger(
   context: LogContext | undefined,
   source?: string
 ): LoggerWithSource {
+  function emit(level: LogLevel, message: string, meta?: Record<string, unknown>) {
+    if (!shouldLogByContext(context) || !shouldLog(level)) return;
+    emitSentryLog(level, message, context, source, meta);
+    const line = fmt(message, meta);
+    const { start, end } = wrapWithContext(context, source, line, level === 'error' ? 'error' : undefined);
+    LEVEL_CONSOLE[level](start + line + end);
+  }
   return {
-    verbose(message: string, meta?: Record<string, unknown>) {
-      if (!shouldLogByContext(context) || !shouldLog('verbose')) return;
-      emitSentryLog('verbose', message, context, source, meta);
-      const line = fmt(message, meta);
-      const { start, end } = wrapWithContext(context, source, line);
-      console.debug(start + line + end);
-    },
-    debug(message: string, meta?: Record<string, unknown>) {
-      if (!shouldLogByContext(context) || !shouldLog('debug')) return;
-      emitSentryLog('debug', message, context, source, meta);
-      const line = fmt(message, meta);
-      const { start, end } = wrapWithContext(context, source, line);
-      console.debug(start + line + end);
-    },
-    info(message: string, meta?: Record<string, unknown>) {
-      if (!shouldLogByContext(context) || !shouldLog('info')) return;
-      emitSentryLog('info', message, context, source, meta);
-      const line = fmt(message, meta);
-      const { start, end } = wrapWithContext(context, source, line);
-      console.info(start + line + end);
-    },
-    warn(message: string, meta?: Record<string, unknown>) {
-      if (!shouldLogByContext(context) || !shouldLog('warn')) return;
-      emitSentryLog('warn', message, context, source, meta);
-      const line = fmt(message, meta);
-      const { start, end } = wrapWithContext(context, source, line);
-      console.warn(start + line + end);
-    },
-    error(message: string, meta?: Record<string, unknown>) {
-      if (!shouldLogByContext(context) || !shouldLog('error')) return;
-      emitSentryLog('error', message, context, source, meta);
-      const line = fmt(message, meta);
-      const { start, end } = wrapWithContext(context, source, line, 'error');
-      console.error(start + line + end);
-    },
+    verbose: (message, meta) => emit('verbose', message, meta),
+    debug: (message, meta) => emit('debug', message, meta),
+    info: (message, meta) => emit('info', message, meta),
+    warn: (message, meta) => emit('warn', message, meta),
+    error: (message, meta) => emit('error', message, meta),
   };
 }
 

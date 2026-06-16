@@ -55,12 +55,9 @@ export function QuestionGroup({ label, questions, onAnswer, onDismiss }: Questio
       {questions.map((q) => {
         const answer = answers[q.id] ?? null;
         const isSubmitting = submitting[q.id] ?? false;
-        const hasAnswer =
-          answer?.kind === 'selection'
-            ? answer.selectedLabels.length > 0
-            : answer?.kind === 'other'
-              ? answer.text.trim().length > 0
-              : false;
+        const hasAnswer = answer?.kind === 'selection'
+          ? answer.selectedLabels.length > 0
+          : answer?.kind === 'other' && answer.text.trim().length > 0;
 
         return (
           <div key={q.id} className="flex flex-col gap-1.5">

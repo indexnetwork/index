@@ -51,6 +51,20 @@ export type CategorizerResult = {
 const UNCATEGORIZED_SECTION_ID = 'uncategorized';
 const UNCATEGORIZED_SECTION_TITLE = 'UNCATEGORIZED OPPORTUNITIES';
 
+/** Single-section fallback grouping every card under one generic heading. */
+function buildFallbackResult(cards: CategorizerInputItem[]): CategorizerResult {
+  return {
+    sections: [
+      {
+        id: 'opportunities',
+        title: 'OPPORTUNITIES',
+        iconName: DEFAULT_HOME_SECTION_ICON,
+        itemIndices: cards.map((c) => c.index),
+      },
+    ],
+  };
+}
+
 /**
  * Build card summaries for the categorizer prompt.
  */
@@ -159,16 +173,7 @@ Rules:
       const parsed = categorizationSchema.safeParse(result);
       if (!parsed.success) {
         logger.warn('HomeCategorizer parse failed', { error: parsed.error });
-        return {
-          sections: [
-            {
-              id: 'opportunities',
-              title: 'OPPORTUNITIES',
-              iconName: DEFAULT_HOME_SECTION_ICON,
-              itemIndices: cards.map((c) => c.index),
-            },
-          ],
-        };
+        return buildFallbackResult(cards);
       }
       const sections: HomeSectionProposal[] = parsed.data.sections.map((s) => ({
         id: s.id,
@@ -182,16 +187,7 @@ Rules:
     } catch (e) {
       const err = e instanceof Error ? { message: e.message, name: e.name } : String(e);
       logger.error('HomeCategorizer categorize failed', { error: err });
-      return {
-        sections: [
-          {
-            id: 'opportunities',
-            title: 'OPPORTUNITIES',
-            iconName: DEFAULT_HOME_SECTION_ICON,
-            itemIndices: cards.map((c) => c.index),
-          },
-        ],
-      };
+      return buildFallbackResult(cards);
     }
   }
 }

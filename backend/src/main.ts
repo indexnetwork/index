@@ -406,16 +406,17 @@ const server = Bun.serve({
     const method = req.method;
 
     const corsHeaders = getCorsHeaders(req);
+    const subsystem = classifyRequestSubsystem(url.pathname);
 
     logger.verbose('Request', { method, path: url.pathname });
 
     return traceAppOperation(
       {
-        name: `${method} ${classifyRequestSubsystem(url.pathname)}`,
+        name: `${method} ${subsystem}`,
         op: 'http.server',
         forceTransaction: true,
         attributes: {
-          subsystem: classifyRequestSubsystem(url.pathname),
+          subsystem,
           'http.request.method': method,
           'url.path': url.pathname,
         },
@@ -665,7 +666,7 @@ const server = Bun.serve({
         error: error instanceof Error ? error.message : String(error),
       });
       const eventId = captureAppException(error, {
-        subsystem: classifyRequestSubsystem(url.pathname),
+        subsystem,
         operation: 'http.fetch',
         tags: {
           'http.method': method,
