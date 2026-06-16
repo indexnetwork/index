@@ -30,7 +30,6 @@ interface ToolCall {
 function createMockServer() {
   const toolCalls: ToolCall[] = [];
   const toolResponses: Record<string, Record<string, unknown>> = {};
-  const restHandlers: Record<string, (req: Request) => Response | Promise<Response>> = {};
   const server = createBaseMockServer();
   server.onPattern("POST", /^\/api\/tools\/(.+)$/, async (req, match) => {
     const toolName = match[1];
@@ -48,7 +47,6 @@ function createMockServer() {
     },
     /** Register a REST handler for non-tool endpoints. */
     onRest(method: string, path: string, handler: (req: Request) => Response | Promise<Response>) {
-      restHandlers[`${method} ${path}`] = handler;
       server.on(method, path, handler);
     },
     reset() {

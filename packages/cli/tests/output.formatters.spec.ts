@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
+import { describe, it, expect, spyOn } from "bun:test";
 
 import { profileCard, sessionTable, intentTable, intentCard, opportunityTable, opportunityCard, networkTable, networkCard, memberTable, conversationTable, conversationCard, messageList } from "../src/output/formatters";
 import { stripAnsi } from "../src/output/base";

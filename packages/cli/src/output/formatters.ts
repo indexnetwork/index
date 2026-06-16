@@ -545,6 +545,11 @@ export function memberTable(
 
 // ── Conversation output ───────────────────────────────────────────
 
+/** Resolve a participant's display name with legacy-shape fallbacks. */
+function participantName(p: Conversation["participants"][number]): string {
+  return p.name ?? p.user?.name ?? p.participantId;
+}
+
 /**
  * Print a table of conversations.
  *
@@ -570,7 +575,7 @@ export function conversationTable(conversations: Conversation[]): void {
   for (const c of conversations) {
     const shortId = c.id.slice(0, 8);
     const names = c.participants
-      .map((p) => p.name ?? p.user?.name ?? p.participantId)
+      .map(participantName)
       .join(", ")
       .slice(0, participantsWidth);
     const date = new Date(c.createdAt).toLocaleDateString("en-US", {
@@ -598,7 +603,7 @@ export function conversationCard(conversation: Conversation): void {
 
   if (conversation.participants.length > 0) {
     const names = conversation.participants
-      .map((p) => p.name ?? p.user?.name ?? p.participantId)
+      .map(participantName)
       .join(", ");
     console.log(`  ${BOLD}Participants${RESET}  ${names}`);
   }

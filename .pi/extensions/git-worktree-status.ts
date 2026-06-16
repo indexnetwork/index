@@ -20,40 +20,38 @@ function getWorktreeInfo(topLevel: string, absoluteGitDir: string, commonDir: st
 	};
 }
 
-async function updateWorktreeStatus(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+async function readWorktreeInfo(pi: ExtensionAPI, cwd: string): Promise<{ label: string; isLinkedWorktree: boolean } | undefined> {
+	const topLevel = await git(pi, cwd, ["rev-parse", "--show-toplevel"]);
+	const absoluteGitDir = await git(pi, cwd, ["rev-parse", "--absolute-git-dir"]);
+	const commonDir = await git(pi, cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+	if (!topLevel || !absoluteGitDir || !commonDir) return undefined;
+	return getWorktreeInfo(topLevel, absoluteGitDir, commonDir);
+}
+
+function applyWorktreeStatus(ctx: ExtensionContext, info: { label: string } | undefined): void {
 	if (!ctx.hasUI) return;
-
-	const topLevel = await git(pi, ctx.cwd, ["rev-parse", "--show-toplevel"]);
-	const absoluteGitDir = await git(pi, ctx.cwd, ["rev-parse", "--absolute-git-dir"]);
-	const commonDir = await git(pi, ctx.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-
-	if (!topLevel || !absoluteGitDir || !commonDir) {
+	if (!info) {
 		ctx.ui.setStatus(STATUS_KEY, undefined);
 		return;
 	}
-
-	const { label } = getWorktreeInfo(topLevel, absoluteGitDir, commonDir);
-	ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("dim", `wt:${label}`));
+	ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("dim", `wt:${info.label}`));
 }
 
-async function maybeAutoNameSession(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
-	if (!AUTO_NAME_ENABLED || pi.getSessionName()) return;
-
-	const topLevel = await git(pi, ctx.cwd, ["rev-parse", "--show-toplevel"]);
-	const absoluteGitDir = await git(pi, ctx.cwd, ["rev-parse", "--absolute-git-dir"]);
-	const commonDir = await git(pi, ctx.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-	if (!topLevel || !absoluteGitDir || !commonDir) return;
-
-	const { label, isLinkedWorktree } = getWorktreeInfo(topLevel, absoluteGitDir, commonDir);
-	if (isLinkedWorktree) {
-		pi.setSessionName(label);
-	}
+async function updateWorktreeStatus(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+	if (!ctx.hasUI) return;
+	applyWorktreeStatus(ctx, await readWorktreeInfo(pi, ctx.cwd));
 }
 
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
-		await updateWorktreeStatus(pi, ctx);
-		await maybeAutoNameSession(pi, ctx);
+		const wantsAutoName = AUTO_NAME_ENABLED && !pi.getSessionName();
+		if (!ctx.hasUI && !wantsAutoName) return;
+
+		const info = await readWorktreeInfo(pi, ctx.cwd);
+		applyWorktreeStatus(ctx, info);
+		if (wantsAutoName && info?.isLinkedWorktree) {
+			pi.setSessionName(info.label);
+		}
 	});
 
 	pi.registerCommand("worktree-status", {

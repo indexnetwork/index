@@ -28,6 +28,10 @@ function normalizeCommand(command: string): string {
 	return command.replace(/\\\n/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function escapeRegex(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function isAllowedDevSwitch(command: string): boolean {
 	const normalized = normalizeCommand(command);
 	return /^(?:git(?:\s+-C\s+(?:"[^"]+"|'[^']+'|\S+))?\s+)?(?:switch|checkout)\s+dev\s*$/.test(
@@ -37,7 +41,7 @@ function isAllowedDevSwitch(command: string): boolean {
 
 function targetsCanonicalRootBranch(command: string): boolean {
 	const normalized = normalizeCommand(command);
-	const escapedRoot = CANONICAL_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const escapedRoot = escapeRegex(CANONICAL_ROOT);
 	const rootArg = `(?:${escapedRoot}|"${escapedRoot}"|'${escapedRoot}')`;
 
 	if (isRunningFromCanonicalRoot() && /\bgit\s+(?:switch|checkout)\b/.test(normalized)) {
@@ -50,7 +54,7 @@ function targetsCanonicalRootBranch(command: string): boolean {
 
 function commandTargetsWorktree(command: string): boolean {
 	const normalized = normalizeCommand(command);
-	const escapedWorktrees = WORKTREES_DIR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const escapedWorktrees = escapeRegex(WORKTREES_DIR);
 	const absoluteWorktreeArg = `(?:${escapedWorktrees}|"${escapedWorktrees}|'${escapedWorktrees})`;
 
 	return /^cd\s+\.worktrees\//.test(normalized)
