@@ -30,7 +30,10 @@ export interface ProfileCase {
   id: string;
   rule: Rule;
   tier: 1 | 2;
+  /** Technical one-liner (for the engineer view). */
   description: string;
+  /** Plain-language narrative for the non-technical report. */
+  human?: { scenario: string; expectation: string };
   /** Raw data (or existing-profile + request) handed to the generator. */
   input: string;
   expect: ProfileExpectation;

@@ -51,7 +51,10 @@ interface PremiseCaseBase {
   id: string;
   rule: Rule;
   tier: 1 | 2;
+  /** Technical one-liner (for the engineer view). */
   description: string;
+  /** Plain-language narrative for the non-technical report. */
+  human?: { scenario: string; expectation: string };
 }
 
 /** A decomposer corpus case. */

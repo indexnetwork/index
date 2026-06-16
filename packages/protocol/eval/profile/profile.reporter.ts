@@ -1,5 +1,66 @@
-import { htmlEscape, rateClass, htmlRateCI, renderRuleTable, renderScorecardShell, type Regression } from "../shared/index.js";
-import type { CaseResult, ProfileCase, ProfileRunDetail, Scorecard } from "./profile.types.js";
+import { htmlEscape, rateClass, htmlRateCI, renderRuleTable, renderScorecardShell, type HumanReport, type Regression } from "../shared/index.js";
+import type { AssertionKind, CaseResult, ProfileCase, Rule, Scorecard, ProfileRunDetail } from "./profile.types.js";
+
+// ─── Plain-language copy for the non-technical report ────────────────────────
+
+/** Ordered themes for "What we tested", each mapped to one or more rules. */
+const GROUPS: { ruleIds: Rule[]; label: string; blurb: string }[] = [
+  { ruleIds: ["privacy"], label: "Privacy: never leaking contact info", blurb: "Emails, phone numbers, and addresses must never end up in the public profile." },
+  { ruleIds: ["extraction"], label: "Pulling the right facts from a bio", blurb: "Reading raw or messy text and getting the name, role, and details right." },
+  { ruleIds: ["location"], label: "Getting the location right", blurb: "Capturing where someone is based." },
+  { ruleIds: ["skills_interests"], label: "Capturing skills and interests", blurb: "Listing what someone can do and cares about, without collapsing them together." },
+  { ruleIds: ["update"], label: "Applying profile edits", blurb: "Making the change a user asks for while leaving everything else intact." },
+];
+
+/** Plain-language name for each failing check, used in "what happened" notes. */
+const CHECK_COPY: Record<AssertionKind, string> = {
+  name: "got the person's name wrong",
+  location: "got the location wrong",
+  privacy: "leaked an email or phone number into the public profile",
+  skills: "captured too few skills",
+  interests: "captured too few interests",
+  coverage_skills: "missed an expected skill",
+  coverage_interests: "missed an expected interest",
+  apply: "didn't apply the requested change",
+  preserve: "lost part of the existing profile",
+  reasoning: "the result didn't hold up",
+};
+
+/** Distinct plain-language reasons a case failed, across its runs. */
+function failNote(c: CaseResult): string | undefined {
+  const kinds = new Set<AssertionKind>();
+  for (const rr of c.runResults) for (const a of rr.assertions) if (!a.passed) kinds.add(a.kind);
+  if (kinds.size === 0) return undefined;
+  return [...kinds].map((k) => CHECK_COPY[k]).join("; ") + ".";
+}
+
+/** Build the plain-language report from the scorecard + corpus narratives. */
+function buildHumanReport(sc: Scorecard, cases: ProfileCase[]): HumanReport {
+  const byId = new Map(cases.map((c) => [c.id, c]));
+  const resultById = new Map(sc.cases.map((c) => [c.caseId, c]));
+  const groups = GROUPS.map((g) => ({
+    label: g.label,
+    blurb: g.blurb,
+    ruleIds: g.ruleIds as string[],
+    cases: sc.cases
+      .filter((c) => g.ruleIds.includes(c.rule))
+      .map((c) => {
+        const meta = byId.get(c.caseId);
+        const result = resultById.get(c.caseId);
+        return {
+          caseId: c.caseId,
+          scenario: meta?.human?.scenario ?? meta?.description ?? c.caseId,
+          expectation: meta?.human?.expectation ?? "behave correctly.",
+          failNote: result ? failNote(result) : undefined,
+        };
+      }),
+  })).filter((g) => g.cases.length > 0);
+  return {
+    subject: "the profile builder",
+    oneLiner: "It turns raw data about a person into a clean public profile — and must never leak their private contact details.",
+    groups,
+  };
+}
 
 /** Render one run's generated profile behind a collapsible block. */
 function detailHtml(d: ProfileRunDetail, i: number): string {
@@ -69,6 +130,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Prof
     intro: INTRO,
     sections: [{ heading: "By rule", html: renderRuleTable(sc) }],
     caseCardsHtml: caseCards,
+    human: buildHumanReport(sc, cases),
   });
 }
 

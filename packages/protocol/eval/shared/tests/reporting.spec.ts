@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 
 import { buildScorecard } from "../scorecard.js";
 import { formatConsole } from "../console.js";
-import { renderScorecardShell, renderRuleTable, htmlEscape, rateClass } from "../html.js";
+import { renderScorecardShell, renderRuleTable, htmlEscape, rateClass, computeVerdict, groupStatus, renderHumanReport, type HumanReport } from "../html.js";
 import type { CaseResultLike } from "../types.js";
 
 const s = (caseId: string, rule: string, passRate: number, runs = 3): CaseResultLike => ({
@@ -58,5 +58,59 @@ describe("html shell", () => {
     expect(html).toContain("By rule");
     expect(html).toContain("card");
     expect(html).toContain("CI₉₅");
+  });
+});
+
+describe("human-readable report", () => {
+  const human: HumanReport = {
+    subject: "the thing",
+    oneLiner: "It does a thing and we checked it.",
+    groups: [
+      { label: "Telling things apart", blurb: "can it distinguish X from Y", ruleIds: ["g"], cases: [
+        { caseId: "c1", scenario: "we showed it X", expectation: "keep X and Y apart" },
+        { caseId: "c2", scenario: "we showed it Y", expectation: "keep X and Y apart", failNote: "it confused them" },
+      ] },
+    ],
+  };
+
+  it("computeVerdict translates pass-rate and regressions into plain words", () => {
+    const good = buildScorecard([s("c1", "g", 1), s("c2", "g", 1)], { model: "m", runs: 3 });
+    expect(computeVerdict(good, []).word).toBe("Looking good");
+    expect(computeVerdict(good, []).tone).toBe("good");
+    const reg = computeVerdict(good, [{ id: "g", kind: "rule", before: 1, after: 0.5, pValue: 0.01 }]);
+    expect(reg.tone).toBe("bad");
+    expect(reg.word).toBe("Needs attention");
+  });
+
+  it("groupStatus phrases reliability, inconsistency, and regressions plainly", () => {
+    const sc = buildScorecard([s("c1", "g", 1), s("c2", "g", 0.5)], { model: "m", runs: 3 });
+    expect(groupStatus(sc, ["g"], []).phrase).toContain("missed");
+    const perfect = buildScorecard([s("c1", "g", 1)], { model: "m", runs: 3 });
+    expect(groupStatus(perfect, ["g"], []).phrase).toBe("works reliably");
+    expect(groupStatus(perfect, ["g"], [{ id: "g", kind: "rule", before: 1, after: 0.5, pValue: 0.01 }]).phrase).toBe("newly slipping");
+  });
+
+  it("renderHumanReport shows verdict, what-we-tested, and scenario narratives with fail notes", () => {
+    const sc = buildScorecard([s("c1", "g", 1), s("c2", "g", 0)], { model: "m", runs: 3 });
+    const html = renderHumanReport(sc, [], human);
+    expect(html).toContain("What we tested");
+    expect(html).toContain("Telling things apart");
+    expect(html).toContain("we showed it X");
+    expect(html).toContain("See the examples");
+    expect(html).toContain("it confused them"); // failNote shown for the failing case
+    expect(html).not.toContain("CI₉₅"); // no statistics in the human view
+  });
+
+  it("renderScorecardShell puts the human report on top and collapses the technical view", () => {
+    const sc = buildScorecard([s("c1", "g", 1), s("c2", "g", 0)], { model: "m", runs: 3 });
+    const html = renderScorecardShell(sc, [], {
+      title: "Demo eval",
+      sections: [{ heading: "By rule", html: renderRuleTable(sc) }],
+      caseCardsHtml: "<article class='case'>card</article>",
+      human,
+    });
+    expect(html).toContain("What we tested");
+    expect(html).toContain("Technical details (for engineers)");
+    expect(html.indexOf("What we tested")).toBeLessThan(html.indexOf("Technical details"));
   });
 });

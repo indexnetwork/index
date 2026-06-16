@@ -1,5 +1,70 @@
-import { htmlEscape, rateClass, htmlRateCI, renderRuleTable, renderScorecardShell, type Regression } from "../shared/index.js";
-import type { CaseResult, PremiseCase, PremiseRunDetail, Scorecard } from "./premise.types.js";
+import { htmlEscape, rateClass, htmlRateCI, renderRuleTable, renderScorecardShell, type HumanReport, type Regression } from "../shared/index.js";
+import type { AssertionKind, CaseResult, PremiseCase, Rule, Scorecard, PremiseRunDetail } from "./premise.types.js";
+
+// ─── Plain-language copy for the non-technical report ────────────────────────
+
+/** Ordered themes for "What we tested", each mapped to one or more rules. */
+const GROUPS: { ruleIds: Rule[]; label: string; blurb: string }[] = [
+  { ruleIds: ["atomicity"], label: "Breaking text into separate facts", blurb: "Splitting a run-on bio into one clear fact at a time, in the person's own voice." },
+  { ruleIds: ["tier_classification"], label: "Permanent facts vs current status", blurb: "Telling a lasting fact (a role) apart from a temporary one (currently fundraising)." },
+  { ruleIds: ["intent_exclusion"], label: "Keeping facts, dropping wishes", blurb: "Saving who a person is, and ignoring what they're looking for." },
+  { ruleIds: ["empty_input"], label: "Knowing when there's nothing to save", blurb: "Not inventing facts out of an empty greeting." },
+  { ruleIds: ["speech_act"], label: "Recognizing the kind of statement", blurb: "Telling an identity claim apart from a description of experience." },
+  { ruleIds: ["felicity_calibration"], label: "Judging how solid a claim is", blurb: "Scoring how specific and credible a self-description is." },
+  { ruleIds: ["entropy"], label: "Spotting vague vs specific", blurb: "Flagging a statement that's too vague to be useful." },
+];
+
+/** Plain-language name for each failing check, used in "what happened" notes. */
+const CHECK_COPY: Record<AssertionKind, string> = {
+  count: "split the text into the wrong number of facts",
+  empty: "invented facts from an empty message",
+  tier: "mislabeled a permanent fact as temporary, or vice versa",
+  first_person: "wrote a fact that wasn't in the person's own voice",
+  coverage: "missed one of the key facts",
+  exclusion: "kept something that was a wish, not a fact",
+  speech_act: "misjudged what kind of statement it was",
+  authority: "mis-scored how credible the claim is",
+  sincerity: "mis-scored how genuine the claim sounds",
+  clarity: "mis-scored how specific the claim is",
+  entropy: "mis-scored how vague the claim is",
+  reasoning: "its explanation didn't hold up",
+};
+
+/** Distinct plain-language reasons a case failed, across its runs. */
+function failNote(c: CaseResult): string | undefined {
+  const kinds = new Set<AssertionKind>();
+  for (const rr of c.runResults) for (const a of rr.assertions) if (!a.passed) kinds.add(a.kind);
+  if (kinds.size === 0) return undefined;
+  return [...kinds].map((k) => CHECK_COPY[k]).join("; ") + ".";
+}
+
+/** Build the plain-language report from the scorecard + corpus narratives. */
+function buildHumanReport(sc: Scorecard, cases: PremiseCase[]): HumanReport {
+  const byId = new Map(cases.map((c) => [c.id, c]));
+  const resultById = new Map(sc.cases.map((c) => [c.caseId, c]));
+  const groups = GROUPS.map((g) => ({
+    label: g.label,
+    blurb: g.blurb,
+    ruleIds: g.ruleIds as string[],
+    cases: sc.cases
+      .filter((c) => g.ruleIds.includes(c.rule))
+      .map((c) => {
+        const meta = byId.get(c.caseId);
+        const result = resultById.get(c.caseId);
+        return {
+          caseId: c.caseId,
+          scenario: meta?.human?.scenario ?? meta?.description ?? c.caseId,
+          expectation: meta?.human?.expectation ?? "behave correctly.",
+          failNote: result ? failNote(result) : undefined,
+        };
+      }),
+  })).filter((g) => g.cases.length > 0);
+  return {
+    subject: "the premise builder",
+    oneLiner: "It turns what someone says about themselves into clean, separate facts — and judges how clear and credible each one is.",
+    groups,
+  };
+}
 
 /** Render the per-run detail (premises or felicity scores) behind a collapsible block. */
 function detailHtml(d: PremiseRunDetail, i: number): string {
@@ -71,6 +136,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Prem
     intro: INTRO,
     sections: [{ heading: "By rule", html: renderRuleTable(sc) }],
     caseCardsHtml: caseCards,
+    human: buildHumanReport(sc, cases),
   });
 }
 

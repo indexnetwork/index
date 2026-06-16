@@ -1,5 +1,5 @@
-import { binomialCI, buildScorecard, computeRollingBaseline, diffBaseline, formatConsole as sharedFormatConsole, readBaseline as sharedReadBaseline, writeBaseline as sharedWriteBaseline, writeRunReport, binomialPValue, binomialSignificance, predictivePValue, type Regression } from "../shared/index.js";
-import type { CaseResult, Scorecard, MatchingCase, CandidateExpectation, CandidateOutcome, AssertionKind } from "./matching.types.js";
+import { binomialCI, buildScorecard, computeRollingBaseline, diffBaseline, formatConsole as sharedFormatConsole, readBaseline as sharedReadBaseline, writeBaseline as sharedWriteBaseline, writeRunReport, binomialPValue, binomialSignificance, predictivePValue, renderHumanReport, HUMAN_CSS, type HumanReport, type Regression } from "../shared/index.js";
+import type { CaseResult, Scorecard, MatchingCase, CandidateExpectation, CandidateOutcome, AssertionKind, Rule } from "./matching.types.js";
 
 // ── Shared machinery re-exported for matching consumers and tests ────────────
 // The statistics, scorecard aggregation, baseline diff, rolling baseline, and
@@ -304,8 +304,67 @@ function componentRows(sc: Scorecard): string {
  * @param cases - The corpus the run was scored against; joined by id for expectations, names, tier.
  * @returns A complete HTML document string.
  */
+// ─── Plain-language copy for the non-technical report ───────────────────────
+
+/** Ordered themes for "What we tested", each mapped to one matching rule. */
+const HUMAN_GROUPS: { ruleIds: Rule[]; label: string; blurb: string }[] = [
+  { ruleIds: ["is_a_identity"], label: "Telling similar people apart", blurb: "Not confusing an investor with the engineer they funded, or a scout with the athlete they scout." },
+  { ruleIds: ["query_primary"], label: "Matching on what was actually asked", blurb: "Letting the request drive the match, not unrelated background detail." },
+  { ruleIds: ["complementary_role"], label: "Matching people who fit together", blurb: "Pairing people whose needs and offerings complement each other." },
+  { ruleIds: ["same_side"], label: "Not matching people who want the same thing", blurb: "Two people both hiring, or both raising, aren't a match for each other." },
+  { ruleIds: ["valency_role"], label: "Getting who-helps-whom right", blurb: "Assigning the seeker and the provider roles correctly." },
+  { ruleIds: ["location"], label: "Respecting where people are", blurb: "Honoring a location requirement without over-penalizing unknown cities." },
+  { ruleIds: ["score_calibration"], label: "Scoring matches sensibly", blurb: "Strong matches score high, weak ones score low." },
+  { ruleIds: ["already_known"], label: "Skipping people who already know each other", blurb: "Not re-introducing people who are already connected." },
+  { ruleIds: ["event_network"], label: "Using shared events as a signal", blurb: "Recognizing when attending the same event makes two people more relevant." },
+  { ruleIds: ["historical"], label: "Rediscovering real collaborations", blurb: "Surfacing pairs who actually went on to work together, over plausible lookalikes." },
+];
+
+/** Plain-language name for each failing check, used in "what happened" notes. */
+const HUMAN_CHECK_COPY: Record<AssertionKind, string> = {
+  match: "surfaced the wrong person, or hid the right one",
+  band: "scored the match too high or too low",
+  role: "got who-helps-whom backwards",
+  reasoning: "its explanation didn't hold up",
+};
+
+/** Distinct plain-language reasons a case failed, across its runs. */
+function humanFailNote(c: CaseResult): string | undefined {
+  const kinds = new Set<AssertionKind>();
+  for (const rr of c.runResults) for (const a of rr.assertions) if (!a.passed) kinds.add(a.kind);
+  if (kinds.size === 0) return undefined;
+  return [...kinds].map((k) => HUMAN_CHECK_COPY[k]).join("; ") + ".";
+}
+
+/** Build the plain-language report from the scorecard + corpus descriptions. */
+function buildHumanReport(sc: Scorecard, cases: MatchingCase[]): HumanReport {
+  const byId = new Map(cases.map((c) => [c.id, c]));
+  const resultById = new Map(sc.cases.map((c) => [c.caseId, c]));
+  const groups = HUMAN_GROUPS.map((g) => ({
+    label: g.label,
+    blurb: g.blurb,
+    ruleIds: g.ruleIds as string[],
+    cases: sc.cases
+      .filter((c) => g.ruleIds.includes(c.rule))
+      .map((c) => {
+        const result = resultById.get(c.caseId);
+        return {
+          caseId: c.caseId,
+          scenario: byId.get(c.caseId)?.description ?? c.caseId,
+          failNote: result ? humanFailNote(result) : undefined,
+        };
+      }),
+  })).filter((g) => g.cases.length > 0);
+  return {
+    subject: "the matchmaker",
+    oneLiner: "It looks at one person and decides which other people are worth introducing them to — and why.",
+    groups,
+  };
+}
+
 export function renderHtml(sc: Scorecard, regressions: Regression[], cases: MatchingCase[]): string {
   const meta = indexCases(cases);
+  const human = renderHumanReport(sc, regressions, buildHumanReport(sc, cases));
 
   // Per-tier and per-domain aggregates, derived from the corpus join.
   const tierAgg = new Map<number, { count: number; sum: number; passes: number; runs: number }>();
@@ -383,6 +442,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Matching eval — ${pctText(sc.aggregatePassRate)} (${esc(sc.model)})</title>
 <style>
+  ${HUMAN_CSS}
   :root{--good:#16a34a;--ok:#d97706;--bad:#dc2626;--bg:#0f172a;--card:#1e293b;--line:#334155;--fg:#e2e8f0;--muted:#94a3b8}
   *{box-sizing:border-box}
   body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg)}
@@ -434,6 +494,8 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
   .ci{font-size:11px;color:var(--muted)}
 </style></head>
 <body><div class="wrap">
+  ${human}
+  <details class="tech"><summary>Technical details (for engineers)</summary>
   <div class="banner">
     <div><div class="score ${agg}">${pctText(sc.aggregatePassRate)}</div><div class="meta">aggregate pass-rate</div><div class="ci">${htmlRateCI(sc.aggregatePassRate, totalPasses, totalObs)}</div></div>
     <div class="meta">
@@ -467,6 +529,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
   </section>
   ${caseSections}
   <p class="meta">Chip color is an at-a-glance indicator (surfaced-ness + band); failed-check details and each case's pass-rate are authoritative. Hover over pass-rates for 95% Wilson confidence intervals.</p>
+  </details>
 </div></body></html>`;
 }
 

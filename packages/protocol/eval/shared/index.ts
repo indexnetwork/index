@@ -29,9 +29,17 @@ export {
   htmlRateCI,
   renderRuleTable,
   renderScorecardShell,
+  renderHumanReport,
+  computeVerdict,
+  groupStatus,
   SCORECARD_CSS,
+  HUMAN_CSS,
   type ShellOptions,
   type ShellSection,
+  type HumanReport,
+  type HumanGroup,
+  type HumanCase,
+  type Verdict,
 } from "./html.js";
 
 // ─── Execution ─────────────────────────────────────────────────────────────
