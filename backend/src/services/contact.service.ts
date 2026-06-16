@@ -2,6 +2,7 @@ import { log } from '../lib/log';
 import { ContactDatabaseAdapter } from '../adapters/contact.database.adapter';
 import { enrichmentQueue } from '../queues/enrichment.queue';
 import { deduplicateContacts, getPreset } from '../lib/dedup/dedup';
+import { isContactsEnabled, ContactsDisabledError } from '../lib/contacts-feature';
 
 const logger = log.service.from('ContactService');
 
@@ -119,6 +120,8 @@ export class ContactService {
     email: string,
     options: { name?: string; restore?: boolean } = {}
   ): Promise<ContactResult> {
+    if (!isContactsEnabled()) throw new ContactsDisabledError();
+
     const normalizedEmail = email.toLowerCase().trim();
     const name = options.name?.trim() || normalizedEmail.split('@')[0];
 
@@ -171,6 +174,8 @@ export class ContactService {
     ownerId: string,
     contacts: ContactInput[]
   ): Promise<ResolveResult> {
+    if (!isContactsEnabled()) throw new ContactsDisabledError();
+
     const owner = await this.db.getUser(ownerId);
     const ownerEmail = owner?.email.toLowerCase();
 
@@ -240,6 +245,8 @@ export class ContactService {
     ownerId: string,
     contacts: ContactInput[]
   ): Promise<ImportResult> {
+    if (!isContactsEnabled()) throw new ContactsDisabledError();
+
     logger.info('[ContactService] Importing contacts', { ownerId, count: contacts.length });
 
     const resolved = await this.resolveUsers(ownerId, contacts);

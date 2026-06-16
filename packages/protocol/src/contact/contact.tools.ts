@@ -11,8 +11,14 @@ const logger = protocolLogger('ContactTools');
  */
 export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
   const { contactService } = deps;
+  // Contact import / manual-add create ghost users. These are gated behind the
+  // CONTACTS_ENABLED flag (injected as deps.contactsEnabled). Read/remove/search
+  // tools below are always available so existing contacts stay manageable.
+  const contactsEnabled = deps.contactsEnabled === true;
 
-  const import_contacts = defineTool({
+  // Only register when enabled: in the registry path defineTool registers as a
+  // side effect, so the call itself must be gated, not just the returned array.
+  const import_contacts = contactsEnabled ? defineTool({
     name: 'import_contacts',
     description:
       "Bulk-imports contacts into the authenticated user's personal network (personal index). Contacts become members of the user's " +
@@ -48,7 +54,7 @@ export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
         return error('Failed to import contacts. Please try again.');
       }
     },
-  });
+  }) : null;
 
   const list_contacts = defineTool({
     name: 'list_contacts',
@@ -88,7 +94,7 @@ export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const add_contact = defineTool({
+  const add_contact = contactsEnabled ? defineTool({
     name: 'add_contact',
     description:
       "Adds a single contact to the authenticated user's personal network by email address. " +
@@ -120,7 +126,7 @@ export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
         return error('Failed to add contact. Please try again.');
       }
     },
-  });
+  }) : null;
 
   const remove_contact = defineTool({
     name: 'remove_contact',
@@ -177,5 +183,11 @@ export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [import_contacts, list_contacts, add_contact, remove_contact, search_contacts];
+  return [
+    ...(import_contacts ? [import_contacts] : []),
+    ...(add_contact ? [add_contact] : []),
+    list_contacts,
+    remove_contact,
+    search_contacts,
+  ];
 }

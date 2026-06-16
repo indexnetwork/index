@@ -4,6 +4,7 @@ import { Controller, Delete, Get, Post, Put, UseGuards } from '../lib/router/rou
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
+import { ContactsEnabledGuard } from '../guards/contacts.guard';
 import { userService } from '../services/user.service';
 import { contactService } from '../services/contact.service';
 import { TaskService } from '../services/task.service';
@@ -65,7 +66,7 @@ export class UserController {
    * @returns JSON `{ result }` with the import outcome, or 400 if email is invalid
    */
   @Post('/contacts')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), ContactsEnabledGuard, AuthGuard)
   async addContact(req: Request, user: AuthenticatedUser) {
     const parsed = AddContactBodySchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

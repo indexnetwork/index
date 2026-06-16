@@ -19,6 +19,13 @@ const logger = protocolLogger('IntegrationTools');
 export function createIntegrationTools(defineTool: DefineTool, deps: ToolDeps) {
   const { integration, integrationImporter } = deps;
 
+  // import_gmail_contacts creates ghost users, so it is gated behind the
+  // CONTACTS_ENABLED flag (injected as deps.contactsEnabled). When disabled the
+  // tool is not registered at all (defineTool registers as a side effect).
+  if (deps.contactsEnabled !== true) {
+    return [];
+  }
+
   const import_gmail_contacts = defineTool({
     name: 'import_gmail_contacts',
     description:
