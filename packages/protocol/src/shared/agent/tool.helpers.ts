@@ -151,6 +151,13 @@ export interface ToolContext {
   intentQueue: IntentGraphQueue;
   /** Contact management operations. */
   contactService: ContactServiceAdapter;
+  /**
+   * When false (or unset), the contact import / manual-add tools
+   * (import_contacts, add_contact, import_gmail_contacts) are not registered.
+   * Injected by the composition root from CONTACTS_ENABLED. Read/remove/search
+   * contact tools are always registered.
+   */
+  contactsEnabled?: boolean;
   /** Chat session reader for loading conversation history. */
   chatSession: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
@@ -426,6 +433,13 @@ export interface ToolDeps {
   cache: Cache;
   integration: IntegrationAdapter;
   contactService: ContactServiceAdapter;
+  /**
+   * When false (or unset), the contact import / manual-add tools
+   * (import_contacts, add_contact, import_gmail_contacts) are not registered.
+   * Injected by the composition root from CONTACTS_ENABLED. Read/remove/search
+   * contact tools are always registered.
+   */
+  contactsEnabled?: boolean;
   integrationImporter: {
     importContacts(userId: string, toolkit: string): Promise<{
       imported: number;

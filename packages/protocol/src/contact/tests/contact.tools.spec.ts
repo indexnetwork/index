@@ -28,8 +28,10 @@ function makeDeps(overrides?: {
   listContacts?: () => unknown;
   addContact?: () => unknown;
   removeContact?: () => unknown;
+  contactsEnabled?: boolean;
 }) {
   return {
+    contactsEnabled: overrides?.contactsEnabled ?? true,
     contactService: {
       importContacts: overrides?.importContacts ?? (async () => ({ imported: 2, skipped: 0, newContacts: 1, existingContacts: 1 })),
       listContacts: overrides?.listContacts ?? (async () => ([
@@ -95,6 +97,28 @@ describe('createContactTools - import_contacts', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('DB failure');
+  });
+});
+
+describe('createContactTools - CONTACTS_ENABLED gating', () => {
+  const names = (deps: ReturnType<typeof makeDeps>): string[] => {
+    const { defineTool } = makeDefineTool();
+    return createContactTools(defineTool, deps).map((t: { name: string }) => t.name);
+  };
+
+  it('registers import/add only when contactsEnabled is true', () => {
+    const registered = names(makeDeps({ contactsEnabled: true }));
+    expect(registered).toContain('import_contacts');
+    expect(registered).toContain('add_contact');
+  });
+
+  it('omits import_contacts and add_contact when disabled, keeps read/remove/search', () => {
+    const registered = names(makeDeps({ contactsEnabled: false }));
+    expect(registered).not.toContain('import_contacts');
+    expect(registered).not.toContain('add_contact');
+    expect(registered).toContain('list_contacts');
+    expect(registered).toContain('remove_contact');
+    expect(registered).toContain('search_contacts');
   });
 });
 

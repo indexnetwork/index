@@ -2,6 +2,7 @@ import type { IntegrationService } from '../services/integration.service';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
+import { ContactsEnabledGuard } from '../guards/contacts.guard';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 
 /** Server-side allowlist of supported Composio toolkits. */
@@ -128,7 +129,7 @@ export class IntegrationController {
    * POST /api/integrations/:toolkit/import
    */
   @Post('/:toolkit/import')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), ContactsEnabledGuard, AuthGuard)
   async importContacts(req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
     if (!isAllowedToolkit(params.toolkit)) {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });

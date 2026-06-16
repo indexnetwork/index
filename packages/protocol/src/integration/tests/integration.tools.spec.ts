@@ -53,11 +53,13 @@ function makeDeps(overrides?: {
   authUrl?: string;
   importResult?: { imported: number; skipped: number; newContacts: number; existingContacts: number };
   importThrows?: string;
+  contactsEnabled?: boolean;
 }) {
   const isConnected = overrides?.isConnected ?? true;
   const authUrl = overrides?.authUrl ?? 'https://oauth.example.com/auth';
 
   return {
+    contactsEnabled: overrides?.contactsEnabled ?? true,
     integration: {
       createSession: async () => ({
         toolkits: async () => ({
@@ -134,5 +136,12 @@ describe('createIntegrationTools - import_gmail_contacts', () => {
     expect(result.success).toBe(true);
     expect(result.data.newContacts).toBe(0);
     expect(result.data.message).toBeTruthy();
+  });
+
+  it('does not register import_gmail_contacts when contactsEnabled is false', () => {
+    const { defineTool } = makeDefineTool();
+    const tools = createIntegrationTools(defineTool, makeDeps({ isConnected: true, contactsEnabled: false }));
+    expect(tools.map((t: { name: string }) => t.name)).not.toContain('import_gmail_contacts');
+    expect(tools.length).toBe(0);
   });
 });

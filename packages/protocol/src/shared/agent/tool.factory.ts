@@ -182,6 +182,7 @@ export async function createChatTools(
     cache,
     integration,
     contactService: deps.contactService,
+    contactsEnabled: deps.contactsEnabled,
     integrationImporter: deps.integrationImporter,
     enricher: deps.enricher,
     negotiationDatabase: deps.negotiationDatabase,
