@@ -101,6 +101,29 @@ describe("human-readable report", () => {
     expect(html).not.toContain("CI₉₅"); // no statistics in the human view
   });
 
+  it("hero sub-line counts scenarios (not runs) and reconciles with the themes below", () => {
+    const sc = buildScorecard([s("c1", "g", 1), s("c2", "g", 0)], { model: "m", runs: 3 });
+    const html = renderHumanReport(sc, [], human);
+    expect(html).toContain("50% — 1 of 2 scenarios passed every time");
+    expect(html).not.toContain("checks passed");
+    // The single always-failing theme is named by its group label.
+    expect(html).toContain("The “Telling things apart” scenario failed every run.");
+  });
+
+  it("hero blurb tallies occasionally-off scenarios when nothing fails outright", () => {
+    const sc = buildScorecard([s("c1", "g", 1), s("c2", "g", 0.5)], { model: "m", runs: 3 });
+    const html = renderHumanReport(sc, [], human);
+    expect(html).toContain("of 2 scenarios passed every time");
+    expect(html).toContain("One was occasionally off.");
+  });
+
+  it("hero reports a clean sweep when every scenario passes every run", () => {
+    const sc = buildScorecard([s("c1", "g", 1), s("c2", "g", 1)], { model: "m", runs: 3 });
+    const html = renderHumanReport(sc, [], human);
+    expect(html).toContain("2 of 2 scenarios passed every time");
+    expect(html).toContain("Every scenario passed every run.");
+  });
+
   it("renderScorecardShell puts the human report on top and collapses the technical view", () => {
     const sc = buildScorecard([s("c1", "g", 1), s("c2", "g", 0)], { model: "m", runs: 3 });
     const html = renderScorecardShell(sc, [], {

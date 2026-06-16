@@ -215,13 +215,66 @@ function caseOutcome(passes: number, runs: number): { tone: Tone; phrase: string
 }
 
 /**
+ * Build the hero's scenario-anchored sub-line and blurb. The sub-line reconciles
+ * with the "What we tested" list below it by counting *scenarios* (cases), not
+ * runs: "79% — 5 of 8 scenarios passed every time". The blurb names the standout
+ * failure (a single always-failing theme by label) and tallies the rest.
+ *
+ * @param sc - Scorecard (case-level pass counts).
+ * @param regressions - Regressions; when present, defer to the verdict's regression blurb.
+ * @param human - Human report, used to name a failing theme by its group label.
+ * @param fallbackBlurb - The verdict blurb to use when nothing failed or a regression dominates.
+ */
+function heroSummary(
+  sc: ScorecardLike,
+  regressions: Regression[],
+  human: HumanReport,
+  fallbackBlurb: string,
+): { subline: string; blurb: string } {
+  const total = sc.cases.length;
+  const fullPass = sc.cases.filter((c) => c.passes === c.runs).length;
+  const runsTotal = sc.cases.reduce((s, c) => s + c.runs, 0);
+  const passesTotal = sc.cases.reduce((s, c) => s + c.passes, 0);
+  const pct = runsTotal === 0 ? 0 : Math.round((passesTotal / runsTotal) * 100);
+  const subline = `${pct}% — ${fullPass} of ${total} scenario${total === 1 ? "" : "s"} passed every time`;
+
+  // A live regression is the headline; keep the verdict's regression wording.
+  if (regressions.length > 0) return { subline, blurb: fallbackBlurb };
+
+  const labelFor = (rule: string): string | undefined => human.groups.find((g) => g.ruleIds.includes(rule))?.label;
+  const alwaysFail = sc.cases.filter((c) => c.passes === 0);
+  const partial = sc.cases.filter((c) => c.passes > 0 && c.passes < c.runs);
+
+  const parts: string[] = [];
+  if (alwaysFail.length === 1) {
+    const label = labelFor(alwaysFail[0].rule);
+    parts.push(label ? `the “${label}” scenario failed every run` : "one scenario failed every run");
+  } else if (alwaysFail.length > 1) {
+    parts.push(`${alwaysFail.length} scenarios failed every run`);
+  }
+  if (partial.length > 0) {
+    let noun: string;
+    if (alwaysFail.length > 0) {
+      noun = partial.length === 1 ? "another was" : `${partial.length} others were`;
+    } else {
+      noun = partial.length === 1 ? "one was" : `${partial.length} were`;
+    }
+    parts.push(`${noun} occasionally off`);
+  }
+  if (parts.length === 0) return { subline, blurb: "Every scenario passed every run." };
+  const joined = parts.join("; ");
+  return { subline, blurb: joined.charAt(0).toUpperCase() + joined.slice(1) + "." };
+}
+
+/**
  * Renders the plain-language top section: a hero verdict, a "What we tested"
  * rollup with plain status words, and a "See the examples" block of per-case
  * scenario narratives. Self-contained HTML using the shared/HUMAN_CSS classes.
  */
 export function renderHumanReport(sc: ScorecardLike, regressions: Regression[], human: HumanReport): string {
   const v = computeVerdict(sc, regressions);
-  const hero = `<section class="hero ${v.tone}"><div class="vword ${v.tone}">${htmlEscape(v.word)}</div><div class="vsub">${v.passes} of ${v.total} checks passed</div><div class="vblurb">${htmlEscape(v.blurb)}</div></section>`;
+  const { subline, blurb } = heroSummary(sc, regressions, human, v.blurb);
+  const hero = `<section class="hero ${v.tone}"><div class="vword ${v.tone}">${htmlEscape(v.word)}</div><div class="vsub">${htmlEscape(subline)}</div><div class="vblurb">${htmlEscape(blurb)}</div></section>`;
 
   const tested = human.groups
     .map((g) => {
