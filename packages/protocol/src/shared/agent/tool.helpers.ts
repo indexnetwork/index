@@ -104,6 +104,14 @@ export interface ResolvedToolContext {
    * `mintConnectLink` so the click-time redirect can branch.
    */
   clientSurface?: 'telegram' | 'web';
+  /**
+   * True when the CONTACTS_ENABLED feature flag is on. Carried from the
+   * composition root so prompt modules can gate contact-import guidance —
+   * when false/unset, the contacts prompt module is not injected, so the
+   * orchestrator never advertises Gmail import / add_contact (whose tools
+   * are also de-registered). Fail-closed: treat only `true` as enabled.
+   */
+  contactsEnabled?: boolean;
 }
 
 /**
@@ -283,8 +291,10 @@ export async function resolveChatContext(params: {
   networkId?: string;
   /** Chat session ID for draft opportunities (stored as context.conversationId). */
   sessionId?: string;
+  /** CONTACTS_ENABLED flag, forwarded onto the resolved context for prompt gating. */
+  contactsEnabled?: boolean;
 }): Promise<ResolvedToolContext> {
-  const { database, userId, networkId, sessionId } = params;
+  const { database, userId, networkId, sessionId, contactsEnabled } = params;
 
   const [user, rawProfile, userNetworks] = await Promise.all([
     database.getUser(userId),
@@ -377,6 +387,7 @@ export async function resolveChatContext(params: {
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
     hasName,
+    contactsEnabled,
     ...(sessionId !== undefined ? { sessionId } : {}),
   };
 }

@@ -254,6 +254,7 @@ export class ChatAgent {
       userId: context.userId,
       networkId: context.networkId,
       sessionId: context.sessionId,
+      contactsEnabled: context.contactsEnabled,
     });
     const tools = await createChatTools(context, resolved);
     return new ChatAgent(resolved, tools, context.modelConfig);

@@ -101,7 +101,7 @@ describe("extractRecentToolCalls", () => {
 });
 
 // Minimal mock for ResolvedToolContext — only fields needed by resolution logic
-function mockCtx(overrides: Partial<{ networkId: string; isOwner: boolean; isOnboarding: boolean }> = {}): IterationContext["ctx"] {
+function mockCtx(overrides: Partial<{ networkId: string; isOwner: boolean; isOnboarding: boolean; contactsEnabled: boolean }> = {}): IterationContext["ctx"] {
   return {
     userId: "test-user",
     userEmail: "test@example.com",
@@ -116,6 +116,7 @@ function mockCtx(overrides: Partial<{ networkId: string; isOwner: boolean; isOnb
     isOwner: overrides.isOwner ?? false,
     isOnboarding: overrides.isOnboarding ?? false,
     hasName: true,
+    contactsEnabled: "contactsEnabled" in overrides ? overrides.contactsEnabled : true,
   } as unknown as IterationContext["ctx"];
 }
 
@@ -233,11 +234,32 @@ describe("resolveModules", () => {
   test("activates contacts module on import_gmail_contacts trigger", () => {
     const iterCtx: IterationContext = {
       recentTools: [{ name: "import_gmail_contacts", args: {} }],
-      ctx: mockCtx(),
+      ctx: mockCtx({ contactsEnabled: true }),
     };
     const result = resolveModules(iterCtx);
     expect(result).toContain("### 9. Import contacts from Gmail");
     expect(result).toContain("### 10. Add or manage contacts manually");
+  });
+
+  test("does NOT activate contacts module when contactsEnabled is false (even on list_contacts)", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "list_contacts", args: {} }],
+      ctx: mockCtx({ contactsEnabled: false }),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).not.toContain("### 9. Import contacts from Gmail");
+    expect(result).not.toContain("### 10. Add or manage contacts manually");
+    expect(result).not.toContain("import_gmail_contacts");
+  });
+
+  test("does NOT activate contacts module when contactsEnabled is unset (fail-closed)", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "import_gmail_contacts", args: {} }, { name: "add_contact", args: {} }],
+      // contactsEnabled omitted → undefined, must be treated as disabled
+      ctx: mockCtx({ contactsEnabled: undefined as unknown as boolean }),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).not.toContain("### 9. Import contacts from Gmail");
   });
 
   test("activates shared-context module on read_network_memberships trigger", () => {
@@ -356,6 +378,7 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
     indexScope: ["idx-personal", "idx-community"],
     isOnboarding: false,
     hasName: true,
+    contactsEnabled: true,
     ...overrides,
   };
 }
@@ -491,7 +514,7 @@ describe("buildSystemContent snapshot identity", () => {
   });
 
   test("with all modules active, full prompt is snapshot-stable", () => {
-    const ctx = makeCtx();
+    const ctx = makeCtx({ contactsEnabled: true });
     // Craft iterCtx that triggers all 10 modules (introduction excludes discovery,
     // so use discovery-style args to get discovery + skip introduction)
     const iterCtx: IterationContext = {
@@ -527,5 +550,54 @@ describe("buildSystemContent snapshot identity", () => {
     expect(output).toContain("You are Index.");
     expect(output).toContain("### Index Scope");
     expect(output).toContain("### Output Format");
+  });
+});
+
+describe("CONTACTS_ENABLED gating in buildSystemContent", () => {
+  describe("tool reference table", () => {
+    test("includes contact-import tools when contactsEnabled is true", () => {
+      const output = buildSystemContent(makeCtx({ contactsEnabled: true }));
+      expect(output).toContain("**import_gmail_contacts**");
+      expect(output).toContain("**import_contacts**");
+      expect(output).toContain("**add_contact**");
+      // read-path tools always present
+      expect(output).toContain("**list_contacts**");
+      expect(output).toContain("**remove_contact**");
+    });
+
+    test("omits contact-import tools but keeps list/remove when contactsEnabled is false", () => {
+      const output = buildSystemContent(makeCtx({ contactsEnabled: false }));
+      expect(output).not.toContain("**import_gmail_contacts**");
+      expect(output).not.toContain("**import_contacts**");
+      expect(output).not.toContain("**add_contact**");
+      // read-path tools remain available
+      expect(output).toContain("**list_contacts**");
+      expect(output).toContain("**remove_contact**");
+    });
+
+    test("fail-closed: omits import tools when contactsEnabled is unset", () => {
+      const output = buildSystemContent(makeCtx({ contactsEnabled: undefined }));
+      expect(output).not.toContain("**import_gmail_contacts**");
+      expect(output).not.toContain("**add_contact**");
+    });
+  });
+
+  describe("onboarding Gmail step", () => {
+    test("renders the Connect Gmail step when onboarding and contactsEnabled is true", () => {
+      const output = buildSystemContent(makeCtx({ isOnboarding: true, contactsEnabled: true }));
+      expect(output).toContain("ONBOARDING MODE (ACTIVE)");
+      expect(output).toContain("5. **Connect Gmail**");
+      expect(output).toContain("[Connect Gmail](authUrl)");
+    });
+
+    test("skips the Connect Gmail step when onboarding but contactsEnabled is false", () => {
+      const output = buildSystemContent(makeCtx({ isOnboarding: true, contactsEnabled: false }));
+      expect(output).toContain("ONBOARDING MODE (ACTIVE)");
+      expect(output).toContain("skipped — contact import is disabled");
+      expect(output).not.toContain("[Connect Gmail](authUrl)");
+      expect(output).not.toContain("Connect your Google account so I can learn from your Gmail");
+      // onboarding still flows to the next steps
+      expect(output).toContain("5.5. **Collect location**");
+    });
   });
 });
