@@ -1,0 +1,790 @@
+{
+  "generatedAt": "2026-06-16T15:32:16.555Z",
+  "model": "google/gemini-2.5-flash",
+  "runs": 3,
+  "aggregatePassRate": 1,
+  "rules": [
+    {
+      "rule": "extraction",
+      "caseCount": 2,
+      "passRate": 1
+    },
+    {
+      "rule": "location",
+      "caseCount": 1,
+      "passRate": 1
+    },
+    {
+      "rule": "privacy",
+      "caseCount": 3,
+      "passRate": 1
+    },
+    {
+      "rule": "skills_interests",
+      "caseCount": 1,
+      "passRate": 1
+    },
+    {
+      "rule": "update",
+      "caseCount": 1,
+      "passRate": 1
+    }
+  ],
+  "cases": [
+    {
+      "caseId": "extraction/clean-bio",
+      "rule": "extraction",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Ada\", got \"Ada Lovelace\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"London\", got \"London, UK\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥2 skills, got 3"
+            },
+            {
+              "kind": "interests",
+              "passed": true,
+              "detail": "expected ≥1 interests, got 2"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Ada\", got \"Ada Lovelace\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"London\", got \"London, UK\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥2 skills, got 3"
+            },
+            {
+              "kind": "interests",
+              "passed": true,
+              "detail": "expected ≥1 interests, got 2"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Ada\", got \"Ada Lovelace\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"London\", got \"London, UK\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥2 skills, got 3"
+            },
+            {
+              "kind": "interests",
+              "passed": true,
+              "detail": "expected ≥1 interests, got 2"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "extraction/scraped-blob",
+      "rule": "extraction",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Priya\", got \"Priya Nair\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"San Francisco\", got \"San Francisco Bay Area\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥3 skills, got 4"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Priya\", got \"Priya Nair\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"San Francisco\", got \"San Francisco Bay Area\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥3 skills, got 5"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Priya\", got \"Priya Nair\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"San Francisco\", got \"San Francisco Bay Area\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥3 skills, got 6"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "location/explicit-city",
+      "rule": "location",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Lars\", got \"Lars Berg\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Berlin\", got \"Berlin, Germany\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Lars\", got \"Lars Berg\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Berlin\", got \"Berlin, Germany\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Lars\", got \"Lars Berg\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Berlin\", got \"Berlin, Germany\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "privacy/email-and-phone",
+      "rule": "privacy",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"John\", got \"John Park\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Austin\", got \"Austin, TX\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"John\", got \"John Park\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Austin\", got \"Austin, TX\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"John\", got \"John Park\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Austin\", got \"Austin, TX\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "privacy/contact-heavy",
+      "rule": "privacy",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Maria\", got \"Maria Gomez\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"New York\", got \"New York\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥2 skills, got 3"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Maria\", got \"Maria Gomez\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"New York\", got \"New York\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥2 skills, got 3"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Maria\", got \"Maria Gomez\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"New York\", got \"New York\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥2 skills, got 3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "skills_interests/multi-skill",
+      "rule": "skills_interests",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Sam\", got \"Sam Okafor\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥4 skills, got 6"
+            },
+            {
+              "kind": "interests",
+              "passed": true,
+              "detail": "expected ≥2 interests, got 3"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            },
+            {
+              "kind": "coverage_interests",
+              "passed": true,
+              "detail": "judge: interests covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Sam\", got \"Sam Okafor\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥4 skills, got 5"
+            },
+            {
+              "kind": "interests",
+              "passed": true,
+              "detail": "expected ≥2 interests, got 3"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            },
+            {
+              "kind": "coverage_interests",
+              "passed": true,
+              "detail": "judge: interests covered"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Sam\", got \"Sam Okafor\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥4 skills, got 5"
+            },
+            {
+              "kind": "interests",
+              "passed": true,
+              "detail": "expected ≥2 interests, got 3"
+            },
+            {
+              "kind": "coverage_skills",
+              "passed": true,
+              "detail": "judge: skills covered"
+            },
+            {
+              "kind": "coverage_interests",
+              "passed": true,
+              "detail": "judge: interests covered"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "update/add-and-remove",
+      "rule": "update",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Dana\", got \"Dana Lee\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Toronto\", got \"Toronto, Canada\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "apply",
+              "passed": true,
+              "detail": "judge: change applied"
+            },
+            {
+              "kind": "preserve",
+              "passed": true,
+              "detail": "judge: preserved"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Dana\", got \"Dana Lee\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Toronto\", got \"Toronto, Canada\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "apply",
+              "passed": true,
+              "detail": "judge: change applied"
+            },
+            {
+              "kind": "preserve",
+              "passed": true,
+              "detail": "judge: preserved"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Dana\", got \"Dana Lee\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Toronto\", got \"Toronto, Canada\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "apply",
+              "passed": true,
+              "detail": "judge: change applied"
+            },
+            {
+              "kind": "preserve",
+              "passed": true,
+              "detail": "judge: preserved"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "privacy/no-contact-clean",
+      "rule": "privacy",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Wei\", got \"Wei Chen\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Boston\", got \"Boston\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥2 skills, got 3"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Wei\", got \"Wei Chen\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Boston\", got \"Boston\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥2 skills, got 3"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "name",
+              "passed": true,
+              "detail": "expected name to contain \"Wei\", got \"Wei Chen\""
+            },
+            {
+              "kind": "location",
+              "passed": true,
+              "detail": "expected location to contain \"Boston\", got \"Boston\""
+            },
+            {
+              "kind": "privacy",
+              "passed": true,
+              "detail": "no PII in public fields"
+            },
+            {
+              "kind": "skills",
+              "passed": true,
+              "detail": "expected ≥2 skills, got 3"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
