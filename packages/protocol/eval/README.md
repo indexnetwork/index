@@ -12,13 +12,17 @@ equivalent env) — harnesses call real models.
 
 | Harness    | Script                  | Agent(s) under test                                              |
 | :--------- | :---------------------- | :-------------------------------------------------------------- |
-| `matching` | `bun run eval:matching` | `OpportunityEvaluator.invokeEntityBundle`                        |
-| `premise`  | `bun run eval:premise`  | `PremiseDecomposer.invoke`, `PremiseAnalyzer.invoke`            |
-| `profile`  | `bun run eval:profile`  | `ProfileGenerator.invoke` (incl. the PII-redaction guarantee)   |
+| `matching`    | `bun run eval:matching`    | `OpportunityEvaluator.invokeEntityBundle` (which people get surfaced + scored) |
+| `premise`     | `bun run eval:premise`     | `PremiseDecomposer.invoke`, `PremiseAnalyzer.invoke`                           |
+| `profile`     | `bun run eval:profile`     | `ProfileGenerator.invoke` (incl. the PII-redaction guarantee)                 |
+| `opportunity` | `bun run eval:opportunity` | `OpportunityPresenter.present` (the user-facing card: headline/summary/greeting) |
 
 Each harness has its own README with full flag docs:
 [`matching`](./matching/README.md) · [`premise`](./premise/README.md) ·
-[`profile`](./profile/README.md).
+[`profile`](./profile/README.md) · [`opportunity`](./opportunity/README.md).
+
+`matching` scores *which* people get surfaced; `opportunity` judges the *card a person
+actually reads* once a match exists — complementary surfaces of the same feature.
 
 Common flags (all harnesses): `--runs N`, `--rule R`, `--case ID`, `--tier N`,
 `--list-cases`, `--no-judge`, `--update-baseline`, `--report [path]`, `--html [path]`,
@@ -47,7 +51,8 @@ eval/
 │   └── tests/              # unit tests for the shared lib
 ├── matching/               # matching corpus, scorer, bespoke HTML renderer
 ├── premise/                # premise corpus, scorer, reporter (shared HTML shell)
-└── profile/                # profile corpus, scorer, PII detectors, reporter
+├── profile/                # profile corpus, scorer, PII detectors, reporter
+└── opportunity/            # opportunity-card corpus, scorer, leakage detectors, reporter
 ```
 
 The shared scorecard types are **structural**: they describe only the aggregate fields the
