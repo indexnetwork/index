@@ -331,8 +331,7 @@ export default function OnboardingPage() {
     return "identity";
   }, [allMessages, chatMessages, hasName]);
 
-  const stepSuggestions = ONBOARDING_STEP_SUGGESTIONS[onboardingStep] ?? [];
-  const suggestions: Suggestion[] = stepSuggestions;
+  const suggestions: Suggestion[] = ONBOARDING_STEP_SUGGESTIONS[onboardingStep] ?? [];
 
   const handleSuggestionClick = useCallback(
     (suggestion: Suggestion) => {

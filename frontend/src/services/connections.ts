@@ -1,53 +1,34 @@
 import { ConnectionEvent, ConnectionsByUserResponse } from '../types';
 
 // Service functions factory that takes an authenticated API instance
-export const createConnectionsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
-  // Get connections by user (aggregated)
-  getConnectionsByUser: async (
-    type: 'inbox' | 'pending' | 'history' = 'inbox',
-    networkIds?: string[]
-  ): Promise<ConnectionsByUserResponse> => {
-    const requestBody = {
-      type,
-      ...(networkIds && networkIds.length > 0 && { networkIds })
-    };
-    const response = await api.post<ConnectionsByUserResponse>('/connections/by-user', requestBody);
-    return response;
-  },
+export const createConnectionsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => {
+  const performAction = async (
+    targetUserId: string,
+    action: 'REQUEST' | 'SKIP' | 'ACCEPT' | 'DECLINE' | 'CANCEL'
+  ): Promise<ConnectionEvent> => {
+    const res = await api.post<{ event: ConnectionEvent }>('/connections/actions', { targetUserId, action });
+    return res.event;
+  };
 
-  // Convenience methods for specific actions
-  requestConnection: async (targetUserId: string): Promise<ConnectionEvent> => {
-    return await api.post<{event: ConnectionEvent}>('/connections/actions', {
-      targetUserId,
-      action: 'REQUEST'
-    }).then(res => res.event);
-  },
+  return {
+    // Get connections by user (aggregated)
+    getConnectionsByUser: async (
+      type: 'inbox' | 'pending' | 'history' = 'inbox',
+      networkIds?: string[]
+    ): Promise<ConnectionsByUserResponse> => {
+      const requestBody = {
+        type,
+        ...(networkIds && networkIds.length > 0 && { networkIds })
+      };
+      const response = await api.post<ConnectionsByUserResponse>('/connections/by-user', requestBody);
+      return response;
+    },
 
-  skipConnection: async (targetUserId: string): Promise<ConnectionEvent> => {
-    return await api.post<{event: ConnectionEvent}>('/connections/actions', {
-      targetUserId,
-      action: 'SKIP'
-    }).then(res => res.event);
-  },
-
-  acceptConnection: async (targetUserId: string): Promise<ConnectionEvent> => {
-    return await api.post<{event: ConnectionEvent}>('/connections/actions', {
-      targetUserId,
-      action: 'ACCEPT'
-    }).then(res => res.event);
-  },
-
-  declineConnection: async (targetUserId: string): Promise<ConnectionEvent> => {
-    return await api.post<{event: ConnectionEvent}>('/connections/actions', {
-      targetUserId,
-      action: 'DECLINE'
-    }).then(res => res.event);
-  },
-
-  cancelConnection: async (targetUserId: string): Promise<ConnectionEvent> => {
-    return await api.post<{event: ConnectionEvent}>('/connections/actions', {
-      targetUserId,
-      action: 'CANCEL'
-    }).then(res => res.event);
-  }
-}); 
+    // Convenience methods for specific actions
+    requestConnection: (targetUserId: string): Promise<ConnectionEvent> => performAction(targetUserId, 'REQUEST'),
+    skipConnection: (targetUserId: string): Promise<ConnectionEvent> => performAction(targetUserId, 'SKIP'),
+    acceptConnection: (targetUserId: string): Promise<ConnectionEvent> => performAction(targetUserId, 'ACCEPT'),
+    declineConnection: (targetUserId: string): Promise<ConnectionEvent> => performAction(targetUserId, 'DECLINE'),
+    cancelConnection: (targetUserId: string): Promise<ConnectionEvent> => performAction(targetUserId, 'CANCEL'),
+  };
+};

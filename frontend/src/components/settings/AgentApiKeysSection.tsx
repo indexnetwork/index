@@ -6,14 +6,14 @@ import { Check, Copy, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CopyableBox from "@/components/CopyableBox";
 import { useAgents } from "@/contexts/APIContext";
+import { useNotifications } from "@/contexts/NotificationContext";
+import { buildMcpConfigs } from "@/lib/mcp-config";
+import type { Agent, AgentTokenInfo } from "@/services/agents";
 
 function hasActiveSelection(): boolean {
   const sel = typeof window !== "undefined" ? window.getSelection() : null;
   return !!sel && !sel.isCollapsed && sel.toString().length > 0;
 }
-import { useNotifications } from "@/contexts/NotificationContext";
-import { buildMcpConfigs } from "@/lib/mcp-config";
-import type { Agent, AgentTokenInfo } from "@/services/agents";
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "Never";

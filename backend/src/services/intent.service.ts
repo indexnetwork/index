@@ -34,6 +34,25 @@ export class IntentService {
   }
 
   /**
+   * Generate an embedding for the given text, falling back to a zero vector if
+   * embedding generation fails. The failure is logged with the supplied message
+   * and context so the intent can still be created.
+   */
+  private async generateEmbeddingOrZero(
+    text: string,
+    failureMessage: string,
+    logContext: Record<string, unknown>,
+  ): Promise<number[]> {
+    const EMBEDDING_DIMS = 2000;
+    try {
+      return (await this.embedder.generate(text)) as number[];
+    } catch (err) {
+      logger.warn(failureMessage, { ...logContext, error: err });
+      return new Array(EMBEDDING_DIMS).fill(0);
+    }
+  }
+
+  /**
    * Process user input through the Intent Graph.
    * Extracts, verifies, reconciles, and executes intent actions.
    * 
@@ -150,18 +169,11 @@ export class IntentService {
       return existing;
     }
 
-    const EMBEDDING_DIMS = 2000;
-    let embedding: number[];
-    try {
-      embedding = (await this.embedder.generate(description)) as number[];
-    } catch (err) {
-      logger.warn('[IntentService] Embedding generation failed (intent will be created with zero vector)', {
-        userId,
-        proposalId,
-        error: err,
-      });
-      embedding = new Array(EMBEDDING_DIMS).fill(0);
-    }
+    const embedding = await this.generateEmbeddingOrZero(
+      description,
+      '[IntentService] Embedding generation failed (intent will be created with zero vector)',
+      { userId, proposalId },
+    );
 
     const created = await this.adapter.createIntent({
       userId,
@@ -206,17 +218,11 @@ export class IntentService {
   async createIntentForSeed(userId: string, description: string): Promise<{ id: string }> {
     logger.verbose('[IntentService] Creating intent for seed', { userId });
 
-    const EMBEDDING_DIMS = 2000;
-    let embedding: number[];
-    try {
-      embedding = (await this.embedder.generate(description)) as number[];
-    } catch (err) {
-      logger.warn('[IntentService] Embedding failed (intent created with zero vector)', {
-        userId,
-        error: err,
-      });
-      embedding = new Array(EMBEDDING_DIMS).fill(0);
-    }
+    const embedding = await this.generateEmbeddingOrZero(
+      description,
+      '[IntentService] Embedding failed (intent created with zero vector)',
+      { userId },
+    );
 
     const sourceId = crypto.randomUUID();
     const created = await this.adapter.createIntent({
@@ -255,15 +261,18 @@ export class IntentService {
     if (proposalIds.length === 0) return {};
 
     const result: Record<string, { intentId: string; archivedAt: string | null }> = {};
-    for (const pid of proposalIds) {
-      const intent = await this.adapter.getIntentBySourceId(pid, userId);
+    const intents = await Promise.all(
+      proposalIds.map((pid) => this.adapter.getIntentBySourceId(pid, userId)),
+    );
+    proposalIds.forEach((pid, i) => {
+      const intent = intents[i];
       if (intent) {
         result[pid] = {
           intentId: intent.id,
           archivedAt: intent.archivedAt?.toISOString() ?? null,
         };
       }
-    }
+    });
     return result;
   }
 

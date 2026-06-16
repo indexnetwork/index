@@ -66,9 +66,7 @@ export class UserContextGenerator {
       ),
     ]);
 
-    const text = typeof response.content === 'string'
-      ? response.content
-      : String(response.content ?? '').trim();
+    const text = this.extractText(response.content);
 
     const embedding = await this.embed(text);
     return { text, embedding };
@@ -91,12 +89,17 @@ export class UserContextGenerator {
       ),
     ]);
 
-    const text = typeof response.content === 'string'
-      ? response.content
-      : String(response.content ?? '').trim();
+    const text = this.extractText(response.content);
 
     const embedding = await this.embed(text);
     return { text, embedding };
+  }
+
+  /** Normalize an LLM message content into a plain string. */
+  private extractText(content: unknown): string {
+    return typeof content === 'string'
+      ? content
+      : String(content ?? '').trim();
   }
 
   /** Format the network context header for LLM prompts. */

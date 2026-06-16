@@ -108,20 +108,22 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Generate HyDE for each context
+  // Generate HyDE for each context. The graph and its dependencies are
+  // stateless across contexts, so build them once outside the loop.
   const chatDb = new ChatDatabaseAdapter();
   const graphDb = chatDb as unknown as HydeGraphDatabase;
+  const hydeGraph = new HydeGraphFactory(
+    graphDb,
+    new EmbedderAdapter(),
+    new RedisCacheAdapter(),
+    new LensInferrer(),
+    new HydeGenerator(),
+  ).createGraph();
   let success = 0;
   let failed = 0;
 
   for (const ctx of needsHyde) {
     try {
-      const embedder = new EmbedderAdapter();
-      const cache = new RedisCacheAdapter();
-      const inferrer = new LensInferrer();
-      const generator = new HydeGenerator();
-      const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
-
       await hydeGraph.invoke({
         sourceType: 'context' as const,
         sourceId: ctx.id,

@@ -110,11 +110,17 @@ export default function NegotiationDetailPage() {
                       {(() => {
                         const d = new Date(message.createdAt);
                         const now = new Date();
-                        const isToday = d.toDateString() === now.toDateString();
                         const yesterday = new Date(now);
                         yesterday.setDate(yesterday.getDate() - 1);
-                        const isYesterday = d.toDateString() === yesterday.toDateString();
-                        const label = isToday ? 'Today' : isYesterday ? 'Yesterday' : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+                        let label: string;
+                        if (d.toDateString() === now.toDateString()) {
+                          label = 'Today';
+                        } else if (d.toDateString() === yesterday.toDateString()) {
+                          label = 'Yesterday';
+                        } else {
+                          label = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                        }
                         return `${label}, ${formatTime(message.createdAt)}`;
                       })()}
                     </div>

@@ -157,6 +157,18 @@ class APIClient {
     return response;
   }
 
+  /** Throw an APIError built from a non-ok upload response body. */
+  private async throwUploadError(response: Response): Promise<never> {
+    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorData.message || errorMessage;
+    } catch {
+      // If JSON parsing fails, keep the default message
+    }
+    throw new APIError(errorMessage, response.status);
+  }
+
   /** POST a FormData body (multiple files / fields). */
   async uploadFormData<T>(endpoint: string, formData: FormData): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
@@ -167,14 +179,7 @@ class APIClient {
       headers: { 'Authorization': `Bearer ${token}` },
     });
 
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch { /* keep default */ }
-      throw new APIError(errorMessage, response.status);
-    }
+    if (!response.ok) await this.throwUploadError(response);
 
     return response.json();
   }
@@ -203,16 +208,7 @@ class APIClient {
       headers: { 'Authorization': `Bearer ${token}` },
     });
 
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch {
-        // If JSON parsing fails, keep the default message
-      }
-      throw new APIError(errorMessage, response.status);
-    }
+    if (!response.ok) await this.throwUploadError(response);
 
     return response.json();
   }

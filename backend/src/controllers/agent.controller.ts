@@ -122,6 +122,23 @@ async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<T | R
   return parsed.data;
 }
 
+/**
+ * Parse an optional `limit` query param into a finite number.
+ * Returns undefined when absent/empty, or a 400 Response when present but not finite.
+ * Range clamping is the service's responsibility — see callers' validation contract.
+ */
+function parseLimitParam(req: Request): number | undefined | Response {
+  const limitParam = new URL(req.url).searchParams.get('limit');
+  if (limitParam === null || limitParam === '') {
+    return undefined;
+  }
+  const parsed = Number(limitParam);
+  if (!Number.isFinite(parsed)) {
+    return jsonError('limit must be a finite number', 400);
+  }
+  return parsed;
+}
+
 async function parseOptionalBody<T>(req: Request, schema: z.ZodSchema<T>, emptyValue: unknown): Promise<T | Response> {
   const text = await req.text().catch(() => '');
   const trimmed = text.trim();
@@ -423,15 +440,7 @@ export class AgentController {
       const result = await negotiationPollingService.respond(agentId, user.id, negotiationId, body);
       return Response.json(result);
     } catch (err) {
-      if (err instanceof UnauthorizedError) {
-        return jsonError(err.message, 403);
-      }
-      if (err instanceof NotFoundError) {
-        return jsonError(err.message, 404);
-      }
-      if (err instanceof ConflictError) {
-        return jsonError(err.message, 409);
-      }
+      // UnauthorizedError/NotFoundError/ConflictError map to 403/404/409 via errorStatus.
       return jsonError(parseErrorMessage(err), errorStatus(err));
     }
   }
@@ -546,15 +555,9 @@ export class AgentController {
     // 100 are all accepted here and normalized downstream. NaN/Infinity/empty
     // are rejected with 400 — they signal a malformed request, not a value out
     // of range.
-    const url = new URL(req.url);
-    const limitParam = url.searchParams.get('limit');
-    let limit: number | undefined;
-    if (limitParam !== null && limitParam !== '') {
-      const parsed = Number(limitParam);
-      if (!Number.isFinite(parsed)) {
-        return jsonError('limit must be a finite number', 400);
-      }
-      limit = parsed;
+    const limit = parseLimitParam(req);
+    if (limit instanceof Response) {
+      return limit;
     }
 
     try {
@@ -575,15 +578,9 @@ export class AgentController {
       return jsonError('Agent ID is required', 400);
     }
 
-    const url = new URL(req.url);
-    const limitParam = url.searchParams.get('limit');
-    let limit: number | undefined;
-    if (limitParam !== null && limitParam !== '') {
-      const parsed = Number(limitParam);
-      if (!Number.isFinite(parsed)) {
-        return jsonError('limit must be a finite number', 400);
-      }
-      limit = parsed;
+    const limit = parseLimitParam(req);
+    if (limit instanceof Response) {
+      return limit;
     }
 
     const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');

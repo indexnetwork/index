@@ -3,14 +3,12 @@ import { z } from 'zod';
 
 const environment = process.env.NODE_ENV;
 
-const dotenvPath =
-  environment === 'development'
-    ? '.env.development'
-    : environment === 'production'
-      ? '.env.production'
-      : environment === 'test'
-        ? '.env.test'
-        : '.env';
+const dotenvPathByEnvironment: Record<string, string> = {
+  development: '.env.development',
+  production: '.env.production',
+  test: '.env.test',
+};
+const dotenvPath = (environment && dotenvPathByEnvironment[environment]) || '.env';
 
 config({ path: dotenvPath });
 

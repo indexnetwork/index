@@ -52,15 +52,7 @@ export class AgentDispatcherImpl implements AgentDispatcher {
     payload: NegotiationTurnPayload,
     options: { timeoutMs: number },
   ): Promise<AgentDispatchResult> {
-    // Negotiation permissions are scoped to networks, so map 'negotiation' → 'network'
-    // to ensure the adapter queries the correct permission scope.
-    const resolvedScopeType = scope.scopeType === 'negotiation' ? 'network' : scope.scopeType;
-
-    const authorizedAgents = await this.agentService.findAuthorizedAgents(
-      userId,
-      scope.action,
-      { type: resolvedScopeType as 'global' | 'node' | 'network', id: scope.scopeId },
-    );
+    const authorizedAgents = await this.findAuthorizedAgentsForScope(userId, scope);
 
     const personalAgents = authorizedAgents.filter((a) => a.type === 'personal');
 
@@ -122,14 +114,23 @@ export class AgentDispatcherImpl implements AgentDispatcher {
     userId: string,
     scope: { action: string; scopeType: string; scopeId?: string },
   ): Promise<boolean> {
-    // Negotiation permissions are scoped to networks (see dispatch() for rationale).
-    const resolvedScopeType = scope.scopeType === 'negotiation' ? 'network' : scope.scopeType;
-
-    const agents = await this.agentService.findAuthorizedAgents(
-      userId,
-      scope.action,
-      { type: resolvedScopeType as 'global' | 'node' | 'network', id: scope.scopeId },
-    );
+    const agents = await this.findAuthorizedAgentsForScope(userId, scope);
     return agents.some((a) => a.type === 'personal');
+  }
+
+  /**
+   * Resolve authorized agents for a scope, mapping the 'negotiation' scope type
+   * to 'network' (negotiation permissions are scoped to networks) so the adapter
+   * queries the correct permission scope.
+   */
+  private findAuthorizedAgentsForScope(
+    userId: string,
+    scope: { action: string; scopeType: string; scopeId?: string },
+  ): Promise<AgentWithRelations[]> {
+    const resolvedScopeType = scope.scopeType === 'negotiation' ? 'network' : scope.scopeType;
+    return this.agentService.findAuthorizedAgents(userId, scope.action, {
+      type: resolvedScopeType as 'global' | 'node' | 'network',
+      id: scope.scopeId,
+    });
   }
 }

@@ -12,6 +12,10 @@ const logger = log.lib.from('notification.sender');
 
 const BASE_URL = process.env.BASE_URL || 'https://protocol.index.network';
 
+function unsubscribeUrlForToken(token: string, type: 'weeklyNewsletter' | 'connectionUpdates') {
+  return `${BASE_URL}/api/notifications/unsubscribe?token=${token}&type=${type}`;
+}
+
 async function getUnsubscribeUrl(userId: string, type: 'weeklyNewsletter' | 'connectionUpdates') {
   // Find or create settings (create should technically happen on user creation, but good to be safe)
   let settings = await db.select()
@@ -28,8 +32,7 @@ async function getUnsubscribeUrl(userId: string, type: 'weeklyNewsletter' | 'con
     settings = [newSettings];
   }
 
-  const token = settings[0].unsubscribeToken;
-  return `${BASE_URL}/api/notifications/unsubscribe?token=${token}&type=${type}`;
+  return unsubscribeUrlForToken(settings[0].unsubscribeToken, type);
 }
 
 export async function sendConnectionRequestEmail(
@@ -66,15 +69,10 @@ export async function sendConnectionRequestEmail(
     return;
   }
 
-  let unsubscribeUrl: string | undefined;
   // If settings exist, use token. If not (but onboarded), lazy create via getUnsubscribeUrl logic
-  if (recipient.settings?.unsubscribeToken) {
-    const BASE_URL = process.env.BASE_URL || 'https://protocol.index.network';
-    unsubscribeUrl = `${BASE_URL}/api/notifications/unsubscribe?token=${recipient.settings.unsubscribeToken}&type=connectionUpdates`;
-  } else {
-    // Legacy support: Onboarded but no settings row yet. content.
-    unsubscribeUrl = await getUnsubscribeUrl(recipient.id, 'connectionUpdates');
-  }
+  const unsubscribeUrl: string | undefined = recipient.settings?.unsubscribeToken
+    ? unsubscribeUrlForToken(recipient.settings.unsubscribeToken, 'connectionUpdates')
+    : await getUnsubscribeUrl(recipient.id, 'connectionUpdates');
 
   const template = connectionRequestTemplate(initiatorName, receiverName, synthesisHtml, subject, unsubscribeUrl);
 
@@ -125,13 +123,9 @@ export async function sendConnectionAcceptedEmail(
       continue;
     }
 
-    let unsubscribeUrl: string | undefined;
-    if (recipient.settings?.unsubscribeToken) {
-      const BASE_URL = process.env.BASE_URL || 'https://protocol.index.network';
-      unsubscribeUrl = `${BASE_URL}/api/notifications/unsubscribe?token=${recipient.settings.unsubscribeToken}&type=connectionUpdates`;
-    } else {
-      unsubscribeUrl = await getUnsubscribeUrl(recipient.id, 'connectionUpdates');
-    }
+    const unsubscribeUrl: string | undefined = recipient.settings?.unsubscribeToken
+      ? unsubscribeUrlForToken(recipient.settings.unsubscribeToken, 'connectionUpdates')
+      : await getUnsubscribeUrl(recipient.id, 'connectionUpdates');
 
     const template = connectionAcceptedTemplate(initiatorName, accepterName, synthesisHtml, unsubscribeUrl);
     await sendEmail({

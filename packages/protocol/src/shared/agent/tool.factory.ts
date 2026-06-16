@@ -17,8 +17,7 @@ import { protocolLogger } from "../observability/protocol.logger.js";
 
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 
-import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext } from "./tool.helpers.js";
-import { error, redactSensitiveFields } from "./tool.helpers.js";
+import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "./tool.helpers.js";
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createProfileTools } from "../../profile/profile.tools.js";
 import { createIntentTools } from "../../intent/intent.tools.js";

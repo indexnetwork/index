@@ -28,7 +28,7 @@ export default function NetworksPage() {
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
   const [masterKeyModal, setMasterKeyModal] = useState<{ networkId: string; masterKey: string } | null>(null);
 
-  const allNetworks = [...(rawIndexes || [])].filter(Boolean).sort((a, b) => {
+  const allNetworks = (rawIndexes || []).filter(Boolean).sort((a, b) => {
     if (a.isPersonal && !b.isPersonal) return -1;
     if (!a.isPersonal && b.isPersonal) return 1;
     return (a.title || '').localeCompare(b.title || '');

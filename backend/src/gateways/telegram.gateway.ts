@@ -368,6 +368,16 @@ async function handleInboundStreaming(
     let lastStatusSentAt = 0;
     let lastStatusText: string | null = null;
 
+    // Send a throttled, de-duplicated status update (no-op for undefined text).
+    const maybeSendStatus = async (status: string | undefined): Promise<void> => {
+      const now = Date.now();
+      if (status && status !== lastStatusText && now - lastStatusSentAt >= STATUS_THROTTLE_MS) {
+        await trySendStatus(chatId, status, deps);
+        lastStatusText = status;
+        lastStatusSentAt = now;
+      }
+    };
+
     const stream = deps.streamMessage!(userId, text, sessionId);
 
     // Race the stream against a hard timeout
@@ -380,24 +390,12 @@ async function handleInboundStreaming(
       for await (const event of stream) {
         // Tool-activity status notifications
         if (event.type === 'tool_activity' && event.phase === 'start' && event.toolName) {
-          const status = toolStatusText(event.toolName);
-          const now = Date.now();
-          if (status && status !== lastStatusText && now - lastStatusSentAt >= STATUS_THROTTLE_MS) {
-            await trySendStatus(chatId, status, deps);
-            lastStatusText = status;
-            lastStatusSentAt = now;
-          }
+          await maybeSendStatus(toolStatusText(event.toolName));
         }
 
         // Agent-level status (e.g. negotiator starting)
         if (event.type === 'agent_start' && event.name) {
-          const agentStatus = agentStatusText(event.name);
-          const now = Date.now();
-          if (agentStatus && agentStatus !== lastStatusText && now - lastStatusSentAt >= STATUS_THROTTLE_MS) {
-            await trySendStatus(chatId, agentStatus, deps);
-            lastStatusText = agentStatus;
-            lastStatusSentAt = now;
-          }
+          await maybeSendStatus(agentStatusText(event.name));
         }
 
         // Authoritative final response

@@ -560,12 +560,13 @@ function LatestPosts() {
               <span className="hash">#</span>no posts yet.
             </div>
           ) : (
-            entries.map((entry) =>
-              "kind" in entry ? (
+            entries.map((entry) => {
+              const isExternal = "kind" in entry;
+              return (
                 <Link
                   className="blog-row"
-                  to={entry.href}
-                  key={`ext:${entry.href}`}
+                  to={isExternal ? entry.href : `/blog/${entry.slug}`}
+                  key={isExternal ? `ext:${entry.href}` : entry.slug}
                   aria-label={entry.title}
                 >
                   <span className="blog-date">{formatPostDate(entry.date)}</span>
@@ -573,20 +574,8 @@ function LatestPosts() {
                   <span className="spacer" aria-hidden="true" />
                   <span className="blog-arrow">→</span>
                 </Link>
-              ) : (
-                <Link
-                  className="blog-row"
-                  to={`/blog/${entry.slug}`}
-                  key={entry.slug}
-                  aria-label={entry.title}
-                >
-                  <span className="blog-date">{formatPostDate(entry.date)}</span>
-                  <span className="blog-title">{entry.title}</span>
-                  <span className="spacer" aria-hidden="true" />
-                  <span className="blog-arrow">→</span>
-                </Link>
-              ),
-            )
+              );
+            })
           )}
         </div>
 

@@ -78,21 +78,6 @@ export function binomialSignificance(observedPasses: number, total: number, null
   return binomialPValue(observedPasses, total, nullRate) <= alpha;
 }
 
-/** Analytical error function (Abramowitz & Stegun 7.1.26). */
-function erf(x: number): number {
-  const sign = x < 0 ? -1 : 1;
-  x = Math.abs(x);
-  const p = 0.3275911;
-  const a1 = 0.254829592;
-  const a2 = -0.284496736;
-  const a3 = 1.421413741;
-  const a4 = -1.453152027;
-  const a5 = 1.061405429;
-  const t = 1 / (1 + p * x);
-  const y = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
-  return sign * y;
-}
-
 /** Rate string with 95% confidence — only call this when n ≤ 1 cases (D2NPFN). */
 function rateWithCI(passes: number, total: number): string {
   const [lo, hi] = binomialCI(passes, total);
@@ -408,13 +393,11 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-const pctText = (n: number): string => `${Math.round(n * 100)}%`;
-
 /** Pass-rate cell text with 95% CI tooltip for HTML tables. */
 function htmlRateCI(rate: number, passes: number, total: number): string {
   const [lo, hi] = binomialCI(passes, total);
   const ci = `CI₉₅ ${Math.round(lo * 100)}%–${Math.round(hi * 100)}%`;
-  return `<span title="${ci}">${pctText(rate)}</span>`;
+  return `<span title="${ci}">${pct(rate)}</span>`;
 }
 
 /** Per-case metadata derived from the corpus, keyed by candidate id. */
@@ -701,7 +684,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
   const regressionBlock =
     regressions.length > 0
       ? `<section class="regressions"><h2>⚠ Regressions vs baseline</h2><ul>${regressions
-          .map((r) => `<li>[${r.kind}] <code>${esc(r.id)}</code>: ${pctText(r.before)} → ${pctText(r.after)} <span class="muted">(${fmtPValue(r.pValue)})</span></li>`)
+          .map((r) => `<li>[${r.kind}] <code>${esc(r.id)}</code>: ${pct(r.before)} → ${pct(r.after)} <span class="muted">(${fmtPValue(r.pValue)})</span></li>`)
           .join("")}</ul></section>`
       : "";
 
@@ -721,7 +704,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
   const totalPasses = sc.cases.reduce((s, c) => s + c.passes, 0);
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Matching eval — ${pctText(sc.aggregatePassRate)} (${esc(sc.model)})</title>
+<title>Matching eval — ${pct(sc.aggregatePassRate)} (${esc(sc.model)})</title>
 <style>
   :root{--good:#16a34a;--ok:#d97706;--bad:#dc2626;--bg:#0f172a;--card:#1e293b;--line:#334155;--fg:#e2e8f0;--muted:#94a3b8}
   *{box-sizing:border-box}
@@ -775,7 +758,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
 </style></head>
 <body><div class="wrap">
   <div class="banner">
-    <div><div class="score ${agg}">${pctText(sc.aggregatePassRate)}</div><div class="meta">aggregate pass-rate</div><div class="ci">${htmlRateCI(sc.aggregatePassRate, totalPasses, totalObs)}</div></div>
+    <div><div class="score ${agg}">${pct(sc.aggregatePassRate)}</div><div class="meta">aggregate pass-rate</div><div class="ci">${htmlRateCI(sc.aggregatePassRate, totalPasses, totalObs)}</div></div>
     <div class="meta">
       <div><strong>${esc(sc.model)}</strong></div>
       <div>${sc.cases.length} case${sc.cases.length === 1 ? "" : "s"} × ${sc.runs} run${sc.runs === 1 ? "" : "s"}</div>

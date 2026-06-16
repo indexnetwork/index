@@ -74,6 +74,13 @@ const PRESENTATION_CONCURRENCY = 50;
 const MAX_REASONING_SNIPPET_LENGTH = 240;
 const HOME_CACHE_TTL = 24 * 60 * 60; // 24 hours in seconds
 
+/** Redis key for the categorizer cache, derived from the user and the ordered opportunity-id set. */
+function buildCategorizerCacheKey(userId: string, cards: HomeCardItem[]): string {
+  const oppIds = cards.map((c) => c.opportunityId).join(',');
+  const hash = createHash('sha256').update(oppIds).digest('hex').slice(0, 16);
+  return `home:categories:${userId}:${hash}`;
+}
+
 /**
  * Strip leading narrator name from remark when the UI already prepends "Name: " to the chip.
  * Avoids duplication like "Yankı Ekin Yüksel: Yankı Ekin Yüksel introduced you two..."
@@ -560,11 +567,7 @@ export class HomeGraphFactory {
         }
 
         try {
-          const oppIds = state.cards
-            .map((c) => c.opportunityId)
-            .join(',');
-          const hash = createHash('sha256').update(oppIds).digest('hex').slice(0, 16);
-          const key = `home:categories:${state.userId}:${hash}`;
+          const key = buildCategorizerCacheKey(state.userId, state.cards);
 
           const cached = await this.cache.get<HomeSectionProposal[]>(key);
           if (cached) {
@@ -627,11 +630,7 @@ export class HomeGraphFactory {
         }
 
         try {
-          const oppIds = state.cards
-            .map((c) => c.opportunityId)
-            .join(',');
-          const hash = createHash('sha256').update(oppIds).digest('hex').slice(0, 16);
-          const key = `home:categories:${state.userId}:${hash}`;
+          const key = buildCategorizerCacheKey(state.userId, state.cards);
 
           await this.cache.set(key, state.sectionProposals, { ttl: HOME_CACHE_TTL });
 

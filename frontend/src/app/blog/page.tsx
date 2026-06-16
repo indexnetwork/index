@@ -94,12 +94,15 @@ function BlogIndexPage() {
                 <span className="hash">#</span>loading…
               </div>
             ) : (
-              [...mergeEntries(posts, EXTERNAL_ENTRIES)].map((entry) =>
-                "kind" in entry ? (
+              mergeEntries(posts, EXTERNAL_ENTRIES).map((entry) => {
+                const isExternal = "kind" in entry;
+                const to = isExternal ? entry.href : `/blog/${entry.slug}`;
+                const key = isExternal ? `ext:${entry.href}` : entry.slug;
+                return (
                   <Link
                     className="blog-row"
-                    to={entry.href}
-                    key={`ext:${entry.href}`}
+                    to={to}
+                    key={key}
                     aria-label={entry.title}
                   >
                     <span className="blog-date">{formatPostDate(entry.date)}</span>
@@ -107,20 +110,8 @@ function BlogIndexPage() {
                     <span className="spacer" aria-hidden="true" />
                     <span className="blog-arrow">→</span>
                   </Link>
-                ) : (
-                  <Link
-                    className="blog-row"
-                    to={`/blog/${entry.slug}`}
-                    key={entry.slug}
-                    aria-label={entry.title}
-                  >
-                    <span className="blog-date">{formatPostDate(entry.date)}</span>
-                    <span className="blog-title">{entry.title}</span>
-                    <span className="spacer" aria-hidden="true" />
-                    <span className="blog-arrow">→</span>
-                  </Link>
-                ),
-              )
+                );
+              })
             )}
           </div>
 

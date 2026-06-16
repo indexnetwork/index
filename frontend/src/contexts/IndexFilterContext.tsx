@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 
 interface NetworkFilterContextType {
   selectedNetworkIds: string[];
@@ -10,14 +10,10 @@ const NetworkFilterContext = createContext<NetworkFilterContextType | undefined>
 export function NetworkFilterProvider({ children }: { children: ReactNode }) {
   const [selectedNetworkIds, setSelectedNetworkIds] = useState<string[]>([]);
 
-  const handleSetSelectedNetworkIds = useCallback((networkIds: string[]) => {
-    setSelectedNetworkIds(networkIds);
-  }, []);
-
   return (
     <NetworkFilterContext.Provider value={{
       selectedNetworkIds,
-      setSelectedNetworkIds: handleSetSelectedNetworkIds,
+      setSelectedNetworkIds,
     }}>
       {children}
     </NetworkFilterContext.Provider>

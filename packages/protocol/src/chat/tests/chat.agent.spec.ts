@@ -105,32 +105,37 @@ function createEventCollector(): {
   };
 }
 
+/** Create a ChatAgent wired to stub deps (model + tools come from the global mocks). */
+function createTestAgent() {
+  return ChatAgent.create({
+    database: {
+      getUser: async () => ({ id: "test-user", name: "Test User", email: "test@example.com", location: null, socials: {} }),
+      getProfile: async () => null,
+      getNetworkMemberships: async () => [],
+    } as any,
+    embedder: {} as any,
+    scraper: {} as any,
+    userId: "test-user",
+    sessionId: "test-session",
+    cache: {} as any,
+    hydeCache: {} as any,
+    integration: {} as any,
+    intentQueue: {} as any,
+    contactService: {} as any,
+    chatSession: {} as any,
+    enricher: {} as any,
+    negotiationDatabase: {} as any,
+    integrationImporter: {} as any,
+    createUserDatabase: () => ({}) as any,
+    createSystemDatabase: () => ({}) as any,
+  });
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("ChatAgent hallucination auto-retry", () => {
   it("auto-invokes create_intent when hallucinated intent_proposal block is detected", async () => {
-    const agent = await ChatAgent.create({
-      database: {
-        getUser: async () => ({ id: "test-user", name: "Test User", email: "test@example.com", location: null, socials: {} }),
-        getProfile: async () => null,
-        getNetworkMemberships: async () => [],
-      } as any,
-      embedder: {} as any,
-      scraper: {} as any,
-      userId: "test-user",
-      sessionId: "test-session",
-      cache: {} as any,
-      hydeCache: {} as any,
-      integration: {} as any,
-      intentQueue: {} as any,
-      contactService: {} as any,
-      chatSession: {} as any,
-      enricher: {} as any,
-      negotiationDatabase: {} as any,
-      integrationImporter: {} as any,
-      createUserDatabase: () => ({}) as any,
-      createSystemDatabase: () => ({}) as any,
-    });
+    const agent = await createTestAgent();
 
     const hallucinatedText = `Here's what I found:
 
@@ -201,28 +206,7 @@ I've created an intent for you!`;
   }, 15000);
 
   it("auto-invokes discover_opportunities when hallucinated opportunity block is detected", async () => {
-    const agent = await ChatAgent.create({
-      database: {
-        getUser: async () => ({ id: "test-user", name: "Test User", email: "test@example.com", location: null, socials: {} }),
-        getProfile: async () => null,
-        getNetworkMemberships: async () => [],
-      } as any,
-      embedder: {} as any,
-      scraper: {} as any,
-      userId: "test-user",
-      sessionId: "test-session",
-      cache: {} as any,
-      hydeCache: {} as any,
-      integration: {} as any,
-      intentQueue: {} as any,
-      contactService: {} as any,
-      chatSession: {} as any,
-      enricher: {} as any,
-      negotiationDatabase: {} as any,
-      integrationImporter: {} as any,
-      createUserDatabase: () => ({}) as any,
-      createSystemDatabase: () => ({}) as any,
-    });
+    const agent = await createTestAgent();
 
     const hallucinatedText = `I found matches:
 
@@ -266,28 +250,7 @@ I've created an intent for you!`;
   }, 15000);
 
   it("falls back to correction message if auto-invoked tool throws", async () => {
-    const agent = await ChatAgent.create({
-      database: {
-        getUser: async () => ({ id: "test-user", name: "Test User", email: "test@example.com", location: null, socials: {} }),
-        getProfile: async () => null,
-        getNetworkMemberships: async () => [],
-      } as any,
-      embedder: {} as any,
-      scraper: {} as any,
-      userId: "test-user",
-      sessionId: "test-session",
-      cache: {} as any,
-      hydeCache: {} as any,
-      integration: {} as any,
-      intentQueue: {} as any,
-      contactService: {} as any,
-      chatSession: {} as any,
-      enricher: {} as any,
-      negotiationDatabase: {} as any,
-      integrationImporter: {} as any,
-      createUserDatabase: () => ({}) as any,
-      createSystemDatabase: () => ({}) as any,
-    });
+    const agent = await createTestAgent();
 
     // Make create_intent throw on invoke
     const createIntentTool = capturedTools.find(
@@ -334,28 +297,7 @@ I've created an intent for you!`;
   }, 15000);
 
   it("does not trigger hallucination detection when model makes a real tool call", async () => {
-    const agent = await ChatAgent.create({
-      database: {
-        getUser: async () => ({ id: "test-user", name: "Test User", email: "test@example.com", location: null, socials: {} }),
-        getProfile: async () => null,
-        getNetworkMemberships: async () => [],
-      } as any,
-      embedder: {} as any,
-      scraper: {} as any,
-      userId: "test-user",
-      sessionId: "test-session",
-      cache: {} as any,
-      hydeCache: {} as any,
-      integration: {} as any,
-      intentQueue: {} as any,
-      contactService: {} as any,
-      chatSession: {} as any,
-      enricher: {} as any,
-      negotiationDatabase: {} as any,
-      integrationImporter: {} as any,
-      createUserDatabase: () => ({}) as any,
-      createSystemDatabase: () => ({}) as any,
-    });
+    const agent = await createTestAgent();
 
     // Model returns a tool call (not hallucinated text)
     let streamCallCount = 0;
@@ -397,28 +339,7 @@ I've created an intent for you!`;
 describe("ChatAgent streamRun — debugMeta.llm accumulator", () => {
   it("increments llm.calls on each llm_start", async () => {
     // Create agent first — this sets mockModelInstance via the mock.module factory
-    const agent = await ChatAgent.create({
-      database: {
-        getUser: async () => ({ id: "test-user", name: "Test User", email: "test@example.com", location: null, socials: {} }),
-        getProfile: async () => null,
-        getNetworkMemberships: async () => [],
-      } as any,
-      embedder: {} as any,
-      scraper: {} as any,
-      userId: "test-user",
-      sessionId: "test-session",
-      cache: {} as any,
-      hydeCache: {} as any,
-      integration: {} as any,
-      intentQueue: {} as any,
-      contactService: {} as any,
-      chatSession: {} as any,
-      enricher: {} as any,
-      negotiationDatabase: {} as any,
-      integrationImporter: {} as any,
-      createUserDatabase: () => ({}) as any,
-      createSystemDatabase: () => ({}) as any,
-    });
+    const agent = await createTestAgent();
 
     // mockModelInstance is now set — override stream to return a plain response
     if (!mockModelInstance) {

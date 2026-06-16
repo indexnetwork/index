@@ -32,6 +32,29 @@ export interface QuestionerPreset {
   buildPrompt: (context: unknown) => string;
 }
 
+/**
+ * Renders a "## User profile"-style block from the common profile fields shared
+ * by every preset's context. `location` is only emitted when present, so this
+ * serves the intent/negotiation shapes (no location) and the profile shape alike.
+ * @param profile - The user profile subset carried by the mode context.
+ * @returns The newline-joined profile lines, or "(no profile data)" when empty.
+ */
+function buildProfileBlock(profile: {
+  name?: string;
+  bio?: string;
+  location?: string;
+  skills?: string[];
+  interests?: string[];
+}): string {
+  const lines: string[] = [];
+  if (profile.name) lines.push(`Name: ${profile.name}`);
+  if (profile.bio) lines.push(`Bio: ${profile.bio}`);
+  if (profile.location) lines.push(`Location: ${profile.location}`);
+  if (profile.skills && profile.skills.length > 0) lines.push(`Skills: ${profile.skills.join(", ")}`);
+  if (profile.interests && profile.interests.length > 0) lines.push(`Interests: ${profile.interests.join(", ")}`);
+  return lines.length > 0 ? lines.join("\n") : "(no profile data)";
+}
+
 // ─── Intent preset ──────────────────────────────────────────────────────────
 
 const INTENT_SYSTEM_PROMPT = `You sit between a human and a discovery protocol. The user has stated an intent — what they are looking for. Your job: surface the minimum set of structured questions that help the user sharpen that intent before the protocol runs discovery on their behalf.
@@ -71,16 +94,7 @@ Output. Return at most 2 entries in the "questions" array. Each entry must inclu
  * @returns The assembled user message string.
  */
 function buildIntentPrompt(ctx: IntentContext): string {
-  const profileLines: string[] = [];
-  if (ctx.userProfile.name) profileLines.push(`Name: ${ctx.userProfile.name}`);
-  if (ctx.userProfile.bio) profileLines.push(`Bio: ${ctx.userProfile.bio}`);
-  if (ctx.userProfile.skills && ctx.userProfile.skills.length > 0) {
-    profileLines.push(`Skills: ${ctx.userProfile.skills.join(", ")}`);
-  }
-  if (ctx.userProfile.interests && ctx.userProfile.interests.length > 0) {
-    profileLines.push(`Interests: ${ctx.userProfile.interests.join(", ")}`);
-  }
-  const profileBlock = profileLines.length > 0 ? profileLines.join("\n") : "(no profile data)";
+  const profileBlock = buildProfileBlock(ctx.userProfile);
 
   const summaryBlock = ctx.summary ? ctx.summary : "(no summary available)";
 
@@ -144,17 +158,7 @@ Output. Return at most 2 entries in the "questions" array. Each entry must inclu
  * @returns The assembled user message string.
  */
 function buildProfilePrompt(ctx: ProfileContext): string {
-  const profileLines: string[] = [];
-  if (ctx.userProfile.name) profileLines.push(`Name: ${ctx.userProfile.name}`);
-  if (ctx.userProfile.bio) profileLines.push(`Bio: ${ctx.userProfile.bio}`);
-  if (ctx.userProfile.location) profileLines.push(`Location: ${ctx.userProfile.location}`);
-  if (ctx.userProfile.skills && ctx.userProfile.skills.length > 0) {
-    profileLines.push(`Skills: ${ctx.userProfile.skills.join(", ")}`);
-  }
-  if (ctx.userProfile.interests && ctx.userProfile.interests.length > 0) {
-    profileLines.push(`Interests: ${ctx.userProfile.interests.join(", ")}`);
-  }
-  const profileBlock = profileLines.length > 0 ? profileLines.join("\n") : "(no profile data)";
+  const profileBlock = buildProfileBlock(ctx.userProfile);
 
   const premisesBlock =
     ctx.existingPremises && ctx.existingPremises.length > 0
@@ -225,16 +229,7 @@ Output. Return at most 2 entries in the "questions" array. Each entry must inclu
  * @returns The assembled user message string.
  */
 function buildNegotiationPrompt(ctx: NegotiationContext): string {
-  const profileLines: string[] = [];
-  if (ctx.userProfile.name) profileLines.push(`Name: ${ctx.userProfile.name}`);
-  if (ctx.userProfile.bio) profileLines.push(`Bio: ${ctx.userProfile.bio}`);
-  if (ctx.userProfile.skills && ctx.userProfile.skills.length > 0) {
-    profileLines.push(`Skills: ${ctx.userProfile.skills.join(", ")}`);
-  }
-  if (ctx.userProfile.interests && ctx.userProfile.interests.length > 0) {
-    profileLines.push(`Interests: ${ctx.userProfile.interests.join(", ")}`);
-  }
-  const profileBlock = profileLines.length > 0 ? profileLines.join("\n") : "(no profile data)";
+  const profileBlock = buildProfileBlock(ctx.userProfile);
 
   return [
     "## Negotiation context",

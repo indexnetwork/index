@@ -42,41 +42,17 @@ export class ToolService {
   ) {}
 
   /**
-   * Invoke a single tool by name for the given user.
-   * Resolves context, builds deps, looks up the tool, validates input, and executes.
-   *
-   * @param userId - Authenticated user ID
-   * @param toolName - Name of the tool to invoke (e.g. "read_intents")
-   * @param query - Tool input object (validated against tool schema)
-   * @returns Parsed tool result
-   * @throws ChatContextAccessError if user/index context is invalid
-   * @throws Error if tool not found or validation fails
+   * Assemble the shared ToolDeps for a registry, given the context-scoped
+   * databases. All non-scoped fields (adapters, events, graphs, queries) are
+   * identical across invoke() and listTools(); only userDb/systemDb differ.
    */
-  async invokeTool(userId: string, toolName: string, query: Record<string, unknown> = {}): Promise<unknown> {
-    logger.verbose('Invoking tool', { userId, toolName });
-
-    const database = chatDatabaseAdapter;
-
-    // Resolve user context
-    const context = await resolveChatContext({ database, userId });
-
-    if (context.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
-      return {
-        success: false,
-        error: 'Onboarding required',
-        message: buildMcpOnboardingMessage(context),
-      };
-    }
-
-    // Get or compile graphs (cached across requests — graphs are stateless)
-    const graphs = this.getOrCompileGraphs(database);
-
-    // Create per-request context-bound databases
-    const networkScope = context.userNetworks.map((m) => m.networkId);
-    const userDb = createUserDatabase(database, userId);
-    const systemDb = createSystemDatabase(database, userId, networkScope, this.embedder);
-
-    const toolDeps: ToolDeps = {
+  private buildToolDeps(
+    database: typeof chatDatabaseAdapter,
+    userDb: ToolDeps['userDb'],
+    systemDb: ToolDeps['systemDb'],
+    graphs: ToolDeps['graphs'],
+  ): ToolDeps {
+    return {
       database,
       userDb,
       systemDb,
@@ -118,6 +94,44 @@ export class ToolService {
       },
       graphs,
     };
+  }
+
+  /**
+   * Invoke a single tool by name for the given user.
+   * Resolves context, builds deps, looks up the tool, validates input, and executes.
+   *
+   * @param userId - Authenticated user ID
+   * @param toolName - Name of the tool to invoke (e.g. "read_intents")
+   * @param query - Tool input object (validated against tool schema)
+   * @returns Parsed tool result
+   * @throws ChatContextAccessError if user/index context is invalid
+   * @throws Error if tool not found or validation fails
+   */
+  async invokeTool(userId: string, toolName: string, query: Record<string, unknown> = {}): Promise<unknown> {
+    logger.verbose('Invoking tool', { userId, toolName });
+
+    const database = chatDatabaseAdapter;
+
+    // Resolve user context
+    const context = await resolveChatContext({ database, userId });
+
+    if (context.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
+      return {
+        success: false,
+        error: 'Onboarding required',
+        message: buildMcpOnboardingMessage(context),
+      };
+    }
+
+    // Get or compile graphs (cached across requests — graphs are stateless)
+    const graphs = this.getOrCompileGraphs(database);
+
+    // Create per-request context-bound databases
+    const networkScope = context.userNetworks.map((m) => m.networkId);
+    const userDb = createUserDatabase(database, userId);
+    const systemDb = createSystemDatabase(database, userId, networkScope, this.embedder);
+
+    const toolDeps = this.buildToolDeps(database, userDb, systemDb, graphs);
 
     // Build registry and look up tool
     const registry = createToolRegistry(toolDeps);
@@ -175,48 +189,7 @@ export class ToolService {
     const userDb = createUserDatabase(database, 'system');
     const systemDb = createSystemDatabase(database, 'system', []);
 
-    const toolDeps: ToolDeps = {
-      database,
-      userDb,
-      systemDb,
-      scraper: this.scraper,
-      embedder: this.embedder,
-      cache: this.cache,
-      integration: this.integration,
-      contactService: this.contactService,
-      integrationImporter: this.integrationImporter,
-      enricher: { enrichUserProfile },
-      negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
-      premiseEvents: {
-        onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
-        onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
-        onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
-      },
-      findPendingQuestions: async (
-        userId: string,
-        filters?: {
-          sourceType?: string;
-          sourceId?: string;
-          modes?: Array<'discovery' | 'intent' | 'profile' | 'negotiation'>;
-          limit?: number;
-        },
-      ) => {
-        const rows = await questionerAdapter.findPending(userId, filters);
-        return rows.map((row): PendingQuestionSummary => ({
-          id: row.id,
-          title: row.payload.title,
-          prompt: row.payload.prompt,
-          options: row.payload.options,
-          multiSelect: row.payload.multiSelect,
-          mode: row.detection.mode,
-          sourceType: row.detection.sourceType,
-          sourceId: row.detection.sourceId,
-          createdAt: row.createdAt,
-          ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-        }));
-      },
-      graphs,
-    };
+    const toolDeps = this.buildToolDeps(database, userDb, systemDb, graphs);
 
     const registry = createToolRegistry(toolDeps);
 

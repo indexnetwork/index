@@ -78,8 +78,9 @@ export class HydeGraphFactory {
             profileContext,
             maxLenses,
           });
-          agentTimingsAccum.push({ name: 'lens.inferrer', durationMs: Date.now() - inferrerStart });
-          _traceEmitterLens?.({ type: "agent_end", name: "lens-inferrer", durationMs: Date.now() - inferrerStart, summary: result.lenses.length > 0 ? `Inferred ${result.lenses.length} lens(es)` : "lens-inferrer completed" });
+          const _inferrerDuration = Date.now() - inferrerStart;
+          agentTimingsAccum.push({ name: 'lens.inferrer', durationMs: _inferrerDuration });
+          _traceEmitterLens?.({ type: "agent_end", name: "lens-inferrer", durationMs: _inferrerDuration, summary: result.lenses.length > 0 ? `Inferred ${result.lenses.length} lens(es)` : "lens-inferrer completed" });
 
           logger.verbose('Lenses inferred', {
             count: result.lenses.length,

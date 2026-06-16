@@ -2,14 +2,12 @@ import * as Sentry from '@sentry/bun';
 import { config } from 'dotenv';
 
 const environment = process.env.NODE_ENV;
-const dotenvPath =
-  environment === 'development'
-    ? '.env.development'
-    : environment === 'production'
-      ? '.env.production'
-      : environment === 'test'
-        ? '.env.test'
-        : '.env';
+const dotenvPathByEnv: Record<string, string> = {
+  development: '.env.development',
+  production: '.env.production',
+  test: '.env.test',
+};
+const dotenvPath = (environment && dotenvPathByEnv[environment]) ?? '.env';
 
 config({ path: dotenvPath });
 

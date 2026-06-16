@@ -153,14 +153,7 @@ export default function ConnectionActions({
 
   // Get message button label based on status
   const getMessageButtonLabel = () => {
-    switch (connectionStatus) {
-      case 'pending_sent':
-        return 'Pending';
-      case 'connected':
-        return 'Start a conversation';
-      default:
-        return 'Start a conversation';
-    }
+    return connectionStatus === 'pending_sent' ? 'Pending' : 'Start a conversation';
   };
 
   return (

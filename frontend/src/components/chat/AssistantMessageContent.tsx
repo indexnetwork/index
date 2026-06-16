@@ -194,8 +194,6 @@ export default function AssistantMessageContent({
 }: AssistantMessageContentProps) {
   const displayedContent = normalizeBlockquotes(mentionsToMarkdownLinks(content));
 
-  const showCursor = isStreaming;
-
   if (!displayedContent && isStreaming) {
     return <span className="inline-block w-2 h-4 bg-current animate-pulse" />;
   }
@@ -213,7 +211,7 @@ export default function AssistantMessageContent({
               className={cn(
                 "chat-markdown max-w-none",
                 isStreaming && "chat-markdown-streaming",
-                showCursor && isLast && "chat-markdown-typing",
+                isStreaming && isLast && "chat-markdown-typing",
               )}
             >
               <ReactMarkdown
