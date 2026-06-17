@@ -283,7 +283,8 @@ export default function Sidebar() {
           )}
         </div>
 
-        {pendingQuestionsCount > 0 && (
+        {/* Questions temporarily disabled — re-enable by restoring this condition. */}
+        {false && pendingQuestionsCount > 0 && (
           <div className="relative" ref={questionsRef}>
             <button
               type="button"
