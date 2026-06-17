@@ -33,26 +33,14 @@ export interface QuestionerPreset {
 }
 
 /**
- * Renders a "## User profile"-style block from the common profile fields shared
- * by every preset's context. `location` is only emitted when present, so this
- * serves the intent/negotiation shapes (no location) and the profile shape alike.
- * @param profile - The user profile subset carried by the mode context.
- * @returns The newline-joined profile lines, or "(no profile data)" when empty.
+ * Renders the user-context block shared by every preset's user message from the
+ * global user_context paragraph (the profile-replacing identity text).
+ * @param userContext - The user's global context paragraph, if available.
+ * @returns The trimmed context paragraph, or "(no profile data)" when empty.
  */
-function buildProfileBlock(profile: {
-  name?: string;
-  bio?: string;
-  location?: string;
-  skills?: string[];
-  interests?: string[];
-}): string {
-  const lines: string[] = [];
-  if (profile.name) lines.push(`Name: ${profile.name}`);
-  if (profile.bio) lines.push(`Bio: ${profile.bio}`);
-  if (profile.location) lines.push(`Location: ${profile.location}`);
-  if (profile.skills && profile.skills.length > 0) lines.push(`Skills: ${profile.skills.join(", ")}`);
-  if (profile.interests && profile.interests.length > 0) lines.push(`Interests: ${profile.interests.join(", ")}`);
-  return lines.length > 0 ? lines.join("\n") : "(no profile data)";
+function buildUserContextBlock(userContext?: string): string {
+  const trimmed = userContext?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : "(no profile data)";
 }
 
 // ─── Intent preset ──────────────────────────────────────────────────────────
@@ -94,7 +82,7 @@ Output. Return at most 2 entries in the "questions" array. Each entry must inclu
  * @returns The assembled user message string.
  */
 function buildIntentPrompt(ctx: IntentContext): string {
-  const profileBlock = buildProfileBlock(ctx.userProfile);
+  const profileBlock = buildUserContextBlock(ctx.userContext);
 
   const summaryBlock = ctx.summary ? ctx.summary : "(no summary available)";
 
@@ -158,7 +146,7 @@ Output. Return at most 2 entries in the "questions" array. Each entry must inclu
  * @returns The assembled user message string.
  */
 function buildProfilePrompt(ctx: ProfileContext): string {
-  const profileBlock = buildProfileBlock(ctx.userProfile);
+  const profileBlock = buildUserContextBlock(ctx.userContext);
 
   const premisesBlock =
     ctx.existingPremises && ctx.existingPremises.length > 0
@@ -229,7 +217,7 @@ Output. Return at most 2 entries in the "questions" array. Each entry must inclu
  * @returns The assembled user message string.
  */
 function buildNegotiationPrompt(ctx: NegotiationContext): string {
-  const profileBlock = buildProfileBlock(ctx.userProfile);
+  const profileBlock = buildUserContextBlock(ctx.userContext);
 
   return [
     "## Negotiation context",

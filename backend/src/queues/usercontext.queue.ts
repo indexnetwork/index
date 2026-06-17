@@ -1,11 +1,11 @@
 import { Job } from 'bullmq';
-import crypto from 'crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 
 import { UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
+import { computePremiseHash, type ContextPremise } from '../lib/usercontext/premise-hash';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import db from '../lib/drizzle/drizzle';
 import { networkMembers, networks } from '../schemas/database.schema';
@@ -24,12 +24,10 @@ export interface UserContextJobData {
   reason: 'profile_regen' | 'enrichment_complete' | 'network_membership' | 'backfill';
 }
 
-/** Minimal premise shape needed to synthesize contexts and compute the staleness hash. */
-export interface ContextPremise {
-  id: string;
-  updatedAt: Date;
-  assertion: { text: string };
-}
+// `ContextPremise` and `computePremiseHash` live in `../lib/usercontext/premise-hash`
+// (a side-effect-free module) so on-demand context generation can reuse the staleness
+// key without importing this queue module (which opens a Redis connection at import).
+export { computePremiseHash, type ContextPremise };
 
 /**
  * Optional dependencies for testing. Each is a thin wrapper over an adapter,
@@ -64,18 +62,6 @@ export interface UserContextQueueDeps {
   }) => Promise<{ id: string }>;
   /** Generate HyDE documents for a freshly upserted context. */
   generateContextHyde?: (params: { contextId: string; sourceText: string }) => Promise<void>;
-}
-
-/**
- * Deterministic short hash over a user's active premises. Used per-network as the
- * staleness key: a network whose stored context already carries this hash is skipped.
- */
-export function computePremiseHash(premises: ContextPremise[]): string {
-  return crypto
-    .createHash('sha256')
-    .update(premises.map((p) => `${p.id}:${p.updatedAt.toISOString()}`).sort().join('|'))
-    .digest('hex')
-    .slice(0, 16);
 }
 
 /**

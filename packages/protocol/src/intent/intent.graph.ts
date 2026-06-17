@@ -19,22 +19,6 @@ const MAX_PERMISSIBLE_ENTROPY = 0.75;
 const MIN_CLEAR_INTENT_SCORE = 40;
 const GENERIC_JOB_PHRASE = /\b(?:a|any|some)\s+job\b/i;
 
-type ParsedProfile = {
-  identity?: { bio?: string; name?: string; location?: string };
-  narrative?: { context?: string };
-  attributes?: { skills?: string[]; interests?: string[] };
-};
-
-const parseProfile = (profile: string): ParsedProfile | null => {
-  if (!profile || !profile.trim()) return null;
-  try {
-    const parsed = JSON.parse(profile) as ParsedProfile;
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-};
-
 const inferRoleFromProfileText = (text: string): string | null => {
   const normalized = text.toLowerCase();
   if (/\b(engineer|developer)\b/.test(normalized)) return "software engineering";
@@ -46,40 +30,17 @@ const inferRoleFromProfileText = (text: string): string | null => {
   return null;
 };
 
-const buildJobQualifierFromProfile = (profile: ParsedProfile | null): string | null => {
-  if (!profile) return null;
-
-  const skills = (profile.attributes?.skills ?? [])
-    .filter((skill): skill is string => typeof skill === "string" && skill.trim().length > 0)
-    .slice(0, 2);
-  const interests = (profile.attributes?.interests ?? [])
-    .filter((interest): interest is string => typeof interest === "string" && interest.trim().length > 0)
-    .slice(0, 1);
-
-  const profileText = [
-    profile.identity?.bio,
-    profile.narrative?.context,
-  ]
-    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    .join(" ");
-  const roleHint = inferRoleFromProfileText(profileText);
-
-  if (skills.length > 0 && roleHint) {
-    return `${skills.join(" / ")} ${roleHint} role`;
-  }
-  if (skills.length > 0) {
-    return `${skills.join(" / ")} role`;
-  }
-  if (interests.length > 0 && roleHint) {
-    return `${interests[0]} ${roleHint} role`;
-  }
-  if (roleHint) {
-    return `${roleHint} role`;
-  }
-  return null;
+/**
+ * Derive a job-role qualifier from the user's global user_context paragraph
+ * (profile-replacing identity text). Role is inferred from the free text; the
+ * old structured skills/interests extraction is gone with the profile fields.
+ */
+const buildJobQualifierFromContext = (contextText: string): string | null => {
+  const roleHint = inferRoleFromProfileText(contextText ?? "");
+  return roleHint ? `${roleHint} role` : null;
 };
 
-const enrichVagueIntentWithProfile = (description: string, profileContext: string): string => {
+const enrichVagueIntentWithProfile = (description: string, userContext: string): string => {
   const trimmed = description?.trim();
   if (!trimmed) return description;
 
@@ -88,8 +49,7 @@ const enrichVagueIntentWithProfile = (description: string, profileContext: strin
     /\b(?:find|get|look(?:ing)?\s+for|want)\s+(?:to\s+)?(?:find\s+)?job\b/i.test(trimmed);
   if (!isGenericJobRequest) return description;
 
-  const profile = parseProfile(profileContext);
-  const qualifier = buildJobQualifierFromProfile(profile);
+  const qualifier = buildJobQualifierFromContext(userContext);
   if (!qualifier) return description;
 
   const enriched = trimmed
@@ -279,7 +239,10 @@ export class IntentGraphFactory {
               _traceEmitterVerifier?.({ type: "agent_end", name: "intent-verifier", durationMs: Date.now() - verifierStart1, summary: `Verified: ${verdict.classification}` });
 
               if (isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity)) {
-                const enrichedDescription = enrichVagueIntentWithProfile(description, state.userProfile);
+                // Role-hint enrichment for vague job intents reads the global
+                // user_context paragraph instead of the structured profile fields.
+                const roleHintContext = (await this.database.getUserContext(state.userId, null))?.text ?? '';
+                const enrichedDescription = enrichVagueIntentWithProfile(description, roleHintContext);
                 if (enrichedDescription !== description) {
                   logger.verbose("Enriched vague intent using profile context", {
                     before: description,
@@ -608,7 +571,7 @@ export class IntentGraphFactory {
               );
 
               if (this.questionerEnqueue) {
-                const parsed = parseProfile(state.userProfile);
+                const userContext = (await this.database.getUserContext(state.userId, null))?.text ?? '';
                 this.questionerEnqueue({
                   mode: 'intent',
                   userId: state.userId,
@@ -617,12 +580,7 @@ export class IntentGraphFactory {
                   context: {
                     intentId: created.id,
                     payload: sanitizedPayload,
-                    userProfile: {
-                      name: parsed?.identity?.name,
-                      bio: parsed?.identity?.bio,
-                      skills: parsed?.attributes?.skills,
-                      interests: parsed?.attributes?.interests,
-                    },
+                    userContext,
                   },
                 }).catch((err) =>
                   logger.error('Failed to enqueue intent question generation', { intentId: created.id, error: err })

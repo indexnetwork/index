@@ -60,7 +60,11 @@ export interface DiscoverySummary {
   roleDistribution: Partial<Record<NegotiationRole, number>>;
 }
 
-/** The seeker's profile slice the generator sees. All fields optional. */
+/**
+ * The seeker's profile slice the generator used to see. Retained as an exported
+ * type for backward compatibility; the question prompt now consumes the global
+ * `userContext` paragraph instead of these discrete fields.
+ */
 export interface DiscoverySourceProfile {
   name?: string;
   bio?: string;
@@ -73,7 +77,8 @@ export interface DiscoverySourceProfile {
 export interface DiscoveryQuestionInput {
   /** The seeker's original natural-language query / signal that triggered discovery. */
   query: string;
-  sourceProfile: DiscoverySourceProfile;
+  /** The seeker's global user_context paragraph (profile-replacing identity text). */
+  userContext: string;
   /**
    * Compact per-negotiation digests from THIS discovery turn. Each digest is a
    * fixed-size structured summary (counterparty hint, index, outcome role,
@@ -139,7 +144,7 @@ Output. Return at most 3 entries in the "questions" array. Each entry must inclu
  * Pure builder: assembles the user message string from a structured input.
  */
 export function buildQuestionPrompt(input: DiscoveryQuestionInput): string {
-  const profileSummary = renderProfile(input.sourceProfile);
+  const profileSummary = input.userContext?.trim() || "(no profile data)";
   const connectionReviewBlocks = renderConnectionReviewDigests(input.negotiationDigests);
   const chatContextBlock = input.chatContext
     ? renderDigest(input.chatContext)
@@ -196,16 +201,6 @@ function renderConnectionReviewDigests(digests: DiscoveryNegotiationDigest[]): s
       ].join("\n");
     })
     .join("\n\n");
-}
-
-function renderProfile(p: DiscoverySourceProfile): string {
-  const lines: string[] = [];
-  if (p.name) lines.push(`Name: ${p.name}`);
-  if (p.bio) lines.push(`Bio: ${p.bio}`);
-  if (p.location) lines.push(`Location: ${p.location}`);
-  if (p.skills && p.skills.length > 0) lines.push(`Skills: ${p.skills.join(", ")}`);
-  if (p.interests && p.interests.length > 0) lines.push(`Interests: ${p.interests.join(", ")}`);
-  return lines.length > 0 ? lines.join("\n") : "(no profile data)";
 }
 
 function renderEngagementPattern(dist: Partial<Record<NegotiationRole, number>>): string {

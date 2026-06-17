@@ -238,6 +238,23 @@ function toHydeDocument(row: typeof hydeDocuments.$inferSelect): HydeDocumentRow
  * Database adapter for intent CRUD (Intent Graph).
  */
 export class IntentDatabaseAdapter {
+  /**
+   * Retrieve a single user_context row (global when networkId is null), or null.
+   * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the intent graph.
+   */
+  async getUserContext(userId: string, networkId: string | null) {
+    const rows = await db.select()
+      .from(userContexts)
+      .where(and(
+        eq(userContexts.userId, userId),
+        networkId === null ? isNull(userContexts.networkId) : eq(userContexts.networkId, networkId),
+      ))
+      .limit(1);
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
+  }
+
   async getActiveIntents(userId: string): Promise<ActiveIntentRow[]> {
     try {
       const result = await db.select({
@@ -4555,6 +4572,23 @@ export class ChatDatabaseAdapter {
  * Database adapter for Profile Graph.
  */
 export class ProfileDatabaseAdapter {
+  /**
+   * Retrieve a single user_context row (global when networkId is null), or null.
+   * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the profile graph.
+   */
+  async getUserContext(userId: string, networkId: string | null) {
+    const rows = await db.select()
+      .from(userContexts)
+      .where(and(
+        eq(userContexts.userId, userId),
+        networkId === null ? isNull(userContexts.networkId) : eq(userContexts.networkId, networkId),
+      ))
+      .limit(1);
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
+  }
+
   async getProfile(userId: string): Promise<ProfileRow | null> {
     const result = await db.select()
       .from(schema.userProfiles)
@@ -7387,6 +7421,23 @@ export interface ConversationSummary {
  * Uses Drizzle ORM against the `conversations` family of tables.
  */
 export class ConversationDatabaseAdapter {
+  /**
+   * Retrieve a single user_context row (global when networkId is null), or null.
+   * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the negotiation graph.
+   */
+  async getUserContext(userId: string, networkId: string | null) {
+    const rows = await db.select()
+      .from(userContexts)
+      .where(and(
+        eq(userContexts.userId, userId),
+        networkId === null ? isNull(userContexts.networkId) : eq(userContexts.networkId, networkId),
+      ))
+      .limit(1);
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Conversations
   // ─────────────────────────────────────────────────────────────────────────

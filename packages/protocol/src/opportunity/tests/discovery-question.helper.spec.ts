@@ -22,27 +22,17 @@ const summary: DiscoverySummary = {
 };
 
 describe("buildDiscoveryQuestionInput", () => {
-  it("maps query, source profile, negotiation digests, summary, and timestamp", () => {
+  it("maps query, user context, negotiation digests, summary, and timestamp", () => {
     const input = buildDiscoveryQuestionInput({
       query: "find AI cofounders",
-      sourceProfile: {
-        embedding: null,
-        identity: { name: "Eda", bio: "engineer", location: "NYC" },
-        attributes: { skills: ["ml"], interests: ["startups"] },
-      },
+      userContext: "Eda is an engineer in NYC, skilled in ml, interested in startups.",
       negotiationDigests: [digest],
       summary,
       chatContext: undefined,
       now: "2026-05-15T12:00:00.000Z",
     });
     expect(input.query).toBe("find AI cofounders");
-    expect(input.sourceProfile).toEqual({
-      name: "Eda",
-      bio: "engineer",
-      location: "NYC",
-      skills: ["ml"],
-      interests: ["startups"],
-    });
+    expect(input.userContext).toBe("Eda is an engineer in NYC, skilled in ml, interested in startups.");
     expect(input.negotiationDigests).toEqual([digest]);
     expect(input.summary).toEqual(summary);
     expect(input.now).toBe("2026-05-15T12:00:00.000Z");
@@ -58,7 +48,7 @@ describe("buildDiscoveryQuestionInput", () => {
     };
     const input = buildDiscoveryQuestionInput({
       query: "q",
-      sourceProfile: null,
+      userContext: "",
       negotiationDigests: [],
       summary,
       chatContext: ctx,
@@ -67,15 +57,15 @@ describe("buildDiscoveryQuestionInput", () => {
     expect(input.chatContext).toEqual(ctx);
   });
 
-  it("tolerates a null source profile", () => {
+  it("passes an empty user context through unchanged", () => {
     const input = buildDiscoveryQuestionInput({
       query: "q",
-      sourceProfile: null,
+      userContext: "",
       negotiationDigests: [],
       summary,
       chatContext: undefined,
       now: "2026-05-15T12:00:00.000Z",
     });
-    expect(input.sourceProfile).toEqual({});
+    expect(input.userContext).toBe("");
   });
 });

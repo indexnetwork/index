@@ -60,7 +60,7 @@ describe("getPreset", () => {
     const preset = getPreset("discovery");
     const result = preset.buildPrompt({
       query: "looking for ML engineers",
-      sourceProfile: { name: "Alice" },
+      userContext: "Alice is an AI researcher.",
       negotiationDigests: [],
       summary: {
         totalCandidates: 5,
@@ -98,7 +98,7 @@ describe("intent preset", () => {
     const result = preset.buildPrompt({
       intentId: "intent-1",
       payload: "I want to find a cofounder for my AI startup",
-      userProfile: { name: "Alice", bio: "AI researcher" },
+      userContext: "Alice is an AI researcher.",
     });
     expect(typeof result).toBe("string");
     expect(result).toContain("cofounder");
@@ -126,7 +126,7 @@ describe("profile preset", () => {
   it("profile buildPrompt produces a string containing the gaps", () => {
     const preset = getPreset("profile");
     const result = preset.buildPrompt({
-      userProfile: { name: "Bob", bio: "Engineer" },
+      userContext: "Bob is an engineer.",
       gaps: ["location", "current work"],
     });
     expect(typeof result).toBe("string");
@@ -138,7 +138,7 @@ describe("profile preset", () => {
   it("profile buildPrompt includes existing premises when provided", () => {
     const preset = getPreset("profile");
     const result = preset.buildPrompt({
-      userProfile: { name: "Bob", bio: "Engineer" },
+      userContext: "Bob is an engineer.",
       gaps: ["goals"],
       existingPremises: ["I live in Berlin", "I am a CTO at Acme Corp"],
     });
@@ -150,7 +150,7 @@ describe("profile preset", () => {
   it("profile buildPrompt shows (none) when existingPremises is empty", () => {
     const preset = getPreset("profile");
     const result = preset.buildPrompt({
-      userProfile: { name: "Bob" },
+      userContext: "Bob is an engineer.",
       gaps: ["location"],
       existingPremises: [],
     });
@@ -161,7 +161,7 @@ describe("profile preset", () => {
   it("profile buildPrompt shows (none) when existingPremises is absent", () => {
     const preset = getPreset("profile");
     const result = preset.buildPrompt({
-      userProfile: { name: "Bob" },
+      userContext: "Bob is an engineer.",
       gaps: ["location"],
     });
     expect(result).toContain("## Existing premises");
@@ -198,7 +198,7 @@ describe("negotiation preset", () => {
       indexContext: "AI founders community",
       outcomeReason: "turn_cap",
       keyTake: "Both interested but scope unclear",
-      userProfile: { name: "Alice" },
+      userContext: "Alice is a builder.",
     });
     expect(typeof result).toBe("string");
     expect(result).toContain("turn_cap");

@@ -4,6 +4,7 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
+import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { HydeGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, buildNetworkAssignmentDecision, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput } from '@indexnetwork/protocol';
 import { fromIntentQueue } from './opportunity/from-intent.queue';
@@ -39,6 +40,8 @@ export type IntentQueueDatabase = Pick<
  */
 export interface IntentQueueDeps {
   database?: IntentQueueDatabase;
+  /** Resolve the user's global user_context paragraph for HyDE enrichment (generate-if-empty). */
+  getUserContextText?: (userId: string) => Promise<string>;
   invokeHyde?: (opts: {
     sourceText: string;
     sourceType: string;
@@ -248,26 +251,19 @@ export class IntentQueue implements IntentGraphQueue {
     const { assignedNetworkIds } = await this.assignIntentToNetworks(intentId, userId, { networkScopeId });
     this.logger.info('[IntentHyde] Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
 
-    // Fetch discoverer profile + active intents for HyDE context (best-effort)
+    // Fetch discoverer global context + active intents for HyDE context (best-effort).
+    // The global user_context paragraph replaces the old identity/narrative/attributes
+    // flattening; it is generated on demand when the user has no stored row yet.
     let profileContext: string | undefined;
     try {
-      const [profile, activeIntents] = await Promise.all([
-        db.getProfile(userId),
+      const getUserContextText = this.deps?.getUserContextText ?? ensureGlobalUserContext;
+      const [userContext, activeIntents] = await Promise.all([
+        getUserContextText(userId),
         db.getActiveIntents(userId),
       ]);
       const lines: string[] = [];
-      if (profile) {
-        const identity = profile.identity;
-        const attrs = profile.attributes;
-        if (identity?.name || identity?.bio) {
-          lines.push(`Profile: ${[identity.name, identity.bio].filter(Boolean).join(', ')}`);
-        }
-        if (attrs?.skills?.length) {
-          lines.push(`Skills: ${attrs.skills.join(', ')}`);
-        }
-        if (attrs?.interests?.length) {
-          lines.push(`Interests: ${attrs.interests.join(', ')}`);
-        }
+      if (userContext) {
+        lines.push(userContext);
       }
       if (activeIntents?.length) {
         const capped = activeIntents.slice(0, 5);

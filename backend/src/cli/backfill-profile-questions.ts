@@ -28,6 +28,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { networkMembers, premises, questions, userProfiles, users } from '../schemas/database.schema';
 import { questionerQueue } from '../queues/questioner.queue';
+import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 
 // ---------------------------------------------------------------------------
 // Arg parsing
@@ -163,13 +164,7 @@ async function main(): Promise<void> {
       sourceType: 'profile',
       sourceId: row.userId,
       context: {
-        userProfile: {
-          name: row.identity?.name,
-          bio: row.identity?.bio,
-          location: row.identity?.location,
-          skills: row.attributes?.skills,
-          interests: row.attributes?.interests,
-        },
+        userContext: await ensureGlobalUserContext(row.userId),
         gaps,
         existingPremises,
       },

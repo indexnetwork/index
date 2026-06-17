@@ -42,6 +42,7 @@ function makeFakeDatabase(): DiscoverInput["database"] {
   return {
     getProfile: async () => null,
     getUser: async () => null,
+    getUserContext: async () => null,
     getOpportunity: async () => null,
     getOpportunitiesByIds: async () => [],
   } as unknown as DiscoverInput["database"];

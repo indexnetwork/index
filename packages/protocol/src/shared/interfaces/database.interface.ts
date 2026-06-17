@@ -2012,7 +2012,7 @@ export interface SystemDatabase {
  */
 export type ProfileGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser' | 'getUserContext'
 >;
 
 /**
@@ -2235,6 +2235,8 @@ export interface NegotiationQueries {
 export type NegotiationGraphDatabase = Pick<
   Database,
   | 'getOrCreateDM'
+  // Global user_context paragraph for questioner negotiation prompts
+  | 'getUserContext'
 > & NegotiationQueries & {
   /**
    * Update the status of an opportunity. Called from the negotiation graph to
@@ -2362,6 +2364,8 @@ export type IntentGraphDatabase = Pick<
   | 'getUser'
   // Profile check (prepNode gate for write operations)
   | 'getProfile'
+  // Global user_context paragraph for questioner intent prompts
+  | 'getUserContext'
   // Personal index auto-assignment
   | 'getPersonalIndexesForContact'
   | 'assignIntentToNetwork'

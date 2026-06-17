@@ -21,12 +21,14 @@ export interface IntentContext {
   intentId: string;
   payload: string;
   summary?: string;
-  userProfile: { name?: string; bio?: string; skills?: string[]; interests?: string[] };
+  /** The user's global user_context paragraph (profile-replacing identity text). */
+  userContext?: string;
 }
 
 /** Profile context — data needed to generate questions to fill profile gaps. */
 export interface ProfileContext {
-  userProfile: { name?: string; bio?: string; location?: string; skills?: string[]; interests?: string[] };
+  /** The user's global user_context paragraph (profile-replacing identity text). */
+  userContext?: string;
   gaps: string[];
   /** Existing premise texts the user has already stated (e.g. "I live in Berlin"). */
   existingPremises?: string[];
@@ -39,7 +41,8 @@ export interface NegotiationContext {
   indexContext: string;
   outcomeReason: "turn_cap" | "timeout" | "stalled";
   keyTake: string;
-  userProfile: { name?: string; bio?: string; skills?: string[]; interests?: string[] };
+  /** The user's global user_context paragraph (profile-replacing identity text). */
+  userContext?: string;
 }
 
 /** Discriminated union: mode selects the context shape. */

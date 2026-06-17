@@ -655,19 +655,14 @@ export class ProfileGraphFactory {
           if (!profile.narrative?.context) gaps.push('current work');
 
           if (gaps.length > 0 && this.questionerEnqueue) {
+            const userContext = (await this.database.getUserContext(state.userId, null))?.text ?? '';
             this.questionerEnqueue({
               mode: 'profile',
               userId: state.userId,
               sourceType: 'profile',
               sourceId: state.userId,
               context: {
-                userProfile: {
-                  name: profile.identity?.name,
-                  bio: profile.identity?.bio,
-                  location: profile.identity?.location,
-                  skills: profile.attributes?.skills,
-                  interests: profile.attributes?.interests,
-                },
+                userContext,
                 gaps,
                 existingPremises,
               },
