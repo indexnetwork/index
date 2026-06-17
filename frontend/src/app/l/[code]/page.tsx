@@ -147,7 +147,10 @@ export default function InvitationPage() {
   };
 
   const handleLogin = () => {
-    openLoginModal();
+    // Return to this invite page after magic-link / OAuth so the deferred join
+    // resolves; otherwise the default callback (origin) drops onboarded users on
+    // `/` and the pending invite is never accepted.
+    openLoginModal(window.location.href);
   };
 
   const renderInviteCard = (button: React.ReactNode) => (
