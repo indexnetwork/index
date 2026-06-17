@@ -24,10 +24,16 @@ export interface CompiledPremiseGraph {
     assertionText: string;
     tier: 'assertive' | 'contextual';
     operationMode: 'create';
+    /** Volatile premises auto-retract once their validity window lapses. */
+    volatile?: boolean;
+    /** ISO timestamp after which a contextual premise is no longer valid. */
+    validUntil?: string;
     provenanceSource?: PremiseProvenance['source'];
     provenanceSourceId?: string;
   }): Promise<{
     premise?: { id: string } | undefined;
+    /** Set when the create was skipped because a near-duplicate already exists. */
+    duplicateOf?: { premiseId: string; assertionText: string; similarity: number } | undefined;
     error?: string | undefined;
   }>;
 }
@@ -776,13 +782,23 @@ export class ProfileGraphFactory {
           });
 
           let created = 0;
+          let skippedDuplicates = 0;
           for (const p of result.premises) {
             try {
+              // Contextual premises carry an LLM-inferred validity window and are
+              // volatile (auto-retract on expiry); assertive premises do not expire.
+              const isContextual = p.tier === 'contextual';
+              const validUntil = isContextual && p.validityDays
+                ? new Date(Date.now() + p.validityDays * 24 * 60 * 60 * 1000).toISOString()
+                : undefined;
+
               const premiseResult = await invokeWithAbortSignal(this.premiseGraph, {
                 userId: state.userId,
                 assertionText: p.text,
                 tier: p.tier,
                 operationMode: 'create',
+                volatile: isContextual,
+                ...(validUntil ? { validUntil } : {}),
                 ...(state.activeSocialIds?.length
                   ? { provenanceSource: 'integration' as const, provenanceSourceId: state.activeSocialIds[0] }
                   : {}),
@@ -790,6 +806,8 @@ export class ProfileGraphFactory {
 
               if (premiseResult.premise) {
                 created++;
+              } else if (premiseResult.duplicateOf) {
+                skippedDuplicates++;
               } else if (premiseResult.error) {
                 logger.warn("Premise creation failed", {
                   text: p.text.substring(0, 60),
@@ -804,7 +822,7 @@ export class ProfileGraphFactory {
             }
           }
 
-          logger.verbose(`Created ${created}/${result.premises.length} premise(s)`, {
+          logger.verbose(`Created ${created}/${result.premises.length} premise(s) (${skippedDuplicates} skipped as near-duplicates)`, {
             userId: state.userId,
           });
 
