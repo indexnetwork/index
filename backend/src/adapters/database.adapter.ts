@@ -4207,6 +4207,48 @@ export class ChatDatabaseAdapter {
     return this.opportunityAdapter.searchPremisesBySimilarityBatch(params);
   }
 
+  /**
+   * Find the most-similar ACTIVE premise owned by the same user whose cosine
+   * similarity to `embedding` meets or exceeds `threshold`. Powers near-duplicate
+   * skipping on premise create. Returns null when nothing clears the threshold.
+   *
+   * @param params.userId - Owner whose premises are searched.
+   * @param params.embedding - Query embedding for the candidate premise.
+   * @param params.threshold - Minimum cosine similarity (0-1) to treat as a duplicate.
+   * @returns The nearest qualifying premise, or null.
+   */
+  async findSimilarActivePremise(params: {
+    userId: string;
+    embedding: number[];
+    threshold: number;
+  }): Promise<{ premiseId: string; assertionText: string; similarity: number } | null> {
+    const { userId, embedding, threshold } = params;
+    if (!embedding.length) return null;
+    const vectorStr = `[${embedding.join(',')}]`;
+    const rows = await db.execute<{
+      premiseId: string;
+      assertionText: string;
+      similarity: number;
+    }>(sql`
+      SELECT
+        p.id AS "premiseId",
+        p.assertion->>'text' AS "assertionText",
+        1 - (p.embedding <=> ${vectorStr}::vector) AS similarity
+      FROM ${schema.premises} p
+      WHERE p.user_id = ${userId}
+        AND p.status = 'ACTIVE'
+        AND p.embedding IS NOT NULL
+        AND p.deleted_at IS NULL
+      ORDER BY p.embedding <=> ${vectorStr}::vector
+      LIMIT 1
+    `);
+    const top = rows[0];
+    if (!top) return null;
+    const similarity = Number(top.similarity);
+    if (!Number.isFinite(similarity) || similarity < threshold) return null;
+    return { premiseId: top.premiseId, assertionText: top.assertionText, similarity };
+  }
+
   async updatePremise(premiseId: string, updates: {
     assertion?: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
     analysis?: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number };

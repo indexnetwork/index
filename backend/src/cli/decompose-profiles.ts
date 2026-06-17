@@ -153,16 +153,27 @@ async function main(): Promise<void> {
     }
 
     let created = 0;
+    let skippedDuplicates = 0;
     for (const p of result.premises) {
       try {
+        // Mirror decomposePremisesNode: contextual premises carry an LLM-inferred
+        // validity window and are volatile; assertive premises do not expire.
+        const isContextual = p.tier === 'contextual';
+        const validUntil = isContextual && p.validityDays
+          ? new Date(Date.now() + p.validityDays * 24 * 60 * 60 * 1000).toISOString()
+          : undefined;
+
         const premiseResult = await premiseGraph.invoke({
           userId: row.userId,
           assertionText: p.text,
           tier: p.tier as 'assertive' | 'contextual',
+          volatile: isContextual,
+          ...(validUntil ? { validUntil } : {}),
           provenanceSource: 'enrichment' as const,
           provenanceConfidence: ENRICHMENT_CONFIDENCE,
         });
         if (premiseResult.premise) created++;
+        else if (premiseResult.duplicateOf) skippedDuplicates++;
         else if (premiseResult.error) {
           console.warn(`    Failed: ${p.text.substring(0, 60)} — ${premiseResult.error}`);
         }
@@ -171,7 +182,7 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log(`  [${row.userId}] Created ${created}/${result.premises.length} premises`);
+    console.log(`  [${row.userId}] Created ${created}/${result.premises.length} premises (${skippedDuplicates} skipped as near-duplicates)`);
 
     // Enqueue profile regen (deduplicated by userId)
     await premiseQueue.addProfileRegenJob({ userId: row.userId, trigger: 'premise_created' });

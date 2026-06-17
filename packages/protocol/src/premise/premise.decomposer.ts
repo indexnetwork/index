@@ -36,12 +36,23 @@ DECOMPOSITION RULES
 1. Extract every distinct factual claim about the person
 2. Convert third-person ("She works at...") to first-person ("I work at...")
 3. Separate compound statements: "I know Python and Rust" → two premises
-4. Classify each premise:
-   - \`assertive\` — stable identity facts (role, skills, education, location)
+4. Capture the FULL breadth of self-description, not just job/title. In particular,
+   do not drop:
+   - **Skills & expertise** ("I specialize in distributed systems", "I know Rust")
+   - **Interests & focus areas** ("I am interested in AI safety", "I care about climate")
+   - **Background/narrative context** (education, prior roles, domains, affiliations)
+   These map to what a profile would store as interests/skills/context — every such
+   fact must surface as its own premise so nothing is lost.
+5. Classify each premise:
+   - \`assertive\` — stable identity facts (role, skills, interests, education, location)
    - \`contextual\` — temporal/situational (current projects, events, fundraising status)
-5. Skip vague or uninformative statements ("I like stuff", "I'm a person")
-6. Skip desires, requests, or intents ("I'm looking for...", "I want to...") — those are intents, not premises
-7. If the input contains NO extractable premises (e.g. just "Yes" or "Hello"), return an empty array
+6. For \`contextual\` premises, estimate \`validityDays\` — how many days the fact is
+   likely to remain true from now (e.g. "speaking next week" → ~7, "raising a Series A"
+   → ~120, "currently building X" → ~180). Use null for \`assertive\` premises, which
+   have no natural expiry.
+7. Skip vague or uninformative statements ("I like stuff", "I'm a person")
+8. Skip desires, requests, or intents ("I'm looking for...", "I want to...") — those are intents, not premises
+9. If the input contains NO extractable premises (e.g. just "Yes" or "Hello"), return an empty array
 
 ═══════════════════════════════════════════════════
 EXAMPLES
@@ -49,18 +60,18 @@ EXAMPLES
 
 Input: "I'm a climate tech founder based in Berlin. I have a PhD in renewable energy systems and I'm currently raising Series A."
 Output:
-  1. "I am a climate tech founder" (assertive)
-  2. "I am based in Berlin" (assertive)
-  3. "I hold a PhD in renewable energy systems" (assertive)
-  4. "I am currently raising Series A" (contextual)
+  1. "I am a climate tech founder" (assertive, validityDays: null)
+  2. "I am based in Berlin" (assertive, validityDays: null)
+  3. "I hold a PhD in renewable energy systems" (assertive, validityDays: null)
+  4. "I am currently raising Series A" (contextual, validityDays: 120)
 
 Input: "John Doe is a senior ML engineer at Meta in Menlo Park. He has 8 years of experience in NLP and computer vision."
 Output:
-  1. "I am a senior ML engineer" (assertive)
-  2. "I work at Meta" (assertive)
-  3. "I am based in Menlo Park" (assertive)
-  4. "I have 8 years of experience in NLP" (assertive)
-  5. "I have experience in computer vision" (assertive)
+  1. "I am a senior ML engineer" (assertive, validityDays: null)
+  2. "I work at Meta" (assertive, validityDays: null)
+  3. "I am based in Menlo Park" (assertive, validityDays: null)
+  4. "I have 8 years of experience in NLP" (assertive, validityDays: null)
+  5. "I have experience in computer vision" (assertive, validityDays: null)
 
 Input: "Yes, create my profile"
 Output: [] (empty — no premises)
@@ -70,6 +81,9 @@ const premiseItemSchema = z.object({
   text: z.string().describe("The premise text in first person (e.g. 'I am a software engineer at Google')"),
   tier: z.enum(["assertive", "contextual"]).describe(
     "assertive = stable identity fact; contextual = temporal/situational"
+  ),
+  validityDays: z.number().int().positive().nullable().describe(
+    "For contextual premises: estimated days the fact remains true from now (its validity window). null for assertive premises, which do not expire."
   ),
 });
 

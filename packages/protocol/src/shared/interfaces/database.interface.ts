@@ -1543,6 +1543,20 @@ export interface Database {
     similarity: number;
   }>>;
 
+  /**
+   * Find the single most-similar ACTIVE premise belonging to the SAME user whose
+   * cosine similarity to `embedding` meets or exceeds `threshold`. Used by the
+   * premise graph to skip near-duplicate premises on create. Returns null when no
+   * active premise clears the threshold (or the user has none with an embedding).
+   * Optional so older/test adapters can omit it — the premise graph skips dedup
+   * when it is unavailable.
+   */
+  findSimilarActivePremise?(params: {
+    userId: string;
+    embedding: number[];
+    threshold: number;
+  }): Promise<{ premiseId: string; assertionText: string; similarity: number } | null>;
+
   // ─── User Context Methods ───
 
   /**
@@ -2009,7 +2023,7 @@ export type ProfileGraphDatabase = Pick<
  */
 export type PremiseGraphDatabase = Pick<
   Database,
-  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getAssignmentNetworkIdsForUser' | 'getNetworkAssignmentContext' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext'
+  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getAssignmentNetworkIdsForUser' | 'getNetworkAssignmentContext' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext' | 'findSimilarActivePremise'
 >;
 
 /**

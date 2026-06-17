@@ -15,6 +15,31 @@ import type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
 const logger = protocolLogger("PremiseGraphFactory");
 
 /**
+ * Minimum cosine similarity (0-1) at which a freshly-decomposed premise is treated
+ * as a near-duplicate of an existing ACTIVE premise for the same user and skipped
+ * on create. Tuned high so genuine paraphrases collapse while distinct facts (e.g.
+ * "I work at Google" vs "I worked at Google") still persist. Override with
+ * PREMISE_DEDUP_SIMILARITY.
+ */
+const DEDUP_SIMILARITY_THRESHOLD = (() => {
+  const raw = Number(process.env.PREMISE_DEDUP_SIMILARITY);
+  return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : 0.93;
+})();
+
+/**
+ * Derive a premise provenance confidence (0-1) from the analyzer's felicity scores.
+ * Averages authority, sincerity, and clarity — the dimensions that speak to how
+ * trustworthy the self-assertion is. Falls back to 1.0 when no analysis is present.
+ */
+function deriveProvenanceConfidence(analysis: PremiseAnalysis | undefined): number {
+  if (!analysis) return 1.0;
+  const { felicityAuthority, felicitySincerity, felicityClarity } = analysis;
+  const mean = (felicityAuthority + felicitySincerity + felicityClarity) / 3;
+  if (!Number.isFinite(mean)) return 1.0;
+  return Math.min(1, Math.max(0, mean));
+}
+
+/**
  * Graph factory for premise lifecycle: create, update, and query modes.
  */
 export class PremiseGraphFactory {
@@ -89,6 +114,36 @@ export class PremiseGraphFactory {
       });
     };
 
+    // ─────────────────────────────────────────────────────────
+    // NODE: Dedupe (create mode only)
+    // Skips persisting a near-duplicate of an existing ACTIVE premise for the same
+    // user. Re-running similar input (e.g. repeated enrichment) therefore does not
+    // accumulate near-identical premises. No-op for update mode, when no embedding
+    // is available, or when the adapter does not implement findSimilarActivePremise.
+    // ─────────────────────────────────────────────────────────
+    const dedupeNode = async (state: typeof PremiseGraphState.State) => {
+      return timed("PremiseGraph.dedupe", async () => {
+        if (state.error) return {};
+        if (state.operationMode === 'update') return {};
+        if (!state.embedding || state.embedding.length === 0) return {};
+        if (typeof this.database.findSimilarActivePremise !== 'function') return {};
+
+        const match = await this.database.findSimilarActivePremise({
+          userId: state.userId,
+          embedding: state.embedding,
+          threshold: DEDUP_SIMILARITY_THRESHOLD,
+        });
+
+        if (match) {
+          logger.verbose(
+            `[PremiseGraph.dedupe] Skipping near-duplicate (similarity=${match.similarity.toFixed(3)} >= ${DEDUP_SIMILARITY_THRESHOLD}) of premise ${match.premiseId}`,
+          );
+          return { duplicateOf: match };
+        }
+        return {};
+      });
+    };
+
     const persistNode = async (state: typeof PremiseGraphState.State) => {
       return timed("PremiseGraph.persist", async () => {
         if (state.error) return {};
@@ -118,6 +173,11 @@ export class PremiseGraphFactory {
 
         logger.verbose(`[PremiseGraph.persist] Creating new premise for user ${state.userId}`);
 
+        // Provenance confidence: prefer an explicit caller-supplied value; otherwise
+        // derive it from the analyzer's felicity scores (how authoritative, sincere,
+        // and clear the assertion is) rather than a blanket 1.0, so the stored
+        // provenance reflects per-premise signal quality.
+        const derivedConfidence = deriveProvenanceConfidence(state.analysis);
         const premise = await this.database.createPremise({
           userId: state.userId,
           assertion: {
@@ -127,7 +187,7 @@ export class PremiseGraphFactory {
           provenance: {
             source: state.provenanceSource ?? 'explicit',
             sourceId: state.provenanceSourceId,
-            confidence: state.provenanceConfidence ?? 1.0,
+            confidence: state.provenanceConfidence ?? derivedConfidence,
             timestamp: new Date().toISOString(),
           },
           analysis: state.analysis ?? undefined,
@@ -226,6 +286,7 @@ export class PremiseGraphFactory {
       .addNode("query", queryNode)
       .addNode("analyze", analyzeNode)
       .addNode("embed", embedNode)
+      .addNode("dedupe", dedupeNode)
       .addNode("persist", persistNode)
       .addNode("index", indexNode)
       .addConditionalEdges(START, routeByMode, {
@@ -235,7 +296,12 @@ export class PremiseGraphFactory {
       })
       .addEdge("query", END)
       .addEdge("analyze", "embed")
-      .addEdge("embed", "persist")
+      .addEdge("embed", "dedupe")
+      // A near-duplicate short-circuits straight to END (no persist, no index).
+      .addConditionalEdges("dedupe", (state: typeof PremiseGraphState.State) => (state.duplicateOf ? "end" : "persist"), {
+        persist: "persist",
+        end: END,
+      })
       .addEdge("persist", "index")
       .addEdge("index", END);
 

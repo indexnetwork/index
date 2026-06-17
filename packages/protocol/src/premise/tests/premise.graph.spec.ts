@@ -152,6 +152,58 @@ describe("PremiseGraphFactory", () => {
     expect(assignments).toEqual(["active-network"]);
   }, 60_000);
 
+  it("skips persisting a near-duplicate premise on create", async () => {
+    const db = {
+      ...createMockDatabase(),
+      findSimilarActivePremise: async () => ({
+        premiseId: "existing-1",
+        assertionText: "I am a climate-tech founder based in Berlin",
+        similarity: 0.97,
+      }),
+    };
+    const createSpy: string[] = [];
+    db.createPremise = (async (input: { assertion: { text: string } }) => {
+      createSpy.push(input.assertion.text);
+      throw new Error("createPremise should not be called for a near-duplicate");
+    }) as never;
+
+    const factory = new PremiseGraphFactory(db, createMockEmbedder());
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({
+      userId: "user-dup",
+      assertionText: "I'm a climate tech founder located in Berlin",
+      tier: "assertive" as const,
+      volatile: false,
+    });
+
+    expect(result.premise).toBeUndefined();
+    expect(result.duplicateOf).toBeDefined();
+    expect(result.duplicateOf!.premiseId).toBe("existing-1");
+    expect(result.error).toBeUndefined();
+    expect(createSpy).toEqual([]);
+  }, 60_000);
+
+  it("persists when no near-duplicate exists (dedup miss)", async () => {
+    const db = {
+      ...createMockDatabase(),
+      findSimilarActivePremise: async () => null,
+    };
+    const factory = new PremiseGraphFactory(db, createMockEmbedder());
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({
+      userId: "user-nodup",
+      assertionText: "I lead developer relations at a robotics startup",
+      tier: "assertive" as const,
+      volatile: false,
+    });
+
+    expect(result.duplicateOf).toBeUndefined();
+    expect(result.premise).toBeDefined();
+    expect(result.premise!.assertion.text).toBe("I lead developer relations at a robotics startup");
+  }, 60_000);
+
   it("returns premises in query mode without LLM calls", async () => {
     const db = createMockDatabase();
     const embedder = createMockEmbedder();

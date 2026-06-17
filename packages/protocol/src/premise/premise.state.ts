@@ -75,6 +75,14 @@ export const PremiseGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
+  // Set by the dedupe node when a near-duplicate ACTIVE premise already exists for
+  // the user (create mode only). When present, persist/index are skipped — the
+  // candidate is treated as already represented by `duplicateOf`.
+  duplicateOf: Annotation<{ premiseId: string; assertionText: string; similarity: number } | undefined>({
+    reducer: (curr, next) => next,
+    default: () => undefined,
+  }),
+
   networkAssignments: Annotation<Array<{ networkId: string; relevancyScore: number }>>({
     reducer: (curr, next) => next,
     default: () => [],
