@@ -33,7 +33,8 @@ export class ProfileService {
    * Invokes the profile graph to create or update the user's profile.
    * 
    * @param userId - The user ID
-   * @returns Graph execution result with profile data
+   * @returns Graph execution result with profile data, plus a flat `intro` field
+   *   sourced from `users.intro` (the canonical identity bio home).
    */
   async syncProfile(userId: string): Promise<Record<string, unknown>> {
     logger.verbose('[ProfileService] Syncing profile', { userId });
@@ -41,7 +42,11 @@ export class ProfileService {
     const graph = this.factory.createGraph();
     const result = await graph.invoke({ userId });
 
-    return result;
+    // The profile graph persists the identity bio to `users.intro`. Surface it as a
+    // flat field so callers (e.g. the frontend intro display) read the canonical
+    // users-table value instead of the soon-to-be-removed `profile.identity.bio`.
+    const user = await this.db.getUser(userId);
+    return { ...result, intro: user?.intro ?? null };
   }
 
   /**
