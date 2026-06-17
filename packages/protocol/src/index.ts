@@ -74,7 +74,7 @@ export { PremiseGraphFactory } from "./premise/premise.graph.js";
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
 export { UserContextGenerator } from "./context/context.generator.js";
-export type { UserContextInput, IncrementalContextInput, UserContextResult } from "./context/context.generator.js";
+export type { UserContextInput, IncrementalContextInput, UserContextResult, GlobalContextInput, GlobalIncrementalContextInput } from "./context/context.generator.js";
 export { ChatTitleGenerator } from "./chat/chat.title.generator.js";
 export { ChatInterruptClassifier } from "./chat/chat.interrupt.classifier.js";
 export type { ClassifyInterruptInput } from "./chat/chat.interrupt.classifier.js";

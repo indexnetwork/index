@@ -40,20 +40,24 @@ export interface UserContextQueueDeps {
   getUserNetworkIds?: (userId: string) => Promise<string[]>;
   /** The user's ACTIVE premises (id, updatedAt, assertion text). */
   getActivePremises?: (userId: string) => Promise<ContextPremise[]>;
-  /** Existing context for a user+network, for the premiseHash short-circuit. */
-  getExistingContext?: (userId: string, networkId: string) => Promise<{ premiseHash: string } | null>;
+  /** Existing context for a user+network (or null networkId = global), for the premiseHash short-circuit. */
+  getExistingContext?: (userId: string, networkId: string | null) => Promise<{ premiseHash: string } | null>;
   /** Network title + prompt used to steer context synthesis. */
   getNetwork?: (networkId: string) => Promise<{ title: string; prompt: string | null } | null>;
-  /** Synthesize a context paragraph + embedding from premises. */
+  /** Synthesize a network-scoped context paragraph + embedding from premises. */
   generateContext?: (input: {
     premises: Array<{ text: string }>;
     networkPrompt: string | null;
     networkTitle: string;
   }) => Promise<{ text: string; embedding: number[] }>;
-  /** Upsert the context row, returning its id. */
+  /** Synthesize the global (network-agnostic) context paragraph + embedding from premises. */
+  generateGlobalContext?: (input: {
+    premises: Array<{ text: string }>;
+  }) => Promise<{ text: string; embedding: number[] }>;
+  /** Upsert the context row, returning its id. `networkId` null = the global row. */
   upsertUserContext?: (params: {
     userId: string;
-    networkId: string;
+    networkId: string | null;
     text: string;
     embedding: number[];
     premiseHash: string;
@@ -168,32 +172,37 @@ export class UserContextQueue {
     const getExistingContext = this.deps?.getExistingContext ?? this.defaultGetExistingContext.bind(this);
     const getNetwork = this.deps?.getNetwork ?? this.defaultGetNetwork.bind(this);
     const generateContext = this.deps?.generateContext ?? this.defaultGenerateContext.bind(this);
+    const generateGlobalContext = this.deps?.generateGlobalContext ?? this.defaultGenerateGlobalContext.bind(this);
     const upsertUserContext = this.deps?.upsertUserContext ?? chatDatabaseAdapter.upsertUserContext.bind(chatDatabaseAdapter);
     const generateContextHyde = this.deps?.generateContextHyde ?? this.defaultGenerateContextHyde.bind(this);
 
-    const networkIds = await getUserNetworkIds(userId);
     const allPremises = await getActivePremises(userId);
-    if (!allPremises?.length || networkIds.length === 0) return;
+    if (!allPremises?.length) return;
 
     const premiseTexts = allPremises.map((p) => ({ text: p.assertion.text })).filter((p) => p.text.length > 0);
     if (premiseTexts.length === 0) return;
 
     const premiseHash = computePremiseHash(allPremises);
+    const networkIds = await getUserNetworkIds(userId);
 
     let failures = 0;
-    for (const networkId of networkIds) {
+
+    /**
+     * Regenerate a single context row (global when networkId is null, else per-network)
+     * if its stored premiseHash is stale. `generate` returns null to skip without
+     * counting a failure (e.g. a network that no longer exists). Failures are recorded
+     * and isolated so other rows still process; the job throws at the end so BullMQ retries.
+     */
+    const regenerateOne = async (
+      networkId: string | null,
+      generate: () => Promise<{ text: string; embedding: number[] } | null>,
+    ): Promise<void> => {
       try {
         const existing = await getExistingContext(userId, networkId);
-        if (existing && existing.premiseHash === premiseHash) continue;
+        if (existing && existing.premiseHash === premiseHash) return;
 
-        const network = await getNetwork(networkId);
-        if (!network) continue;
-
-        const result = await generateContext({
-          premises: premiseTexts,
-          networkPrompt: network.prompt,
-          networkTitle: network.title,
-        });
+        const result = await generate();
+        if (!result) return;
 
         const upserted = await upsertUserContext({
           userId,
@@ -207,8 +216,8 @@ export class UserContextQueue {
         // hypothetical-document embeddings rather than raw paragraph vectors. The
         // context row (with its new premiseHash) is already committed above, so on a
         // HyDE failure we roll the staleness key back to '' — otherwise a retry / the
-        // next trigger would short-circuit this network as "fresh" while its HyDE docs
-        // are stale. Then rethrow so the network counts as failed.
+        // next trigger would short-circuit this row as "fresh" while its HyDE docs
+        // are stale. Then rethrow so the row counts as failed.
         try {
           await generateContextHyde({ contextId: upserted.id, sourceText: result.text });
           this.logger.verbose('Generated context HyDE documents', { userId, networkId, contextId: upserted.id });
@@ -219,18 +228,36 @@ export class UserContextQueue {
 
         this.logger.verbose('Generated user context', { userId, networkId });
       } catch (err) {
-        // Isolate the failure to this network (others still get processed), but record
-        // it so the job fails at the end and BullMQ retries. premiseHash for a failed
-        // network is either un-advanced (generate/upsert failure) or rolled back (HyDE
-        // failure), so the retry regenerates it rather than short-circuiting.
+        // Isolate the failure to this row (others still get processed), but record it so
+        // the job fails at the end and BullMQ retries. premiseHash for a failed row is
+        // either un-advanced (generate/upsert failure) or rolled back (HyDE failure), so
+        // the retry regenerates it rather than short-circuiting.
         this.logger.error('Failed to regenerate user context', { userId, networkId, error: err });
         failures += 1;
       }
+    };
+
+    // Global row (networkId = null): the profile-replacing projection. Always generated
+    // from active premises, even when the user belongs to no non-personal networks.
+    await regenerateOne(null, () => generateGlobalContext({ premises: premiseTexts }));
+
+    // Per-network rows.
+    for (const networkId of networkIds) {
+      await regenerateOne(networkId, async () => {
+        const network = await getNetwork(networkId);
+        if (!network) return null;
+        return generateContext({
+          premises: premiseTexts,
+          networkPrompt: network.prompt,
+          networkTitle: network.title,
+        });
+      });
     }
 
     if (failures > 0) {
+      const total = networkIds.length + 1; // + global row
       throw new Error(
-        `UserContext regeneration failed for ${failures}/${networkIds.length} network(s) for user ${userId}; failing job so BullMQ retries`,
+        `UserContext regeneration failed for ${failures}/${total} row(s) for user ${userId}; failing job so BullMQ retries`,
       );
     }
   }
@@ -260,8 +287,8 @@ export class UserContextQueue {
     return premises.map((p) => ({ id: p.id, updatedAt: p.updatedAt, assertion: { text: p.assertion.text } }));
   }
 
-  /** Existing context's premiseHash (or null) for the short-circuit. */
-  private async defaultGetExistingContext(userId: string, networkId: string): Promise<{ premiseHash: string } | null> {
+  /** Existing context's premiseHash (or null) for the short-circuit. `networkId` null = global row. */
+  private async defaultGetExistingContext(userId: string, networkId: string | null): Promise<{ premiseHash: string } | null> {
     const existing = await chatDatabaseAdapter.getUserContext(userId, networkId);
     return existing ? { premiseHash: existing.premiseHash } : null;
   }
@@ -273,7 +300,7 @@ export class UserContextQueue {
     return { title: network.title, prompt: network.prompt ?? null };
   }
 
-  /** Synthesize a context paragraph + embedding via the protocol generator. */
+  /** Synthesize a network-scoped context paragraph + embedding via the protocol generator. */
   private async defaultGenerateContext(input: {
     premises: Array<{ text: string }>;
     networkPrompt: string | null;
@@ -281,6 +308,14 @@ export class UserContextQueue {
   }): Promise<{ text: string; embedding: number[] }> {
     this.generator ??= new UserContextGenerator(embedderAdapter);
     return this.generator.generateColdStart(input);
+  }
+
+  /** Synthesize the global (network-agnostic) context paragraph + embedding via the protocol generator. */
+  private async defaultGenerateGlobalContext(input: {
+    premises: Array<{ text: string }>;
+  }): Promise<{ text: string; embedding: number[] }> {
+    this.generator ??= new UserContextGenerator(embedderAdapter);
+    return this.generator.generateGlobalColdStart(input);
   }
 
   /** Run the HyDE graph for a freshly upserted context. */
