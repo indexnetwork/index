@@ -14,6 +14,30 @@ const logger = log.job.from('GlobalUserContext');
 let generator: UserContextGenerator | undefined;
 
 /**
+ * Injectable seams for {@link ensureGlobalUserContext}. Each defaults to the
+ * production adapter/generator; tests override them to exercise the branches
+ * without a live DB or LLM. Mirrors the `UserContextQueueDeps` pattern.
+ */
+export interface EnsureGlobalUserContextDeps {
+  /** Read the stored global context row (networkId null) for the staleness short-circuit. */
+  getExistingContext?: (userId: string) => Promise<{ text: string } | null>;
+  /** The user's ACTIVE premises (id, updatedAt, assertion text). */
+  getActivePremises?: (userId: string) => Promise<ContextPremise[]>;
+  /** Synthesize the global (network-agnostic) context paragraph + embedding from premises. */
+  generateGlobalContext?: (input: {
+    premises: Array<{ text: string }>;
+  }) => Promise<{ text: string; embedding: number[] }>;
+  /** Upsert the global context row. */
+  upsertUserContext?: (params: {
+    userId: string;
+    networkId: string | null;
+    text: string;
+    embedding: number[];
+    premiseHash: string;
+  }) => Promise<{ id: string }>;
+}
+
+/**
  * Return the user's **global** `user_context` paragraph (the profile-replacing identity
  * text, `networkId = null`), generating and persisting it on demand when absent.
  *
@@ -32,28 +56,43 @@ let generator: UserContextGenerator | undefined;
  * callers (best-effort prompt enrichment) degrade gracefully rather than throw.
  *
  * @param userId - The user whose global context is needed.
+ * @param deps - Optional injectable seams (defaults bind to the production adapters).
  * @returns The global context paragraph, or `''` when none exists and none can be built.
  */
-export async function ensureGlobalUserContext(userId: string): Promise<string> {
+export async function ensureGlobalUserContext(
+  userId: string,
+  deps?: EnsureGlobalUserContextDeps,
+): Promise<string> {
+  const getExistingContext =
+    deps?.getExistingContext ?? ((id: string) => chatDatabaseAdapter.getUserContext(id, null));
+  const getActivePremises =
+    deps?.getActivePremises ??
+    (async (id: string): Promise<ContextPremise[]> => {
+      const premises = await chatDatabaseAdapter.getPremisesForUser(id, 'ACTIVE');
+      return premises.map((p) => ({ id: p.id, updatedAt: p.updatedAt, assertion: { text: p.assertion.text } }));
+    });
+  const generateGlobalContext =
+    deps?.generateGlobalContext ??
+    ((input: { premises: Array<{ text: string }> }) => {
+      generator ??= new UserContextGenerator(embedderAdapter);
+      return generator.generateGlobalColdStart(input);
+    });
+  const upsertUserContext =
+    deps?.upsertUserContext ?? chatDatabaseAdapter.upsertUserContext.bind(chatDatabaseAdapter);
+
   try {
-    const existing = await chatDatabaseAdapter.getUserContext(userId, null);
+    const existing = await getExistingContext(userId);
     if (existing?.text) return existing.text;
 
-    const premises = await chatDatabaseAdapter.getPremisesForUser(userId, 'ACTIVE');
-    const contextPremises: ContextPremise[] = premises.map((p) => ({
-      id: p.id,
-      updatedAt: p.updatedAt,
-      assertion: { text: p.assertion.text },
-    }));
+    const contextPremises = await getActivePremises(userId);
     const premiseTexts = contextPremises
       .map((p) => ({ text: p.assertion.text }))
       .filter((p) => p.text.length > 0);
     if (premiseTexts.length === 0) return '';
 
-    generator ??= new UserContextGenerator(embedderAdapter);
-    const { text, embedding } = await generator.generateGlobalColdStart({ premises: premiseTexts });
+    const { text, embedding } = await generateGlobalContext({ premises: premiseTexts });
 
-    await chatDatabaseAdapter.upsertUserContext({
+    await upsertUserContext({
       userId,
       networkId: null,
       text,
