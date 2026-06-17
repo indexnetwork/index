@@ -1,0 +1,855 @@
+{
+  "generatedAt": "2026-06-16T17:14:34.977Z",
+  "model": "google/gemini-2.5-flash",
+  "runs": 3,
+  "aggregatePassRate": 0.7916666666666666,
+  "rules": [
+    {
+      "rule": "viewer_voice",
+      "caseCount": 2,
+      "passRate": 1
+    },
+    {
+      "rule": "no_leakage",
+      "caseCount": 1,
+      "passRate": 1
+    },
+    {
+      "rule": "greeting",
+      "caseCount": 1,
+      "passRate": 0
+    },
+    {
+      "rule": "grounding",
+      "caseCount": 1,
+      "passRate": 1
+    },
+    {
+      "rule": "introducer_role",
+      "caseCount": 2,
+      "passRate": 0.8333333333333333
+    },
+    {
+      "rule": "tone",
+      "caseCount": 1,
+      "passRate": 0.6666666666666666
+    }
+  ],
+  "cases": [
+    {
+      "caseId": "viewer_voice/founder-investor",
+      "rule": "viewer_voice",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "grounding",
+              "passed": true,
+              "detail": "judge: grounded in context"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "grounding",
+              "passed": true,
+              "detail": "judge: grounded in context"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "grounding",
+              "passed": true,
+              "detail": "judge: grounded in context"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "no_leakage/identifiers-in-context",
+      "rule": "no_leakage",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "greeting/plain-prose",
+      "rule": "greeting",
+      "runs": 3,
+      "passes": 0,
+      "passRate": 0,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "greeting_format",
+              "passed": false,
+              "detail": "greeting has markdown or a 'Hey Name,' prefix"
+            },
+            {
+              "kind": "greeting_length",
+              "passed": true,
+              "detail": "greeting is 209 chars (max 500)"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "greeting_format",
+              "passed": false,
+              "detail": "greeting has markdown or a 'Hey Name,' prefix"
+            },
+            {
+              "kind": "greeting_length",
+              "passed": true,
+              "detail": "greeting is 223 chars (max 500)"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "greeting_format",
+              "passed": false,
+              "detail": "greeting has markdown or a 'Hey Name,' prefix"
+            },
+            {
+              "kind": "greeting_length",
+              "passed": true,
+              "detail": "greeting is 223 chars (max 500)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "grounding/specific-intents",
+      "rule": "grounding",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "grounding",
+              "passed": true,
+              "detail": "judge: grounded in context"
+            },
+            {
+              "kind": "tone",
+              "passed": true,
+              "detail": "judge: tone good"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "grounding",
+              "passed": true,
+              "detail": "judge: grounded in context"
+            },
+            {
+              "kind": "tone",
+              "passed": true,
+              "detail": "judge: tone good"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "grounding",
+              "passed": true,
+              "detail": "judge: grounded in context"
+            },
+            {
+              "kind": "tone",
+              "passed": true,
+              "detail": "judge: tone good"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "introducer_role/connecting-two-others",
+      "rule": "introducer_role",
+      "runs": 3,
+      "passes": 2,
+      "passRate": 0.6666666666666666,
+      "flaky": true,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "framing",
+              "passed": true,
+              "detail": "judge: framing correct"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "framing",
+              "passed": false,
+              "detail": "judge: framing wrong"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "framing",
+              "passed": true,
+              "detail": "judge: framing correct"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "introducer_role/explicit-introduction",
+      "rule": "introducer_role",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "framing",
+              "passed": true,
+              "detail": "judge: framing correct"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "framing",
+              "passed": true,
+              "detail": "judge: framing correct"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "framing",
+              "passed": true,
+              "detail": "judge: framing correct"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "tone/compelling-not-analytical",
+      "rule": "tone",
+      "runs": 3,
+      "passes": 2,
+      "passRate": 0.6666666666666666,
+      "flaky": true,
+      "runResults": [
+        {
+          "passed": false,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "tone",
+              "passed": false,
+              "detail": "judge: tone off"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "tone",
+              "passed": true,
+              "detail": "judge: tone good"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "tone",
+              "passed": true,
+              "detail": "judge: tone good"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "viewer_voice/patient-role",
+      "rule": "viewer_voice",
+      "runs": 3,
+      "passes": 3,
+      "passRate": 1,
+      "flaky": false,
+      "runResults": [
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "grounding",
+              "passed": true,
+              "detail": "judge: grounded in context"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "grounding",
+              "passed": true,
+              "detail": "judge: grounded in context"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "assertions": [
+            {
+              "kind": "non_empty",
+              "passed": true,
+              "detail": "headline, summary, and suggested action must be non-empty"
+            },
+            {
+              "kind": "voice",
+              "passed": true,
+              "detail": "summary speaks to the viewer"
+            },
+            {
+              "kind": "uuid",
+              "passed": true,
+              "detail": "no UUIDs in user-facing copy"
+            },
+            {
+              "kind": "label",
+              "passed": true,
+              "detail": "no internal labels in user-facing copy"
+            },
+            {
+              "kind": "grounding",
+              "passed": true,
+              "detail": "judge: grounded in context"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

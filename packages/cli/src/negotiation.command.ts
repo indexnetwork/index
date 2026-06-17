@@ -138,6 +138,14 @@ function roleLabel(role?: string): string {
   }
 }
 
+function actionColorFor(action?: string): string {
+  switch (action) {
+    case "accept": return GREEN;
+    case "reject": return output.RED;
+    default: return BLUE;
+  }
+}
+
 /**
  * Print a table of negotiations.
  */
@@ -208,7 +216,7 @@ function negotiationCard(n: Negotiation): void {
         minute: "2-digit",
         second: "2-digit",
       });
-      const actionColor = t.action === "accept" ? GREEN : t.action === "reject" ? output.RED : BLUE;
+      const actionColor = actionColorFor(t.action);
 
       console.log(`  ${DIM}Turn ${i + 1}${RESET}  ${CYAN}${t.speaker?.name ?? "?"}${RESET}  ${actionColor}${t.action}${RESET}  ${GRAY}${time}${RESET}`);
 

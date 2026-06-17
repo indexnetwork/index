@@ -7,17 +7,11 @@ export interface ClassConfig {
   windowSec: number;
 }
 
-const intEnv = (name: string, fallback: number): number => {
+export const intEnv = (name: string, fallback: number): number => {
   const raw = process.env[name];
   if (!raw) return fallback;
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : fallback;
-};
-
-export const CLASS_CONFIG: Record<LimiterClass, ClassConfig> = {
-  auth_write: { perMinute: intEnv('LIMITER_AUTH_WRITE_PER_MIN', 100), windowSec: 60 },
-  read:       { perMinute: intEnv('LIMITER_READ_PER_MIN', 1200),      windowSec: 60 },
-  write:      { perMinute: intEnv('LIMITER_WRITE_PER_MIN', 600),      windowSec: 60 },
 };
 
 const CLASS_ENV: Record<LimiterClass, { envVar: string; fallback: number }> = {
@@ -36,6 +30,16 @@ export function resolveClassConfig(cls: LimiterClass): ClassConfig {
   const { envVar, fallback } = CLASS_ENV[cls];
   return { perMinute: intEnv(envVar, fallback), windowSec: 60 };
 }
+
+/**
+ * Static snapshot of every class config, captured at module load.
+ * Use {@link resolveClassConfig} when runtime env overrides must take effect.
+ */
+export const CLASS_CONFIG: Record<LimiterClass, ClassConfig> = {
+  auth_write: resolveClassConfig('auth_write'),
+  read:       resolveClassConfig('read'),
+  write:      resolveClassConfig('write'),
+};
 
 export function isLimiterDisabled(): boolean {
   return process.env.LIMITER_DISABLE === '1';

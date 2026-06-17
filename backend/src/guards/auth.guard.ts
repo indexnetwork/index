@@ -19,6 +19,13 @@ const JWKS = createRemoteJWKSet(
   new URL('/api/auth/jwks', BASE_URL)
 );
 
+/** SHA-256 hash a raw API key into the base64url form stored in `apikeys.key`. */
+async function hashApiKey(apiKey: string): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(apiKey));
+  return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 /**
  * AuthGuard: Verifies JWT tokens statelessly via the local JWKS endpoint.
  * Expects `Authorization: Bearer <jwt>` header.
@@ -54,9 +61,7 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
   const apiKey = req.headers.get('x-api-key');
   if (!apiKey) return null;
 
-  const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(apiKey));
-  const hashed = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const hashed = await hashApiKey(apiKey);
 
   const [row] = await db
     .select({ metadata: apikeys.metadata })
@@ -95,9 +100,7 @@ export const AuthOrApiKeyGuard = async (req: Request): Promise<AuthenticatedUser
     throw new Error('Access token or API key required');
   }
 
-  const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(apiKey));
-  const hashed = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const hashed = await hashApiKey(apiKey);
 
   const [row] = await db
     .select({

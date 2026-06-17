@@ -439,15 +439,16 @@ export class AgentService {
 
   private sanitizeAgent(agent: AgentWithRelations, viewerId?: string): AgentWithRelations {
     const isOwner = viewerId === undefined || agent.ownerId === viewerId;
+    // Owners of non-system agents see every permission; everyone else (and any
+    // viewer of a system agent) sees only their own permission rows.
+    const keepAllPermissions = agent.type !== 'system' && isOwner;
 
     return {
       ...agent,
       transports: agent.transports.map((transport) => this.sanitizeTransport(transport)),
-      permissions: agent.type === 'system'
-        ? agent.permissions.filter((permission) => permission.userId === viewerId)
-        : isOwner
-          ? agent.permissions
-          : agent.permissions.filter((permission) => permission.userId === viewerId),
+      permissions: keepAllPermissions
+        ? agent.permissions
+        : agent.permissions.filter((permission) => permission.userId === viewerId),
     };
   }
 

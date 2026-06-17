@@ -170,10 +170,11 @@ export class EnrichmentQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<EnrichmentJobPayload>) => {
+      const { userId, networkId, reason } = job.data as EnsureProfileHydeData;
       this.queueLogger.info(`[EnrichmentProcessor] Processing job ${job.id} (${job.name})`, {
-        userId: (job.data as EnsureProfileHydeData).userId,
-        networkId: (job.data as EnsureProfileHydeData).networkId,
-        reason: (job.data as EnsureProfileHydeData).reason,
+        userId,
+        networkId,
+        reason,
       });
       await this.processJob(job.name, job.data);
     };

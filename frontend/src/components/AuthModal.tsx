@@ -44,6 +44,8 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
   if (!isOpen) return null;
 
   const hasGoogle = socialProviders.includes('google');
+  const resolvedCallbackURL =
+    callbackURL ?? (typeof window !== 'undefined' ? window.location.origin : '/');
 
   const resetForm = () => {
     setEmail('');
@@ -62,7 +64,7 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
     try {
       const { error: magicLinkError } = await authClient.signIn.magicLink({
         email,
-        callbackURL: callbackURL ?? (typeof window !== 'undefined' ? window.location.origin : '/'),
+        callbackURL: resolvedCallbackURL,
       });
       if (magicLinkError) {
         setError(magicLinkError.message || 'Failed to send sign-in link');
@@ -117,7 +119,7 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
     try {
       await authClient.signIn.social({
         provider: 'google',
-        callbackURL: callbackURL ?? (typeof window !== 'undefined' ? window.location.origin : '/'),
+        callbackURL: resolvedCallbackURL,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign in failed');

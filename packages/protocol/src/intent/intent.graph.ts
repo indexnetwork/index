@@ -508,6 +508,35 @@ export class IntentGraphFactory {
     };
 
     /**
+     * Generate a flat embedding for an intent payload, swallowing failures so
+     * persistence can continue without an embedding. `intentId` is logging-only
+     * (present for updates, absent for creates).
+     */
+    const generateIntentEmbedding = async (
+      sanitizedPayload: string,
+      intentId?: string,
+    ): Promise<number[] | undefined> => {
+      if (!this.embedder) return undefined;
+      try {
+        const embedding = await this.embedder.generate(sanitizedPayload, undefined, getAbortSignalConfig());
+        const flatEmbedding = Array.isArray(embedding?.[0])
+          ? (embedding as number[][])[0]
+          : (embedding as number[]);
+        logger.verbose("Generated embedding for intent", {
+          ...(intentId ? { intentId } : {}),
+          dimensions: flatEmbedding?.length,
+        });
+        return flatEmbedding;
+      } catch (embErr) {
+        logger.error("Failed to generate embedding for intent (continuing without)", {
+          ...(intentId ? { intentId } : {}),
+          error: embErr,
+        });
+        return undefined;
+      }
+    };
+
+    /**
      * Node 4: Executor
      * Executes reconciler actions against the database.
      */
@@ -543,18 +572,7 @@ export class IntentGraphFactory {
                 verifiedIntentByPayload.get(sanitizedPayload);
 
               // Generate embedding for the intent payload
-              let flatEmbedding: number[] | undefined;
-              if (this.embedder) {
-                try {
-                  const embedding = await this.embedder.generate(sanitizedPayload, undefined, getAbortSignalConfig());
-                  flatEmbedding = Array.isArray(embedding?.[0])
-                    ? (embedding as number[][])[0]
-                    : (embedding as number[]);
-                  logger.verbose("Generated embedding for new intent", { dimensions: flatEmbedding?.length });
-                } catch (embErr) {
-                  logger.error("Failed to generate embedding for intent (continuing without)", { error: embErr });
-                }
-              }
+              const flatEmbedding = await generateIntentEmbedding(sanitizedPayload);
 
               const created = await this.database.createIntent({
                 userId: state.userId,
@@ -623,18 +641,7 @@ export class IntentGraphFactory {
                 verifiedIntentByPayload.get(sanitizedPayload);
 
               // Regenerate embedding for the updated payload
-              let flatEmbedding: number[] | undefined;
-              if (this.embedder) {
-                try {
-                  const embedding = await this.embedder.generate(sanitizedPayload, undefined, getAbortSignalConfig());
-                  flatEmbedding = Array.isArray(embedding?.[0])
-                    ? (embedding as number[][])[0]
-                    : (embedding as number[]);
-                  logger.verbose("Generated embedding for updated intent", { intentId: updateAction.id, dimensions: flatEmbedding?.length });
-                } catch (embErr) {
-                  logger.error("Failed to generate embedding for intent update (continuing without)", { error: embErr });
-                }
-              }
+              const flatEmbedding = await generateIntentEmbedding(sanitizedPayload, updateAction.id);
 
               const updated = await this.database.updateIntent(updateAction.id, {
                 payload: sanitizedPayload,

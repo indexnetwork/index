@@ -9,7 +9,7 @@ import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../chat/chat-streaming.types.js";
 import { renderNetworkContext } from "../../shared/network/metadata.renderer.js";
 
-import { IntentNetworkGraphState, type IntentForIndexing, type IndexMemberContext, type AssignmentResult } from "./indexer.state.js";
+import { IntentNetworkGraphState, type AssignmentResult } from "./indexer.state.js";
 
 const logger = protocolLogger("IntentNetworkGraphFactory");
 

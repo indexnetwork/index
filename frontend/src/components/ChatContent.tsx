@@ -413,6 +413,19 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     }
   }, [sessionId, sessionIdFromUrl, navigate]);
 
+  // Drop an opportunity from the home view sections, removing now-empty sections.
+  const removeOpportunityFromHomeView = useCallback((opportunityId: string) => {
+    setHomeViewData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        sections: prev.sections
+          .map((s) => ({ ...s, items: s.items.filter((i) => i.opportunityId !== opportunityId) }))
+          .filter((s) => s.items.length > 0),
+      };
+    });
+  }, []);
+
   const handleHomeOpportunityAction = useCallback(
     async (
       opportunityId: string,
@@ -451,15 +464,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         try {
           const result = await opportunitiesService.updateStatus(opportunityId, "accepted");
           setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
-          setHomeViewData((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              sections: prev.sections
-                .map((s) => ({ ...s, items: s.items.filter((i) => i.opportunityId !== opportunityId) }))
-                .filter((s) => s.items.length > 0),
-            };
-          });
+          removeOpportunityFromHomeView(opportunityId);
           const counterpartUserId = result.counterpartUserId ?? fallbackUserId;
           if (counterpartUserId) {
             navigate(`/u/${counterpartUserId}/chat`, { state: { prefill: finalMessage, autoSend: true } });
@@ -479,15 +484,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         try {
           const result = await opportunitiesService.startChat(opportunityId);
           setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
-          setHomeViewData((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              sections: prev.sections
-                .map((s) => ({ ...s, items: s.items.filter((i) => i.opportunityId !== opportunityId) }))
-                .filter((s) => s.items.length > 0),
-            };
-          });
+          removeOpportunityFromHomeView(opportunityId);
           refreshConversations();
           // Always route to the h2h chat page (`/u/:peer/chat` renders `ChatView`).
           // `/chat/:id` routes to the A2A NegotiationDetailPage and does not show
@@ -515,15 +512,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           );
         }
 
-        setHomeViewData((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            sections: prev.sections
-              .map((s) => ({ ...s, items: s.items.filter((i) => i.opportunityId !== opportunityId) }))
-              .filter((s) => s.items.length > 0),
-          };
-        });
+        removeOpportunityFromHomeView(opportunityId);
 
         // For rejected accepted non-introducer (shouldn't happen but just in case)
         const counterpartUserId = result.counterpartUserId ?? fallbackUserId;
@@ -536,7 +525,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }
     },
-    [opportunitiesService, navigate, showError, showSuccess, refreshConversations],
+    [opportunitiesService, navigate, showError, showSuccess, refreshConversations, removeOpportunityFromHomeView],
   );
 
   /**

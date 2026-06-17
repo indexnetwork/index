@@ -12,6 +12,16 @@ import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 
 const logger = protocolLogger("NegotiationGraph");
 
+/** Extracts the ordered NegotiationTurn list from A2A message data parts. */
+function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {
+  return messages
+    .map((m) => {
+      const dataPart = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === "data");
+      return dataPart?.data as NegotiationTurn;
+    })
+    .filter(Boolean);
+}
+
 /**
  * Factory for the bilateral negotiation LangGraph state machine.
  * @remarks Accepts an AgentDispatcher for per-turn agent resolution.
@@ -59,12 +69,7 @@ export class NegotiationGraphFactory {
         }
 
         // --- Load prior messages and determine continuation ---
-        const priorTurns: NegotiationTurn[] = priorMessages
-          .map((m) => {
-            const dataPart = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === 'data');
-            return dataPart?.data as NegotiationTurn;
-          })
-          .filter(Boolean);
+        const priorTurns: NegotiationTurn[] = turnsFromMessages(priorMessages);
 
         const isContinuation = priorTurns.length > 0;
 
@@ -150,10 +155,7 @@ export class NegotiationGraphFactory {
       traceEmitter?.({ type: "agent_start", name: agentName });
 
       try {
-        const history: NegotiationTurn[] = state.messages.map((m) => {
-          const dataPart = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === "data");
-          return dataPart?.data as NegotiationTurn;
-        }).filter(Boolean);
+        const history: NegotiationTurn[] = turnsFromMessages(state.messages);
 
         const isSource = state.currentSpeaker === "source";
         const ownUser = isSource ? state.sourceUser : state.candidateUser;
@@ -310,10 +312,7 @@ export class NegotiationGraphFactory {
         return {};
       }
 
-      const history: NegotiationTurn[] = state.messages.map((m) => {
-        const dataPart = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === "data");
-        return dataPart?.data as NegotiationTurn;
-      }).filter(Boolean);
+      const history: NegotiationTurn[] = turnsFromMessages(state.messages);
 
       const lastTurn = state.lastTurn;
       const hasOpportunity = lastTurn?.action === "accept";
@@ -602,14 +601,7 @@ export async function negotiateCandidates(
           : null;
 
         if (onCandidateResolved) {
-          const turnHistory: NegotiationTurn[] = (result.messages ?? [])
-            .map((m) => {
-              const dataPart = (m.parts as Array<{ kind?: string; data?: unknown }>)?.find(
-                (p) => p.kind === "data",
-              );
-              return dataPart?.data as NegotiationTurn | undefined;
-            })
-            .filter((t): t is NegotiationTurn => !!t);
+          const turnHistory: NegotiationTurn[] = turnsFromMessages(result.messages ?? []);
           const resolvedOutcome: NegotiationOutcome = result.outcome ?? {
             hasOpportunity: false,
             agreedRoles: [],

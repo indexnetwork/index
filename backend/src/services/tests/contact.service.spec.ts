@@ -30,6 +30,18 @@ const createdUserIds: string[] = [];
 let svc: ContactService;
 
 /**
+ * Helper: build the WHERE predicate matching a user's contact-permission
+ * membership row in the owner's personal index.
+ */
+function contactMembershipQuery(userId: string) {
+  return and(
+    eq(networkMembers.networkId, personalIndexId),
+    eq(networkMembers.userId, userId),
+    sql`'contact' = ANY(${networkMembers.permissions})`,
+  );
+}
+
+/**
  * Helper: create a user and personal index for testing.
  */
 async function createTestUser(id: string, email: string, name: string): Promise<string> {
@@ -105,13 +117,7 @@ describe('addContact', () => {
     const [membership] = await db
       .select()
       .from(networkMembers)
-      .where(
-        and(
-          eq(networkMembers.networkId, personalIndexId),
-          eq(networkMembers.userId, existingUserId),
-          sql`'contact' = ANY(${networkMembers.permissions})`,
-        )
-      );
+      .where(contactMembershipQuery(existingUserId));
     expect(membership).toBeDefined();
     expect(membership.deletedAt).toBeNull();
   }, 60_000);
@@ -135,13 +141,7 @@ describe('addContact', () => {
     const [membership] = await db
       .select()
       .from(networkMembers)
-      .where(
-        and(
-          eq(networkMembers.networkId, personalIndexId),
-          eq(networkMembers.userId, result.userId),
-          sql`'contact' = ANY(${networkMembers.permissions})`,
-        )
-      );
+      .where(contactMembershipQuery(result.userId));
     expect(membership).toBeDefined();
   }, 60_000);
 
@@ -155,13 +155,7 @@ describe('addContact', () => {
     await db
       .update(networkMembers)
       .set({ deletedAt: new Date() })
-      .where(
-        and(
-          eq(networkMembers.networkId, personalIndexId),
-          eq(networkMembers.userId, first.userId),
-          sql`'contact' = ANY(${networkMembers.permissions})`,
-        )
-      );
+      .where(contactMembershipQuery(first.userId));
 
     // Try adding again with restore=false (default)
     const second = await svc.addContact(ownerId, softEmail, { restore: false });
@@ -172,13 +166,7 @@ describe('addContact', () => {
     const [membership] = await db
       .select({ deletedAt: networkMembers.deletedAt })
       .from(networkMembers)
-      .where(
-        and(
-          eq(networkMembers.networkId, personalIndexId),
-          eq(networkMembers.userId, first.userId),
-          sql`'contact' = ANY(${networkMembers.permissions})`,
-        )
-      );
+      .where(contactMembershipQuery(first.userId));
     expect(membership.deletedAt).not.toBeNull();
   }, 60_000);
 
@@ -192,13 +180,7 @@ describe('addContact', () => {
     await db
       .update(networkMembers)
       .set({ deletedAt: new Date() })
-      .where(
-        and(
-          eq(networkMembers.networkId, personalIndexId),
-          eq(networkMembers.userId, first.userId),
-          sql`'contact' = ANY(${networkMembers.permissions})`,
-        )
-      );
+      .where(contactMembershipQuery(first.userId));
 
     // Restore
     const second = await svc.addContact(ownerId, restoreEmail, { restore: true });
@@ -208,13 +190,7 @@ describe('addContact', () => {
     const [membership] = await db
       .select({ deletedAt: networkMembers.deletedAt })
       .from(networkMembers)
-      .where(
-        and(
-          eq(networkMembers.networkId, personalIndexId),
-          eq(networkMembers.userId, first.userId),
-          sql`'contact' = ANY(${networkMembers.permissions})`,
-        )
-      );
+      .where(contactMembershipQuery(first.userId));
     expect(membership.deletedAt).toBeNull();
   }, 60_000);
 
@@ -270,13 +246,7 @@ describe('removeContact', () => {
     const beforeRows = await db
       .select()
       .from(networkMembers)
-      .where(
-        and(
-          eq(networkMembers.networkId, personalIndexId),
-          eq(networkMembers.userId, addResult.userId),
-          sql`'contact' = ANY(${networkMembers.permissions})`,
-        )
-      );
+      .where(contactMembershipQuery(addResult.userId));
     expect(beforeRows.length).toBe(1);
 
     // Remove
@@ -286,13 +256,7 @@ describe('removeContact', () => {
     const afterRows = await db
       .select()
       .from(networkMembers)
-      .where(
-        and(
-          eq(networkMembers.networkId, personalIndexId),
-          eq(networkMembers.userId, addResult.userId),
-          sql`'contact' = ANY(${networkMembers.permissions})`,
-        )
-      );
+      .where(contactMembershipQuery(addResult.userId));
     expect(afterRows.length).toBe(0);
   }, 60_000);
 });
@@ -320,13 +284,7 @@ describe('listContacts', () => {
     await db
       .update(networkMembers)
       .set({ deletedAt: new Date() })
-      .where(
-        and(
-          eq(networkMembers.networkId, personalIndexId),
-          eq(networkMembers.userId, added.userId),
-          sql`'contact' = ANY(${networkMembers.permissions})`,
-        )
-      );
+      .where(contactMembershipQuery(added.userId));
 
     const contacts = await svc.listContacts(ownerId);
     const found = contacts.find(c => c.userId === added.userId);

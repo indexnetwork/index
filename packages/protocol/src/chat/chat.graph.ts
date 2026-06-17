@@ -111,16 +111,9 @@ export class ChatGraphFactory {
         return [];
       }
 
-      // Convert database messages to LangChain format
-      const langchainMessages = messages.map((msg) => {
-        if (msg.role === "user") {
-          return new HumanMessage(msg.content);
-        } else if (msg.role === "assistant") {
-          return new HumanMessage(msg.content); // Using HumanMessage to avoid circular dependency
-        } else {
-          return new HumanMessage(msg.content);
-        }
-      });
+      // Convert database messages to LangChain format.
+      // All roles map to HumanMessage to avoid circular dependency.
+      const langchainMessages = messages.map((msg) => new HumanMessage(msg.content));
 
       // Truncate to fit within token limits
       const truncatedMessages = truncateToTokenLimit(langchainMessages, MAX_CONTEXT_TOKENS);

@@ -84,9 +84,9 @@ export class FromIntentQueue {
 
   private async handleDiscover(data: FromIntentJobData): Promise<void> {
     const { intentId, userId, networkIds } = data;
-    const db = this.deps?.database ?? this.database;
-
-    const intent = await db.getIntentForIndexing(intentId);
+    // `this.database` is already `deps?.database ?? new ChatDatabaseAdapter()` and
+    // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
+    const intent = await this.database.getIntentForIndexing(intentId);
     if (!intent) {
       this.logger.warn('[FromIntent] Intent not found, skipping', { intentId });
       return;

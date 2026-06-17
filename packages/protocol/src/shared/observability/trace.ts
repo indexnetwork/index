@@ -87,6 +87,26 @@ export async function traceAgent<T>(
 }
 
 /**
+ * Builds a method decorator that wraps the decorated async method in the given
+ * trace wrapper (`traceGraph` / `traceAgent` / `tracePhase`). Uses the legacy
+ * decorator shape already adopted by `@Timed()`.
+ */
+function traceDecorator(
+  wrap: <T>(name: string, fn: () => Promise<T>) => Promise<T>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): (name: string) => (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void {
+  return (name: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function (_target: any, _propertyKey: string, descriptor: PropertyDescriptor) {
+      const original = descriptor.value;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      descriptor.value = function (this: any, ...args: any[]) {
+        return wrap(name, () => original.apply(this, args));
+      };
+    };
+}
+
+/**
  * Method decorator. Wraps the decorated async method in `traceGraph(name, ...)`.
  * Use on class methods that represent a logical "graph" (a sub-flow with
  * internal agent calls).
@@ -97,17 +117,7 @@ export async function traceAgent<T>(
  *   async run() { ... }
  * }
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function TraceGraph(name: string): (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return function (_target: any, _propertyKey: string, descriptor: PropertyDescriptor) {
-    const original = descriptor.value;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    descriptor.value = function (this: any, ...args: any[]) {
-      return traceGraph(name, () => original.apply(this, args));
-    };
-  };
-}
+export const TraceGraph = traceDecorator(traceGraph);
 
 /**
  * Method decorator. Wraps the decorated async method in `traceAgent(name, ...)`.
@@ -120,17 +130,7 @@ export function TraceGraph(name: string): (target: any, propertyKey: string, des
  *   async run() { ... }
  * }
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function TraceAgent(name: string): (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return function (_target: any, _propertyKey: string, descriptor: PropertyDescriptor) {
-    const original = descriptor.value;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    descriptor.value = function (this: any, ...args: any[]) {
-      return traceAgent(name, () => original.apply(this, args));
-    };
-  };
-}
+export const TraceAgent = traceDecorator(traceAgent);
 
 /**
  * Method decorator. Wraps the decorated async method in `tracePhase(name, ...)`.
@@ -142,14 +142,4 @@ export function TraceAgent(name: string): (target: any, propertyKey: string, des
  *   async run() { ... }
  * }
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function TracePhase(name: string): (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return function (_target: any, _propertyKey: string, descriptor: PropertyDescriptor) {
-    const original = descriptor.value;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    descriptor.value = function (this: any, ...args: any[]) {
-      return tracePhase(name, () => original.apply(this, args));
-    };
-  };
-}
+export const TracePhase = traceDecorator(tracePhase);

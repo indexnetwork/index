@@ -74,6 +74,24 @@ describe("resolveChatContext", () => {
     expect(ctx.userEmail).toBe("test@example.com");
   });
 
+  test("propagates contactsEnabled onto the resolved context (true)", async () => {
+    const db = createContextDatabase();
+    const ctx = await resolveChatContext({ database: db, userId, contactsEnabled: true });
+    expect(ctx.contactsEnabled).toBe(true);
+  });
+
+  test("propagates contactsEnabled onto the resolved context (false)", async () => {
+    const db = createContextDatabase();
+    const ctx = await resolveChatContext({ database: db, userId, contactsEnabled: false });
+    expect(ctx.contactsEnabled).toBe(false);
+  });
+
+  test("leaves contactsEnabled undefined when not provided (fail-closed at consumers)", async () => {
+    const db = createContextDatabase();
+    const ctx = await resolveChatContext({ database: db, userId });
+    expect(ctx.contactsEnabled).toBeUndefined();
+  });
+
   test("clamps indexScope to [scopedIndex, personalIndex] when networkId is provided", async () => {
     const personalIndexId = "00000000-0000-0000-0000-000000000099";
     const otherIndexId = "00000000-0000-0000-0000-000000000088";

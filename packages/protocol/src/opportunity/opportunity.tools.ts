@@ -939,14 +939,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const viewerRole = viewerIsParty ? "party" : "introducer";
         const isCounterpartGhost = counterpartUser?.isGhost ?? false;
         const primaryActionLabel = getPrimaryActionLabel(viewerRole);
+        const narratorText = narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined);
         const narratorChip = viewerIsParty
           ? {
               name: "Index",
-              text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
+              text: narratorText,
             }
           : {
               name: "You",
-              text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
+              text: narratorText,
               userId: context.userId,
             };
 

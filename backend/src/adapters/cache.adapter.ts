@@ -36,29 +36,32 @@ const logger = log.lib.from("cache.adapter");
 let redis: Redis | null = null;
 
 /**
+ * Build a Redis client from REDIS_URL when set, otherwise from the individual
+ * REDIS_HOST/PORT/PASSWORD/DB env vars. `lazyConnect` defers the connection
+ * until first use (used by the shared singleton).
+ */
+function buildRedisClient(lazyConnect: boolean): Redis {
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    return new Redis(redisUrl, { maxRetriesPerRequest: 3, lazyConnect });
+  }
+  return new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD,
+    db: parseInt(process.env.REDIS_DB || '0'),
+    maxRetriesPerRequest: 3,
+    lazyConnect,
+  });
+}
+
+/**
  * Get the shared Redis client for general caching/operations.
  * Uses lazyConnect for efficiency in the main client.
  */
 export function getRedisClient(): Redis {
   if (!redis) {
-    // Use REDIS_URL if available, otherwise fall back to individual env vars
-    const redisUrl = process.env.REDIS_URL;
-
-    if (redisUrl) {
-      redis = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
-        lazyConnect: true
-      });
-    } else {
-      redis = new Redis({
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: process.env.REDIS_PASSWORD,
-        db: parseInt(process.env.REDIS_DB || '0'),
-        maxRetriesPerRequest: 3,
-        lazyConnect: true
-      });
-    }
+    redis = buildRedisClient(true);
 
     redis.on('error', (err: Error) => {
       logger.error('Redis error', { error: err.message });
@@ -82,19 +85,7 @@ export { isRedisConfigured } from '../lib/redis-env';
  * Uses the same connection config as the shared client but without lazyConnect.
  */
 export function createRedisClient(): Redis {
-  const redisUrl = process.env.REDIS_URL;
-  let client: Redis;
-  if (redisUrl) {
-    client = new Redis(redisUrl, { maxRetriesPerRequest: 3 });
-  } else {
-    client = new Redis({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
-      db: parseInt(process.env.REDIS_DB || '0'),
-      maxRetriesPerRequest: 3,
-    });
-  }
+  const client = buildRedisClient(false);
 
   client.on('error', (err: Error) => {
     logger.error('Redis client error', { error: err.message });

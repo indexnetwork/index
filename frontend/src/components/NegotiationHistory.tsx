@@ -49,7 +49,7 @@ function TurnMessage({ turn, isLast }: { turn: NegotiationTurnSummary; isLast: b
         </Link>
         {!isLast && <div className="w-px flex-1 bg-gray-200 mt-1" />}
       </div>
-      <div className={`flex-1 pb-4 ${isLast ? "" : ""}`}>
+      <div className="flex-1 pb-4">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-medium text-gray-900 flex items-center gap-1">
             {turn.speaker.name}'s Agent
@@ -68,8 +68,8 @@ interface EmptyStateProps {
   isTriggering?: boolean;
 }
 
-/* ── VARIANT 0 (original) ── dashed border, monospace, dark button ── */
-function EmptyStateVariant0({ onTrigger, isTriggering }: EmptyStateProps) {
+/* Empty state with a trigger button — dashed border, monospace, dark button. */
+function NegotiationEmptyState({ onTrigger, isTriggering }: EmptyStateProps) {
   return (
     <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
       <div className="space-y-3">
@@ -105,13 +105,10 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const fetchNegotiations = useCallback(async (offset: number) => {
-    const results = await usersService.getUserNegotiations(userId, {
-      limit: PAGE_SIZE,
-      offset,
-    });
-    return results;
-  }, [userId, usersService]);
+  const fetchNegotiations = useCallback(
+    (offset: number) => usersService.getUserNegotiations(userId, { limit: PAGE_SIZE, offset }),
+    [userId, usersService],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -154,7 +151,7 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
 
       {!isLoading && negotiations.length === 0 && (
         onTriggerNegotiation ? (
-          <EmptyStateVariant0
+          <NegotiationEmptyState
             onTrigger={async () => {
               const result = await onTriggerNegotiation();
               if (result) setNegotiations((prev) => [result, ...prev]);

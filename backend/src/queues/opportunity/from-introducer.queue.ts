@@ -84,9 +84,9 @@ export class FromIntroducerQueue {
 
   private async handleDiscover(data: FromIntroducerJobData): Promise<void> {
     const { userId, contactUserId, networkIds } = data;
-    const db = this.deps?.database ?? this.database;
-
-    const contactIntents = await db.getActiveIntents(contactUserId);
+    // `this.database` is already `deps?.database ?? new ChatDatabaseAdapter()` and
+    // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
+    const contactIntents = await this.database.getActiveIntents(contactUserId);
     if (contactIntents.length === 0) {
       this.logger.warn('[FromIntroducer] Contact has no active intents, skipping', { contactUserId, userId });
       return;

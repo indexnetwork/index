@@ -310,6 +310,11 @@ Index and community membership is background: handle it without talking about in
 const contactsModule: PromptModule = {
   id: "contacts",
   triggers: ["import_gmail_contacts", "add_contact", "list_contacts", "remove_contact"],
+  // Gate on the CONTACTS_ENABLED flag (fail-closed: only `true` enables). When
+  // contacts are disabled the import/add tools are de-registered, so this module
+  // must not be injected — otherwise the orchestrator keeps advertising Gmail
+  // import / add_contact and offers an action that then fails as "Unknown tool".
+  triggerFilter: (iterCtx) => iterCtx.ctx.contactsEnabled === true,
   content: () => `
 ### 9. Import contacts from Gmail
 

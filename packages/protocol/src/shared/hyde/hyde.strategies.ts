@@ -7,6 +7,8 @@
  * types and provides constants for the HyDE pipeline.
  */
 
+import type { HydeTargetCorpus } from './lens.inferrer.js';
+
 export type { Lens, HydeTargetCorpus, LensInferenceInput, LensInferenceOutput } from './lens.inferrer.js';
 
 /** Default cache TTL for ephemeral HyDE documents (1 hour). */
@@ -16,7 +18,7 @@ export const HYDE_DEFAULT_CACHE_TTL = 3600;
  * Prompt templates for HyDE document generation.
  * Keyed by target corpus — the lens label provides the semantic specificity.
  */
-export const HYDE_CORPUS_PROMPTS: Record<'profiles' | 'intents' | 'premises', (sourceText: string, lens: string) => string> = {
+export const HYDE_CORPUS_PROMPTS: Record<HydeTargetCorpus, (sourceText: string, lens: string) => string> = {
   profiles: (sourceText, lens) => `
     Write a professional biography for someone who could fulfill this need: "${sourceText}".
     Focus on the specific expertise, background, and role described by: ${lens}.

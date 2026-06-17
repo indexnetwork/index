@@ -11,9 +11,8 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
       ...(networkIds && networkIds.length > 0 && { networkIds }),
       ...(sourceType && { sourceType })
     };
-    
-    const response = await api.post<PaginatedResponse<Intent>>('/intents/list', requestBody);
-    return response;
+
+    return api.post<PaginatedResponse<Intent>>('/intents/list', requestBody);
   },
 
   // Get single intent by ID
@@ -53,7 +52,7 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     }>;
     intentCount: number;
   }> => {
-    const response = await api.post<{
+    return api.post<{
       suggestions: Array<{
         value: string;
         score: number;
@@ -64,6 +63,5 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
       networkId,
       maxSuggestions
     });
-    return response;
   }
 }); 

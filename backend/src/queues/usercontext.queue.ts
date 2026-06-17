@@ -163,13 +163,13 @@ export class UserContextQueue {
   private async handleRegenerate(data: UserContextJobData): Promise<void> {
     const { userId } = data;
 
-    const getUserNetworkIds = this.deps?.getUserNetworkIds ?? ((uid: string) => this.defaultGetUserNetworkIds(uid));
-    const getActivePremises = this.deps?.getActivePremises ?? ((uid: string) => this.defaultGetActivePremises(uid));
-    const getExistingContext = this.deps?.getExistingContext ?? ((uid: string, nid: string) => this.defaultGetExistingContext(uid, nid));
-    const getNetwork = this.deps?.getNetwork ?? ((nid: string) => this.defaultGetNetwork(nid));
-    const generateContext = this.deps?.generateContext ?? ((input: { premises: Array<{ text: string }>; networkPrompt: string | null; networkTitle: string }) => this.defaultGenerateContext(input));
-    const upsertUserContext = this.deps?.upsertUserContext ?? ((p: { userId: string; networkId: string; text: string; embedding: number[]; premiseHash: string }) => chatDatabaseAdapter.upsertUserContext(p));
-    const generateContextHyde = this.deps?.generateContextHyde ?? ((p: { contextId: string; sourceText: string }) => this.defaultGenerateContextHyde(p));
+    const getUserNetworkIds = this.deps?.getUserNetworkIds ?? this.defaultGetUserNetworkIds.bind(this);
+    const getActivePremises = this.deps?.getActivePremises ?? this.defaultGetActivePremises.bind(this);
+    const getExistingContext = this.deps?.getExistingContext ?? this.defaultGetExistingContext.bind(this);
+    const getNetwork = this.deps?.getNetwork ?? this.defaultGetNetwork.bind(this);
+    const generateContext = this.deps?.generateContext ?? this.defaultGenerateContext.bind(this);
+    const upsertUserContext = this.deps?.upsertUserContext ?? chatDatabaseAdapter.upsertUserContext.bind(chatDatabaseAdapter);
+    const generateContextHyde = this.deps?.generateContextHyde ?? this.defaultGenerateContextHyde.bind(this);
 
     const networkIds = await getUserNetworkIds(userId);
     const allPremises = await getActivePremises(userId);

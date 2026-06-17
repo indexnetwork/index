@@ -375,11 +375,10 @@ function NegotiationInsightsTab({ userId }: { userId: string }) {
         )
       : 0;
 
-  const roleEntries = Object.entries(stats.roleDistribution);
-  const topRole =
-    roleEntries.length > 0
-      ? roleEntries.sort((a, b) => b[1] - a[1])[0]
-      : null;
+  const roleEntries = Object.entries(stats.roleDistribution).sort(
+    (a, b) => b[1] - a[1],
+  );
+  const topRole = roleEntries.length > 0 ? roleEntries[0] : null;
 
   return (
     <div className="space-y-6">
@@ -413,9 +412,7 @@ function NegotiationInsightsTab({ userId }: { userId: string }) {
             <p className="text-sm text-gray-400">No role data yet</p>
           ) : (
             <div className="space-y-2">
-              {roleEntries
-                .sort((a, b) => b[1] - a[1])
-                .map(([role, count]) => {
+              {roleEntries.map(([role, count]) => {
                   const pct = Math.round(
                     (count / (stats.opportunityCount || 1)) * 100,
                   );

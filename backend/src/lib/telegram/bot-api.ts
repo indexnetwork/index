@@ -1,21 +1,14 @@
 const BASE = 'https://api.telegram.org';
 
+/**
+ * Re-export the shared HTML escaper. Telegram's HTML parse_mode requires the
+ * same five characters escaped (`<`, `>`, `&`, `"`, `'`) that the shared helper
+ * handles, so keep a single canonical implementation.
+ */
+export { escapeHtml } from '../escapeHtml';
+
 function botUrl(method: string): string {
   return `${BASE}/bot${process.env.TELEGRAM_BOT_TOKEN}/${method}`;
-}
-
-/**
- * Escape HTML special characters so text can be safely sent with parse_mode=HTML.
- * Handles the five characters that Telegram's HTML parser requires escaped:
- * `<`, `>`, `&`, `"`, and `'`.
- */
-export function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 /**

@@ -59,7 +59,7 @@ Let's get you set up.`;
 
 function buildGreeting(hasName: boolean, userName?: string): string {
   return hasName
-    ? `${GREETING_PREAMBLE}\nYou're ${userName}, right? Is that right?`
+    ? `${GREETING_PREAMBLE}\nYou're ${userName}, right?`
     : `${GREETING_PREAMBLE} What's your name, and what's your LinkedIn, Twitter/X, or GitHub?`;
 }
 
@@ -331,8 +331,7 @@ export default function OnboardingPage() {
     return "identity";
   }, [allMessages, chatMessages, hasName]);
 
-  const stepSuggestions = ONBOARDING_STEP_SUGGESTIONS[onboardingStep] ?? [];
-  const suggestions: Suggestion[] = stepSuggestions;
+  const suggestions: Suggestion[] = ONBOARDING_STEP_SUGGESTIONS[onboardingStep] ?? [];
 
   const handleSuggestionClick = useCallback(
     (suggestion: Suggestion) => {

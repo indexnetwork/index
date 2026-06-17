@@ -747,15 +747,6 @@ describe('home feed fetch limit bug', () => {
 
 // ─── Introducer name format tests ───────────────────────────────────────────
 
-function createIntroMockCache(): OpportunityCache {
-  const store = new Map<string, unknown>();
-  return {
-    get: async <T>(key: string) => (store.get(key) as T) ?? null,
-    set: async <T>(key: string, value: T) => { store.set(key, value); },
-    mget: async <T>(keys: string[]) => keys.map((k) => (store.get(k) as T) ?? null),
-  };
-}
-
 const USER_MAP: Record<string, { id: string; name: string; email: string; avatar: string | null }> = {
   'intro-1': { id: 'intro-1', name: 'Intro User', email: 'intro@test.com', avatar: null },
   'party-a': { id: 'party-a', name: 'Mert Karadayi', email: 'mert@test.com', avatar: null },
@@ -797,7 +788,7 @@ describe('home.graph introducer card name format', () => {
     const viewerId = 'intro-1';
     const opp = makeIntroducerOpportunity(viewerId, 'party-a', 'party-b');
     const db = createIntroMockDb([opp]);
-    const cache = createIntroMockCache();
+    const cache = createMockCache();
     const factory = new HomeGraphFactory(db, cache);
     const graph = factory.createGraph();
 

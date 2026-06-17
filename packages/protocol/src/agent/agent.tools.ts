@@ -258,7 +258,7 @@ export function createAgentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error(scopeError);
       }
 
-      const actions = [...new Set(query.actions.map((action) => action.trim()).filter(Boolean))];
+      const actions = normalizePermissions(query.actions);
       if (actions.length === 0) {
         return error('At least one non-empty action is required.');
       }

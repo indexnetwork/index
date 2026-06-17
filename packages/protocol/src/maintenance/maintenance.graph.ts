@@ -138,7 +138,6 @@ export class MaintenanceGraphFactory {
     const rediscoverNode = async (state: typeof MaintenanceGraphState.State) => {
       try {
         const bucket = Math.floor(Date.now() / (6 * 60 * 60 * 1000));
-        let enqueued = 0;
 
         const results = await Promise.allSettled(
           state.activeIntents.map((intent) =>
@@ -155,7 +154,7 @@ export class MaintenanceGraphFactory {
             logger.error(`[MaintenanceGraph] Rediscovery job enqueue failed: ${errMsg}`);
           }
         }
-        enqueued = results.filter((r) => r.status === 'fulfilled').length;
+        const enqueued = results.filter((r) => r.status === 'fulfilled').length;
 
         // Record last run timestamp
         if (enqueued > 0) {

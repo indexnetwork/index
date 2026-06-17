@@ -102,7 +102,7 @@ export class S3StorageAdapter {
     contentType: string,
   ): Promise<string> {
     const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '');
-    const safeExtension = extension.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const safeExtension = normalizeExtension(extension);
     if (!safeExtension) {
       throw new Error('Invalid file extension');
     }

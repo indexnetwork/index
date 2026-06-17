@@ -1,5 +1,5 @@
 import { getStorage } from './index';
-import { isLimiterDisabled } from './config';
+import { intEnv, isLimiterDisabled } from './config';
 import { sha256Truncated } from './identifier';
 import type { LimiterStorage } from './storage';
 import { log } from '../log';
@@ -19,13 +19,6 @@ const logger = log.server.from('limiter');
  */
 
 const WINDOW_SEC = 60;
-
-const intEnv = (name: string, fallback: number): number => {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-};
 
 /** Per-tool ceiling per principal per minute. `discover_opportunities` is expensive, so it is far tighter. */
 function toolLimit(toolName: string): number {

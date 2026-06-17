@@ -381,6 +381,17 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       abortControllerRef.current = new AbortController();
       /** Local trace buffer scoped to this sendMessage call — avoids cross-message corruption. */
       const streamTraceEvents: TraceEvent[] = [];
+      /** Push a trace event to the local buffer and append it to the assistant message. */
+      const appendTrace = (ev: TraceEvent) => {
+        streamTraceEvents.push(ev);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id !== assistantMessageId
+              ? msg
+              : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
+          ),
+        );
+      };
       /**
        * Local streaming-draft buffer scoped to this sendMessage call. Flushed
        * to the server on `done` so cards survive session reload.
@@ -439,35 +450,19 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
                 switch (event.type) {
                   case "iteration_start": {
-                    const iterTraceEvent: TraceEvent = {
+                    appendTrace({
                       type: "iteration_start",
                       timestamp: Date.now(),
                       iteration: event.iteration,
-                    };
-                    streamTraceEvents.push(iterTraceEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), iterTraceEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "llm_start": {
-                    const llmStartEvent: TraceEvent = {
+                    appendTrace({
                       type: "llm_start",
                       timestamp: Date.now(),
                       iteration: event.iteration,
-                    };
-                    streamTraceEvents.push(llmStartEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), llmStartEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "token":
@@ -491,43 +486,27 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     );
                     break;
                   case "hallucination_detected": {
-                    const hallucinationEvent: TraceEvent = {
+                    appendTrace({
                       type: "hallucination_detected",
                       timestamp: Date.now(),
                       name: event.tool,
                       summary: event.blockType,
-                    };
-                    streamTraceEvents.push(hallucinationEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), hallucinationEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "llm_end": {
-                    const llmEndEvent: TraceEvent = {
+                    appendTrace({
                       type: "llm_end",
                       timestamp: Date.now(),
                       iteration: event.iteration,
                       hasToolCalls: event.hasToolCalls,
                       toolNames: event.toolNames,
-                    };
-                    streamTraceEvents.push(llmEndEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), llmEndEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "tool_activity": {
                     const now = Date.now();
-                    const toolTraceEvent: TraceEvent = event.phase === "start"
+                    appendTrace(event.phase === "start"
                       ? {
                           type: "tool_start",
                           timestamp: now,
@@ -541,134 +520,70 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                           status: event.success === true ? "success" : event.success === false ? "error" : undefined,
                           summary: event.summary,
                           steps: event.steps,
-                        };
-                    streamTraceEvents.push(toolTraceEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), toolTraceEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                        });
                     break;
                   }
                   case "graph_start": {
-                    const graphStartEvent: TraceEvent = {
+                    appendTrace({
                       type: "graph_start",
                       timestamp: Date.now(),
                       name: event.graphName,
-                    };
-                    streamTraceEvents.push(graphStartEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), graphStartEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "graph_end": {
-                    const graphEndEvent: TraceEvent = {
+                    appendTrace({
                       type: "graph_end",
                       timestamp: Date.now(),
                       name: event.graphName,
                       durationMs: event.durationMs,
-                    };
-                    streamTraceEvents.push(graphEndEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), graphEndEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "phase_start": {
-                    const ev: TraceEvent = {
+                    appendTrace({
                       type: "phase_start",
                       timestamp: Date.now(),
                       name: (event as { phaseName?: string }).phaseName,
-                    };
-                    streamTraceEvents.push(ev);
-                    setMessages((prev) =>
-                      prev.map((msg) =>
-                        msg.id !== assistantMessageId
-                          ? msg
-                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
-                      ),
-                    );
+                    });
                     break;
                   }
                   case "phase_end": {
-                    const ev: TraceEvent = {
+                    appendTrace({
                       type: "phase_end",
                       timestamp: Date.now(),
                       name: (event as { phaseName?: string }).phaseName,
                       durationMs: (event as { durationMs?: number }).durationMs,
-                    };
-                    streamTraceEvents.push(ev);
-                    setMessages((prev) =>
-                      prev.map((msg) =>
-                        msg.id !== assistantMessageId
-                          ? msg
-                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
-                      ),
-                    );
+                    });
                     break;
                   }
                   case "agent_start": {
-                    const agentStartEvent: TraceEvent = {
+                    appendTrace({
                       type: "agent_start",
                       timestamp: Date.now(),
                       name: event.agentName,
-                    };
-                    streamTraceEvents.push(agentStartEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), agentStartEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "agent_end": {
-                    const agentEndEvent: TraceEvent = {
+                    appendTrace({
                       type: "agent_end",
                       timestamp: Date.now(),
                       name: event.agentName,
                       durationMs: event.durationMs,
                       summary: event.summary,
-                    };
-                    streamTraceEvents.push(agentEndEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), agentEndEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "negotiation_summarizer_start": {
                     const count = typeof (event as { count?: number }).count === "number"
                       ? (event as { count: number }).count
                       : 0;
-                    const ev: TraceEvent = {
+                    appendTrace({
                       type: "agent_start",
                       timestamp: Date.now(),
                       name: `Negotiation summary (${count})`,
-                    };
-                    streamTraceEvents.push(ev);
-                    setMessages((prev) =>
-                      prev.map((msg) =>
-                        msg.id !== assistantMessageId
-                          ? msg
-                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
-                      ),
-                    );
+                    });
                     break;
                   }
                   case "negotiation_summarizer_end": {
@@ -678,96 +593,56 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     const durationMs = typeof (event as { durationMs?: number }).durationMs === "number"
                       ? (event as { durationMs: number }).durationMs
                       : undefined;
-                    const ev: TraceEvent = {
+                    appendTrace({
                       type: "agent_end",
                       timestamp: Date.now(),
                       name: `Negotiation summary (${count})`,
                       durationMs,
                       summary: `${count} digest${count === 1 ? "" : "s"}`,
-                    };
-                    streamTraceEvents.push(ev);
-                    setMessages((prev) =>
-                      prev.map((msg) =>
-                        msg.id !== assistantMessageId
-                          ? msg
-                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
-                      ),
-                    );
+                    });
                     break;
                   }
                   case "chat_summarizer_start": {
-                    const ev: TraceEvent = {
+                    appendTrace({
                       type: "agent_start",
                       timestamp: Date.now(),
                       name: "Chat summary",
-                    };
-                    streamTraceEvents.push(ev);
-                    setMessages((prev) =>
-                      prev.map((msg) =>
-                        msg.id !== assistantMessageId
-                          ? msg
-                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
-                      ),
-                    );
+                    });
                     break;
                   }
                   case "chat_summarizer_end": {
-                    const ev: TraceEvent = {
+                    appendTrace({
                       type: "agent_end",
                       timestamp: Date.now(),
                       name: "Chat summary",
                       durationMs:
                         (event as { payload?: { durationMs?: number } }).payload?.durationMs ??
                         event.durationMs,
-                    };
-                    streamTraceEvents.push(ev);
-                    setMessages((prev) =>
-                      prev.map((msg) =>
-                        msg.id !== assistantMessageId
-                          ? msg
-                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
-                      ),
-                    );
+                    });
                     break;
                   }
                   case "question_generator_start": {
-                    const ev: TraceEvent = {
+                    appendTrace({
                       type: "agent_start",
                       timestamp: Date.now(),
                       name: "Decision questions",
-                    };
-                    streamTraceEvents.push(ev);
-                    setMessages((prev) =>
-                      prev.map((msg) =>
-                        msg.id !== assistantMessageId
-                          ? msg
-                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
-                      ),
-                    );
+                    });
                     break;
                   }
                   case "question_generator_end": {
                     const payload = (event as { payload?: { finalCount?: number; durationMs?: number } }).payload;
                     const finalCount = payload?.finalCount ?? 0;
-                    const ev: TraceEvent = {
+                    appendTrace({
                       type: "agent_end",
                       timestamp: Date.now(),
                       name: "Decision questions",
                       durationMs: payload?.durationMs ?? event.durationMs,
                       summary: `${finalCount} question${finalCount === 1 ? "" : "s"}`,
-                    };
-                    streamTraceEvents.push(ev);
-                    setMessages((prev) =>
-                      prev.map((msg) =>
-                        msg.id !== assistantMessageId
-                          ? msg
-                          : { ...msg, traceEvents: [...(msg.traceEvents || []), ev] },
-                      ),
-                    );
+                    });
                     break;
                   }
                   case "negotiation_session_start": {
-                    const negSessionStartEvent: TraceEvent = {
+                    appendTrace({
                       type: "negotiation_session_start",
                       timestamp: Date.now(),
                       opportunityId: event.opportunityId,
@@ -777,19 +652,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       candidateName: event.candidateName,
                       trigger: event.trigger,
                       startedAt: event.startedAt,
-                    };
-                    streamTraceEvents.push(negSessionStartEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), negSessionStartEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "negotiation_turn": {
-                    const negTurnEvent: TraceEvent = {
+                    appendTrace({
                       type: "negotiation_turn",
                       timestamp: Date.now(),
                       opportunityId: event.opportunityId,
@@ -801,19 +668,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       message: event.message,
                       suggestedRoles: event.suggestedRoles,
                       durationMs: event.durationMs,
-                    };
-                    streamTraceEvents.push(negTurnEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), negTurnEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "negotiation_outcome": {
-                    const negOutcomeEvent: TraceEvent = {
+                    appendTrace({
                       type: "negotiation_outcome",
                       timestamp: Date.now(),
                       opportunityId: event.opportunityId,
@@ -822,33 +681,17 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       turnCount: event.turnCount,
                       reasoning: event.reasoning,
                       agreedRoles: event.agreedRoles,
-                    };
-                    streamTraceEvents.push(negOutcomeEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), negOutcomeEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "negotiation_session_end": {
-                    const negSessionEndEvent: TraceEvent = {
+                    appendTrace({
                       type: "negotiation_session_end",
                       timestamp: Date.now(),
                       opportunityId: event.opportunityId,
                       negotiationConversationId: event.negotiationConversationId,
                       durationMs: event.durationMs,
-                    };
-                    streamTraceEvents.push(negSessionEndEvent);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || []), negSessionEndEvent];
-                        return { ...msg, traceEvents };
-                      }),
-                    );
+                    });
                     break;
                   }
                   case "opportunity_draft_ready": {

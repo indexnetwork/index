@@ -101,6 +101,14 @@ async function softDeleteUser(userId: string): Promise<void> {
   await db.execute(sql`UPDATE users SET deleted_at = now() WHERE id = ${userId}`);
 }
 
+async function cleanupTables(): Promise<void> {
+  await db.execute(sql`DELETE FROM opportunity_deliveries`);
+  await db.execute(sql`DELETE FROM opportunities`);
+  await db.execute(sql`DELETE FROM user_socials`);
+  await db.execute(sql`DELETE FROM conversation_participants`);
+  await db.execute(sql`DELETE FROM conversations`);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Suite
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,11 +124,7 @@ describe('fetchAcceptedCandidates', () => {
   let agentB: string;
 
   beforeEach(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
-    await db.execute(sql`DELETE FROM user_socials`);
-    await db.execute(sql`DELETE FROM conversation_participants`);
-    await db.execute(sql`DELETE FROM conversations`);
+    await cleanupTables();
 
     userB = await seedUser('User B');
     userA = await seedUser('User A');
@@ -128,11 +132,7 @@ describe('fetchAcceptedCandidates', () => {
   });
 
   afterAll(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
-    await db.execute(sql`DELETE FROM user_socials`);
-    await db.execute(sql`DELETE FROM conversation_participants`);
-    await db.execute(sql`DELETE FROM conversations`);
+    await cleanupTables();
   });
 
   test('returns empty when no accepted opportunities exist', async () => {

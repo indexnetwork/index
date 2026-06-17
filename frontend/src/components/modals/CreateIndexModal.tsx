@@ -65,6 +65,20 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
+  const resetForm = useCallback(() => {
+    setName('');
+    setPrompt('');
+    setJoinPolicy('invite_only');
+    setIsExperiment(false);
+    setNetworkType('community');
+    setStartDate('');
+    setEndDate('');
+    setEventLocation('');
+    setEventTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    setEventThemes('');
+    handleRemoveImage();
+  }, [handleRemoveImage]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || isSubmitting) return;
@@ -95,17 +109,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
         };
       }
       await onSubmit(submitData);
-      setName('');
-      setPrompt('');
-      setJoinPolicy('invite_only');
-      setIsExperiment(false);
-      setNetworkType('community');
-      setStartDate('');
-      setEndDate('');
-      setEventLocation('');
-      setEventTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-      setEventThemes('');
-      handleRemoveImage();
+      resetForm();
       onOpenChange(false);
     } catch (error) {
       console.error('Error creating index:', error);
@@ -116,19 +120,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
 
   const handleOpenChange = (open: boolean) => {
     if (!isSubmitting) {
-      if (!open) {
-        setName('');
-        setPrompt('');
-        setJoinPolicy('invite_only');
-        setIsExperiment(false);
-        setNetworkType('community');
-        setStartDate('');
-        setEndDate('');
-        setEventLocation('');
-        setEventTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-        setEventThemes('');
-        handleRemoveImage();
-      }
+      if (!open) resetForm();
       onOpenChange(open);
     }
   };

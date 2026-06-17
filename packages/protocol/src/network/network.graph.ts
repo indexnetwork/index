@@ -31,6 +31,24 @@ export class NetworkGraphFactory {
       return timed("NetworkGraph.read", async () => {
         logger.verbose("Read indexes", { userId: state.userId, networkId: state.networkId, showAll: state.showAll });
 
+        // Shared projections for both the scoped and unscoped read paths.
+        const projectMembership = (m: Awaited<ReturnType<typeof this.database.getNetworkMemberships>>[number]) => ({
+          networkId: m.networkId,
+          title: m.networkTitle,
+          prompt: m.indexPrompt,
+          autoAssign: m.autoAssign,
+          isPersonal: m.isPersonal,
+          joinedAt: m.joinedAt,
+        });
+        const projectOwned = (o: Awaited<ReturnType<typeof this.database.getOwnedIndexes>>[number]) => ({
+          networkId: o.id,
+          title: o.title,
+          prompt: o.prompt,
+          memberCount: o.memberCount,
+          intentCount: o.intentCount,
+          joinPolicy: o.permissions.joinPolicy,
+        });
+
         try {
           const [allMemberships, ownedIndexes, publicIndexesResult] = await Promise.all([
             this.database.getNetworkMemberships(state.userId),
@@ -59,22 +77,6 @@ export class NetworkGraphFactory {
                 },
               };
             }
-            const projectMembership = (m: typeof allMemberships[number]) => ({
-              networkId: m.networkId,
-              title: m.networkTitle,
-              prompt: m.indexPrompt,
-              autoAssign: m.autoAssign,
-              isPersonal: m.isPersonal,
-              joinedAt: m.joinedAt,
-            });
-            const projectOwned = (o: typeof ownedIndexes[number]) => ({
-              networkId: o.id,
-              title: o.title,
-              prompt: o.prompt,
-              memberCount: o.memberCount,
-              intentCount: o.intentCount,
-              joinPolicy: o.permissions.joinPolicy,
-            });
             const scopedMembership = allMemberships.find((m) => m.networkId === networkId);
             const personalMembership = scopedMembership?.isPersonal
               ? undefined
@@ -115,15 +117,8 @@ export class NetworkGraphFactory {
 
           return {
             readResult: {
-              memberOf: allMemberships.map((m) => ({
-                networkId: m.networkId,
-                title: m.networkTitle,
-                prompt: m.indexPrompt,
-                autoAssign: m.autoAssign,
-                isPersonal: m.isPersonal,
-                joinedAt: m.joinedAt,
-              })),
-              owns: ownedIndexes.map((o) => ({ networkId: o.id, title: o.title, prompt: o.prompt, memberCount: o.memberCount, intentCount: o.intentCount, joinPolicy: o.permissions.joinPolicy })),
+              memberOf: allMemberships.map(projectMembership),
+              owns: ownedIndexes.map(projectOwned),
               publicNetworks,
               stats: { memberOfCount: allMemberships.length, ownsCount: ownedIndexes.length, publicNetworksCount: publicNetworks.length },
             },

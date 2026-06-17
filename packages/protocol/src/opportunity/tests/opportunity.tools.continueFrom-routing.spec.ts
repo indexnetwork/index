@@ -64,7 +64,7 @@ function captureDiscoverTool(deps: ToolDeps) {
   let captured:
     | { handler: (i: { context: ResolvedToolContext; query: Record<string, unknown> }) => Promise<string> }
     | undefined;
-  const defineTool = (def: { name: string; handler: typeof captured extends infer T ? T extends { handler: infer H } ? H : never : never }) => {
+  const defineTool = (def: { name: string }) => {
     if (def.name === 'discover_opportunities') {
       captured = def as unknown as typeof captured;
     }

@@ -38,13 +38,11 @@ export interface HydeQueueDeps {
 export class HydeQueue {
   private readonly logger = log.job.from('HydeJob');
   private readonly database: HydeQueueDatabase | ChatDatabaseAdapter;
-  private readonly deps: HydeQueueDeps | undefined;
 
   /**
    * @param deps - Optional overrides for database (for tests).
    */
   constructor(deps?: HydeQueueDeps) {
-    this.deps = deps;
     this.database = deps?.database ?? new ChatDatabaseAdapter();
     // When deps is omitted, default adapter implements the same interface.
   }
@@ -54,7 +52,7 @@ export class HydeQueue {
    * @returns Number of documents deleted
    */
   async cleanupExpiredHyde(): Promise<number> {
-    const db = this.deps?.database ?? this.database;
+    const db = this.database;
     this.logger.verbose('[HydeJob:Cleanup] Starting expired HyDE cleanup');
     const deletedCount = await db.deleteExpiredHydeDocuments();
     this.logger.info(`[HydeJob:Cleanup] Deleted ${deletedCount} expired HyDE documents`);
@@ -66,7 +64,7 @@ export class HydeQueue {
    * @returns Number of documents refreshed
    */
   async refreshStaleHyde(): Promise<number> {
-    const db = this.deps?.database ?? this.database;
+    const db = this.database;
     this.logger.verbose('[HydeJob:Refresh] Starting stale HyDE refresh');
     const staleThreshold = new Date(Date.now() - STALE_HYDE_DAYS_MS);
     const staleDocuments = await db.getStaleHydeDocuments(staleThreshold);
@@ -76,7 +74,7 @@ export class HydeQueue {
     const cache = new RedisCacheAdapter();
     const inferrer = new LensInferrer();
     const generator = new HydeGenerator();
-    const graphDb = (this.deps?.database ?? this.database) as unknown as HydeGraphDatabase;
+    const graphDb = this.database as unknown as HydeGraphDatabase;
     const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
 
     let refreshedCount = 0;

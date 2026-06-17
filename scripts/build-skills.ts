@@ -17,7 +17,6 @@ import {
   readFileSync,
   writeFileSync,
   mkdirSync,
-  existsSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
@@ -66,10 +65,7 @@ export function build(
   const template = readFileSync(templatePath, 'utf8');
   const content = injectPartials(template, partials);
   for (const outputPath of outputPaths) {
-    const dir = dirname(outputPath);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
+    mkdirSync(dirname(outputPath), { recursive: true });
     writeFileSync(outputPath, content, 'utf8');
     console.log(`[build-skills] wrote ${outputPath}`);
   }

@@ -141,7 +141,7 @@ const listCandidateNetworks = async (): Promise<void> => {
 
 const toIso = (value: Date | string | null): string | null => {
   if (!value) return null;
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  return new Date(value).toISOString();
 };
 
 const formatUser = (u: BucketedUser): string => {

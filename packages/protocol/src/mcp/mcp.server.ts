@@ -243,11 +243,9 @@ export const applyNetworkScopeToContext = (
   context.networkId = networkScopeId;
   // Clamp indexScope to [boundNetwork, personalIndex] BEFORE the membership
   // check below. If the bound network is not in userNetworks (defensive case),
-  // the filter still produces a safe scope (personal index only) rather than
+  // this still produces a safe scope (personal index only) rather than
   // leaving the unclamped scope set by resolveChatContext.
-  context.indexScope = context.userNetworks
-    .filter((m) => m.networkId === networkScopeId || m.isPersonal === true)
-    .map((m) => m.networkId);
+  context.indexScope = computeAgentIndexScope(context.userNetworks, networkScopeId);
 
   const bound = context.userNetworks.find((m) => m.networkId === networkScopeId);
   if (!bound) return;
@@ -539,7 +537,7 @@ export function createMcpServer(
           }
 
           // Resolve chat context for the user (mark as MCP — no interactive UI available)
-          const context = await resolveChatContext({ database: deps.database, userId });
+          const context = await resolveChatContext({ database: deps.database, userId, contactsEnabled: deps.contactsEnabled });
           reportContext = context;
           context.isMcp = true;
           if (agentId) {

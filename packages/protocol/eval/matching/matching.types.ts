@@ -1,4 +1,5 @@
 import type { EvaluatorInput } from "../../src/opportunity/opportunity.evaluator.js";
+import type { CaseResultLike, RuleResult as SharedRuleResult, ScorecardLike } from "../shared/index.js";
 
 /** Each rule maps to a distinct evaluator behaviour the corpus exercises. */
 export type Rule =
@@ -86,28 +87,18 @@ export interface RunResult {
   candidates?: CandidateOutcome[];
 }
 
-export interface CaseResult {
-  caseId: string;
+/**
+ * Matching case result: the shared aggregate shape narrowed to matching's `Rule`
+ * union and carrying matching's per-run {@link RunResult} detail (candidate
+ * outcomes + reasoning).
+ */
+export interface CaseResult extends CaseResultLike {
   rule: Rule;
-  runs: number;
-  passes: number;
-  passRate: number;
-  /** True when the case passed some runs and failed others. */
-  flaky: boolean;
   runResults: RunResult[];
 }
 
-export interface RuleResult {
-  rule: Rule;
-  caseCount: number;
-  passRate: number;
-}
+/** Per-rule rollup. Aliased from the shared type (rule stored as a string label). */
+export type RuleResult = SharedRuleResult;
 
-export interface Scorecard {
-  generatedAt: string;
-  model: string;
-  runs: number;
-  aggregatePassRate: number;
-  rules: RuleResult[];
-  cases: CaseResult[];
-}
+/** Matching scorecard: the shared scorecard specialized to matching {@link CaseResult}s. */
+export type Scorecard = ScorecardLike<CaseResult>;

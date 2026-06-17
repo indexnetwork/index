@@ -85,6 +85,18 @@ const mockScopedDepsFactory: ScopedDepsFactory = {
   }),
 };
 
+/** Shared handler context for register_agent tests (user session, no agent). */
+const baseToolContext = {
+  userId: 'test-user-id',
+  userName: 'Test User',
+  userEmail: 'test@example.com',
+  user: { id: 'test-user-id' } as never,
+  userProfile: null,
+  userNetworks: [],
+  isOnboarding: false,
+  hasName: true,
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TESTS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -140,16 +152,7 @@ describe('MCP Server Factory', () => {
     });
 
     const result = await registry.get('register_agent')?.handler({
-      context: {
-        userId: 'test-user-id',
-        userName: 'Test User',
-        userEmail: 'test@example.com',
-        user: { id: 'test-user-id' } as never,
-        userProfile: null,
-        userNetworks: [],
-        isOnboarding: false,
-        hasName: true,
-      },
+      context: baseToolContext,
       query: { name: '   ' },
     });
 
@@ -171,16 +174,7 @@ describe('MCP Server Factory', () => {
     });
 
     const result = await registry.get('register_agent')?.handler({
-      context: {
-        userId: 'test-user-id',
-        userName: 'Test User',
-        userEmail: 'test@example.com',
-        user: { id: 'test-user-id' } as never,
-        userProfile: null,
-        userNetworks: [],
-        isOnboarding: false,
-        hasName: true,
-      },
+      context: baseToolContext,
       query: { name: 'Agent', permissions: ['invalid:action'] },
     });
 
@@ -205,17 +199,7 @@ describe('MCP Server Factory', () => {
     });
 
     const result = await registry.get('register_agent')?.handler({
-      context: {
-        agentId: 'agent-123',
-        userId: 'test-user-id',
-        userName: 'Test User',
-        userEmail: 'test@example.com',
-        user: { id: 'test-user-id' } as never,
-        userProfile: null,
-        userNetworks: [],
-        isOnboarding: false,
-        hasName: true,
-      },
+      context: { ...baseToolContext, agentId: 'agent-123' },
       query: { name: 'Agent' },
     });
 
@@ -254,16 +238,7 @@ describe('MCP Server Factory', () => {
     });
 
     const result = await registry.get('register_agent')?.handler({
-      context: {
-        userId: 'test-user-id',
-        userName: 'Test User',
-        userEmail: 'test@example.com',
-        user: { id: 'test-user-id' } as never,
-        userProfile: null,
-        userNetworks: [],
-        isOnboarding: false,
-        hasName: true,
-      },
+      context: baseToolContext,
       query: {
         name: 'Agent',
         permissions: ['manage:intents'],

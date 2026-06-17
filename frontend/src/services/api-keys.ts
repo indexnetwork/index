@@ -63,6 +63,10 @@ function normalizeApiKeyInfo(value: unknown): ApiKeyInfo | null {
   };
 }
 
+function normalizeApiKeyList(values: unknown[]): ApiKeyInfo[] {
+  return values.map(normalizeApiKeyInfo).filter((value): value is ApiKeyInfo => value !== null);
+}
+
 /** Service factory for API key management via Better Auth endpoints. */
 export const createApiKeysService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   /** Create a new API key with the given display name. */
@@ -74,16 +78,16 @@ export const createApiKeysService = (api: ReturnType<typeof useAuthenticatedAPI>
   list: async (): Promise<ApiKeyInfo[]> => {
     // Better Auth returns { apiKeys: [...] }
     const response = await api.get<unknown>('/auth/api-key/list');
-    if (Array.isArray(response)) return response.map(normalizeApiKeyInfo).filter((value): value is ApiKeyInfo => value !== null);
+    if (Array.isArray(response)) return normalizeApiKeyList(response);
     if (response && typeof response === 'object') {
       const obj = response as Record<string, unknown>;
       if (Array.isArray(obj.apiKeys)) {
-        return obj.apiKeys.map(normalizeApiKeyInfo).filter((value): value is ApiKeyInfo => value !== null);
+        return normalizeApiKeyList(obj.apiKeys);
       }
       // Fallback: find any array property
       for (const value of Object.values(obj)) {
         if (Array.isArray(value)) {
-          return value.map(normalizeApiKeyInfo).filter((item): item is ApiKeyInfo => item !== null);
+          return normalizeApiKeyList(value);
         }
       }
     }

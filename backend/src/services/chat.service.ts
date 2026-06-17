@@ -138,7 +138,7 @@ export class ChatSessionService {
    * Get all sessions for a user, ordered by most recent.
    * 
    * @param userId - The user's UUID
-   * @param limit - Maximum number of sessions to return (default: 20)
+   * @param limit - Maximum number of sessions to return (default: 10)
    * @returns List of sessions
    */
   async getUserSessions(userId: string, limit = 10) {
