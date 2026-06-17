@@ -356,13 +356,23 @@ export const premiseNetworks = pgTable('premise_networks', {
 export const userContexts = pgTable('user_contexts', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  // Nullable: a null networkId is the user's single global, profile-replacing
+  // context row. Per-network rows carry a concrete networkId.
+  networkId: text('network_id').references(() => networks.id, { onDelete: 'cascade' }),
   text: text('text').notNull(),
   embedding: vector('embedding', { dimensions: 2000 }),
   premiseHash: text('premise_hash'),
   generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  userNetworkUniq: uniqueIndex('user_contexts_user_network_uniq').on(table.userId, table.networkId),
+  // One row per (user, network) for concrete networks. A NULL networkId is excluded
+  // here (Postgres treats NULLs as distinct), so the global row is enforced separately.
+  userNetworkUniq: uniqueIndex('user_contexts_user_network_uniq')
+    .on(table.userId, table.networkId)
+    .where(sql`${table.networkId} IS NOT NULL`),
+  // Exactly one global (networkId IS NULL) row per user.
+  userGlobalUniq: uniqueIndex('user_contexts_user_global_uniq')
+    .on(table.userId)
+    .where(sql`${table.networkId} IS NULL`),
   embeddingIdx: index('user_contexts_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
   userIdIdx: index('user_contexts_user_id_idx').on(table.userId),
   networkIdIdx: index('user_contexts_network_id_idx').on(table.networkId),

@@ -4351,13 +4351,24 @@ export class ChatDatabaseAdapter {
    */
   async upsertUserContext(params: {
     userId: string;
-    networkId: string;
+    /** Concrete network id, or null for the user's global (profile-replacing) row. */
+    networkId: string | null;
     text: string;
     embedding: number[];
     premiseHash: string;
   }): Promise<{ id: string }> {
     const vectorStr = `[${params.embedding.join(',')}]`;
-    const rows = await db.insert(userContexts)
+    const setOnConflict = {
+      text: params.text,
+      embedding: sql`${vectorStr}::vector` as unknown as number[],
+      premiseHash: params.premiseHash,
+      generatedAt: new Date(),
+    };
+    // A null networkId conflicts on the partial `user_contexts_user_global_uniq`
+    // index (target = userId WHERE network_id IS NULL); concrete networks conflict
+    // on the composite `user_contexts_user_network_uniq` index. The two indexes are
+    // mutually exclusive, so the conflict target must match the row being written.
+    const insert = db.insert(userContexts)
       .values({
         userId: params.userId,
         networkId: params.networkId,
@@ -4365,29 +4376,34 @@ export class ChatDatabaseAdapter {
         embedding: sql`${vectorStr}::vector` as unknown as number[],
         premiseHash: params.premiseHash,
         generatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [userContexts.userId, userContexts.networkId],
-        set: {
-          text: params.text,
-          embedding: sql`${vectorStr}::vector` as unknown as number[],
-          premiseHash: params.premiseHash,
-          generatedAt: new Date(),
-        },
-      })
+      });
+    const rows = await (params.networkId === null
+      ? insert.onConflictDoUpdate({
+          target: userContexts.userId,
+          targetWhere: isNull(userContexts.networkId),
+          set: setOnConflict,
+        })
+      : insert.onConflictDoUpdate({
+          target: [userContexts.userId, userContexts.networkId],
+          targetWhere: isNotNull(userContexts.networkId),
+          set: setOnConflict,
+        }))
       .returning({ id: userContexts.id });
     return { id: rows[0].id };
   }
 
   /**
-   * Retrieve a single user context for a user+network pair.
+   * Retrieve a single user context for a user+network pair. Pass `null` for the
+   * user's global (profile-replacing) context row.
    */
-  async getUserContext(userId: string, networkId: string) {
+  async getUserContext(userId: string, networkId: string | null) {
     const rows = await db.select()
       .from(userContexts)
       .where(and(
         eq(userContexts.userId, userId),
-        eq(userContexts.networkId, networkId),
+        networkId === null
+          ? isNull(userContexts.networkId)
+          : eq(userContexts.networkId, networkId),
       ))
       .limit(1);
     if (rows.length === 0) return null;

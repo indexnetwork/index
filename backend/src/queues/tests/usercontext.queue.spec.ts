@@ -45,24 +45,27 @@ describe('UserContextQueue', () => {
     );
   });
 
-  it('regenerates only networks whose premise hash changed', async () => {
+  it('regenerates the global row plus only networks whose premise hash changed', async () => {
     const premises: ContextPremise[] = [
       { id: 'p1', updatedAt: new Date('2026-01-01T00:00:00.000Z'), assertion: { text: 'hello' } },
     ];
     const currentHash = computePremiseHash(premises);
 
     const generateContext = mock(async () => ({ text: 'ctx', embedding: [0.1] }));
+    const generateGlobalContext = mock(async () => ({ text: 'global-ctx', embedding: [0.2] }));
     const upsertUserContext = mock(async () => ({ id: 'ctx-1' }));
     const generateContextHyde = mock(async () => {});
 
     const deps: UserContextQueueDeps = {
       getUserNetworkIds: async () => ['netA', 'netB'],
       getActivePremises: async () => premises,
-      // netA already has the current hash → short-circuit; netB is stale → regenerate
+      // global (null) is stale → regenerate; netA already has the current hash →
+      // short-circuit; netB is stale → regenerate
       getExistingContext: async (_userId, networkId) =>
         networkId === 'netA' ? { premiseHash: currentHash } : null,
       getNetwork: async (networkId) => ({ title: networkId, prompt: null }),
       generateContext,
+      generateGlobalContext,
       upsertUserContext,
       generateContextHyde,
     };
@@ -70,13 +73,19 @@ describe('UserContextQueue', () => {
     const queue = new UserContextQueue(deps);
     await queue.processJob('regenerate_contexts', { userId: 'u1', reason: 'profile_regen' });
 
+    // Global row regenerated once (network-agnostic generator).
+    expect(generateGlobalContext).toHaveBeenCalledTimes(1);
+    // Per-network synthesis runs only for the stale netB (netA short-circuits).
     expect(generateContext).toHaveBeenCalledTimes(1);
-    expect(upsertUserContext).toHaveBeenCalledTimes(1);
+    // Two upserts: the global row and netB.
+    expect(upsertUserContext).toHaveBeenCalledTimes(2);
+    expect(upsertUserContext).toHaveBeenCalledWith(
+      expect.objectContaining({ networkId: null, premiseHash: currentHash }),
+    );
     expect(upsertUserContext).toHaveBeenCalledWith(
       expect.objectContaining({ networkId: 'netB', premiseHash: currentHash }),
     );
-    expect(generateContextHyde).toHaveBeenCalledTimes(1);
-    expect(generateContextHyde).toHaveBeenCalledWith({ contextId: 'ctx-1', sourceText: 'ctx' });
+    expect(generateContextHyde).toHaveBeenCalledTimes(2);
   });
 
   it('rolls back the premiseHash and fails the job when HyDE generation fails', async () => {
@@ -90,12 +99,12 @@ describe('UserContextQueue', () => {
       throw new Error('hyde boom');
     });
 
+    // Zero networks: only the global row runs, exercising the shared rollback path.
     const deps: UserContextQueueDeps = {
-      getUserNetworkIds: async () => ['netA'],
+      getUserNetworkIds: async () => [],
       getActivePremises: async () => premises,
       getExistingContext: async () => null,
-      getNetwork: async (networkId) => ({ title: networkId, prompt: null }),
-      generateContext: async () => ({ text: 'ctx', embedding: [0.1] }),
+      generateGlobalContext: async () => ({ text: 'global-ctx', embedding: [0.2] }),
       upsertUserContext,
       generateContextHyde,
     };
@@ -108,26 +117,58 @@ describe('UserContextQueue', () => {
     ).rejects.toThrow(/regeneration failed/);
 
     // First upsert commits the fresh hash; second rolls it back to '' so the retry
-    // won't short-circuit this network as already-fresh while its HyDE is stale.
+    // won't short-circuit the global row as already-fresh while its HyDE is stale.
     expect(upsertUserContext).toHaveBeenCalledTimes(2);
     expect(upsertUserContext).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ networkId: 'netA', premiseHash: currentHash }),
+      expect.objectContaining({ networkId: null, premiseHash: currentHash }),
     );
     expect(upsertUserContext).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ networkId: 'netA', premiseHash: '' }),
+      expect.objectContaining({ networkId: null, premiseHash: '' }),
     );
   });
 
-  it('no-ops when the user has no networks or no premises', async () => {
+  it('generates the global row even when the user belongs to no networks', async () => {
+    const premises: ContextPremise[] = [
+      { id: 'p1', updatedAt: new Date('2026-01-01T00:00:00.000Z'), assertion: { text: 'hi' } },
+    ];
+    const currentHash = computePremiseHash(premises);
     const generateContext = mock(async () => ({ text: 'ctx', embedding: [0.1] }));
+    const generateGlobalContext = mock(async () => ({ text: 'global-ctx', embedding: [0.2] }));
+    const upsertUserContext = mock(async () => ({ id: 'ctx-1' }));
+    const generateContextHyde = mock(async () => {});
+
     const queue = new UserContextQueue({
       getUserNetworkIds: async () => [],
-      getActivePremises: async () => [{ id: 'p1', updatedAt: new Date('2026-01-01T00:00:00.000Z'), assertion: { text: 'hi' } }],
+      getActivePremises: async () => premises,
+      getExistingContext: async () => null,
       generateContext,
+      generateGlobalContext,
+      upsertUserContext,
+      generateContextHyde,
+    });
+    await queue.processJob('regenerate_contexts', { userId: 'u1', reason: 'enrichment_complete' });
+
+    expect(generateGlobalContext).toHaveBeenCalledTimes(1);
+    expect(generateContext).not.toHaveBeenCalled();
+    expect(upsertUserContext).toHaveBeenCalledTimes(1);
+    expect(upsertUserContext).toHaveBeenCalledWith(
+      expect.objectContaining({ networkId: null, premiseHash: currentHash }),
+    );
+  });
+
+  it('no-ops when the user has no premises', async () => {
+    const generateContext = mock(async () => ({ text: 'ctx', embedding: [0.1] }));
+    const generateGlobalContext = mock(async () => ({ text: 'global-ctx', embedding: [0.2] }));
+    const queue = new UserContextQueue({
+      getUserNetworkIds: async () => [],
+      getActivePremises: async () => [],
+      generateContext,
+      generateGlobalContext,
     });
     await queue.processJob('regenerate_contexts', { userId: 'u1', reason: 'enrichment_complete' });
     expect(generateContext).not.toHaveBeenCalled();
+    expect(generateGlobalContext).not.toHaveBeenCalled();
   });
 });

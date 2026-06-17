@@ -300,8 +300,10 @@ export class OpportunityGraphFactory {
               ? await this.database.getUserContexts(discoveryUserId)
               : [];
             const sourceContexts = rawContexts
-              .filter((c: { id: string; networkId: string; embedding: number[] | null }) => c.embedding && c.embedding.length > 0 && userNetworkIds.includes(c.networkId as Id<'networks'>))
-              .map((c: { id: string; networkId: string; embedding: number[] | null }) => ({
+              // The global row (networkId: null) is excluded here — it is not in
+              // userNetworkIds — so context-to-intent discovery stays network-scoped.
+              .filter((c: { id: string; networkId: string | null; embedding: number[] | null }) => c.embedding && c.embedding.length > 0 && c.networkId !== null && userNetworkIds.includes(c.networkId as Id<'networks'>))
+              .map((c: { id: string; networkId: string | null; embedding: number[] | null }) => ({
                 contextId: c.id,
                 networkId: c.networkId as Id<'networks'>,
                 embedding: c.embedding!,

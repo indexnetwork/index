@@ -1546,21 +1546,23 @@ export interface Database {
   // ─── User Context Methods ───
 
   /**
-   * Upsert a user context for a specific network.
+   * Upsert a user context. Pass a concrete `networkId` for a per-network row, or
+   * `null` for the user's single global (profile-replacing) context row.
    * Creates or updates the synthesized context paragraph + embedding.
    */
   upsertUserContext(params: {
     userId: string;
-    networkId: string;
+    networkId: string | null;
     text: string;
     embedding: number[];
     premiseHash: string;
   }): Promise<{ id: string }>;
 
   /**
-   * Get the user context for a specific user+network pair.
+   * Get the user context for a specific user+network pair, or the global row when
+   * `networkId` is `null`.
    */
-  getUserContext(userId: string, networkId: string): Promise<{
+  getUserContext(userId: string, networkId: string | null): Promise<{
     id: string;
     text: string;
     embedding: number[];
@@ -1569,11 +1571,12 @@ export interface Database {
   } | null>;
 
   /**
-   * Get user contexts for a user across all their networks.
+   * Get user contexts for a user across all their networks. Includes the global
+   * row (`networkId: null`) when present.
    */
   getUserContexts(userId: string): Promise<Array<{
     id: string;
-    networkId: string;
+    networkId: string | null;
     text: string;
     embedding: number[];
     premiseHash: string;
