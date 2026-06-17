@@ -17,7 +17,7 @@
     },
     "backend": {
       "name": "protocol",
-      "version": "0.27.5",
+      "version": "0.27.6",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",
@@ -111,7 +111,7 @@
     },
     "packages/cli": {
       "name": "@indexnetwork/cli",
-      "version": "0.10.9",
+      "version": "0.10.10",
       "bin": {
         "index": "bin/index.cjs",
       },
@@ -119,15 +119,15 @@
         "@types/bun": "latest",
       },
       "optionalDependencies": {
-        "@indexnetwork/cli-darwin-arm64": "0.10.9",
-        "@indexnetwork/cli-darwin-x64": "0.10.9",
-        "@indexnetwork/cli-linux-arm64": "0.10.9",
-        "@indexnetwork/cli-linux-x64": "0.10.9",
+        "@indexnetwork/cli-darwin-arm64": "0.10.10",
+        "@indexnetwork/cli-darwin-x64": "0.10.10",
+        "@indexnetwork/cli-linux-arm64": "0.10.10",
+        "@indexnetwork/cli-linux-x64": "0.10.10",
       },
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "3.6.3",
+      "version": "3.7.1",
       "dependencies": {
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",
@@ -405,6 +405,14 @@
     "@indexnetwork/claude-plugin": ["@indexnetwork/claude-plugin@workspace:packages/claude-plugin"],
 
     "@indexnetwork/cli": ["@indexnetwork/cli@workspace:packages/cli"],
+
+    "@indexnetwork/cli-darwin-arm64": ["@indexnetwork/cli-darwin-arm64@0.10.10", "", { "os": "darwin", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-db5lVeSb5pBMBBHa8Oh/+bZx5XkmP2XUZvvlKdCtKzr5M5En/r8uSiMZCOzAipcL5roRzWCSAS46NSHGNjkzhw=="],
+
+    "@indexnetwork/cli-darwin-x64": ["@indexnetwork/cli-darwin-x64@0.10.10", "", { "os": "darwin", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-qHhudIJnuDMVKvPexawst/ClibsffuTl32bjbRS1oCP4oXCP7piHDH5rlp1yREdChZTcNYQ2M8dbRG+rupqNlg=="],
+
+    "@indexnetwork/cli-linux-arm64": ["@indexnetwork/cli-linux-arm64@0.10.10", "", { "os": "linux", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-cte5BUcrq/pR71zabgE5G3BNSeXWQlkuJZD76xsoeC6l9xCvWSyTqbZniAo7xwWufwVya0BDfInVcFRuvUHzMw=="],
+
+    "@indexnetwork/cli-linux-x64": ["@indexnetwork/cli-linux-x64@0.10.10", "", { "os": "linux", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-EzuMP1+MuthfzChKIWAta1ffGcLLz2JPIj2MV4sOwceGCECYETMCxFzNCZMPFGuV+jaUkBYS8m011XP4bAiqoQ=="],
 
     "@indexnetwork/protocol": ["@indexnetwork/protocol@workspace:packages/protocol"],
 

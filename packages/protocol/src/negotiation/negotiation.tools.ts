@@ -79,6 +79,15 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         .describe('Maximum negotiations to return per page (1-100). Omit to return all.'),
       page: z.number().int().min(1).optional()
         .describe('Page number (1-based). Only used when limit is provided. Defaults to 1.'),
+      detail: z.enum(['summary', 'narrative']).optional()
+        .describe(
+          'Response detail level. Omit or use "summary" for the default fields. ' +
+          'Use "narrative" to receive additional context per negotiation suitable for ' +
+          'composing a digest or field report: indexContext (the community/network prompt ' +
+          'that seeded the negotiation), recentTurns (last 3 turns with action + message), ' +
+          'and outcome (for completed negotiations). These fields are populated from data ' +
+          'already loaded for the listing, so the extra cost is minimal.',
+        ),
     }),
     handler: async ({ context, query }) => {
       try {
@@ -99,7 +108,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
             type?: string;
             maxTurns?: number;
             networkId?: string;
-            turnContext?: { indexContext?: { networkId?: string } };
+            turnContext?: { indexContext?: { networkId?: string; prompt?: string } };
             isContinuation?: boolean;
             priorTurnCount?: number;
           } | null;
@@ -116,7 +125,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           const isSource = meta.sourceUserId === context.userId;
           const counterpartyId = isSource ? meta.candidateUserId : meta.sourceUserId;
 
-          // Get latest message for preview
+          // Get messages for preview (and turns when narrative detail requested)
           const messages = await negotiationDatabase.getMessagesForConversation(task.conversationId);
           const lastMessage = messages[messages.length - 1];
           const lastTurnData = lastMessage
@@ -136,7 +145,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           const isUsersTurn = status !== 'completed' &&
             ((isSource && currentSpeaker === 'source') || (!isSource && currentSpeaker === 'candidate'));
 
-          return {
+          const base = {
             id: task.id,
             counterpartyId: counterpartyId ?? 'unknown',
             role: isSource ? 'source' : 'candidate',
@@ -150,6 +159,39 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
             createdAt: task.createdAt,
             updatedAt: task.updatedAt,
           };
+
+          if (query.detail !== 'narrative') return base;
+
+          // ── Narrative extras (messages already loaded — no extra DB cost) ──
+
+          const RECENT_TURNS_LIMIT = 3;
+          const recentMessages = messages.slice(-RECENT_TURNS_LIMIT);
+          const recentTurns = recentMessages.map((m, sliceIdx) => {
+            const absoluteIdx = messages.length - recentMessages.length + sliceIdx;
+            const speaker = absoluteIdx % 2 === 0 ? 'source' : 'candidate';
+            const td = ((m.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data')?.data as { action?: string; message?: string | null } | undefined);
+            return {
+              turnNumber: absoluteIdx + 1,
+              speaker,
+              role: speaker === (isSource ? 'source' : 'candidate') ? 'own' : 'other',
+              action: td?.action ?? 'unknown',
+              message: td?.message ?? null,
+            };
+          });
+
+          const indexContext = meta.turnContext?.indexContext ?? null;
+
+          // Outcome artifact — only meaningful for completed negotiations
+          let outcome: unknown = null;
+          if (status === 'completed') {
+            const artifacts = await negotiationDatabase.getArtifactsForTask(task.id);
+            const outcomeArtifact = artifacts.find(a => a.name === 'negotiation-outcome');
+            outcome = outcomeArtifact
+              ? ((outcomeArtifact.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data')?.data ?? null)
+              : null;
+          }
+
+          return { ...base, indexContext, recentTurns, outcome };
         }));
 
         let filtered = negotiations.filter(Boolean);

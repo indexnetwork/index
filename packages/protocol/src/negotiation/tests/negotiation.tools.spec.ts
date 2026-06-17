@@ -525,6 +525,247 @@ describe("list_negotiations — network scope", () => {
   });
 });
 
+// ── list_negotiations — detail:"narrative" ──────────────────────────────────
+
+describe('list_negotiations — detail:"narrative"', () => {
+  function makeTaskWithContext(
+    state: string,
+    sourceUserId: string,
+    candidateUserId: string,
+    opts: { networkId?: string; id?: string; indexContextPrompt?: string } = {},
+  ) {
+    return {
+      id: opts.id ?? "task-1",
+      conversationId: "conv-1",
+      state,
+      metadata: {
+        type: "negotiation",
+        sourceUserId,
+        candidateUserId,
+        maxTurns: 6,
+        ...(opts.networkId ? { networkId: opts.networkId } : {}),
+        turnContext: {
+          indexContext: { networkId: opts.networkId ?? "net-1", prompt: opts.indexContextPrompt ?? "A community for AI researchers." },
+          sourceUser: {},
+          candidateUser: {},
+          seedAssessment: {},
+        },
+      },
+      createdAt: new Date("2026-01-01"),
+      updatedAt: new Date("2026-01-02"),
+    };
+  }
+
+  test('summary mode (default) does not include narrative fields', async () => {
+    const task = makeTask('working', 'user-src', 'user-cand');
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => [],
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext('user-src'), query: {} })
+    );
+
+    const item = result.data.negotiations[0];
+    expect(item.indexContext).toBeUndefined();
+    expect(item.recentTurns).toBeUndefined();
+    expect(item.outcome).toBeUndefined();
+  });
+
+  test('narrative mode includes indexContext from task metadata', async () => {
+    const task = makeTaskWithContext('working', 'user-src', 'user-cand', {
+      indexContextPrompt: 'Frontier biotech research community.',
+    });
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => [],
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext('user-src'), query: { detail: 'narrative' } })
+    );
+
+    const item = result.data.negotiations[0];
+    expect(item.indexContext).not.toBeNull();
+    expect(item.indexContext.prompt).toBe('Frontier biotech research community.');
+  });
+
+  test('narrative mode returns indexContext:null for legacy tasks without turnContext', async () => {
+    const task = makeTask('working', 'user-src', 'user-cand'); // no turnContext
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => [],
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext('user-src'), query: { detail: 'narrative' } })
+    );
+
+    expect(result.data.negotiations[0].indexContext).toBeNull();
+  });
+
+  test('narrative mode includes recentTurns — last 3 when more than 3 messages exist', async () => {
+    const task = makeTask('working', 'user-src', 'user-cand');
+    const messages = [
+      makeMessage('propose', 'r1', 'turn 1'),
+      makeMessage('counter', 'r2', 'turn 2'),
+      makeMessage('counter', 'r3', 'turn 3'),
+      makeMessage('counter', 'r4', 'turn 4'),
+      makeMessage('question', 'r5', 'turn 5'),
+    ];
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => messages,
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext('user-src'), query: { detail: 'narrative' } })
+    );
+
+    const turns = result.data.negotiations[0].recentTurns;
+    expect(turns).toHaveLength(3);
+    expect(turns[0].turnNumber).toBe(3);
+    expect(turns[0].message).toBe('turn 3');
+    expect(turns[2].turnNumber).toBe(5);
+    expect(turns[2].message).toBe('turn 5');
+  });
+
+  test('narrative mode recentTurns — fewer than 3 messages returns all', async () => {
+    const task = makeTask('working', 'user-src', 'user-cand');
+    const messages = [
+      makeMessage('propose', 'r1', 'only turn'),
+    ];
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => messages,
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext('user-src'), query: { detail: 'narrative' } })
+    );
+
+    const turns = result.data.negotiations[0].recentTurns;
+    expect(turns).toHaveLength(1);
+    expect(turns[0].turnNumber).toBe(1);
+    expect(turns[0].action).toBe('propose');
+    expect(turns[0].message).toBe('only turn');
+  });
+
+  test('narrative mode recentTurns — assigns own/other role relative to caller', async () => {
+    const task = makeTask('working', 'user-src', 'user-cand');
+    // turn 1: source speaks (index 0, even → source). Caller is source → own
+    // turn 2: candidate speaks (index 1, odd → candidate). Caller is source → other
+    const messages = [
+      makeMessage('propose', 'r1', 'source speaks'),
+      makeMessage('counter', 'r2', 'candidate speaks'),
+    ];
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => messages,
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext('user-src'), query: { detail: 'narrative' } })
+    );
+
+    const turns = result.data.negotiations[0].recentTurns;
+    expect(turns[0].role).toBe('own');   // source calling for source → own
+    expect(turns[1].role).toBe('other'); // candidate speaking → other
+  });
+
+  test('narrative mode — active negotiation has outcome:null without hitting artifacts DB', async () => {
+    const task = makeTask('working', 'user-src', 'user-cand');
+    let artifactsCalled = false;
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => [],
+        getArtifactsForTask: async () => { artifactsCalled = true; return []; },
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext('user-src'), query: { detail: 'narrative' } })
+    );
+
+    expect(result.data.negotiations[0].outcome).toBeNull();
+    expect(artifactsCalled).toBe(false);
+  });
+
+  test('narrative mode — completed negotiation includes outcome from artifact', async () => {
+    const task = makeTask('completed', 'user-src', 'user-cand');
+    const outcomeData = { hasOpportunity: true, reasoning: 'Strong alignment.', turnCount: 4 };
+    const artifact = {
+      name: 'negotiation-outcome',
+      parts: [{ kind: 'data', data: outcomeData }],
+    };
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => [],
+        getArtifactsForTask: async () => [artifact],
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext('user-src'), query: { detail: 'narrative' } })
+    );
+
+    const item = result.data.negotiations[0];
+    expect(item.outcome).not.toBeNull();
+    expect(item.outcome.hasOpportunity).toBe(true);
+    expect(item.outcome.reasoning).toBe('Strong alignment.');
+  });
+
+  test('narrative mode — completed negotiation with no artifact has outcome:null', async () => {
+    const task = makeTask('completed', 'user-src', 'user-cand');
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => [],
+        getArtifactsForTask: async () => [],
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext('user-src'), query: { detail: 'narrative' } })
+    );
+
+    expect(result.data.negotiations[0].outcome).toBeNull();
+  });
+});
+
 describe("get_negotiation — network scope", () => {
   test("returns access denied when task is in a different network than caller's scope", async () => {
     const task = makeTask("working", "user-src", "user-cand", { networkId: "net-B" });
