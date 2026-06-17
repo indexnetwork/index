@@ -789,6 +789,9 @@ export async function runDiscoverFromQuery(
           query: queryOrEmpty,
           questionerEnqueue: input.questionerEnqueue,
           userId: input.userId,
+          userContext: input.userId
+            ? ((await input.database.getUserContext(input.userId, null))?.text ?? '')
+            : '',
         });
         return { negotiationDigests, questionPayload };
       });
@@ -983,6 +986,8 @@ interface MaybeBuildQuestionsInput {
   questionerEnqueue?: DiscoverInput['questionerEnqueue'];
   /** User ID needed for the enqueue payload. */
   userId?: string;
+  /** The seeker's global user_context paragraph (profile-replacing identity text). */
+  userContext?: string;
 }
 
 /**
@@ -1092,7 +1097,7 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
 
     const enqueueInput = buildDiscoveryQuestionInput({
       query: args.query,
-      sourceProfile: args.graphResult.sourceProfile ?? null,
+      userContext: args.userContext ?? '',
       negotiationDigests: args.negotiationDigests,
       summary,
       chatContext,
@@ -1134,7 +1139,7 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
 
   const input = buildDiscoveryQuestionInput({
     query: args.query,
-    sourceProfile: args.graphResult.sourceProfile ?? null,
+    userContext: args.userContext ?? '',
     negotiationDigests,
     summary,
     chatContext,

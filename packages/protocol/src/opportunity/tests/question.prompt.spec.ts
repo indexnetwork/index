@@ -19,7 +19,7 @@ function makeDigest(overrides: Partial<DiscoveryNegotiationDigest> = {}): Discov
 function makeInput(overrides: Partial<DiscoveryQuestionInput> = {}): DiscoveryQuestionInput {
   return {
     query: "I'm looking for a technical co-founder",
-    sourceProfile: { name: "Alex" },
+    userContext: "Alex is a builder.",
     negotiationDigests: [makeDigest()],
     summary: {
       totalCandidates: 1,

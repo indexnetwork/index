@@ -80,12 +80,15 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
-        // Onboarding-only: rank public networks by profile relevance.
-        // Guard: only when isOnboarding, userProfile exists, not scoped, and there are public networks to rank.
+        // Onboarding-only: rank public networks by relevance to the user's global
+        // user_context paragraph (the profile-replacing identity text). Guard: only
+        // when isOnboarding, not scoped, there are public networks to rank, and a
+        // user_context is resolvable (generated on demand by the injected resolver).
         let orderedNetworkIds: string[] | undefined;
+        const userContext = deps.getUserContextText ? await deps.getUserContextText(context.userId) : "";
         if (
           context.isOnboarding &&
-          context.userProfile &&
+          userContext &&
           Array.isArray(enriched.publicNetworks) &&
           (enriched.publicNetworks as Array<Record<string, unknown>>).length > 0
         ) {
@@ -107,12 +110,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             }
           });
           const rankingResult = await rankFn({
-            userProfile: {
-              bio: context.userProfile.identity.bio,
-              location: context.userProfile.identity.location || context.user.location || "",
-              interests: context.userProfile.attributes.interests,
-              skills: context.userProfile.attributes.skills,
-            },
+            userContext,
             networks: publicNetworksForRanking,
           }).catch((err: unknown) => {
             // Catches errors from a custom deps.networkRanker (the default fallback

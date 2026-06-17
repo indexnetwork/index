@@ -9,7 +9,7 @@ import type { DiscoveryQuestionInput } from "../question.prompt.js";
 function makeInput(): DiscoveryQuestionInput {
   return {
     query: "test query",
-    sourceProfile: { name: "Tester" },
+    userContext: "Tester is a builder.",
     negotiationDigests: [],
     summary: {
       totalCandidates: 0,

@@ -7,7 +7,7 @@ import type { Question, QuestionGenerationResult } from "@indexnetwork/protocol"
 
 const baseInput = {
   query: "x",
-  sourceProfile: {},
+  userContext: "",
   negotiations: [],
   summary: { totalCandidates: 0, opportunitiesFound: 0, noOpportunityCount: 0, timeoutCount: 0, roleDistribution: {} },
   now: new Date().toISOString(),

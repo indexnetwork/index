@@ -32,6 +32,7 @@ import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { intents, networkMembers, questions, userProfiles, users } from '../schemas/database.schema';
 import { questionerQueue } from '../queues/questioner.queue';
+import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 
 // ---------------------------------------------------------------------------
 // Arg parsing
@@ -148,12 +149,7 @@ async function main(): Promise<void> {
         intentId: row.intentId,
         payload: row.payload,
         ...(row.summary ? { summary: row.summary } : {}),
-        userProfile: {
-          name: row.identity?.name,
-          bio: row.identity?.bio,
-          skills: row.attributes?.skills,
-          interests: row.attributes?.interests,
-        },
+        userContext: await ensureGlobalUserContext(row.userId),
       },
     });
     enqueued += 1;

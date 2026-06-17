@@ -7,6 +7,7 @@ import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
 import { cacheAdapter, hydeCacheAdapter } from '../adapters/cache.adapter';
+import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { ComposioIntegrationAdapter } from '../adapters/integration.adapter';
 import { chatDatabaseAdapter, conversationDatabaseAdapter, ChatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
@@ -610,6 +611,7 @@ function createMcpServerInstance(): McpServer {
       userId: report.userId,
     }),
     mcpRateLimiter: (input) => checkMcpRateLimit(input),
+    getUserContextText: ensureGlobalUserContext,
     discoveryRuns: protocolDeps.discoveryRuns,
     discoveryRunQueue: protocolDeps.discoveryRunQueue,
     profileRuns: protocolDeps.profileRuns,

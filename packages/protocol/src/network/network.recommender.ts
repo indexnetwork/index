@@ -22,20 +22,14 @@ export type NetworkRecommenderOutput = z.infer<typeof NetworkRecommenderOutputSc
 
 // ─── Input types ──────────────────────────────────────────────────────────────
 
-export interface NetworkRecommenderUserProfile {
-  bio: string;
-  location: string;
-  interests: string[];
-  skills: string[];
-}
-
 export interface NetworkRecommenderNetwork {
   networkId: string;
   renderedContext: string;
 }
 
 export interface NetworkRecommenderInput {
-  userProfile: NetworkRecommenderUserProfile;
+  /** The user's global user_context paragraph (profile-replacing identity text). */
+  userContext: string;
   networks: NetworkRecommenderNetwork[];
 }
 
@@ -53,7 +47,7 @@ Given a user's profile and a list of communities, rank the communities from most
 Return ALL provided community IDs in ranked order.
 
 INPUTS:
-1. User Profile: bio, location, interests, and skills.
+1. User Context: a synthesized paragraph describing the user (background, interests, skills, location, goals).
 2. Communities: a list of communities, each with an ID and a description.
 
 SCORING FACTORS (in priority order):
@@ -106,14 +100,9 @@ export class NetworkRecommender {
       .map((n, i) => `### Community ${i + 1} (ID: ${n.networkId})\n${n.renderedContext}`)
       .join("\n\n");
 
-    const userSection = [
-      `**Bio**: ${input.userProfile.bio || "(not provided)"}`,
-      `**Location**: ${input.userProfile.location || "(not provided)"}`,
-      `**Interests**: ${input.userProfile.interests.join(", ") || "(not provided)"}`,
-      `**Skills**: ${input.userProfile.skills.join(", ") || "(not provided)"}`,
-    ].join("\n");
+    const userSection = input.userContext.trim() || "(not provided)";
 
-    const prompt = `## User Profile\n${userSection}\n\n## Communities to Rank\n${networkList}`;
+    const prompt = `## User Context\n${userSection}\n\n## Communities to Rank\n${networkList}`;
 
     const messages = [
       new SystemMessage(systemPrompt),

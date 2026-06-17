@@ -575,9 +575,15 @@ export interface ToolDeps {
    * When absent, defaults to `NetworkRecommender.invoke()` with a lazy module-level singleton.
    */
   networkRanker?: (input: {
-    userProfile: { bio: string; location: string; interests: string[]; skills: string[] };
+    userContext: string;
     networks: Array<{ networkId: string; renderedContext: string }>;
   }) => Promise<{ rankedNetworkIds: string[] } | null>;
+  /**
+   * Resolve a user's global user_context paragraph (profile-replacing identity text),
+   * generating it on demand when absent. Injected by the backend composition root
+   * (`ensureGlobalUserContext`). When absent, onboarding network ranking is skipped.
+   */
+  getUserContextText?: (userId: string) => Promise<string>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

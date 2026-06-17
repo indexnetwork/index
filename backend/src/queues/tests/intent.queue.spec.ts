@@ -166,6 +166,7 @@ describe('IntentQueue', () => {
         database: asIntentDb(db),
         invokeHyde,
         addOpportunityJob,
+        getUserContextText: async () => '',
       });
       await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
       expect(invokeHyde).toHaveBeenCalledWith(
@@ -177,6 +178,34 @@ describe('IntentQueue', () => {
         })
       );
       expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1' });
+    });
+
+    it('generate_hyde: builds profileContext from the global user_context + active intents', async () => {
+      const invokeHyde = mock(async () => {});
+      const addOpportunityJob = mock(async () => ({}));
+      const getUserContextText = mock(async () => 'Dana builds agent tooling in Berlin.');
+      const db = {
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'Find collaborators', userId: 'u1', sourceType: null, sourceId: null }),
+        getUserIndexIds: async () => ['idx1'],
+        assignIntentToNetwork: async () => {},
+        deleteHydeDocumentsForSource: async () => 0,
+        getActiveIntents: async () => [{ id: 'i9', payload: 'Looking for a cofounder' }],
+      };
+      const queue = new IntentQueue({
+        database: asIntentDb(db as Partial<IntentQueueDatabase>),
+        invokeHyde,
+        addOpportunityJob,
+        getUserContextText,
+      });
+      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
+      expect(getUserContextText).toHaveBeenCalledWith('u1');
+      const passed = invokeHyde.mock.calls[0][0] as { profileContext?: string };
+      // The global context paragraph is used verbatim (no Profile/Skills/Interests lines)...
+      expect(passed.profileContext).toContain('Dana builds agent tooling in Berlin.');
+      expect(passed.profileContext).not.toContain('Skills:');
+      // ...alongside the active-intents block.
+      expect(passed.profileContext).toContain('Active intents:');
+      expect(passed.profileContext).toContain('Looking for a cofounder');
     });
 
     it('generate_hyde: getUserIndexIds throws is caught and logged', async () => {
