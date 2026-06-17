@@ -38,6 +38,11 @@ export default function InvitationPage() {
   const { refreshIndexes } = useNetworksState();
   const { refetchUser } = useAuthContext();
 
+  // Invite links grant alpha access by default
+  useEffect(() => {
+    localStorage.setItem('alpha', 'true');
+  }, []);
+
   // Load index and check user state
   useEffect(() => {
     const loadIndexAndCheckAuth = async () => {
