@@ -37,11 +37,15 @@ beforeAll(async () => {
       id: userAId,
       email: TEST_PREFIX + userAId + '@test.com',
       name: TEST_PREFIX + 'UserA',
+      intro: 'Bio A',
+      location: 'Loc A',
     },
     {
       id: userBId,
       email: TEST_PREFIX + userBId + '@test.com',
       name: TEST_PREFIX + 'UserB',
+      intro: 'Bio B',
+      location: 'Loc B',
     },
   ]);
   await db.insert(userProfiles).values({
@@ -150,15 +154,19 @@ describe('IntentDatabaseAdapter', () => {
 describe('ChatDatabaseAdapter', () => {
   const adapter = new ChatDatabaseAdapter();
 
-  it('should get profile when exists', async () => {
+  it('should get profile sourced from the users table', async () => {
+    // getProfile now sources identity from `users` (name/intro->bio/location); the typed
+    // skills/interests/narrative are dropped (empty) -- see WS5 (IND-363).
     const profile = await adapter.getProfile(fixture.userAId);
     expect(profile).not.toBeNull();
     expect(profile!.userId).toBe(fixture.userAId);
-    expect(profile!.identity).toEqual({ name: 'User A', bio: 'Bio A', location: '' });
+    expect(profile!.identity).toEqual({ name: TEST_PREFIX + 'UserA', bio: 'Bio A', location: 'Loc A' });
+    expect(profile!.attributes).toEqual({ interests: [], skills: [] });
+    expect(profile!.narrative).toEqual({ context: '' });
   });
 
-  it('should get null profile when missing', async () => {
-    const profile = await adapter.getProfile(fixture.userBId);
+  it('should get null profile for a non-existent user', async () => {
+    const profile = await adapter.getProfile(uuidv4());
     expect(profile).toBeNull();
   });
 
@@ -194,10 +202,10 @@ describe('ChatDatabaseAdapter', () => {
     expect(user!.name).toContain('UserA');
   });
 
-  it('should save profile and then get it', async () => {
+  it('getProfile reads from users, decoupled from saveProfile writes', async () => {
     const profile = {
       userId: fixture.userBId,
-      identity: { name: 'User B', bio: 'Bio B', location: '' },
+      identity: { name: 'User B', bio: 'Saved Bio', location: '' },
       narrative: { context: 'Context B' },
       attributes: { interests: ['x'], skills: ['y'] },
       embedding: null as number[] | null,
@@ -205,8 +213,10 @@ describe('ChatDatabaseAdapter', () => {
     await adapter.saveProfile(fixture.userBId, profile);
     const got = await adapter.getProfile(fixture.userBId);
     expect(got).not.toBeNull();
-    expect(got!.identity.name).toBe('User B');
-    expect(got!.attributes.interests).toEqual(['x']);
+    // getProfile returns the users-table identity, NOT the saveProfile write.
+    expect(got!.identity.name).toBe(TEST_PREFIX + 'UserB');
+    expect(got!.identity.bio).toBe('Bio B');
+    expect(got!.attributes.interests).toEqual([]);
   });
 
   it('should save HyDE profile to hyde_documents', async () => {
@@ -651,7 +661,7 @@ describe('ProfileDatabaseAdapter', () => {
     expect(profile!.userId).toBe(fixture.userAId);
   });
 
-  it('should save profile (upsert)', async () => {
+  it('saveProfile upsert does not change getProfile (users-sourced)', async () => {
     const profile = {
       userId: fixture.userBId,
       identity: { name: 'P B', bio: 'Bio', location: '' },
@@ -661,7 +671,7 @@ describe('ProfileDatabaseAdapter', () => {
     };
     await adapter.saveProfile(fixture.userBId, profile);
     const got = await adapter.getProfile(fixture.userBId);
-    expect(got!.identity.name).toBe('P B');
+    expect(got!.identity.name).toBe(TEST_PREFIX + 'UserB');
   });
 
   it('should save HyDE profile to hyde_documents', async () => {
@@ -715,15 +725,20 @@ describe('OpportunityDatabaseAdapter', () => {
     expect(profile!.userId).toBe(fixture.userAId);
   });
 
-  it('should return null for user with no profile', async () => {
+  it('should return a users-sourced row for an un-enriched user (empty arrays); null for non-existent', async () => {
     const newUserId = uuidv4();
     await db.insert(users).values({
       id: newUserId,
       email: TEST_PREFIX + newUserId + '@test.com',
       name: 'NoProfile',
+      intro: 'NP bio',
+      location: 'NP loc',
     });
     const profile = await adapter.getProfile(newUserId);
-    expect(profile).toBeNull();
+    expect(profile).not.toBeNull();
+    expect(profile!.identity).toEqual({ name: 'NoProfile', bio: 'NP bio', location: 'NP loc' });
+    expect(profile!.attributes).toEqual({ interests: [], skills: [] });
+    expect(await adapter.getProfile(uuidv4())).toBeNull();
     await db.delete(users).where(eq(users.id, newUserId));
   });
 

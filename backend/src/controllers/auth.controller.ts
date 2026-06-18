@@ -35,10 +35,10 @@ export function hasAtLeastOneSocial(socials: unknown): boolean {
 export function shouldAutoGenerateProfile(user: {
   name?: string | null;
   socials?: unknown;
-  profile?: unknown;
+  hasProfile?: boolean;
 }): boolean {
   const hasName = typeof user.name === 'string' && user.name.trim().length > 0;
-  return hasName && hasAtLeastOneSocial(user.socials) && !user.profile;
+  return hasName && hasAtLeastOneSocial(user.socials) && !user.hasProfile;
 }
 
 @Controller('/auth')
@@ -79,7 +79,7 @@ export class AuthController {
       });
     }
 
-    const { profile: _profile, notificationPreferences, ...userFields } = fullUser;
+    const { hasProfile: _hasProfile, notificationPreferences, ...userFields } = fullUser;
     return Response.json({
       user: {
         ...userFields,
@@ -115,7 +115,7 @@ export class AuthController {
     if (!fullUser) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
-    const { profile: _profileOut, notificationPreferences: prefs, ...userFieldsOut } = fullUser;
+    const { hasProfile: _hasProfileOut, notificationPreferences: prefs, ...userFieldsOut } = fullUser;
     return Response.json({
       user: { ...userFieldsOut, notificationPreferences: prefs },
     });

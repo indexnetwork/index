@@ -81,19 +81,19 @@ describe("OpportunityDatabaseAdapter Integration", () => {
     }
   });
 
-  test("getProfile should return profile document for existing user", async () => {
+  test("getProfile should return a users-sourced profile document for existing user", async () => {
+    // getProfile now sources identity from the `users` table (name/intro->bio/location);
+    // typed skills/interests/narrative.context are dropped (empty) -- see WS5 (IND-363).
     const profile = await adapter.getProfile(testUserId);
 
     expect(profile).not.toBeNull();
     expect(profile!.identity).toBeDefined();
     expect(profile!.identity.name).toBe("Test Opportunity Adapter User");
-    expect(profile!.identity.bio).toBe("Full-stack developer with focus on distributed systems");
+    expect(profile!.identity.bio).toBe("Test user for opportunity adapter tests");
     expect(profile!.identity.location).toBe("Test City");
-    expect(profile!.narrative).toBeDefined();
-    expect(profile!.narrative.context).toBe("Building scalable applications and exploring new technologies");
-    expect(profile!.attributes).toBeDefined();
-    expect(profile!.attributes.interests).toContain("distributed systems");
-    expect(profile!.attributes.skills).toContain("Node.js");
+    expect(profile!.narrative.context).toBe("");
+    expect(profile!.attributes.interests).toEqual([]);
+    expect(profile!.attributes.skills).toEqual([]);
   });
 
   test("getProfile should return null for non-existent user", async () => {

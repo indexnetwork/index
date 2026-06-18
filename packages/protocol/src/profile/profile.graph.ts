@@ -118,25 +118,30 @@ export class ProfileGraphFactory {
 
         try {
           const profile = await this.database.getProfile(state.userId) as any;
+          // "Has a profile" now means the user has been enriched into ACTIVE premises
+          // (the user_profiles replacement). `getProfile` returns a users-sourced row
+          // for every existing user, so its presence no longer signals enrichment --
+          // the premise graph is the source of truth for whether generation has run.
+          const hasBeenEnriched = (await this.database.getPremisesForUser(state.userId, 'ACTIVE')).length > 0;
 
           // Query mode: Just return the profile (fast path)
           if (state.operationMode === 'query') {
             logger.verbose("🚀 Query mode - returning existing profile (fast path)", {
-              hasProfile: !!profile
+              hasProfile: hasBeenEnriched
             });
-            const profileWithId = profile ? await this.database.getProfileByUserId(state.userId) : null;
+            const profileWithId = hasBeenEnriched ? await this.database.getProfileByUserId(state.userId) : null;
             return {
-              profile: profile || undefined,
-              readResult: profile
+              profile: hasBeenEnriched ? (profile || undefined) : undefined,
+              readResult: hasBeenEnriched
                 ? {
                     hasProfile: true,
                     profile: {
                       id: profileWithId?.id,
-                      name: profile.identity?.name,
-                      bio: profile.identity?.bio,
-                      location: profile.identity?.location,
-                      skills: profile.attributes?.skills,
-                      interests: profile.attributes?.interests,
+                      name: profile?.identity?.name,
+                      bio: profile?.identity?.bio,
+                      location: profile?.identity?.location,
+                      skills: profile?.attributes?.skills,
+                      interests: profile?.attributes?.interests,
                     },
                   }
                 : {
@@ -150,7 +155,7 @@ export class ProfileGraphFactory {
           // Write mode: Detect what needs generation
           // Treat confirmation-only input (e.g. "Yes") as no input so we ask for info / use scraper
           const hasMeaningfulInput = !!state.input && isMeaningfulProfileInput(state.input);
-          const needsProfileGeneration = !profile || (state.forceUpdate && hasMeaningfulInput);
+          const needsProfileGeneration = !hasBeenEnriched || (state.forceUpdate && hasMeaningfulInput);
 
           // Check if we need to scrape (profile generation needed but no meaningful input provided)
           const willNeedScraping = needsProfileGeneration && !hasMeaningfulInput;
@@ -226,7 +231,7 @@ export class ProfileGraphFactory {
           }
 
           logger.verbose("📊 State detection complete", {
-            hasProfile: !!profile,
+            hasProfile: hasBeenEnriched,
             needsProfileGeneration,
             needsUserInfo,
             missingUserInfo,
@@ -236,7 +241,10 @@ export class ProfileGraphFactory {
           });
 
           return {
-            profile: profile || undefined,
+            // Only treat the (users-sourced) profile as existing state when the user has
+            // actually been enriched; un-enriched users keep `undefined` so the generate
+            // path runs from scratch rather than merging into an empty users row.
+            profile: hasBeenEnriched ? (profile || undefined) : undefined,
             needsProfileGeneration,
             needsUserInfo,
             missingUserInfo

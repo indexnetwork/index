@@ -196,7 +196,53 @@ interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions, userSocials, userContexts } = schema;
+const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, links, sessions, userSocials, userContexts } = schema;
+
+/**
+ * Build a {@link ProfileRow} from the canonical `users` table (WS5 / IND-363),
+ * replacing the retired `user_profiles` read. Identity (name/bio/location) is sourced
+ * from `users` (`name`/`intro`->bio/`location`). The typed `attributes.skills`/
+ * `interests` and `narrative.context` are intentionally dropped -- they have no home on
+ * `users`, and their content now lives in the user's premises + global user_context.
+ * The ProfileRow shape is preserved (arrays empty) so existing consumers keep compiling
+ * and rendering name/bio/location unchanged.
+ *
+ * @param userId - The user whose profile representation to build.
+ * @returns A ProfileRow, or null when the user does not exist.
+ */
+async function buildProfileFromUser(userId: string): Promise<ProfileRow | null> {
+  const rows = await db.select({
+    id: users.id,
+    name: users.name,
+    intro: users.intro,
+    location: users.location,
+  })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const user = rows[0];
+  if (!user) return null;
+  return {
+    userId: user.id,
+    identity: { name: user.name ?? '', bio: user.intro ?? '', location: user.location ?? '' },
+    narrative: { context: '' },
+    attributes: { interests: [], skills: [] },
+  };
+}
+
+/**
+ * {@link buildProfileFromUser} variant returning the legacy `& { id }` shape. Since the
+ * `user_profiles` row no longer exists, `id` is the stable `userId`. Its sole consumer
+ * (the WS8-bound profile-graph aggregate node) only uses it for existence/merge.
+ *
+ * @param userId - The user whose profile representation to build.
+ * @returns A ProfileRow with an `id`, or null when the user does not exist.
+ */
+async function buildProfileWithIdFromUser(userId: string): Promise<(ProfileRow & { id: string }) | null> {
+  const profile = await buildProfileFromUser(userId);
+  if (!profile) return null;
+  return { id: profile.userId, ...profile };
+}
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query' | 'context';
@@ -671,18 +717,7 @@ export class IntentDatabaseAdapter {
   // --- Profile check (required by IntentGraphDatabase for prepNode gate) ---
 
   async getProfile(userId: string): Promise<ProfileRow | null> {
-    const result = await db.select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+    return buildProfileFromUser(userId);
   }
 
   // --- Read mode methods (required by IntentGraphDatabase for queryNode) ---
@@ -946,18 +981,7 @@ export class ChatDatabaseAdapter {
   // ─────────────────────────────────────────────────────────────────────────────
 
   async getProfile(userId: string): Promise<ProfileRow | null> {
-    const result = await db.select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+    return buildProfileFromUser(userId);
   }
 
   async getActiveIntents(userId: string): Promise<ActiveIntentRow[]> {
@@ -2514,16 +2538,7 @@ export class ChatDatabaseAdapter {
   }
 
   async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
-    const result = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, userId)).limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      id: profile.id,
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+    return buildProfileWithIdFromUser(userId);
   }
 
   /**
@@ -4590,18 +4605,7 @@ export class ProfileDatabaseAdapter {
   }
 
   async getProfile(userId: string): Promise<ProfileRow | null> {
-    const result = await db.select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+    return buildProfileFromUser(userId);
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
@@ -4761,43 +4765,13 @@ export class ProfileDatabaseAdapter {
     narrative: ProfileNarrative;
     attributes: ProfileAttributes;
   } | null> {
-    const result = await db.select({
-      identity: schema.userProfiles.identity,
-      narrative: schema.userProfiles.narrative,
-      attributes: schema.userProfiles.attributes,
-    })
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const row = result[0];
-    if (!row) return null;
-    return {
-      identity: row.identity as ProfileIdentity,
-      narrative: row.narrative as ProfileNarrative,
-      attributes: row.attributes as ProfileAttributes,
-    };
+    const profile = await buildProfileFromUser(userId);
+    if (!profile) return null;
+    return { identity: profile.identity, narrative: profile.narrative, attributes: profile.attributes };
   }
 
   async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
-    const result = await db.select({
-      id: schema.userProfiles.id,
-      userId: schema.userProfiles.userId,
-      identity: schema.userProfiles.identity,
-      narrative: schema.userProfiles.narrative,
-      attributes: schema.userProfiles.attributes,
-    })
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      id: profile.id,
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+    return buildProfileWithIdFromUser(userId);
   }
 
   private hydeAdapter = new HydeDatabaseAdapter();
@@ -5170,18 +5144,7 @@ function toOpportunityRow(row: typeof opportunities.$inferSelect): OpportunityRo
  */
 export class OpportunityDatabaseAdapter {
   async getProfile(userId: string): Promise<ProfileRow | null> {
-    const result = await db.select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+    return buildProfileFromUser(userId);
   }
 
   async createOpportunity(data: CreateOpportunityInput): Promise<OpportunityRow> {
@@ -6209,7 +6172,8 @@ interface UserWithGraph {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
-  profile: typeof userProfiles.$inferSelect | null;
+  /** True when the user has been enriched into a global user_context row (the user_profiles replacement). */
+  hasProfile: boolean;
   notificationPreferences: {
     connectionUpdates: boolean;
     weeklyNewsletter: boolean;
@@ -6401,11 +6365,9 @@ export class UserDatabaseAdapter {
     const userResult = await db.select({
       user: users,
       settings: userNotificationSettings,
-      profile: userProfiles
     })
       .from(users)
       .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
-      .leftJoin(userProfiles, eq(users.id, userProfiles.userId))
       .where(eq(users.id, userId))
       .limit(1);
 
@@ -6413,16 +6375,24 @@ export class UserDatabaseAdapter {
       return null;
     }
 
-    const { user, settings, profile } = userResult[0];
+    const { user, settings } = userResult[0];
 
     const socialRows = await db.select()
       .from(userSocials)
       .where(eq(userSocials.userId, userId));
 
+    // "Has a profile" now means the user has been enriched into a global user_context
+    // row (networkId = null) -- the profile replacement. Replaces the retired
+    // user_profiles existence check that gated background auto-enrichment.
+    const globalContext = await db.select({ id: userContexts.id })
+      .from(userContexts)
+      .where(and(eq(userContexts.userId, userId), isNull(userContexts.networkId)))
+      .limit(1);
+
     return {
       ...user,
       socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
-      profile,
+      hasProfile: globalContext.length > 0,
       notificationPreferences: settings?.preferences as {
         connectionUpdates: boolean;
         weeklyNewsletter: boolean;
