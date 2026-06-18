@@ -26,31 +26,33 @@
  *
  * Usage:
  *   bun run maintenance:backfill-global-user-contexts [--limit N] [--dry-run] [--no-decompose]
+ *
+ * The orchestration core ({@link classifyCandidates}, {@link runBackfill},
+ * {@link buildProfileText}) is exported and dependency-injected so it can be unit
+ * tested without a live DB or LLM (see `tests/backfill-global-user-contexts.spec.ts`).
  */
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Safe default: development unless NODE_ENV is *explicitly* production.
-const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+// Side-effecting env load + adapter wiring only run when this file is the entrypoint,
+// so importing the pure orchestration core from a test never touches the DB/LLM.
+const isEntrypoint = import.meta.main;
 
-import { sql } from 'drizzle-orm';
-import { PremiseDecomposer, PremiseGraphFactory } from '@indexnetwork/protocol';
-import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
-
-import db, { closeDb } from '../lib/drizzle/drizzle';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
+if (isEntrypoint) {
+  // Safe default: development unless NODE_ENV is *explicitly* production.
+  const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
+  dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+}
 
 /** Enrichment-path confidence — mirrors decompose-profiles (derived from profile text, not explicit). */
 const ENRICHMENT_CONFIDENCE = 0.85;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-interface ProfileIdentity { name: string; bio: string; location: string }
-interface ProfileNarrative { context: string }
-interface ProfileAttributes { interests: string[]; skills: string[] }
+export interface ProfileIdentity { name: string; bio: string; location: string }
+export interface ProfileNarrative { context: string }
+export interface ProfileAttributes { interests: string[]; skills: string[] }
 
-type CandidateRow = {
+export type CandidateRow = {
   user_id: string;
   email: string;
   premise_count: number;
@@ -59,42 +61,68 @@ type CandidateRow = {
   attributes: ProfileAttributes | null;
 };
 
-// ---------------------------------------------------------------------------
-// Arg parsing
-// ---------------------------------------------------------------------------
+/** A decomposed premise as produced by `PremiseDecomposer`. */
+export interface DecomposedPremise {
+  text: string;
+  tier: 'assertive' | 'contextual';
+  validityDays?: number;
+}
 
-function parseArgs(): { limit: number | null; dryRun: boolean; decompose: boolean } {
-  const args = process.argv.slice(2);
+/** Input passed to {@link BackfillDeps.createPremise} (provenance is fixed by the caller). */
+export interface CreatePremiseInput {
+  userId: string;
+  assertionText: string;
+  tier: 'assertive' | 'contextual';
+  volatile: boolean;
+  validUntil?: string;
+}
 
-  let limit: number | null = null;
-  const limitIdx = args.indexOf('--limit');
-  if (limitIdx !== -1) {
-    limit = Number(args[limitIdx + 1]);
-  } else {
-    const eqArg = args.find((a) => a.startsWith('--limit='));
-    if (eqArg) limit = Number(eqArg.split('=')[1]);
-  }
-  if (limit !== null && (!Number.isInteger(limit) || limit <= 0)) {
-    console.error('--limit must be a positive integer');
-    process.exit(1);
-  }
+/**
+ * Injectable seams for {@link runBackfill}. The CLI binds these to the real
+ * decomposer / premise graph / global-context helper; tests pass mocks so the
+ * branching (idempotent skip, decompose path, no-data skip, failure counting) is
+ * exercised without a DB or LLM. Mirrors the `EnsureGlobalUserContextDeps` pattern.
+ */
+export interface BackfillDeps {
+  /** Decompose legacy profile text into atomic premises. */
+  decomposeProfile: (text: string) => Promise<DecomposedPremise[]>;
+  /** Persist one premise; resolves `true` when a new premise was created (not a near-duplicate). */
+  createPremise: (input: CreatePremiseInput) => Promise<boolean>;
+  /** Synthesize + upsert the global context from ACTIVE premises; '' on no premises / failure. */
+  ensureGlobalContext: (userId: string) => Promise<string>;
+  log?: (msg: string) => void;
+  logError?: (msg: string) => void;
+}
 
-  return {
-    limit,
-    dryRun: args.includes('--dry-run'),
-    decompose: !args.includes('--no-decompose'),
-  };
+export interface BackfillOptions {
+  limit: number | null;
+  dryRun: boolean;
+  decompose: boolean;
+}
+
+export interface BackfillResult {
+  generated: number;
+  decomposedUsers: number;
+  skipped: number;
+  failed: number;
+}
+
+export interface Classification {
+  total: number;
+  withPremises: number;
+  needDecompose: number;
+  noData: number;
 }
 
 // ---------------------------------------------------------------------------
-// Profile text builder (mirrors decompose-profiles.buildProfileText)
+// Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
 
 /**
  * Assembles a text blob from legacy profile fields, skipping empty values.
  * @returns A newline-joined text suitable for premise decomposition, or '' when empty.
  */
-function buildProfileText(
+export function buildProfileText(
   identity: ProfileIdentity | null,
   narrative: ProfileNarrative | null,
   attributes: ProfileAttributes | null,
@@ -109,148 +137,223 @@ function buildProfileText(
   return lines.join('\n');
 }
 
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-
-const main = async (): Promise<void> => {
-  const { limit, dryRun, decompose } = parseArgs();
-  console.log(
-    `backfill-global-user-contexts: env=${envFile} limit=${limit ?? 'none'} dry-run=${dryRun} decompose=${decompose}`,
-  );
-
-  // Idempotent candidate set: live, non-ghost users WITHOUT a global context row
-  // (networkId IS NULL). Ordered by premise count so the cheap, high-signal users
-  // (already have premises) go first.
-  const candidates = await db.execute<CandidateRow>(sql`
-    SELECT
-      u.id AS user_id,
-      u.email,
-      (
-        SELECT count(*)::int FROM premises p
-        WHERE p.user_id = u.id AND p.deleted_at IS NULL AND p.status = 'ACTIVE'
-      ) AS premise_count,
-      up.identity,
-      up.narrative,
-      up.attributes
-    FROM users u
-    LEFT JOIN user_profiles up ON up.user_id = u.id
-    WHERE u.deleted_at IS NULL
-      AND u.is_ghost = false
-      AND NOT EXISTS (
-        SELECT 1 FROM user_contexts uc
-        WHERE uc.user_id = u.id AND uc.network_id IS NULL
-      )
-    ORDER BY premise_count DESC
-    ${limit !== null ? sql`LIMIT ${limit}` : sql``}
-  `);
-
-  console.log(`Users without a global user_context: ${candidates.length}`);
-  if (candidates.length === 0) return;
-
-  if (dryRun) {
-    let withPremises = 0;
-    let needDecompose = 0;
-    let noData = 0;
-    for (const c of candidates) {
-      if (c.premise_count > 0) withPremises++;
-      else if (buildProfileText(c.identity, c.narrative, c.attributes).trim()) needDecompose++;
-      else noData++;
-    }
-    console.log(`  [dry-run] ${withPremises} have active premises -> generate global context directly`);
-    console.log(`  [dry-run] ${needDecompose} have no premises but legacy profile text -> decompose first${decompose ? '' : ' (SKIPPED: --no-decompose)'}`);
-    console.log(`  [dry-run] ${noData} have no premises and no profile text -> skipped (nothing to synthesize)`);
-    return;
+/**
+ * Classify candidates for the `--dry-run` preview without any side effects.
+ * @param candidates - Users missing a global context row.
+ * @param decompose - Whether the no-premises population would be decomposed.
+ * @returns Counts of each disposition.
+ */
+export function classifyCandidates(candidates: CandidateRow[], decompose: boolean): Classification {
+  let withPremises = 0;
+  let needDecompose = 0;
+  let noData = 0;
+  for (const c of candidates) {
+    if (c.premise_count > 0) withPremises++;
+    else if (decompose && buildProfileText(c.identity, c.narrative, c.attributes).trim()) needDecompose++;
+    else noData++;
   }
+  return { total: candidates.length, withPremises, needDecompose, noData };
+}
 
-  const database = new ChatDatabaseAdapter();
-  const embedder = new EmbedderAdapter();
-  const decomposer = new PremiseDecomposer();
-  const premiseGraph = new PremiseGraphFactory(
-    database as unknown as PremiseGraphDatabase,
-    embedder,
-  ).createGraph();
+// ---------------------------------------------------------------------------
+// Orchestration core (exported for testing, dependency-injected)
+// ---------------------------------------------------------------------------
 
-  let generated = 0;
-  let decomposedUsers = 0;
-  let skipped = 0;
-  let failed = 0;
+/**
+ * Process the candidate set: for each user, decompose their legacy profile into
+ * premises when they have none (population 2), then synthesize + upsert the global
+ * context. Pure orchestration — all IO is injected via {@link BackfillDeps}.
+ *
+ * @param candidates - Users missing a global context row.
+ * @param opts - `decompose` controls whether population 2 is decomposed; `limit`/`dryRun` are handled by the caller.
+ * @param deps - Injected decomposer / premise writer / global-context synthesizer.
+ * @returns Tallies of generated, decomposed, skipped, and failed users.
+ */
+export async function runBackfill(
+  candidates: CandidateRow[],
+  opts: Pick<BackfillOptions, 'decompose'>,
+  deps: BackfillDeps,
+): Promise<BackfillResult> {
+  const log = deps.log ?? (() => {});
+  const logError = deps.logError ?? (() => {});
+  const result: BackfillResult = { generated: 0, decomposedUsers: 0, skipped: 0, failed: 0 };
 
   for (const [i, c] of candidates.entries()) {
     const label = `[${i + 1}/${candidates.length}] ${c.email}`;
     try {
       // Population 2: no premises yet — decompose the legacy profile into premises first.
       if (c.premise_count === 0) {
-        if (!decompose) {
-          skipped++;
-          console.log(`  ${label} — no premises, --no-decompose -> skipped`);
+        if (!opts.decompose) {
+          result.skipped++;
+          log(`  ${label} — no premises, --no-decompose -> skipped`);
           continue;
         }
         const profileText = buildProfileText(c.identity, c.narrative, c.attributes);
         if (!profileText.trim()) {
-          skipped++;
-          console.log(`  ${label} — no premises, no profile text -> skipped`);
+          result.skipped++;
+          log(`  ${label} — no premises, no profile text -> skipped`);
           continue;
         }
 
-        const result = await decomposer.invoke(profileText);
+        const premises = await deps.decomposeProfile(profileText);
         let created = 0;
-        for (const p of result.premises) {
-          // Mirror decompose-profiles / decomposePremisesNode: contextual premises
-          // carry an LLM-inferred validity window and are volatile; assertive don't expire.
+        for (const p of premises) {
+          // Mirror decompose-profiles / decomposePremisesNode: contextual premises carry
+          // an LLM-inferred validity window and are volatile; assertive don't expire.
           const isContextual = p.tier === 'contextual';
           const validUntil = isContextual && p.validityDays
-            ? new Date(Date.now() + p.validityDays * 24 * 60 * 60 * 1000).toISOString()
+            ? new Date(Date.now() + p.validityDays * MS_PER_DAY).toISOString()
             : undefined;
-          const premiseResult = await premiseGraph.invoke({
+          const wasCreated = await deps.createPremise({
             userId: c.user_id,
             assertionText: p.text,
-            tier: p.tier as 'assertive' | 'contextual',
+            tier: p.tier,
             volatile: isContextual,
             ...(validUntil ? { validUntil } : {}),
-            provenanceSource: 'enrichment' as const,
-            provenanceConfidence: ENRICHMENT_CONFIDENCE,
           });
-          if (premiseResult.premise) created++;
+          if (wasCreated) created++;
         }
-        decomposedUsers++;
-        console.log(`  ${label} — decomposed legacy profile -> ${created} premise(s)`);
+        result.decomposedUsers++;
+        log(`  ${label} — decomposed legacy profile -> ${created} premise(s)`);
         if (created === 0) {
-          skipped++;
-          console.log(`  ${label} — no premises created -> skipped global context`);
+          result.skipped++;
+          log(`  ${label} — no premises created -> skipped global context`);
           continue;
         }
       }
 
       // Both populations: synthesize + upsert the global context from ACTIVE premises.
-      // ensureGlobalUserContext is idempotent and swallows errors (returns ''), so an
-      // empty result here means generation failed or there were no usable premises.
-      const text = await ensureGlobalUserContext(c.user_id);
+      // ensureGlobalContext is idempotent and swallows errors (returns ''), so an empty
+      // result here means generation failed or there were no usable premises.
+      const text = await deps.ensureGlobalContext(c.user_id);
       if (text) {
-        generated++;
-        console.log(`  ${label} — global context generated (${text.length} chars)`);
+        result.generated++;
+        log(`  ${label} — global context generated (${text.length} chars)`);
       } else {
-        failed++;
-        console.error(`  ${label} — FAILED: empty global context (no usable premises or generation error)`);
+        result.failed++;
+        logError(`  ${label} — FAILED: empty global context (no usable premises or generation error)`);
       }
     } catch (err) {
-      failed++;
-      const msg = err instanceof Error ? err.message : `${err}`;
-      console.error(`  ${label} — FAILED: ${msg}`);
+      result.failed++;
+      logError(`  ${label} — FAILED: ${err instanceof Error ? err.message : `${err}`}`);
     }
   }
 
-  console.log(
-    `\nDone. ${generated} global context(s) generated (${decomposedUsers} required profile decomposition first), ${skipped} skipped, ${failed} failed.`,
-  );
-  if (failed > 0) process.exitCode = 1;
-};
+  return result;
+}
 
-main()
-  .then(() => closeDb())
-  .catch(async (err: unknown) => {
-    const msg = err instanceof Error ? err.message : `${err}`;
-    console.error('backfill-global-user-contexts failed:', msg);
+// ---------------------------------------------------------------------------
+// Arg parsing
+// ---------------------------------------------------------------------------
+
+export function parseArgs(argv: string[]): BackfillOptions {
+  let limit: number | null = null;
+  const limitIdx = argv.indexOf('--limit');
+  if (limitIdx !== -1) {
+    limit = Number(argv[limitIdx + 1]);
+  } else {
+    const eqArg = argv.find((a) => a.startsWith('--limit='));
+    if (eqArg) limit = Number(eqArg.split('=')[1]);
+  }
+  if (limit !== null && (!Number.isInteger(limit) || limit <= 0)) {
+    console.error('--limit must be a positive integer');
+    process.exit(1);
+  }
+  return { limit, dryRun: argv.includes('--dry-run'), decompose: !argv.includes('--no-decompose') };
+}
+
+// ---------------------------------------------------------------------------
+// Main (entrypoint only — wires real adapters)
+// ---------------------------------------------------------------------------
+
+async function main(): Promise<void> {
+  const { sql } = await import('drizzle-orm');
+  const { PremiseDecomposer, PremiseGraphFactory } = await import('@indexnetwork/protocol');
+  type PremiseGraphDatabase = import('@indexnetwork/protocol').PremiseGraphDatabase;
+  const { default: db, closeDb } = await import('../lib/drizzle/drizzle');
+  const { ChatDatabaseAdapter } = await import('../adapters/database.adapter');
+  const { EmbedderAdapter } = await import('../adapters/embedder.adapter');
+  const { ensureGlobalUserContext } = await import('../lib/usercontext/global-context');
+
+  const opts = parseArgs(process.argv.slice(2));
+  const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
+  console.log(
+    `backfill-global-user-contexts: env=${envFile} limit=${opts.limit ?? 'none'} dry-run=${opts.dryRun} decompose=${opts.decompose}`,
+  );
+
+  try {
+    // Idempotent candidate set: live, non-ghost users WITHOUT a global context row
+    // (networkId IS NULL). Ordered by premise count so cheap high-signal users go first.
+    const candidates = await db.execute<CandidateRow>(sql`
+      SELECT
+        u.id AS user_id,
+        u.email,
+        (
+          SELECT count(*)::int FROM premises p
+          WHERE p.user_id = u.id AND p.deleted_at IS NULL AND p.status = 'ACTIVE'
+        ) AS premise_count,
+        up.identity,
+        up.narrative,
+        up.attributes
+      FROM users u
+      LEFT JOIN user_profiles up ON up.user_id = u.id
+      WHERE u.deleted_at IS NULL
+        AND u.is_ghost = false
+        AND NOT EXISTS (
+          SELECT 1 FROM user_contexts uc
+          WHERE uc.user_id = u.id AND uc.network_id IS NULL
+        )
+      ORDER BY premise_count DESC
+      ${opts.limit !== null ? sql`LIMIT ${opts.limit}` : sql``}
+    `);
+
+    console.log(`Users without a global user_context: ${candidates.length}`);
+    if (candidates.length === 0) return;
+
+    if (opts.dryRun) {
+      const c = classifyCandidates(candidates, opts.decompose);
+      console.log(`  [dry-run] ${c.withPremises} have active premises -> generate global context directly`);
+      console.log(`  [dry-run] ${c.needDecompose} have no premises but legacy profile text -> decompose first`);
+      console.log(`  [dry-run] ${c.noData} have no premises and no usable profile text -> skipped${opts.decompose ? '' : ' (--no-decompose)'}`);
+      return;
+    }
+
+    const database = new ChatDatabaseAdapter();
+    const embedder = new EmbedderAdapter();
+    const decomposer = new PremiseDecomposer();
+    const premiseGraph = new PremiseGraphFactory(
+      database as unknown as PremiseGraphDatabase,
+      embedder,
+    ).createGraph();
+
+    const deps: BackfillDeps = {
+      decomposeProfile: async (text) => (await decomposer.invoke(text)).premises as DecomposedPremise[],
+      createPremise: async (input) => {
+        const res = await premiseGraph.invoke({
+          ...input,
+          provenanceSource: 'enrichment' as const,
+          provenanceConfidence: ENRICHMENT_CONFIDENCE,
+        });
+        return !!res.premise;
+      },
+      ensureGlobalContext: ensureGlobalUserContext,
+      log: (m) => console.log(m),
+      logError: (m) => console.error(m),
+    };
+
+    const r = await runBackfill(candidates, opts, deps);
+    console.log(
+      `\nDone. ${r.generated} global context(s) generated (${r.decomposedUsers} required profile decomposition first), ${r.skipped} skipped, ${r.failed} failed.`,
+    );
+    if (r.failed > 0) process.exitCode = 1;
+  } finally {
     await closeDb().catch(() => {});
+  }
+}
+
+if (isEntrypoint) {
+  main().catch((err: unknown) => {
+    console.error('backfill-global-user-contexts failed:', err instanceof Error ? err.message : `${err}`);
     process.exit(1);
   });
+}
