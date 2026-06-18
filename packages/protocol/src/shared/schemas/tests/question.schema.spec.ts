@@ -212,7 +212,7 @@ describe("QuestionAnswer", () => {
 });
 
 describe("QuestionMode", () => {
-  it.each(["discovery", "intent", "profile", "negotiation"])("accepts '%s'", (mode) => {
+  it.each(["discovery", "intent", "enrichment", "negotiation"])("accepts '%s'", (mode) => {
     const result = QuestionModeSchema.safeParse(mode);
     expect(result.success).toBe(true);
   });

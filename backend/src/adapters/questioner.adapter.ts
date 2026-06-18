@@ -25,7 +25,7 @@ const DEFAULT_QUESTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Detection context describing how/where a question was generated. */
 export interface AdapterQuestionDetection {
-  mode: 'discovery' | 'intent' | 'profile' | 'negotiation';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -87,7 +87,7 @@ export interface AdapterPersistedQuestion {
 
 /** Optional filters for the `findPending` query. */
 export interface AdapterQuestionFilters {
-  mode?: 'discovery' | 'intent' | 'profile' | 'negotiation';
+  mode?: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
   sourceType?: string;
   sourceId?: string;
   /** Filter to questions linked to a specific conversation. */
@@ -95,7 +95,7 @@ export interface AdapterQuestionFilters {
   /** When true, only return questions with no conversationId (sidebar-only). */
   noConversation?: boolean;
   /** Restrict to questions whose detection mode is in this set. */
-  modes?: Array<'discovery' | 'intent' | 'profile' | 'negotiation'>;
+  modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation'>;
   /** Maximum rows to return (applied as a SQL LIMIT). */
   limit?: number;
 }

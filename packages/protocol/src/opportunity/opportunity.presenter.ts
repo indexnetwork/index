@@ -725,9 +725,7 @@ export async function gatherPresenterContext(
       const name = profile?.identity?.name ?? "Unknown";
       const bio = profile?.identity?.bio ?? "";
       const location = profile?.identity?.location ?? "";
-      const skills = profile?.attributes?.skills?.join(", ") ?? "";
-      const interests = profile?.attributes?.interests?.join(", ") ?? "";
-      const context = profile?.narrative?.context ?? "";
+      const context = profile?.context ?? "";
       const intents = partyIntentsMap?.get(uid);
       const intentLines = intents?.length
         ? intents
@@ -738,8 +736,6 @@ export async function gatherPresenterContext(
         `${name}:`,
         `  Bio: ${bio}`,
         location ? `  Location: ${location}` : null,
-        skills ? `  Skills: ${skills}` : null,
-        interests ? `  Interests: ${interests}` : null,
         context ? `  Context: ${context}` : null,
         `  Active intents:`,
         ...intentLines,
@@ -756,9 +752,7 @@ export async function gatherPresenterContext(
       `Name: ${viewerProfile?.identity?.name ?? "Unknown"}`,
       `Bio: ${viewerProfile?.identity?.bio ?? ""}`,
       `Location: ${viewerProfile?.identity?.location ?? ""}`,
-      `Skills: ${viewerProfile?.attributes?.skills?.join(", ") ?? ""}`,
-      `Interests: ${viewerProfile?.attributes?.interests?.join(", ") ?? ""}`,
-      `Context: ${viewerProfile?.narrative?.context ?? ""}`,
+      `Context: ${viewerProfile?.context ?? ""}`,
       "Active intents:",
       ...(viewerIntents?.length
         ? viewerIntents.map(
@@ -774,9 +768,7 @@ export async function gatherPresenterContext(
       >;
       const name = profile?.identity?.name ?? "Unknown";
       const bio = profile?.identity?.bio ?? "";
-      const skills = profile?.attributes?.skills?.join(", ") ?? "";
-      const interests = profile?.attributes?.interests?.join(", ") ?? "";
-      return `${name}: ${bio}. Skills: ${skills}. Interests: ${interests}`;
+      return `${name}: ${bio}`;
     });
     otherPartyContext =
       otherParts.join("\n\n") || "Other party (details not available).";

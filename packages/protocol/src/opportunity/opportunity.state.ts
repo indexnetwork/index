@@ -15,11 +15,10 @@ import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.j
  * Following the intent graph pattern with Annotation-based state management.
  */
 
-/** Asker's profile shape (identity/narrative/attributes). Used by sourceProfile annotation. */
+/** Asker's profile shape (identity + context). Used by sourceProfile annotation. */
 export interface SourceProfileData {
   identity?: { name?: string; bio?: string; location?: string };
-  narrative?: { context?: string };
-  attributes?: { skills?: string[]; interests?: string[] };
+  context?: string;
 }
 
 /**

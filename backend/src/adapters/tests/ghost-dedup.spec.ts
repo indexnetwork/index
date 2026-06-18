@@ -7,10 +7,10 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
 import { users, userSocials, networks, networkMembers, intents, opportunities } from '../../schemas/database.schema';
-import { ProfileDatabaseAdapter } from '../database.adapter';
+import { EnrichmentDatabaseAdapter } from '../database.adapter';
 
 const TEST_PREFIX = 'ghost_dedup_spec_' + Date.now() + '_';
-const adapter = new ProfileDatabaseAdapter();
+const adapter = new EnrichmentDatabaseAdapter();
 
 interface TestIds {
   realUserId: string;
@@ -117,7 +117,7 @@ afterAll(async () => {
   await db.delete(users).where(inArray(users.id, allIds));
 });
 
-describe('ProfileDatabaseAdapter.findDuplicateUser', () => {
+describe('EnrichmentDatabaseAdapter.findDuplicateUser', () => {
   it('matches by LinkedIn handle and prefers real user over ghost', async () => {
     const result = await adapter.findDuplicateUser(ids.ghostAId, [{ id: 'fake-id-1', userId: ids.ghostAId, label: 'linkedin', value: 'serefyarar' }]);
     expect(result).not.toBeNull();
@@ -187,7 +187,7 @@ describe('ProfileDatabaseAdapter.findDuplicateUser', () => {
   });
 });
 
-describe('ProfileDatabaseAdapter.mergeGhostUser', () => {
+describe('EnrichmentDatabaseAdapter.mergeGhostUser', () => {
   it('re-points network memberships and soft-deletes ghost', async () => {
     const ghostId = ids.mergeGhostId;
     const targetId = ids.mergeTargetId;

@@ -3,15 +3,15 @@ import { and, eq, isNull } from 'drizzle-orm';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
-import { ProfileDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
-import { ProfileGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
+import { EnrichmentGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import db from '../lib/drizzle/drizzle';
 import { questionerEnqueueIfEnabled } from './questioner.queue';
-import { canRunPublicProfileEnrichment, getProfileEnrichmentPolicy } from '../lib/privacy/profile-enrichment-policy';
+import { canRunPublicEnrichment, getEnrichmentPolicy } from '../lib/privacy/enrichment-policy';
 import { networks, premises, users } from '../schemas/database.schema';
 import type { OnboardingState, ProfileEnrichmentPolicy } from '../schemas/database.schema';
 
@@ -295,7 +295,7 @@ export class EnrichmentQueue {
       return { allowed: false, policy: 'disabled', reason: 'network_not_found', hasExistingProfile };
     }
 
-    const policy = getProfileEnrichmentPolicy(network.permissions);
+    const policy = getEnrichmentPolicy(network.permissions);
     if (!user) {
       return { allowed: false, policy, reason: 'user_not_found', hasExistingProfile };
     }
@@ -304,7 +304,7 @@ export class EnrichmentQueue {
       return { allowed: true, policy, reason: 'existing_profile_no_public_enrichment_needed', hasExistingProfile };
     }
 
-    const allowed = canRunPublicProfileEnrichment({
+    const allowed = canRunPublicEnrichment({
       policy,
       onboarding: user.onboarding as OnboardingState | null | undefined,
       isGhost: user.isGhost,
@@ -334,7 +334,7 @@ export class EnrichmentQueue {
   }
 
   private async invokeProfileGraph(userId: string, operationMode: 'write' | 'generate') {
-    const database = new ProfileDatabaseAdapter();
+    const database = new EnrichmentDatabaseAdapter();
     const premiseDatabase = new ChatDatabaseAdapter();
     const scraper = new ScraperAdapter();
     const embedder = new EmbedderAdapter();
@@ -345,7 +345,7 @@ export class EnrichmentQueue {
     // Inject the env-gated questioner enqueue so profile regeneration runs
     // (onboarding, premise cascades) generate profile-gap questions instead
     // of silently dropping them (the gap that left prod's questions table empty).
-    const factory = new ProfileGraphFactory(database, scraper, { enrichUserProfile }, questionerEnqueueIfEnabled(), premiseGraph);
+    const factory = new EnrichmentGraphFactory(database, scraper, { enrichUserProfile }, questionerEnqueueIfEnabled(), premiseGraph);
     const graph = factory.createGraph();
     return graph.invoke({ userId, operationMode });
   }

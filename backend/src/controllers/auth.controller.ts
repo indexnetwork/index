@@ -5,7 +5,7 @@ import { Controller, Get, Patch, Delete, UseGuards } from '../lib/router/router.
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
-import { profileService } from '../services/profile.service';
+import { enrichmentService } from '../services/enrichment.service';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
@@ -71,7 +71,7 @@ export class AuthController {
 
     if (shouldAutoGenerateProfile(fullUser)) {
       logger.verbose('Auto-generating profile', { userId: user.id });
-      profileService.syncProfile(user.id).catch((error) => {
+      enrichmentService.syncProfile(user.id).catch((error) => {
         logger.error('Background profile sync failed', {
           userId: user.id,
           error: error instanceof Error ? error.message : String(error),

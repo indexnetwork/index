@@ -195,7 +195,7 @@ Graphs are LangGraph state machines. Each graph is created by a factory class th
 |-----------------|---------|
 | Chat | ReAct agent loop with tool calling |
 | Intent | Extract, verify, reconcile, and persist intents |
-| Profile | Generate/update user profiles with scraping |
+| Enrichment | Enrich users and decompose identity into premises, with optional scraping |
 | Opportunity | HyDE-based discovery: search, evaluate, rank, persist |
 | HyDE | Generate hypothetical document embeddings (cache-aware) |
 | Network | Manage index (network) CRUD |
@@ -219,7 +219,7 @@ Agents are pure LLM reasoning units. They accept structured input (Zod schemas),
 | Intent Verifier | Validates felicity conditions on intents |
 | Intent Indexer | Scores intent-to-index fit (relevancy 0.0-1.0) |
 | Opportunity Evaluator | Scores and synthesizes opportunity matches |
-| Profile Generator | Generates user profiles from identity signals |
+| Enrichment Generator | Generates identity drafts from identity signals (onboarding draft tools) |
 | HyDE Generator | Creates hypothetical document embeddings |
 
 ### Tools
@@ -228,7 +228,7 @@ Tools are the capabilities exposed to the chat agent. They bridge the agent loop
 
 | Tool File | Capabilities |
 |-----------|-------------|
-| `profile.tools.ts` | read/create/update user profiles |
+| `enrichment.tools.ts` | read/create/update user profiles |
 | `intent.tools.ts` | CRUD intents, manage intent-index assignments |
 | `network.tools.ts` | CRUD indexes (networks), manage memberships |
 | `contact.tools.ts` | import, add, remove, and list contacts |
@@ -414,7 +414,7 @@ export const NetworkMembershipEvents = {
 };
 ```
 
-When a user joins an index, this event triggers a profile HyDE generation job so the new member becomes discoverable via vector search within that index.
+When a user joins an index, this event triggers an enrichment job (`ensure_profile_hyde`) so the new member becomes discoverable via vector search within that index.
 
 ### Design Rationale
 
@@ -440,7 +440,7 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | `negotiations/run-existing` | BullMQ queue: enqueue bilateral negotiation for an existing opportunity (e.g. after introducer approval) |
 | `negotiations/timeout` | BullMQ queue: AI fallback when personal agent lacks heartbeat |
 | `negotiations/claim-timeout` | BullMQ queue: expire stale claims stuck in `claimed` state |
-| `profile.queue` | User profile generation and HyDE document creation |
+| `enrichment.queue` | User enrichment (premise decomposition) and HyDE document creation |
 | `hyde.queue` | HyDE document generation and cron-based refresh |
 | `email.queue` | Email delivery via Resend |
 | `notification.queue` | Notification delivery |

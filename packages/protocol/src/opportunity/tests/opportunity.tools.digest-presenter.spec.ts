@@ -27,7 +27,8 @@ const gatherPresenterContextMock = mock(async (
 }));
 
 import type { ToolDeps, DefineTool } from '../../shared/agent/tool.helpers.js';
-import type { ChatGraphCompositeDatabase, Opportunity, UserRecord, ProfileRow } from '../../shared/interfaces/database.interface.js';
+import type { ChatGraphCompositeDatabase, Opportunity, UserRecord } from '../../shared/interfaces/database.interface.js';
+import type { UserIdentity } from '../../shared/schemas/identity.schema.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ const getOppsForUser = mock(async (_userId: string, filter?: { statuses?: string
   return candidateOpps;
 });
 let getUser = mock(async () => ({ id: testUserId, name: 'Test User' }) as UserRecord | null);
-let getProfile = mock(async () => (null) as ProfileRow | null);
+let getProfile = mock(async () => (null) as UserIdentity | null);
 
 const noopGraph = { invoke: async () => ({}) };
 
@@ -136,7 +137,7 @@ describe('list_opportunities digest presenter path', () => {
   it('uses LLM presenter text when includeDigestMarkers=true and isMcp=true', async () => {
     candidateOpps = [makeOpp('opp-1', 'c-1')];
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);
-    getProfile = mock(async () => ({ identity: { name: 'Alice', bio: '', location: '' }, userId: 'c-1' }) as ProfileRow | null);
+    getProfile = mock(async () => ({ identity: { name: 'Alice', bio: '', location: '' }, userId: 'c-1' }) as unknown as UserIdentity | null);
 
     const deps = makeDeps();
     const tools = createOpportunityTools(defineTool as unknown as DefineTool, deps);
@@ -166,7 +167,7 @@ describe('list_opportunities digest presenter path', () => {
   it('skips digest cards instead of surfacing raw fallback when presenter throws', async () => {
     candidateOpps = [makeOpp('opp-2', 'c-2')];
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);
-    getProfile = mock(async () => ({ identity: { name: 'Bob', bio: '', location: '' }, userId: 'c-2' }) as ProfileRow | null);
+    getProfile = mock(async () => ({ identity: { name: 'Bob', bio: '', location: '' }, userId: 'c-2' }) as unknown as UserIdentity | null);
 
     presentHomeCardMock = mock(async () => {
       throw new Error('Presenter failed');

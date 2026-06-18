@@ -15,9 +15,9 @@ import { notificationQueue } from '../queues/notification.queue';
 import { intentQueue } from '../queues/intent.queue';
 import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
 import { fromIntroducerQueue } from '../queues/opportunity/from-introducer.queue';
-import { fromProfileQueue } from '../queues/opportunity/from-profile.queue';
+import { fromEnrichmentQueue } from '../queues/opportunity/from-enrichment.queue';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
-import { profileRunQueue } from '../queues/profile-run.queue';
+import { enrichmentRunQueue } from '../queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { enrichmentQueue } from '../queues/enrichment.queue';
 import { emailQueue } from '../queues/email.queue';
@@ -39,9 +39,9 @@ createBullBoard({
     new BullMQAdapter(intentQueue.queue),
     new BullMQAdapter(fromIntentQueue.queue),
     new BullMQAdapter(fromIntroducerQueue.queue),
-    new BullMQAdapter(fromProfileQueue.queue),
+    new BullMQAdapter(fromEnrichmentQueue.queue),
     new BullMQAdapter(discoveryRunQueue.queue),
-    new BullMQAdapter(profileRunQueue.queue),
+    new BullMQAdapter(enrichmentRunQueue.queue),
     new BullMQAdapter(negotiationRunExistingQueue.queue),
     new BullMQAdapter(enrichmentQueue.queue),
     new BullMQAdapter(emailQueue.queue),

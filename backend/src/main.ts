@@ -13,7 +13,7 @@ import { LinkController } from './controllers/link.controller';
 import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
 import { ConnectLinkController } from './controllers/connect-link.controller';
 import { AuthController } from './controllers/auth.controller';
-import { ProfileController } from './controllers/profile.controller';
+import { EnrichmentController } from './controllers/enrichment.controller';
 import { UserController } from './controllers/user.controller';
 import { StorageController } from './controllers/storage.controller';
 import { StorageService } from './services/storage.service';
@@ -48,9 +48,9 @@ import { getStats } from './lib/performance';
 import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
 import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
-import { fromProfileQueue } from './queues/opportunity/from-profile.queue';
+import { fromEnrichmentQueue } from './queues/opportunity/from-enrichment.queue';
 import { discoveryRunQueue } from './queues/opportunity/discovery-run.queue';
-import { profileRunQueue } from './queues/profile-run.queue';
+import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { notificationQueue } from './queues/notification.queue';
@@ -67,7 +67,7 @@ import { NegotiationEvents } from './events/negotiation.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
-import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.profile';
+import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
 import { storeNegotiationContextFactory } from './events/handlers/question.answer.negotiation';
 import { premiseQueue } from './queues/premise.queue';
@@ -115,7 +115,7 @@ fromIntroducerQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
-fromProfileQueue.setRuntimeDeps({
+fromEnrichmentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
@@ -159,8 +159,8 @@ enrichmentQueue.onEnrichmentComplete = (userId: string) => {
   // all of them — the same cross-network leak fixed for intent-triggered discovery.
   // Enrichment completion carries no network/agent context, so scoping this needs a
   // separate design (derive scope from the user's network-scoped agent, or thread a
-  // scope through the enrichment pipeline). fromProfileQueue already accepts networkId.
-  fromProfileQueue.addJob(
+  // scope through the enrichment pipeline). fromEnrichmentQueue already accepts networkId.
+  fromEnrichmentQueue.addJob(
     { userId },
     { priority: 20, jobId: `profile-discovery-${userId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
   ).catch((err) => log.job.from('ProfileEnrichment').error('Failed to enqueue profile-based discovery', { userId, error: err }));
@@ -252,9 +252,9 @@ QuestionEvents.onAnswered = (payload) => {
 intentQueue.startWorker();
 fromIntentQueue.startWorker();
 fromIntroducerQueue.startWorker();
-fromProfileQueue.startWorker();
+fromEnrichmentQueue.startWorker();
 discoveryRunQueue.startWorker();
-profileRunQueue.startWorker();
+enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 opportunityExpirationCron.start();
 notificationQueue.startWorker();
@@ -361,7 +361,7 @@ fileService.setStorageAdapter(storageAdapter);
 
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
-controllerInstances.set(ProfileController, new ProfileController());
+controllerInstances.set(EnrichmentController, new EnrichmentController());
 controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(NetworkController, new NetworkController());
 controllerInstances.set(IntentController, new IntentController());
@@ -703,9 +703,9 @@ const shutdown = async () => {
     intentQueue.close(),
     fromIntentQueue.close(),
     fromIntroducerQueue.close(),
-    fromProfileQueue.close(),
+    fromEnrichmentQueue.close(),
     discoveryRunQueue.close(),
-    profileRunQueue.close(),
+    enrichmentRunQueue.close(),
     negotiationRunExistingQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),

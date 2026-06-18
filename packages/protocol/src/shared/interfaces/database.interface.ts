@@ -1,5 +1,5 @@
 import type { NetworkAssignmentMetadata } from '../schemas/network-assignment.schema.js';
-import type { ProfileDocument } from '../schemas/profile.schema.js';
+import type { UserIdentity } from '../schemas/identity.schema.js';
 
 // ─── Inlined types (previously imported from outside the protocol lib) ───────
 
@@ -447,7 +447,7 @@ export interface UpdateIndexSettingsData {
 // HYDE DOCUMENT TYPES (Opportunity Redesign)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type HydeSourceType = 'intent' | 'profile' | 'query' | 'context';
+export type HydeSourceType = 'intent' | 'query' | 'context';
 
 export interface HydeDocument {
   id: string;
@@ -536,14 +536,14 @@ export interface Database {
    * @param userId - The unique identifier of the user
    * @returns The user's profile or null if not found
    */
-  getProfile(userId: string): Promise<ProfileDocument | null>;
+  getProfile(userId: string): Promise<UserIdentity | null>;
 
   /**
    * Creates or updates a user profile.
    * @param userId - The unique identifier of the user
    * @param profile - The profile data to save
    */
-  saveProfile(userId: string, profile: ProfileDocument): Promise<void>;
+  saveProfile(userId: string, profile: UserIdentity): Promise<void>;
 
   /**
    * Retrieves basic user information (name, email, socials) by userId.
@@ -1080,7 +1080,7 @@ export interface Database {
    * @param userId - The user whose profile to fetch
    * @returns Profile with id, or null if not found
    */
-  getProfileByUserId(userId: string): Promise<(ProfileDocument & { id: string }) | null>;
+  getProfileByUserId(userId: string): Promise<(UserIdentity & { id: string }) | null>;
 
   /**
    * Create a new index and return its record.
@@ -1144,7 +1144,7 @@ export interface Database {
    * Get a HyDE document by source and strategy/lens hash.
    * Returns the first matching document when multiple target corpuses exist.
    *
-   * @param sourceType - 'intent' | 'profile' | 'query'
+   * @param sourceType - 'intent' | 'query'
    * @param sourceId - Source entity ID (e.g. intent ID, user ID)
    * @param strategy - Lens hash (SHA-256 of lens label) or legacy strategy name
    * @returns The HyDE document or null if not found
@@ -1158,7 +1158,7 @@ export interface Database {
   /**
    * Get all HyDE documents for a source (all strategies).
    *
-   * @param sourceType - 'intent' | 'profile' | 'query'
+   * @param sourceType - 'intent' | 'query'
    * @param sourceId - Source entity ID
    * @returns Array of HyDE documents for that source
    */
@@ -1176,9 +1176,9 @@ export interface Database {
   saveHydeDocument(data: CreateHydeDocumentData): Promise<HydeDocument>;
 
   /**
-   * Delete all HyDE documents for a source (e.g. when intent/profile archived).
+   * Delete all HyDE documents for a source (e.g. when intent archived).
    *
-   * @param sourceType - 'intent' | 'profile' | 'query'
+   * @param sourceType - 'intent' | 'query'
    * @param sourceId - Source entity ID
    * @returns Number of documents deleted
    */
@@ -1639,13 +1639,13 @@ export interface UserDatabase {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /** Get the authenticated user's profile. */
-  getProfile(): Promise<ProfileDocument | null>;
+  getProfile(): Promise<UserIdentity | null>;
 
   /** Get the authenticated user's profile with row ID. */
-  getProfileByUserId(): Promise<(ProfileDocument & { id: string }) | null>;
+  getProfileByUserId(): Promise<(UserIdentity & { id: string }) | null>;
 
   /** Save/update the authenticated user's profile. */
-  saveProfile(profile: ProfileDocument): Promise<void>;
+  saveProfile(profile: UserIdentity): Promise<void>;
 
   /** Delete the authenticated user's profile. */
   deleteProfile(): Promise<void>;
@@ -1841,7 +1841,7 @@ export interface SystemDatabase {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /** Get a user's profile (requires shared index membership). */
-  getProfile(userId: string): Promise<ProfileDocument | null>;
+  getProfile(userId: string): Promise<UserIdentity | null>;
 
   /** Get a user's basic record (requires shared index membership). */
   getUser(userId: string): Promise<UserRecord | null>;
@@ -1990,7 +1990,7 @@ export interface SystemDatabase {
 // They are used by graph factories to enforce interface segregation at compile time.
 //
 // Access control relationship to UserDatabase/SystemDatabase:
-// - ProfileGraphDatabase → maps to UserDatabase (user's own profile operations)
+// - EnrichmentGraphDatabase → maps to UserDatabase (user's own profile operations)
 // - IntentGraphDatabase → maps to UserDatabase (mutations) + SystemDatabase (reads)
 // - OpportunityGraphDatabase → maps to SystemDatabase (cross-user operations)
 // - NetworkGraphDatabase → maps to UserDatabase (own indexes)
@@ -2010,7 +2010,7 @@ export interface SystemDatabase {
  *
  * Access layer: Primarily UserDatabase (user's own profile)
  */
-export type ProfileGraphDatabase = Pick<
+export type EnrichmentGraphDatabase = Pick<
   Database,
   'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser' | 'getUserContext'
 >;

@@ -5,7 +5,7 @@ interface QuestionAnswer {
   answeredAt: string;
 }
 
-type QuestionMode = 'discovery' | 'intent' | 'profile' | 'negotiation';
+type QuestionMode = 'discovery' | 'intent' | 'enrichment' | 'negotiation';
 
 interface QuestionCreatedPayload {
   questionId: string;

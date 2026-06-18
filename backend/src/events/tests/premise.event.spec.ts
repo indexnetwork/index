@@ -65,16 +65,16 @@ mock.module('../../adapters/database.adapter', () => ({
     getOpportunitiesForUser = async () => [];
     updateOpportunityStatus = async () => {};
   },
-  ProfileDatabaseAdapter: class {
+  EnrichmentDatabaseAdapter: class {
     getProfile = async () => null;
   },
 }));
 
 // ---------------------------------------------------------------------------
-// Protocol mock — ProfileGraphFactory not needed for unit tests
+// Protocol mock — EnrichmentGraphFactory not needed for unit tests
 // ---------------------------------------------------------------------------
 mock.module('@indexnetwork/protocol', () => ({
-  ProfileGraphFactory: class {
+  EnrichmentGraphFactory: class {
     createGraph() {
       return { invoke: mock(async () => {}) };
     }

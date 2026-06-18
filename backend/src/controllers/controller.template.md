@@ -1,6 +1,6 @@
 # Controller Template Guide
 
-This document provides comprehensive guidelines for writing controller files in this project, based on patterns established in [`ProfileController`](profile.controller.ts).
+This document provides comprehensive guidelines for writing controller files in this project, based on patterns established in [`EnrichmentController`](enrichment.controller.ts).
 
 ## Table of Contents
 
@@ -105,7 +105,7 @@ Services internally instantiate adapters and graph factories and perform all DB/
 
 Controller files follow the pattern: `{feature}.controller.ts`
 
-- `profile.controller.ts` - Profile management controller
+- `enrichment.controller.ts` - Enrichment (profile) management controller
 - `intent.controller.ts` - Intent handling controller
 - `opportunity.controller.ts` - Opportunity management controller
 
@@ -189,15 +189,15 @@ Create adapters in `src/adapters/` when:
 Services import and use adapters; controllers do not:
 
 ```typescript
-// In a service (e.g. profile.service.ts)
-import { UserDatabaseAdapter, ProfileDatabaseAdapter } from '../adapters/database.adapter';
-import { ProfileGraphFactory } from '../lib/protocol/graphs/profile/profile.graph';
+// In a service (e.g. enrichment.service.ts)
+import { UserDatabaseAdapter, EnrichmentDatabaseAdapter } from '../adapters/database.adapter';
+import { EnrichmentGraphFactory } from '../lib/protocol/graphs/enrichment/enrichment.graph';
 
 const userAdapter = new UserDatabaseAdapter();
-const profileAdapter = new ProfileDatabaseAdapter();
+const profileAdapter = new EnrichmentDatabaseAdapter();
 
-export async function syncProfile(userId: string) {
-  const factory = new ProfileGraphFactory(profileAdapter, embedderAdapter, scraperAdapter);
+export async function syncEnrichment(userId: string) {
+  const factory = new EnrichmentGraphFactory(profileAdapter, embedderAdapter, scraperAdapter);
   const graph = factory.createGraph();
   return graph.invoke({ userId });
 }
@@ -210,7 +210,7 @@ export async function syncProfile(userId: string) {
 | `ChatDatabaseAdapter` | `ChatGraphCompositeDatabase` | Chat graph database operations |
 | `IntentDatabaseAdapter` | `IntentGraphDatabase` | Intent graph database operations |
 | `UserDatabaseAdapter` | — | User CRUD, findByEmail, create, deleteById |
-| `ProfileDatabaseAdapter` | — | Profile CRUD, getProfileRow |
+| `EnrichmentDatabaseAdapter` | — | Profile CRUD, getProfileRow |
 | `FileDatabaseAdapter` | — | File CRUD, deleteByUserId, getByIdUnscoped |
 | `EmbedderAdapter` | `Embedder` | Vector embeddings generation and search |
 | `ScraperAdapter` | `Scraper` | Web scraping and data extraction |
@@ -245,7 +245,7 @@ Decorators are applied bottom-up, so place them in this order:
 
 ```typescript
 @Controller('/profiles')
-export class ProfileController {
+export class EnrichmentController {
   
   @Post('/sync')           // 1. Route definition
   @UseGuards(AuthGuard)    // 2. Guards (applied first at runtime)
@@ -298,8 +298,8 @@ Interfaces are defined in [`src/lib/protocol/interfaces/`](../lib/protocol/inter
 ```typescript
 // database.interface.ts - Full interface with all possible methods
 export interface Database {
-  getProfile(userId: string): Promise<ProfileDocument | null>;
-  saveProfile(userId: string, profile: ProfileDocument): Promise<void>;
+  getProfile(userId: string): Promise<UserIdentity | null>;
+  saveProfile(userId: string, profile: UserIdentity): Promise<void>;
   saveHydeProfile(userId: string, description: string, embedding: number[]): Promise<void>;
   getUser(userId: string): Promise<User | null>;
   // ... other methods for different features
@@ -325,12 +325,12 @@ export interface Embedder extends EmbeddingGenerator, VectorStore { }
 #### Graph Factory Example
 
 ```typescript
-// In profile.graph.ts - Define narrow interface for this specific graph
-type ProfileGraphDatabase = Pick<Database, 'getProfile' | 'saveProfile' | 'getUser'>;
+// In enrichment.graph.ts - Define narrow interface for this specific graph
+type EnrichmentGraphDatabase = Pick<Database, 'getProfile' | 'saveProfile' | 'getUser'>;
 
-export class ProfileGraphFactory {
+export class EnrichmentGraphFactory {
   constructor(
-    private db: ProfileGraphDatabase,  // Only requires 3 methods
+    private db: EnrichmentGraphDatabase,  // Only requires 3 methods
     private embedder: Embedder,
     private scraper: Scraper
   ) {}
@@ -358,9 +358,9 @@ Adapters in `src/adapters/` implement protocol interfaces. Services instantiate 
 
 ```typescript
 // In src/adapters/database.adapter.ts - implements what the graph needs
-export class ProfileDatabaseAdapter implements Pick<Database, 'getProfile' | 'saveProfile' | 'getUser'> {
-  async getProfile(userId: string): Promise<ProfileDocument | null> { /* ... */ }
-  async saveProfile(userId: string, profile: ProfileDocument): Promise<void> { /* ... */ }
+export class EnrichmentDatabaseAdapter implements Pick<Database, 'getProfile' | 'saveProfile' | 'getUser'> {
+  async getProfile(userId: string): Promise<UserIdentity | null> { /* ... */ }
+  async saveProfile(userId: string, profile: UserIdentity): Promise<void> { /* ... */ }
   async getUser(userId: string): Promise<User | null> { /* ... */ }
 }
 ```
@@ -378,19 +378,19 @@ export class ProfileDatabaseAdapter implements Pick<Database, 'getProfile' | 'sa
 Controllers do not inject or instantiate adapters. They call services, which own adapter and factory usage:
 
 ```typescript
-export class ProfileController {
+export class EnrichmentController {
   @Post('/sync')
   @UseGuards(AuthGuard)
   async sync(req: Request, user: AuthenticatedUser) {
-    const result = await profileService.sync(user.id);
+    const result = await enrichmentService.sync(user.id);
     return Response.json(result);
   }
 }
 
-// profile.service.ts (not the controller) instantiates adapters and factory
+// enrichment.service.ts (not the controller) instantiates adapters and factory
 export async function sync(userId: string) {
-  const db = new ProfileDatabaseAdapter();
-  const factory = new ProfileGraphFactory(db, embedder, scraper);
+  const db = new EnrichmentDatabaseAdapter();
+  const factory = new EnrichmentGraphFactory(db, embedder, scraper);
   const graph = factory.createGraph();
   return graph.invoke({ userId });
 }
@@ -425,7 +425,7 @@ Test files follow the pattern: `{feature}.controller.spec.ts`.
 - Use **services** for all setup, teardown, and assertions (same as controllers: no direct adapter or db access)
 - Rely on service APIs that expose the operations tests need (e.g. create test user, delete by email, get profile for assertion)
 
-**Services** are the only layer that import adapters; they must expose whatever controller tests need for test data and assertions (e.g. `userService.findByEmail`, `userService.createTestUser`, `profileService.getProfileRow`, cleanup helpers). This keeps controllers and their tests aligned: both use only services.
+**Services** are the only layer that import adapters; they must expose whatever controller tests need for test data and assertions (e.g. `userService.findByEmail`, `userService.createTestUser`, `enrichmentService.getProfileRow`, cleanup helpers). This keeps controllers and their tests aligned: both use only services.
 
 ### Test File Structure
 
@@ -438,7 +438,7 @@ config({ path: '.env.test' });
 import { SomeController } from "./some.controller";
 import type { AuthenticatedUser } from "../guards/auth.guard";
 import { userService } from "../services/user.service";
-import { profileService } from "../services/profile.service";
+import { enrichmentService } from "../services/enrichment.service";
 
 describe("SomeController Integration", () => {
   let controller: SomeController;
@@ -468,7 +468,7 @@ beforeAll(async () => {
 
   const existingUser = await userService.findByEmail(email);
   if (existingUser) {
-    await profileService.deleteByUserId(existingUser.id);
+    await enrichmentService.deleteByUserId(existingUser.id);
     await userService.deleteByEmail(email);
   }
 
@@ -486,7 +486,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (testUserId) {
-    await profileService.deleteByUserId(testUserId);
+    await enrichmentService.deleteByUserId(testUserId);
     await userService.deleteById(testUserId);
   }
   // Do not close db: other integration specs may run in the same process.
@@ -506,7 +506,7 @@ test("sync should generate a profile for a new user", async () => {
 
   const result = await controller.sync(mockRequest, mockUser);
 
-  const profile = await profileService.getProfileRow(testUserId);
+  const profile = await enrichmentService.getProfileRow(testUserId);
   expect(profile).not.toBeNull();
   expect(profile!.identity?.name).toBeDefined();
   expect(profile!.embedding).not.toBeNull();
@@ -527,7 +527,7 @@ test("sync should be idempotent (second run should just verify)", async () => {
   await controller.sync({} as Request, mockUser);
   await controller.sync({} as Request, mockUser);
 
-  const profile = await profileService.getProfileRow(testUserId);
+  const profile = await enrichmentService.getProfileRow(testUserId);
   expect(profile).not.toBeNull();
 }, 60000);
 ```
@@ -580,12 +580,12 @@ async scrape(objective: string): Promise<string> {
 import type { AuthenticatedUser } from "../guards/auth.guard";
 
 // Type guard for safe casting
-function isProfileDocument(obj: unknown): obj is ProfileDocument {
+function isUserIdentity(obj: unknown): obj is UserIdentity {
   return obj !== null && typeof obj === 'object' && 'identity' in obj;
 }
 
 // Use type assertions sparingly with comments
-return (result[0] as unknown as ProfileDocument) || null;
+return (result[0] as unknown as UserIdentity) || null;
 ```
 
 ### 4. JSDoc Documentation
@@ -593,7 +593,7 @@ return (result[0] as unknown as ProfileDocument) || null;
 ```typescript
 /**
  * Syncs/Generates a profile for the given user.
- * This is the main entry point to trigger the profile graph.
+ * This is the main entry point to trigger the enrichment graph.
  * 
  * @param req - The HTTP request object
  * @param user - The authenticated user from AuthGuard

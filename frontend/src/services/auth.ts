@@ -22,7 +22,7 @@ export const createAuthService = (api: ReturnType<typeof useAuthenticatedAPI>) =
   // sourced from `users.intro` (the canonical identity bio home), so we no longer
   // read the typed `profile.identity.bio` structure.
   generateIntro: async (): Promise<string | null> => {
-    const result = await api.post<Record<string, unknown>>('/profiles/sync');
+    const result = await api.post<Record<string, unknown>>('/enrichment/sync');
     const intro = result?.intro as string | undefined;
     return intro ?? null;
   },

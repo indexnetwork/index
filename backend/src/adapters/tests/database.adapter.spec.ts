@@ -11,7 +11,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
 import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, opportunities } from '../../schemas/database.schema';
-import { IntentDatabaseAdapter, ChatDatabaseAdapter, ProfileDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
+import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
 
@@ -154,8 +154,7 @@ describe('ChatDatabaseAdapter', () => {
     expect(profile).not.toBeNull();
     expect(profile!.userId).toBe(fixture.userAId);
     expect(profile!.identity).toEqual({ name: TEST_PREFIX + 'UserA', bio: 'Bio A', location: 'Loc A' });
-    expect(profile!.attributes).toEqual({ interests: [], skills: [] });
-    expect(profile!.narrative).toEqual({ context: '' });
+    expect(profile!.context).toBe('');
   });
 
   it('should get null profile for a non-existent user', async () => {
@@ -199,9 +198,7 @@ describe('ChatDatabaseAdapter', () => {
     const profile = {
       userId: fixture.userBId,
       identity: { name: 'User B', bio: 'Saved Bio', location: '' },
-      narrative: { context: 'Context B' },
-      attributes: { interests: ['x'], skills: ['y'] },
-      embedding: null as number[] | null,
+      context: 'Context B',
     };
     await adapter.saveProfile(fixture.userBId, profile);
     const got = await adapter.getProfile(fixture.userBId);
@@ -209,21 +206,21 @@ describe('ChatDatabaseAdapter', () => {
     // getProfile returns the users-table identity, NOT the saveProfile write.
     expect(got!.identity.name).toBe(TEST_PREFIX + 'UserB');
     expect(got!.identity.bio).toBe('Bio B');
-    expect(got!.attributes.interests).toEqual([]);
+    expect(got!.context).toBe('');
   });
 
   it('should save HyDE profile to hyde_documents', async () => {
     const desc = 'Hypothetical description';
     const embedding = new Array(2000).fill(0.1);
     await adapter.saveHydeDocument({
-      sourceType: 'profile',
+      sourceType: 'query',
       sourceId: fixture.userAId,
       strategy: 'mirror',
       targetCorpus: 'profiles',
       hydeText: desc,
       hydeEmbedding: embedding,
     });
-    const doc = await adapter.getHydeDocument('profile', fixture.userAId, 'mirror');
+    const doc = await adapter.getHydeDocument('query', fixture.userAId, 'mirror');
     expect(doc).not.toBeNull();
     expect(doc!.hydeText).toBe(desc);
   });
@@ -643,10 +640,10 @@ describe('ChatDatabaseAdapter', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ProfileDatabaseAdapter
+// EnrichmentDatabaseAdapter
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('ProfileDatabaseAdapter', () => {
-  const adapter = new ProfileDatabaseAdapter();
+describe('EnrichmentDatabaseAdapter', () => {
+  const adapter = new EnrichmentDatabaseAdapter();
 
   it('should get profile when exists', async () => {
     const profile = await adapter.getProfile(fixture.userAId);
@@ -669,7 +666,7 @@ describe('ProfileDatabaseAdapter', () => {
 
   it('should save HyDE profile to hyde_documents', async () => {
     await adapter.saveHydeDocument({
-      sourceType: 'profile',
+      sourceType: 'query',
       sourceId: fixture.userBId,
       strategy: 'mirror',
       targetCorpus: 'profiles',
@@ -677,7 +674,7 @@ describe('ProfileDatabaseAdapter', () => {
       hydeEmbedding: new Array(2000).fill(0.2),
     });
     const hydeAdapter = new HydeDatabaseAdapter();
-    const doc = await hydeAdapter.getHydeDocument('profile', fixture.userBId, 'mirror');
+    const doc = await hydeAdapter.getHydeDocument('query', fixture.userBId, 'mirror');
     expect(doc).not.toBeNull();
     expect(doc!.hydeText).toBe('HyDE desc');
   });
@@ -730,7 +727,7 @@ describe('OpportunityDatabaseAdapter', () => {
     const profile = await adapter.getProfile(newUserId);
     expect(profile).not.toBeNull();
     expect(profile!.identity).toEqual({ name: 'NoProfile', bio: 'NP bio', location: 'NP loc' });
-    expect(profile!.attributes).toEqual({ interests: [], skills: [] });
+    expect(profile!.context).toBe('');
     expect(await adapter.getProfile(uuidv4())).toBeNull();
     await db.delete(users).where(eq(users.id, newUserId));
   });
@@ -1553,7 +1550,7 @@ describe('HydeDatabaseAdapter', () => {
 
 describe('HydeDatabaseAdapter – deleteExpired and getStale', () => {
   const adapter = new HydeDatabaseAdapter();
-  const sourceType = 'profile' as const;
+  const sourceType = 'query' as const;
   const sourceId = uuidv4();
   const embedding = new Array(2000).fill(0).map((_, i) => (i % 100) / 100);
   const past = new Date(Date.now() - 60_000);

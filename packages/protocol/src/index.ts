@@ -34,7 +34,7 @@ export type * from "./shared/interfaces/storage.interface.js";
 export type * from "./shared/interfaces/delivery-ledger.interface.js";
 export type * from "./shared/interfaces/connect-link.interface.js";
 export type * from "./shared/interfaces/discovery-run.interface.js";
-export type * from "./shared/interfaces/profile-run.interface.js";
+export type * from "./shared/interfaces/enrichment-run.interface.js";
 export type * from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
 export type { AgentRecord, AgentTransportRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, CreateTransportInput, GrantPermissionInput, AgentDatabase } from './shared/interfaces/agent.interface.js';
@@ -46,7 +46,7 @@ export { ChatContextDigestSchema, type ChatContextDigest } from "./shared/schema
 export { QuestionOptionSchema, QuestionSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema, type Question, type QuestionOption, type QuestionStrategy, type QuestionWithStrategy, type QuestionGeneratorResponse, type QuestionGenerationResult, type QuestionMode, type QuestionDetection, type QuestionActor, type QuestionAnswer } from "./shared/schemas/question.schema.js";
 export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
 export type { McpAuthInput } from "./shared/schemas/mcp-auth.schema.js";
-export { ProfileIdentitySchema, ProfileNarrativeSchema, ProfileAttributesSchema, ProfileDocumentSchema, type ProfileDocument } from "./shared/schemas/profile.schema.js";
+export { UserIdentitySchema, type UserIdentity } from "./shared/schemas/identity.schema.js";
 export type { DiscoverySourceProfile, DiscoverySummary, DiscoveryNegotiation, DiscoveryTurn, DiscoveryOutcome, DiscoveryQuestionInput, NegotiationRole } from "./shared/schemas/discovery-question.schema.js";
 export { NetworkAssignmentResourceTypeSchema, NetworkAssignmentModeSchema, NetworkAssignmentScopeSchema, NetworkAssignmentPromptPresenceSchema, NetworkAssignmentPolicySchema, NetworkAssignmentRawScoresSchema, NetworkAssignmentMetadataSchema, OpportunityEvidenceKindSchema, OpportunityEvidenceSchema } from "./shared/schemas/network-assignment.schema.js";
 export type { NetworkAssignmentResourceType, NetworkAssignmentMode, NetworkAssignmentScope, NetworkAssignmentPromptPresence, NetworkAssignmentPolicy, NetworkAssignmentRawScores, NetworkAssignmentMetadata, OpportunityEvidenceKind, OpportunityEvidence } from "./shared/schemas/network-assignment.schema.js";
@@ -68,7 +68,7 @@ export { MaintenanceGraphFactory } from "./maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./maintenance/maintenance.graph.js";
 export { NegotiationGraphFactory, createDefaultNegotiationGraph, negotiateCandidates } from "./negotiation/negotiation.graph.js";
 export { OpportunityGraphFactory } from "./opportunity/opportunity.graph.js";
-export { ProfileGraphFactory } from "./profile/profile.graph.js";
+export { EnrichmentGraphFactory } from "./enrichment/enrichment.graph.js";
 export { PremiseGraphFactory } from "./premise/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type { EvaluatorInput, OpportunityEvaluatorOptionsConstructor } from "./opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/opportunity.presenter.js";
 export { createOpportunityTools } from "./opportunity/opportunity.tools.js";
-export { createProfileTools } from "./profile/profile.tools.js";
+export { createEnrichmentTools } from "./enrichment/enrichment.tools.js";
 export type { PresenterDatabase } from "./opportunity/opportunity.presenter.js";
 export { QuestionGenerator } from "./opportunity/question.generator.js";
 

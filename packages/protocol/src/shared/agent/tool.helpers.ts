@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ModelConfig } from "./model.config.js";
-import type { ProfileDocument } from "../schemas/profile.schema.js";
+import type { UserIdentity } from "../schemas/identity.schema.js";
 import type { ChatGraphCompositeDatabase, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../interfaces/database.interface.js";
 import type { Scraper } from "../interfaces/scraper.interface.js";
 import type { Cache, HydeCache } from "../interfaces/cache.interface.js";
@@ -25,9 +25,9 @@ import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
 import type { QuestionMode } from "../schemas/question.schema.js";
 import type { DiscoveryRunQueue, DiscoveryRunStore } from "../interfaces/discovery-run.interface.js";
-import type { ProfileRunQueue, ProfileRunStore } from "../interfaces/profile-run.interface.js";
+import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";
 
-export type ProfileContext = ProfileDocument | null;
+export type IdentityContext = UserIdentity | null;
 
 export interface ToolErrorReport {
   operation: string;
@@ -66,7 +66,7 @@ export interface ResolvedToolContext {
   isOwner?: boolean;
   // Rich identity context for prompt/tool orchestration.
   user: UserRecord;
-  userProfile: ProfileContext;
+  userProfile: IdentityContext;
   userNetworks: NetworkMembership[];
   /**
    * The set of index IDs this caller can reach in the current request.
@@ -218,9 +218,9 @@ export interface ToolContext {
   /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
   discoveryRunQueue?: DiscoveryRunQueue;
   /** Persistence for async MCP profile runs (optional — absent in non-MCP/test contexts). */
-  profileRuns?: ProfileRunStore;
+  enrichmentRuns?: EnrichmentRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
-  profileRunQueue?: ProfileRunQueue;
+  enrichmentRunQueue?: EnrichmentRunQueue;
   /**
    * Legacy direct-token minting for opportunity accept redirects.
    * Prefer `mintConnectLink` for user-facing links.
@@ -302,7 +302,7 @@ export async function resolveChatContext(params: {
     database.getNetworkMemberships(userId),
   ]);
 
-  const userProfile: ProfileContext = rawProfile ?? null;
+  const userProfile: IdentityContext = rawProfile ?? null;
 
   if (!user) {
     throw new ChatContextAccessError(
@@ -527,9 +527,9 @@ export interface ToolDeps {
   /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
   discoveryRunQueue?: DiscoveryRunQueue;
   /** Persistence for async MCP profile runs (optional — absent in non-MCP/test contexts). */
-  profileRuns?: ProfileRunStore;
+  enrichmentRuns?: EnrichmentRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
-  profileRunQueue?: ProfileRunQueue;
+  enrichmentRunQueue?: EnrichmentRunQueue;
   /**
    * Legacy direct-token minting for opportunity accept redirects.
    * Prefer `mintConnectLink` for user-facing links.

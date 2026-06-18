@@ -165,24 +165,12 @@ interface IntentListRow {
    */
   networks: { id: string; title: string }[];
 }
-// Shapes matching schemas/database.schema userProfiles columns (no lib/protocol import)
-interface ProfileIdentity {
-  name: string;
-  bio: string;
-  location: string;
-}
-interface ProfileNarrative {
+// UserIdentity shape (aligned with `@indexnetwork/protocol`'s UserIdentity; defined
+// locally to honor the adapter layering rule of not importing protocol interfaces).
+interface UserIdentity {
+  userId?: string;
+  identity: { name: string; bio: string; location: string };
   context: string;
-}
-interface ProfileAttributes {
-  interests: string[];
-  skills: string[];
-}
-interface ProfileRow {
-  userId: string;
-  identity: ProfileIdentity;
-  narrative: ProfileNarrative;
-  attributes: ProfileAttributes;
 }
 
 interface NetworkMembershipRow {
@@ -199,18 +187,15 @@ interface NetworkMembershipRow {
 const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, links, sessions, userSocials, userContexts } = schema;
 
 /**
- * Build a {@link ProfileRow} from the canonical `users` table (WS5 / IND-363),
+ * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
  * replacing the retired `user_profiles` read. Identity (name/bio/location) is sourced
- * from `users` (`name`/`intro`->bio/`location`). The typed `attributes.skills`/
- * `interests` and `narrative.context` are intentionally dropped -- they have no home on
- * `users`, and their content now lives in the user's premises + global user_context.
- * The ProfileRow shape is preserved (arrays empty) so existing consumers keep compiling
- * and rendering name/bio/location unchanged.
+ * from `users` (`name`/`intro`->bio/`location`). The `context` paragraph is sourced
+ * elsewhere (the global user_context) and is left empty here.
  *
- * @param userId - The user whose profile representation to build.
- * @returns A ProfileRow, or null when the user does not exist.
+ * @param userId - The user whose identity representation to build.
+ * @returns A UserIdentity, or null when the user does not exist.
  */
-async function buildProfileFromUser(userId: string): Promise<ProfileRow | null> {
+async function buildProfileFromUser(userId: string): Promise<UserIdentity | null> {
   const rows = await db.select({
     id: users.id,
     name: users.name,
@@ -225,23 +210,22 @@ async function buildProfileFromUser(userId: string): Promise<ProfileRow | null> 
   return {
     userId: user.id,
     identity: { name: user.name ?? '', bio: user.intro ?? '', location: user.location ?? '' },
-    narrative: { context: '' },
-    attributes: { interests: [], skills: [] },
+    context: '',
   };
 }
 
 /**
  * {@link buildProfileFromUser} variant returning the legacy `& { id }` shape. Since the
  * `user_profiles` row no longer exists, `id` is the stable `userId`. Its sole consumer
- * (the WS8-bound profile-graph aggregate node) only uses it for existence/merge.
+ * (the WS8-bound enrichment-graph aggregate node) only uses it for existence/merge.
  *
- * @param userId - The user whose profile representation to build.
- * @returns A ProfileRow with an `id`, or null when the user does not exist.
+ * @param userId - The user whose identity representation to build.
+ * @returns A UserIdentity with an `id`, or null when the user does not exist.
  */
-async function buildProfileWithIdFromUser(userId: string): Promise<(ProfileRow & { id: string }) | null> {
+async function buildProfileWithIdFromUser(userId: string): Promise<(UserIdentity & { id: string }) | null> {
   const profile = await buildProfileFromUser(userId);
   if (!profile) return null;
-  return { id: profile.userId, ...profile };
+  return { id: profile.userId ?? userId, ...profile };
 }
 
 /**
@@ -252,9 +236,9 @@ async function buildProfileWithIdFromUser(userId: string): Promise<(ProfileRow &
  * fields are skipped so a partial draft never clobbers existing identity.
  *
  * @param userId - The user whose identity to update.
- * @param profile - The profile draft whose `identity` fields are persisted.
+ * @param profile - The identity draft whose `identity` fields are persisted.
  */
-async function persistProfileIdentityToUser(userId: string, profile: ProfileRow): Promise<void> {
+async function persistProfileIdentityToUser(userId: string, profile: UserIdentity): Promise<void> {
   const identity = profile.identity ?? { name: '', bio: '', location: '' };
   const update: { name?: string; intro?: string; location?: string } = {};
   if (identity.name?.trim()) update.name = identity.name.trim();
@@ -267,7 +251,7 @@ async function persistProfileIdentityToUser(userId: string, profile: ProfileRow)
 }
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
-type HydeSourceTypeLocal = 'intent' | 'profile' | 'query' | 'context';
+type HydeSourceTypeLocal = 'intent' | 'query' | 'context';
 interface HydeDocumentRow {
   id: string;
   sourceType: HydeSourceTypeLocal;
@@ -738,7 +722,7 @@ export class IntentDatabaseAdapter {
 
   // --- Profile check (required by IntentGraphDatabase for prepNode gate) ---
 
-  async getProfile(userId: string): Promise<ProfileRow | null> {
+  async getProfile(userId: string): Promise<UserIdentity | null> {
     return buildProfileFromUser(userId);
   }
 
@@ -1002,7 +986,7 @@ export class ChatDatabaseAdapter {
   // Chat Graph Methods (Profiles, Intents, Indexes)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  async getProfile(userId: string): Promise<ProfileRow | null> {
+  async getProfile(userId: string): Promise<UserIdentity | null> {
     return buildProfileFromUser(userId);
   }
 
@@ -1122,7 +1106,7 @@ export class ChatDatabaseAdapter {
   }
 
   async getUser(userId: string) {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.getUser(userId);
   }
 
@@ -1130,43 +1114,43 @@ export class ChatDatabaseAdapter {
     userId: string,
     data: { name?: string; intro?: string; location?: string; onboarding?: OnboardingState }
   ) {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.updateUser(userId, data);
   }
 
   async getUserSocials(userId: string) {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.getUserSocials(userId);
   }
 
   async findTelegramHandleOwners(handle: string) {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.findTelegramHandleOwners(handle);
   }
 
   async setUserSocials(userId: string, socials: { label: string; value: string }[]) {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.setUserSocials(userId, socials);
   }
 
-  async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
+  async saveProfile(userId: string, profile: UserIdentity): Promise<void> {
     await persistProfileIdentityToUser(userId, profile);
   }
 
   /**
    * Soft-delete a ghost user and all their contact memberships.
-   * Delegates to ProfileDatabaseAdapter.
+   * Delegates to EnrichmentDatabaseAdapter.
    * @param userId - The ghost user to soft-delete
    * @returns true if the user was soft-deleted
    */
   async softDeleteGhost(userId: string): Promise<boolean> {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.softDeleteGhost(userId);
   }
 
   /**
    * Find an existing user that shares any of the given social handles with the specified ghost.
-   * Delegates to ProfileDatabaseAdapter.
+   * Delegates to EnrichmentDatabaseAdapter.
    * @param userId - The ghost user ID to exclude from results
    * @param socials - Social handles to match against
    * @returns The matching user's ID, or null if no match found
@@ -1175,19 +1159,19 @@ export class ChatDatabaseAdapter {
     userId: string,
     socials: Array<{ id: string; userId: string; label: string; value: string }>,
   ): Promise<{ id: string } | null> {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.findDuplicateUser(userId, socials);
   }
 
   /**
    * Merge a ghost user (source) into a target user.
    * Re-points all data from source to target, cleans up ghost-only records, and soft-deletes source.
-   * Delegates to ProfileDatabaseAdapter.
+   * Delegates to EnrichmentDatabaseAdapter.
    * @param sourceId - The ghost user to merge away (must be an active ghost)
    * @param targetId - The user to merge into
    */
   async mergeGhostUser(sourceId: string, targetId: string): Promise<void> {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.mergeGhostUser(sourceId, targetId);
   }
 
@@ -1889,7 +1873,7 @@ export class ChatDatabaseAdapter {
 
   // HyDE document operations (delegate to HydeDatabaseAdapter)
   async getHydeDocument(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string,
     strategy: string
   ): Promise<HydeDocumentRow | null> {
@@ -1897,7 +1881,7 @@ export class ChatDatabaseAdapter {
   }
 
   async getHydeDocumentsForSource(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string
   ): Promise<HydeDocumentRow[]> {
     return this.hydeAdapter.getHydeDocumentsForSource(sourceType, sourceId);
@@ -1908,7 +1892,7 @@ export class ChatDatabaseAdapter {
   }
 
   async deleteHydeDocumentsForSource(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string
   ): Promise<number> {
     return this.hydeAdapter.deleteHydeDocumentsForSource(sourceType, sourceId);
@@ -2547,7 +2531,7 @@ export class ChatDatabaseAdapter {
       .where(eq(schema.networks.id, networkId));
   }
 
-  async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
+  async getProfileByUserId(userId: string): Promise<(UserIdentity & { id: string }) | null> {
     return buildProfileWithIdFromUser(userId);
   }
 
@@ -4564,7 +4548,7 @@ export class ChatDatabaseAdapter {
 /**
  * Database adapter for Profile Graph.
  */
-export class ProfileDatabaseAdapter {
+export class EnrichmentDatabaseAdapter {
   /**
    * Retrieve a single user_context row (global when networkId is null), or null.
    * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the profile graph.
@@ -4582,11 +4566,11 @@ export class ProfileDatabaseAdapter {
     return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
   }
 
-  async getProfile(userId: string): Promise<ProfileRow | null> {
+  async getProfile(userId: string): Promise<UserIdentity | null> {
     return buildProfileFromUser(userId);
   }
 
-  async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
+  async saveProfile(userId: string, profile: UserIdentity): Promise<void> {
     await persistProfileIdentityToUser(userId, profile);
   }
 
@@ -4727,23 +4711,22 @@ export class ProfileDatabaseAdapter {
    * Get full profile row by userId (for test assertions).
    */
   async getProfileRow(userId: string): Promise<{
-    identity: ProfileIdentity;
-    narrative: ProfileNarrative;
-    attributes: ProfileAttributes;
+    identity: { name: string; bio: string; location: string };
+    context: string;
   } | null> {
     const profile = await buildProfileFromUser(userId);
     if (!profile) return null;
-    return { identity: profile.identity, narrative: profile.narrative, attributes: profile.attributes };
+    return { identity: profile.identity, context: profile.context };
   }
 
-  async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
+  async getProfileByUserId(userId: string): Promise<(UserIdentity & { id: string }) | null> {
     return buildProfileWithIdFromUser(userId);
   }
 
   private hydeAdapter = new HydeDatabaseAdapter();
 
   async getHydeDocument(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string,
     strategy: string
   ) {
@@ -4751,7 +4734,7 @@ export class ProfileDatabaseAdapter {
   }
 
   async saveHydeDocument(data: {
-    sourceType: 'intent' | 'profile' | 'query';
+    sourceType: 'intent' | 'query';
     sourceId?: string | null;
     sourceText?: string | null;
     strategy: string;
@@ -4859,14 +4842,6 @@ export class ProfileDatabaseAdapter {
       await tx.delete(schema.apikeys).where(eq(schema.apikeys.userId, sourceId));
       await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.userId, sourceId));
       await tx.delete(schema.agents).where(eq(schema.agents.ownerId, sourceId));
-
-      // Delete ghost's HyDE profile documents
-      await tx.delete(schema.hydeDocuments).where(
-        and(
-          eq(schema.hydeDocuments.sourceType, 'profile'),
-          eq(schema.hydeDocuments.sourceId, sourceId),
-        ),
-      );
 
       // ── 2. Re-point simple FK references ──
 
@@ -5108,7 +5083,7 @@ function toOpportunityRow(row: typeof opportunities.$inferSelect): OpportunityRo
  * Database adapter for Opportunity Graph and opportunity controller.
  */
 export class OpportunityDatabaseAdapter {
-  async getProfile(userId: string): Promise<ProfileRow | null> {
+  async getProfile(userId: string): Promise<UserIdentity | null> {
     return buildProfileFromUser(userId);
   }
 
@@ -6376,7 +6351,7 @@ export class UserDatabaseAdapter {
   }
 
   async setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.setUserSocials(userId, socials);
   }
 

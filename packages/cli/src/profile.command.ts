@@ -59,14 +59,14 @@ export async function handleProfile(
     const result = await client.callTool("read_user_profiles", { query });
     if (options.json) { console.log(JSON.stringify(result)); return; }
     if (!result.success) { output.error(result.error ?? "Search failed", 1); return; }
-    const data = result.data as { profiles: Array<{ userId: string; name: string; profile?: { bio: string } }> };
+    const data = result.data as { profiles: Array<{ userId: string; name: string; bio?: string; location?: string }> };
     output.heading("Search Results");
     if (!data.profiles?.length) {
       output.dim("  No profiles found.");
     } else {
       for (const p of data.profiles) {
         console.log(`  ${p.name} (${p.userId.slice(0, 8)})`);
-        if (p.profile?.bio) output.dim(`    ${p.profile.bio.slice(0, 100)}`);
+        if (p.bio) output.dim(`    ${p.bio.slice(0, 100)}`);
       }
     }
     console.log();

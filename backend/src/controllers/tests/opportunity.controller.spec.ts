@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
-import { OpportunityDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { OpportunityDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 // ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ beforeAll(async () => {
 
 describe("OpportunityDatabaseAdapter Integration", () => {
   const userAdapter = new UserDatabaseAdapter();
-  const profileAdapter = new ProfileDatabaseAdapter();
+  const profileAdapter = new EnrichmentDatabaseAdapter();
   let adapter: OpportunityDatabaseAdapter;
   let testUserId: string;
   const testEmail = `test-opportunity-adapter-${Date.now()}@example.com`;
@@ -91,9 +91,7 @@ describe("OpportunityDatabaseAdapter Integration", () => {
     expect(profile!.identity.name).toBe("Test Opportunity Adapter User");
     expect(profile!.identity.bio).toBe("Test user for opportunity adapter tests");
     expect(profile!.identity.location).toBe("Test City");
-    expect(profile!.narrative.context).toBe("");
-    expect(profile!.attributes.interests).toEqual([]);
-    expect(profile!.attributes.skills).toEqual([]);
+    expect(profile!.context).toBe("");
   });
 
   test("getProfile should return null for non-existent user", async () => {
@@ -112,7 +110,7 @@ describe("OpportunityController Integration", () => {
   let controller: InstanceType<typeof OpportunityControllerClass>;
   let indexOpportunityController: InstanceType<typeof NetworkOpportunityControllerClass>;
   const userAdapter = new UserDatabaseAdapter();
-  const profileAdapter = new ProfileDatabaseAdapter();
+  const profileAdapter = new EnrichmentDatabaseAdapter();
   const chatDbAdapter = new ChatDatabaseAdapter();
   const opportunityAdapter = new OpportunityDatabaseAdapter();
   let testUserId: string;

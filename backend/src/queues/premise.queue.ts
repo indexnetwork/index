@@ -375,7 +375,7 @@ export class PremiseQueue {
 
     // Premises changed; rebuild the user's context representation (global + per-network),
     // which is the profile replacement. The legacy profile-graph `aggregate` step (which
-    // synthesized the now-removed user_profiles ProfileDocument) was dropped in WS8/IND-365.
+    // synthesized the now-removed user_profiles identity document) was dropped in WS8/IND-365.
     // Log completion only after the enqueue settles so a failed/retried job is not
     // preceded by a misleading "complete" line.
     await enqueueContextRegen(userId);

@@ -136,11 +136,11 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 **Dependencies:** `IntentGraphDatabase`, `EmbeddingGenerator`, `IntentGraphQueue`
 
-### 3.3 Profile Graph
+### 3.3 Enrichment Graph
 
-**File:** `profile/profile.graph.ts`
-**Purpose:** Generate and render human-readable user profiles with optional web scraping and premise decomposition. Profiles are presentation-only — no embeddings or HyDE documents are generated. All semantic discovery uses premises.
-**Nodes:** `check_state`, `scrape`, `decompose_premises`, `aggregate_premises`, `auto_generate`, `use_prepopulated_profile`, `generate_profile`, `save_profile`
+**File:** `enrichment/enrichment.graph.ts`
+**Purpose:** Enrich a user from identity data (optional web scraping) and decompose it into premises that drive semantic discovery. The user's presentation identity (name/bio/location) lives on the `users` table and the synthesized representation lives in `user_contexts` — no separate profile document is persisted, and no profile embeddings/HyDE are generated. All semantic discovery uses premises and user contexts.
+**Nodes:** `check_state`, `scrape`, `decompose_premises`, `auto_generate`
 **State:** `ProfileGraphState` (userId, operationMode, input, forceUpdate, profile, needsProfileGeneration, premises, etc.)
 **Conditional edges:**
 - After `check_state`: routes based on operation mode and whether a profile needs generation
@@ -402,13 +402,13 @@ Scoring bands:
 **Role:** Post-negotiation generator that synthesizes the full transcript into a short, presenter-ready summary of what was agreed, what was objected to, and where the match landed. Used by the opportunity presenter for post-negotiation cards (accepted/rejected/stalled).
 **Model:** `createModel("negotiationInsights")`.
 
-### 4.10 Profile Generator
+### 4.10 Enrichment Generator
 
-**File:** `profile.generator.ts`
-**Role:** Generates structured user profiles from identity data (scraped web content, user-provided text, or existing profile for updates).
+**File:** `enrichment.generator.ts`
+**Role:** Generates a structured identity draft from identity data (scraped web content, user-provided text, or existing identity for updates) for the onboarding draft-approval tools.
 **Model:** `google/gemini-2.5-flash`
-**Output:** ProfileDocument with identity (name, bio, location), narrative (context), attributes (skills, interests)
-**Used by:** Profile Graph (generate_profile node)
+**Output:** A `UserIdentity` draft (name, bio, location); discrete skills/interests are no longer persisted — that content lives in premises and the user context.
+**Used by:** Onboarding draft tools (`preview_/confirm_/create_user_profile`)
 
 ### 4.11 HyDE Generator
 
@@ -462,7 +462,7 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Model:** `google/gemini-2.5-flash`
 **Input:** Free-text string (chat input, scraped content, or bio text)
 **Output:** Array of `{ text, tier }` premises plus reasoning; empty array for non-descriptive input (confirmations, greetings)
-**Used by:** Profile Graph (decompose_premises node)
+**Used by:** Enrichment Graph (decompose_premises node)
 
 ### 4.18 Premise Analyzer
 
@@ -487,11 +487,11 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **File:** `questioner/questioner.agent.ts`
 **Role:** Generates structured questions to elicit missing information from users. Uses mode-specific presets (system prompt + builder) to produce up to 3 questions per invocation.
 **Model:** `google/gemini-2.5-flash`
-**Input:** `QuestionerInput` envelope with mode (`discovery` | `intent` | `profile` | `negotiation`), userId, sourceType/sourceId, and mode-specific context
+**Input:** `QuestionerInput` envelope with mode (`discovery` | `intent` | `enrichment` | `negotiation`), userId, sourceType/sourceId, and mode-specific context
 **Output:** Array of `QuestionWithStrategy` (title, prompt, options, multiSelect, strategy)
 **Used by:** QuestionerQueue worker (async, behind `QUESTIONER_ENABLED` flag)
-**Presets:** `discovery`, `intent`, `profile`, `negotiation` — each provides a mode-specific system prompt and context builder.
-**Attachment points:** Intent graph (after creation), profile graph (after save, when gaps detected), negotiation graph (after stall/turn-cap). All fire-and-forget via `questionerEnqueue` callback injection. The profile attachment point fetches active premises via `getPremisesForUser` and passes their texts as `existingPremises` in the `ProfileContext`, so the LLM skips domains already covered by a premise.
+**Presets:** `discovery`, `intent`, `enrichment`, `negotiation` — each provides a mode-specific system prompt and context builder.
+**Attachment points:** Intent graph (after creation), enrichment graph (when gaps detected), negotiation graph (after stall/turn-cap). All fire-and-forget via `questionerEnqueue` callback injection. The enrichment attachment point fetches active premises via `getPremisesForUser` and passes their texts as `existingPremises` in the `ProfileContext`, so the LLM skips domains already covered by a premise.
 
 **Question delivery pipeline.** Generated questions are persisted with `expiresAt` (default 7 days). Pending questions are injected into `discover_opportunities` tool results via `mergePendingQuestions` (max 3 per source, deduplicated per session via a local Set in the ChatAgent). The frontend polls `GET /api/questions?status=pending` every 30s and displays a sidebar badge + dropdown. When a user answers, `QuestionEvents.onAnswered` dispatches to mode-specific handlers: profile answers create premises (tier=contextual, confidence=0.9), intent answers append `[Refined: ...]` addenda and enqueue HyDE regeneration, negotiation answers enrich `opportunities.metadata.userAnswers`, and discovery answers are no-ops. Empty answers (no selected options and no free text) are guarded against at the handler level. When a negotiation continuation resumes, the init node reads `userAnswers` back from the opportunity via `NegotiationQueries.getOpportunityUserAnswers` and injects them into the agent prompt so the negotiator sees between-session context.
 
@@ -503,7 +503,7 @@ Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool f
 
 | Tool File | Tools | Subgraph(s) Invoked |
 |-----------|-------|---------------------|
-| `profile.tools.ts` | read_user_profiles, create_user_profile, update_user_profile | Profile Graph |
+| `enrichment.tools.ts` | read_user_profiles, create_user_profile, update_user_profile | Enrichment Graph |
 | `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, search_intents, create_intent_index, read_intent_indexes, delete_intent_index | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
 | `network.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Index Graph, Index Membership Graph |
 | `opportunity.tools.ts` | discover_opportunities, list_opportunities, update_opportunity | Opportunity Graph |
@@ -830,7 +830,7 @@ The `check_state` node performs intelligent detection of what components are mis
 - HyDE document missing -> needs HyDE generation
 - Everything exists and up to date -> returns immediately
 
-This ensures the profile graph only performs expensive operations when necessary.
+This ensures the enrichment graph only performs expensive operations when necessary.
 
 ## 10. Trace Event System
 
