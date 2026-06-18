@@ -17,7 +17,8 @@ Safely finish a PR end-to-end:
 4. merge the PR only after explicit confirmation,
 5. verify post-merge CI and Railway deployment health,
 6. update or close related GitHub and Linear issues,
-7. summarize exactly what shipped and what remains.
+7. clean up the local worktree when nothing needs it anymore,
+8. summarize exactly what shipped and what remains.
 
 ## Safety rules
 
@@ -27,6 +28,7 @@ Safely finish a PR end-to-end:
 - Never claim deployment success from a queued/in-progress status. Wait for a terminal success state or report that it is still pending.
 - If Railway MCP tools are unavailable, stop and tell the user to configure/connect Railway MCP instead of pretending to verify deployment.
 - If checks fail, keep issues open and report the blocker.
+- Do not remove a git worktree without confirming the PR is merged, the working tree is clean (no uncommitted/unpushed work), and the user has not asked to keep it. When in doubt, ask before removing.
 
 ## Supporting rpiv skills
 
@@ -242,7 +244,49 @@ Use Linear tools rather than guessing API calls:
 
 If the correct done status is ambiguous, ask the user rather than guessing.
 
-### 11. Final summary
+### 11. Clean up the worktree
+
+This repo does implementation work in `.worktrees/<name>` worktrees. Once a PR is merged, its worktree is usually disposable. Remove it unless there is a reason to keep it.
+
+First inspect worktrees and the current location:
+
+```bash
+git worktree list
+pwd
+```
+
+Keep the worktree (do NOT remove) if any of these hold:
+
+- the PR is not yet merged,
+- the worktree has uncommitted changes or unpushed commits (`git -C PATH status --short --branch`),
+- the user asked to keep it, or it hosts other in-flight work for a different branch,
+- it is the canonical root worktree (`/Users/yanek/Projects/index`) — never remove the canonical root.
+
+If the worktree is safe to remove:
+
+1. Make sure you are not standing inside it — you cannot remove the worktree you are currently in. `cd` to the canonical root first:
+
+   ```bash
+   cd /Users/yanek/Projects/index
+   ```
+
+2. Confirm the branch is merged and the tree is clean, then remove it:
+
+   ```bash
+   git worktree remove .worktrees/WORKTREE_NAME
+   ```
+
+   If git refuses because of leftover state and you are certain it is disposable, confirm with the user before using `--force`.
+
+3. Prune stale administrative entries:
+
+   ```bash
+   git worktree prune
+   ```
+
+If `gh pr merge --delete-branch` was used, the branch is already gone remotely; removing the worktree only cleans up local state. If you are unsure whether the worktree is still needed, ask the user instead of removing it.
+
+### 12. Final summary
 
 Report:
 
@@ -253,4 +297,5 @@ Report:
 - Railway project/environment/service/deployment status,
 - GitHub issues closed or left open,
 - Linear issues updated or left open,
+- whether the worktree was removed or kept (and why),
 - any remaining blockers or manual follow-up.
