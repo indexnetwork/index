@@ -9,7 +9,7 @@
 export const OPENROUTER_EMBEDDING_MODEL =
   process.env.EMBEDDING_MODEL ?? 'openai/text-embedding-3-large';
 
-/** Embedding vector size; must match DB schema (e.g. user_profiles, intents, hyde_documents). */
+/** Embedding vector size; must match DB schema (e.g. intents, hyde_documents, user_contexts). */
 export const OPENROUTER_EMBEDDING_DIMENSIONS = process.env.EMBEDDING_DIMENSIONS
   ? parseInt(process.env.EMBEDDING_DIMENSIONS, 10)
   : 2000;

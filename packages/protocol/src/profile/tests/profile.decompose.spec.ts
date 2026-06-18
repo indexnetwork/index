@@ -185,9 +185,9 @@ describe('ProfileGraph - Premise Decomposition', () => {
   // ─── Write mode with input: routes through decompose_premises ───────────
 
   describe('write mode with meaningful input and premise graph', () => {
-    it('should decompose input into premises and route to aggregate', async () => {
+    it('should decompose input into premises and create them via the premise graph', async () => {
       const graph = buildGraph();
-      const result = await graph.invoke({
+      await graph.invoke({
         userId: 'test-user-id',
         operationMode: 'write',
         input: 'I am a software engineer based in Berlin. I specialize in distributed systems.',
@@ -202,12 +202,11 @@ describe('ProfileGraph - Premise Decomposition', () => {
         expect(call.userId).toBe('test-user-id');
       }
 
-      // Should have fetched active premises for aggregation
+      // check_state reads ACTIVE premises to decide whether enrichment has run
       expect(mockDatabase.getPremisesForUser).toHaveBeenCalledWith('test-user-id', 'ACTIVE');
 
-      // Should have generated a profile (via aggregate -> generate_profile)
-      expect(result.profile).toBeDefined();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      // Premise creation is the terminal effect now — the graph never saves a profile
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     }, 60_000);
 
     it('should create premises with correct tiers', async () => {
@@ -231,8 +230,8 @@ describe('ProfileGraph - Premise Decomposition', () => {
 
   // ─── Legacy fallback: no premise graph ────────────────────────────────────
 
-  describe('write mode without premise graph (legacy)', () => {
-    it('should route directly to generate_profile when no premise graph is injected', async () => {
+  describe('write mode without premise graph', () => {
+    it('should end without generating when no premise graph is injected', async () => {
       const graph = buildGraphWithoutPremise();
       const result = await graph.invoke({
         userId: 'test-user-id',
@@ -241,12 +240,11 @@ describe('ProfileGraph - Premise Decomposition', () => {
         forceUpdate: true,
       });
 
-      // Should have generated profile directly (no decomposition)
-      expect(result.profile).toBeDefined();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
-
-      // Premise graph should NOT have been called
+      // With no premise graph there is nothing to decompose into — the write
+      // path ends without creating premises and without saving a profile.
       expect(premiseCreateCalls.length).toBe(0);
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
+      expect(result.profile).toBeUndefined();
     }, 60_000);
   });
 
@@ -254,8 +252,11 @@ describe('ProfileGraph - Premise Decomposition', () => {
 
   describe('scrape followed by decomposition', () => {
     it('should scrape first, then decompose scraped content into premises', async () => {
+      // User not yet enriched -> write mode with no input triggers scraping
+      (mockDatabase.getPremisesForUser as ReturnType<typeof mock>).mockResolvedValue([]);
+
       const graph = buildGraph();
-      const result = await graph.invoke({
+      await graph.invoke({
         userId: 'test-user-id',
         operationMode: 'write',
         // No input — will trigger scraping first
@@ -267,9 +268,8 @@ describe('ProfileGraph - Premise Decomposition', () => {
       // Premise graph should have been called with scraped content
       expect(premiseCreateCalls.length).toBeGreaterThanOrEqual(1);
 
-      // Should have generated profile via aggregate
-      expect(result.profile).toBeDefined();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      // Premise creation is terminal — no profile is saved
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     }, 60_000);
 
     it('should skip scraping and decomposition when scraping is not needed', async () => {
@@ -285,32 +285,11 @@ describe('ProfileGraph - Premise Decomposition', () => {
       // No scraping, no decomposition
       expect(mockScraper.scrape).not.toHaveBeenCalled();
       expect(premiseCreateCalls.length).toBe(0);
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
 
-      // Profile returned as-is
+      // Profile returned as-is (query/write read of the existing users-sourced row)
       expect(result.profile).toEqual(mockProfile);
     }, 30_000);
-  });
-
-  // ─── Aggregate mode still works directly ─────────────────────────────────
-
-  describe('aggregate mode', () => {
-    it('should still work directly without going through decomposition', async () => {
-      const graph = buildGraph();
-      const result = await graph.invoke({
-        userId: 'test-user-id',
-        operationMode: 'aggregate',
-      });
-
-      // Should fetch active premises
-      expect(mockDatabase.getPremisesForUser).toHaveBeenCalledWith('test-user-id', 'ACTIVE');
-
-      // Should generate profile
-      expect(result.profile).toBeDefined();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
-
-      // Should NOT call premise graph (aggregate uses existing premises)
-      expect(premiseCreateCalls.length).toBe(0);
-    }, 60_000);
   });
 
   // ─── Query mode unaffected ───────────────────────────────────────────────
@@ -334,7 +313,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
   // ─── Error handling ──────────────────────────────────────────────────────
 
   describe('error handling', () => {
-    it('should fall back to direct generation if premise graph throws', async () => {
+    it('should end gracefully when the premise graph throws', async () => {
       const failingPremiseGraph: CompiledPremiseGraph = {
         invoke: mock(async () => {
           throw new Error('Premise graph crashed');
@@ -349,6 +328,8 @@ describe('ProfileGraph - Premise Decomposition', () => {
         failingPremiseGraph,
       ).createGraph();
 
+      // The decompose node swallows per-premise failures — the invoke resolves
+      // rather than throwing, and nothing is saved.
       const result = await graph.invoke({
         userId: 'test-user-id',
         operationMode: 'write',
@@ -356,9 +337,8 @@ describe('ProfileGraph - Premise Decomposition', () => {
         forceUpdate: true,
       });
 
-      // Should still generate a profile (fallback to direct generation)
-      expect(result.profile).toBeDefined();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      expect(result.error).toBeUndefined();
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     }, 60_000);
   });
 });

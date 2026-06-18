@@ -10,7 +10,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
-import { users, userProfiles, userSocials, networks, networkMembers, intents, intentNetworks, premises, opportunities } from '../../schemas/database.schema';
+import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, opportunities } from '../../schemas/database.schema';
 import { IntentDatabaseAdapter, ChatDatabaseAdapter, ProfileDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
@@ -48,12 +48,6 @@ beforeAll(async () => {
       location: 'Loc B',
     },
   ]);
-  await db.insert(userProfiles).values({
-    userId: userAId,
-    identity: { name: 'User A', bio: 'Bio A', location: '' },
-    narrative: { context: 'Context A' },
-    attributes: { interests: [], skills: [] },
-  });
   await db.insert(networks).values({
     id: networkId,
     title: TEST_PREFIX + 'Test Index',
@@ -87,7 +81,6 @@ afterAll(async () => {
   }
   await db.delete(opportunities).where(sql`${opportunities.context}->>'networkId' = ${fixture.networkId}`);
   await db.delete(networkMembers).where(eq(networkMembers.networkId, fixture.networkId));
-  await db.delete(userProfiles).where(inArray(userProfiles.userId, [fixture.userAId, fixture.userBId]));
   await db.delete(networks).where(eq(networks.id, fixture.networkId));
   await db.delete(users).where(inArray(users.id, [fixture.userAId, fixture.userBId]));
 });

@@ -1,5 +1,5 @@
 import { Annotation } from "@langchain/langgraph";
-import { ProfileDocument } from "./profile.generator.js";
+import type { ProfileDocument } from "../shared/schemas/profile.schema.js";
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
 
 /**
@@ -17,11 +17,11 @@ export const ProfileGraphState = Annotation.Root({
   /**
    * Operation mode controls graph flow:
    * - 'query': Fast path - only retrieve existing profile (no generation)
-   * - 'write': Full pipeline - generate/update profile and hyde as needed
-   * - 'generate': Auto-generate profile from user table data via enrichUserProfile Chat API
-   * - 'aggregate': Synthesize profile from the user's active premises
+   * - 'write': Decompose provided/scraped input into premises
+   * - 'generate': Auto-enrich from user table data via enrichUserProfile Chat API,
+   *   then decompose the enrichment into premises
    */
-  operationMode: Annotation<'query' | 'write' | 'generate' | 'aggregate'>({
+  operationMode: Annotation<'query' | 'write' | 'generate'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'write',
   }),
@@ -31,15 +31,6 @@ export const ProfileGraphState = Annotation.Root({
    * When true with new input, the graph will re-generate and update the profile.
    */
   forceUpdate: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  /**
-   * Flag indicating the profile is being regenerated from aggregated premises.
-   * When true, `generate_profile` uses synthesis framing instead of "apply user request" framing.
-   */
-  isAggregate: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
   }),

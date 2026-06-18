@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { experimentService, SignupNotCompleteError } from '../src/services/experiment.service';
 import db from '../src/lib/drizzle/drizzle';
-import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, userProfiles, userSocials, users } from '../src/schemas/database.schema';
+import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, userSocials, users } from '../src/schemas/database.schema';
 import { generateMasterKey } from '../src/lib/experiment/master-key';
 import { NetworkController } from '../src/controllers/network.controller';
 
@@ -41,7 +41,6 @@ async function cleanupUser(userId: string) {
   await db.delete(agents).where(eq(agents.ownerId, userId));
   await db.delete(networkMembers).where(eq(networkMembers.userId, userId));
   await db.delete(userSocials).where(eq(userSocials.userId, userId));
-  await db.delete(userProfiles).where(eq(userProfiles.userId, userId));
   const pn = await db
     .select({ networkId: personalNetworks.networkId })
     .from(personalNetworks)

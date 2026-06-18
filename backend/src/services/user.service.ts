@@ -54,12 +54,14 @@ export class UserService {
     /**
      * Resolves a full User Graph.
      * 
+     * Identity (name/bio/location) is sourced from the `users` row itself; the
+     * dropped `user_profiles` table is no longer joined.
+     *
      * JOINS:
-     * - `userProfiles` (for identity/bio)
      * - `userNotificationSettings`
-     * 
+     *
      * @param userId - ID to find.
-     * @returns User object merged with Profile and Settings, or null.
+     * @returns User object merged with Settings, or null.
      */
     async findWithGraph(userId: string) {
         return this.db.findWithGraph(userId);

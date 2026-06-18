@@ -11,7 +11,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
-import { users, userProfiles, networks, networkMembers, intents, intentNetworks } from '../../schemas/database.schema';
+import { users, networks, networkMembers, intents, intentNetworks } from '../../schemas/database.schema';
 import { EmbedderAdapter } from '../embedder.adapter';
 
 const TEST_PREFIX = 'embedder_spec_' + Date.now() + '_';
@@ -47,27 +47,6 @@ beforeAll(async () => {
     { id: userBId, email: TEST_PREFIX + 'b@t.com', name: 'User B', isGhost: true },
     { id: deletedUserId, email: TEST_PREFIX + 'deleted@t.com', name: 'Deleted User', deletedAt: new Date(), isGhost: true },
   ]);
-  await db.insert(userProfiles).values([
-    {
-      userId: userAId,
-      identity: { name: 'User A', bio: 'Bio A', location: '' },
-      narrative: { context: 'Context A' },
-      attributes: { interests: [], skills: [] },
-    },
-    {
-      userId: userBId,
-      identity: { name: 'User B', bio: 'Bio B', location: '' },
-      narrative: { context: 'Context B' },
-      attributes: { interests: [], skills: [] },
-    },
-    {
-      userId: deletedUserId,
-      identity: { name: 'Deleted User', bio: 'Bio Deleted', location: '' },
-      narrative: { context: 'Context Deleted' },
-      attributes: { interests: [], skills: [] },
-      embedding: makeTestVector(42),
-    },
-  ]);
   await db.insert(networks).values({
     id: networkId,
     title: TEST_PREFIX + 'Index',
@@ -95,7 +74,6 @@ afterAll(async () => {
   await db.delete(intentNetworks).where(eq(intentNetworks.networkId, fixture.networkId));
   await db.delete(intents).where(inArray(intents.userId, [fixture.userAId, fixture.userBId, fixture.deletedUserId]));
   await db.delete(networkMembers).where(eq(networkMembers.networkId, fixture.networkId));
-  await db.delete(userProfiles).where(inArray(userProfiles.userId, [fixture.userAId, fixture.userBId, fixture.deletedUserId]));
   await db.delete(networks).where(eq(networks.id, fixture.networkId));
   await db.delete(users).where(inArray(users.id, [fixture.userAId, fixture.userBId, fixture.deletedUserId]));
 });

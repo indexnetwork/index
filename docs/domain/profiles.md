@@ -16,7 +16,7 @@ Profiles serve two purposes: they provide context for evaluating intents (author
 
 ## Profile Structure
 
-Each profile is stored in the `user_profiles` table and contains three structured sections:
+A profile is no longer persisted in a dedicated `user_profiles` table (dropped in the profile-removal epic). Identity (name, bio, location) now lives directly on the `users` row, while the richer professional context is derived from the user's premises and projected into their `user_contexts` (the global `networkId = null` row plus per-network rows). The profile concept below describes how that identity is shaped and presented, organized into three logical sections:
 
 ### Identity
 

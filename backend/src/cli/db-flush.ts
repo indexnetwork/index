@@ -44,7 +44,6 @@ async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
       'conversations',
       'opportunities',
       'user_notification_settings',
-      'user_profiles',
       'hyde_documents',
       'intents',
       'files',
