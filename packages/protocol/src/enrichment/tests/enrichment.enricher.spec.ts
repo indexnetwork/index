@@ -2,7 +2,7 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, it, expect } from "bun:test";
-import { shouldEnrichGhostDisplayNameFromParallel } from "../profile.enricher.js";
+import { shouldEnrichGhostDisplayNameFromParallel } from "../enrichment.enricher.js";
 
 describe("shouldEnrichGhostDisplayNameFromParallel", () => {
   it("returns true for ghost with email-local placeholder and multi-word enriched name", () => {

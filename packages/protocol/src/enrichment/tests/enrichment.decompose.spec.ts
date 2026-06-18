@@ -11,7 +11,7 @@ process.env.OPENROUTER_API_KEY ??= 'test';
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 
 // ─── Mock LLM-calling modules ──────────────────────────────────────────────
-// ProfileGenerator creates models at MODULE SCOPE, so it calls createModel()
+// EnrichmentGenerator creates models at MODULE SCOPE, so it calls createModel()
 // before mock.module on model.config can intercept it. Instead, we mock the
 // entire module that exports the class.
 
@@ -28,8 +28,8 @@ const mockProfileOutput = {
   },
 };
 
-mock.module("../profile.generator.js", () => ({
-  ProfileGenerator: class MockProfileGenerator {
+mock.module("../enrichment.generator.js", () => ({
+  EnrichmentGenerator: class MockEnrichmentGenerator {
     async invoke(input: string) {
       return {
         output: mockProfileOutput,
@@ -55,12 +55,12 @@ mock.module("../../premise/premise.decomposer.js", () => ({
   },
 }));
 
-import { ProfileGraphFactory } from '../profile.graph.js';
-import type { ProfileGraphDatabase, PremiseRecord } from '../../shared/interfaces/database.interface.js';
+import { EnrichmentGraphFactory } from '../enrichment.graph.js';
+import type { EnrichmentGraphDatabase, PremiseRecord } from '../../shared/interfaces/database.interface.js';
 import type { Scraper } from '../../shared/interfaces/scraper.interface.js';
-import type { CompiledPremiseGraph } from '../profile.graph.js';
+import type { CompiledPremiseGraph } from '../enrichment.graph.js';
 
-interface ProfileDocument {
+interface GeneratedProfile {
   userId: string;
   identity: {
     name: string;
@@ -75,11 +75,11 @@ interface ProfileDocument {
 }
 
 describe('ProfileGraph - Premise Decomposition', () => {
-  let mockDatabase: ProfileGraphDatabase;
+  let mockDatabase: EnrichmentGraphDatabase;
   let mockScraper: Scraper;
   let mockPremiseGraph: CompiledPremiseGraph;
 
-  const mockProfile: ProfileDocument = {
+  const mockProfile: GeneratedProfile = {
     userId: 'test-user-id',
     identity: {
       name: 'Test User',
@@ -145,7 +145,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
       saveProfile: mock(async () => {}),
       softDeleteGhost: mock(async () => true),
       getPremisesForUser: mock(async () => mockActivePremises),
-    } as unknown as ProfileGraphDatabase;
+    } as unknown as EnrichmentGraphDatabase;
 
     mockScraper = {
       scrape: mock(async () => 'Scraped content about the user: software engineer in Berlin'),
@@ -166,7 +166,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
   });
 
   function buildGraph() {
-    return new ProfileGraphFactory(
+    return new EnrichmentGraphFactory(
       mockDatabase,
       mockScraper,
       undefined, // no enricher
@@ -176,7 +176,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
   }
 
   function buildGraphWithoutPremise() {
-    return new ProfileGraphFactory(
+    return new EnrichmentGraphFactory(
       mockDatabase,
       mockScraper,
     ).createGraph();
@@ -320,7 +320,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
         }),
       } as unknown as CompiledPremiseGraph;
 
-      const graph = new ProfileGraphFactory(
+      const graph = new EnrichmentGraphFactory(
         mockDatabase,
         mockScraper,
         undefined, // no enricher

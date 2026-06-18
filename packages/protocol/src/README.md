@@ -40,7 +40,7 @@ packages/protocol/src/
 |-------|------|---------|
 | Chat | `chat/chat.graph.ts` | ReAct agent loop — LLM calls tools, responds to user |
 | Intent | `intent/intent.graph.ts` | Clarify, infer, verify felicity conditions, reconcile, and persist intents |
-| Profile | `profile/profile.graph.ts` | Generate/update user profiles with scraping and embedding (decomposes into premises) |
+| Enrichment | `enrichment/enrichment.graph.ts` | Generate/update user identity with scraping and embedding (decomposes into premises) |
 | Premise | `premise/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
 | Opportunity | `opportunity/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
 | HyDE | `shared/hyde/hyde.graph.ts` | Generate hypothetical documents (Mirror, Reciprocal, Neighborhood) and embed them (cache-aware) |
@@ -67,8 +67,8 @@ packages/protocol/src/
 | Intent Reconciler | `intent/intent.reconciler.ts` | Intent graph — determines create/update/expire action (Donnellan's distinction) |
 | Intent Verifier | `intent/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
 | Intent Indexer | `intent/intent.indexer.ts` | Intent Index graph — scores intent-index fit as relevancy score |
-| Profile Generator | `profile/profile.generator.ts` | Profile graph — generates structured identity from raw data |
-| Profile Enricher | `profile/profile.enricher.ts` | Profile enrichment — display name and metadata enrichment |
+| Enrichment Generator | `enrichment/enrichment.generator.ts` | Enrichment graph — generates structured identity from raw data |
+| Enrichment Enricher | `enrichment/enrichment.enricher.ts` | Identity enrichment — display name and metadata enrichment |
 | Premise Decomposer | `premise/premise.decomposer.ts` | Premise graph — decomposes free text into atomic, first-person self-descriptive premises |
 | Premise Analyzer | `premise/premise.analyzer.ts` | Premise graph — classifies the premise speech act (declarative/assertive) and scores felicity |
 | Premise Indexer | `premise/premise.indexer.ts` | Premise graph — embeds premises and scores network fit for assignment |
@@ -94,7 +94,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 
 | File | Tools |
 |------|-------|
-| `profile/profile.tools.ts` | `read_user_profiles`, `preview_user_profile`, `confirm_user_profile`, `create_user_profile`, `update_user_profile`, `record_onboarding_privacy_consent`, `complete_onboarding`, `get_profile_run`, `cancel_profile_run` |
+| `enrichment/enrichment.tools.ts` | `read_user_profiles`, `preview_user_profile`, `confirm_user_profile`, `create_user_profile`, `update_user_profile`, `record_onboarding_privacy_consent`, `complete_onboarding`, `get_profile_run`, `cancel_profile_run` |
 | `premise/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
 | `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `network/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
@@ -229,7 +229,7 @@ sequenceDiagram
     end
     PT->>PG: invoke(userId, mode: write, forceUpdate: true)
     Note over PG: scrape web for identity (constitutive context)
-    Note over PG: ProfileGenerator builds structured identity
+    Note over PG: EnrichmentGenerator builds structured identity
     Note over PG: embed profile (pgvector)
     Note over PG: HyDE Generator creates Mirror + Reciprocal + Neighborhood docs
     Note over PG: embed HyDE docs

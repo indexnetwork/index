@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { DefineTool, ResolvedToolContext, ToolDeps, RawToolDefinition, ToolRegistry } from './tool.helpers.js';
 import { error, redactSensitiveFields } from './tool.helpers.js';
-import { createProfileTools } from '../../profile/profile.tools.js';
+import { createEnrichmentTools } from '../../enrichment/enrichment.tools.js';
 import { createIntentTools } from '../../intent/intent.tools.js';
 import { createNetworkTools } from '../../network/network.tools.js';
 import { createOpportunityTools } from '../../opportunity/opportunity.tools.js';
@@ -72,7 +72,7 @@ export function createToolRegistry(deps: ToolDeps): ToolRegistry {
   // Create all tool domains -- each one calls defineTool() which populates the registry.
   // The local defineTool is compatible with DefineTool (which returns any).
   const dt = defineTool as DefineTool;
-  createProfileTools(dt, deps);
+  createEnrichmentTools(dt, deps);
   createIntentTools(dt, deps);
   createNetworkTools(dt, deps);
   createOpportunityTools(dt, deps);

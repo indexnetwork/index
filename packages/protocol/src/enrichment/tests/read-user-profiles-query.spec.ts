@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createProfileTools } from "../profile.tools.js";
+import { createEnrichmentTools } from "../enrichment.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 function makeContext(userId = "viewer-111"): ResolvedToolContext {
@@ -17,7 +17,7 @@ function makeContext(userId = "viewer-111"): ResolvedToolContext {
 function captureTool(deps: ToolDeps) {
   let captured: { handler: (i: { context: ResolvedToolContext; query: unknown }) => Promise<string> } | undefined;
   const defineTool = (def: any) => { if (def.name === "read_user_profiles") captured = def; return def; };
-  createProfileTools(defineTool as any, deps);
+  createEnrichmentTools(defineTool as any, deps);
   return captured!;
 }
 
@@ -56,14 +56,17 @@ describe("read_user_profiles — query mode resilience", () => {
 
     const good = result.data.profiles.find((p: any) => p.userId === "good-user");
     expect(good.hasProfile).toBe(true);
-    expect(good.profile.bio).toBe("Engineer");
+    // Flat list entry (WS11): identity fields inline, no nested `profile` object.
+    expect(good).not.toHaveProperty("profile");
+    expect(good.bio).toBe("Engineer");
     // WS6: list results are thin identity only — retired attributes must not leak.
-    expect(good.profile).not.toHaveProperty("skills");
-    expect(good.profile).not.toHaveProperty("interests");
+    expect(good).not.toHaveProperty("skills");
+    expect(good).not.toHaveProperty("interests");
 
     const bad = result.data.profiles.find((p: any) => p.userId === "bad-user");
     expect(bad.hasProfile).toBe(false);
-    expect(bad.profile).toBeUndefined();
+    expect(bad).not.toHaveProperty("profile");
+    expect(bad.bio).toBeUndefined();
   });
 
   test("returns empty profiles array when no name matches", async () => {

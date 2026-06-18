@@ -2,7 +2,7 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { ProfileGenerator } from "../profile.generator.js";
+import { EnrichmentGenerator } from "../enrichment.generator.js";
 import { beforeEach, describe, expect, it } from "bun:test";
 
 const FIXTURE_RESULTS = JSON.stringify([
@@ -21,10 +21,10 @@ const FIXTURE_RESULTS = JSON.stringify([
 ], null, 2);
 
 describe('Profile Generator', () => {
-  let profileGenerator: ProfileGenerator;
+  let profileGenerator: EnrichmentGenerator;
 
   beforeEach(() => {
-    profileGenerator = new ProfileGenerator();
+    profileGenerator = new EnrichmentGenerator();
   })
 
   it('should generate a profile', async () => {

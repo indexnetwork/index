@@ -10,7 +10,7 @@ import type { OnboardingPrivacyState, OnboardingProfileSeed, OnboardingState, Pr
 import type { ProfileRunInput, ProfileRunOperation } from "../shared/interfaces/profile-run.interface.js";
 import { socialsToEnrichmentRequest, detectSocialLabel } from "../shared/utils/social-label.js";
 import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
-import { ProfileGenerator } from "./profile.generator.js";
+import { EnrichmentGenerator } from "./enrichment.generator.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ChatTools:Profile");
@@ -34,7 +34,7 @@ const approvedProfileDraftSchema = z.object({
 
 type ApprovedProfileDraft = z.infer<typeof approvedProfileDraftSchema>;
 
-export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
   const { userDb, systemDb, graphs, enricher, grantDefaultSystemPermissions, reportToolError, getUserContextText } = deps;
 
   function trimToUndefined(value: string | null | undefined): string | undefined {
@@ -370,19 +370,15 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           matched.map(async (m) => {
             try {
               const profile = await systemDb.getProfile(m.userId);
-              // Thin identity for list results. skills/interests are retired; the rich
-              // identity text (global user_context) is fetched per-user via a userId read.
+              // Flat thin identity for list results. skills/interests are retired; the
+              // rich identity text (global user_context) is fetched per-user via a userId read.
               return {
                 userId: m.userId,
                 name: m.name,
                 hasProfile: !!profile,
-                profile: profile
-                  ? {
-                      name: profile.identity.name,
-                      bio: profile.identity.bio,
-                      location: profile.identity.location,
-                    }
-                  : undefined,
+                ...(profile
+                  ? { bio: profile.identity.bio, location: profile.identity.location }
+                  : {}),
               };
             } catch (err) {
               logger.warn("read_user_profiles: getProfile failed; degrading to hasProfile=false", {
@@ -423,19 +419,15 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         const profiles = await Promise.all(
           members.map(async (member) => {
             const profile = await systemDb.getProfile(member.userId);
-            // Thin identity for roster results. skills/interests are retired; fetch a
+            // Flat thin identity for roster results. skills/interests are retired; fetch a
             // member's global user_context text via a single-user (userId) read.
             return {
               userId: member.userId,
               name: member.name,
               hasProfile: !!profile,
-              profile: profile
-                ? {
-                    name: profile.identity.name,
-                    bio: profile.identity.bio,
-                    location: profile.identity.location,
-                  }
-                : undefined,
+              ...(profile
+                ? { bio: profile.identity.bio, location: profile.identity.location }
+                : {}),
             };
           })
         );
@@ -464,12 +456,10 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           const context = getUserContextText ? await getUserContextText(targetUserId) : '';
           return success({
             hasProfile: true,
-            profile: {
-              name: profile.identity.name,
-              bio: profile.identity.bio,
-              location: profile.identity.location,
-              context,
-            },
+            name: profile.identity.name,
+            bio: profile.identity.bio,
+            location: profile.identity.location,
+            context,
           });
         }
         return success({ hasProfile: false, message: "This user does not have a profile yet." });
@@ -498,21 +488,20 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       if (result.readResult) {
         // Augment the graph's thin-identity readResult with the caller's global
         // user_context text (the rich, profile-replacing identity paragraph).
-        const readResult = result.readResult as { hasProfile?: boolean; profile?: Record<string, unknown> };
-        const withContext = readResult.hasProfile && readResult.profile
-          ? { ...readResult, profile: { ...readResult.profile, context: getUserContextText ? await getUserContextText(context.userId) : '' } }
-          : readResult;
-        return success({ ...withContext, ...onboardingFields, _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }] });
+        const readResult = result.readResult as { hasProfile?: boolean; profile?: Record<string, unknown>; message?: string };
+        // Flatten identity fields up; drop the nested `profile` object (WS11).
+        const flat = readResult.hasProfile && readResult.profile
+          ? { hasProfile: true, ...readResult.profile, context: getUserContextText ? await getUserContextText(context.userId) : '' }
+          : { ...readResult };
+        return success({ ...flat, ...onboardingFields, _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }] });
       }
       if (result.profile) {
         return success({
           hasProfile: true,
-          profile: {
-            name: result.profile.identity.name,
-            bio: result.profile.identity.bio,
-            location: result.profile.identity.location,
-            context: getUserContextText ? await getUserContextText(context.userId) : '',
-          },
+          name: result.profile.identity.name,
+          bio: result.profile.identity.bio,
+          location: result.profile.identity.location,
+          context: getUserContextText ? await getUserContextText(context.userId) : '',
           ...onboardingFields,
           _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }],
         });
@@ -650,7 +639,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
 
-      const generated = await new ProfileGenerator().invoke(input);
+      const generated = await new EnrichmentGenerator().invoke(input);
       const profile = { ...generated.output, userId: context.userId };
       return success({
         preview: true,
@@ -690,7 +679,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       const user = await userDb.getUser();
       if (query.draft) {
         const profile = { ...query.draft, userId: context.userId };
-        await userDb.saveProfile(profile);
+        await userDb.saveProfile({ userId: context.userId, identity: profile.identity, context: profile.narrative?.context ?? '' });
         await persistApprovedProfileContext(profile, user, context.networkId);
 
         const decomposeLogLabel = context.isMcp
@@ -833,8 +822,6 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
               name: existingProfile.identity.name,
               bio: existingProfile.identity.bio,
               location: existingProfile.identity.location,
-              skills: existingProfile.attributes.skills,
-              interests: existingProfile.attributes.interests,
             },
           });
         }
@@ -939,7 +926,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
 
       if (hasBioOrDescription) {
         // Create/update profile from user's explicit text only; do not persist to user record
-        // Include name and location in the input if provided so the ProfileGenerator can use them
+        // Include name and location in the input if provided so the EnrichmentGenerator can use them
         const inputParts: string[] = [];
         if (name) inputParts.push(`Name: ${name}`);
         if (location) inputParts.push(`Location: ${location}`);

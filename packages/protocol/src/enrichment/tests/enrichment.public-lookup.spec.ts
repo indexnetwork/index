@@ -5,8 +5,8 @@ import type { EnrichmentResult } from "../../shared/interfaces/enrichment.interf
 
 // Replace the LLM-backed generator BEFORE profile.tools.js is imported.
 let lastGeneratorInput: string | undefined;
-mock.module("../profile.generator.js", () => ({
-  ProfileGenerator: class {
+mock.module("../enrichment.generator.js", () => ({
+  EnrichmentGenerator: class {
     async invoke(input: string) {
       lastGeneratorInput = input;
       return {
@@ -21,7 +21,7 @@ mock.module("../profile.generator.js", () => ({
   },
 }));
 
-const { createProfileTools } = await import("../profile.tools.js");
+const { createEnrichmentTools } = await import("../enrichment.tools.js");
 
 interface CapturedTool {
   name: string;
@@ -34,7 +34,7 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
     toolDefs.push({ name: def.name, handler: def.handler });
     return def;
   };
-  createProfileTools(defineTool as unknown as Parameters<typeof createProfileTools>[0], deps);
+  createEnrichmentTools(defineTool as unknown as Parameters<typeof createEnrichmentTools>[0], deps);
   return toolDefs;
 }
 

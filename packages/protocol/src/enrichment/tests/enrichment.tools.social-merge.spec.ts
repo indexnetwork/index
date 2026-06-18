@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
 import { z } from "zod";
 
-import { createProfileTools } from "../profile.tools.js";
+import { createEnrichmentTools } from "../enrichment.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 interface CapturedTool {
@@ -22,7 +22,7 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
     toolDefs.push(def);
     return def;
   };
-  createProfileTools(defineTool as unknown as Parameters<typeof createProfileTools>[0], deps);
+  createEnrichmentTools(defineTool as unknown as Parameters<typeof createEnrichmentTools>[0], deps);
   return toolDefs;
 }
 

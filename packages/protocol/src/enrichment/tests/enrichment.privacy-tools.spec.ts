@@ -7,8 +7,8 @@ import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.help
 
 let generatedInputs: string[] = [];
 
-mock.module("../profile.generator.js", () => ({
-  ProfileGenerator: class {
+mock.module("../enrichment.generator.js", () => ({
+  EnrichmentGenerator: class {
     async invoke(input: string) {
       generatedInputs.push(input);
       return {
@@ -22,7 +22,7 @@ mock.module("../profile.generator.js", () => ({
   },
 }));
 
-const { createProfileTools } = await import("../profile.tools.js");
+const { createEnrichmentTools } = await import("../enrichment.tools.js");
 
 interface CapturedTool {
   name: string;
@@ -37,7 +37,7 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
     toolDefs.push(def);
     return def;
   };
-  createProfileTools(defineTool as unknown as Parameters<typeof createProfileTools>[0], deps);
+  createEnrichmentTools(defineTool as unknown as Parameters<typeof createEnrichmentTools>[0], deps);
   return toolDefs;
 }
 
@@ -257,7 +257,8 @@ describe("onboarding privacy profile tools", () => {
     const result = parseToolResult(await tool.handler({ context: context(), query: { draft } }));
 
     expect(result.success).toBe(true);
-    expect(saveProfile).toHaveBeenCalledWith({ ...draft, userId: "u1" });
+    // saveProfile now persists a UserIdentity (identity + context), not the legacy draft shape (WS11).
+    expect(saveProfile).toHaveBeenCalledWith({ userId: "u1", identity: draft.identity, context: draft.narrative.context });
     expect(saveProfile).toHaveBeenCalledTimes(1);
     expect(profileGraphInvoke).toHaveBeenCalledTimes(1);
     expect(profileGraphInvoke).toHaveBeenCalledWith({

@@ -3,17 +3,17 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import { ProfileGraphFactory } from '../profile.graph.js';
-import type { ProfileGraphDatabase } from '../../shared/interfaces/database.interface.js';
+import { EnrichmentGraphFactory } from '../enrichment.graph.js';
+import type { EnrichmentGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Scraper } from '../../shared/interfaces/scraper.interface.js';
-import type { ProfileDocument } from '../profile.generator.js';
+import type { GeneratedProfile } from '../enrichment.generator.js';
 
 describe('ProfileGraph', () => {
-  let factory: ProfileGraphFactory;
-  let mockDatabase: ProfileGraphDatabase;
+  let factory: EnrichmentGraphFactory;
+  let mockDatabase: EnrichmentGraphDatabase;
   let mockScraper: Scraper;
 
-  const mockProfile: ProfileDocument = {
+  const mockProfile: GeneratedProfile = {
     userId: 'test-user-id',
     identity: {
       name: 'Test User',
@@ -59,7 +59,7 @@ describe('ProfileGraph', () => {
       scrape: mock(async (objective: string) => 'Scraped data about the user')
     } as any;
 
-    factory = new ProfileGraphFactory(mockDatabase, mockScraper);
+    factory = new EnrichmentGraphFactory(mockDatabase, mockScraper);
   });
 
   describe('Query Mode (Fast Path)', () => {
@@ -359,7 +359,7 @@ const mockEnrichUserProfile = mock(async () => null as any);
  * through LLM generation) and fallback to basic info LLM generation.
  */
 describe('ProfileGraph - Generate Mode', () => {
-  let mockDatabase: ProfileGraphDatabase;
+  let mockDatabase: EnrichmentGraphDatabase;
   let mockScraper: Scraper;
 
   let savedProfiles: Map<string, any>;
@@ -390,7 +390,7 @@ describe('ProfileGraph - Generate Mode', () => {
   });
 
   function buildGraph() {
-    return new ProfileGraphFactory(mockDatabase, mockScraper, { enrichUserProfile: mockEnrichUserProfile }).createGraph();
+    return new EnrichmentGraphFactory(mockDatabase, mockScraper, { enrichUserProfile: mockEnrichUserProfile }).createGraph();
   }
 
   // ─────────────────────────────────────────────────────────
@@ -609,7 +609,7 @@ describe('ProfileGraph - Generate Mode', () => {
 // ─── Enrichment → Premise Decomposition Path ─────────────────────────────────
 
 describe('ProfileGraph - Enrichment with Premise Decomposition', () => {
-  let mockDatabase: ProfileGraphDatabase;
+  let mockDatabase: EnrichmentGraphDatabase;
   let mockScraper: Scraper;
   let mockPremiseGraph: { invoke: ReturnType<typeof mock> };
 
@@ -660,7 +660,7 @@ describe('ProfileGraph - Enrichment with Premise Decomposition', () => {
   it('should route enrichment through premise decomposition when premiseGraph is provided', async () => {
     mockEnrichUserProfile.mockResolvedValue(enrichmentResult);
 
-    const factory = new ProfileGraphFactory(
+    const factory = new EnrichmentGraphFactory(
       mockDatabase,
       mockScraper,
       { enrichUserProfile: mockEnrichUserProfile },

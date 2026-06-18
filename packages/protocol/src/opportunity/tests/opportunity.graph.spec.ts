@@ -15,7 +15,7 @@ import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { SourceProfileData } from '../opportunity.state.js';
 import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from '../opportunity.evaluator.js';
 import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
-import type { ProfileDocument } from '../../profile/profile.generator.js';
+import type { GeneratedProfile } from '../../enrichment/enrichment.generator.js';
 import { assertLLM } from '../../shared/agent/tests/llm-assert.js';
 import { requestContext } from '../../shared/observability/request-context.js';
 
@@ -731,7 +731,7 @@ describe('Opportunity Graph', () => {
 
     test('when splitting multi-actor result, reasoning mentioning only one candidate does not leak to the other (IND-127)', async () => {
       // Simulate: evaluator bundles Alice and Bob into one opportunity with Alice's reasoning
-      const profilesByUserId: Record<string, ProfileDocument> = {
+      const profilesByUserId: Record<string, GeneratedProfile> = {
         'c0000000-0000-4000-8000-000000000003': {
           userId: 'c0000000-0000-4000-8000-000000000003',
           identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs' },
@@ -794,7 +794,7 @@ describe('Opportunity Graph', () => {
     });
 
     test('when bundled reasoning mentions both candidates, neither split reuses the shared text', async () => {
-      const profilesByUserId: Record<string, ProfileDocument> = {
+      const profilesByUserId: Record<string, GeneratedProfile> = {
         'c0000000-0000-4000-8000-000000000003': {
           userId: 'c0000000-0000-4000-8000-000000000003',
           identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs' },
@@ -1847,7 +1847,7 @@ describe('Opportunity Graph', () => {
           identity: { name: 'Alice Chen', bio: 'Full-stack engineer building AI tools', location: 'Remote' },
           narrative: { context: 'Alice is a software engineer' },
           attributes: { interests: ['machine learning', 'startups'], skills: ['TypeScript', 'Python'] },
-        } satisfies ProfileDocument,
+        } satisfies GeneratedProfile,
         getActiveIntents: () =>
           Promise.resolve([
             {

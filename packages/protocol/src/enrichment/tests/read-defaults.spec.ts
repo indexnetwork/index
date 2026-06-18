@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { createProfileTools } from "../profile.tools.js";
+import { createEnrichmentTools } from "../enrichment.tools.js";
 import type { ToolDeps } from "../../shared/agent/tool.helpers.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
@@ -38,7 +38,7 @@ describe("read_user_profiles default-to-self", () => {
       return def as any;
     };
     const profileResult = { hasProfile: true, profile: { name: "Alice", bio: "hi" } };
-    createProfileTools(defineTool as any, makeDeps(profileResult));
+    createEnrichmentTools(defineTool as any, makeDeps(profileResult));
     const readTool = toolDefs.find((t) => t.name === "read_user_profiles");
     expect(readTool).toBeDefined();
 
@@ -46,6 +46,8 @@ describe("read_user_profiles default-to-self", () => {
     const parsed = JSON.parse(result as string);
     expect(parsed.success).toBe(true);
     expect(parsed.data.hasProfile).toBe(true);
-    expect(parsed.data.profile.name).toBe("Alice");
+    // Flat payload (WS11): identity fields inline, no nested `profile` object.
+    expect(parsed.data).not.toHaveProperty("profile");
+    expect(parsed.data.name).toBe("Alice");
   });
 });

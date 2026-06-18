@@ -116,18 +116,14 @@ export function buildDiscovererContext(
 
   if (profile) {
     const identity = profile.identity;
-    const attrs = profile.attributes;
     if (identity?.name || identity?.bio) {
       lines.push(`Profile: ${[identity.name, identity.bio].filter(Boolean).join(', ')}`);
     }
     if (identity?.location) {
       lines.push(`Location: ${identity.location}`);
     }
-    if (attrs?.skills?.length) {
-      lines.push(`Skills: ${attrs.skills.join(', ')}`);
-    }
-    if (attrs?.interests?.length) {
-      lines.push(`Interests: ${attrs.interests.join(', ')}`);
+    if (profile.context) {
+      lines.push(`Context: ${profile.context}`);
     }
   }
 
@@ -286,8 +282,7 @@ export class OpportunityGraphFactory {
             const sourceProfile = profile
               ? {
                   identity: profile.identity ?? undefined,
-                  narrative: profile.narrative ?? undefined,
-                  attributes: profile.attributes ?? undefined,
+                  context: profile.context ?? undefined,
                 }
               : null;
             // Source premises are loaded after scope is resolved so premise discovery
@@ -1466,9 +1461,7 @@ export class OpportunityGraphFactory {
               name: sourceProfile?.identity?.name,
               bio: sourceProfile?.identity?.bio,
               location: sourceProfile?.identity?.location,
-              interests: sourceProfile?.attributes?.interests,
-              skills: sourceProfile?.attributes?.skills,
-              context: sourceProfile?.narrative?.context,
+              context: sourceProfile?.context,
             },
             intents: state.indexedIntents.slice(0, 5).map((i) => ({
               intentId: i.intentId,
@@ -1500,9 +1493,7 @@ export class OpportunityGraphFactory {
                   name: profile?.identity?.name,
                   bio: profile?.identity?.bio,
                   location: profile?.identity?.location,
-                  interests: profile?.attributes?.interests,
-                  skills: profile?.attributes?.skills,
-                  context: profile?.narrative?.context,
+                  context: profile?.context,
                 },
                 intents:
                   c.candidateIntentId != null
@@ -1884,8 +1875,6 @@ export class OpportunityGraphFactory {
             name: state.sourceProfile?.identity?.name ?? sourceAccount?.name,
             bio: state.sourceProfile?.identity?.bio ?? sourceAccount?.intro ?? undefined,
             location: state.sourceProfile?.identity?.location ?? sourceAccount?.location ?? undefined,
-            skills: state.sourceProfile?.attributes?.skills,
-            interests: state.sourceProfile?.attributes?.interests,
           },
         };
 
@@ -1969,8 +1958,6 @@ export class OpportunityGraphFactory {
                   name: profile?.identity?.name ?? user?.name,
                   bio: profile?.identity?.bio ?? user?.intro ?? undefined,
                   location: profile?.identity?.location ?? user?.location ?? undefined,
-                  skills: profile?.attributes?.skills,
-                  interests: profile?.attributes?.interests,
                 },
               },
             };
@@ -3473,8 +3460,6 @@ export class OpportunityGraphFactory {
             name: sourceProfile?.identity?.name ?? sourceUserAccount?.name,
             bio: sourceProfile?.identity?.bio ?? sourceUserAccount?.intro ?? undefined,
             location: sourceProfile?.identity?.location ?? sourceUserAccount?.location ?? undefined,
-            skills: sourceProfile?.attributes?.skills,
-            interests: sourceProfile?.attributes?.interests,
           },
         };
 
@@ -3493,8 +3478,6 @@ export class OpportunityGraphFactory {
               name: candidateProfile?.identity?.name ?? candidateAccount?.name,
               bio: candidateProfile?.identity?.bio ?? candidateAccount?.intro ?? undefined,
               location: candidateProfile?.identity?.location ?? candidateAccount?.location ?? undefined,
-              skills: candidateProfile?.attributes?.skills,
-              interests: candidateProfile?.attributes?.interests,
             },
           },
         };

@@ -1,9 +1,9 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { ProfileGraphState } from "./profile.state.js";
-import { ProfileGraphDatabase, PremiseProvenance } from "../shared/interfaces/database.interface.js";
+import { EnrichmentGraphState } from "./enrichment.state.js";
+import { EnrichmentGraphDatabase, PremiseProvenance } from "../shared/interfaces/database.interface.js";
 import { Scraper } from "../shared/interfaces/scraper.interface.js";
 import type { ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
-import { shouldEnrichGhostDisplayNameFromParallel, isEnrichedNameMeaningful } from "./profile.enricher.js";
+import { shouldEnrichGhostDisplayNameFromParallel, isEnrichedNameMeaningful } from "./enrichment.enricher.js";
 import { socialsToEnrichmentRequest } from "../shared/utils/social-label.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
@@ -37,7 +37,7 @@ export interface CompiledPremiseGraph {
   }>;
 }
 
-const logger = protocolLogger("ProfileGraphFactory");
+const logger = protocolLogger("EnrichmentGraphFactory");
 
 /** Minimum length for input to be considered meaningful (e.g. not just "Yes") */
 const MIN_MEANINGFUL_INPUT_LENGTH = 20;
@@ -81,9 +81,9 @@ function isMeaningfulProfileInput(input: string | undefined): boolean {
  * - Read/Write separation (query vs write)
  * - Conditional generation (skip generation if profile already exists)
  */
-export class ProfileGraphFactory {
+export class EnrichmentGraphFactory {
   constructor(
-    private database: ProfileGraphDatabase,
+    private database: EnrichmentGraphDatabase,
     private scraper: Scraper,
     private enricher?: ProfileEnricher,
     private questionerEnqueue?: QuestionerEnqueueFn,
@@ -99,7 +99,7 @@ export class ProfileGraphFactory {
     // - Profile missing
     // - User information insufficient for scraping
     // ─────────────────────────────────────────────────────────
-    const checkStateNode = async (state: typeof ProfileGraphState.State) => {
+    const checkStateNode = async (state: typeof EnrichmentGraphState.State) => {
       return timed("ProfileGraph.checkState", async () => {
         if (!state.userId) {
           logger.error("Missing userId");
@@ -264,7 +264,7 @@ export class ProfileGraphFactory {
     // NODE: Scrape
     // Scrapes data from web if input is not provided
     // ─────────────────────────────────────────────────────────
-    const scrapeNode = async (state: typeof ProfileGraphState.State) => {
+    const scrapeNode = async (state: typeof EnrichmentGraphState.State) => {
       return timed("ProfileGraph.scrape", async () => {
         if (state.input && isMeaningfulProfileInput(state.input)) {
           logger.verbose("Meaningful input already provided - skipping scrape");
@@ -358,7 +358,7 @@ export class ProfileGraphFactory {
     // On failure, falls back to basic user info for LLM generation.
     // Used in 'generate' mode only.
     // ─────────────────────────────────────────────────────────
-    const autoGenerateNode = async (state: typeof ProfileGraphState.State) => {
+    const autoGenerateNode = async (state: typeof EnrichmentGraphState.State) => {
       return timed("ProfileGraph.autoGenerate", async () => {
         logger.verbose("Starting auto-generate via Chat API enrichment", {
           userId: state.userId,
@@ -554,7 +554,7 @@ export class ProfileGraphFactory {
     // (the legacy aggregate→generate→save profile tail was removed in WS8/IND-365,
     // along with the user_profiles table it wrote to).
     // ─────────────────────────────────────────────────────────
-    const decomposePremisesNode = async (state: typeof ProfileGraphState.State) => {
+    const decomposePremisesNode = async (state: typeof EnrichmentGraphState.State) => {
       return timed("ProfileGraph.decomposePremises", async () => {
         if (!state.input) {
           logger.error("No input for premise decomposition");
@@ -668,7 +668,7 @@ export class ProfileGraphFactory {
     /**
      * Route from check_state to next step based on operation mode and detected needs.
      */
-    const checkStateCondition = (state: typeof ProfileGraphState.State): string => {
+    const checkStateCondition = (state: typeof EnrichmentGraphState.State): string => {
       // Query mode: Return immediately (fast path)
       if (state.operationMode === 'query') {
         logger.verbose("Query mode - ending (fast path)");
@@ -721,7 +721,7 @@ export class ProfileGraphFactory {
     // Conditional flow based on operation mode and detected needs
     // ─────────────────────────────────────────────────────────
 
-    const workflow = new StateGraph(ProfileGraphState)
+    const workflow = new StateGraph(EnrichmentGraphState)
       // Add all nodes
       .addNode("check_state", checkStateNode)
       .addNode("scrape", scrapeNode)
@@ -751,7 +751,7 @@ export class ProfileGraphFactory {
       // available + enrichment produced input), otherwise ends.
       .addConditionalEdges(
         "auto_generate",
-        (state: typeof ProfileGraphState.State) => {
+        (state: typeof EnrichmentGraphState.State) => {
           if (state.input && this.premiseGraph) {
             logger.verbose("Enrichment produced input — routing to premise decomposition");
             return "decompose_premises";
@@ -768,7 +768,7 @@ export class ProfileGraphFactory {
       // Scrape -> decompose_premises (when premise graph available), else ends.
       .addConditionalEdges(
         "scrape",
-        (_state: typeof ProfileGraphState.State) => {
+        (_state: typeof EnrichmentGraphState.State) => {
           if (this.premiseGraph) return "decompose_premises";
           return END;
         },

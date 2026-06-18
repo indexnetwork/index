@@ -1,11 +1,11 @@
 import { Annotation } from "@langchain/langgraph";
-import type { ProfileDocument } from "../shared/schemas/profile.schema.js";
+import type { UserIdentity } from "../shared/schemas/identity.schema.js";
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
 
 /**
  * The Graph State for Profile Generation.
  */
-export const ProfileGraphState = Annotation.Root({
+export const EnrichmentGraphState = Annotation.Root({
   // --- Inputs (Required at start) ---
   /**
    * The User ID to link the profile to.
@@ -67,7 +67,7 @@ export const ProfileGraphState = Annotation.Root({
   /**
    * The generated or loaded profile document.
    */
-  profile: Annotation<ProfileDocument | undefined>({
+  profile: Annotation<UserIdentity | undefined>({
     reducer: (curr, next) => next,
     default: () => undefined,
   }),
@@ -140,8 +140,6 @@ export const ProfileGraphState = Annotation.Root({
       name: string;
       bio: string;
       location: string;
-      skills: string[];
-      interests: string[];
     };
     message?: string;
   } | undefined>({

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createProfileTools } from "../profile.tools.js";
+import { createEnrichmentTools } from "../enrichment.tools.js";
 import type { ResolvedToolContext, ToolDeps } from "../../shared/agent/tool.helpers.js";
 
 function makeContext(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolContext {
@@ -19,7 +19,7 @@ function captureReadTool(deps: ToolDeps) {
     if (def.name === "read_user_profiles") captured = def;
     return def;
   };
-  createProfileTools(defineTool as any, deps);
+  createEnrichmentTools(defineTool as any, deps);
   return captured!;
 }
 
@@ -53,9 +53,11 @@ describe("read_user_profiles — context-derived payload (WS6)", () => {
 
     expect(res.success).toBe(true);
     expect(res.data.hasProfile).toBe(true);
-    expect(res.data.profile.context).toBe("GLOBAL CONTEXT for viewer-1");
-    expect(res.data.profile).not.toHaveProperty("skills");
-    expect(res.data.profile).not.toHaveProperty("interests");
+    // Flat payload (WS11): identity + context live at the top level, no nested `profile`.
+    expect(res.data).not.toHaveProperty("profile");
+    expect(res.data.context).toBe("GLOBAL CONTEXT for viewer-1");
+    expect(res.data).not.toHaveProperty("skills");
+    expect(res.data).not.toHaveProperty("interests");
   });
 
   test("self read tolerates getUserContextText being unset (optional dep)", async () => {
@@ -77,7 +79,8 @@ describe("read_user_profiles — context-derived payload (WS6)", () => {
     const res = JSON.parse(await tool.handler({ context: makeContext(), query: {} }));
 
     expect(res.success).toBe(true);
-    expect(res.data.profile.context).toBe("");
+    expect(res.data).not.toHaveProperty("profile");
+    expect(res.data.context).toBe("");
   });
 
   test("other-user read (Mode 2): returns target's context, drops skills/interests", async () => {
@@ -104,9 +107,14 @@ describe("read_user_profiles — context-derived payload (WS6)", () => {
     expect(res.success).toBe(true);
     expect(res.data.hasProfile).toBe(true);
     expect(askedFor).toBe("other-9");
-    expect(res.data.profile).toEqual({ name: "Ada", bio: "Mathematician.", location: "London", context: "CONTEXT-other-9" });
-    expect(res.data.profile).not.toHaveProperty("skills");
-    expect(res.data.profile).not.toHaveProperty("interests");
+    // Flat payload (WS11): no nested `profile` object.
+    expect(res.data).not.toHaveProperty("profile");
+    expect(res.data.name).toBe("Ada");
+    expect(res.data.bio).toBe("Mathematician.");
+    expect(res.data.location).toBe("London");
+    expect(res.data.context).toBe("CONTEXT-other-9");
+    expect(res.data).not.toHaveProperty("skills");
+    expect(res.data).not.toHaveProperty("interests");
   });
 
   test("name-search list: thin identity only — no skills/interests, no context", async () => {
@@ -133,9 +141,12 @@ describe("read_user_profiles — context-derived payload (WS6)", () => {
 
     expect(res.success).toBe(true);
     const entry = res.data.profiles.find((p: any) => p.userId === "m-1");
-    expect(entry.profile).toEqual({ name: "Ada", bio: "Mathematician.", location: "London" });
-    expect(entry.profile).not.toHaveProperty("skills");
-    expect(entry.profile).not.toHaveProperty("context");
+    // Flat list entry (WS11): identity fields inline, no nested `profile` object.
+    expect(entry).not.toHaveProperty("profile");
+    expect(entry.bio).toBe("Mathematician.");
+    expect(entry.location).toBe("London");
+    expect(entry).not.toHaveProperty("skills");
+    expect(entry).not.toHaveProperty("context");
     // List mode must not fan out per-member context synthesis.
     expect(contextCalls).toBe(0);
   });

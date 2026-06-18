@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 
-import { createProfileTools } from "../profile.tools.js";
+import { createEnrichmentTools } from "../enrichment.tools.js";
 
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
@@ -28,7 +28,7 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
     });
     return def;
   };
-  createProfileTools(defineTool as any, deps);
+  createEnrichmentTools(defineTool as any, deps);
   return toolDefs;
 }
 
