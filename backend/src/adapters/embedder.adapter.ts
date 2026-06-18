@@ -139,11 +139,6 @@ export class EmbedderAdapter {
     const limit = options?.limit ?? 10;
     const minScore = options?.minScore ?? 0;
 
-    if (collection === 'profiles') {
-      return this.searchProfiles(queryVector, options?.filter, limit, minScore) as Promise<
-        VectorSearchResult<T>[]
-      >;
-    }
     if (collection === 'intents') {
       return this.searchIntents(queryVector, options?.filter, limit, minScore) as Promise<
         VectorSearchResult<T>[]
@@ -347,63 +342,12 @@ export class EmbedderAdapter {
   // Private: generic search (single-vector)
   // ─────────────────────────────────────────────────────────────────────────
 
-  private async searchProfiles(
-    embedding: number[],
-    filter: Record<string, unknown> | undefined,
-    limit: number,
-    minScore: number
-  ): Promise<VectorSearchResult<unknown>[]> {
-    const vectorStr = `[${embedding.join(',')}]`;
-    const { hydeDocuments, networkMembers, userProfiles } = schema;
-
-    const baseConditions = [
-      eq(hydeDocuments.sourceType, 'profile'),
-      eq(hydeDocuments.targetCorpus, 'profiles'),
-      isNotNull(hydeDocuments.hydeEmbedding),
-      isNull(schema.users.deletedAt),
-      sql`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector) >= ${minScore}`,
-    ];
-
-    const scopedIndexes =
-      filter?.indexScope && Array.isArray(filter.indexScope) ? (filter.indexScope as string[]) : null;
-
-    const selection = {
-      userId: userProfiles.userId,
-      identity: userProfiles.identity,
-      narrative: userProfiles.narrative,
-      attributes: userProfiles.attributes,
-      similarity: sql<number>`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector)`,
-    };
-
-    const results = scopedIndexes
-      ? await db
-          .select(selection)
-          .from(hydeDocuments)
-          .innerJoin(networkMembers, eq(hydeDocuments.sourceId, networkMembers.userId))
-          .innerJoin(userProfiles, eq(userProfiles.userId, hydeDocuments.sourceId))
-          .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
-          .where(and(...baseConditions, inArray(networkMembers.networkId, scopedIndexes)))
-          .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
-          .limit(limit)
-      : await db
-          .select(selection)
-          .from(hydeDocuments)
-          .innerJoin(userProfiles, eq(userProfiles.userId, hydeDocuments.sourceId))
-          .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
-          .where(and(...baseConditions))
-          .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
-          .limit(limit);
-
-    return results.map((r) => ({
-      item: {
-        userId: r.userId,
-        identity: r.identity,
-        narrative: r.narrative,
-        attributes: r.attributes,
-      },
-      score: r.similarity,
-    }));
-  }
+  // NOTE: profile-HyDE discovery (the `searchProfiles` profiles-corpus reader) was
+  // retired in WS10 (IND-367). It was the last runtime read of `user_profiles` and was
+  // already unreachable: the live HyDE path (`searchWithHydeEmbeddings`) remaps the
+  // 'profiles' corpus hint to 'premises', and no caller passed 'profiles' to `search()`.
+  // Discovery now runs on context-to-intent + premise similarity. See IND-365 for the
+  // table drop.
 
   private async searchIntents(
     embedding: number[],
