@@ -57,6 +57,9 @@ describe("read_user_profiles — query mode resilience", () => {
     const good = result.data.profiles.find((p: any) => p.userId === "good-user");
     expect(good.hasProfile).toBe(true);
     expect(good.profile.bio).toBe("Engineer");
+    // WS6: list results are thin identity only — retired attributes must not leak.
+    expect(good.profile).not.toHaveProperty("skills");
+    expect(good.profile).not.toHaveProperty("interests");
 
     const bad = result.data.profiles.find((p: any) => p.userId === "bad-user");
     expect(bad.hasProfile).toBe(false);
