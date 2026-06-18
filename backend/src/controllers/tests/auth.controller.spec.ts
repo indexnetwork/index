@@ -144,15 +144,7 @@ describe("AuthController Integration", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         deletedAt: null,
-        profile: {
-          id: "profile-id",
-          userId: testUserId,
-          identity: { name: "Existing Profile User", bio: "Bio", location: "Test City" },
-          narrative: { context: "Context" },
-          attributes: { interests: ["A"], skills: ["B"] },
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
+        hasProfile: true,
         notificationPreferences: {
           connectionUpdates: true,
           weeklyNewsletter: true,

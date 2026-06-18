@@ -64,8 +64,10 @@ describe('ProfileGraph', () => {
 
   describe('Query Mode (Fast Path)', () => {
     it('should return existing profile without generation in query mode', async () => {
-      // Setup: Profile exists in DB
+      // Setup: Profile exists in DB. Enrichment presence is now signalled by ACTIVE
+      // premises (the user_profiles replacement), not by getProfile being non-null.
       (mockDatabase.getProfile as any).mockResolvedValue(mockProfile);
+      (mockDatabase.getPremisesForUser as any).mockResolvedValue([{ id: 'p1' }]);
 
       const graph = factory.createGraph();
       const result = await graph.invoke({
@@ -114,8 +116,9 @@ describe('ProfileGraph', () => {
     });
 
     it('should do nothing when profile already exists', async () => {
-      // Setup: Complete profile exists
+      // Setup: Complete profile exists (enriched -> has ACTIVE premises)
       (mockDatabase.getProfile as any).mockResolvedValue(mockProfile);
+      (mockDatabase.getPremisesForUser as any).mockResolvedValue([{ id: 'p1' }]);
 
       const graph = factory.createGraph();
       const result = await graph.invoke({
@@ -308,8 +311,9 @@ describe('ProfileGraph', () => {
     });
 
     it('should not check user info when profile already exists', async () => {
-      // Setup: Profile exists
+      // Setup: Profile exists (enriched -> has ACTIVE premises)
       (mockDatabase.getProfile as any).mockResolvedValue(mockProfile);
+      (mockDatabase.getPremisesForUser as any).mockResolvedValue([{ id: 'p1' }]);
 
       const graph = factory.createGraph();
       const result = await graph.invoke({
