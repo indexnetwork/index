@@ -1,9 +1,9 @@
 import type { ResolvedToolContext } from "../agent/tool.helpers.js";
 
-export type ProfileRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
-export type ProfileRunOperation = "preview_user_profile" | "update_user_profile";
+export type EnrichmentRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type EnrichmentRunOperation = "preview_user_profile" | "update_user_profile";
 
-export interface PreviewUserProfileRunInput {
+export interface PreviewUserEnrichmentRunInput {
   name?: string;
   location?: string;
   bioOrDescription?: string;
@@ -15,22 +15,22 @@ export interface PreviewUserProfileRunInput {
   websites?: string[];
 }
 
-export interface UpdateUserProfileRunInput {
+export interface UpdateUserEnrichmentRunInput {
   profileId?: string;
   action?: string;
   details?: string;
   socials?: Record<string, string>;
 }
 
-export type ProfileRunInput = PreviewUserProfileRunInput | UpdateUserProfileRunInput;
+export type EnrichmentRunInput = PreviewUserEnrichmentRunInput | UpdateUserEnrichmentRunInput;
 
-export interface ProfileRunRecord {
+export interface EnrichmentRunRecord {
   id: string;
   userId: string;
   agentId?: string | null;
-  operation: ProfileRunOperation;
-  status: ProfileRunStatus;
-  input: ProfileRunInput;
+  operation: EnrichmentRunOperation;
+  status: EnrichmentRunStatus;
+  input: EnrichmentRunInput;
   context: Pick<ResolvedToolContext,
     "userId" |
     "userName" |
@@ -52,29 +52,29 @@ export interface ProfileRunRecord {
   expiresAt?: Date | null;
 }
 
-export interface CreateProfileRunInput {
+export interface CreateEnrichmentRunInput {
   userId: string;
   agentId?: string | null;
-  operation: ProfileRunOperation;
-  input: ProfileRunInput;
-  context: ProfileRunRecord["context"];
+  operation: EnrichmentRunOperation;
+  input: EnrichmentRunInput;
+  context: EnrichmentRunRecord["context"];
   expiresAt?: Date;
 }
 
-export interface ProfileRunStore {
-  create(input: CreateProfileRunInput): Promise<ProfileRunRecord>;
-  get(runId: string, userId: string): Promise<ProfileRunRecord | null>;
-  markRunning(runId: string): Promise<ProfileRunRecord | null>;
+export interface EnrichmentRunStore {
+  create(input: CreateEnrichmentRunInput): Promise<EnrichmentRunRecord>;
+  get(runId: string, userId: string): Promise<EnrichmentRunRecord | null>;
+  markRunning(runId: string): Promise<EnrichmentRunRecord | null>;
   updateProgress(runId: string, progress: Record<string, unknown>): Promise<void>;
   markSucceeded(runId: string, result: unknown): Promise<void>;
   markFailed(runId: string, error: string): Promise<void>;
-  requestCancel(runId: string, userId: string): Promise<ProfileRunRecord | null>;
+  requestCancel(runId: string, userId: string): Promise<EnrichmentRunRecord | null>;
   markCancelled(runId: string, reason?: string): Promise<void>;
   isCancelRequested(runId: string): Promise<boolean>;
-  listActive(userId: string, limit?: number): Promise<ProfileRunRecord[]>;
+  listActive(userId: string, limit?: number): Promise<EnrichmentRunRecord[]>;
 }
 
-export interface ProfileRunQueue {
+export interface EnrichmentRunQueue {
   enqueue(runId: string): Promise<{ jobId?: string | number } | void>;
   cancel(runId: string): Promise<boolean>;
 }

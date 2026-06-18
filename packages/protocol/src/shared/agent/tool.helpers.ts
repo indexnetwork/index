@@ -25,7 +25,7 @@ import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
 import type { QuestionMode } from "../schemas/question.schema.js";
 import type { DiscoveryRunQueue, DiscoveryRunStore } from "../interfaces/discovery-run.interface.js";
-import type { ProfileRunQueue, ProfileRunStore } from "../interfaces/profile-run.interface.js";
+import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";
 
 export type IdentityContext = UserIdentity | null;
 
@@ -218,9 +218,9 @@ export interface ToolContext {
   /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
   discoveryRunQueue?: DiscoveryRunQueue;
   /** Persistence for async MCP profile runs (optional — absent in non-MCP/test contexts). */
-  profileRuns?: ProfileRunStore;
+  enrichmentRuns?: EnrichmentRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
-  profileRunQueue?: ProfileRunQueue;
+  enrichmentRunQueue?: EnrichmentRunQueue;
   /**
    * Legacy direct-token minting for opportunity accept redirects.
    * Prefer `mintConnectLink` for user-facing links.
@@ -527,9 +527,9 @@ export interface ToolDeps {
   /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
   discoveryRunQueue?: DiscoveryRunQueue;
   /** Persistence for async MCP profile runs (optional — absent in non-MCP/test contexts). */
-  profileRuns?: ProfileRunStore;
+  enrichmentRuns?: EnrichmentRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
-  profileRunQueue?: ProfileRunQueue;
+  enrichmentRunQueue?: EnrichmentRunQueue;
   /**
    * Legacy direct-token minting for opportunity accept redirects.
    * Prefer `mintConnectLink` for user-facing links.

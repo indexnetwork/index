@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 
 import { PremiseGraphFactory, EnrichmentGraphFactory, createEnrichmentTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
-import type { CompiledGraph, PremiseGraphDatabase, ProfileRunInput, ProfileRunRecord, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
+import type { CompiledGraph, PremiseGraphDatabase, EnrichmentRunInput, EnrichmentRunRecord, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
@@ -11,16 +11,16 @@ import { embedderAdapter } from '../adapters/embedder.adapter';
 import { cacheAdapter } from '../adapters/cache.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
-import { profileRunAdapter } from '../adapters/profile-run.adapter';
+import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
 import { questionerEnqueueIfEnabled } from './questioner.queue';
 
-export const QUEUE_NAME = 'profile-tool-run';
+export const QUEUE_NAME = 'enrichment-tool-run';
 
-export interface ProfileRunJobData {
+export interface EnrichmentRunJobData {
   runId: string;
 }
 
-function assertProfileRunOutputFits(toolName: string, raw: string): void {
+function assertEnrichmentRunOutputFits(toolName: string, raw: string): void {
   const policy = getToolTimeoutPolicy(toolName);
   const outputBytes = new TextEncoder().encode(raw).byteLength;
   if (outputBytes > policy.maxOutputBytes) {
@@ -30,14 +30,14 @@ function assertProfileRunOutputFits(toolName: string, raw: string): void {
   }
 }
 
-export class ProfileRunQueue {
+export class EnrichmentRunQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
-  readonly queue = QueueFactory.createQueue<ProfileRunJobData>(QUEUE_NAME);
+  readonly queue = QueueFactory.createQueue<EnrichmentRunJobData>(QUEUE_NAME);
 
-  private readonly logger = log.job.from('ProfileRunJob');
-  private readonly queueLogger = log.queue.from('ProfileRunQueue');
-  private worker: ReturnType<typeof QueueFactory.createWorker<ProfileRunJobData>> | null = null;
+  private readonly logger = log.job.from('EnrichmentRunJob');
+  private readonly queueLogger = log.queue.from('EnrichmentRunQueue');
+  private worker: ReturnType<typeof QueueFactory.createWorker<EnrichmentRunJobData>> | null = null;
 
   async enqueue(runId: string): Promise<{ jobId?: string | number }> {
     const job = await this.queue.add('run_profile_tool', { runId }, {
@@ -61,23 +61,23 @@ export class ProfileRunQueue {
     return false;
   }
 
-  async processJob(name: string, data: ProfileRunJobData): Promise<void> {
+  async processJob(name: string, data: EnrichmentRunJobData): Promise<void> {
     switch (name) {
       case 'run_profile_tool':
         await this.handleRun(data.runId);
         break;
       default:
-        this.queueLogger.warn(`[ProfileRunProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn(`[EnrichmentRunProcessor] Unknown job name: ${name}`);
     }
   }
 
   startWorker(): void {
     if (this.worker) return;
-    const processor = async (job: Job<ProfileRunJobData>) => {
-      this.queueLogger.info(`[ProfileRunProcessor] Processing job ${job.id}`);
+    const processor = async (job: Job<EnrichmentRunJobData>) => {
+      this.queueLogger.info(`[EnrichmentRunProcessor] Processing job ${job.id}`);
       await this.processJob(job.name, job.data);
     };
-    this.worker = QueueFactory.createWorker<ProfileRunJobData>(QUEUE_NAME, processor);
+    this.worker = QueueFactory.createWorker<EnrichmentRunJobData>(QUEUE_NAME, processor);
   }
 
   async close(): Promise<void> {
@@ -89,47 +89,47 @@ export class ProfileRunQueue {
   }
 
   private async handleRun(runId: string): Promise<void> {
-    const run = await profileRunAdapter.markRunning(runId);
+    const run = await enrichmentRunAdapter.markRunning(runId);
     if (!run) return;
-    if (await profileRunAdapter.isCancelRequested(runId)) {
-      await profileRunAdapter.markCancelled(runId, 'cancelled before start');
+    if (await enrichmentRunAdapter.isCancelRequested(runId)) {
+      await enrichmentRunAdapter.markCancelled(runId, 'cancelled before start');
       return;
     }
 
     const abortController = new AbortController();
     const cancelPoll = setInterval(() => {
-      profileRunAdapter.isCancelRequested(runId)
+      enrichmentRunAdapter.isCancelRequested(runId)
         .then((cancelled) => {
           if (cancelled && !abortController.signal.aborted) {
             abortController.abort(new Error('Profile run cancelled'));
           }
         })
-        .catch((err) => this.logger.warn('[ProfileRun] cancel poll failed', {
+        .catch((err) => this.logger.warn('[EnrichmentRun] cancel poll failed', {
           runId,
           error: err instanceof Error ? err.message : String(err),
         }));
     }, 1000);
 
     try {
-      await profileRunAdapter.updateProgress(runId, { stage: 'running', operation: run.operation });
+      await enrichmentRunAdapter.updateProgress(runId, { stage: 'running', operation: run.operation });
       const result = await requestContext.run({ abortSignal: abortController.signal }, () => this.executeRun(run));
-      if (abortController.signal.aborted || await profileRunAdapter.isCancelRequested(runId)) {
-        await profileRunAdapter.markCancelled(runId, 'cancelled');
+      if (abortController.signal.aborted || await enrichmentRunAdapter.isCancelRequested(runId)) {
+        await enrichmentRunAdapter.markCancelled(runId, 'cancelled');
         return;
       }
-      await profileRunAdapter.markSucceeded(runId, result);
-      this.logger.info('[ProfileRun] Completed', { runId, userId: run.userId, operation: run.operation });
+      await enrichmentRunAdapter.markSucceeded(runId, result);
+      this.logger.info('[EnrichmentRun] Completed', { runId, userId: run.userId, operation: run.operation });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (abortController.signal.aborted || await profileRunAdapter.isCancelRequested(runId)) {
-        await profileRunAdapter.markCancelled(runId, message);
+      if (abortController.signal.aborted || await enrichmentRunAdapter.isCancelRequested(runId)) {
+        await enrichmentRunAdapter.markCancelled(runId, message);
         return;
       }
-      await profileRunAdapter.markFailed(runId, message);
-      this.logger.error('[ProfileRun] Failed', { runId, userId: run.userId, operation: run.operation, error: message });
+      await enrichmentRunAdapter.markFailed(runId, message);
+      this.logger.error('[EnrichmentRun] Failed', { runId, userId: run.userId, operation: run.operation, error: message });
       captureAppException(err, {
         subsystem: 'protocol',
-        operation: 'profile-run.queue',
+        operation: 'enrichment-run.queue',
         tags: {
           queue: QUEUE_NAME,
           runId,
@@ -144,7 +144,7 @@ export class ProfileRunQueue {
     }
   }
 
-  private async executeRun(run: ProfileRunRecord): Promise<unknown> {
+  private async executeRun(run: EnrichmentRunRecord): Promise<unknown> {
     const resolved = await resolveChatContext({
       database: chatDatabaseAdapter,
       userId: run.userId,
@@ -218,8 +218,8 @@ export class ProfileRunQueue {
 
     const tool = rawTools.get(run.operation);
     if (!tool) throw new Error(`${run.operation} handler not available`);
-    const raw = await tool.handler({ context, query: run.input as ProfileRunInput });
-    assertProfileRunOutputFits(run.operation, raw);
+    const raw = await tool.handler({ context, query: run.input as EnrichmentRunInput });
+    assertEnrichmentRunOutputFits(run.operation, raw);
     try {
       return JSON.parse(raw);
     } catch {
@@ -228,4 +228,4 @@ export class ProfileRunQueue {
   }
 }
 
-export const profileRunQueue = new ProfileRunQueue();
+export const enrichmentRunQueue = new EnrichmentRunQueue();

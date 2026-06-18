@@ -1,14 +1,14 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
-import { profileToolRuns } from '../schemas/database.schema';
+import { enrichmentToolRuns } from '../schemas/database.schema';
 
 const DEFAULT_PROFILE_RUN_TTL_MS = 24 * 60 * 60 * 1000;
 
-type ProfileRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-type ProfileRunOperation = 'preview_user_profile' | 'update_user_profile';
+type EnrichmentRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+type EnrichmentRunOperation = 'preview_user_profile' | 'update_user_profile';
 
-type ProfileRunInput = {
+type EnrichmentRunInput = {
   name?: string;
   location?: string;
   bioOrDescription?: string;
@@ -25,7 +25,7 @@ type ProfileRunInput = {
   socials?: Record<string, string>;
 };
 
-interface ProfileRunContext {
+interface EnrichmentRunContext {
   userId: string;
   userName: string;
   userEmail: string;
@@ -37,14 +37,14 @@ interface ProfileRunContext {
   clientSurface?: 'telegram' | 'web';
 }
 
-interface ProfileRunRecord {
+interface EnrichmentRunRecord {
   id: string;
   userId: string;
   agentId?: string | null;
-  operation: ProfileRunOperation;
-  status: ProfileRunStatus;
-  input: ProfileRunInput;
-  context: ProfileRunContext;
+  operation: EnrichmentRunOperation;
+  status: EnrichmentRunStatus;
+  input: EnrichmentRunInput;
+  context: EnrichmentRunContext;
   progress?: Record<string, unknown> | null;
   result?: unknown;
   error?: string | null;
@@ -55,37 +55,37 @@ interface ProfileRunRecord {
   expiresAt?: Date | null;
 }
 
-interface CreateProfileRunInput {
+interface CreateEnrichmentRunInput {
   userId: string;
   agentId?: string | null;
-  operation: ProfileRunOperation;
-  input: ProfileRunInput;
-  context: ProfileRunContext;
+  operation: EnrichmentRunOperation;
+  input: EnrichmentRunInput;
+  context: EnrichmentRunContext;
   expiresAt?: Date;
 }
 
-interface ProfileRunStore {
-  create(input: CreateProfileRunInput): Promise<ProfileRunRecord>;
-  get(runId: string, userId: string): Promise<ProfileRunRecord | null>;
-  markRunning(runId: string): Promise<ProfileRunRecord | null>;
+interface EnrichmentRunStore {
+  create(input: CreateEnrichmentRunInput): Promise<EnrichmentRunRecord>;
+  get(runId: string, userId: string): Promise<EnrichmentRunRecord | null>;
+  markRunning(runId: string): Promise<EnrichmentRunRecord | null>;
   updateProgress(runId: string, progress: Record<string, unknown>): Promise<void>;
   markSucceeded(runId: string, result: unknown): Promise<void>;
   markFailed(runId: string, error: string): Promise<void>;
-  requestCancel(runId: string, userId: string): Promise<ProfileRunRecord | null>;
+  requestCancel(runId: string, userId: string): Promise<EnrichmentRunRecord | null>;
   markCancelled(runId: string, reason?: string): Promise<void>;
   isCancelRequested(runId: string): Promise<boolean>;
-  listActive(userId: string, limit?: number): Promise<ProfileRunRecord[]>;
+  listActive(userId: string, limit?: number): Promise<EnrichmentRunRecord[]>;
 }
 
-function mapRow(row: typeof profileToolRuns.$inferSelect): ProfileRunRecord {
+function mapRow(row: typeof enrichmentToolRuns.$inferSelect): EnrichmentRunRecord {
   return {
     id: row.id,
     userId: row.userId,
     agentId: row.agentId,
-    operation: row.operation as ProfileRunOperation,
-    status: row.status as ProfileRunStatus,
-    input: row.input as unknown as ProfileRunInput,
-    context: row.context as unknown as ProfileRunContext,
+    operation: row.operation as EnrichmentRunOperation,
+    status: row.status as EnrichmentRunStatus,
+    input: row.input as unknown as EnrichmentRunInput,
+    context: row.context as unknown as EnrichmentRunContext,
     progress: row.progress,
     result: row.result,
     error: row.error,
@@ -97,10 +97,10 @@ function mapRow(row: typeof profileToolRuns.$inferSelect): ProfileRunRecord {
   };
 }
 
-export class ProfileRunAdapter implements ProfileRunStore {
-  async create(input: CreateProfileRunInput): Promise<ProfileRunRecord> {
+export class EnrichmentRunAdapter implements EnrichmentRunStore {
+  async create(input: CreateEnrichmentRunInput): Promise<EnrichmentRunRecord> {
     const expiresAt = input.expiresAt ?? new Date(Date.now() + DEFAULT_PROFILE_RUN_TTL_MS);
-    const [row] = await db.insert(profileToolRuns).values({
+    const [row] = await db.insert(enrichmentToolRuns).values({
       userId: input.userId,
       agentId: input.agentId ?? null,
       operation: input.operation,
@@ -113,84 +113,84 @@ export class ProfileRunAdapter implements ProfileRunStore {
     return mapRow(row);
   }
 
-  async get(runId: string, userId: string): Promise<ProfileRunRecord | null> {
-    const [row] = await db.select().from(profileToolRuns).where(and(
-      eq(profileToolRuns.id, runId),
-      eq(profileToolRuns.userId, userId),
+  async get(runId: string, userId: string): Promise<EnrichmentRunRecord | null> {
+    const [row] = await db.select().from(enrichmentToolRuns).where(and(
+      eq(enrichmentToolRuns.id, runId),
+      eq(enrichmentToolRuns.userId, userId),
     )).limit(1);
     return row ? mapRow(row) : null;
   }
 
-  async markRunning(runId: string): Promise<ProfileRunRecord | null> {
-    const [row] = await db.update(profileToolRuns).set({
+  async markRunning(runId: string): Promise<EnrichmentRunRecord | null> {
+    const [row] = await db.update(enrichmentToolRuns).set({
       status: 'running',
       startedAt: new Date(),
       progress: { stage: 'running' },
     }).where(and(
-      eq(profileToolRuns.id, runId),
-      inArray(profileToolRuns.status, ['queued', 'running']),
+      eq(enrichmentToolRuns.id, runId),
+      inArray(enrichmentToolRuns.status, ['queued', 'running']),
     )).returning();
     return row ? mapRow(row) : null;
   }
 
   async updateProgress(runId: string, progress: Record<string, unknown>): Promise<void> {
-    await db.update(profileToolRuns).set({ progress }).where(eq(profileToolRuns.id, runId));
+    await db.update(enrichmentToolRuns).set({ progress }).where(eq(enrichmentToolRuns.id, runId));
   }
 
   async markSucceeded(runId: string, result: unknown): Promise<void> {
-    await db.update(profileToolRuns).set({
+    await db.update(enrichmentToolRuns).set({
       status: 'succeeded',
       result,
       progress: { stage: 'succeeded' },
       completedAt: new Date(),
-    }).where(eq(profileToolRuns.id, runId));
+    }).where(eq(enrichmentToolRuns.id, runId));
   }
 
   async markFailed(runId: string, error: string): Promise<void> {
-    await db.update(profileToolRuns).set({
+    await db.update(enrichmentToolRuns).set({
       status: 'failed',
       error,
       progress: { stage: 'failed' },
       completedAt: new Date(),
-    }).where(eq(profileToolRuns.id, runId));
+    }).where(eq(enrichmentToolRuns.id, runId));
   }
 
-  async requestCancel(runId: string, userId: string): Promise<ProfileRunRecord | null> {
-    const [row] = await db.update(profileToolRuns).set({
+  async requestCancel(runId: string, userId: string): Promise<EnrichmentRunRecord | null> {
+    const [row] = await db.update(enrichmentToolRuns).set({
       cancelRequestedAt: new Date(),
       progress: { stage: 'cancellation_requested' },
     }).where(and(
-      eq(profileToolRuns.id, runId),
-      eq(profileToolRuns.userId, userId),
-      inArray(profileToolRuns.status, ['queued', 'running']),
+      eq(enrichmentToolRuns.id, runId),
+      eq(enrichmentToolRuns.userId, userId),
+      inArray(enrichmentToolRuns.status, ['queued', 'running']),
     )).returning();
     return row ? mapRow(row) : null;
   }
 
   async markCancelled(runId: string, reason?: string): Promise<void> {
-    await db.update(profileToolRuns).set({
+    await db.update(enrichmentToolRuns).set({
       status: 'cancelled',
       error: reason ?? null,
       progress: { stage: 'cancelled' },
       completedAt: new Date(),
-    }).where(eq(profileToolRuns.id, runId));
+    }).where(eq(enrichmentToolRuns.id, runId));
   }
 
   async isCancelRequested(runId: string): Promise<boolean> {
-    const [row] = await db.select({ cancelRequestedAt: profileToolRuns.cancelRequestedAt, status: profileToolRuns.status })
-      .from(profileToolRuns)
-      .where(eq(profileToolRuns.id, runId))
+    const [row] = await db.select({ cancelRequestedAt: enrichmentToolRuns.cancelRequestedAt, status: enrichmentToolRuns.status })
+      .from(enrichmentToolRuns)
+      .where(eq(enrichmentToolRuns.id, runId))
       .limit(1);
     return !!row?.cancelRequestedAt || row?.status === 'cancelled';
   }
 
-  async listActive(userId: string, limit = 20): Promise<ProfileRunRecord[]> {
-    const rows = await db.select().from(profileToolRuns).where(and(
-      eq(profileToolRuns.userId, userId),
-      inArray(profileToolRuns.status, ['queued', 'running']),
-    )).orderBy(desc(profileToolRuns.createdAt)).limit(limit);
+  async listActive(userId: string, limit = 20): Promise<EnrichmentRunRecord[]> {
+    const rows = await db.select().from(enrichmentToolRuns).where(and(
+      eq(enrichmentToolRuns.userId, userId),
+      inArray(enrichmentToolRuns.status, ['queued', 'running']),
+    )).orderBy(desc(enrichmentToolRuns.createdAt)).limit(limit);
     return rows.map(mapRow);
   }
 }
 
-export const profileRunAdapter = new ProfileRunAdapter();
+export const enrichmentRunAdapter = new EnrichmentRunAdapter();

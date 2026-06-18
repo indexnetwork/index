@@ -50,7 +50,7 @@ import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
 import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
 import { fromEnrichmentQueue } from './queues/opportunity/from-enrichment.queue';
 import { discoveryRunQueue } from './queues/opportunity/discovery-run.queue';
-import { profileRunQueue } from './queues/profile-run.queue';
+import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { notificationQueue } from './queues/notification.queue';
@@ -254,7 +254,7 @@ fromIntentQueue.startWorker();
 fromIntroducerQueue.startWorker();
 fromEnrichmentQueue.startWorker();
 discoveryRunQueue.startWorker();
-profileRunQueue.startWorker();
+enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 opportunityExpirationCron.start();
 notificationQueue.startWorker();
@@ -705,7 +705,7 @@ const shutdown = async () => {
     fromIntroducerQueue.close(),
     fromEnrichmentQueue.close(),
     discoveryRunQueue.close(),
-    profileRunQueue.close(),
+    enrichmentRunQueue.close(),
     negotiationRunExistingQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),

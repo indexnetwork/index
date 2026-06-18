@@ -1,5 +1,5 @@
 /**
- * Unit tests for ProfileRunQueue. Mocks DB/Redis/protocol deps so the queue
+ * Unit tests for EnrichmentRunQueue. Mocks DB/Redis/protocol deps so the queue
  * lifecycle can be verified without BullMQ, Postgres, or model credentials.
  */
 import { config } from 'dotenv';
@@ -28,8 +28,8 @@ const markFailed = mock(async () => {});
 const markCancelled = mock(async () => {});
 const isCancelRequested = mock(async () => false);
 
-mock.module('../../adapters/profile-run.adapter', () => ({
-  profileRunAdapter: {
+mock.module('../../adapters/enrichment-run.adapter', () => ({
+  enrichmentRunAdapter: {
     markRunning,
     updateProgress,
     markSucceeded,
@@ -78,9 +78,9 @@ mock.module('@indexnetwork/protocol', () => ({
   resolveChatContext: mockResolveChatContext,
 }));
 
-const { ProfileRunQueue, QUEUE_NAME } = await import('../profile-run.queue');
+const { EnrichmentRunQueue, QUEUE_NAME } = await import('../profile-run.queue');
 
-type ProfileRunJobData = { runId: string };
+type EnrichmentRunJobData = { runId: string };
 
 type ProfileRunFixture = {
   id: string;
@@ -146,14 +146,14 @@ afterAll(() => {
   mock.restore();
 });
 
-describe('ProfileRunQueue', () => {
+describe('EnrichmentRunQueue', () => {
   it('exposes QUEUE_NAME on class', () => {
-    expect(ProfileRunQueue.QUEUE_NAME).toBe(QUEUE_NAME);
-    expect(QUEUE_NAME).toBe('profile-tool-run');
+    expect(EnrichmentRunQueue.QUEUE_NAME).toBe(QUEUE_NAME);
+    expect(QUEUE_NAME).toBe('enrichment-tool-run');
   });
 
   it('enqueues profile runs with stable job id and single attempt', async () => {
-    const queue = new ProfileRunQueue();
+    const queue = new EnrichmentRunQueue();
     const job = await queue.enqueue('profile-run-1');
 
     expect(job.jobId).toBe('profile-run-1');
@@ -174,7 +174,7 @@ describe('ProfileRunQueue', () => {
     const remove = mock(async () => {});
     mockGetJob.mockResolvedValue({ getState: async () => 'waiting', remove });
 
-    const queue = new ProfileRunQueue();
+    const queue = new EnrichmentRunQueue();
     await expect(queue.cancel('profile-run-1')).resolves.toBe(true);
     expect(remove).toHaveBeenCalledTimes(1);
   });
@@ -183,19 +183,19 @@ describe('ProfileRunQueue', () => {
     const remove = mock(async () => {});
     mockGetJob.mockResolvedValue({ getState: async () => 'active', remove });
 
-    const queue = new ProfileRunQueue();
+    const queue = new EnrichmentRunQueue();
     await expect(queue.cancel('profile-run-1')).resolves.toBe(false);
     expect(remove).not.toHaveBeenCalled();
   });
 
   it('unknown job name logs and does not touch run state', async () => {
-    const queue = new ProfileRunQueue();
+    const queue = new EnrichmentRunQueue();
     await queue.processJob('unknown_job', { runId: 'profile-run-1' });
     expect(markRunning).not.toHaveBeenCalled();
   });
 
   it('run_profile_tool succeeds and stores parsed tool result', async () => {
-    const queue = new ProfileRunQueue();
+    const queue = new EnrichmentRunQueue();
     await queue.processJob('run_profile_tool', { runId: 'profile-run-1' });
 
     expect(markRunning).toHaveBeenCalledWith('profile-run-1');
@@ -218,7 +218,7 @@ describe('ProfileRunQueue', () => {
       input: { action: 'set location', details: 'Berlin' },
     }));
 
-    const queue = new ProfileRunQueue();
+    const queue = new EnrichmentRunQueue();
     await queue.processJob('run_profile_tool', { runId: 'profile-run-1' });
 
     expect(updateHandler).toHaveBeenCalledWith(expect.objectContaining({
@@ -234,7 +234,7 @@ describe('ProfileRunQueue', () => {
     const previewHandler = registeredHandlers.get('preview_user_profile') as ReturnType<typeof mock>;
     isCancelRequested.mockResolvedValueOnce(true);
 
-    const queue = new ProfileRunQueue();
+    const queue = new EnrichmentRunQueue();
     await queue.processJob('run_profile_tool', { runId: 'profile-run-1' });
 
     expect(markCancelled).toHaveBeenCalledWith('profile-run-1', 'cancelled before start');
@@ -246,27 +246,27 @@ describe('ProfileRunQueue', () => {
     const failure = new Error('profile boom');
     registeredHandlers.set('preview_user_profile', mock(async () => { throw failure; }));
 
-    const queue = new ProfileRunQueue();
+    const queue = new EnrichmentRunQueue();
     await expect(queue.processJob('run_profile_tool', { runId: 'profile-run-1' })).rejects.toThrow('profile boom');
 
     expect(markFailed).toHaveBeenCalledWith('profile-run-1', 'profile boom');
     expect(captureAppException).toHaveBeenCalledWith(
       failure,
       expect.objectContaining({
-        operation: 'profile-run.queue',
+        operation: 'enrichment-run.queue',
         userId: 'user-1',
       }),
     );
   });
 
   it('worker processor delegates to processJob', async () => {
-    let capturedProcessor: ((job: { id: string; name: string; data: ProfileRunJobData }) => Promise<void>) | null = null;
+    let capturedProcessor: ((job: { id: string; name: string; data: EnrichmentRunJobData }) => Promise<void>) | null = null;
     mockCreateWorker.mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
-      capturedProcessor = processor as (job: { id: string; name: string; data: ProfileRunJobData }) => Promise<void>;
+      capturedProcessor = processor as (job: { id: string; name: string; data: EnrichmentRunJobData }) => Promise<void>;
       return { close: async () => {} };
     });
 
-    const queue = new ProfileRunQueue();
+    const queue = new EnrichmentRunQueue();
     queue.startWorker();
     expect(capturedProcessor).not.toBeNull();
 

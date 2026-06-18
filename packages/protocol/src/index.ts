@@ -34,7 +34,7 @@ export type * from "./shared/interfaces/storage.interface.js";
 export type * from "./shared/interfaces/delivery-ledger.interface.js";
 export type * from "./shared/interfaces/connect-link.interface.js";
 export type * from "./shared/interfaces/discovery-run.interface.js";
-export type * from "./shared/interfaces/profile-run.interface.js";
+export type * from "./shared/interfaces/enrichment-run.interface.js";
 export type * from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
 export type { AgentRecord, AgentTransportRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, CreateTransportInput, GrantPermissionInput, AgentDatabase } from './shared/interfaces/agent.interface.js';

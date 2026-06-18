@@ -23,9 +23,9 @@ import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
 import { checkMcpRateLimit } from '../lib/limiter/mcp';
 import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
-import { profileRunAdapter } from '../adapters/profile-run.adapter';
+import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
-import { profileRunQueue } from '../queues/profile-run.queue';
+import { enrichmentRunQueue } from '../queues/enrichment-run.queue';
 import db from '../lib/drizzle/drizzle';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
@@ -111,8 +111,8 @@ const protocolDeps = {
   deliveryLedger: opportunityDeliveryService,
   discoveryRuns: discoveryRunAdapter,
   discoveryRunQueue,
-  profileRuns: profileRunAdapter,
-  profileRunQueue,
+  enrichmentRuns: enrichmentRunAdapter,
+  enrichmentRunQueue,
   negotiationTimeoutQueue,
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
@@ -614,8 +614,8 @@ function createMcpServerInstance(): McpServer {
     getUserContextText: ensureGlobalUserContext,
     discoveryRuns: protocolDeps.discoveryRuns,
     discoveryRunQueue: protocolDeps.discoveryRunQueue,
-    profileRuns: protocolDeps.profileRuns,
-    profileRunQueue: protocolDeps.profileRunQueue,
+    enrichmentRuns: protocolDeps.enrichmentRuns,
+    enrichmentRunQueue: protocolDeps.enrichmentRunQueue,
     mintConnectToken: protocolDeps.mintConnectToken,
     mintConnectLink: protocolDeps.mintConnectLink,
     frontendUrl: protocolDeps.frontendUrl,
