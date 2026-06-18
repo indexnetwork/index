@@ -135,13 +135,14 @@ export class ProfileGraphFactory {
               readResult: hasBeenEnriched
                 ? {
                     hasProfile: true,
+                    // Thin identity only. The structured skills/interests attributes are
+                    // retired (user_profiles removal, WS6); the rich identity text now
+                    // comes from the global user_context, injected by read_user_profiles.
                     profile: {
                       id: profileWithId?.id,
                       name: profile?.identity?.name,
                       bio: profile?.identity?.bio,
                       location: profile?.identity?.location,
-                      skills: profile?.attributes?.skills,
-                      interests: profile?.attributes?.interests,
                     },
                   }
                 : {

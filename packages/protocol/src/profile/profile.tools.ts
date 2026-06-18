@@ -35,7 +35,7 @@ const approvedProfileDraftSchema = z.object({
 type ApprovedProfileDraft = z.infer<typeof approvedProfileDraftSchema>;
 
 export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { userDb, systemDb, graphs, enricher, grantDefaultSystemPermissions, reportToolError } = deps;
+  const { userDb, systemDb, graphs, enricher, grantDefaultSystemPermissions, reportToolError, getUserContextText } = deps;
 
   function trimToUndefined(value: string | null | undefined): string | undefined {
     const trimmed = value?.trim();
@@ -292,18 +292,18 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   const readUserProfiles = defineTool({
     name: "read_user_profiles",
     description:
-      "Retrieves user profiles containing identity info (name, bio, location), skills, and interests. Profiles are used for semantic matching " +
-      "in opportunity discovery — richer profiles produce better matches.\n\n" +
+      "Retrieves user profiles containing identity info (name, bio, location) plus a rich `context` paragraph (the user's synthesized identity text). " +
+      "Profiles are used for semantic matching in opportunity discovery — the richer the user's context, the better the matches.\n\n" +
       "**Usage modes:**\n" +
       "- With `query` (name search): finds members by name (case-insensitive substring) across the user's indexes. " +
-      "This is the primary way to look up a person by name. Add `networkId` to restrict search to one index.\n" +
-      "- With `userId`: returns that specific user's full profile (name, bio, skills, interests, location).\n" +
-      "- With `networkId` alone: returns profiles of ALL members in that index.\n" +
-      "- No parameters: returns the current user's own profile.\n\n" +
+      "This is the primary way to look up a person by name. Add `networkId` to restrict search to one index. (List results return thin identity only — no `context`.)\n" +
+      "- With `userId`: returns that specific user's profile — name, bio, location, and their `context` paragraph.\n" +
+      "- With `networkId` alone: returns thin-identity profiles of ALL members in that index (no `context`).\n" +
+      "- No parameters: returns the current user's own profile, including their `context`.\n\n" +
       "**When to use:** Before creating introductions (need profiles of both parties), when the user asks about a person, " +
       "or to check if a profile exists before suggesting create_user_profile. " +
       "MCP agents should call this with no arguments at session start to fetch the caller's profile AND onboarding status.\n\n" +
-      "**Returns:** Profile objects with name, bio, location, skills[], interests[]. Use userId from results with other tools like read_intents(userId, networkId). " +
+      "**Returns:** Profile objects with name, bio, location, and (for single-user reads) a `context` paragraph. Use userId from results with other tools like read_intents(userId, networkId). " +
       "When called for the current user (no args, or userId=self), the response also includes `onboardingComplete: boolean` and `onboardingCompletedAt?: string` — " +
       "use these as the source of truth for whether the user still needs onboarding (do not rely on local file state).",
     querySchema: z.object({
@@ -370,6 +370,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           matched.map(async (m) => {
             try {
               const profile = await systemDb.getProfile(m.userId);
+              // Thin identity for list results. skills/interests are retired; the rich
+              // identity text (global user_context) is fetched per-user via a userId read.
               return {
                 userId: m.userId,
                 name: m.name,
@@ -379,8 +381,6 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
                       name: profile.identity.name,
                       bio: profile.identity.bio,
                       location: profile.identity.location,
-                      skills: profile.attributes.skills,
-                      interests: profile.attributes.interests,
                     }
                   : undefined,
               };
@@ -423,6 +423,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         const profiles = await Promise.all(
           members.map(async (member) => {
             const profile = await systemDb.getProfile(member.userId);
+            // Thin identity for roster results. skills/interests are retired; fetch a
+            // member's global user_context text via a single-user (userId) read.
             return {
               userId: member.userId,
               name: member.name,
@@ -432,8 +434,6 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
                     name: profile.identity.name,
                     bio: profile.identity.bio,
                     location: profile.identity.location,
-                    skills: profile.attributes.skills,
-                    interests: profile.attributes.interests,
                   }
                 : undefined,
             };
@@ -459,14 +459,16 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         // Use systemDb for cross-user profile access (requires shared index)
         const profile = await systemDb.getProfile(targetUserId);
         if (profile) {
+          // Thin identity + the user's global user_context text (profile-replacing
+          // identity paragraph). skills/interests/narrative are retired (WS6).
+          const context = getUserContextText ? await getUserContextText(targetUserId) : '';
           return success({
             hasProfile: true,
             profile: {
               name: profile.identity.name,
               bio: profile.identity.bio,
               location: profile.identity.location,
-              skills: profile.attributes.skills,
-              interests: profile.attributes.interests,
+              context,
             },
           });
         }
@@ -494,7 +496,13 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       };
 
       if (result.readResult) {
-        return success({ ...result.readResult, ...onboardingFields, _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }] });
+        // Augment the graph's thin-identity readResult with the caller's global
+        // user_context text (the rich, profile-replacing identity paragraph).
+        const readResult = result.readResult as { hasProfile?: boolean; profile?: Record<string, unknown> };
+        const withContext = readResult.hasProfile && readResult.profile
+          ? { ...readResult, profile: { ...readResult.profile, context: getUserContextText ? await getUserContextText(context.userId) : '' } }
+          : readResult;
+        return success({ ...withContext, ...onboardingFields, _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }] });
       }
       if (result.profile) {
         return success({
@@ -503,8 +511,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
             name: result.profile.identity.name,
             bio: result.profile.identity.bio,
             location: result.profile.identity.location,
-            skills: result.profile.attributes.skills,
-            interests: result.profile.attributes.interests,
+            context: getUserContextText ? await getUserContextText(context.userId) : '',
           },
           ...onboardingFields,
           _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }],
