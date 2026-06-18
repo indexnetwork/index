@@ -110,6 +110,16 @@ describe('EmbedderAdapter', () => {
         adapter.search(vec, 'unknown_collection' as any, { limit: 5 })
       ).rejects.toThrow('Unknown collection: unknown_collection');
     });
+
+    // WS10 (IND-367): the 'profiles' corpus (profile-HyDE, the last user_profiles
+    // reader) was retired. `search` no longer recognises it — it must be rejected as
+    // an unknown collection, not silently routed to a dropped table.
+    it("should throw for the retired 'profiles' collection", async () => {
+      const vec = makeTestVector(1);
+      await expect(
+        adapter.search(vec, 'profiles' as any, { limit: 5 })
+      ).rejects.toThrow('Unknown collection: profiles');
+    });
   });
 
   describe('generate – error paths', () => {

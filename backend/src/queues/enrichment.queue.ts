@@ -12,7 +12,7 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import db from '../lib/drizzle/drizzle';
 import { questionerEnqueueIfEnabled } from './questioner.queue';
 import { canRunPublicProfileEnrichment, getProfileEnrichmentPolicy } from '../lib/privacy/profile-enrichment-policy';
-import { networks, userProfiles, users } from '../schemas/database.schema';
+import { networks, premises, users } from '../schemas/database.schema';
 import type { OnboardingState, ProfileEnrichmentPolicy } from '../schemas/database.schema';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
@@ -268,7 +268,7 @@ export class EnrichmentQueue {
       return { allowed: true, policy: 'auto', reason: 'no_network_policy', hasExistingProfile: false };
     }
 
-    const [[user], [network], [profile]] = await Promise.all([
+    const [[user], [network], [premise]] = await Promise.all([
       db
         .select({ onboarding: users.onboarding, isGhost: users.isGhost })
         .from(users)
@@ -279,14 +279,18 @@ export class EnrichmentQueue {
         .from(networks)
         .where(and(eq(networks.id, data.networkId), isNull(networks.deletedAt)))
         .limit(1),
+      // "Has been enriched?" keys on ACTIVE premises, not a `user_profiles` row
+      // (WS10/IND-367 — same existence-via-user_profiles anti-pattern WS5 removed from
+      // profile.graph). `getProfile` returns a users-sourced row for every user, so it
+      // can't signal enrichment; the premise graph is the source of truth.
       db
-        .select({ id: userProfiles.id })
-        .from(userProfiles)
-        .where(eq(userProfiles.userId, data.userId))
+        .select({ id: premises.id })
+        .from(premises)
+        .where(and(eq(premises.userId, data.userId), eq(premises.status, 'ACTIVE')))
         .limit(1),
     ]);
 
-    const hasExistingProfile = !!profile;
+    const hasExistingProfile = !!premise;
     if (!network) {
       return { allowed: false, policy: 'disabled', reason: 'network_not_found', hasExistingProfile };
     }
