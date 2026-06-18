@@ -244,6 +244,28 @@ async function buildProfileWithIdFromUser(userId: string): Promise<(ProfileRow &
   return { id: profile.userId, ...profile };
 }
 
+/**
+ * Persist a profile draft's identity to the canonical `users` table (WS8 / IND-365).
+ * The `user_profiles` table was dropped; identity (name/bio/location) lives on `users`
+ * (`name`/`intro`<-bio/`location`), while skills/interests/narrative are derived from
+ * premises + the global user_context and have no column to persist. Empty identity
+ * fields are skipped so a partial draft never clobbers existing identity.
+ *
+ * @param userId - The user whose identity to update.
+ * @param profile - The profile draft whose `identity` fields are persisted.
+ */
+async function persistProfileIdentityToUser(userId: string, profile: ProfileRow): Promise<void> {
+  const identity = profile.identity ?? { name: '', bio: '', location: '' };
+  const update: { name?: string; intro?: string; location?: string } = {};
+  if (identity.name?.trim()) update.name = identity.name.trim();
+  if (identity.bio?.trim()) update.intro = identity.bio.trim();
+  if (identity.location?.trim()) update.location = identity.location.trim();
+  if (Object.keys(update).length === 0) return;
+  await db.update(users)
+    .set({ ...update, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+}
+
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query' | 'context';
 interface HydeDocumentRow {
@@ -1128,19 +1150,7 @@ export class ChatDatabaseAdapter {
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
-    const data = {
-      userId,
-      identity: profile.identity,
-      narrative: profile.narrative,
-      attributes: profile.attributes,
-      updatedAt: new Date(),
-    };
-    await db.insert(schema.userProfiles)
-      .values(data)
-      .onConflictDoUpdate({
-        target: schema.userProfiles.userId,
-        set: data,
-      });
+    await persistProfileIdentityToUser(userId, profile);
   }
 
   /**
@@ -2709,8 +2719,11 @@ export class ChatDatabaseAdapter {
     return { success: true };
   }
 
-  async deleteProfile(userId: string): Promise<void> {
-    await db.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, userId));
+  // user_profiles was dropped in WS8 (IND-365); there is no separate profile row to
+  // delete. Identity lives on `users` and is removed via user soft-delete, not here.
+  // Retained as a no-op so existing callers/interface stay stable.
+  async deleteProfile(_userId: string): Promise<void> {
+    return;
   }
 
   /**
@@ -3338,13 +3351,8 @@ export class ChatDatabaseAdapter {
       .returning({ id: schema.users.id });
 
     if (result[0]) {
-      // New ghost created or existing ghost updated
-      if (result[0].id === id) {
-        // Truly new ghost — create empty profile
-        await db.insert(schema.userProfiles).values({
-          userId: id,
-        }).onConflictDoNothing();
-      }
+      // New ghost created or existing ghost updated. No profile row to seed since
+      // user_profiles was dropped in WS8 (IND-365); identity lives on `users`.
       return { id: result[0].id };
     }
 
@@ -3505,24 +3513,7 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Returns the subset of user IDs that have no enriched profile (identity IS NULL).
-   * @param userIds - User IDs to check
-   * @returns Set of user IDs lacking a profile
-   */
-  async getUserIdsWithoutProfile(userIds: string[]): Promise<Set<string>> {
-    if (userIds.length === 0) return new Set();
-    const rows = await db
-      .select({ userId: schema.userProfiles.userId })
-      .from(schema.userProfiles)
-      .where(and(
-        inArray(schema.userProfiles.userId, userIds),
-        isNull(schema.userProfiles.identity),
-      ));
-    return new Set(rows.map(r => r.userId));
-  }
-
-  /**
-   * Bulk create ghost users with empty profiles.
+   * Bulk create ghost users.
    * @param data - Array of {name, email} for ghost users
    * @returns Array of created ghost users with their IDs
    */
@@ -3554,19 +3545,6 @@ export class ChatDatabaseAdapter {
 
     // Map back to our generated IDs vs actual IDs
     const emailToId = new Map(existingAfterInsert.map(u => [u.email, u.id]));
-    const actuallyCreatedIds = new Set(
-      usersToInsert
-        .filter(u => emailToId.get(u.email) === u.id)
-        .map(u => u.id)
-    );
-
-    // Create empty profiles only for newly created users
-    if (actuallyCreatedIds.size > 0) {
-      const profilesToInsert = usersToInsert
-        .filter(u => actuallyCreatedIds.has(u.id))
-        .map(u => ({ userId: u.id }));
-      await db.insert(schema.userProfiles).values(profilesToInsert);
-    }
 
     // Return results with correct IDs (actual DB IDs, not our generated ones)
     for (const u of usersToInsert) {
@@ -4609,19 +4587,7 @@ export class ProfileDatabaseAdapter {
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
-    const data = {
-      userId,
-      identity: profile.identity,
-      narrative: profile.narrative,
-      attributes: profile.attributes,
-      updatedAt: new Date(),
-    };
-    await db.insert(schema.userProfiles)
-      .values(data)
-      .onConflictDoUpdate({
-        target: schema.userProfiles.userId,
-        set: data,
-      });
+    await persistProfileIdentityToUser(userId, profile);
   }
 
   async getUser(userId: string) {
@@ -4751,10 +4717,10 @@ export class ProfileDatabaseAdapter {
   }
 
   /**
-   * Delete profile by userId (for test teardown).
+   * No-op since WS8 (IND-365) dropped user_profiles. Retained for interface/test stability.
    */
-  async deleteProfile(userId: string): Promise<void> {
-    await db.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, userId));
+  async deleteProfile(_userId: string): Promise<void> {
+    return;
   }
 
   /**
@@ -4887,7 +4853,6 @@ export class ProfileDatabaseAdapter {
 
       // ── 1. Delete ghost-only records (unique constraints prevent re-pointing) ──
 
-      await tx.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, sourceId));
       await tx.delete(schema.userNotificationSettings).where(eq(schema.userNotificationSettings.userId, sourceId));
       await tx.delete(schema.sessions).where(eq(schema.sessions.userId, sourceId));
       await tx.delete(schema.accounts).where(eq(schema.accounts.userId, sourceId));

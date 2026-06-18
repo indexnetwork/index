@@ -184,9 +184,6 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       location: 'Cambridge, MA',
     });
     expect(seed?.socials).toEqual([{ label: 'linkedin', value: 'https://linkedin.com/in/profile-test' }]);
-
-    const profiles = await db.select({ id: schema.userProfiles.id }).from(schema.userProfiles).where(eq(schema.userProfiles.userId, user.id));
-    expect(profiles).toHaveLength(0);
   });
 
   test('importMembers leaves onboarding incomplete for imported users', async () => {

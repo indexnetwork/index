@@ -15,7 +15,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, and, inArray } from 'drizzle-orm';
 
 import db from '../../lib/drizzle/drizzle';
-import { users, userProfiles, networks, networkMembers, intents, intentNetworks, personalNetworks } from '../../schemas/database.schema';
+import { users, networks, networkMembers, intents, intentNetworks, personalNetworks } from '../../schemas/database.schema';
 import { ensurePersonalNetwork, getPersonalIndexId, ChatDatabaseAdapter } from '../database.adapter';
 import { NetworkService } from '../../services/network.service';
 
@@ -45,12 +45,6 @@ beforeAll(async () => {
     { id: ownerUserId, email: TEST_PREFIX + 'owner@test.com', name: TEST_PREFIX + 'Owner' },
     { id: contactUserId, email: TEST_PREFIX + 'contact@test.com', name: TEST_PREFIX + 'Contact' },
     { id: otherUserId, email: TEST_PREFIX + 'other@test.com', name: TEST_PREFIX + 'Other' },
-  ]);
-
-  // Create user profiles (needed for ghost user flows)
-  await db.insert(userProfiles).values([
-    { userId: ownerUserId },
-    { userId: contactUserId },
   ]);
 
   // Create a regular index for comparison
@@ -113,9 +107,6 @@ afterAll(async () => {
   );
   await db.delete(networks).where(
     inArray(networks.id, allIndexIds),
-  );
-  await db.delete(userProfiles).where(
-    inArray(userProfiles.userId, allUserIds),
   );
   await db.delete(users).where(
     inArray(users.id, allUserIds),

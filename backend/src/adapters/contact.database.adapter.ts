@@ -90,9 +90,7 @@ export class ContactDatabaseAdapter {
       .returning({ id: schema.users.id });
 
     if (result[0]) {
-      if (result[0].id === id) {
-        await db.insert(schema.userProfiles).values({ userId: id }).onConflictDoNothing();
-      }
+      // No profile row to seed since user_profiles was dropped in WS8 (IND-365).
       return { id: result[0].id };
     }
 
@@ -125,12 +123,6 @@ export class ContactDatabaseAdapter {
       .where(and(inArray(schema.users.email, [...insertedEmails]), isNull(schema.users.deletedAt)));
 
     const emailToId = new Map(existingAfterInsert.map(u => [u.email, u.id]));
-    const actuallyCreatedIds = new Set(usersToInsert.filter(u => emailToId.get(u.email) === u.id).map(u => u.id));
-
-    if (actuallyCreatedIds.size > 0) {
-      const profilesToInsert = usersToInsert.filter(u => actuallyCreatedIds.has(u.id)).map(u => ({ userId: u.id }));
-      await db.insert(schema.userProfiles).values(profilesToInsert).onConflictDoNothing();
-    }
 
     return usersToInsert
       .map(u => { const id = emailToId.get(u.email); return id ? { id, name: u.name, email: u.email } : null; })

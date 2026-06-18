@@ -10,7 +10,7 @@ config({ path: '.env.test', override: true });
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import db from '../../lib/drizzle/drizzle';
-import { users, userProfiles, networks, networkMembers, personalNetworks } from '../../schemas/database.schema';
+import { users, networks, networkMembers, personalNetworks } from '../../schemas/database.schema';
 import { ContactService } from '../contact.service';
 
 const TEST_PREFIX = 'contact_svc_v2_' + Date.now() + '_';
@@ -46,7 +46,6 @@ function contactMembershipQuery(userId: string) {
  */
 async function createTestUser(id: string, email: string, name: string): Promise<string> {
   await db.insert(users).values({ id, name, email });
-  await db.insert(userProfiles).values({ userId: id });
   createdUserIds.push(id);
 
   // Create personal index
@@ -96,7 +95,6 @@ afterAll(async () => {
   await db.delete(personalNetworks).where(eq(personalNetworks.userId, ownerId));
   await db.delete(networks).where(eq(networks.id, personalIndexId));
   if (allUserIds.length > 0) {
-    await db.delete(userProfiles).where(inArray(userProfiles.userId, allUserIds));
     await db.delete(users).where(inArray(users.id, allUserIds));
   }
   await db.delete(users).where(eq(users.id, ownerId));

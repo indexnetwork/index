@@ -100,8 +100,8 @@ describe('ProfileGraph', () => {
   });
 
   describe('Write Mode - Conditional Generation', () => {
-    it('should generate profile when missing', async () => {
-      // Setup: No profile exists
+    it('should end without saving when no premise graph is injected', async () => {
+      // Setup: No profile exists, meaningful input, but factory has no premise graph
       (mockDatabase.getProfile as any).mockResolvedValue(null);
 
       const graph = factory.createGraph();
@@ -111,8 +111,9 @@ describe('ProfileGraph', () => {
         input: 'Test user information'
       });
 
-      expect(result.profile).toBeDefined();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      // Write path no longer generates/saves a profile; with no premise graph it ends.
+      expect(result.profile).toBeUndefined();
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     });
 
     it('should do nothing when profile already exists', async () => {
@@ -133,36 +134,21 @@ describe('ProfileGraph', () => {
   });
 
   describe('Force Update Behavior', () => {
-    it('should regenerate profile when forceUpdate is true with new input', async () => {
+    it('should not save on forceUpdate when no premise graph is injected', async () => {
       // Setup: Complete profile exists
       const existingProfile = { ...mockProfile };
       (mockDatabase.getProfile as any).mockResolvedValue(existingProfile);
 
       const graph = factory.createGraph();
-      const result = await graph.invoke({
+      await graph.invoke({
         userId: 'test-user-id',
         operationMode: 'write',
         forceUpdate: true,
         input: 'New information about the user'
       });
 
-      // Should regenerate and save profile
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
-    });
-
-    it('should save profile when generating from scratch', async () => {
-      // Setup: No profile exists
-      (mockDatabase.getProfile as any).mockResolvedValue(null);
-
-      const graph = factory.createGraph();
-      const result = await graph.invoke({
-        userId: 'test-user-id',
-        operationMode: 'write',
-        input: 'New profile information'
-      });
-
-      // Profile should be generated and saved
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      // The write path never saves a profile; with no premise graph it just ends.
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     });
   });
 
@@ -180,8 +166,8 @@ describe('ProfileGraph', () => {
       // Should call scraper to get input
       expect(mockScraper.scrape).toHaveBeenCalled();
 
-      // Should then generate profile
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      // Scrape path ends after scraping (no premise graph) — nothing is saved
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     });
 
     it('should skip scraping when input is provided', async () => {
@@ -198,8 +184,8 @@ describe('ProfileGraph', () => {
       // Should NOT call scraper
       expect(mockScraper.scrape).not.toHaveBeenCalled();
 
-      // Should generate profile from provided input
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      // Write path no longer saves a profile
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     });
   });
 
@@ -306,8 +292,8 @@ describe('ProfileGraph', () => {
       // Should NOT scrape
       expect(mockScraper.scrape).not.toHaveBeenCalled();
 
-      // Should generate profile from input
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      // Write path no longer saves a profile
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     });
 
     it('should not check user info when profile already exists', async () => {
@@ -430,7 +416,7 @@ describe('ProfileGraph - Generate Mode', () => {
       isHuman: true,
     };
 
-    it('should generate profile from enrichment text blob via LLM', async () => {
+    it('should enrich and update the user from the enrichment payload', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(user);
       mockEnrichUserProfile.mockResolvedValue(enrichmentResult);
 
@@ -441,10 +427,10 @@ describe('ProfileGraph - Generate Mode', () => {
       });
 
       expect(result.error).toBeUndefined();
-      expect(result.profile).toBeDefined();
-      expect(result.profile!.identity.name).toBeTruthy();
-      expect(mockDatabase.saveProfile).toHaveBeenCalledWith(user.id, expect.anything());
+      // Enrichment side effects are the real outcome now; the user row is updated
+      // and no profile is saved (the generate->save tail was removed).
       expect(mockDatabase.updateUser).toHaveBeenCalled();
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     }, 120_000);
 
     it('should update ghost user display name from enrichment when placeholder', async () => {
@@ -467,11 +453,11 @@ describe('ProfileGraph - Generate Mode', () => {
       });
 
       expect(result.error).toBeUndefined();
-      expect(result.profile).toBeDefined();
       expect(mockDatabase.updateUser).toHaveBeenCalledWith(
         ghost.id,
         expect.objectContaining({ name: 'Jane Doe' }),
       );
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     }, 60_000);
 
     it('should not overwrite non-ghost user display name from enrichment', async () => {
@@ -503,7 +489,7 @@ describe('ProfileGraph - Generate Mode', () => {
       intro: null,
     };
 
-    it('should fall back to LLM profile generation from basic info', async () => {
+    it('should end gracefully when enrichment fails for a non-ghost user', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(user);
       mockEnrichUserProfile.mockRejectedValue(new Error('API timeout'));
 
@@ -513,10 +499,11 @@ describe('ProfileGraph - Generate Mode', () => {
         operationMode: 'generate',
       });
 
+      // Non-ghost: enrichment failure falls back to basic info and ends without error.
+      // Nothing is saved (the generate->save tail was removed) and the ghost is not deleted.
       expect(result.error).toBeUndefined();
-      expect(result.profile).toBeDefined();
-      expect(result.profile!.identity.name).toBeTruthy();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
+      expect(mockDatabase.softDeleteGhost).not.toHaveBeenCalled();
     }, 120_000);
   });
 
@@ -530,7 +517,7 @@ describe('ProfileGraph - Generate Mode', () => {
       intro: null,
     };
 
-    it('should fall back to LLM generation when enrichment has empty fields', async () => {
+    it('should end gracefully when enrichment has empty fields (non-ghost)', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(user);
       mockEnrichUserProfile.mockResolvedValue({
         identity: { name: 'seren', bio: '', location: '' },
@@ -547,10 +534,9 @@ describe('ProfileGraph - Generate Mode', () => {
         operationMode: 'generate',
       });
 
+      // Low-signal enrichment for a non-ghost falls back to basic info and ends; no save.
       expect(result.error).toBeUndefined();
-      expect(result.profile).toBeDefined();
-      expect(result.profile!.identity.name).toBeTruthy();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     }, 120_000);
   });
 
@@ -564,7 +550,7 @@ describe('ProfileGraph - Generate Mode', () => {
       intro: null,
     };
 
-    it('should fall back to LLM generation despite rich payload', async () => {
+    it('should not update the user when match is not confident (non-ghost)', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(user);
       mockEnrichUserProfile.mockResolvedValue({
         identity: { name: 'Alex Unknown', bio: 'Possibly a developer.', location: 'Remote' },
@@ -581,10 +567,10 @@ describe('ProfileGraph - Generate Mode', () => {
         operationMode: 'generate',
       });
 
+      // confidentMatch:false is ignored -> no user update, falls back to basic info, no save.
       expect(result.error).toBeUndefined();
-      expect(result.profile).toBeDefined();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
       expect(mockDatabase.updateUser).not.toHaveBeenCalled();
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     }, 120_000);
   });
 
@@ -592,17 +578,18 @@ describe('ProfileGraph - Generate Mode', () => {
   // Full pipeline
   // ─────────────────────────────────────────────────────────
 
-  describe('full pipeline produces saved profile', () => {
+  describe('ghost user with no enrichment signal', () => {
     const ghost = {
       id: 'ghost-pipeline',
       name: 'seren',
       email: 'seren@index.network',
+      isGhost: true,
       socials: [],
       location: null,
       intro: null,
     };
 
-    it('should generate and save profile end to end', async () => {
+    it('should soft-delete the ghost when enrichment returns nothing', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(ghost);
       mockEnrichUserProfile.mockResolvedValue(null);
 
@@ -612,9 +599,9 @@ describe('ProfileGraph - Generate Mode', () => {
         operationMode: 'generate',
       });
 
-      expect(result.error).toBeUndefined();
-      expect(result.profile).toBeDefined();
-      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      // A ghost with no confident enrichment is soft-deleted; no profile is saved.
+      expect(mockDatabase.softDeleteGhost).toHaveBeenCalledWith(ghost.id);
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     }, 120_000);
   });
 });
@@ -688,8 +675,8 @@ describe('ProfileGraph - Enrichment with Premise Decomposition', () => {
     });
 
     expect(result.error).toBeUndefined();
-    expect(result.profile).toBeDefined();
-    expect(mockDatabase.saveProfile).toHaveBeenCalled();
+    // Enrichment -> premise decomposition is the terminal effect; no profile is saved.
+    expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
 
     // The premise graph should have been called at least once with
     // assertion text derived from the enrichment data

@@ -8,18 +8,16 @@ const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
-import { agentPermissions, agents, networkMembers, networks, userProfiles, users, userSocials } from '../schemas/database.schema';
+import { agentPermissions, agents, networkMembers, networks, users, userSocials } from '../schemas/database.schema';
 import { SYSTEM_AGENT_IDS } from '../adapters/agent.database.adapter';
 import { agentTokenAdapter } from '../adapters/agent-token.adapter';
 import { setLevel } from '../lib/log';
 import { intentService } from '../services/intent.service';
-import { profileService } from '../services/profile.service';
 import { enrichmentQueue } from '../queues/enrichment.queue';
 import type { Id } from '../types/common.types';
 
 
 import { TESTER_PERSONAS, TESTER_PERSONAS_MAX } from './test-data';
-import type { SeedProfile } from './test-data';
 
 /** Minimal account shape for user creation (real or synthetic). */
 interface SeedAccount {
@@ -267,29 +265,6 @@ async function ensureUsersAndMemberships(
   return createdUsers;
 }
 
-/** Idempotent upsert of user_profiles by userId. Used for synthetic testers before intent graph. */
-async function upsertUserProfile(userId: string, profile: SeedProfile): Promise<void> {
-  const now = new Date();
-  await db
-    .insert(userProfiles)
-    .values({
-      userId,
-      identity: profile.identity,
-      narrative: profile.narrative,
-      attributes: profile.attributes,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: userProfiles.userId,
-      set: {
-        identity: profile.identity,
-        narrative: profile.narrative,
-        attributes: profile.attributes,
-        updatedAt: now,
-      },
-    });
-}
-
 async function ensureAgentPermission(agentId: string, userId: string, actions: string[]): Promise<void> {
   const existing = await db
     .select({ actions: agentPermissions.actions })
@@ -370,16 +345,6 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     const personaUsers = await ensureUsersAndMemberships(personaAccounts, { ownerIndex: 0 });
     if (!silent) console.log(`  Persona users: ${personaUsers.length} ready`);
 
-    if (!silent) console.log('Upserting tester profiles...');
-    // Upsert profiles for synthetic testers (required for intent graph write mode)
-    let profilesUpserted = 0;
-    for (let i = 0; i < personaUsers.length && i < personasToSeed.length; i++) {
-      await upsertUserProfile(personaUsers[i].id, personasToSeed[i].profile);
-      profilesUpserted++;
-      if (!silent) console.log(`  Profile ${i + 1}/${personaUsers.length}: ${personasToSeed[i].name}`);
-    }
-    if (!silent) console.log(`  Profiles upserted: ${profilesUpserted}`);
-
     if (!silent) console.log('Enqueueing profile HyDE jobs for index members...');
     let successfulEnqueues = 0;
     for (const user of personaUsers) {
@@ -391,13 +356,6 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
       }
     }
     if (!silent) console.log(`  Enqueued ${successfulEnqueues} profile HyDE job(s). Run workers (e.g. bun run dev) to process them.`);
-
-    if (!silent) console.log('Embedding profiles (and generating HyDE)...');
-    for (let i = 0; i < personaUsers.length && i < personasToSeed.length; i++) {
-      if (!silent) console.log(`  Embedding ${i + 1}/${personaUsers.length}: ${personasToSeed[i].name}`);
-    }
-    const { embedded, embedFailures } = await profileService.embedTesterProfiles(personaUsers, personasToSeed);
-    if (!silent) console.log(`  Profiles embedded: ${embedded}${embedFailures > 0 ? ` (${embedFailures} failed)` : ''}`);
 
     // Create intents with embedding + HyDE inline (no intent graph, no opportunity discovery)
     if (!silent) console.log('Creating intents (embed + HyDE, no opportunity matching)...');
@@ -422,8 +380,6 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
 
     if (!silent) {
       console.log(`  ${personaUsers.length} synthetic tester users ready`);
-      console.log(`  ${profilesUpserted} tester profiles upserted`);
-      console.log(`  ${embedded} profiles embedded (profile + HyDE)${embedFailures > 0 ? ` (${embedFailures} failed)` : ''}`);
       console.log(`  ${intentsProcessed} intents created (embed + HyDE, no opportunities)${intentFailures > 0 ? ` (${intentFailures} failed)` : ''}`);
       console.log('\nIndexes:');
       for (const idx of SEED_INDEXES) {

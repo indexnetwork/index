@@ -4,7 +4,7 @@ process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 'test-key';
 
 import { afterAll, describe, expect, it, mock } from 'bun:test';
 
-import { premises, userProfiles, users, networks } from '../../schemas/database.schema';
+import { premises, users, networks } from '../../schemas/database.schema';
 
 // ---------------------------------------------------------------------------
 // Fake drizzle db: resolvePrivacyDecision issues three parallel reads
@@ -86,9 +86,8 @@ describe('EnrichmentQueue.resolvePrivacyDecision — enrichment signal (WS10)', 
     // ensure_profile_hyde short-circuits once the user has been enriched.
     expect(decision.reason).toBe('existing_profile_no_public_enrichment_needed');
     expect(decision.allowed).toBe(true);
-    // The gate must read `premises` and must NOT touch `user_profiles`.
+    // The gate keys enrichment-existence on `premises` (user_profiles was dropped in WS8).
     expect(fromTables).toContain(premises);
-    expect(fromTables).not.toContain(userProfiles);
   });
 
   it('treats a user with no ACTIVE premises as not-yet-enriched', async () => {
@@ -101,7 +100,6 @@ describe('EnrichmentQueue.resolvePrivacyDecision — enrichment signal (WS10)', 
     // Not short-circuited; falls through to the policy decision.
     expect(decision.reason).not.toBe('existing_profile_no_public_enrichment_needed');
     expect(fromTables).toContain(premises);
-    expect(fromTables).not.toContain(userProfiles);
   });
 
   it('short-circuits before any DB read when the job has no network', async () => {

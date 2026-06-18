@@ -486,8 +486,7 @@ The canonical schema lives in `backend/src/schemas/database.schema.ts`. All tabl
 
 | Table | Purpose |
 |-------|---------|
-| `users` | User accounts (Better Auth integration) |
-| `user_profiles` | User identity (bio, skills, interests, narrative) |
+| `users` | User accounts (Better Auth integration); also the home of identity (name, bio via `intro`, location) |
 | `intents` | User intents with embeddings, confidence scores, semantic governance fields |
 | `networks` | Communities/collections (indexes); personal networks have `isPersonal=true` |
 | `network_members` | Membership with permissions, custom prompts, auto-assignment settings |

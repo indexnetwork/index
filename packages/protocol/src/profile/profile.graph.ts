@@ -1,7 +1,6 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { ProfileGraphState } from "./profile.state.js";
-import { ProfileGenerator, ProfileDocument } from "./profile.generator.js";
-import { ProfileGraphDatabase, PremiseRecord, PremiseProvenance } from "../shared/interfaces/database.interface.js";
+import { ProfileGraphDatabase, PremiseProvenance } from "../shared/interfaces/database.interface.js";
 import { Scraper } from "../shared/interfaces/scraper.interface.js";
 import type { ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
 import { shouldEnrichGhostDisplayNameFromParallel, isEnrichedNameMeaningful } from "./profile.enricher.js";
@@ -92,7 +91,6 @@ export class ProfileGraphFactory {
   ) { }
 
   public createGraph() {
-    const profileGenerator = new ProfileGenerator();
     const premiseDecomposer = new PremiseDecomposer();
 
     // ─────────────────────────────────────────────────────────
@@ -549,187 +547,12 @@ export class ProfileGraphFactory {
     };
 
     // ─────────────────────────────────────────────────────────
-    // NODE: Generate Profile
-    // Generates profile from input using ProfileGenerator agent.
-    // If updating existing profile, merges new information intelligently.
-    // ─────────────────────────────────────────────────────────
-    const generateProfileNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.generateProfile", async () => {
-        if (!state.input) {
-          logger.error("No input provided for profile generation");
-          return {
-            error: "Input required for profile generation"
-          };
-        }
-
-        logger.verbose("Starting profile generation...", {
-          hasExistingProfile: !!state.profile,
-          isUpdate: state.forceUpdate,
-          inputLength: state.input.length
-        });
-
-        const agentTimingsAccum: DebugMetaAgent[] = [];
-
-        try {
-          // If updating existing profile, include it in the input for context
-          let inputWithContext = state.input;
-          if (state.profile && state.forceUpdate) {
-            if (state.isAggregate) {
-              inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nPREMISE SYNTHESIS:\n${state.input}\n\nRegenerate the profile by synthesizing the premises above. Use the existing profile as context for continuity, but the premises are the authoritative source. Output the full updated profile.`;
-              logger.verbose("Aggregate synthesis with existing profile context");
-            } else {
-              inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nUSER REQUEST:\n${state.input}\n\nApply the user's request to the existing profile. Preserve existing data unless the user asks to change or remove it. You may add, update, or remove skills and interests as requested. Output the full updated profile.`;
-              logger.verbose("Merging with existing profile");
-            }
-          }
-
-          const _traceEmitterProfileGen = requestContext.getStore()?.traceEmitter;
-          const profileGeneratorStart = Date.now();
-          _traceEmitterProfileGen?.({ type: "agent_start", name: "profile-generator" });
-          const result = await profileGenerator.invoke(inputWithContext);
-          agentTimingsAccum.push({ name: 'profile.generator', durationMs: Date.now() - profileGeneratorStart });
-          _traceEmitterProfileGen?.({ type: "agent_end", name: "profile-generator", durationMs: Date.now() - profileGeneratorStart, summary: `Generated profile for ${result.output.identity.name || "user"}` });
-
-          logger.verbose("✅ Profile generated successfully", {
-            name: result.output.identity.name,
-            skillsCount: result.output.attributes.skills.length,
-            interestsCount: result.output.attributes.interests.length
-          });
-
-          return {
-            profile: {
-              ...result.output,
-              userId: state.userId,
-            },
-            agentTimings: agentTimingsAccum,
-            operationsPerformed: { generatedProfile: true }
-          };
-        } catch (error) {
-          logger.error("Profile generation failed", {
-            error: error instanceof Error ? error.message : String(error)
-          });
-          return {
-            error: `Profile generation failed: ${error instanceof Error ? error.message : String(error)}`,
-            agentTimings: agentTimingsAccum
-          };
-        }
-      });
-    };
-
-    // ─────────────────────────────────────────────────────────
-    // NODE: Save Profile
-    // Saves the generated profile to DB (no embedding)
-    // ─────────────────────────────────────────────────────────
-    const saveProfileNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.saveProfile", async () => {
-        if (!state.profile || !state.profile.identity) {
-          logger.error("Profile or identity missing in save step");
-          return {
-            error: "Profile missing in save step"
-          };
-        }
-
-        logger.verbose("Saving profile to DB...", {
-          userId: state.userId
-        });
-
-        try {
-          const profile = { ...state.profile };
-
-          await this.database.saveProfile(state.userId, profile);
-
-          logger.verbose("✅ Profile saved successfully");
-
-          // Fetch active premises so the questioner can see what's already covered
-          let existingPremises: string[] = [];
-          try {
-            const activePremises = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
-            existingPremises = activePremises.map(p => p.assertion.text);
-            logger.verbose("Fetched active premises for questioner context", {
-              userId: state.userId,
-              count: existingPremises.length,
-            });
-          } catch (premiseErr) {
-            logger.error("Failed to fetch premises for questioner context — continuing with empty list", {
-              userId: state.userId,
-              error: premiseErr instanceof Error ? premiseErr.message : String(premiseErr),
-            });
-          }
-
-          // Compute profile gaps from missing fields
-          const gaps: string[] = [];
-          if (!profile.identity?.location) gaps.push('location');
-          if (!profile.attributes?.skills?.length) gaps.push('skills');
-          if (!profile.attributes?.interests?.length) gaps.push('interests');
-          if (!profile.narrative?.context) gaps.push('current work');
-
-          if (gaps.length > 0 && this.questionerEnqueue) {
-            const userContext = (await this.database.getUserContext(state.userId, null))?.text ?? '';
-            this.questionerEnqueue({
-              mode: 'profile',
-              userId: state.userId,
-              sourceType: 'profile',
-              sourceId: state.userId,
-              context: {
-                userContext,
-                gaps,
-                existingPremises,
-              },
-            }).catch((err) =>
-              logger.error('Failed to enqueue profile question generation', { userId: state.userId, error: err })
-            );
-          }
-
-          return {
-            profile,
-            operationsPerformed: { savedProfile: true }
-          };
-        } catch (error) {
-          logger.error("Failed to save profile", {
-            error: error instanceof Error ? error.message : String(error)
-          });
-          return {
-            error: `Failed to save profile: ${error instanceof Error ? error.message : String(error)}`
-          };
-        }
-      });
-    };
-
-    // ─────────────────────────────────────────────────────────
-    // NODE: Aggregate Profile
-    // Fetches the user's active premises and synthesizes them into profile input.
-    // Sets state.input and flags so the existing generate_profile pipeline runs.
-    // ─────────────────────────────────────────────────────────
-    const aggregateProfileNode = async (state: typeof ProfileGraphState.State) => {
-      return timed("ProfileGraph.aggregateProfile", async () => {
-        logger.verbose("Aggregating profile from premises...", { userId: state.userId });
-
-        const premises: PremiseRecord[] = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
-
-        if (premises.length === 0) {
-          logger.verbose("No active premises found — skipping aggregate");
-          return { operationMode: 'query' as const };
-        }
-
-        const premiseTexts = premises.map(p => p.assertion.text);
-        const aggregateInput = `The following are self-descriptions (premises) the user has asserted about themselves:\n\n${premiseTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\nSynthesize these into a cohesive profile.`;
-
-        logger.verbose(`Aggregated ${premises.length} premise(s) into profile input`);
-
-        return {
-          input: aggregateInput,
-          needsProfileGeneration: true,
-          forceUpdate: true,
-          isAggregate: true,
-        };
-      });
-    };
-
-    // ─────────────────────────────────────────────────────────
     // NODE: Decompose Premises
-    // Decomposes free-text input (chat or scraped) into individual premises,
-    // creates each via the premise graph, then routes to aggregate_profile
-    // to synthesize the profile from all active premises.
+    // Decomposes free-text input (chat or scraped) into individual premises
+    // and creates each via the premise graph. Premise creation is the terminal
+    // effect: premise lifecycle events drive user_context regeneration downstream
+    // (the legacy aggregate→generate→save profile tail was removed in WS8/IND-365,
+    // along with the user_profiles table it wrote to).
     // ─────────────────────────────────────────────────────────
     const decomposePremisesNode = async (state: typeof ProfileGraphState.State) => {
       return timed("ProfileGraph.decomposePremises", async () => {
@@ -739,13 +562,9 @@ export class ProfileGraphFactory {
         }
 
         if (!this.premiseGraph) {
-          // Fallback: if no premise graph is available, skip decomposition
-          // and route directly to profile generation (legacy behavior)
-          logger.warn("No premise graph injected — falling back to direct profile generation");
-          return {
-            needsProfileGeneration: true,
-            forceUpdate: true,
-          };
+          // No premise graph injected — nothing to decompose into. End the run.
+          logger.warn("No premise graph injected — skipping premise decomposition");
+          return {};
         }
 
         logger.verbose("Decomposing input into premises...", {
@@ -771,12 +590,8 @@ export class ProfileGraphFactory {
           });
 
           if (result.premises.length === 0) {
-            logger.verbose("No premises extracted — skipping decomposition");
-            // No premises found; fall through to aggregate which will
-            // synthesize from any existing premises, or to generate_profile
-            // if needsProfileGeneration is still set from check_state
+            logger.verbose("No premises extracted — nothing to create");
             return {
-              operationMode: 'aggregate' as const,
               agentTimings: agentTimingsAccum,
             };
           }
@@ -830,9 +645,7 @@ export class ProfileGraphFactory {
             userId: state.userId,
           });
 
-          // Route to aggregate mode to rebuild the profile from all active premises
           return {
-            operationMode: 'aggregate' as const,
             agentTimings: agentTimingsAccum,
             operationsPerformed: { decomposedPremises: true },
           };
@@ -840,10 +653,7 @@ export class ProfileGraphFactory {
           logger.error("Premise decomposition failed", {
             error: err instanceof Error ? err.message : String(err),
           });
-          // Fallback: route to direct profile generation
           return {
-            needsProfileGeneration: true,
-            forceUpdate: true,
             agentTimings: agentTimingsAccum,
           };
         }
@@ -863,12 +673,6 @@ export class ProfileGraphFactory {
       if (state.operationMode === 'query') {
         logger.verbose("Query mode - ending (fast path)");
         return END;
-      }
-
-      // Aggregate mode: Synthesize profile from active premises
-      if (state.operationMode === 'aggregate') {
-        logger.verbose("Aggregate mode - synthesizing profile from premises");
-        return "aggregate_profile";
       }
 
       // Generate mode: use enrichUserProfile Chat API to auto-generate
@@ -891,14 +695,15 @@ export class ProfileGraphFactory {
         // Only use provided input if it's meaningful (not just "Yes" / confirmation)
         if (state.input && isMeaningfulProfileInput(state.input)) {
           // Route through premise decomposition when a premise graph is available.
-          // The decompose node extracts atomic premises, creates them, then
-          // routes to aggregate_profile for profile synthesis.
+          // The decompose node extracts atomic premises and creates them; premise
+          // events drive user_context regeneration. Without a premise graph there
+          // is nothing to do, so end the run.
           if (this.premiseGraph) {
             logger.verbose("Profile generation needed — decomposing input into premises");
             return "decompose_premises";
           }
-          logger.verbose("Profile generation needed with meaningful input provided");
-          return "generate_profile";
+          logger.verbose("Profile generation needed but no premise graph injected — ending");
+          return END;
         } else {
           logger.verbose("Profile generation needed - scraping first (no meaningful input)");
           return "scrape";
@@ -922,9 +727,6 @@ export class ProfileGraphFactory {
       .addNode("scrape", scrapeNode)
       .addNode("decompose_premises", decomposePremisesNode)
       .addNode("auto_generate", autoGenerateNode)
-      .addNode("aggregate_profile", aggregateProfileNode)
-      .addNode("generate_profile", generateProfileNode)
-      .addNode("save_profile", saveProfileNode)
 
       // Start with state check
       .addEdge(START, "check_state")
@@ -935,42 +737,18 @@ export class ProfileGraphFactory {
         checkStateCondition,
         {
           auto_generate: "auto_generate",       // Generate mode -> Chat API enrichment
-          aggregate_profile: "aggregate_profile", // Aggregate mode -> synthesize from premises
-          decompose_premises: "decompose_premises", // Write mode + input + premise graph -> decompose first
-          scrape: "scrape",                     // Need profile, no input -> scrape first
-          generate_profile: "generate_profile", // Need profile, have input -> generate (legacy, no premise graph)
-          [END]: END                            // Query mode or everything exists
+          decompose_premises: "decompose_premises", // Write mode + input + premise graph -> decompose
+          scrape: "scrape",                     // Need premises, no input -> scrape first
+          [END]: END                            // Query mode, no premise graph, or everything exists
         }
       )
 
-      // Decompose premises routes to aggregate (normal) or generate_profile (fallback)
-      .addConditionalEdges(
-        "decompose_premises",
-        (state: typeof ProfileGraphState.State) => {
-          if (state.operationMode === 'aggregate') return "aggregate_profile";
-          // Fallback when decomposition failed (no premise graph or error)
-          if (state.needsProfileGeneration) return "generate_profile";
-          return "aggregate_profile";
-        },
-        {
-          aggregate_profile: "aggregate_profile",
-          generate_profile: "generate_profile",
-        },
-      )
+      // Decompose premises creates premises as a side effect, then ends.
+      // user_context regeneration is handled downstream by premise lifecycle events.
+      .addEdge("decompose_premises", END)
 
-      // Aggregate profile: generate if premises found, END if none
-      .addConditionalEdges(
-        "aggregate_profile",
-        (state: typeof ProfileGraphState.State) => {
-          if (state.needsProfileGeneration) return "generate_profile";
-          logger.verbose("Aggregate mode — no premises, ending");
-          return END;
-        },
-        { generate_profile: "generate_profile", [END]: END },
-      )
-
-      // Auto-generate routes to decompose_premises (when premise graph
-      // available) or generate_profile (legacy, no premise graph)
+      // Auto-generate routes to premise decomposition (when premise graph
+      // available + enrichment produced input), otherwise ends.
       .addConditionalEdges(
         "auto_generate",
         (state: typeof ProfileGraphState.State) => {
@@ -978,38 +756,27 @@ export class ProfileGraphFactory {
             logger.verbose("Enrichment produced input — routing to premise decomposition");
             return "decompose_premises";
           }
-          if (state.input) {
-            logger.verbose("Enrichment produced input — routing to LLM generation (no premise graph)");
-            return "generate_profile";
-          }
-          logger.verbose("Enrichment ended without data (ghost soft-deleted or error) — done");
+          logger.verbose("Enrichment ended without usable input (ghost soft-deleted, error, or no premise graph) — done");
           return END;
         },
         {
           decompose_premises: "decompose_premises",
-          generate_profile: "generate_profile",
           [END]: END,
         }
       )
 
-      // Scrape -> decompose_premises (when premise graph available) or generate_profile (legacy)
+      // Scrape -> decompose_premises (when premise graph available), else ends.
       .addConditionalEdges(
         "scrape",
         (_state: typeof ProfileGraphState.State) => {
           if (this.premiseGraph) return "decompose_premises";
-          return "generate_profile";
+          return END;
         },
         {
           decompose_premises: "decompose_premises",
-          generate_profile: "generate_profile",
+          [END]: END,
         },
-      )
-
-      // Generate profile -> Save profile (linear)
-      .addEdge("generate_profile", "save_profile")
-
-      // Save profile -> END (linear)
-      .addEdge("save_profile", END);
+      );
 
     logger.verbose("Graph built successfully");
     return workflow.compile();

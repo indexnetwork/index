@@ -6,7 +6,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, and, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
-import { users, userProfiles, userSocials, networks, networkMembers, intents, opportunities } from '../../schemas/database.schema';
+import { users, userSocials, networks, networkMembers, intents, opportunities } from '../../schemas/database.schema';
 import { ProfileDatabaseAdapter } from '../database.adapter';
 
 const TEST_PREFIX = 'ghost_dedup_spec_' + Date.now() + '_';
@@ -95,21 +95,6 @@ beforeAll(async () => {
     { userId: ids.differentPersonId, label: 'linkedin', value: 'serefozu-b5b87322a' },
   ]);
 
-  await db.insert(userProfiles).values([
-    {
-      userId: ids.mergeTargetId,
-      identity: { name: 'Target User', bio: 'target bio', location: 'NYC' },
-      narrative: { context: 'target context' },
-      attributes: { skills: ['a'], interests: ['b'] },
-    },
-    {
-      userId: ids.mergeGhostId,
-      identity: { name: 'Ghost', bio: 'ghost bio', location: 'LA' },
-      narrative: { context: 'ghost context' },
-      attributes: { skills: ['c'], interests: ['d'] },
-    },
-  ]);
-
   await db.insert(networks).values({
     id: ids.mergeNetworkId,
     title: TEST_PREFIX + 'Merge Test Network',
@@ -129,7 +114,6 @@ afterAll(async () => {
     eq(networkMembers.networkId, ids.mergeNetworkId),
   );
   await db.delete(networks).where(eq(networks.id, ids.mergeNetworkId));
-  await db.delete(userProfiles).where(inArray(userProfiles.userId, allIds));
   await db.delete(users).where(inArray(users.id, allIds));
 });
 
@@ -216,16 +200,6 @@ describe('ProfileDatabaseAdapter.mergeGhostUser', () => {
       .from(users).where(eq(users.id, ghostId));
     expect(ghost.deletedAt).not.toBeNull();
 
-    // Ghost's profile should be deleted
-    const ghostProfile = await db.select()
-      .from(userProfiles).where(eq(userProfiles.userId, ghostId));
-    expect(ghostProfile).toHaveLength(0);
-
-    // Target's profile should still exist
-    const targetProfile = await db.select()
-      .from(userProfiles).where(eq(userProfiles.userId, targetId));
-    expect(targetProfile).toHaveLength(1);
-
     // Membership should be re-pointed to target
     const membership = await db.select()
       .from(networkMembers)
@@ -245,12 +219,6 @@ describe('ProfileDatabaseAdapter.mergeGhostUser', () => {
       { id: ghostId, email: TEST_PREFIX + 'skip-ghost@test.com', name: 'G', isGhost: true },
       { id: targetId, email: TEST_PREFIX + 'skip-target@test.com', name: 'T', isGhost: false },
     ]);
-    await db.insert(userProfiles).values({
-      userId: ghostId,
-      identity: { name: 'G', bio: '', location: '' },
-      narrative: { context: '' },
-      attributes: { skills: [], interests: [] },
-    });
     await db.insert(networks).values({ id: netId, title: TEST_PREFIX + 'skip-net' });
     await db.insert(networkMembers).values([
       { networkId: netId, userId: ghostId, permissions: ['contact'] },
@@ -276,7 +244,6 @@ describe('ProfileDatabaseAdapter.mergeGhostUser', () => {
     } finally {
       await db.delete(networkMembers).where(eq(networkMembers.networkId, netId));
       await db.delete(networks).where(eq(networks.id, netId));
-      await db.delete(userProfiles).where(inArray(userProfiles.userId, [ghostId, targetId]));
       await db.delete(users).where(inArray(users.id, [ghostId, targetId]));
     }
   });
@@ -290,12 +257,6 @@ describe('ProfileDatabaseAdapter.mergeGhostUser', () => {
       { id: ghostId, email: TEST_PREFIX + 'intent-ghost@test.com', name: 'G', isGhost: true },
       { id: targetId, email: TEST_PREFIX + 'intent-target@test.com', name: 'T', isGhost: false },
     ]);
-    await db.insert(userProfiles).values({
-      userId: ghostId,
-      identity: { name: 'G', bio: '', location: '' },
-      narrative: { context: '' },
-      attributes: { skills: [], interests: [] },
-    });
     await db.insert(intents).values({
       id: intentId,
       userId: ghostId,
@@ -310,7 +271,6 @@ describe('ProfileDatabaseAdapter.mergeGhostUser', () => {
       expect(intent.userId).toBe(targetId);
     } finally {
       await db.delete(intents).where(eq(intents.id, intentId));
-      await db.delete(userProfiles).where(inArray(userProfiles.userId, [ghostId, targetId]));
       await db.delete(users).where(inArray(users.id, [ghostId, targetId]));
     }
   });
@@ -325,12 +285,6 @@ describe('ProfileDatabaseAdapter.mergeGhostUser', () => {
       { id: ghostId, email: TEST_PREFIX + 'opp-ghost@test.com', name: 'G', isGhost: true },
       { id: targetId, email: TEST_PREFIX + 'opp-target@test.com', name: 'T', isGhost: false },
     ]);
-    await db.insert(userProfiles).values({
-      userId: ghostId,
-      identity: { name: 'G', bio: '', location: '' },
-      narrative: { context: '' },
-      attributes: { skills: [], interests: [] },
-    });
     await db.insert(networks).values({ id: netId, title: TEST_PREFIX + 'opp-net' });
     await db.insert(opportunities).values({
       id: oppId,
@@ -360,7 +314,6 @@ describe('ProfileDatabaseAdapter.mergeGhostUser', () => {
     } finally {
       await db.delete(opportunities).where(eq(opportunities.id, oppId));
       await db.delete(networks).where(eq(networks.id, netId));
-      await db.delete(userProfiles).where(inArray(userProfiles.userId, [ghostId, targetId]));
       await db.delete(users).where(inArray(users.id, [ghostId, targetId]));
     }
   });

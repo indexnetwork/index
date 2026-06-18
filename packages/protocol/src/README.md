@@ -399,7 +399,7 @@ interfaces in `shared/interfaces/`. The canonical Drizzle schema lives in the ba
 
 Core tables the protocol interfaces read/write:
 
-- **Identity & profile**: `users`, `user_profiles`, `user_socials`, `premises`, `premise_networks`, `user_contexts`
+- **Identity & profile**: `users` (name/bio/location), `user_socials`, `premises`, `premise_networks`, `user_contexts`
 - **Intents & networks**: `intents`, `networks`, `network_members`, `intent_networks`, `personal_networks`
 - **Opportunities & discovery**: `opportunities`, `hyde_documents`, `opportunity_discovery_runs`, `profile_tool_runs`, `questions`
 - **Agents**: `agents`, `agent_transports`, `agent_permissions`, `apikey`

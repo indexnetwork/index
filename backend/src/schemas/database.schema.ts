@@ -274,16 +274,6 @@ export const apikeys = pgTable('apikey', {
   permissions: text('permissions'),
 });
 
-export const userProfiles = pgTable('user_profiles', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
-  identity: json('identity').$type<{ name: string; bio: string; location: string }>(),
-  narrative: json('narrative').$type<{ context: string }>(),
-  attributes: json('attributes').$type<{ interests: string[]; skills: string[] }>(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
 export const userNotificationSettings = pgTable('user_notification_settings', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
@@ -808,22 +798,11 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     fields: [users.id],
     references: [userNotificationSettings.userId],
   }),
-  profile: one(userProfiles, {
-    fields: [users.id],
-    references: [userProfiles.userId],
-  }),
 }));
 
 export const userSocialsRelations = relations(userSocials, ({ one }) => ({
   user: one(users, {
     fields: [userSocials.userId],
-    references: [users.id],
-  }),
-}));
-
-export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
-  user: one(users, {
-    fields: [userProfiles.userId],
     references: [users.id],
   }),
 }));
@@ -952,8 +931,6 @@ export const agentPermissionsRelations = relations(agentPermissions, ({ one }) =
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-export type UserProfile = typeof userProfiles.$inferSelect;
-export type NewUserProfile = typeof userProfiles.$inferInsert;
 export type Intent = typeof intents.$inferSelect;
 export type NewIntent = typeof intents.$inferInsert;
 export type Network = typeof networks.$inferSelect;

@@ -589,6 +589,13 @@
       "when": 1781715440606,
       "tag": "0083_alter_user_contexts_nullable_network",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1781778982774,
+      "tag": "0084_drop_user_profiles",
+      "breakpoints": true
     }
   ]
 }
