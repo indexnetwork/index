@@ -67,8 +67,8 @@ const mockResolveChatContext = mock(async () => ({
 
 mock.module('@indexnetwork/protocol', () => ({
   PremiseGraphFactory: class { createGraph() { return { invoke: async () => ({}) }; } },
-  ProfileGraphFactory: class { createGraph() { return { invoke: async () => ({}) }; } },
-  createProfileTools: (defineTool: (def: { name: string; handler: (input: { context: unknown; query: unknown }) => Promise<string> }) => unknown) => {
+  EnrichmentGraphFactory: class { createGraph() { return { invoke: async () => ({}) }; } },
+  createEnrichmentTools: (defineTool: (def: { name: string; handler: (input: { context: unknown; query: unknown }) => Promise<string> }) => unknown) => {
     for (const [name, handler] of registeredHandlers) {
       defineTool({ name, handler });
     }

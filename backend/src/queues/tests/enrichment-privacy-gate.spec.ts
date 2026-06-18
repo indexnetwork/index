@@ -51,11 +51,11 @@ mock.module('../../lib/bullmq/bullmq', () => ({
   },
 }));
 mock.module('@indexnetwork/protocol', () => ({
-  ProfileGraphFactory: class { createGraph() { return { invoke: async () => ({}) }; } },
+  EnrichmentGraphFactory: class { createGraph() { return { invoke: async () => ({}) }; } },
   PremiseGraphFactory: class { createGraph() { return { invoke: async () => ({}) }; } },
   QuestionerAgent: class {},
 }));
-mock.module('../../adapters/database.adapter', () => ({ ProfileDatabaseAdapter: class {}, ChatDatabaseAdapter: class {} }));
+mock.module('../../adapters/database.adapter', () => ({ EnrichmentDatabaseAdapter: class {}, ChatDatabaseAdapter: class {} }));
 mock.module('../../adapters/scraper.adapter', () => ({ ScraperAdapter: class {} }));
 mock.module('../../adapters/embedder.adapter', () => ({ EmbedderAdapter: class {} }));
 mock.module('../../lib/parallel/parallel', () => ({ enrichUserProfile: async () => ({}) }));

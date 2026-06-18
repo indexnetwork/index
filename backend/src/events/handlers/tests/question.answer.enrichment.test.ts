@@ -1,5 +1,5 @@
 import { describe, it, expect, mock } from "bun:test";
-import { createPremiseFromAnswerFactory, type PremiseCreatorDeps } from "../question.answer.profile";
+import { createPremiseFromAnswerFactory, type PremiseCreatorDeps } from "../question.answer.enrichment";
 
 function makeDeps(overrides?: Partial<PremiseCreatorDeps>): PremiseCreatorDeps {
   return {

@@ -10,14 +10,14 @@ import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, 
 
 import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
 
-export const QUEUE_NAME = 'opportunity-from-profile';
+export const QUEUE_NAME = 'opportunity-from-enrichment';
 
-export interface FromProfileJobData {
+export interface FromEnrichmentJobData {
   userId: string;
   networkId?: string;
 }
 
-export interface FromProfileDeps {
+export interface FromEnrichmentDeps {
   invokeOpportunityGraph?: (opts: {
     userId: string;
     operationMode: 'create';
@@ -38,30 +38,30 @@ export interface FromProfileDeps {
  * Triggered after profile enrichment completes for experiment-network imports
  * and headless signups.
  */
-export class FromProfileQueue {
+export class FromEnrichmentQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
-  readonly queue = QueueFactory.createQueue<FromProfileJobData>(QUEUE_NAME);
+  readonly queue = QueueFactory.createQueue<FromEnrichmentJobData>(QUEUE_NAME);
 
-  private readonly logger = log.job.from('FromProfileJob');
-  private readonly queueLogger = log.queue.from('FromProfileQueue');
+  private readonly logger = log.job.from('FromEnrichmentJob');
+  private readonly queueLogger = log.queue.from('FromEnrichmentQueue');
   private readonly graphDb: OpportunityGraphDatabase & HydeGraphDatabase;
-  private deps: FromProfileDeps | undefined;
-  private worker: ReturnType<typeof QueueFactory.createWorker<FromProfileJobData>> | null = null;
+  private deps: FromEnrichmentDeps | undefined;
+  private worker: ReturnType<typeof QueueFactory.createWorker<FromEnrichmentJobData>> | null = null;
 
-  constructor(deps?: FromProfileDeps) {
+  constructor(deps?: FromEnrichmentDeps) {
     this.deps = deps;
     this.graphDb = new ChatDatabaseAdapter() as unknown as OpportunityGraphDatabase & HydeGraphDatabase;
   }
 
-  setRuntimeDeps(runtimeDeps: Pick<FromProfileDeps, 'negotiationGraph' | 'agentDispatcher'>): void {
+  setRuntimeDeps(runtimeDeps: Pick<FromEnrichmentDeps, 'negotiationGraph' | 'agentDispatcher'>): void {
     this.deps = { ...(this.deps ?? {}), ...runtimeDeps };
   }
 
   async addJob(
-    data: FromProfileJobData,
+    data: FromEnrichmentJobData,
     options?: { jobId?: string; priority?: number },
-  ): Promise<Job<FromProfileJobData>> {
+  ): Promise<Job<FromEnrichmentJobData>> {
     return this.queue.add('discover_opportunities', data, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
@@ -72,20 +72,20 @@ export class FromProfileQueue {
     });
   }
 
-  async processJob(name: string, data: FromProfileJobData): Promise<void> {
+  async processJob(name: string, data: FromEnrichmentJobData): Promise<void> {
     switch (name) {
       case 'discover_opportunities':
         await this.handleDiscover(data);
         break;
       default:
-        this.queueLogger.warn(`[FromProfileQueueProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn(`[FromEnrichmentQueueProcessor] Unknown job name: ${name}`);
     }
   }
 
-  private async handleDiscover(data: FromProfileJobData): Promise<void> {
+  private async handleDiscover(data: FromEnrichmentJobData): Promise<void> {
     const { userId, networkId } = data;
 
-    this.logger.info('[FromProfile] Starting profile-based discovery', { userId, networkId });
+    this.logger.info('[FromEnrichment] Starting profile-based discovery', { userId, networkId });
 
     const invokeOpts = {
       userId: userId as Id<'users'>,
@@ -119,14 +119,14 @@ export class FromProfileQueue {
 
     const result = await opportunityGraph.invoke(invokeOpts);
     if (result.error) {
-      this.logger.error('[FromProfile] Graph failed', { userId, networkId, error: result.error });
-      throw new Error(typeof result.error === 'string' ? result.error : 'from-profile graph failed');
+      this.logger.error('[FromEnrichment] Graph failed', { userId, networkId, error: result.error });
+      throw new Error(typeof result.error === 'string' ? result.error : 'from-enrichment graph failed');
     }
 
     const candidates = Array.isArray(result.candidates) ? result.candidates : [];
     const opportunitiesArr = Array.isArray(result.opportunities) ? result.opportunities : [];
 
-    this.logger.info('[FromProfile] Graph complete', {
+    this.logger.info('[FromEnrichment] Graph complete', {
       userId,
       networkId,
       candidatesFound: candidates.length,
@@ -136,11 +136,11 @@ export class FromProfileQueue {
 
   startWorker(): void {
     if (this.worker) return;
-    const processor = async (job: Job<FromProfileJobData>) => {
-      this.queueLogger.info(`[FromProfileProcessor] Processing job ${job.id}`);
+    const processor = async (job: Job<FromEnrichmentJobData>) => {
+      this.queueLogger.info(`[FromEnrichmentProcessor] Processing job ${job.id}`);
       await this.processJob(job.name, job.data);
     };
-    this.worker = QueueFactory.createWorker<FromProfileJobData>(QUEUE_NAME, processor);
+    this.worker = QueueFactory.createWorker<FromEnrichmentJobData>(QUEUE_NAME, processor);
   }
 
   async close(): Promise<void> {
@@ -152,4 +152,4 @@ export class FromProfileQueue {
   }
 }
 
-export const fromProfileQueue = new FromProfileQueue();
+export const fromEnrichmentQueue = new FromEnrichmentQueue();

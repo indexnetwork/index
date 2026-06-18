@@ -44,7 +44,7 @@ import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
-import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
+import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput } from '@indexnetwork/protocol';
 
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
@@ -153,7 +153,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const qEnqueue = protocolDeps.questionerEnqueue;
   const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue, qEnqueue).createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, scraper, protocolDeps.enricher, qEnqueue, premiseGraph).createGraph();
+  const profileGraph = new EnrichmentGraphFactory(database, scraper, protocolDeps.enricher, qEnqueue, premiseGraph).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
@@ -241,7 +241,7 @@ function normalizeTelegramHeader(raw: string | null | undefined): string | null 
     ?.trim()
     .replace(/^@/, '')
     // Case-insensitive to match the SQL normalization in
-    // ProfileDatabaseAdapter.findTelegramHandleOwners; otherwise a stored
+    // EnrichmentDatabaseAdapter.findTelegramHandleOwners; otherwise a stored
     // `HTTPS://T.ME/<handle>` would pass the SQL filter but fail this JS
     // re-check, bypassing the mismatch/ownership guard.
     .replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//i, '')

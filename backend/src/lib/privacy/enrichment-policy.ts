@@ -32,7 +32,7 @@ export function hasEdgeosImportConsent(onboarding: OnboardingState | null | unde
  * @param permissions - Network permissions JSON.
  * @returns A normalized profile enrichment policy.
  */
-export function getProfileEnrichmentPolicy(
+export function getEnrichmentPolicy(
   permissions: NetworkPermissionsState | Record<string, unknown> | null | undefined,
 ): ProfileEnrichmentPolicy {
   return normalizeProfileEnrichmentPolicy(permissions?.profileEnrichment);
@@ -52,7 +52,7 @@ export function isConsentRequiredPolicy(policy: unknown): boolean {
  * @param input - Policy, onboarding state, and ghost-user flag.
  * @returns Whether external/public enrichment may run.
  */
-export function canRunPublicProfileEnrichment(input: {
+export function canRunPublicEnrichment(input: {
   policy: unknown;
   onboarding: OnboardingState | null | undefined;
   isGhost: boolean;

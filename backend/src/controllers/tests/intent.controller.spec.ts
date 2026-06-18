@@ -4,7 +4,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { IntentController } from "../intent.controller";
-import { IntentDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { IntentDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -172,7 +172,7 @@ describe("IntentController Integration", () => {
   const controller = new IntentController();
   const userAdapter = new UserDatabaseAdapter();
   const intentAdapter = new IntentDatabaseAdapter();
-  const profileAdapter = new ProfileDatabaseAdapter();
+  const profileAdapter = new EnrichmentDatabaseAdapter();
   let testUserId: string;
   let testIntentId: string;
   const testEmail = `test-intent-controller-${Date.now()}@example.com`;

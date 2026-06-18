@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { canRunPublicProfileEnrichment, hasEdgeosImportConsent, hasPublicProfileLookupConsent, isConsentRequiredPolicy, normalizeProfileEnrichmentPolicy } from './profile-enrichment-policy';
+import { canRunPublicEnrichment, hasEdgeosImportConsent, hasPublicProfileLookupConsent, isConsentRequiredPolicy, normalizeProfileEnrichmentPolicy } from './enrichment-policy';
 import type { OnboardingState } from '../../schemas/database.schema';
 
 const granted: OnboardingState = {
@@ -32,17 +32,17 @@ describe('profile enrichment policy helpers', () => {
   });
 
   it('allows auto policy and blocks disabled policy', () => {
-    expect(canRunPublicProfileEnrichment({ policy: undefined, onboarding: undefined, isGhost: false })).toBe(true);
-    expect(canRunPublicProfileEnrichment({ policy: 'disabled', onboarding: granted, isGhost: false })).toBe(false);
+    expect(canRunPublicEnrichment({ policy: undefined, onboarding: undefined, isGhost: false })).toBe(true);
+    expect(canRunPublicEnrichment({ policy: 'disabled', onboarding: granted, isGhost: false })).toBe(false);
   });
 
   it('requires public lookup consent under consent_required', () => {
     expect(isConsentRequiredPolicy('consent_required')).toBe(true);
-    expect(canRunPublicProfileEnrichment({ policy: 'consent_required', onboarding: {}, isGhost: false })).toBe(false);
-    expect(canRunPublicProfileEnrichment({ policy: 'consent_required', onboarding: granted, isGhost: false })).toBe(true);
+    expect(canRunPublicEnrichment({ policy: 'consent_required', onboarding: {}, isGhost: false })).toBe(false);
+    expect(canRunPublicEnrichment({ policy: 'consent_required', onboarding: granted, isGhost: false })).toBe(true);
   });
 
   it('never allows ghosts under consent_required because ghosts cannot consent', () => {
-    expect(canRunPublicProfileEnrichment({ policy: 'consent_required', onboarding: granted, isGhost: true })).toBe(false);
+    expect(canRunPublicEnrichment({ policy: 'consent_required', onboarding: granted, isGhost: true })).toBe(false);
   });
 });

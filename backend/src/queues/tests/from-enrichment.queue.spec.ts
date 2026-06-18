@@ -1,5 +1,5 @@
 /**
- * Unit tests for FromProfileQueue. Use injected deps to avoid Redis/DB; QueueFactory is mocked.
+ * Unit tests for FromEnrichmentQueue. Use injected deps to avoid Redis/DB; QueueFactory is mocked.
  */
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
@@ -25,19 +25,19 @@ afterAll(() => {
   mock.restore();
 });
 
-import { FromProfileQueue, QUEUE_NAME, type FromProfileJobData } from '../opportunity/from-profile.queue';
+import { FromEnrichmentQueue, QUEUE_NAME, type FromEnrichmentJobData } from '../opportunity/from-enrichment.queue';
 
-describe('FromProfileQueue', () => {
+describe('FromEnrichmentQueue', () => {
   describe('constructor and static', () => {
     it('exposes QUEUE_NAME on class', () => {
-      expect(FromProfileQueue.QUEUE_NAME).toBe(QUEUE_NAME);
-      expect(QUEUE_NAME).toBe('opportunity-from-profile');
+      expect(FromEnrichmentQueue.QUEUE_NAME).toBe(QUEUE_NAME);
+      expect(QUEUE_NAME).toBe('opportunity-from-enrichment');
     });
   });
 
   describe('addJob', () => {
     it('adds discover job with userId only', async () => {
-      const queue = new FromProfileQueue();
+      const queue = new FromEnrichmentQueue();
       const job = await queue.addJob({ userId: 'u1' });
       expect(job.id).toBe('job-1');
       expect(mockAdd).toHaveBeenCalledWith(
@@ -53,7 +53,7 @@ describe('FromProfileQueue', () => {
     });
 
     it('adds discover job with userId and networkId', async () => {
-      const queue = new FromProfileQueue();
+      const queue = new FromEnrichmentQueue();
       await queue.addJob({ userId: 'u1', networkId: 'net1' });
       expect(mockAdd).toHaveBeenCalledWith(
         'discover_opportunities',
@@ -63,7 +63,7 @@ describe('FromProfileQueue', () => {
     });
 
     it('supports jobId and priority options', async () => {
-      const queue = new FromProfileQueue();
+      const queue = new FromEnrichmentQueue();
       await queue.addJob({ userId: 'u1' }, { jobId: 'custom-id', priority: 20 });
       expect(mockAdd).toHaveBeenCalledWith(
         'discover_opportunities',
@@ -75,7 +75,7 @@ describe('FromProfileQueue', () => {
 
   describe('processJob', () => {
     it('unknown job name logs warning and does not throw', async () => {
-      const queue = new FromProfileQueue();
+      const queue = new FromEnrichmentQueue();
       await expect(
         queue.processJob('unknown_job', { userId: 'u1' })
       ).resolves.toBeUndefined();
@@ -83,7 +83,7 @@ describe('FromProfileQueue', () => {
 
     it('discover: invokes injected graph with userId only (no searchQuery or triggerIntentId)', async () => {
       const invokeOpportunityGraph = mock(async () => {});
-      const queue = new FromProfileQueue({ invokeOpportunityGraph });
+      const queue = new FromEnrichmentQueue({ invokeOpportunityGraph });
       await queue.processJob('discover_opportunities', { userId: 'u1' });
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -100,7 +100,7 @@ describe('FromProfileQueue', () => {
 
     it('discover: passes networkId when provided', async () => {
       const invokeOpportunityGraph = mock(async () => {});
-      const queue = new FromProfileQueue({ invokeOpportunityGraph });
+      const queue = new FromEnrichmentQueue({ invokeOpportunityGraph });
       await queue.processJob('discover_opportunities', { userId: 'u1', networkId: 'net1' });
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(
         expect.objectContaining({ networkId: 'net1' })
@@ -108,7 +108,7 @@ describe('FromProfileQueue', () => {
     });
 
     it('discover: without invokeOpportunityGraph uses real graph (may fail without infra)', async () => {
-      const queue = new FromProfileQueue();
+      const queue = new FromEnrichmentQueue();
       try {
         await queue.processJob('discover_opportunities', { userId: 'u1' });
       } catch {
@@ -119,20 +119,20 @@ describe('FromProfileQueue', () => {
 
   describe('startWorker', () => {
     it('is idempotent: second call does not create another worker', () => {
-      const queue = new FromProfileQueue();
+      const queue = new FromEnrichmentQueue();
       queue.startWorker();
       queue.startWorker();
       expect(mockCreateWorker).toHaveBeenCalledTimes(1);
     });
 
     it('processor invokes processJob when worker runs a job', async () => {
-      let capturedProcessor: ((job: { id: string; name: string; data: FromProfileJobData }) => Promise<void>) | null = null;
+      let capturedProcessor: ((job: { id: string; name: string; data: FromEnrichmentJobData }) => Promise<void>) | null = null;
       (mockCreateWorker as import('bun:test').Mock<(n: string, p: (job: unknown) => Promise<void>) => unknown>).mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
-        capturedProcessor = processor as (job: { id: string; name: string; data: FromProfileJobData }) => Promise<void>;
+        capturedProcessor = processor as (job: { id: string; name: string; data: FromEnrichmentJobData }) => Promise<void>;
         return {};
       });
       const invokeOpportunityGraph = mock(async () => {});
-      const queue = new FromProfileQueue({ invokeOpportunityGraph });
+      const queue = new FromEnrichmentQueue({ invokeOpportunityGraph });
       queue.startWorker();
       expect(capturedProcessor).not.toBeNull();
       await capturedProcessor!({
@@ -147,8 +147,8 @@ describe('FromProfileQueue', () => {
   describe('setRuntimeDeps', () => {
     it('merges negotiationGraph and agentDispatcher into deps', async () => {
       const invokeOpportunityGraph = mock(async () => {});
-      const queue = new FromProfileQueue({ invokeOpportunityGraph });
-      const negotiationGraph = {} as Parameters<InstanceType<typeof FromProfileQueue>['setRuntimeDeps']>[0]['negotiationGraph'];
+      const queue = new FromEnrichmentQueue({ invokeOpportunityGraph });
+      const negotiationGraph = {} as Parameters<InstanceType<typeof FromEnrichmentQueue>['setRuntimeDeps']>[0]['negotiationGraph'];
       const agentDispatcher = { hasPersonalAgent: async () => false };
       queue.setRuntimeDeps({ negotiationGraph, agentDispatcher });
       await queue.processJob('discover_opportunities', { userId: 'u1' });

@@ -17,7 +17,7 @@ mock.module('../../lib/bullmq/bullmq', () => ({
 }));
 
 mock.module('@indexnetwork/protocol', () => ({
-  ProfileGraphFactory: class {
+  EnrichmentGraphFactory: class {
     createGraph() {
       return { invoke: async () => ({}) };
     }

@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { PremiseGraphFactory, ProfileGraphFactory, createProfileTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
+import { PremiseGraphFactory, EnrichmentGraphFactory, createEnrichmentTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
 import type { CompiledGraph, PremiseGraphDatabase, ProfileRunInput, ProfileRunRecord, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
@@ -162,7 +162,7 @@ export class ProfileRunQueue {
     const userDb = createUserDatabase(chatDatabaseAdapter, run.userId);
     const systemDb = createSystemDatabase(chatDatabaseAdapter, run.userId, context.indexScope, embedderAdapter);
     const premiseGraph = new PremiseGraphFactory(chatDatabaseAdapter as unknown as PremiseGraphDatabase, embedderAdapter).createGraph();
-    const profileGraph = new ProfileGraphFactory(
+    const profileGraph = new EnrichmentGraphFactory(
       chatDatabaseAdapter,
       scraperAdapter,
       enricherAdapter,
@@ -173,7 +173,7 @@ export class ProfileRunQueue {
     ).createGraph();
 
     const rawTools = new Map<string, RawToolDefinition>();
-    createProfileTools(((opts: {
+    createEnrichmentTools(((opts: {
       name: string;
       description: string;
       querySchema: RawToolDefinition['schema'];

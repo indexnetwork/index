@@ -3,19 +3,19 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { ProfileController } from "../profile.controller";
+import { EnrichmentController } from "../enrichment.controller";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
-import { UserDatabaseAdapter, ProfileDatabaseAdapter } from "../../adapters/database.adapter";
+import { UserDatabaseAdapter, EnrichmentDatabaseAdapter } from "../../adapters/database.adapter";
 
-// Integration test suite for ProfileController using actual DB
-describe("ProfileController Integration", () => {
-  const controller = new ProfileController();
+// Integration test suite for EnrichmentController using actual DB
+describe("EnrichmentController Integration", () => {
+  const controller = new EnrichmentController();
   const userAdapter = new UserDatabaseAdapter();
-  const profileAdapter = new ProfileDatabaseAdapter();
+  const profileAdapter = new EnrichmentDatabaseAdapter();
   let testUserId: string;
 
   beforeAll(async () => {
-    const email = "test-profile-controller@example.com";
+    const email = "test-enrichment-controller@example.com";
 
     const existingUser = await userAdapter.findByEmail(email);
     if (existingUser) {
@@ -52,7 +52,7 @@ describe("ProfileController Integration", () => {
     const mockRequest = {} as Request;
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      email: "test-profile-controller@example.com",
+      email: "test-enrichment-controller@example.com",
       name: "Test Profile User"
     };
     const result = await controller.sync(mockRequest, mockUser);
@@ -77,7 +77,7 @@ describe("ProfileController Integration", () => {
     const mockRequest = {} as Request;
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      email: "test-profile-controller@example.com",
+      email: "test-enrichment-controller@example.com",
       name: "Test Profile User"
     };
     const start = Date.now();

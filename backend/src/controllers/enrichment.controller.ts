@@ -1,23 +1,23 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
-import { profileService } from '../services/profile.service';
+import { enrichmentService } from '../services/enrichment.service';
 import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
 
-const logger = log.controller.from('profile');
+const logger = log.controller.from('enrichment');
 
-@Controller('/profiles')
-export class ProfileController {
+@Controller('/enrichment')
+export class EnrichmentController {
   /**
    * Syncs/Generates a profile for the given user.
-   * This is the main entry point to trigger the profile graph.
+   * This is the main entry point to trigger the enrichment graph.
    */
   @Post('/sync')
   @UseGuards(RateLimit('write'), AuthGuard)
   async sync(req: Request, user: AuthenticatedUser) {
     logger.verbose('Profile sync requested', { userId: user.id });
     
-    const result = await profileService.syncProfile(user.id);
+    const result = await enrichmentService.syncProfile(user.id);
 
     return Response.json(result);
   }
