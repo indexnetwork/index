@@ -447,7 +447,7 @@ export interface UpdateIndexSettingsData {
 // HYDE DOCUMENT TYPES (Opportunity Redesign)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type HydeSourceType = 'intent' | 'profile' | 'query' | 'context';
+export type HydeSourceType = 'intent' | 'query' | 'context';
 
 export interface HydeDocument {
   id: string;
@@ -1144,7 +1144,7 @@ export interface Database {
    * Get a HyDE document by source and strategy/lens hash.
    * Returns the first matching document when multiple target corpuses exist.
    *
-   * @param sourceType - 'intent' | 'profile' | 'query'
+   * @param sourceType - 'intent' | 'query'
    * @param sourceId - Source entity ID (e.g. intent ID, user ID)
    * @param strategy - Lens hash (SHA-256 of lens label) or legacy strategy name
    * @returns The HyDE document or null if not found
@@ -1158,7 +1158,7 @@ export interface Database {
   /**
    * Get all HyDE documents for a source (all strategies).
    *
-   * @param sourceType - 'intent' | 'profile' | 'query'
+   * @param sourceType - 'intent' | 'query'
    * @param sourceId - Source entity ID
    * @returns Array of HyDE documents for that source
    */
@@ -1176,9 +1176,9 @@ export interface Database {
   saveHydeDocument(data: CreateHydeDocumentData): Promise<HydeDocument>;
 
   /**
-   * Delete all HyDE documents for a source (e.g. when intent/profile archived).
+   * Delete all HyDE documents for a source (e.g. when intent archived).
    *
-   * @param sourceType - 'intent' | 'profile' | 'query'
+   * @param sourceType - 'intent' | 'query'
    * @param sourceId - Source entity ID
    * @returns Number of documents deleted
    */

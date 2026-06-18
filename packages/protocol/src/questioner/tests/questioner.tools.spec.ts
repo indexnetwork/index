@@ -40,7 +40,7 @@ const mockQuestion: PendingQuestionSummary = {
     { label: 'Knowledge exchange', description: 'Sharing expertise' },
   ],
   multiSelect: false,
-  mode: 'profile',
+  mode: 'enrichment',
   sourceType: 'profile',
   sourceId: userId,
   createdAt: '2026-06-11T00:00:00Z',
@@ -133,7 +133,7 @@ describe("createQuestionerTools", () => {
         data: { questions: PendingQuestionSummary[]; scopeRestriction?: { isScoped: boolean; scopedToIndex: string } };
       };
       expect(result.success).toBe(true);
-      expect(captured?.modes).toEqual(["profile", "intent", "discovery"]);
+      expect(captured?.modes).toEqual(["enrichment", "intent", "discovery"]);
       expect(result.data.scopeRestriction?.isScoped).toBe(true);
       expect(result.data.scopeRestriction?.scopedToIndex).toBe("Edge Esmeralda");
     });

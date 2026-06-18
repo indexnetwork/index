@@ -248,7 +248,7 @@ const presets: Record<QuestionMode, QuestionerPreset> = {
     systemPrompt: INTENT_SYSTEM_PROMPT,
     buildPrompt: (context: unknown) => buildIntentPrompt(context as IntentContext),
   },
-  profile: {
+  enrichment: {
     systemPrompt: PROFILE_SYSTEM_PROMPT,
     buildPrompt: (context: unknown) => buildProfilePrompt(context as ProfileContext),
   },

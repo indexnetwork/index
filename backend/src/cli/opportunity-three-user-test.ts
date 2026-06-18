@@ -33,7 +33,6 @@ import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
 import { TESTER_PERSONAS } from './test-data';
 
 const INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c'; // Commons from seed
-const DIMENSIONS = 2000;
 
 async function main() {
   console.log('=== Three-user opportunity test ===\n');
@@ -78,29 +77,13 @@ async function main() {
   const inferrer = new LensInferrer();
   const generator = new HydeGenerator();
   const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
-  const hydeResult = await hydeGraph.invoke({
+  await hydeGraph.invoke({
     sourceText: intentPayload,
     sourceType: 'intent',
     sourceId: created.id,
     forceRegenerate: true,
   });
   console.log('HyDE generated for intent');
-
-  // So discovery can find User B: add profile HyDE for B using the first inferred lens embedding
-  const hydeEmbeddings = hydeResult.hydeEmbeddings ?? {};
-  const firstLensLabel = Object.keys(hydeEmbeddings)[0];
-  const firstEmbedding = firstLensLabel ? hydeEmbeddings[firstLensLabel] : undefined;
-  if (firstEmbedding?.length === DIMENSIONS) {
-    await database.saveHydeDocument({
-      sourceType: 'profile',
-      sourceId: userB.id,
-      strategy: firstLensLabel,
-      targetCorpus: 'profiles',
-      hydeText: `${userB.name} – developer, React, startup.`,
-      hydeEmbedding: firstEmbedding,
-    });
-    console.log('Profile HyDE for', userB.name, '(lens:', firstLensLabel, ') so discovery can match');
-  }
 
   // Run opportunity discovery (synchronous)
   await fromIntentQueue.processJob('discover_opportunities', {

@@ -65,7 +65,7 @@ export interface QuestionGenerationResult {
 export const QuestionModeSchema = z.enum([
   "discovery",
   "intent",
-  "profile",
+  "enrichment",
   "negotiation",
 ]);
 

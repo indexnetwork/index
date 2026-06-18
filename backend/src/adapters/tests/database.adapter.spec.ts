@@ -213,14 +213,14 @@ describe('ChatDatabaseAdapter', () => {
     const desc = 'Hypothetical description';
     const embedding = new Array(2000).fill(0.1);
     await adapter.saveHydeDocument({
-      sourceType: 'profile',
+      sourceType: 'query',
       sourceId: fixture.userAId,
       strategy: 'mirror',
       targetCorpus: 'profiles',
       hydeText: desc,
       hydeEmbedding: embedding,
     });
-    const doc = await adapter.getHydeDocument('profile', fixture.userAId, 'mirror');
+    const doc = await adapter.getHydeDocument('query', fixture.userAId, 'mirror');
     expect(doc).not.toBeNull();
     expect(doc!.hydeText).toBe(desc);
   });
@@ -666,7 +666,7 @@ describe('EnrichmentDatabaseAdapter', () => {
 
   it('should save HyDE profile to hyde_documents', async () => {
     await adapter.saveHydeDocument({
-      sourceType: 'profile',
+      sourceType: 'query',
       sourceId: fixture.userBId,
       strategy: 'mirror',
       targetCorpus: 'profiles',
@@ -674,7 +674,7 @@ describe('EnrichmentDatabaseAdapter', () => {
       hydeEmbedding: new Array(2000).fill(0.2),
     });
     const hydeAdapter = new HydeDatabaseAdapter();
-    const doc = await hydeAdapter.getHydeDocument('profile', fixture.userBId, 'mirror');
+    const doc = await hydeAdapter.getHydeDocument('query', fixture.userBId, 'mirror');
     expect(doc).not.toBeNull();
     expect(doc!.hydeText).toBe('HyDE desc');
   });
@@ -1550,7 +1550,7 @@ describe('HydeDatabaseAdapter', () => {
 
 describe('HydeDatabaseAdapter – deleteExpired and getStale', () => {
   const adapter = new HydeDatabaseAdapter();
-  const sourceType = 'profile' as const;
+  const sourceType = 'query' as const;
   const sourceId = uuidv4();
   const embedding = new Array(2000).fill(0).map((_, i) => (i % 100) / 100);
   const past = new Date(Date.now() - 60_000);

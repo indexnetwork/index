@@ -251,7 +251,7 @@ async function persistProfileIdentityToUser(userId: string, profile: UserIdentit
 }
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
-type HydeSourceTypeLocal = 'intent' | 'profile' | 'query' | 'context';
+type HydeSourceTypeLocal = 'intent' | 'query' | 'context';
 interface HydeDocumentRow {
   id: string;
   sourceType: HydeSourceTypeLocal;
@@ -1873,7 +1873,7 @@ export class ChatDatabaseAdapter {
 
   // HyDE document operations (delegate to HydeDatabaseAdapter)
   async getHydeDocument(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string,
     strategy: string
   ): Promise<HydeDocumentRow | null> {
@@ -1881,7 +1881,7 @@ export class ChatDatabaseAdapter {
   }
 
   async getHydeDocumentsForSource(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string
   ): Promise<HydeDocumentRow[]> {
     return this.hydeAdapter.getHydeDocumentsForSource(sourceType, sourceId);
@@ -1892,7 +1892,7 @@ export class ChatDatabaseAdapter {
   }
 
   async deleteHydeDocumentsForSource(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string
   ): Promise<number> {
     return this.hydeAdapter.deleteHydeDocumentsForSource(sourceType, sourceId);
@@ -4726,7 +4726,7 @@ export class EnrichmentDatabaseAdapter {
   private hydeAdapter = new HydeDatabaseAdapter();
 
   async getHydeDocument(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string,
     strategy: string
   ) {
@@ -4734,7 +4734,7 @@ export class EnrichmentDatabaseAdapter {
   }
 
   async saveHydeDocument(data: {
-    sourceType: 'intent' | 'profile' | 'query';
+    sourceType: 'intent' | 'query';
     sourceId?: string | null;
     sourceText?: string | null;
     strategy: string;
@@ -4842,14 +4842,6 @@ export class EnrichmentDatabaseAdapter {
       await tx.delete(schema.apikeys).where(eq(schema.apikeys.userId, sourceId));
       await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.userId, sourceId));
       await tx.delete(schema.agents).where(eq(schema.agents.ownerId, sourceId));
-
-      // Delete ghost's HyDE profile documents
-      await tx.delete(schema.hydeDocuments).where(
-        and(
-          eq(schema.hydeDocuments.sourceType, 'profile'),
-          eq(schema.hydeDocuments.sourceId, sourceId),
-        ),
-      );
 
       // ── 2. Re-point simple FK references ──
 

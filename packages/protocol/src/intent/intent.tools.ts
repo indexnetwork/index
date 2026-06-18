@@ -362,7 +362,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
             : 'Intent creation failed — the intents could not be persisted.',
           debugSteps,
           _graphTimings: [
-            { name: 'profile', durationMs: _profileGraphMs1, agents: profileResult.agentTimings ?? [] },
+            { name: 'enrichment', durationMs: _profileGraphMs1, agents: profileResult.agentTimings ?? [] },
             { name: 'intent-propose', durationMs: _intentGraphMs1, agents: result.agentTimings ?? [] },
             ...createTimings,
           ],
@@ -400,7 +400,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         message: `IMPORTANT: Include the following \`\`\`intent_proposal code blocks EXACTLY as-is in your response (they render as interactive cards for the user to approve or skip):\n\n${blocksText}`,
         debugSteps,
         _graphTimings: [
-          { name: 'profile', durationMs: _profileGraphMs1, agents: profileResult.agentTimings ?? [] },
+          { name: 'enrichment', durationMs: _profileGraphMs1, agents: profileResult.agentTimings ?? [] },
           { name: 'intent', durationMs: _intentGraphMs1, agents: result.agentTimings ?? [] },
         ],
       });
@@ -478,7 +478,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         intentId,
         description: query.description,
         _graphTimings: [
-          { name: 'profile', durationMs: _profileGraphMs2, agents: profileResult.agentTimings ?? [] },
+          { name: 'enrichment', durationMs: _profileGraphMs2, agents: profileResult.agentTimings ?? [] },
           { name: 'intent', durationMs: _intentGraphMs2, agents: result.agentTimings ?? [] },
         ],
       });

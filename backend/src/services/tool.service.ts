@@ -76,7 +76,7 @@ export class ToolService {
         filters?: {
           sourceType?: string;
           sourceId?: string;
-          modes?: Array<'discovery' | 'intent' | 'profile' | 'negotiation'>;
+          modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation'>;
           limit?: number;
         },
       ) => {

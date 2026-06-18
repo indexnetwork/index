@@ -327,8 +327,8 @@ describe("onboarding privacy profile tools", () => {
 
     expect(result.success).toBe(true);
     expect(events).toEqual([
-      { type: "graph_start", name: "profile" },
-      { type: "graph_end", name: "profile" },
+      { type: "graph_start", name: "enrichment" },
+      { type: "graph_end", name: "enrichment" },
     ]);
   });
 

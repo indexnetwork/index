@@ -92,7 +92,7 @@ function modeInput(mode: QuestionerInput["mode"]): QuestionerInput {
   const contexts = {
     discovery: discoveryContext,
     intent: intentContext,
-    profile: profileContext,
+    enrichment: profileContext,
     negotiation: negotiationContext,
   } satisfies Record<QuestionerInput["mode"], DiscoveryContext | IntentContext | ProfileContext | NegotiationContext>;
   return {
@@ -195,7 +195,7 @@ describe("QuestionerAgent", () => {
   it.each([
     { mode: "discovery" as const, contextNeedles: ["find decentralized identity protocol designers", "3 people reviewed"] },
     { mode: "intent" as const, contextNeedles: ["Connect with people building decentralized identity protocols", "Decentralized identity protocol design collaborations"] },
-    { mode: "profile" as const, contextNeedles: ["availability", "I build agent tools for event communities"] },
+    { mode: "enrichment" as const, contextNeedles: ["availability", "I build agent tools for event communities"] },
     { mode: "negotiation" as const, contextNeedles: ["AI infra founder, Berlin", "Both interested but scope unclear"] },
   ])("mode '$mode' sends standalone-context instructions alongside source evidence", async ({ mode, contextNeedles }) => {
     let capturedMessages: unknown[] | undefined;
@@ -218,7 +218,7 @@ describe("QuestionerAgent", () => {
     }
   });
 
-  it.each(["discovery", "intent", "profile", "negotiation"] as const)("mode '%s' invokes the LLM and returns questions", async (mode) => {
+  it.each(["discovery", "intent", "enrichment", "negotiation"] as const)("mode '%s' invokes the LLM and returns questions", async (mode) => {
     const agent = makeAgent(async () => ({
       questions: [makeQuestion({ title: "Test" })],
     }));
@@ -229,7 +229,7 @@ describe("QuestionerAgent", () => {
     const contexts = {
       discovery: discoveryContext,
       intent: intentContext,
-      profile: profileContext,
+      enrichment: profileContext,
       negotiation: negotiationContext,
     };
     const input: QuestionerInput = {

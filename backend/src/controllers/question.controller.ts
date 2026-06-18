@@ -19,7 +19,7 @@ const answerBodySchema = z.object({
 });
 
 const statusQuerySchema = z.enum(['pending', 'answered', 'dismissed']).default('pending');
-const modeQuerySchema = z.enum(['discovery', 'intent', 'profile', 'negotiation']);
+const modeQuerySchema = z.enum(['discovery', 'intent', 'enrichment', 'negotiation']);
 
 /**
  * QuestionController: REST API for question delivery and lifecycle.

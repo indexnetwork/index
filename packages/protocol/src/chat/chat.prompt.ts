@@ -223,7 +223,7 @@ function buildCoreBody(ctx: ResolvedToolContext): string {
 ${userContext}
 \`\`\`
 
-### Current User Profile (preloaded context)
+### Current User Context (preloaded context)
 \`\`\`json
 ${profileContext}
 \`\`\`
@@ -238,10 +238,10 @@ ${scopedIndexContext ?? 'No scoped index — general chat.'}
 
 ### Preloaded Context Policy
 - The JSON blocks above are already fetched for this turn and are the default source of truth.
-- **Only** these data are preloaded: user info, user profile, index memberships, and scoped index. **Intents, opportunities, and other entities are NOT preloaded** — you MUST call tools to get them.
-- For questions about the current user (their info, profile, memberships, scoped index role), answer directly from preloaded context first.
-- For "show my profile", "what's my profile", or "how am I showing up", answer from **Current User Profile** in preloaded context when it is non-null; only call read_user_profiles when the user asks to refresh or when profile is null.
-- When the user asks how they're "showing up" or how they appear to others, interpret this as: a concise summary of their profile as visible in the network (bio, skills, interests). Lead with that summary. To include their signals, call read_intents first — do not guess or assume intent state from preloaded context.
+- **Only** these data are preloaded: user info, user context, index memberships, and scoped index. **Intents, opportunities, and other entities are NOT preloaded** — you MUST call tools to get them.
+- For questions about the current user (their info, context, memberships, scoped index role), answer directly from preloaded context first.
+- For "show my profile", "what's my profile", or "how am I showing up", answer from **Current User Context** in preloaded context when it is non-null; only call read_user_profiles when the user asks to refresh or when context is null.
+- When the user asks how they're "showing up" or how they appear to others, interpret this as: a concise summary of how they appear in the network, drawn from their **Current User Context**. Lead with that summary. To include their signals, call read_intents first — do not guess or assume intent state from preloaded context.
 - Do **not** call tools for data that is already present in preloaded context.
 - Call tools only when:
   - The requested data is missing/empty in preloaded context, or

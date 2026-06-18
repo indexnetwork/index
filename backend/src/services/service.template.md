@@ -107,21 +107,21 @@ export const userService = new UserService();
 ```typescript
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { ProfileGraphFactory } from '../lib/protocol/graphs/profile/profile.graph';
+import { EnrichmentGraphFactory } from '../lib/protocol/graphs/enrichment/enrichment.graph';
 
-export class ProfileGenerationService {
+export class EnrichmentGenerationService {
   private db: Database;
   private embedder: Embedder;
-  private factory: ProfileGraphFactory;
+  private factory: EnrichmentGraphFactory;
 
   constructor() {
     // Use protocol adapters to create graph factory
     this.db = new ChatDatabaseAdapter();
     this.embedder = new EmbedderAdapter();
-    this.factory = new ProfileGraphFactory(this.db, this.embedder);
+    this.factory = new EnrichmentGraphFactory(this.db, this.embedder);
   }
 
-  async generateProfile(userId: string) {
+  async generateEnrichment(userId: string) {
     const graph = this.factory.createGraph();
     return await graph.invoke({ userId });
   }
@@ -234,21 +234,21 @@ export class UserService {
 import type { Database } from '../lib/protocol/interfaces/database.interface';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { ProfileGraphFactory } from '../lib/protocol/graphs/profile/profile.graph';
+import { EnrichmentGraphFactory } from '../lib/protocol/graphs/enrichment/enrichment.graph';
 
-export class ProfileService {
+export class EnrichmentService {
   private db: Database;
   private embedder: Embedder;
-  private factory: ProfileGraphFactory;
+  private factory: EnrichmentGraphFactory;
 
   constructor() {
     // Use protocol adapters to create graph factory
     this.db = new ChatDatabaseAdapter();
     this.embedder = new EmbedderAdapter();
-    this.factory = new ProfileGraphFactory(this.db, this.embedder);
+    this.factory = new EnrichmentGraphFactory(this.db, this.embedder);
   }
 
-  async generateProfile(userId: string) {
+  async generateEnrichment(userId: string) {
     const graph = this.factory.createGraph();
     return await graph.invoke({ userId });
   }

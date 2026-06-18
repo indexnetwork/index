@@ -237,7 +237,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
 
     const traceEmitter = requestContext.getStore()?.traceEmitter;
     const graphStart = Date.now();
-    traceEmitter?.({ type: "graph_start", name: "profile" });
+    traceEmitter?.({ type: "graph_start", name: "enrichment" });
     try {
       const graphInput = {
         userId: profile.userId,
@@ -258,7 +258,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
           error: result.error,
         });
         reportToolError?.(err, {
-          subsystem: 'profile',
+          subsystem: 'enrichment',
           operation: 'profile.confirm_draft_decompose',
           toolName: 'confirm_user_profile',
           userId: profile.userId,
@@ -278,14 +278,14 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         error: err instanceof Error ? err.message : String(err),
       });
       reportToolError?.(err, {
-        subsystem: 'profile',
+        subsystem: 'enrichment',
         operation: 'profile.confirm_draft_decompose',
         toolName: 'confirm_user_profile',
         userId: profile.userId,
         tags: { toolName: 'confirm_user_profile', execution: 'background' },
       });
     } finally {
-      traceEmitter?.({ type: "graph_end", name: "profile", durationMs: Date.now() - graphStart });
+      traceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: Date.now() - graphStart });
     }
   }
 
@@ -468,13 +468,13 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       // --- Mode 1: No args / self → use profileGraph query (returns id for updates) ---
       const _readProfileGraphStart = Date.now();
       const _readProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _readProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
+      _readProfileTraceEmitter?.({ type: "graph_start", name: "enrichment" });
       const result = await invokeWithAbortSignal(graphs.profile, {
         userId: context.userId,
         operationMode: 'query' as const,
       });
       const _readProfileGraphMs = Date.now() - _readProfileGraphStart;
-      _readProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _readProfileGraphMs });
+      _readProfileTraceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: _readProfileGraphMs });
 
       // Self-lookup includes onboarding status so MCP agents (e.g. Edge Claw)
       // can decide whether to run the onboarding flow without depending on
@@ -493,7 +493,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         const flat = readResult.hasProfile && readResult.profile
           ? { hasProfile: true, ...readResult.profile, context: getUserContextText ? await getUserContextText(context.userId) : '' }
           : { ...readResult };
-        return success({ ...flat, ...onboardingFields, _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }] });
+        return success({ ...flat, ...onboardingFields, _graphTimings: [{ name: 'enrichment', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }] });
       }
       if (result.profile) {
         return success({
@@ -503,14 +503,14 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
           location: result.profile.identity.location,
           context: getUserContextText ? await getUserContextText(context.userId) : '',
           ...onboardingFields,
-          _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }],
+          _graphTimings: [{ name: 'enrichment', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }],
         });
       }
       return success({
         hasProfile: false,
         ...onboardingFields,
         message: "You don't have a profile yet. Would you like to create one? You can share your LinkedIn, GitHub, or X/Twitter profile, or just tell me about yourself.",
-        _graphTimings: [{ name: 'profile', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }],
+        _graphTimings: [{ name: 'enrichment', durationMs: _readProfileGraphMs, agents: result.agentTimings ?? [] }],
       });
     },
   });
@@ -723,7 +723,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       const _confirmTraceEmitter = requestContext.getStore()?.traceEmitter;
       const _confirmGraphStart = Date.now();
-      _confirmTraceEmitter?.({ type: "graph_start", name: "profile" });
+      _confirmTraceEmitter?.({ type: "graph_start", name: "enrichment" });
       graphs.profile.invoke({
         userId: context.userId,
         operationMode: 'write' as const,
@@ -743,7 +743,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         })
       ).finally(() => {
         const _confirmGraphMs = Date.now() - _confirmGraphStart;
-        _confirmTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _confirmGraphMs });
+        _confirmTraceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: _confirmGraphMs });
       });
 
       return success({
@@ -891,13 +891,13 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         try {
           const _confirmGraphStart = Date.now();
           const _confirmTraceEmitter = requestContext.getStore()?.traceEmitter;
-          _confirmTraceEmitter?.({ type: "graph_start", name: "profile" });
+          _confirmTraceEmitter?.({ type: "graph_start", name: "enrichment" });
           const result = await invokeWithAbortSignal(graphs.profile, {
             userId: context.userId,
             operationMode: 'generate' as const,
           });
           const _confirmGraphMs = Date.now() - _confirmGraphStart;
-          _confirmTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _confirmGraphMs });
+          _confirmTraceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: _confirmGraphMs });
 
           if (result.error) return error(result.error);
           if (result.profile) {
@@ -911,7 +911,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
                 skills: result.profile.attributes.skills,
                 interests: result.profile.attributes.interests,
               },
-              _graphTimings: [{ name: 'profile', durationMs: _confirmGraphMs, agents: result.agentTimings ?? [] }],
+              _graphTimings: [{ name: 'enrichment', durationMs: _confirmGraphMs, agents: result.agentTimings ?? [] }],
             });
           }
         } catch (err) {
@@ -935,7 +935,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         
         const _bioProfileGraphStart = Date.now();
         const _bioProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
-        _bioProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
+        _bioProfileTraceEmitter?.({ type: "graph_start", name: "enrichment" });
         const result = await invokeWithAbortSignal(graphs.profile, {
           userId: context.userId,
           operationMode: 'write' as const,
@@ -943,7 +943,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
           forceUpdate: true,
         });
         const _bioProfileGraphMs = Date.now() - _bioProfileGraphStart;
-        _bioProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _bioProfileGraphMs });
+        _bioProfileTraceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: _bioProfileGraphMs });
         if (result.error) {
           return error(result.error);
         }
@@ -958,27 +958,27 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
               skills: result.profile.attributes.skills,
               interests: result.profile.attributes.interests,
             },
-            _graphTimings: [{ name: 'profile', durationMs: _bioProfileGraphMs, agents: result.agentTimings ?? [] }],
+            _graphTimings: [{ name: 'enrichment', durationMs: _bioProfileGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return success({
           created: true,
           message: "Profile created/updated with the information you provided.",
-          _graphTimings: [{ name: 'profile', durationMs: _bioProfileGraphMs, agents: result.agentTimings ?? [] }],
+          _graphTimings: [{ name: 'enrichment', durationMs: _bioProfileGraphMs, agents: result.agentTimings ?? [] }],
         });
       }
 
       // Invoke profile graph in generate mode (uses enrichUserProfile Chat API)
       const _generateProfileGraphStart = Date.now();
       const _generateProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _generateProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
+      _generateProfileTraceEmitter?.({ type: "graph_start", name: "enrichment" });
       const result = await invokeWithAbortSignal(graphs.profile, {
         userId: context.userId,
         operationMode: 'generate' as const,
         forceUpdate: true,
       });
       const _generateProfileGraphMs = Date.now() - _generateProfileGraphStart;
-      _generateProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _generateProfileGraphMs });
+      _generateProfileTraceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: _generateProfileGraphMs });
 
       // If user info is insufficient, ask conversationally
       if (result.needsUserInfo) {
@@ -1003,7 +1003,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
             skills: result.profile.attributes.skills,
             interests: result.profile.attributes.interests,
           },
-          _graphTimings: [{ name: 'profile', durationMs: _generateProfileGraphMs, agents: result.agentTimings ?? [] }],
+          _graphTimings: [{ name: 'enrichment', durationMs: _generateProfileGraphMs, agents: result.agentTimings ?? [] }],
         });
       }
 
@@ -1057,10 +1057,10 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       // Use profileGraph query mode to validate profile existence and get id
       const _updateQueryProfileGraphStart = Date.now();
       const _updateQueryProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _updateQueryProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
+      _updateQueryProfileTraceEmitter?.({ type: "graph_start", name: "enrichment" });
       const queryResult = await invokeWithAbortSignal(graphs.profile, { userId: context.userId, operationMode: 'query' as const });
       const _updateQueryProfileGraphMs = Date.now() - _updateQueryProfileGraphStart;
-      _updateQueryProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _updateQueryProfileGraphMs });
+      _updateQueryProfileTraceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: _updateQueryProfileGraphMs });
       if (!queryResult.readResult?.hasProfile && !queryResult.profile) {
         return error("You don't have a profile yet. Use create_user_profile first.");
       }
@@ -1077,7 +1077,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (context.isMcp) {
         const _backgroundWriteProfileGraphStart = Date.now();
         const _backgroundWriteProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
-        _backgroundWriteProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
+        _backgroundWriteProfileTraceEmitter?.({ type: "graph_start", name: "enrichment" });
         graphs.profile.invoke({
           userId: context.userId,
           operationMode: "write",
@@ -1090,7 +1090,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
               error: writeResult.error,
             });
             reportToolError?.(new Error(writeResult.error), {
-              subsystem: "profile",
+              subsystem: "enrichment",
               operation: "profile.update_background",
               toolName: "update_user_profile",
               userId: context.userId,
@@ -1105,7 +1105,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
             error: message,
           });
           reportToolError?.(err, {
-            subsystem: "profile",
+            subsystem: "enrichment",
             operation: "profile.update_background",
             toolName: "update_user_profile",
             userId: context.userId,
@@ -1114,14 +1114,14 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
           });
         }).finally(() => {
           const _backgroundWriteProfileGraphMs = Date.now() - _backgroundWriteProfileGraphStart;
-          _backgroundWriteProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _backgroundWriteProfileGraphMs });
+          _backgroundWriteProfileTraceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: _backgroundWriteProfileGraphMs });
         });
 
         return success({
           accepted: true,
           message: "Profile update accepted. The structured profile will refresh in the background.",
           _graphTimings: [
-            { name: 'profile', durationMs: _updateQueryProfileGraphMs, agents: queryResult.agentTimings ?? [] },
+            { name: 'enrichment', durationMs: _updateQueryProfileGraphMs, agents: queryResult.agentTimings ?? [] },
           ],
         });
       }
@@ -1129,7 +1129,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       // Execute update directly
       const _updateWriteProfileGraphStart = Date.now();
       const _updateWriteProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _updateWriteProfileTraceEmitter?.({ type: "graph_start", name: "profile" });
+      _updateWriteProfileTraceEmitter?.({ type: "graph_start", name: "enrichment" });
       const _writeResult = await invokeWithAbortSignal(graphs.profile, {
         userId: context.userId,
         operationMode: "write",
@@ -1137,15 +1137,15 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         forceUpdate: true,
       });
       const _updateWriteProfileGraphMs = Date.now() - _updateWriteProfileGraphStart;
-      _updateWriteProfileTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _updateWriteProfileGraphMs });
+      _updateWriteProfileTraceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: _updateWriteProfileGraphMs });
       if (_writeResult.error) {
         return error(_writeResult.error);
       }
       return success({
         message: "Profile updated.",
         _graphTimings: [
-          { name: 'profile', durationMs: _updateQueryProfileGraphMs, agents: queryResult.agentTimings ?? [] },
-          { name: 'profile', durationMs: _updateWriteProfileGraphMs, agents: _writeResult.agentTimings ?? [] },
+          { name: 'enrichment', durationMs: _updateQueryProfileGraphMs, agents: queryResult.agentTimings ?? [] },
+          { name: 'enrichment', durationMs: _updateWriteProfileGraphMs, agents: _writeResult.agentTimings ?? [] },
         ],
       });
     },

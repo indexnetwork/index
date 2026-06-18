@@ -368,7 +368,7 @@ export const userContexts = pgTable('user_contexts', {
   networkIdIdx: index('user_contexts_network_id_idx').on(table.networkId),
 }));
 
-export type HydeSourceType = 'intent' | 'profile' | 'query' | 'context';
+export type HydeSourceType = 'intent' | 'query' | 'context';
 
 export const hydeDocuments = pgTable('hyde_documents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -498,7 +498,7 @@ export const enrichmentToolRuns = pgTable('enrichment_tool_runs', {
 }));
 
 export interface QuestionDetection {
-  mode: 'discovery' | 'intent' | 'profile' | 'negotiation';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
