@@ -244,47 +244,54 @@ Use Linear tools rather than guessing API calls:
 
 If the correct done status is ambiguous, ask the user rather than guessing.
 
-### 11. Clean up the worktree
+### 11. Clean up the worktree (MANDATORY)
 
-This repo does implementation work in `.worktrees/<name>` worktrees. Once a PR is merged, its worktree is usually disposable. Remove it unless there is a reason to keep it.
+This repo does implementation work in `.worktrees/<name>` worktrees. **Removing finished worktrees is a required step of finish-pr, not an optional one.** Once a PR is merged and post-merge verification has passed, its worktree is finished — remove it. Then sweep for and remove every other finished worktree too, so `.worktrees/` does not accumulate stale merged copies.
 
-First inspect worktrees and the current location:
+Inspect worktrees and the current location:
 
 ```bash
 git worktree list
 pwd
 ```
 
-Keep the worktree (do NOT remove) if any of these hold:
+**Default = remove.** A worktree is "finished" and MUST be removed when its branch is merged into the base branch. Disposable leftovers in a finished worktree — the just-merged file edits, a copied test fixture, a deferred submodule-pointer bump that is already preserved on a remote branch — do NOT count as a reason to keep it; force-remove through them.
 
-- the PR is not yet merged,
-- the worktree has uncommitted changes or unpushed commits (`git -C PATH status --short --branch`),
-- the user asked to keep it, or it hosts other in-flight work for a different branch,
+Keep a worktree ONLY if one of these genuinely holds (otherwise remove it):
+
+- its branch is NOT yet merged, OR
+- it has uncommitted/unpushed work that is NOT a disposable leftover of the finished task (e.g. genuinely unrelated in-flight work for a different effort), OR
+- the user explicitly asked to keep it, OR
 - it is the canonical root worktree (`/Users/yanek/Projects/index`) — never remove the canonical root.
 
-If the worktree is safe to remove:
+When in doubt about whether uncommitted content is disposable, inspect it (`git -C PATH status --short` + `git -C PATH diff`) and confirm the work is preserved elsewhere (merged PR, pushed branch) before force-removing. Only ask the user when you cannot establish that the content is safe to discard.
 
-1. Make sure you are not standing inside it — you cannot remove the worktree you are currently in. `cd` to the canonical root first:
+Removal procedure:
+
+1. You cannot remove the worktree you are standing in. `cd` to the canonical root first:
 
    ```bash
    cd /Users/yanek/Projects/index
    ```
 
-2. Confirm the branch is merged and the tree is clean, then remove it:
+2. Remove the PR's worktree and then every other finished (merged-branch) worktree. Use `--force` for finished worktrees carrying only disposable leftovers:
 
    ```bash
-   git worktree remove .worktrees/WORKTREE_NAME
+   git fetch origin <base-branch>
+   # the just-finished PR's worktree:
+   git worktree remove --force .worktrees/WORKTREE_NAME
+   # sweep: for each remaining non-root worktree whose branch is merged into the base, remove it too
+   git worktree remove --force .worktrees/OTHER_FINISHED_WORKTREE
    ```
 
-   If git refuses because of leftover state and you are certain it is disposable, confirm with the user before using `--force`.
-
-3. Prune stale administrative entries:
+3. Prune stale administrative entries and confirm only the canonical root (plus any intentionally-kept worktree) remains:
 
    ```bash
    git worktree prune
+   git worktree list
    ```
 
-If `gh pr merge --delete-branch` was used, the branch is already gone remotely; removing the worktree only cleans up local state. If you are unsure whether the worktree is still needed, ask the user instead of removing it.
+If `gh pr merge --delete-branch` was used, the branch is already gone remotely; removing the worktree only cleans up local state. Report each worktree removed (and any deliberately kept, with the reason) in the final summary.
 
 ### 12. Final summary
 
@@ -297,5 +304,5 @@ Report:
 - Railway project/environment/service/deployment status,
 - GitHub issues closed or left open,
 - Linear issues updated or left open,
-- whether the worktree was removed or kept (and why),
+- which worktrees were removed, and any deliberately kept (with the reason),
 - any remaining blockers or manual follow-up.
