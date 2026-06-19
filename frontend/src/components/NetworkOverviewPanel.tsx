@@ -43,20 +43,24 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
     userName: string;
   }[]>([]);
   const [intentsLoading, setIntentsLoading] = useState(true);
+  const [premises, setPremises] = useState<{ id: string; text: string; summary: string | null; createdAt: string }[]>([]);
+  const [userContext, setUserContext] = useState<{ text: string; generatedAt: string } | null>(null);
 
-  // Load intents when component mounts
+  // Load the full network overview (intents, premises, user_context) when component mounts
   useEffect(() => {
-    const loadIntents = async () => {
+    const loadOverview = async () => {
       try {
-        const myIntents = await indexesService.getMyIndexIntents(index.id);
-        setIntents(myIntents);
+        const overview = await indexesService.getNetworkOverview(index.id);
+        setIntents(overview.intents);
+        setPremises(overview.premises);
+        setUserContext(overview.userContext);
       } catch (err) {
-        console.error('Error loading intents:', err);
+        console.error('Error loading network overview:', err);
       } finally {
         setIntentsLoading(false);
       }
     };
-    loadIntents();
+    loadOverview();
   }, [index.id, indexesService]);
 
   const handleLeaveNetwork = async () => {
@@ -97,6 +101,45 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
             emptyMessage="You haven't shared any intents in this network yet"
           />
         </div>
+
+        {/* My Premises */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+              My Premises
+            </p>
+            {!intentsLoading && (
+              <span className="text-xs text-gray-400">{premises.length} premise{premises.length !== 1 ? 's' : ''}</span>
+            )}
+          </div>
+          {intentsLoading ? null : premises.length === 0 ? (
+            <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
+              <p>No premises assigned to this network yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {premises.map((p) => (
+                <div key={p.id} className="p-4 rounded-lg border border-gray-200 bg-white">
+                  <p className="text-sm text-gray-900 leading-relaxed">
+                    {(p.summary && p.summary.trim().length > 0 ? p.summary : p.text).trim()}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Your Context */}
+        {userContext && userContext.text.trim().length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
+              Your Context
+            </p>
+            <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{userContext.text}</p>
+            </div>
+          </div>
+        )}
 
       </div>
 

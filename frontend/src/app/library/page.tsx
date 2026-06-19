@@ -23,6 +23,12 @@ type LibrarySourceIntent = {
   sourceValue: string | null;
   sourceMeta: string | null;
   networks?: { id: string; title: string }[];
+  status?: string;
+};
+
+type IntentListResponse = {
+  intents?: LibrarySourceIntent[];
+  pagination?: { current: number; total: number; count: number; totalCount: number };
 };
 
 type FileItem = {
@@ -81,6 +87,7 @@ export default function LibraryPage() {
 
   // Data states
   const [intents, setIntents] = useState<LibrarySourceIntent[]>([]);
+  const [intentTotal, setIntentTotal] = useState(0);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [links, setLinks] = useState<LinkItem[]>([]);
 
@@ -100,8 +107,19 @@ export default function LibraryPage() {
   const loadIntents = useCallback(async () => {
     try {
       setLoadingIntents(true);
-      const res = await api.post<{ intents?: LibrarySourceIntent[] }>('/intents/list', { page: 1, limit: 100 });
-      setIntents((res.intents ?? []).map(i => ({
+      const all: LibrarySourceIntent[] = [];
+      let page = 1;
+      let totalCount = 0;
+      let totalPages = 1;
+      const MAX_PAGES = 50; // safety cap (50 * 100 = 5000 intents)
+      do {
+        const res = await api.post<IntentListResponse>('/intents/list', { page, limit: 100 });
+        all.push(...(res.intents ?? []));
+        totalCount = res.pagination?.totalCount ?? all.length;
+        totalPages = res.pagination?.total ?? 1;
+        page += 1;
+      } while (page <= totalPages && page <= MAX_PAGES);
+      setIntents(all.map(i => ({
         ...i,
         sourceType: i.sourceType ?? 'file',
         sourceId: i.sourceId ?? '',
@@ -109,8 +127,10 @@ export default function LibraryPage() {
         sourceValue: i.sourceValue ?? null,
         sourceMeta: i.sourceMeta ?? null,
       })));
+      setIntentTotal(totalCount);
     } catch {
       setIntents([]);
+      setIntentTotal(0);
     } finally {
       setLoadingIntents(false);
     }
@@ -220,8 +240,8 @@ export default function LibraryPage() {
               className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
             >
               Intents
-              {intents.length > 0 && (
-                <span className="ml-2 text-xs text-gray-500">({intents.length})</span>
+              {intentTotal > 0 && (
+                <span className="ml-2 text-xs text-gray-500">({intentTotal})</span>
               )}
             </Tabs.Trigger>
             <Tabs.Trigger 
