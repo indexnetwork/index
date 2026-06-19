@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
     clearJwtToken: vi.fn(),
     signOut: vi.fn(),
     useSession: vi.fn(),
+    authModal: vi.fn(),
   };
 });
 
@@ -39,7 +40,10 @@ vi.mock('@/services/auth', () => ({
 }));
 
 vi.mock('@/components/AuthModal', () => ({
-  default: () => null,
+  default: (props: { isOpen: boolean; callbackURL?: string }) => {
+    mocks.authModal(props);
+    return null;
+  },
 }));
 
 function incompleteUser() {
@@ -96,5 +100,23 @@ describe('AuthProvider onboarding routing', () => {
 
     expect(await screen.findByTestId('location')).toHaveTextContent('/');
     expect(mocks.apiClient.get).not.toHaveBeenCalled();
+  });
+
+  test('opens the login modal with a preserved callbackURL when an unauthenticated user hits a protected deep link', async () => {
+    mocks.useSession.mockReturnValue({ data: null, isPending: false });
+
+    // A negotiation-trace deep link from the daily digest, opened while logged out.
+    renderAuthProviderAt('/chat/abc-123');
+
+    // The user is bounced to home, but the login modal is opened so that after
+    // authenticating Better Auth redirects them back to the captured URL
+    // (real browser URL via createBrowserRouter; jsdom reports the origin).
+    expect(await screen.findByTestId('location')).toHaveTextContent('/');
+    const lastCall = mocks.authModal.mock.calls.at(-1)?.[0] as
+      | { isOpen: boolean; callbackURL?: string }
+      | undefined;
+    expect(lastCall?.isOpen).toBe(true);
+    expect(typeof lastCall?.callbackURL).toBe('string');
+    expect(lastCall?.callbackURL).toBeTruthy();
   });
 });
