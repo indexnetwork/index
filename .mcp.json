@@ -26,6 +26,13 @@
       "type": "http",
       "url": "https://mcp.context7.com/mcp"
     },
+    "index-main": {
+      "url": "https://protocol.index.network/mcp",
+      "auth": "oauth",
+      "oauth": {
+        "clientName": "Pi Index Network Main"
+      }
+    },
     "index-dev": {
       "url": "https://protocol.dev.index.network/mcp",
       "auth": "oauth",
