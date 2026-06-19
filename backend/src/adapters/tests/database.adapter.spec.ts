@@ -1600,3 +1600,31 @@ describe('HydeDatabaseAdapter – deleteExpired and getStale', () => {
   });
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Intent predicate parity (EDG-53)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('Intent predicate parity (EDG-53)', () => {
+  const intentAdapter = new IntentDatabaseAdapter();
+  const chatAdapter = new ChatDatabaseAdapter();
+
+  it('getActiveIntents agrees across REST and MCP adapters', async () => {
+    const rest = await intentAdapter.getActiveIntents(fixture.userAId);
+    const mcp = await chatAdapter.getActiveIntents(fixture.userAId);
+    expect(mcp.length).toBe(rest.length);
+    expect(new Set(mcp.map((i) => i.id))).toEqual(new Set(rest.map((i) => i.id)));
+  });
+
+  it('getActiveIntentsAcrossIndexes agrees across REST and MCP adapters', async () => {
+    const rest = await intentAdapter.getActiveIntentsAcrossIndexes(fixture.userAId, [fixture.networkId]);
+    const mcp = await chatAdapter.getActiveIntentsAcrossIndexes(fixture.userAId, [fixture.networkId]);
+    expect(mcp.length).toBe(rest.length);
+    expect(new Set(mcp.map((i) => i.id))).toEqual(new Set(rest.map((i) => i.id)));
+  });
+
+  it('listIntents total equals unscoped getActiveIntents count', async () => {
+    const active = await intentAdapter.getActiveIntents(fixture.userAId);
+    const { total } = await intentAdapter.listIntents(fixture.userAId, { page: 1, limit: 100, archived: false });
+    expect(total).toBe(active.length);
+  });
+});

@@ -372,6 +372,26 @@ export class NetworkService {
   }
 
   /**
+   * Compose the /networks overview payload for the current member: their intents
+   * in the network, their ACTIVE premises assigned to it, and their per-network
+   * user_context. Members only — getMyIntentsInNetwork throws if not a member.
+   * See EDG-53.
+   */
+  async getNetworkOverview(networkId: string, userId: string) {
+    logger.verbose('[NetworkService] Getting network overview', { networkId, userId });
+    const [intents, premises, userContext] = await Promise.all([
+      this.getMyIntentsInNetwork(networkId, userId),
+      this.adapter.getNetworkPremisesForMember(networkId, userId),
+      this.adapter.getUserContext(userId, networkId),
+    ]);
+    return {
+      intents,
+      premises,
+      userContext: userContext ? { text: userContext.text, generatedAt: userContext.generatedAt } : null,
+    };
+  }
+
+  /**
    * Resolve an index identifier (UUID or key) to a UUID.
    * @param idOrKey - UUID or human-readable key
    * @returns The index UUID, or null if not found

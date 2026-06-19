@@ -882,6 +882,28 @@ export class NetworkController {
   }
 
   /**
+   * Get the current user's overview for a network: their intents, premises, and
+   * per-network user_context. Members only.
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Get('/:id/overview')
+  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  async getOverview(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      const overview = await networkService.getNetworkOverview(params.id, user.id);
+      logger.verbose('Network overview retrieved', { networkId: params.id, userId: user.id, intents: overview.intents.length, premises: overview.premises.length });
+      return Response.json(overview);
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied') || msg.includes('Not a member')) {
+        return Response.json({ error: msg }, { status: 403 });
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Leave a network. Members (non-owners) can leave.
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */

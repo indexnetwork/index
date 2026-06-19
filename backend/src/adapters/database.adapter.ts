@@ -287,6 +287,44 @@ function toHydeDocument(row: typeof hydeDocuments.$inferSelect): HydeDocumentRow
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * Canonical "active own intents" WHERE predicate: a row the user owns that has
+ * not been archived. No status filter — `intents.status` is vestigial (selected
+ * but never filtered). Both the REST (IntentDatabaseAdapter) and MCP
+ * (ChatDatabaseAdapter) surfaces route through this so their counts cannot
+ * drift between them. See EDG-53.
+ */
+function activeOwnIntentsWhere(userId: string) {
+  return and(
+    eq(schema.intents.userId, userId),
+    isNull(schema.intents.archivedAt),
+  );
+}
+
+/**
+ * Canonical predicate for the paginated own-intents list: ownership + an
+ * archived toggle (archived rows when `archived` is true, active rows
+ * otherwise) + an optional sourceType narrow. Shares the ownership/active spine
+ * with {@link activeOwnIntentsWhere} so list `count()` totals and graph reads
+ * agree for the same identity. See EDG-53.
+ */
+function ownIntentsListWhere(
+  userId: string,
+  options: { archived: boolean; sourceType?: string },
+) {
+  const conditions = [
+    eq(schema.intents.userId, userId),
+    options.archived
+      ? isNotNull(schema.intents.archivedAt)
+      : isNull(schema.intents.archivedAt),
+  ];
+  const validSourceTypes: SourceType[] = ['file', 'integration', 'link', 'discovery_form', 'enrichment'];
+  if (options.sourceType && validSourceTypes.includes(options.sourceType as SourceType)) {
+    conditions.push(eq(schema.intents.sourceType, options.sourceType as SourceType));
+  }
+  return and(...conditions);
+}
+
+/**
  * Database adapter for intent CRUD (Intent Graph).
  */
 export class IntentDatabaseAdapter {
@@ -316,12 +354,7 @@ export class IntentDatabaseAdapter {
         createdAt: schema.intents.createdAt,
       })
         .from(schema.intents)
-        .where(
-          and(
-            eq(schema.intents.userId, userId),
-            isNull(schema.intents.archivedAt)
-          )
-        )
+        .where(activeOwnIntentsWhere(userId))
         .orderBy(desc(schema.intents.createdAt));
       return result;
     } catch (error: unknown) {
@@ -516,17 +549,7 @@ export class IntentDatabaseAdapter {
     sourceType?: string;
   }): Promise<{ rows: IntentListRow[]; total: number }> {
     const offset = (options.page - 1) * options.limit;
-    const conditions = [eq(schema.intents.userId, userId)];
-    if (options.archived) {
-      conditions.push(isNotNull(schema.intents.archivedAt));
-    } else {
-      conditions.push(isNull(schema.intents.archivedAt));
-    }
-    const validSourceTypes: SourceType[] = ['file', 'integration', 'link', 'discovery_form', 'enrichment'];
-    if (options.sourceType && validSourceTypes.includes(options.sourceType as SourceType)) {
-      conditions.push(eq(schema.intents.sourceType, options.sourceType as SourceType));
-    }
-    const where = and(...conditions);
+    const where = ownIntentsListWhere(userId, { archived: options.archived, sourceType: options.sourceType });
 
     const [rows, totalResult] = await Promise.all([
       db.select({
@@ -829,8 +852,7 @@ export class IntentDatabaseAdapter {
         .innerJoin(schema.intentNetworks, eq(schema.intentNetworks.intentId, schema.intents.id))
         .where(
           and(
-            eq(schema.intents.userId, userId),
-            isNull(schema.intents.archivedAt),
+            activeOwnIntentsWhere(userId),
             inArray(schema.intentNetworks.networkId, indexIds),
           ),
         )
@@ -999,12 +1021,7 @@ export class ChatDatabaseAdapter {
         createdAt: schema.intents.createdAt,
       })
         .from(schema.intents)
-        .where(
-          and(
-            eq(schema.intents.userId, userId),
-            isNull(schema.intents.archivedAt)
-          )
-        )
+        .where(activeOwnIntentsWhere(userId))
         .orderBy(desc(schema.intents.createdAt));
       return result;
     } catch (error: unknown) {
@@ -2235,6 +2252,46 @@ export class ChatDatabaseAdapter {
     }));
   }
 
+  /**
+   * List the current member's ACTIVE premises assigned to a network, for the
+   * /networks overview tab. Unlike getPremisesForUserInNetworks (tuned for
+   * similarity search — embedding-gated, capped at 40), this is an honest
+   * list+count: no embedding gate, no limit. Soft-deleted premises excluded.
+   * Current-user scoped. See EDG-53.
+   */
+  async getNetworkPremisesForMember(networkId: string, userId: string): Promise<Array<{
+    id: string;
+    text: string;
+    summary: string | null;
+    createdAt: Date;
+  }>> {
+    const rows = await db
+      .select({
+        id: schema.premises.id,
+        assertion: schema.premises.assertion,
+        createdAt: schema.premises.createdAt,
+      })
+      .from(schema.premiseNetworks)
+      .innerJoin(schema.premises, eq(schema.premiseNetworks.premiseId, schema.premises.id))
+      .where(and(
+        eq(schema.premiseNetworks.networkId, networkId),
+        eq(schema.premises.userId, userId),
+        eq(schema.premises.status, 'ACTIVE'),
+        isNull(schema.premises.deletedAt),
+      ))
+      .orderBy(desc(schema.premises.createdAt));
+
+    return rows.map((r) => {
+      const assertion = r.assertion as { text?: string; summary?: string } | null;
+      return {
+        id: r.id,
+        text: assertion?.text ?? '',
+        summary: assertion?.summary ?? null,
+        createdAt: r.createdAt,
+      };
+    });
+  }
+
   async getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]) {
     try {
       if (indexIds.length === 0) return [];
@@ -2250,8 +2307,7 @@ export class ChatDatabaseAdapter {
         .innerJoin(intentNetworks, eq(intentNetworks.intentId, intents.id))
         .where(
           and(
-            eq(intents.userId, userId),
-            isNull(intents.archivedAt),
+            activeOwnIntentsWhere(userId),
             inArray(intentNetworks.networkId, indexIds),
           ),
         )
