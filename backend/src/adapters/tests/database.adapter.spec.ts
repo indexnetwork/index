@@ -10,7 +10,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
-import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, opportunities } from '../../schemas/database.schema';
+import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, premiseNetworks, opportunities } from '../../schemas/database.schema';
 import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
@@ -1626,5 +1626,77 @@ describe('Intent predicate parity (EDG-53)', () => {
     const active = await intentAdapter.getActiveIntents(fixture.userAId);
     const { total } = await intentAdapter.listIntents(fixture.userAId, { page: 1, limit: 100, archived: false });
     expect(total).toBe(active.length);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Network overview reads: honest, user-scoped premise + intent lists (EDG-53)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('Network overview member reads (EDG-53)', () => {
+  const chatAdapter = new ChatDatabaseAdapter();
+  const activePremiseId = uuidv4();
+  const retractedPremiseId = uuidv4();
+  const deletedPremiseId = uuidv4();
+  const userBPremiseId = uuidv4();
+  const ownIntentId = uuidv4();
+  const otherMemberIntentId = uuidv4();
+
+  const assertion = (text: string, summary?: string) => ({ text, tier: 'assertive' as const, summary });
+  const provenance = { source: 'explicit' as const, confidence: 0.9, timestamp: new Date().toISOString() };
+  const validity = { volatile: false };
+
+  beforeAll(async () => {
+    await db.insert(premises).values([
+      { id: activePremiseId, userId: fixture.userAId, assertion: assertion('Active premise', 'Active summary'), provenance, validity, status: 'ACTIVE' },
+      { id: retractedPremiseId, userId: fixture.userAId, assertion: assertion('Retracted premise'), provenance, validity, status: 'RETRACTED' },
+      { id: deletedPremiseId, userId: fixture.userAId, assertion: assertion('Deleted premise'), provenance, validity, status: 'ACTIVE', deletedAt: new Date() },
+      { id: userBPremiseId, userId: fixture.userBId, assertion: assertion('UserB premise'), provenance, validity, status: 'ACTIVE' },
+    ]);
+    await db.insert(premiseNetworks).values([
+      { premiseId: activePremiseId, networkId: fixture.networkId },
+      { premiseId: retractedPremiseId, networkId: fixture.networkId },
+      { premiseId: deletedPremiseId, networkId: fixture.networkId },
+      { premiseId: userBPremiseId, networkId: fixture.networkId },
+    ]);
+    await db.insert(intents).values([
+      { id: ownIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'Own intent 2', summary: 'S', sourceType: 'discovery_form', sourceId: fixture.userAId },
+      { id: otherMemberIntentId, userId: fixture.userBId, payload: TEST_PREFIX + 'Other member intent', summary: 'S', sourceType: 'discovery_form', sourceId: fixture.userBId },
+    ]);
+    await db.insert(intentNetworks).values([
+      { intentId: ownIntentId, networkId: fixture.networkId },
+      { intentId: otherMemberIntentId, networkId: fixture.networkId },
+    ]);
+  });
+
+  afterAll(async () => {
+    await db.delete(premiseNetworks).where(eq(premiseNetworks.networkId, fixture.networkId));
+    await db.delete(premises).where(inArray(premises.id, [activePremiseId, retractedPremiseId, deletedPremiseId, userBPremiseId]));
+    await db.delete(intentNetworks).where(inArray(intentNetworks.intentId, [ownIntentId, otherMemberIntentId]));
+    await db.delete(intents).where(inArray(intents.id, [ownIntentId, otherMemberIntentId]));
+  });
+
+  it('getNetworkPremisesForMember returns only the member ACTIVE, non-deleted premises', async () => {
+    const ids = new Set((await chatAdapter.getNetworkPremisesForMember(fixture.networkId, fixture.userAId)).map((r) => r.id));
+    expect(ids.has(activePremiseId)).toBe(true);
+    expect(ids.has(retractedPremiseId)).toBe(false); // non-ACTIVE excluded
+    expect(ids.has(deletedPremiseId)).toBe(false);    // soft-deleted excluded
+    expect(ids.has(userBPremiseId)).toBe(false);      // other member excluded
+  });
+
+  it('getNetworkPremisesForMember maps assertion.text/summary', async () => {
+    const rows = await chatAdapter.getNetworkPremisesForMember(fixture.networkId, fixture.userAId);
+    const active = rows.find((r) => r.id === activePremiseId)!;
+    expect(active.text).toBe('Active premise');
+    expect(active.summary).toBe('Active summary');
+  });
+
+  it('getNetworkIntentsForMemberOwn returns only the caller own active intents, never other members', async () => {
+    const rows = await chatAdapter.getNetworkIntentsForMemberOwn(fixture.networkId, fixture.userAId);
+    const ids = new Set(rows.map((r) => r.id));
+    expect(ids.has(fixture.intent1Id)).toBe(true);     // userA's original intent
+    expect(ids.has(ownIntentId)).toBe(true);            // userA's second intent
+    expect(ids.has(otherMemberIntentId)).toBe(false);   // userB's intent excluded
+    expect(rows.every((r) => r.userId === fixture.userAId)).toBe(true);
   });
 });

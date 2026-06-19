@@ -2292,6 +2292,51 @@ export class ChatDatabaseAdapter {
     });
   }
 
+  /**
+   * List the current member's ACTIVE (non-archived) intents assigned to a
+   * network, for the /networks overview tab. Unlike getNetworkIntentsForMember
+   * (network-wide, capped at 50, then filtered by the caller in JS, so a member
+   * in a busy network can lose their own intents past the cap), this is an
+   * honest user-scoped list+count: scoped to the caller in SQL via the canonical
+   * {@link activeOwnIntentsWhere} predicate, no limit. Does not assert
+   * membership; callers gate access. See EDG-53.
+   */
+  async getNetworkIntentsForMemberOwn(networkId: string, userId: string): Promise<Array<{
+    id: string;
+    payload: string;
+    summary: string | null;
+    userId: string;
+    userName: string | null;
+    createdAt: Date;
+  }>> {
+    const rows = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        userId: intents.userId,
+        userName: users.name,
+        createdAt: intents.createdAt,
+      })
+      .from(intentNetworks)
+      .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
+      .innerJoin(users, eq(intents.userId, users.id))
+      .where(and(
+        eq(intentNetworks.networkId, networkId),
+        activeOwnIntentsWhere(userId),
+      ))
+      .orderBy(desc(intents.createdAt));
+
+    return rows.map((r) => ({
+      id: r.id,
+      payload: r.payload,
+      summary: r.summary,
+      userId: r.userId,
+      userName: r.userName,
+      createdAt: r.createdAt,
+    }));
+  }
+
   async getActiveIntentsAcrossIndexes(userId: string, indexIds: string[]) {
     try {
       if (indexIds.length === 0) return [];

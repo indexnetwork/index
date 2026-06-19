@@ -107,18 +107,24 @@ export default function LibraryPage() {
   const loadIntents = useCallback(async () => {
     try {
       setLoadingIntents(true);
-      const all: LibrarySourceIntent[] = [];
-      let page = 1;
-      let totalCount = 0;
-      let totalPages = 1;
       const MAX_PAGES = 50; // safety cap (50 * 100 = 5000 intents)
-      do {
-        const res = await api.post<IntentListResponse>('/intents/list', { page, limit: 100 });
-        all.push(...(res.intents ?? []));
-        totalCount = res.pagination?.totalCount ?? all.length;
-        totalPages = res.pagination?.total ?? 1;
-        page += 1;
-      } while (page <= totalPages && page <= MAX_PAGES);
+      // Fetch page 1 to learn the totals, then fetch the rest in parallel.
+      const first = await api.post<IntentListResponse>('/intents/list', { page: 1, limit: 100 });
+      const totalCount = first.pagination?.totalCount ?? (first.intents?.length ?? 0);
+      const totalPages = Math.min(first.pagination?.total ?? 1, MAX_PAGES);
+      const all: LibrarySourceIntent[] = [...(first.intents ?? [])];
+      if (totalPages > 1) {
+        // A single failed page degrades to fewer rendered intents rather than
+        // wiping the whole list (the badge still shows the true totalCount).
+        const rest = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, i) =>
+            api.post<IntentListResponse>('/intents/list', { page: i + 2, limit: 100 })
+              .then(res => res.intents ?? [])
+              .catch(() => [] as LibrarySourceIntent[]),
+          ),
+        );
+        for (const pageIntents of rest) all.push(...pageIntents);
+      }
       setIntents(all.map(i => ({
         ...i,
         sourceType: i.sourceType ?? 'file',

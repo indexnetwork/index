@@ -298,27 +298,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     };
   },
 
-  // Member Intents Management
-  // Get current user's intents in a network
-  getMyIndexIntents: async (networkId: string): Promise<Array<{
-    id: string;
-    payload: string;
-    summary?: string | null;
-    createdAt: string;
-    userId: string;
-    userName: string;
-  }>> => {
-    const response = await api.get<{ intents: Array<{
-      id: string;
-      payload: string;
-      summary?: string | null;
-      createdAt: string;
-      userId: string;
-      userName: string;
-    }> }>(`/networks/${networkId}/my-intents`);
-    return response.intents || [];
-  },
-
   // Get current user's overview for a network: intents, premises, user_context (EDG-53)
   getNetworkOverview: async (networkId: string): Promise<{
     intents: Array<{ id: string; payload: string; summary?: string | null; createdAt: string; userId: string; userName: string }>;
