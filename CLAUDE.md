@@ -43,7 +43,6 @@ bun run maintenance:trigger-integration     # Manually trigger integration sync
 bun run maintenance:export-slack            # Export Slack data
 bun run maintenance:import-slack-export     # Import Slack export files
 bun run maintenance:reset-brokers           # Reset context brokers
-bun run maintenance:update:embeddings       # Regenerate embeddings
 bun run maintenance:backfill-premises       # Backfill: enqueue enrichment for users in a network
 bun run maintenance:backfill-context-hyde   # Backfill: generate HyDE docs for user contexts
 bun run maintenance:backfill-global-user-contexts # Backfill: generate the global user_context (networkId=null) for every user, synthesized from active premises

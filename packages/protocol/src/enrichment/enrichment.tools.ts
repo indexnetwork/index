@@ -813,16 +813,28 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       const isOnboarding = !(context.user.onboarding?.completedAt);
       if (isOnboarding) {
-        const existingProfile = await userDb.getProfile();
-        if (existingProfile) {
+        // "Already enriched?" must key on a real enrichment signal, not getProfile():
+        // post-WS11 getProfile() returns a presentation row for EVERY existing user, so
+        // it would always short-circuit onboarding and refuse to enrich. The global
+        // user_context is the canonical signal (non-empty <=> the user has premises /
+        // has been enriched), mirroring findWithGraph's `hasProfile`.
+        const existingContext = getUserContextText
+          ? (await getUserContextText(context.userId)).trim()
+          : '';
+        if (existingContext) {
+          const existingProfile = await userDb.getProfile();
           return success({
             alreadyExists: true,
             message: "Profile already exists. If the user confirmed it, call complete_onboarding() to finish setup. If they want changes, use create_user_context(bioOrDescription=\"...\", confirm=true).",
-            profile: {
-              name: existingProfile.identity.name,
-              bio: existingProfile.identity.bio,
-              location: existingProfile.identity.location,
-            },
+            ...(existingProfile
+              ? {
+                  profile: {
+                    name: existingProfile.identity.name,
+                    bio: existingProfile.identity.bio,
+                    location: existingProfile.identity.location,
+                  },
+                }
+              : {}),
           });
         }
 

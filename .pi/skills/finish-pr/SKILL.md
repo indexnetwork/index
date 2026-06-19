@@ -39,6 +39,7 @@ Use other rpiv skills when they fit the situation:
 - `code-review`: use for an independent final review when the diff is large, risky, or has had multiple review rounds.
 - `changelog`: use if the PR changes a released package or the user wants release notes updated before merge.
 - `commit`: use if local finishing changes are needed and should be committed before push.
+- `release-prod-safety`: use when the PR is a dev→main RELEASE. Apply its two checks — confirm the root `bun.lock` is in sync (a stale lockfile fails the prod build under `--frozen-lockfile` even when dev/CI are green), and run the destructive-migration data-preservation pre-flight before merge (a `DROP` runs no backfill; auto-`db:migrate` leaves no window after).
 
 Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
 
