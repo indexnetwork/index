@@ -1,3 +1,4 @@
+# Touch to trigger a Railway dev redeploy (no functional change).
 [build]
 watchPatterns = ["/backend/**", "/packages/protocol/**", "/bun.lock", "/package.json", "/railway.toml"]
 buildCommand = "bun run build:package:protocol && bun run build:backend"
