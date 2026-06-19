@@ -226,12 +226,20 @@ async function discoverIntroduction(
 
   const extractProfile = (result: { success: boolean; data?: Record<string, unknown> }) => {
     if (!result.success || !result.data) return undefined;
-    // Single-user profile response has a profile object at top level or nested
     const d = result.data as Record<string, unknown>;
+    // Legacy nested single-user shape (pre-WS11 protocol): { profile: {...} }.
     if (d.profile) return d.profile as Record<string, unknown>;
-    // Multi-profile response (from query mode) — take first
-    const profiles = d.profiles as Array<{ profile?: Record<string, unknown> }> | undefined;
-    return profiles?.[0]?.profile;
+    // Multi-profile response (query mode) — take first; entries may be flat or nested.
+    const profiles = d.profiles as Array<Record<string, unknown>> | undefined;
+    if (profiles?.length) {
+      const first = profiles[0];
+      return (first.profile as Record<string, unknown> | undefined) ?? first;
+    }
+    // Flat single-user identity shape (WS11+ protocol): { id, name, bio, location, context }.
+    if (typeof d.name === "string" || typeof d.context === "string") {
+      return { name: d.name, bio: d.bio, location: d.location, context: d.context };
+    }
+    return undefined;
   };
 
   const extractIntents = (result: { success: boolean; data?: Record<string, unknown> }) => {
