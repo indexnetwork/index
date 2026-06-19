@@ -298,25 +298,22 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     };
   },
 
-  // Member Intents Management
-  // Get current user's intents in a network
-  getMyIndexIntents: async (networkId: string): Promise<Array<{
-    id: string;
-    payload: string;
-    summary?: string | null;
-    createdAt: string;
-    userId: string;
-    userName: string;
-  }>> => {
-    const response = await api.get<{ intents: Array<{
-      id: string;
-      payload: string;
-      summary?: string | null;
-      createdAt: string;
-      userId: string;
-      userName: string;
-    }> }>(`/networks/${networkId}/my-intents`);
-    return response.intents || [];
+  // Get current user's overview for a network: intents, premises, user_context (EDG-53)
+  getNetworkOverview: async (networkId: string): Promise<{
+    intents: Array<{ id: string; payload: string; summary?: string | null; createdAt: string; userId: string; userName: string }>;
+    premises: Array<{ id: string; text: string; summary: string | null; createdAt: string }>;
+    userContext: { text: string; generatedAt: string } | null;
+  }> => {
+    const response = await api.get<{
+      intents: Array<{ id: string; payload: string; summary?: string | null; createdAt: string; userId: string; userName: string }>;
+      premises: Array<{ id: string; text: string; summary: string | null; createdAt: string }>;
+      userContext: { text: string; generatedAt: string } | null;
+    }>(`/networks/${networkId}/overview`);
+    return {
+      intents: response.intents || [],
+      premises: response.premises || [],
+      userContext: response.userContext ?? null,
+    };
   },
 
   // Remove member intent from network (deprecated - kept for backwards compatibility)
