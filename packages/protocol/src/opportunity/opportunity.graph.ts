@@ -532,7 +532,7 @@ export class OpportunityGraphFactory {
             const inTarget = inNetwork.some((id) => targetIndexIds.includes(id as Id<'networks'>));
             resolvedIntentId = state.triggerIntentId;
             const resolvedIntentInIndex = inTarget;
-            const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('profile' as const);
+            const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('context' as const);
             return {
               resolvedTriggerIntentId: resolvedIntentId,
               resolvedIntentInIndex,
@@ -547,7 +547,7 @@ export class OpportunityGraphFactory {
               resolvedIntentId = matched.intentId;
               const inNetwork = await this.database.getNetworkIdsForIntent(matched.intentId);
               const resolvedIntentInIndex = inNetwork.some((id) => targetIndexIds.includes(id as Id<'networks'>));
-              const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('profile' as const);
+              const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('context' as const);
               return {
                 resolvedTriggerIntentId: resolvedIntentId,
                 resolvedIntentInIndex,
@@ -563,7 +563,7 @@ export class OpportunityGraphFactory {
           return {
             resolvedTriggerIntentId: undefined,
             resolvedIntentInIndex: false,
-            discoverySource: 'profile' as const,
+            discoverySource: 'context' as const,
           };
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -575,7 +575,7 @@ export class OpportunityGraphFactory {
           return {
             resolvedTriggerIntentId: undefined,
             resolvedIntentInIndex: false,
-            discoverySource: 'profile' as const,
+            discoverySource: 'context' as const,
             error: errMsg || 'Resolve failed',
             trace: [{
               node: "resolve_fatal",
@@ -740,10 +740,10 @@ export class OpportunityGraphFactory {
           // Similarity threshold for recall (0.30 = 30% similarity)
           const minScore = 0.3;
 
-          if (state.discoverySource === 'profile') {
-            // Profile-context discovery: HyDE (when search query exists) + premise-to-premise.
+          if (state.discoverySource === 'context') {
+            // Context discovery: HyDE (when search query exists) + premise-to-premise.
             if (state.searchQuery?.trim()) {
-              logger.verbose('[Graph:Discovery] Profile source with searchQuery → running query HyDE + premise paths', {
+              logger.verbose('[Graph:Discovery] Context source with searchQuery → running query HyDE + premise paths', {
                 searchQuery: state.searchQuery.trim().substring(0, 80),
               });
               const queryCandidates = await runQueryHydeDiscovery();
