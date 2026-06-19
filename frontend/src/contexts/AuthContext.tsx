@@ -138,6 +138,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const shouldRedirectToHome = !authenticated && (isProtectedPage || (!isHomePage && !isPublicPage));
 
     if (shouldRedirectToHome) {
+      // Preserve the destination so the user returns to it after authenticating,
+      // instead of being stranded on the home page. This makes protected deep
+      // links work when opened while logged out — e.g. the negotiation-trace
+      // link (`/chat/:conversationId`) surfaced in the daily digest. The
+      // captured URL is forwarded to Better Auth as `callbackURL`, mirroring the
+      // public `/u/:id/chat` page's `openLoginModal(window.location.href)` flow.
+      if (typeof window !== 'undefined') {
+        // Guarded one-shot: we open the modal and immediately redirect+return, so
+        // this does not cascade renders despite the set-state-in-effect lint.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        openLoginModal(window.location.href);
+      }
       navigate('/');
       return;
     }
@@ -149,7 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setIsLoading(false);
-  }, [authenticated, ready, navigate, pathname, user, userLoading, userFetchAttempted]);
+  }, [authenticated, ready, navigate, pathname, user, userLoading, userFetchAttempted, openLoginModal]);
 
   return (
     <AuthContext.Provider

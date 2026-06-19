@@ -398,7 +398,7 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
     // *because* the negotiation happened. Trailing the block lets weaker
     // models lean on surface signals and ignore the transcript entirely.
     const negotiationDirective = negotiationBlock
-      ? `\nIMPORTANT: This opportunity surfaced because the agents negotiated and converged. Your personalizedSummary MUST reference at least one specific signal from the NEGOTIATION CONTEXT block below — what concern was raised, what was confirmed, what the agents agreed on. Do not produce a generic skill-complementarity summary; that's what every card looked like before this negotiation happened. Use the transcript to explain *why this specific match* surfaced now.\n`
+      ? `\nIMPORTANT: This opportunity surfaced because the agents negotiated and converged. Both your personalizedSummary AND your digestSummary MUST reference at least one specific signal from the NEGOTIATION CONTEXT block below — what concern was raised, what was confirmed, what the agents agreed on. The digestSummary is the one-line morning-brief sentence a user reads before deciding to act, so it must communicate *why this specific match* surfaced now (the negotiation that led to it), not a generic skill-complementarity line. Do not produce the generic summary every card looked like before this negotiation happened.\n`
       : "";
     const humanContent = `
 ${negotiationBlock}${negotiationDirective}

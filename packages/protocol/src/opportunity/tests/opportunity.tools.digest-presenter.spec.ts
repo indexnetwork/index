@@ -81,6 +81,20 @@ const getOppsForUser = mock(async (_userId: string, filter?: { statuses?: string
 let getUser = mock(async () => ({ id: testUserId, name: 'Test User' }) as UserRecord | null);
 let getProfile = mock(async () => (null) as UserIdentity | null);
 
+// Negotiation task returned by the negotiation-context loader. Default: no
+// negotiation has happened (loadNegotiationContext returns null), so digest
+// cards carry no negotiationUrl unless a test opts into one.
+type NegotiationTask = {
+  id: string;
+  conversationId: string;
+  state: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+let negotiationTask: NegotiationTask | null = null;
+const getNegotiationTaskForOpportunity = mock(async () => negotiationTask);
+
 const noopGraph = { invoke: async () => ({}) };
 
 function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1]> = {}): ToolDeps {
@@ -113,7 +127,12 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
     contactService: {} as unknown as ToolDeps["contactService"],
     integrationImporter: {} as unknown as ToolDeps["integrationImporter"],
     enricher: {} as unknown as ToolDeps["enricher"],
-    negotiationDatabase: {} as unknown as ToolDeps["negotiationDatabase"],
+    frontendUrl: 'https://index.network',
+    negotiationDatabase: {
+      getNegotiationTaskForOpportunity,
+      getMessagesForConversation: mock(async () => []),
+      getArtifactsForTask: mock(async () => []),
+    } as unknown as ToolDeps["negotiationDatabase"],
     graphs: {
       profile: noopGraph,
       intent: noopGraph,
@@ -162,6 +181,57 @@ describe('list_opportunities digest presenter path', () => {
     expect(presentHomeCardMock).toHaveBeenCalled();
     expect(String(result.data?.message)).toContain('You might like meeting Alice because she matches your current interests.');
     expect(String(result.data?.message)).not.toContain('Test personalized summary');
+  });
+
+  it('emits a negotiationUrl marker and feeds negotiationContext to the presenter when a negotiation exists', async () => {
+    candidateOpps = [makeOpp('opp-neg', 'c-neg', 'pending')];
+    getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);
+    getProfile = mock(async () => ({ identity: { name: 'Carol', bio: '', location: '' }, userId: 'c-neg' }) as unknown as UserIdentity | null);
+    negotiationTask = {
+      id: 'task-neg',
+      conversationId: 'conv-xyz',
+      state: 'completed',
+      metadata: { type: 'negotiation', opportunityId: 'opp-neg', maxTurns: 6 },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    // Capture the presenter input so we can assert negotiationContext threading.
+    presentHomeCardMock = mock(async () => ({
+      headline: 'Test Headline',
+      personalizedSummary: 'Agents agreed you both want to ship privacy tooling.',
+      digestSummary: 'You might like meeting Carol because your agents agreed on shared privacy-tooling goals.',
+      suggestedAction: 'Test action',
+      narratorRemark: 'Test narrator remark',
+      mutualIntentsLabel: undefined,
+      greeting: '',
+    }));
+
+    const deps = makeDeps();
+    const tools = createOpportunityTools(defineTool as unknown as DefineTool, deps);
+    const listTool = tools.find((t: { name: string }) => t.name === 'list_opportunities')!;
+
+    const result = parseResult(
+      await listTool.handler({
+        context: {
+          userId: testUserId,
+          isMcp: true,
+          networkId: undefined,
+          sessionId: undefined,
+          userName: 'Viewer',
+          userNetworks: [],
+        },
+        query: { includeDigestMarkers: true },
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    // EDG-51: digest marker carries the negotiation-trace deep link.
+    expect(String(result.data?.message)).toContain('negotiationUrl: https://index.network/chat/conv-xyz?link_preview=false');
+    // EDG-50: presenter received the negotiation context so digestSummary can be grounded.
+    const lastCall = presentHomeCardMock.mock.calls.at(-1)?.[0] as { negotiationContext?: { conversationId?: string } } | undefined;
+    expect(lastCall?.negotiationContext?.conversationId).toBe('conv-xyz');
+
+    negotiationTask = null;
   });
 
   it('skips digest cards instead of surfacing raw fallback when presenter throws', async () => {
