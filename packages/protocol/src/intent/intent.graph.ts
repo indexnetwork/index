@@ -19,7 +19,7 @@ const MAX_PERMISSIBLE_ENTROPY = 0.75;
 const MIN_CLEAR_INTENT_SCORE = 40;
 const GENERIC_JOB_PHRASE = /\b(?:a|any|some)\s+job\b/i;
 
-const inferRoleFromProfileText = (text: string): string | null => {
+const inferRoleFromContextText = (text: string): string | null => {
   const normalized = text.toLowerCase();
   if (/\b(engineer|developer)\b/.test(normalized)) return "software engineering";
   if (/\b(designer|ux|ui)\b/.test(normalized)) return "product design";
@@ -32,15 +32,16 @@ const inferRoleFromProfileText = (text: string): string | null => {
 
 /**
  * Derive a job-role qualifier from the user's global user_context paragraph
- * (profile-replacing identity text). Role is inferred from the free text; the
- * old structured skills/interests extraction is gone with the profile fields.
+ * (the identity text that replaced the legacy profile projection). Role is
+ * inferred from the free text; the old structured skills/interests extraction
+ * is gone with the removed profile fields.
  */
 const buildJobQualifierFromContext = (contextText: string): string | null => {
-  const roleHint = inferRoleFromProfileText(contextText ?? "");
+  const roleHint = inferRoleFromContextText(contextText ?? "");
   return roleHint ? `${roleHint} role` : null;
 };
 
-const enrichVagueIntentWithProfile = (description: string, userContext: string): string => {
+const enrichVagueIntentWithContext = (description: string, userContext: string): string => {
   const trimmed = description?.trim();
   if (!trimmed) return description;
 
@@ -242,7 +243,7 @@ export class IntentGraphFactory {
                 // Role-hint enrichment for vague job intents reads the global
                 // user_context paragraph instead of the structured profile fields.
                 const roleHintContext = (await this.database.getUserContext(state.userId, null))?.text ?? '';
-                const enrichedDescription = enrichVagueIntentWithProfile(description, roleHintContext);
+                const enrichedDescription = enrichVagueIntentWithContext(description, roleHintContext);
                 if (enrichedDescription !== description) {
                   logger.verbose("Enriched vague intent using profile context", {
                     before: description,

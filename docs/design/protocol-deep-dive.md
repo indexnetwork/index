@@ -8,7 +8,7 @@ updated: 2026-04-11
 
 # Protocol Deep Dive
 
-This document is a standalone, implementation-focused guide to the AI/agent system that powers Index Network's intent-driven discovery protocol. It covers how LangGraph state machines, LLM agents, and chat tools compose into pipelines for intent processing, opportunity discovery, profile generation, and bilateral negotiation.
+This document is a standalone, implementation-focused guide to the AI/agent system that powers Index Network's intent-driven discovery protocol. It covers how LangGraph state machines, LLM agents, and chat tools compose into pipelines for intent processing, opportunity discovery, user enrichment, and bilateral negotiation.
 
 ## 1. Overview
 
@@ -47,7 +47,7 @@ packages/protocol/src/
     membership/       Network membership graph
   opportunity/      Opportunity graph, evaluator, introducer, presenter
     feed/             Home feed graph and health scoring
-  profile/          Profile graph, generator, tools
+  enrichment/       Enrichment graph, generator, tools
   shared/
     agent/            model.config.ts, utility tools
     hyde/             HyDE graph, generator, strategies
@@ -141,28 +141,25 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 **File:** `enrichment/enrichment.graph.ts`
 **Purpose:** Enrich a user from identity data (optional web scraping) and decompose it into premises that drive semantic discovery. The user's presentation identity (name/bio/location) lives on the `users` table and the synthesized representation lives in `user_contexts` — no separate profile document is persisted, and no profile embeddings/HyDE are generated. All semantic discovery uses premises and user contexts.
 **Nodes:** `check_state`, `scrape`, `decompose_premises`, `auto_generate`
-**State:** `ProfileGraphState` (userId, operationMode, input, forceUpdate, profile, needsProfileGeneration, premises, etc.)
+**State:** `EnrichmentGraphState` (userId, operationMode, input, forceUpdate, profile, needsProfileGeneration, activeSocialIds, etc.)
 **Conditional edges:**
-- After `check_state`: routes based on operation mode and whether a profile needs generation
-- After `scrape`: routes to `decompose_premises` (when premise graph is wired) or `generate_profile` (legacy path)
-- After `decompose_premises`: routes to `aggregate_premises`
-- After `aggregate_premises`: routes to `generate_profile` (when `needsProfileGeneration` is set) or `save_profile`
-- After `auto_generate`: routes to `use_prepopulated_profile` (enrichment succeeded) or `generate_profile` (fallback)
-- After `generate_profile` / `use_prepopulated_profile`: routes to `save_profile`
-- `save_profile` is terminal (→ END)
+- After `check_state`: routes to `scrape`, `decompose_premises`, `auto_generate`, or `END` based on operation mode and what (if anything) still needs enrichment
+- After `scrape`: routes to `decompose_premises` (decompose the scraped content into premises) or `END`
+- After `auto_generate`: routes to `decompose_premises` or `END`
+- `decompose_premises` is terminal (→ END): premise creation is the final effect, and the user's representation is the regenerated `user_contexts` — no profile document is persisted
 
 **Key behaviors:**
 - Query mode returns immediately (fast path) without any LLM calls
 - Write mode detects what needs generation and only runs necessary steps
 - If input is a confirmation phrase ("yes", "go ahead"), it is treated as no input so scraping runs
-- Profile updates merge new information with existing profile data
+- Identity updates merge new information with the user's existing identity (name/bio/location on `users`)
 - Onboarding-safe profile tools split consent/draft/confirmation: `record_onboarding_privacy_consent` writes `users.onboarding.privacy`, `preview_user_profile` generates a non-persisted draft from allowed sources, and `confirm_user_profile` saves only approved content.
 - Automatic public enrichment is gated by `networks.permissions.profileEnrichment`: missing/`auto` preserves legacy behavior, `consent_required` requires `privacy.publicProfileLookup.granted === true` and never allows ghosts, and `disabled` blocks public enrichment.
-- `EnrichmentQueue` is the execution-time backstop. It carries `networkId` and `reason`, re-reads network policy/user onboarding/profile existence, skips `enrich.user` when disallowed, and lets `ensure_profile_hyde` proceed under consent-required only when a profile already exists.
-- When `premiseGraph` is injected, chat input and scraped content are routed through `PremiseDecomposer` before profile generation. Extracted premises are persisted via the premise graph, then aggregated into the profile input. This ensures atomic facts are captured as premises and the profile is synthesized from structured data.
+- `EnrichmentQueue` is the execution-time backstop. It carries `networkId` and `reason`, re-reads network policy/user onboarding, skips `enrich.user` when disallowed, and lets `ensure_profile_hyde` proceed under consent-required only when the user already has ACTIVE premises.
+- When `premiseGraph` is injected, chat input and scraped content are routed through `PremiseDecomposer`. Extracted premises are persisted via the premise graph; premise changes then drive regeneration of the user's `user_contexts` representation. This ensures atomic facts are captured as premises and the synthesized representation is derived from them.
 - The `decompose_premises` node also handles direct chat input (not just scraped content) — any free-text describing the user is decomposed into premises first.
 
-**Dependencies:** `ProfileGraphDatabase`, `Scraper`, optional `Enricher`, optional `questionerEnqueue`, optional compiled `PremiseGraph`
+**Dependencies:** `EnrichmentGraphDatabase`, `Scraper`, optional `Enricher`, optional `questionerEnqueue`, optional compiled `PremiseGraph`
 
 ### 3.4 Opportunity Graph
 
@@ -804,31 +801,29 @@ Intent-to-index assignment is handled separately by the Intent Index Graph. When
 - Direct assignment (score 1.0) when `skipEvaluation` is true
 - Evaluated assignment via `IntentIndexer` agent when the index has prompts defining its purpose
 
-## 9. Profile Pipeline
+## 9. Enrichment Pipeline
 
-Profile generation combines web scraping, external API enrichment, LLM generation, and vector embedding.
+Enrichment combines web scraping, external API enrichment, premise decomposition, and vector embedding to build a user's representation. There is no persisted profile document: identity (name/bio/location) lives on the `users` table, and the synthesized prose+embedding projection lives in `user_contexts` (a global `networkId = null` row plus per-network rows), regenerated from the user's premises.
 
-### Generation modes
+### Operation modes
 
-**Write mode (with meaningful input):** User provides text about themselves -> `generate_profile` node -> ProfileGenerator agent structures it into identity/narrative/attributes -> save.
+**Write mode (with meaningful input):** User provides text about themselves -> `decompose_premises` node runs `PremiseDecomposer` to split it into atomic premises -> premise changes drive `user_contexts` regeneration.
 
-**Write mode (scraping):** User has social links or full name but no text input -> `scrape` node uses the Scraper adapter to gather web data -> `generate_profile` node processes scraped content -> save.
+**Write mode (scraping):** User has social links or full name but no text input -> `scrape` node uses the Scraper adapter to gather public web data -> `decompose_premises` processes the scraped content.
 
-**Generate mode:** Uses external enrichment API (Parallel Chat API) via `auto_generate` node. If enrichment returns confident results, the pre-populated profile skips LLM generation. If enrichment fails, falls back to basic user info and LLM generation.
+**Generate mode:** Uses the external enrichment API (Parallel Chat API) via the `auto_generate` node to enrich the user's identity (and dedupe/update ghost display names + socials on `users`), then decomposes into premises.
 
-**Query mode:** Fast path that returns the existing profile without any LLM calls.
+**Query mode:** Fast path that returns the user's existing identity/context without any LLM calls.
 
 ### Premises and HyDE
 
-After profile generation, the profile is decomposed into premises (identity assertions). Premises carry their own vector embeddings and serve as the profile-level search corpus for HyDE discovery. This replaces the earlier approach of embedding entire profiles into a single vector.
+The enrichment input is decomposed into premises (composable identity assertions). Premises carry their own vector embeddings and serve as the person-level search corpus for HyDE discovery, replacing the earlier approach of embedding an entire profile into a single vector. Premise changes enqueue `UserContextQueue`, which regenerates the global and per-network `user_contexts` paragraphs, their embeddings, and per-network HyDE documents.
 
 ### State detection
 
-The `check_state` node performs intelligent detection of what components are missing:
-- Profile missing -> needs generation
-- Premises missing -> needs decomposition
-- HyDE document missing -> needs HyDE generation
-- Everything exists and up to date -> returns immediately
+The `check_state` node detects what (if anything) the user still needs, keyed on the presence of **ACTIVE premises**:
+- No active premises -> needs decomposition/enrichment
+- Premises present and up to date -> returns immediately
 
 This ensures the enrichment graph only performs expensive operations when necessary.
 

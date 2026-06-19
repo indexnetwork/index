@@ -13,7 +13,7 @@ import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 import { EnrichmentGenerator } from "./enrichment.generator.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
-const logger = protocolLogger("ChatTools:Profile");
+const logger = protocolLogger("ChatTools:Enrichment");
 
 function isMeaningfulEnrichment(enrichment: EnrichmentResult | null): enrichment is EnrichmentResult {
   return !!enrichment &&
