@@ -1,6 +1,6 @@
 /**
  * Opportunity Graph: time-based dedup tests.
- * Tests the DEDUP_WINDOW_MS (10 min) gate in the Persist node.
+ * Tests the DEDUP_WINDOW_MS (30 days) gate in the Persist node.
  *
  * Run with: OPENROUTER_API_KEY=test bun test opportunity.graph.dedup.spec.ts
  * The env var must be set BEFORE Bun loads this file because ESM static imports
@@ -176,7 +176,7 @@ const discoveryInput = {
 
 describe('opportunity graph — time-based dedup (Persist node)', () => {
   test('parallel job dedup: recent existing opp skips creation (IND-166 regression)', async () => {
-    // Existing opportunity created 2 minutes ago — within the 10-minute window.
+    // Existing opportunity created 2 minutes ago — within the 30-day window.
     const recentCreatedAt = new Date(Date.now() - 2 * 60 * 1000);
     const existingOpp = makeOpportunity({ status: 'pending', createdAt: recentCreatedAt });
 
@@ -198,8 +198,8 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
   });
 
   test('old accepted pair allows new opportunity creation (outside dedup window)', async () => {
-    // Existing accepted opportunity created 20 minutes ago — outside the 10-minute window.
-    const oldCreatedAt = new Date(Date.now() - 20 * 60 * 1000);
+    // Existing accepted opportunity created 31 days ago — outside the 30-day window.
+    const oldCreatedAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
     const oldOpp = makeOpportunity({ status: 'accepted', createdAt: oldCreatedAt });
 
     let createCalled = false;
@@ -277,7 +277,8 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
   });
 
   test('stuck negotiating fix: orphaned negotiating opp is reactivated instead of creating new', async () => {
-    // Existing negotiating opportunity created 15 minutes ago — outside the 10-minute window.
+    // Existing negotiating opportunity created 15 minutes ago — within the 30-day window,
+    // but the orphan-heal path reactivates regardless of age when no active task exists.
     // getNegotiationTaskForOpportunity returns null (no active task), so persist node
     // reactivates the orphaned opp via updateOpportunityStatus instead of creating a new one.
     const oldNegotiatingOpp = makeOpportunity({
@@ -310,6 +311,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
 
   test('introduction path: recent existing opp skips creation (onBehalfOfUserId dedup)', async () => {
     // Discovery running on behalf of USER_A — USER_B already has a recent pending opp with USER_A.
+    // Created 2 minutes ago — well within the 30-day dedup window.
     const recentCreatedAt = new Date(Date.now() - 2 * 60 * 1000);
     const existingOpp = makeOpportunity({ status: 'pending', createdAt: recentCreatedAt });
 

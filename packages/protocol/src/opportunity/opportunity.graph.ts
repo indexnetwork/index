@@ -61,8 +61,8 @@ import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies 
 
 const logger = protocolLogger('OpportunityGraph');
 
-/** Time window for persist-node dedup. Parallel jobs arrive within seconds; 10 min catches those while allowing new opportunities for long-connected pairs. */
-const DEDUP_WINDOW_MS = 10 * 60 * 1000;
+/** Time window for persist-node dedup. Suppresses a second opportunity with the same person while a recent one (within 30 days) is still in flight, so a person is not re-surfaced multiple times within a month (EDG-23). */
+const DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Default cap for source premises used by premise-to-premise discovery. Prevents BACKEND-5-style fan-out. */
 const DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT = 40;
@@ -2944,7 +2944,7 @@ export class OpportunityGraphFactory {
                   });
                   continue;
                 }
-                // Else: existing opportunity is old enough (>10 min), allow new opportunity creation
+                // Else: existing opportunity is old enough (outside the 30-day dedup window), allow new opportunity creation
                 logger.verbose('[Graph:Persist] Allowing new opportunity; existing is outside dedup window', {
                   candidateUserId,
                   existingStatus: existing.status,
