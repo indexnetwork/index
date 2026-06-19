@@ -20,7 +20,6 @@
     "maintenance:export-slack": "bun ./src/cli/export-slack.ts",
     "maintenance:import-slack-export": "bun ./src/cli/import-slack-export.ts",
     "maintenance:reset-brokers": "bun ./src/cli/reset-brokers.ts",
-    "maintenance:update:embeddings": "bun ./src/cli/update-embeddings.ts",
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:migrate-chat": "bun ./src/cli/migrate-chat-to-conversations.ts",
