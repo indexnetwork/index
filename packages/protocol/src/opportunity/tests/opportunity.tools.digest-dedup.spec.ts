@@ -142,7 +142,11 @@ function makeDeps(opts: {
     contactService: {} as unknown as ToolDeps['contactService'],
     integrationImporter: {} as unknown as ToolDeps['integrationImporter'],
     enricher: {} as unknown as ToolDeps['enricher'],
-    negotiationDatabase: {} as unknown as ToolDeps['negotiationDatabase'],
+    negotiationDatabase: {
+      getNegotiationTaskForOpportunity: async () => null,
+      getMessagesForConversation: async () => [],
+      getArtifactsForTask: async () => [],
+    } as unknown as ToolDeps['negotiationDatabase'],
     deliveryLedger: deliveryLedger as unknown as ToolDeps['deliveryLedger'],
     opportunityPresentation: {
       createPresenter: () => ({ presentHomeCard: (input: unknown) => presentHomeCardMock(input) }),

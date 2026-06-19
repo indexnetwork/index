@@ -9,8 +9,11 @@
  * Users WITH active premises but no global `user_context` row are synthesized
  * directly via {@link ensureGlobalUserContext} (no HyDE; the global row is
  * intentionally excluded from context-to-intent discovery). Users with no active
- * premises have no source material and are skipped (WS7 already decomposed legacy
- * profiles into premises before `user_profiles` was dropped in WS8).
+ * premises have no source material and are skipped — they self-heal lazily via
+ * `ensureGlobalUserContext` on their next read/enrichment. NOTE: the one-off
+ * profile->premises decompose CLI was removed when `user_profiles` was dropped
+ * (WS8/IND-365), so this backfill only sources from premises; a user with a
+ * legacy profile but no premises is skipped here, not decomposed.
  *
  * Idempotent + resumable: users that already have a global row are excluded by the
  * candidate query, so re-running only processes what's left. Runs entirely

@@ -8,6 +8,7 @@ import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LA
 import { viewerCentricCardSummary, narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
+import { loadNegotiationContext } from "./negotiation-context.loader.js";
 
 function stripLeadingNarratorName(remark: string, narratorName: string): string {
   let t = remark.trim();
@@ -106,6 +107,25 @@ export function buildProfileUrl(
   if (!frontendUrl) return undefined;
   const base = frontendUrl.replace(/\/+$/, "");
   return `${base}/u/${counterpartUserId}?link_preview=false`;
+}
+
+/**
+ * Build the deep-link to an opportunity's A2A negotiation trace
+ * (`/chat/:conversationId`) so users can see *what negotiation led to* the
+ * surfaced opportunity (EDG-50/EDG-51). Returns `undefined` when `frontendUrl`
+ * is unset or there is no negotiation conversation to link to.
+ *
+ * The `?link_preview=false` hint mirrors `buildProfileUrl` — chat-gateway
+ * runtimes (e.g. Telegram delivery) strip link previews when it is present.
+ * Trailing slashes on `frontendUrl` are stripped before concatenation.
+ */
+export function buildNegotiationUrl(
+  conversationId: string | undefined,
+  frontendUrl: string | undefined,
+): string | undefined {
+  if (!frontendUrl || !conversationId) return undefined;
+  const base = frontendUrl.replace(/\/+$/, "");
+  return `${base}/chat/${conversationId}?link_preview=false`;
 }
 
 /**
@@ -342,6 +362,8 @@ type OpportunityCardLike = Record<string, unknown> & {
   feedCategory?: string | undefined;
   acceptUrl?: string | undefined;
   profileUrl?: string | undefined;
+  /** Deep-link to the A2A negotiation trace that produced this opportunity. */
+  negotiationUrl?: string | undefined;
   score?: number | undefined;
   /** Digest-mode cooldown re-show — the user has seen this card before. */
   redelivery?: boolean | undefined;
@@ -391,6 +413,7 @@ export function buildOpportunityPresentation(
         if (card.status) lines.push(`   status: ${card.status}`);
         if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
         if (card.acceptUrl) lines.push(`   acceptUrl: ${card.acceptUrl}`);
+        if (opts.includeDigestMarkers && card.negotiationUrl) lines.push(`   negotiationUrl: ${card.negotiationUrl}`);
         if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
         if (opts.includeDigestMarkers && card.score != null) lines.push(`   confidence: ${Math.round(card.score * 100)}`);
         if (opts.includeDigestMarkers && card.redelivery) lines.push(`   redelivery: true`);
@@ -1818,17 +1841,32 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                 const isCounterpartGhost = counterpartUser?.isGhost ?? false;
 
                 try {
-                  const ctx = await gatherOpportunityPresenterContext(
-                    presenterDb,
-                    opp,
-                    context.userId,
-                    counterpartUserId,
-                  );
+                  // Load the negotiation context alongside presenter context so
+                  // the digest copy can explain *why* the opportunity surfaced
+                  // (EDG-50) — the presenter grounds `digestSummary` in concrete
+                  // negotiation turns when this is present. The same context
+                  // yields the conversationId for the negotiation-trace link
+                  // (EDG-51).
+                  const [ctx, negotiationContext] = await Promise.all([
+                    gatherOpportunityPresenterContext(
+                      presenterDb,
+                      opp,
+                      context.userId,
+                      counterpartUserId,
+                    ),
+                    loadNegotiationContext(deps.negotiationDatabase, opp.id, opp.status),
+                  ]);
 
                   const presentation = await presenter.presentHomeCard({
                     ...ctx,
                     opportunityStatus: opp.status,
+                    ...(negotiationContext ? { negotiationContext } : {}),
                   });
+
+                  const negotiationUrl = buildNegotiationUrl(
+                    negotiationContext?.conversationId,
+                    deps.frontendUrl,
+                  );
 
                   // Build narrator chip from presenter output
                   let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
@@ -1854,6 +1892,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                     avatar: counterpartUser?.avatar ?? null,
                     mainText: stripUuids(presentation.personalizedSummary),
                     digestSummary: stripUuids(presentation.digestSummary),
+                    // Deep-link to the negotiation trace that produced this card
+                    // (EDG-51). Only present when a negotiation conversation exists.
+                    ...(negotiationUrl ? { negotiationUrl } : {}),
                     cta: presentation.suggestedAction,
                     headline: viewerIsIntroducerHere && secondPartyNameForHeadline
                       ? `${counterpartName} → ${secondPartyNameForHeadline}`

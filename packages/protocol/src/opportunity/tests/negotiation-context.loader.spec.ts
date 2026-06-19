@@ -120,6 +120,7 @@ describe("loadNegotiationContext", () => {
 
     expect(result).not.toBeNull();
     expect(result!.status).toBe("negotiating");
+    expect(result!.conversationId).toBe("conv-1");
     expect(result!.turnCount).toBe(2);
     expect(result!.turnCap).toBe(8);
     expect(result!.turns).toBeUndefined();
@@ -148,6 +149,7 @@ describe("loadNegotiationContext", () => {
 
     expect(result).not.toBeNull();
     expect(result!.status).toBe("pending");
+    expect(result!.conversationId).toBe("conv-1");
     expect(result!.turnCount).toBe(2);
     expect(result!.turnCap).toBe(6);
     expect(result!.turns).toHaveLength(2);

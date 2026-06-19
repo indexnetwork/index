@@ -26,6 +26,13 @@
       "type": "http",
       "url": "https://mcp.context7.com/mcp"
     },
+    "sentry": {
+      "url": "https://mcp.sentry.dev/mcp",
+      "auth": "oauth",
+      "oauth": {
+        "clientName": "Pi Sentry"
+      }
+    },
     "index-main": {
       "url": "https://protocol.index.network/mcp",
       "auth": "oauth",

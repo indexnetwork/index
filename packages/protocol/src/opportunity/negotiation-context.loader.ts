@@ -36,6 +36,12 @@ export type NegotiationContextDatabase = Pick<
  */
 export interface NegotiationContext {
   status: OpportunityStatus;
+  /**
+   * Conversation/task id of the A2A negotiation that produced this opportunity.
+   * Lets callers deep-link to the negotiation trace (e.g. `/chat/:conversationId`).
+   * Present whenever a negotiation task exists (i.e. context is non-null).
+   */
+  conversationId: string;
   turnCount: number;
   /** Max turns allowed for this negotiation (0 = unlimited). */
   turnCap: number;
@@ -80,7 +86,7 @@ export async function loadNegotiationContext(
   const turnCount = turns.length;
 
   if (opportunityStatus === 'negotiating') {
-    return { status: opportunityStatus, turnCount, turnCap };
+    return { status: opportunityStatus, conversationId: task.conversationId, turnCount, turnCap };
   }
 
   const artifacts = await db.getArtifactsForTask(task.id);
@@ -88,6 +94,7 @@ export async function loadNegotiationContext(
 
   return {
     status: opportunityStatus,
+    conversationId: task.conversationId,
     turnCount,
     turnCap,
     ...(outcome ? { outcome } : {}),
