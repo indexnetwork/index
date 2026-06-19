@@ -19,7 +19,7 @@ permissions:
 jobs:
   reset_neon_dev:
     name: Reset Neon dev branch
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Reset dev branch from production
         id: reset_neon_dev

@@ -44,6 +44,12 @@ interface BaseIntent {
    * means the intent is registered to no networks (pending or orphaned).
    */
   networks?: IntentNetwork[];
+  /**
+   * Lifecycle status (ACTIVE|PAUSED|FULFILLED|EXPIRED). A badge renders only for
+   * non-default (non-ACTIVE) values; undefined or ACTIVE renders nothing — the
+   * enum is vestigial today, so this is forward-looking. See EDG-53.
+   */
+  status?: string;
 }
 
 /**
@@ -93,6 +99,20 @@ function NetworkMembership({ networks, createdAt }: { networks?: IntentNetwork[]
     >
       <AlertTriangle className="w-3 h-3 shrink-0" />
       Not in any network
+    </span>
+  );
+}
+
+/**
+ * Renders an intent's lifecycle status as a badge, but only when it is a
+ * non-default value. ACTIVE (the schema default) and undefined render nothing,
+ * so today this is invisible and purely forward-looking. See EDG-53.
+ */
+function StatusBadge({ status }: { status?: string }) {
+  if (!status || status.toUpperCase() === 'ACTIVE') return null;
+  return (
+    <span className="flex items-center gap-1 text-xs text-purple-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-purple-50 border border-purple-100 capitalize">
+      {status.toLowerCase()}
     </span>
   );
 }
@@ -212,6 +232,7 @@ export default function IntentList<T extends BaseIntent>({
 
                   {/* Network membership: chips, or pending/orphaned badge */}
                   <NetworkMembership networks={intent.networks} createdAt={intent.createdAt} />
+                  <StatusBadge status={intent.status} />
                 </div>
               </div>
 
