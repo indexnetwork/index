@@ -13,7 +13,7 @@ import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 import { EnrichmentGenerator } from "./enrichment.generator.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
-const logger = protocolLogger("ChatTools:Profile");
+const logger = protocolLogger("ChatTools:Enrichment");
 
 function isMeaningfulEnrichment(enrichment: EnrichmentResult | null): enrichment is EnrichmentResult {
   return !!enrichment &&
@@ -245,7 +245,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         input,
         forceUpdate: true,
       };
-      // Always invoked as a background fire-and-forget task (see confirm_user_profile
+      // Always invoked as a background fire-and-forget task (see confirm_user_context
       // call sites), so decomposition must outlive the originating request — invoke
       // the graph directly and never bind the request abort signal, which would
       // cancel it as soon as the web request completes.
@@ -260,9 +260,9 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         reportToolError?.(err, {
           subsystem: 'enrichment',
           operation: 'profile.confirm_draft_decompose',
-          toolName: 'confirm_user_profile',
+          toolName: 'confirm_user_context',
           userId: profile.userId,
-          tags: { toolName: 'confirm_user_profile', execution: 'background' },
+          tags: { toolName: 'confirm_user_context', execution: 'background' },
         });
         return;
       }
@@ -280,17 +280,17 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       reportToolError?.(err, {
         subsystem: 'enrichment',
         operation: 'profile.confirm_draft_decompose',
-        toolName: 'confirm_user_profile',
+        toolName: 'confirm_user_context',
         userId: profile.userId,
-        tags: { toolName: 'confirm_user_profile', execution: 'background' },
+        tags: { toolName: 'confirm_user_context', execution: 'background' },
       });
     } finally {
       traceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: Date.now() - graphStart });
     }
   }
 
-  const readUserProfiles = defineTool({
-    name: "read_user_profiles",
+  const readUserContexts = defineTool({
+    name: "read_user_contexts",
     description:
       "Retrieves user profiles containing identity info (name, bio, location) plus a rich `context` paragraph (the user's synthesized identity text). " +
       "Profiles are used for semantic matching in opportunity discovery — the richer the user's context, the better the matches.\n\n" +
@@ -301,7 +301,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       "- With `networkId` alone: returns thin-identity profiles of ALL members in that index (no `context`).\n" +
       "- No parameters: returns the current user's own profile, including their `context`.\n\n" +
       "**When to use:** Before creating introductions (need profiles of both parties), when the user asks about a person, " +
-      "or to check if a profile exists before suggesting create_user_profile. " +
+      "or to check if a profile exists before suggesting create_user_context. " +
       "MCP agents should call this with no arguments at session start to fetch the caller's profile AND onboarding status.\n\n" +
       "**Returns:** Profile objects with name, bio, location, and (for single-user reads) a `context` paragraph. Use userId from results with other tools like read_intents(userId, networkId). " +
       "When called for the current user (no args, or userId=self), the response also includes `onboardingComplete: boolean` and `onboardingCompletedAt?: string` — " +
@@ -381,7 +381,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
                   : {}),
               };
             } catch (err) {
-              logger.warn("read_user_profiles: getProfile failed; degrading to hasProfile=false", {
+              logger.warn("read_user_contexts: getProfile failed; degrading to hasProfile=false", {
                 userId: m.userId,
                 error: err instanceof Error ? err.message : String(err),
               });
@@ -563,12 +563,12 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const previewUserProfile = defineTool({
-    name: "preview_user_profile",
+  const previewUserContext = defineTool({
+    name: "preview_user_context",
     description:
       "Builds a structured profile draft for onboarding without saving anything. Use this after recording privacy consent and before asking the user to approve the profile. " +
       "If allowPublicLookup is false, this tool uses only explicit text, EdgeOS/event data the user allowed, and user-provided social URLs. If allowPublicLookup is true, persisted public lookup consent is required. " +
-      "In MCP contexts, starts an async profile run and returns `profileRunId`; poll get_profile_run until status is `succeeded`, then present its `result`." +
+      "In MCP contexts, starts an async profile run and returns `profileRunId`; poll get_enrichment_run until status is `succeeded`, then present its `result`." +
       " When public lookup runs, the result includes a `publicLookup` block reporting whether a candidate identity was found (`used`, `confidentMatch`) and what it was (`identity` of name/role/location, plus `socials`), so the caller can confirm identity before saving. A candidate can be returned (`used: true`) without being confident enough to enter the draft; when no lookup runs the block is `{ used: false }`.",
     querySchema: z.object({
       name: z.string().optional().describe("Name explicitly provided by the user. For authenticated public lookup, the account identity is used first and this is only a fallback."),
@@ -585,12 +585,12 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       const user = await userDb.getUser();
       if (!user) return error("User not found.");
 
-      const profileRunId = await enqueueEnrichmentRun(context, "preview_user_profile", query);
+      const profileRunId = await enqueueEnrichmentRun(context, "preview_user_context", query);
       if (profileRunId) {
         return success({
           status: "queued" as const,
           profileRunId,
-          message: `Profile preview started. Call get_profile_run with profileRunId="${profileRunId}" until it succeeds, fails, or is cancelled.`,
+          message: `Profile preview started. Call get_enrichment_run with profileRunId="${profileRunId}" until it succeeds, fails, or is cancelled.`,
         });
       }
 
@@ -644,7 +644,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       return success({
         preview: true,
         persisted: false,
-        message: "Profile draft generated. Show this to the user and ask whether it looks right before calling confirm_user_profile.",
+        message: "Profile draft generated. Show this to the user and ask whether it looks right before calling confirm_user_context.",
         profile: toProfileSummary(profile),
         draft: profile,
         publicLookup: enrichment
@@ -664,13 +664,13 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const confirmUserProfile = defineTool({
-    name: "confirm_user_profile",
+  const confirmUserContext = defineTool({
+    name: "confirm_user_context",
     description:
-      "Saves an explicitly approved onboarding profile draft. Call this only after the user has seen the draft from preview_user_profile and approved it or provided corrections. " +
+      "Saves an explicitly approved onboarding profile draft. Call this only after the user has seen the draft from preview_user_context and approved it or provided corrections. " +
       "This path uses only the approved draft/explicit correction text and does not scrape or run public lookup.",
     querySchema: z.object({
-      draft: approvedProfileDraftSchema.optional().describe("The structured profile draft returned by preview_user_profile after user approval."),
+      draft: approvedProfileDraftSchema.optional().describe("The structured profile draft returned by preview_user_context after user approval."),
       bioOrDescription: z.string().optional().describe("Approved correction or explicit profile text if not passing a structured draft."),
       name: z.string().optional().describe("Approved name correction."),
       location: z.string().optional().describe("Approved location correction."),
@@ -757,11 +757,11 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const createUserProfile = defineTool({
-    name: "create_user_profile",
+  const createUserContext = defineTool({
+    name: "create_user_context",
     description:
       "Legacy/backward-compatible tool that creates or regenerates the authenticated user's profile. AgentVillage/Hermes onboarding must use " +
-      "record_onboarding_privacy_consent → preview_user_profile → confirm_user_profile instead, so consent is recorded and the draft is shown before saving. " +
+      "record_onboarding_privacy_consent → preview_user_context → confirm_user_context instead, so consent is recorded and the draft is shown before saving. " +
       "Profiles are essential for discovery — they provide the semantic context used to match users with complementary intents.\n\n" +
       "**How it works:** For generic clients, the system can enrich profile data from public web sources (LinkedIn, GitHub, Twitter) and/or explicit user input, " +
       "then generates a structured profile with bio, skills, interests, location, and narrative context. Do not call with no arguments in consent-required onboarding flows.\n\n" +
@@ -769,7 +769,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       "- No args: attempts auto-generation from account data. If insufficient info, returns `missingFields` — ask the user for name/social URLs and retry.\n" +
       "- With social URLs (linkedinUrl, githubUrl, etc.): enriches from those specific URLs.\n" +
       "- With bioOrDescription: creates profile from explicit text only (no web scraping).\n" +
-      "- Legacy onboarding clients: first call returns a preview. AgentVillage/Hermes clients should not use this preview path; use preview_user_profile instead because it does not persist enrichment side effects.\n\n" +
+      "- Legacy onboarding clients: first call returns a preview. AgentVillage/Hermes clients should not use this preview path; use preview_user_context instead because it does not persist enrichment side effects.\n\n" +
       "**Returns:** The generated profile (name, bio, location, skills, interests) or a `needsClarification` response listing missing fields.\n\n" +
       "**Next steps:** After profile creation, the user can create intents (create_intent) and join indexes (create_network_membership) to start discovering opportunities.",
     querySchema: z.object({
@@ -817,7 +817,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         if (existingProfile) {
           return success({
             alreadyExists: true,
-            message: "Profile already exists. If the user confirmed it, call complete_onboarding() to finish setup. If they want changes, use create_user_profile(bioOrDescription=\"...\", confirm=true).",
+            message: "Profile already exists. If the user confirmed it, call complete_onboarding() to finish setup. If they want changes, use create_user_context(bioOrDescription=\"...\", confirm=true).",
             profile: {
               name: existingProfile.identity.name,
               bio: existingProfile.identity.bio,
@@ -859,7 +859,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
 
               return success({
                 preview: true,
-                message: "Profile preview generated. Call create_user_profile(confirm=true) to save.",
+                message: "Profile preview generated. Call create_user_context(confirm=true) to save.",
                 profile: {
                   name: enrichment.identity.name,
                   bio: enrichment.identity.bio,
@@ -1011,8 +1011,8 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const updateUserProfile = defineTool({
-    name: "update_user_profile",
+  const updateUserContext = defineTool({
+    name: "update_user_context",
     description:
       "Updates the authenticated user's existing profile using a verb-style instruction interface.\n\n" +
       "**How to use it:**\n" +
@@ -1024,12 +1024,12 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       "- `action=\"update bio\"`, `details=\"Product designer focused on desktop CRPG interfaces\"`\n" +
       "- `action=\"set location\"`, `details=\"Berlin\"`\n" +
       "- `socials={ telegram: \"@alice\" }` to silently add a reachable chat handle without regenerating the profile.\n\n" +
-      "**When to use:** When the user wants to make specific changes without regenerating the whole profile. For full profile regeneration from social URLs, use create_user_profile instead.\n\n" +
+      "**When to use:** When the user wants to make specific changes without regenerating the whole profile. For full profile regeneration from social URLs, use create_user_context instead.\n\n" +
       "**Important:** If the user provides a URL to update from, call scrape_url first, then pass the scraped content in `details`.\n\n" +
       "**MCP behavior:** For MCP clients, text/profile graph updates are accepted immediately and completed in the background to avoid transport timeouts. Social-only updates still complete synchronously.\n\n" +
       "**Returns:** Confirmation that the profile was updated or accepted for background update.",
     querySchema: z.object({
-      profileId: z.string().optional().describe("Profile UUID from read_user_profiles. Omit to update the current user's own profile (most common usage)."),
+      profileId: z.string().optional().describe("Profile UUID from read_user_contexts. Omit to update the current user's own profile (most common usage)."),
       action: z.string().optional().describe("Natural language description of ALL changes to make in a single call. Examples: 'update bio to focus on AI research', 'add Python and Rust to skills', 'change location to Berlin and add machine learning to interests'. Optional when only updating socials."),
       details: z.string().optional().describe("Additional context or content to incorporate. Use this to pass scraped URL content (from scrape_url) or longer text the user provided."),
       socials: z.record(z.string()).optional().describe("Social handles or URLs to merge into the user profile, keyed by label. Example: { telegram: '@alice', github: 'alice' }. Existing socials with other labels are preserved."),
@@ -1045,12 +1045,12 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Please specify what to update (e.g. action: 'update bio to X') or provide socials.");
       }
 
-      const profileRunId = await enqueueEnrichmentRun(context, "update_user_profile", query);
+      const profileRunId = await enqueueEnrichmentRun(context, "update_user_context", query);
       if (profileRunId) {
         return success({
           status: "queued" as const,
           profileRunId,
-          message: `Profile update started. Call get_profile_run with profileRunId="${profileRunId}" until it succeeds, fails, or is cancelled.`,
+          message: `Profile update started. Call get_enrichment_run with profileRunId="${profileRunId}" until it succeeds, fails, or is cancelled.`,
         });
       }
 
@@ -1062,12 +1062,12 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       const _updateQueryProfileGraphMs = Date.now() - _updateQueryProfileGraphStart;
       _updateQueryProfileTraceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: _updateQueryProfileGraphMs });
       if (!queryResult.readResult?.hasProfile && !queryResult.profile) {
-        return error("You don't have a profile yet. Use create_user_profile first.");
+        return error("You don't have a profile yet. Use create_user_context first.");
       }
       const existingProfileId = queryResult.readResult?.profile?.id;
       const providedProfileId = query.profileId?.trim();
       if (providedProfileId && existingProfileId && providedProfileId !== existingProfileId) {
-        return error("Invalid profileId. Use the profile id from read_user_profiles.");
+        return error("Invalid profileId. Use the profile id from read_user_contexts.");
       }
 
       if (socialUpdates.length > 0) {
@@ -1092,9 +1092,9 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
             reportToolError?.(new Error(writeResult.error), {
               subsystem: "enrichment",
               operation: "profile.update_background",
-              toolName: "update_user_profile",
+              toolName: "update_user_context",
               userId: context.userId,
-              tags: { toolName: "update_user_profile", execution: "background" },
+              tags: { toolName: "update_user_context", execution: "background" },
               context: { profileId: existingProfileId ?? providedProfileId },
             });
           }
@@ -1107,9 +1107,9 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
           reportToolError?.(err, {
             subsystem: "enrichment",
             operation: "profile.update_background",
-            toolName: "update_user_profile",
+            toolName: "update_user_context",
             userId: context.userId,
-            tags: { toolName: "update_user_profile", execution: "background" },
+            tags: { toolName: "update_user_context", execution: "background" },
             context: { profileId: existingProfileId ?? providedProfileId },
           });
         }).finally(() => {
@@ -1151,13 +1151,13 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const getProfileRun = defineTool({
-    name: "get_profile_run",
+  const getEnrichmentRun = defineTool({
+    name: "get_enrichment_run",
     description:
-      "Checks the status of an async profile preview/update run started by preview_user_profile or update_user_profile in MCP contexts. " +
+      "Checks the status of an async profile preview/update run started by preview_user_context or update_user_context in MCP contexts. " +
       "Poll this tool with the profileRunId until status is succeeded, failed, or cancelled. When succeeded, present the result to the user.",
     querySchema: z.object({
-      profileRunId: z.string().describe("Profile run ID returned by preview_user_profile or update_user_profile."),
+      profileRunId: z.string().describe("Profile run ID returned by preview_user_context or update_user_context."),
     }),
     handler: async ({ context, query }) => {
       if (!deps.enrichmentRuns) {
@@ -1179,13 +1179,13 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const cancelProfileRun = defineTool({
-    name: "cancel_profile_run",
+  const cancelEnrichmentRun = defineTool({
+    name: "cancel_enrichment_run",
     description:
       "Requests cancellation for an async profile run. If the queued job has not started, it is removed and marked cancelled. " +
       "If already running, the worker observes the cancellation request and aborts where supported.",
     querySchema: z.object({
-      profileRunId: z.string().describe("Profile run ID returned by preview_user_profile or update_user_profile."),
+      profileRunId: z.string().describe("Profile run ID returned by preview_user_context or update_user_context."),
     }),
     handler: async ({ context, query }) => {
       if (!deps.enrichmentRuns || !deps.enrichmentRunQueue) {
@@ -1225,7 +1225,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Prerequisites:** The user must have a confirmed profile AND at least one active intent/signal. The profile must be shown to the user and explicitly approved " +
       "(said 'yes', 'looks good', 'that's right', or similar). The first signal must be persisted before this tool is called; MCP/onboarding agents should call create_intent(..., autoApprove=true).\n\n" +
       "**What happens:** Validates that the confirmed profile and first active intent exist, then sets completedAt timestamp on the user's onboarding record.\n\n" +
-      "**Workflow:** create_user_profile() -> user confirms preview -> create_user_profile(confirm=true) -> create_intent(..., autoApprove=true) -> complete_onboarding()\n\n" +
+      "**Workflow:** create_user_context() -> user confirms preview -> create_user_context(confirm=true) -> create_intent(..., autoApprove=true) -> complete_onboarding()\n\n" +
       "**Returns:** Confirmation that onboarding is complete. No parameters needed.",
     querySchema: z.object({}),
     handler: async ({ context }) => {
@@ -1268,5 +1268,5 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [readUserProfiles, recordOnboardingPrivacyConsent, previewUserProfile, confirmUserProfile, createUserProfile, updateUserProfile, getProfileRun, cancelProfileRun, completeOnboarding] as const;
+  return [readUserContexts, recordOnboardingPrivacyConsent, previewUserContext, confirmUserContext, createUserContext, updateUserContext, getEnrichmentRun, cancelEnrichmentRun, completeOnboarding] as const;
 }

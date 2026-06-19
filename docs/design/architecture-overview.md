@@ -153,7 +153,7 @@ export class IntentNetworkGraphFactory {
 }
 ```
 
-This pattern is applied to all graph factories: `ProfileGraphDatabase`, `OpportunityGraphDatabase`, `IntentGraphDatabase`, `NetworkGraphDatabase`, `IntentNetworkGraphDatabase`, `NetworkMembershipGraphDatabase`, `HydeGraphDatabase`, and `HomeGraphDatabase`.
+This pattern is applied to all graph factories: `EnrichmentGraphDatabase`, `OpportunityGraphDatabase`, `IntentGraphDatabase`, `NetworkGraphDatabase`, `IntentNetworkGraphDatabase`, `NetworkMembershipGraphDatabase`, `HydeGraphDatabase`, and `HomeGraphDatabase`.
 
 ### Adapter Naming Convention
 

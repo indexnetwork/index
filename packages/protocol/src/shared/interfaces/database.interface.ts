@@ -555,7 +555,7 @@ export interface Database {
   /**
    * Updates user account fields (name, location, socials).
    * Merges socials with existing values (does not overwrite the whole object).
-   * Used by create_user_profile tool to persist user-provided info before
+   * Used by create_user_context tool to persist user-provided info before
    * invoking the Profile Graph in generate mode.
    *
    * @param userId - The unique identifier of the user
@@ -1075,7 +1075,7 @@ export interface Database {
   deleteProfile(userId: string): Promise<void>;
 
   /**
-   * Get a user's profile including its row id (for update_user_profile validation).
+   * Get a user's profile including its row id (for update_user_context validation).
    *
    * @param userId - The user whose profile to fetch
    * @returns Profile with id, or null if not found

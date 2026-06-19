@@ -241,7 +241,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
       '**Negotiation-turn-mode usage.** If you are running as a silent background subagent (dispatched by the ' +
       "openclaw runtime's poller in response to a claimed negotiation turn), call this tool FIRST with the " +
       'negotiationId from your task prompt. This returns the current state, both parties\' context, and the ' +
-      'history of turns so far. Ground your response in the caller\'s profile (read_user_profiles) and intents ' +
+      'history of turns so far. Ground your response in the caller\'s profile (read_user_contexts) and intents ' +
       '(read_intents) before deciding on a turn action. Do not produce user-facing output in this mode.',
     querySchema: z.object({
       negotiationId: z.string().describe('The negotiation task ID (from list_negotiations results).'),

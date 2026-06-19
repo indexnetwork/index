@@ -80,10 +80,10 @@ function buildDeps(enrichment: EnrichmentResult | null): ToolDeps {
 }
 
 function getPreview(deps: ToolDeps): CapturedTool {
-  return captureTools(deps).find((t) => t.name === "preview_user_profile")!;
+  return captureTools(deps).find((t) => t.name === "preview_user_context")!;
 }
 
-describe("preview_user_profile publicLookup block", () => {
+describe("preview_user_context publicLookup block", () => {
   beforeEach(() => { lastGeneratorInput = undefined; });
 
   it("reports used:false when no public lookup runs", async () => {
@@ -140,7 +140,7 @@ describe("preview_user_profile publicLookup block", () => {
 });
 
 function getCreateUserProfile(deps: ToolDeps): CapturedTool {
-  return captureTools(deps).find((t) => t.name === "create_user_profile")!;
+  return captureTools(deps).find((t) => t.name === "create_user_context")!;
 }
 
 function buildOnboardingDeps(enrichment: EnrichmentResult | null): ToolDeps {
@@ -173,7 +173,7 @@ const onboardingContext = {
   user: { onboarding: null },
 } as unknown as ResolvedToolContext;
 
-describe("create_user_profile detectedSocials preview", () => {
+describe("create_user_context detectedSocials preview", () => {
   it("includes detectedSocials in preview when enrichment finds social handles", async () => {
     const enrichment = makeEnrichment({ socials: { github: "github.com/user", linkedin: "linkedin.com/in/user" } });
     const tool = getCreateUserProfile(buildOnboardingDeps(enrichment));

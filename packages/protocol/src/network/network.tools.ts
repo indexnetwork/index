@@ -171,7 +171,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Shared-context pattern.** To find overlap with another user: (1) omit `userId` to read your own " +
       "memberships, (2) call this tool with the other person's actual `userId` to get the shared indexes, " +
       "(3) call read_intents for each shared network to see what each is looking for there, (4) call " +
-      "read_user_profiles for the other party. That sequence gives you enough to decide whether to propose a " +
+      "read_user_contexts for the other party. That sequence gives you enough to decide whether to propose a " +
       "direct connection or an introduction.",
     querySchema: z.object({
       networkId: z.string().optional().describe("Index UUID — lists all members of this index. Get from read_networks. In index-scoped chats, only the scoped index can be queried."),
@@ -532,7 +532,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Returns:** Confirmation that the member was added (or a note that they were already a member). " +
       "After joining, the user's existing intents with autoAssign=true may be evaluated against the new index.",
     querySchema: z.object({
-      userId: z.string().optional().describe("User ID to add as a member. Omit to join the index yourself. Get user IDs from read_user_profiles(query=name) or read_network_memberships."),
+      userId: z.string().optional().describe("User ID to add as a member. Omit to join the index yourself. Get user IDs from read_user_contexts(query=name) or read_network_memberships."),
       networkId: z.string().optional().describe("Index UUID to add the member to. Get from read_networks. Defaults to the scoped index in index-scoped chats."),
     }),
     handler: async ({ context, query }) => {

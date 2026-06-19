@@ -57,6 +57,12 @@ const FAST_TOOLS = new Set([
 ]);
 
 const ASYNC_CANDIDATE_TOOLS = new Set([
+  // Canonical *_user_context names (IND-371)
+  "read_user_contexts",
+  "preview_user_context",
+  "create_user_context",
+  "update_user_context",
+  // Deprecated *_user_profile aliases (kept until IND-373 retires them)
   "read_user_profiles",
   "preview_user_profile",
   "create_user_profile",

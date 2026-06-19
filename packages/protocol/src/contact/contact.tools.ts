@@ -63,9 +63,9 @@ export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
       "(via import_contacts, add_contact, or import_gmail_contacts) stored as members of their personal index.\n\n" +
       "**When to use:** To see who's in the user's network, find a contact's userId for other operations, " +
       "or check if a specific person is already a contact.\n\n" +
-      "**Returns:** Array of contacts, each with: userId (use with read_user_profiles or discover_opportunities), " +
+      "**Returns:** Array of contacts, each with: userId (use with read_user_contexts or discover_opportunities), " +
       "name, email, avatar URL, and isGhost (true = no account yet, profile enriched from public data). " +
-      "Use the userId with read_user_profiles(userId) to get the full profile, or with discover_opportunities(targetUserId) to connect.",
+      "Use the userId with read_user_contexts(userId) to get the full profile, or with discover_opportunities(targetUserId) to connect.",
     querySchema: z.object({
       limit: z.number().optional().describe('Maximum number of contacts to return. Omit to return all contacts. Use for large networks to paginate results.'),
     }),
@@ -156,7 +156,7 @@ export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
     description:
       "Searches the authenticated user's personal network by name or email (case-insensitive substring). " +
       "Use when the user refers to a contact by partial name or email and you need their userId for another tool " +
-      "(e.g. read_user_profiles, discover_opportunities).\n\n" +
+      "(e.g. read_user_contexts, discover_opportunities).\n\n" +
       "**When to use:** Before list_contacts when the network is large — returns only matching contacts, bounded by limit.\n\n" +
       "**Returns:** Array of matching contacts: userId, name, email, avatar, isGhost.",
     querySchema: z.object({

@@ -146,7 +146,7 @@ describe("onboarding privacy profile tools", () => {
   });
 
   it("preview without public lookup neither enriches nor persists", async () => {
-    const tool = tools.find((t) => t.name === "preview_user_profile")!;
+    const tool = tools.find((t) => t.name === "preview_user_context")!;
     const result = parseToolResult(await tool.handler({ context: context(), query: { bioOrDescription: "I build AI tools.", allowPublicLookup: false } }));
 
     expect(result.success).toBe(true);
@@ -157,7 +157,7 @@ describe("onboarding privacy profile tools", () => {
   });
 
   it("preview with EdgeOS data refuses when persisted import consent is absent", async () => {
-    const tool = tools.find((t) => t.name === "preview_user_profile")!;
+    const tool = tools.find((t) => t.name === "preview_user_context")!;
     const result = parseToolResult(await tool.handler({ context: context(), query: { edgeosProfileText: "Alice joined from an EdgeOS event.", allowPublicLookup: false } }));
 
     expect(result.success).toBe(false);
@@ -167,7 +167,7 @@ describe("onboarding privacy profile tools", () => {
   });
 
   it("preview with public lookup refuses when persisted consent is absent", async () => {
-    const tool = tools.find((t) => t.name === "preview_user_profile")!;
+    const tool = tools.find((t) => t.name === "preview_user_context")!;
     const result = parseToolResult(await tool.handler({ context: context(), query: { bioOrDescription: "I build AI tools.", allowPublicLookup: true } }));
 
     expect(result.success).toBe(false);
@@ -186,7 +186,7 @@ describe("onboarding privacy profile tools", () => {
       },
     };
     currentUser = { ...currentUser, name: "Steven Paul Jobs", email: "steve@apple.com" };
-    const tool = tools.find((t) => t.name === "preview_user_profile")!;
+    const tool = tools.find((t) => t.name === "preview_user_context")!;
     const result = parseToolResult(await tool.handler({ context: context(), query: { name: "Steve", allowPublicLookup: true } }));
 
     expect(result.success).toBe(true);
@@ -208,7 +208,7 @@ describe("onboarding privacy profile tools", () => {
         },
       },
     };
-    const tool = tools.find((t) => t.name === "preview_user_profile")!;
+    const tool = tools.find((t) => t.name === "preview_user_context")!;
     const result = parseToolResult(await tool.handler({ context: context(), query: { edgeosProfileText: "Alice joined from an EdgeOS event.", allowPublicLookup: false } }));
 
     expect(result.success).toBe(true);
@@ -235,7 +235,7 @@ describe("onboarding privacy profile tools", () => {
         socials: [{ label: "github", value: "seedalice" }],
       }],
     };
-    const tool = tools.find((t) => t.name === "preview_user_profile")!;
+    const tool = tools.find((t) => t.name === "preview_user_context")!;
     const result = parseToolResult(await tool.handler({ context: { ...context(), networkId: "n1" }, query: { allowPublicLookup: false } }));
 
     expect(result.success).toBe(true);
@@ -248,7 +248,7 @@ describe("onboarding privacy profile tools", () => {
   });
 
   it("confirm saves an approved structured draft and sends it through premise decomposition", async () => {
-    const tool = tools.find((t) => t.name === "confirm_user_profile")!;
+    const tool = tools.find((t) => t.name === "confirm_user_context")!;
     const draft = {
       identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
       narrative: { context: "Alice builds tools." },
@@ -278,7 +278,7 @@ describe("onboarding privacy profile tools", () => {
   });
 
   it("confirm schedules draft premise decomposition without blocking MCP callers", async () => {
-    const tool = tools.find((t) => t.name === "confirm_user_profile")!;
+    const tool = tools.find((t) => t.name === "confirm_user_context")!;
     const draft = {
       identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
       narrative: { context: "Alice builds tools." },
@@ -298,7 +298,7 @@ describe("onboarding privacy profile tools", () => {
   });
 
   it("confirming approved text preserves existing location when no correction is supplied", async () => {
-    const tool = tools.find((t) => t.name === "confirm_user_profile")!;
+    const tool = tools.find((t) => t.name === "confirm_user_context")!;
     const result = parseToolResult(await tool.handler({
       context: context(),
       query: { bioOrDescription: "I build agent tools.", name: "Alice" },
@@ -313,7 +313,7 @@ describe("onboarding privacy profile tools", () => {
   });
 
   it("emits graph_end when background profile generation rejects", async () => {
-    const tool = tools.find((t) => t.name === "confirm_user_profile")!;
+    const tool = tools.find((t) => t.name === "confirm_user_context")!;
     const events: Array<{ type: string; name: string }> = [];
     profileGraphInvoke.mockImplementation(async () => {
       throw new Error("profile timeout");

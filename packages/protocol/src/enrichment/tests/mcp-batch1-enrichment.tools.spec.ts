@@ -32,7 +32,7 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
   return toolDefs;
 }
 
-describe("update_user_profile MCP copy", () => {
+describe("update_user_context MCP copy", () => {
   test("documents the action/details verb interface with examples", () => {
     const tools = captureTools({
       userDb: {},
@@ -44,7 +44,7 @@ describe("update_user_profile MCP copy", () => {
       enricher: { enrichUserProfile: async () => null },
       grantDefaultSystemPermissions: async () => undefined,
     } as unknown as ToolDeps);
-    const tool = tools.find((t) => t.name === "update_user_profile")!;
+    const tool = tools.find((t) => t.name === "update_user_context")!;
 
     expect(tool.description).toContain("`action`");
     expect(tool.description).toContain("`details`");

@@ -30,7 +30,7 @@ function makeDeps(profileResult: unknown): ToolDeps {
   } as unknown as ToolDeps;
 }
 
-describe("read_user_profiles default-to-self", () => {
+describe("read_user_contexts default-to-self", () => {
   test("no args, no scope → returns caller's own profile via Mode 1", async () => {
     const toolDefs: Array<{ name: string; handler: Function }> = [];
     const defineTool = (def: { name: string; description: string; schema: z.ZodType; handler: Function }) => {
@@ -39,7 +39,7 @@ describe("read_user_profiles default-to-self", () => {
     };
     const profileResult = { hasProfile: true, profile: { name: "Alice", bio: "hi" } };
     createEnrichmentTools(defineTool as any, makeDeps(profileResult));
-    const readTool = toolDefs.find((t) => t.name === "read_user_profiles");
+    const readTool = toolDefs.find((t) => t.name === "read_user_contexts");
     expect(readTool).toBeDefined();
 
     const result = await readTool!.handler({ context: makeContext(), query: {} });

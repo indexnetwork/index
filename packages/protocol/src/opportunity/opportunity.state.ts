@@ -348,8 +348,8 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => ({}),
   }),
 
-  /** Whether discovery used intent (path A) or profile (path B/C). Used by persist for triggeredBy. */
-  discoverySource: Annotation<'intent' | 'profile'>({
+  /** Whether discovery used intent (path A) or user context (path B/C). Used by persist for triggeredBy. In-memory routing state only; never persisted. */
+  discoverySource: Annotation<'intent' | 'context'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'intent',
   }),

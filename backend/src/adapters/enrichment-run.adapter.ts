@@ -6,7 +6,13 @@ import { enrichmentToolRuns } from '../schemas/database.schema';
 const DEFAULT_PROFILE_RUN_TTL_MS = 24 * 60 * 60 * 1000;
 
 type EnrichmentRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-type EnrichmentRunOperation = 'preview_user_profile' | 'update_user_profile';
+// Canonical *_user_context operations (IND-371); legacy *_user_profile values
+// retained so historical run rows still type-check.
+type EnrichmentRunOperation =
+  | 'preview_user_context'
+  | 'update_user_context'
+  | 'preview_user_profile'
+  | 'update_user_profile';
 
 type EnrichmentRunInput = {
   name?: string;

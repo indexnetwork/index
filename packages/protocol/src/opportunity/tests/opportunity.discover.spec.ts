@@ -14,6 +14,7 @@ describe("opportunity.discover", () => {
   const mockDatabase: ChatGraphCompositeDatabase = {
     getProfile: async () => null,
     getUser: async () => null,
+    getUserContext: async () => null,
   } as unknown as ChatGraphCompositeDatabase;
 
   describe("runDiscoverFromQuery", () => {
@@ -633,6 +634,7 @@ describe("opportunity.discover", () => {
 const introducerMockDatabase: ChatGraphCompositeDatabase = {
   getProfile: async () => null,
   getUser: async () => null,
+  getUserContext: async () => null,
 } as unknown as ChatGraphCompositeDatabase;
 
 describe("introducer discovery cards - secondParty (Bug 1)", () => {

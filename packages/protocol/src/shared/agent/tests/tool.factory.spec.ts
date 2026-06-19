@@ -1834,7 +1834,7 @@ describe("update_opportunity tool (send via status pending)", () => {
   });
 });
 
-describe("read_user_profiles tool (query parameter — name search)", () => {
+describe("read_user_contexts tool (query parameter — name search)", () => {
   const indexA = "a1b2c3d4-0000-4000-8000-000000000030";
   const indexB = "a1b2c3d4-0000-4000-8000-000000000031";
 
@@ -1882,7 +1882,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
     const mockSystemDb = createMockSystemDb();
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string }) => Promise<string> };
+    const tool = tools.find((t: { name: string }) => t.name === "read_user_contexts") as { invoke: (args: { query?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "Priya" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
@@ -1891,7 +1891,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
     expect(parsed.data.profiles[0].userId).toBe("user-priya");
     expect(parsed.data.profiles[0].name).toBe("Priya Nair");
     expect(parsed.data.profiles[0].hasProfile).toBe(true);
-    expect(parsed.data.profiles[0].profile.bio).toBe("Full-stack engineer and open-source contributor");
+    expect(parsed.data.profiles[0].bio).toBe("Full-stack engineer and open-source contributor");
   });
 
   test("query is case-insensitive", async () => {
@@ -1899,7 +1899,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
     const mockSystemDb = createMockSystemDb();
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string }) => Promise<string> };
+    const tool = tools.find((t: { name: string }) => t.name === "read_user_contexts") as { invoke: (args: { query?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "priya nair" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
@@ -1912,7 +1912,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
     const mockSystemDb = createMockSystemDb();
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string; networkId?: string }) => Promise<string> };
+    const tool = tools.find((t: { name: string }) => t.name === "read_user_contexts") as { invoke: (args: { query?: string; networkId?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "Mei", networkId: indexA });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
@@ -1925,7 +1925,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
     const mockSystemDb = createMockSystemDb();
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string }) => Promise<string> };
+    const tool = tools.find((t: { name: string }) => t.name === "read_user_contexts") as { invoke: (args: { query?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "Nonexistent Person" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
@@ -1939,7 +1939,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
     const mockSystemDb = createMockSystemDb();
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string }) => Promise<string> };
+    const tool = tools.find((t: { name: string }) => t.name === "read_user_contexts") as { invoke: (args: { query?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "Test User" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
@@ -1951,7 +1951,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
     const mockSystemDb = createMockSystemDb();
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string }) => Promise<string> };
+    const tool = tools.find((t: { name: string }) => t.name === "read_user_contexts") as { invoke: (args: { query?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "Diego" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
