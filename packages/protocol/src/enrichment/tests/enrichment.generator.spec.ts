@@ -20,6 +20,20 @@ const FIXTURE_RESULTS = JSON.stringify([
   }
 ], null, 2);
 
+/**
+ * Live-LLM smoke test (real OpenRouter call) — OPT-IN via RUN_LLM_TESTS=1.
+ *
+ * It is gated off by default for two reasons: (1) it makes a real, slow,
+ * non-deterministic model call, and (2) sibling specs in this directory
+ * (`enrichment.{decompose,public-lookup,privacy-tools}.spec.ts`) replace the
+ * `enrichment.generator.js` module via `mock.module`, which bun applies
+ * process-globally with no per-file restore — so under a batch run
+ * (`bun test src/enrichment/tests/`) this spec would import the leaked stub
+ * instead of the real generator and flake. Run it in isolation:
+ *   RUN_LLM_TESTS=1 bun test src/enrichment/tests/enrichment.generator.spec.ts
+ */
+const RUN_LLM_TESTS = process.env.RUN_LLM_TESTS === '1';
+
 describe('Profile Generator', () => {
   let profileGenerator: EnrichmentGenerator;
 
@@ -27,7 +41,7 @@ describe('Profile Generator', () => {
     profileGenerator = new EnrichmentGenerator();
   })
 
-  it('should generate a profile', async () => {
+  it.skipIf(!RUN_LLM_TESTS)('should generate a profile (live LLM; set RUN_LLM_TESTS=1)', async () => {
     const result = await profileGenerator.invoke(FIXTURE_RESULTS);
     expect(!!result.output.identity.bio).toBe(true);
     expect(!!result.output.identity.location).toBe(true);
