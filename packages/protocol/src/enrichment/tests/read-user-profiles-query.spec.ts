@@ -16,12 +16,12 @@ function makeContext(userId = "viewer-111"): ResolvedToolContext {
 
 function captureTool(deps: ToolDeps) {
   let captured: { handler: (i: { context: ResolvedToolContext; query: unknown }) => Promise<string> } | undefined;
-  const defineTool = (def: any) => { if (def.name === "read_user_profiles") captured = def; return def; };
+  const defineTool = (def: any) => { if (def.name === "read_user_contexts") captured = def; return def; };
   createEnrichmentTools(defineTool as any, deps);
   return captured!;
 }
 
-describe("read_user_profiles — query mode resilience", () => {
+describe("read_user_contexts — query mode resilience", () => {
   test("returns partial results when getProfile throws for one member", async () => {
     const deps = {
       userDb: {},

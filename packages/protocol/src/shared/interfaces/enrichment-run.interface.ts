@@ -1,7 +1,14 @@
 import type { ResolvedToolContext } from "../agent/tool.helpers.js";
 
 export type EnrichmentRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
-export type EnrichmentRunOperation = "preview_user_profile" | "update_user_profile";
+// Canonical run operations are the *_user_context names (IND-371). The legacy
+// *_user_profile values are retained so historical run rows persisted before the
+// rename still type-check; nothing new writes them.
+export type EnrichmentRunOperation =
+  | "preview_user_context"
+  | "update_user_context"
+  | "preview_user_profile"
+  | "update_user_profile";
 
 export interface PreviewUserEnrichmentRunInput {
   name?: string;

@@ -26,7 +26,7 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
   return toolDefs;
 }
 
-describe("create_user_profile social merge logic", () => {
+describe("create_user_context social merge logic", () => {
   let mockSetUserSocials: ReturnType<typeof mock>;
   let mockGetUserSocials: ReturnType<typeof mock>;
   let mockUpdateUser: ReturnType<typeof mock>;
@@ -74,8 +74,8 @@ describe("create_user_profile social merge logic", () => {
     } as unknown as ToolDeps;
 
     tools = captureTools(deps);
-    createUserProfileTool = tools.find((t) => t.name === "create_user_profile")!;
-    updateUserProfileTool = tools.find((t) => t.name === "update_user_profile")!;
+    createUserProfileTool = tools.find((t) => t.name === "create_user_context")!;
+    updateUserProfileTool = tools.find((t) => t.name === "update_user_context")!;
   });
 
   it("does not call setUserSocials when no social URLs provided", async () => {
@@ -203,7 +203,7 @@ describe("create_user_profile social merge logic", () => {
     expect(arg).toContainEqual({ label: "linkedin", value: "https://linkedin.com/in/alice" });
   });
 
-  it("update_user_profile merges social-only updates without invoking the graph", async () => {
+  it("update_user_context merges social-only updates without invoking the graph", async () => {
     mockGetUserSocials.mockResolvedValue([
       { id: "1", userId: "test-user", label: "github", value: "alice-gh" },
       { id: "2", userId: "test-user", label: "telegram", value: "old_tg" },
@@ -223,7 +223,7 @@ describe("create_user_profile social merge logic", () => {
     ]);
   });
 
-  it("update_user_profile lowercases social labels before merging", async () => {
+  it("update_user_context lowercases social labels before merging", async () => {
     mockGetUserSocials.mockResolvedValue([
       { id: "1", userId: "test-user", label: "github", value: "old-gh" },
     ]);
@@ -237,7 +237,7 @@ describe("create_user_profile social merge logic", () => {
     expect(arg).toEqual([{ label: "github", value: "new-gh" }]);
   });
 
-  it("update_user_profile persists socials while preserving non-overlapping labels before profile edits", async () => {
+  it("update_user_context persists socials while preserving non-overlapping labels before profile edits", async () => {
     mockGetUserSocials.mockResolvedValue([
       { id: "1", userId: "test-user", label: "linkedin", value: "alice-li" },
       { id: "2", userId: "test-user", label: "github", value: "alice-gh" },
@@ -258,7 +258,7 @@ describe("create_user_profile social merge logic", () => {
     expect(mockInvokeProfile).toHaveBeenCalledTimes(2);
   });
 
-  it("update_user_profile accepts MCP text edits and runs the write graph in the background when no profile queue is configured", async () => {
+  it("update_user_context accepts MCP text edits and runs the write graph in the background when no profile queue is configured", async () => {
     mockInvokeProfile
       .mockResolvedValueOnce({ readResult: { hasProfile: true, profile: { id: "profile-1" } } })
       .mockResolvedValueOnce({});
@@ -278,7 +278,7 @@ describe("create_user_profile social merge logic", () => {
     });
   });
 
-  it("preview_user_profile starts an async MCP profile run when queue deps are configured", async () => {
+  it("preview_user_context starts an async MCP profile run when queue deps are configured", async () => {
     const profileRuns = {
       create: mock(async (input) => ({
         id: "profile-run-1",
@@ -299,10 +299,10 @@ describe("create_user_profile social merge logic", () => {
       database: {},
       graphs: { profile: { invoke: mockInvokeProfile } },
       enricher: { enrichUserProfile: async () => null },
-      profileRuns,
-      profileRunQueue,
+      enrichmentRuns: profileRuns,
+      enrichmentRunQueue: profileRunQueue,
     } as unknown as ToolDeps);
-    const preview = queuedTools.find((t) => t.name === "preview_user_profile")!;
+    const preview = queuedTools.find((t) => t.name === "preview_user_context")!;
 
     const result = await preview.handler({
       context: { ...baseContext, isMcp: true, userName: "Test", userEmail: "test@example.com", indexScope: ["net-1"] } as ResolvedToolContext,
@@ -313,14 +313,14 @@ describe("create_user_profile social merge logic", () => {
     expect(profileRuns.create).toHaveBeenCalledTimes(1);
     expect(profileRuns.create.mock.calls[0][0]).toMatchObject({
       userId: "test-user",
-      operation: "preview_user_profile",
+      operation: "preview_user_context",
       input: { bioOrDescription: "Builder" },
     });
     expect(profileRunQueue.enqueue).toHaveBeenCalledWith("profile-run-1");
     expect(mockInvokeProfile).not.toHaveBeenCalled();
   });
 
-  it("update_user_profile starts an async MCP profile run before graph validation when queue deps are configured", async () => {
+  it("update_user_context starts an async MCP profile run before graph validation when queue deps are configured", async () => {
     const profileRuns = {
       create: mock(async (input) => ({
         id: "profile-run-2",
@@ -341,10 +341,10 @@ describe("create_user_profile social merge logic", () => {
       database: {},
       graphs: { profile: { invoke: mockInvokeProfile } },
       enricher: { enrichUserProfile: async () => null },
-      profileRuns,
-      profileRunQueue,
+      enrichmentRuns: profileRuns,
+      enrichmentRunQueue: profileRunQueue,
     } as unknown as ToolDeps);
-    const update = queuedTools.find((t) => t.name === "update_user_profile")!;
+    const update = queuedTools.find((t) => t.name === "update_user_context")!;
 
     const result = await update.handler({
       context: { ...baseContext, isMcp: true, userName: "Test", userEmail: "test@example.com", indexScope: ["net-1"] } as ResolvedToolContext,
@@ -354,7 +354,7 @@ describe("create_user_profile social merge logic", () => {
     expect(result).toContain("profile-run-2");
     expect(profileRuns.create.mock.calls[0][0]).toMatchObject({
       userId: "test-user",
-      operation: "update_user_profile",
+      operation: "update_user_context",
       input: { action: "set location", details: "Berlin" },
     });
     expect(profileRunQueue.enqueue).toHaveBeenCalledWith("profile-run-2");
@@ -383,10 +383,10 @@ describe("create_user_profile social merge logic", () => {
       database: {},
       graphs: { profile: { invoke: mockInvokeProfile } },
       enricher: { enrichUserProfile: async () => null },
-      profileRuns,
-      profileRunQueue,
+      enrichmentRuns: profileRuns,
+      enrichmentRunQueue: profileRunQueue,
     } as unknown as ToolDeps);
-    const preview = queuedTools.find((t) => t.name === "preview_user_profile")!;
+    const preview = queuedTools.find((t) => t.name === "preview_user_context")!;
 
     await expect(preview.handler({
       context: { ...baseContext, isMcp: true, userName: "Test", userEmail: "test@example.com", indexScope: ["net-1"] } as ResolvedToolContext,

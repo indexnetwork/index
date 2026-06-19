@@ -531,12 +531,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     description:
       "Discovers opportunities — connections between users based on complementary intents — and persists them as drafts. " +
       "Opportunities are the core output of the discovery engine, representing potential valuable connections between people.\n\n" +
-      "**NOT for person lookup** — use read_user_profiles(query=name) to find people by name.\n\n" +
+      "**NOT for person lookup** — use read_user_contexts(query=name) to find people by name.\n\n" +
       "**Four modes:**\n" +
       "1. **Discovery** (most common): pass `searchQuery` and/or `networkId`. The system finds other users in shared indexes " +
       "whose intents semantically complement the query. Uses HyDE embeddings and LLM evaluation for scoring.\n" +
       "2. **Introduction**: pass `partyUserIds` (2+ user IDs) + `entities` (pre-gathered profiles and intents from shared indexes). " +
-      "You MUST call read_user_profiles and read_intents for each party BEFORE calling this. " +
+      "You MUST call read_user_contexts and read_intents for each party BEFORE calling this. " +
       "Optionally pass `hint` with the user's reason for the introduction.\n" +
       "3. **Direct connection**: pass `targetUserId` + `searchQuery`. Creates an opportunity between the current user and one specific person.\n" +
       "4. **Introducer discovery**: pass `introTargetUserId` (find matches FOR that person; current user becomes the introducer). " +
@@ -559,7 +559,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       "run across all indexes.\n\n" +
       "**Introduction mode prerequisites.** When using `partyUserIds` + `entities`, YOU must pre-fetch each party's " +
       "profile and intents before calling this tool. The entities array must include each party's userId, profile, " +
-      "intents from shared indexes, and the shared networkId. Call read_user_profiles, read_network_memberships, " +
+      "intents from shared indexes, and the shared networkId. Call read_user_contexts, read_network_memberships, " +
       "and read_intents for both parties first. The introducer (current user) must NOT appear in entities.\n\n" +
       "**Signal-visibility follow-up.** If the response includes `suggestIntentCreationForVisibility: true` and " +
       "`suggestedIntentDescription`, after presenting opportunity cards ask the user ONCE whether they'd also like " +
@@ -586,20 +586,20 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       targetUserId: z
         .string()
         .optional()
-        .describe("Direct connection mode: create an opportunity with this specific user. Get the userId from read_user_profiles(query=name). Combine with searchQuery to explain the connection reason."),
+        .describe("Direct connection mode: create an opportunity with this specific user. Get the userId from read_user_contexts(query=name). Combine with searchQuery to explain the connection reason."),
       introTargetUserId: z
         .string()
         .optional()
         .describe(
           "Introducer discovery mode: find matches FOR this user ID (the current user becomes the introducer). " +
-          "Get the userId from read_user_profiles(query=name). " +
+          "Get the userId from read_user_contexts(query=name). " +
           "Use when the user asks 'who should I introduce to [person]?'. " +
           "Do NOT combine with partyUserIds (that's full introduction mode)."
         ),
       partyUserIds: z
         .array(z.string())
         .optional()
-        .describe("Introduction mode: array of 2+ user IDs to introduce to each other. Get user IDs from read_user_profiles or read_network_memberships. Must also provide entities with pre-gathered profile/intent data."),
+        .describe("Introduction mode: array of 2+ user IDs to introduce to each other. Get user IDs from read_user_contexts or read_network_memberships. Must also provide entities with pre-gathered profile/intent data."),
       entities: z
         .array(
           z.object({
@@ -632,7 +632,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .describe(
           "Introduction mode: pre-gathered profile and intent data for each party being introduced. " +
           "Each entry needs userId, networkId (the shared index), and optionally profile (name, bio, skills, interests) and intents (intentId, payload). " +
-          "Gather this data by calling read_user_profiles and read_intents for each party BEFORE calling discover_opportunities. " +
+          "Gather this data by calling read_user_contexts and read_intents for each party BEFORE calling discover_opportunities. " +
           "All entities must share the same networkId (the shared index where both parties are members).",
         ),
       hint: z
@@ -852,7 +852,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           return error(
             "Introduction requires pre-gathered entity data. " +
               "First use read_network_memberships to find shared networks, " +
-              "then read_user_profiles and read_intents for each party, " +
+              "then read_user_contexts and read_intents for each party, " +
               "then pass the results as entities.",
           );
         }

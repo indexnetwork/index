@@ -16,7 +16,7 @@ function makeContext(overrides: Partial<ResolvedToolContext> = {}): ResolvedTool
 function captureReadTool(deps: ToolDeps) {
   let captured: { handler: (i: { context: ResolvedToolContext; query: unknown }) => Promise<string> } | undefined;
   const defineTool = (def: any) => {
-    if (def.name === "read_user_profiles") captured = def;
+    if (def.name === "read_user_contexts") captured = def;
     return def;
   };
   createEnrichmentTools(defineTool as any, deps);
@@ -29,7 +29,7 @@ const STRUCTURED_PROFILE = {
   attributes: { skills: ["math"], interests: ["engines"] },
 };
 
-describe("read_user_profiles — context-derived payload (WS6)", () => {
+describe("read_user_contexts — context-derived payload (WS6)", () => {
   test("self read (Mode 1): injects global user_context text, drops skills/interests", async () => {
     const deps = {
       userDb: {},

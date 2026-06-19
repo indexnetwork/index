@@ -94,7 +94,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 
 | File | Tools |
 |------|-------|
-| `enrichment/enrichment.tools.ts` | `read_user_profiles`, `preview_user_profile`, `confirm_user_profile`, `create_user_profile`, `update_user_profile`, `record_onboarding_privacy_consent`, `complete_onboarding`, `get_profile_run`, `cancel_profile_run` |
+| `enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `record_onboarding_privacy_consent`, `complete_onboarding`, `get_enrichment_run`, `cancel_enrichment_run` |
 | `premise/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
 | `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `network/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
@@ -215,17 +215,17 @@ flowchart TD
 sequenceDiagram
     participant User
     participant Agent as ChatAgent
-    participant PT as create_user_profile
+    participant PT as create_user_context
     participant PG as Enrichment Graph
 
     User->>Agent: "Create a profile for me"
-    Agent->>PT: create_user_profile({})
+    Agent->>PT: create_user_context({})
     PT->>PT: Check user fields (name, email, URLs)
     alt Missing name/email
         PT-->>Agent: "Need name and LinkedIn URL"
         Agent-->>User: "What's your full name and LinkedIn?"
         User->>Agent: "John Doe, linkedin.com/in/johndoe"
-        Agent->>PT: create_user_profile({name, linkedinUrl})
+        Agent->>PT: create_user_context({name, linkedinUrl})
     end
     PT->>PG: invoke(userId, mode: write, forceUpdate: true)
     Note over PG: scrape web for identity (constitutive context)

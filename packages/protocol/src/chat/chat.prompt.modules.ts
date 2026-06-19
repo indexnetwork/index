@@ -131,7 +131,7 @@ When the user mentions a specific person via @mention or name AND expresses inte
 **This is a direct connection — NOT an introduction (introductions connect two OTHER people).**
 
 \`\`\`
-1. If not already done: read_user_profiles(userId=X) + read_network_memberships(userId=X)
+1. If not already done: read_user_contexts(userId=X) + read_network_memberships(userId=X)
 2. Find shared indexes with the user (intersect with preloaded memberships)
 3. If no shared indexes: tell the user you can't find a connection path
 4. discover_opportunities(targetUserId=X, searchQuery="<synthesized reason for connecting based on shared context>")
@@ -182,7 +182,7 @@ const introductionModule: PromptModule = {
 \`\`\`
 1. read_network_memberships(userId=A) + read_network_memberships(userId=B)  → find shared networks
 2. If no shared indexes: tell user they're not in any shared community
-3. read_user_profiles(userId=A) + read_user_profiles(userId=B)
+3. read_user_contexts(userId=A) + read_user_contexts(userId=B)
 4. For each shared index: read_intents(networkId=X, userId=A) + read_intents(networkId=X, userId=B)
 5. Summarize to user: "Here's what I found about A and B..."
 6. discover_opportunities(partyUserIds=[A,B], entities=[{userId:A, profile:{...}, intents:[...], networkId:shared}, {userId:B, ...}], hint="user's reason")
@@ -217,7 +217,7 @@ const intentCreationModule: PromptModule = {
 
 \`\`\`
 IF description is vague ("find a job", "meet people", "learn something"):
-  1. read_user_profiles()           → get their background
+  1. read_user_contexts()           → get their background
   2. read_intents()                 → see existing intents for context
   3. THINK: given their profile and existing intents, suggest a refined version
   4. Reply: "Based on your background in X, did you mean something like 'Y'?"
@@ -252,13 +252,13 @@ const intentManagementModule: PromptModule = {
 
 const personLookupModule: PromptModule = {
   id: "person-lookup",
-  triggers: ["read_user_profiles"],
+  triggers: ["read_user_contexts"],
   content: () => `
 ### 0. User asks about a specific person by name
 
 When the user mentions a specific person by name ("find [name]", "look up [name]", "who is [name]?", "tell me about [name]"), look them up by name first — do NOT use discovery.
 
-- Call \`read_user_profiles(query="the name")\` — this finds members by name across the user's indexes
+- Call \`read_user_contexts(query="the name")\` — this finds members by name across the user's indexes
 - If one match: the result already includes their full profile; present it naturally
 - If multiple matches: present the list and ask the user to clarify which person
 - If no matches: tell the user you couldn't find anyone by that name in their network
@@ -282,9 +282,9 @@ const urlScrapingModule: PromptModule = {
 3. create_intent(description=synthesized_summary)
 \`\`\`
 
-Exception: for profile creation, pass URLs directly to create_user_profile (it handles scraping internally).
+Exception: for profile creation, pass URLs directly to create_user_context (it handles scraping internally).
 
-If the user pastes or types a profile URL (e.g. linkedin.com/..., github.com/...) to create or update their profile, you MUST pass that exact URL in the corresponding parameter (e.g. linkedinUrl, githubUrl, twitterUrl) to create_user_profile, or use scrape_url with that URL then update_user_profile; do not use the user's stored social links for that request.
+If the user pastes or types a profile URL (e.g. linkedin.com/..., github.com/...) to create or update their profile, you MUST pass that exact URL in the corresponding parameter (e.g. linkedinUrl, githubUrl, twitterUrl) to create_user_context, or use scrape_url with that URL then update_user_context; do not use the user's stored social links for that request.
 `,
 };
 
@@ -354,7 +354,7 @@ const sharedContextModule: PromptModule = {
 2. read_network_memberships(userId=other)  → their networks
 3. Intersect networkIds
 4. For each shared index: read_intents(networkId=shared)
-5. read_user_profiles(userId=other)
+5. read_user_contexts(userId=other)
 6. Synthesize: what overlaps, where they could collaborate
 \`\`\`
 `,

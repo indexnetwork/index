@@ -38,10 +38,10 @@ describe("extractRecentToolCalls", () => {
       new AIMessage({
         content: "",
         tool_calls: [
-          { id: "tc1", name: "read_user_profiles", args: {}, type: "tool_call" },
+          { id: "tc1", name: "read_user_contexts", args: {}, type: "tool_call" },
         ],
       }),
-      new ToolMessage({ tool_call_id: "tc1", content: "profile data", name: "read_user_profiles" }),
+      new ToolMessage({ tool_call_id: "tc1", content: "profile data", name: "read_user_contexts" }),
       new AIMessage({
         content: "",
         tool_calls: [
@@ -52,7 +52,7 @@ describe("extractRecentToolCalls", () => {
     ];
     const result = extractRecentToolCalls(messages);
     expect(result).toHaveLength(2);
-    expect(result.map((t) => t.name)).toEqual(["read_user_profiles", "discover_opportunities"]);
+    expect(result.map((t) => t.name)).toEqual(["read_user_contexts", "discover_opportunities"]);
   });
 
   test("resets scope on new HumanMessage", () => {
@@ -84,18 +84,18 @@ describe("extractRecentToolCalls", () => {
       new AIMessage({
         content: "",
         tool_calls: [
-          { id: "tc1", name: "read_user_profiles", args: { userId: "alice" }, type: "tool_call" },
-          { id: "tc2", name: "read_user_profiles", args: { userId: "bob" }, type: "tool_call" },
+          { id: "tc1", name: "read_user_contexts", args: { userId: "alice" }, type: "tool_call" },
+          { id: "tc2", name: "read_user_contexts", args: { userId: "bob" }, type: "tool_call" },
           { id: "tc3", name: "read_network_memberships", args: { userId: "alice" }, type: "tool_call" },
         ],
       }),
-      new ToolMessage({ tool_call_id: "tc1", content: "alice profile", name: "read_user_profiles" }),
-      new ToolMessage({ tool_call_id: "tc2", content: "bob profile", name: "read_user_profiles" }),
+      new ToolMessage({ tool_call_id: "tc1", content: "alice profile", name: "read_user_contexts" }),
+      new ToolMessage({ tool_call_id: "tc2", content: "bob profile", name: "read_user_contexts" }),
       new ToolMessage({ tool_call_id: "tc3", content: "alice memberships", name: "read_network_memberships" }),
     ];
     const result = extractRecentToolCalls(messages);
     expect(result).toHaveLength(3);
-    expect(result[0]).toEqual({ name: "read_user_profiles", args: { userId: "alice" } });
+    expect(result[0]).toEqual({ name: "read_user_contexts", args: { userId: "alice" } });
     expect(result[2]).toEqual({ name: "read_network_memberships", args: { userId: "alice" } });
   });
 });
@@ -193,9 +193,9 @@ describe("resolveModules", () => {
     expect(result).toContain("### 4. Update or delete an intent");
   });
 
-  test("activates person-lookup module on read_user_profiles trigger", () => {
+  test("activates person-lookup module on read_user_contexts trigger", () => {
     const iterCtx: IterationContext = {
-      recentTools: [{ name: "read_user_profiles", args: { query: "Alice" } }],
+      recentTools: [{ name: "read_user_contexts", args: { query: "Alice" } }],
       ctx: mockCtx(),
     };
     const result = resolveModules(iterCtx);
@@ -295,7 +295,7 @@ describe("resolveModules", () => {
     const iterCtx: IterationContext = {
       recentTools: [
         { name: "discover_opportunities", args: { searchQuery: "AI" } },
-        { name: "read_user_profiles", args: { query: "Bob" } },
+        { name: "read_user_contexts", args: { query: "Bob" } },
       ],
       ctx: mockCtx(),
     };
@@ -523,7 +523,7 @@ describe("buildSystemContent snapshot identity", () => {
         { name: "update_opportunity", args: {} },
         { name: "create_intent", args: {} },                          // intent-creation
         { name: "update_intent", args: {} },                          // intent-management
-        { name: "read_user_profiles", args: {} },                     // person-lookup
+        { name: "read_user_contexts", args: {} },                     // person-lookup
         { name: "scrape_url", args: {} },                             // url-scraping
         { name: "read_networks", args: {} },                           // community
         { name: "add_contact", args: {} },                            // contacts

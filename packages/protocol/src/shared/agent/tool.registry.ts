@@ -87,6 +87,33 @@ export function createToolRegistry(deps: ToolDeps): ToolRegistry {
     createChatTools(dt, deps);
   }
 
+  // Deprecated tool-name aliases (IND-371). The canonical implementations are now
+  // registered under their *_user_context / *_enrichment_run names; we expose the
+  // legacy *_user_profile / *_profile_run names as thin aliases that delegate to the
+  // exact same handler + schema, so existing MCP clients keep working while they
+  // migrate. The old names are removed in IND-373.
+  const DEPRECATED_TOOL_ALIASES: ReadonlyArray<readonly [oldName: string, canonicalName: string]> = [
+    ["read_user_profiles", "read_user_contexts"],
+    ["create_user_profile", "create_user_context"],
+    ["update_user_profile", "update_user_context"],
+    ["confirm_user_profile", "confirm_user_context"],
+    ["preview_user_profile", "preview_user_context"],
+    ["get_profile_run", "get_enrichment_run"],
+    ["cancel_profile_run", "cancel_enrichment_run"],
+  ];
+  for (const [oldName, canonicalName] of DEPRECATED_TOOL_ALIASES) {
+    const canonical = registry.get(canonicalName);
+    if (!canonical) {
+      logger.warn(`Cannot register deprecated alias ${oldName}: canonical ${canonicalName} not found`);
+      continue;
+    }
+    registry.set(oldName, {
+      ...canonical,
+      name: oldName,
+      description: `[DEPRECATED — use \`${canonicalName}\` instead; this alias is retained for backward compatibility and will be removed.] ${canonical.description}`,
+    });
+  }
+
   logger.verbose(`Tool registry created with ${registry.size} tools`);
   return registry;
 }
