@@ -138,8 +138,8 @@ describe("Multi-step: discovery flow", () => {
     let messages: BaseMessage[] = [new HumanMessage("find me a mentor")];
     messages = withToolCall(messages, "discover_opportunities", { searchQuery: "mentor" });
 
-    // Iteration 3: agent then called read_user_profiles (person-lookup joins)
-    messages = withToolCall(messages, "read_user_profiles", { query: "Bob" });
+    // Iteration 3: agent then called read_user_contexts (person-lookup joins)
+    messages = withToolCall(messages, "read_user_contexts", { query: "Bob" });
 
     const iterCtx = iterCtxFrom(messages, ctx);
     const result = resolveModules(iterCtx);
@@ -184,7 +184,7 @@ describe("Multi-step: discovery → signal follow-up (multi-turn)", () => {
 });
 
 describe("Multi-step: person lookup → direct connection", () => {
-  test("@mention triggers mentions module, then read_user_profiles adds person-lookup, then discover_opportunities adds discovery", () => {
+  test("@mention triggers mentions module, then read_user_contexts adds person-lookup, then discover_opportunities adds discovery", () => {
     const ctx = makeCtx();
 
     // Iteration 1: user mentions someone
@@ -198,7 +198,7 @@ describe("Multi-step: person lookup → direct connection", () => {
     expect(iter1Result).not.toContain("### 0. User asks about a specific person");
 
     // Iteration 2: agent looked up the person
-    messages = withToolCall(messages, "read_user_profiles", { userId: "user-alice" });
+    messages = withToolCall(messages, "read_user_contexts", { userId: "user-alice" });
     const iter2 = iterCtxFrom(messages, ctx);
     const iter2Result = resolveModules(iter2);
     // Person-lookup via trigger + mentions via regex
@@ -229,7 +229,7 @@ describe("Multi-step: introduction flow with exclusion", () => {
     ];
 
     // Iteration 2: agent gathers context
-    messages = withToolCall(messages, "read_user_profiles", { userId: "user-a" });
+    messages = withToolCall(messages, "read_user_contexts", { userId: "user-a" });
     messages = withToolCall(messages, "read_network_memberships", { userId: "user-a" });
     const iter2 = iterCtxFrom(messages, ctx);
     const iter2Result = resolveModules(iter2);
@@ -553,7 +553,7 @@ describe("Chat Prompt Dynamic Modules", () => {
   });
 
   describe("@mention handling", () => {
-    test("message with @[Name](userId) triggers read_user_profiles", async () => {
+    test("message with @[Name](userId) triggers read_user_contexts", async () => {
       const mockDatabase = createChatGraphMockDb({
         getUser: (userId: string) => {
           if (userId === "user-123") {
@@ -572,14 +572,14 @@ describe("Chat Prompt Dynamic Modules", () => {
 
       await assertLLM(
         output,
-        "Agent must have attempted to look up information about Alice (called read_user_profiles or similar tool). Response should mention Alice by name — either presenting information or acknowledging the lookup attempt.",
+        "Agent must have attempted to look up information about Alice (called read_user_contexts or similar tool). Response should mention Alice by name — either presenting information or acknowledging the lookup attempt.",
       );
 
       expect(output.responseText).toBeDefined();
       expect(output.responseText!.length).toBeGreaterThan(0);
 
-      // Deterministic: agent must have called read_user_profiles
-      expect(hasToolCall(output.messages ?? [], "read_user_profiles")).toBe(true);
+      // Deterministic: agent must have called read_user_contexts
+      expect(hasToolCall(output.messages ?? [], "read_user_contexts")).toBe(true);
     }, 180000);
   });
 
@@ -698,7 +698,7 @@ describe("Chat Prompt Dynamic Modules", () => {
       });
 
       expect(turn1.responseText).toBeDefined();
-      expect(hasToolCall(turn1.messages, "read_user_profiles")).toBe(true);
+      expect(hasToolCall(turn1.messages, "read_user_contexts")).toBe(true);
 
       // ── Turn 2: connect with that person ──
       const turn2 = await graph.invoke({

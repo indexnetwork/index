@@ -25,7 +25,7 @@ Other banned words: leverage, unlock, optimize, scale, disrupt, revolutionary, A
 ## Entity model
 
 - **User** — has one Profile, many Memberships, many Intents
-- **Profile** — identity (bio, skills, interests, location)
+- **Profile** — identity (name, bio, location) plus a synthesized `context` paragraph
 - **Index** — community with title, prompt (purpose), join policy. Has many Members
 - **Membership** — User ↔ Index junction. `isPersonal: true` marks the user's personal index (contacts)
 - **Intent** — what a user is looking for (signal). Description, summary, embedding

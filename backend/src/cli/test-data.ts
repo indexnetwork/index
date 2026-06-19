@@ -1,4 +1,9 @@
-/** Profile payload for seed user_profiles (identity, narrative, attributes). */
+/**
+ * Seed persona profile payload (identity, narrative, attributes). No longer
+ * persisted to a `user_profiles` table (dropped in WS8); identity now lives on
+ * `users` and richer context lives in premises / `user_contexts`. Retained as
+ * descriptive fixture data for personas.
+ */
 export interface SeedProfile {
   identity: { name: string; bio: string; location: string };
   narrative: { context: string };

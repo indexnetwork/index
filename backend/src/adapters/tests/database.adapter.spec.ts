@@ -10,8 +10,8 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
-import { users, userProfiles, userSocials, networks, networkMembers, intents, intentNetworks, premises, opportunities } from '../../schemas/database.schema';
-import { IntentDatabaseAdapter, ChatDatabaseAdapter, ProfileDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
+import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, opportunities } from '../../schemas/database.schema';
+import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
 
@@ -37,19 +37,17 @@ beforeAll(async () => {
       id: userAId,
       email: TEST_PREFIX + userAId + '@test.com',
       name: TEST_PREFIX + 'UserA',
+      intro: 'Bio A',
+      location: 'Loc A',
     },
     {
       id: userBId,
       email: TEST_PREFIX + userBId + '@test.com',
       name: TEST_PREFIX + 'UserB',
+      intro: 'Bio B',
+      location: 'Loc B',
     },
   ]);
-  await db.insert(userProfiles).values({
-    userId: userAId,
-    identity: { name: 'User A', bio: 'Bio A', location: '' },
-    narrative: { context: 'Context A' },
-    attributes: { interests: [], skills: [] },
-  });
   await db.insert(networks).values({
     id: networkId,
     title: TEST_PREFIX + 'Test Index',
@@ -83,7 +81,6 @@ afterAll(async () => {
   }
   await db.delete(opportunities).where(sql`${opportunities.context}->>'networkId' = ${fixture.networkId}`);
   await db.delete(networkMembers).where(eq(networkMembers.networkId, fixture.networkId));
-  await db.delete(userProfiles).where(inArray(userProfiles.userId, [fixture.userAId, fixture.userBId]));
   await db.delete(networks).where(eq(networks.id, fixture.networkId));
   await db.delete(users).where(inArray(users.id, [fixture.userAId, fixture.userBId]));
 });
@@ -150,15 +147,18 @@ describe('IntentDatabaseAdapter', () => {
 describe('ChatDatabaseAdapter', () => {
   const adapter = new ChatDatabaseAdapter();
 
-  it('should get profile when exists', async () => {
+  it('should get profile sourced from the users table', async () => {
+    // getProfile now sources identity from `users` (name/intro->bio/location); the typed
+    // skills/interests/narrative are dropped (empty) -- see WS5 (IND-363).
     const profile = await adapter.getProfile(fixture.userAId);
     expect(profile).not.toBeNull();
     expect(profile!.userId).toBe(fixture.userAId);
-    expect(profile!.identity).toEqual({ name: 'User A', bio: 'Bio A', location: '' });
+    expect(profile!.identity).toEqual({ name: TEST_PREFIX + 'UserA', bio: 'Bio A', location: 'Loc A' });
+    expect(profile!.context).toBe('');
   });
 
-  it('should get null profile when missing', async () => {
-    const profile = await adapter.getProfile(fixture.userBId);
+  it('should get null profile for a non-existent user', async () => {
+    const profile = await adapter.getProfile(uuidv4());
     expect(profile).toBeNull();
   });
 
@@ -194,33 +194,33 @@ describe('ChatDatabaseAdapter', () => {
     expect(user!.name).toContain('UserA');
   });
 
-  it('should save profile and then get it', async () => {
+  it('getProfile reads from users, decoupled from saveProfile writes', async () => {
     const profile = {
       userId: fixture.userBId,
-      identity: { name: 'User B', bio: 'Bio B', location: '' },
-      narrative: { context: 'Context B' },
-      attributes: { interests: ['x'], skills: ['y'] },
-      embedding: null as number[] | null,
+      identity: { name: 'User B', bio: 'Saved Bio', location: '' },
+      context: 'Context B',
     };
     await adapter.saveProfile(fixture.userBId, profile);
     const got = await adapter.getProfile(fixture.userBId);
     expect(got).not.toBeNull();
-    expect(got!.identity.name).toBe('User B');
-    expect(got!.attributes.interests).toEqual(['x']);
+    // getProfile returns the users-table identity, NOT the saveProfile write.
+    expect(got!.identity.name).toBe(TEST_PREFIX + 'UserB');
+    expect(got!.identity.bio).toBe('Bio B');
+    expect(got!.context).toBe('');
   });
 
   it('should save HyDE profile to hyde_documents', async () => {
     const desc = 'Hypothetical description';
     const embedding = new Array(2000).fill(0.1);
     await adapter.saveHydeDocument({
-      sourceType: 'profile',
+      sourceType: 'query',
       sourceId: fixture.userAId,
       strategy: 'mirror',
       targetCorpus: 'profiles',
       hydeText: desc,
       hydeEmbedding: embedding,
     });
-    const doc = await adapter.getHydeDocument('profile', fixture.userAId, 'mirror');
+    const doc = await adapter.getHydeDocument('query', fixture.userAId, 'mirror');
     expect(doc).not.toBeNull();
     expect(doc!.hydeText).toBe(desc);
   });
@@ -640,10 +640,10 @@ describe('ChatDatabaseAdapter', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ProfileDatabaseAdapter
+// EnrichmentDatabaseAdapter
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('ProfileDatabaseAdapter', () => {
-  const adapter = new ProfileDatabaseAdapter();
+describe('EnrichmentDatabaseAdapter', () => {
+  const adapter = new EnrichmentDatabaseAdapter();
 
   it('should get profile when exists', async () => {
     const profile = await adapter.getProfile(fixture.userAId);
@@ -651,7 +651,7 @@ describe('ProfileDatabaseAdapter', () => {
     expect(profile!.userId).toBe(fixture.userAId);
   });
 
-  it('should save profile (upsert)', async () => {
+  it('saveProfile upsert does not change getProfile (users-sourced)', async () => {
     const profile = {
       userId: fixture.userBId,
       identity: { name: 'P B', bio: 'Bio', location: '' },
@@ -661,12 +661,12 @@ describe('ProfileDatabaseAdapter', () => {
     };
     await adapter.saveProfile(fixture.userBId, profile);
     const got = await adapter.getProfile(fixture.userBId);
-    expect(got!.identity.name).toBe('P B');
+    expect(got!.identity.name).toBe(TEST_PREFIX + 'UserB');
   });
 
   it('should save HyDE profile to hyde_documents', async () => {
     await adapter.saveHydeDocument({
-      sourceType: 'profile',
+      sourceType: 'query',
       sourceId: fixture.userBId,
       strategy: 'mirror',
       targetCorpus: 'profiles',
@@ -674,7 +674,7 @@ describe('ProfileDatabaseAdapter', () => {
       hydeEmbedding: new Array(2000).fill(0.2),
     });
     const hydeAdapter = new HydeDatabaseAdapter();
-    const doc = await hydeAdapter.getHydeDocument('profile', fixture.userBId, 'mirror');
+    const doc = await hydeAdapter.getHydeDocument('query', fixture.userBId, 'mirror');
     expect(doc).not.toBeNull();
     expect(doc!.hydeText).toBe('HyDE desc');
   });
@@ -715,15 +715,20 @@ describe('OpportunityDatabaseAdapter', () => {
     expect(profile!.userId).toBe(fixture.userAId);
   });
 
-  it('should return null for user with no profile', async () => {
+  it('should return a users-sourced row for an un-enriched user (empty arrays); null for non-existent', async () => {
     const newUserId = uuidv4();
     await db.insert(users).values({
       id: newUserId,
       email: TEST_PREFIX + newUserId + '@test.com',
       name: 'NoProfile',
+      intro: 'NP bio',
+      location: 'NP loc',
     });
     const profile = await adapter.getProfile(newUserId);
-    expect(profile).toBeNull();
+    expect(profile).not.toBeNull();
+    expect(profile!.identity).toEqual({ name: 'NoProfile', bio: 'NP bio', location: 'NP loc' });
+    expect(profile!.context).toBe('');
+    expect(await adapter.getProfile(uuidv4())).toBeNull();
     await db.delete(users).where(eq(users.id, newUserId));
   });
 
@@ -1545,7 +1550,7 @@ describe('HydeDatabaseAdapter', () => {
 
 describe('HydeDatabaseAdapter – deleteExpired and getStale', () => {
   const adapter = new HydeDatabaseAdapter();
-  const sourceType = 'profile' as const;
+  const sourceType = 'query' as const;
   const sourceId = uuidv4();
   const embedding = new Array(2000).fill(0).map((_, i) => (i % 100) / 100);
   const past = new Date(Date.now() - 60_000);

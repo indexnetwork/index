@@ -3,16 +3,16 @@ import { and, eq, isNull } from 'drizzle-orm';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
-import { ProfileDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
-import { ProfileGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
+import { EnrichmentGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import db from '../lib/drizzle/drizzle';
 import { questionerEnqueueIfEnabled } from './questioner.queue';
-import { canRunPublicProfileEnrichment, getProfileEnrichmentPolicy } from '../lib/privacy/profile-enrichment-policy';
-import { networks, userProfiles, users } from '../schemas/database.schema';
+import { canRunPublicEnrichment, getEnrichmentPolicy } from '../lib/privacy/enrichment-policy';
+import { networks, premises, users } from '../schemas/database.schema';
 import type { OnboardingState, ProfileEnrichmentPolicy } from '../schemas/database.schema';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
@@ -268,7 +268,7 @@ export class EnrichmentQueue {
       return { allowed: true, policy: 'auto', reason: 'no_network_policy', hasExistingProfile: false };
     }
 
-    const [[user], [network], [profile]] = await Promise.all([
+    const [[user], [network], [premise]] = await Promise.all([
       db
         .select({ onboarding: users.onboarding, isGhost: users.isGhost })
         .from(users)
@@ -279,19 +279,23 @@ export class EnrichmentQueue {
         .from(networks)
         .where(and(eq(networks.id, data.networkId), isNull(networks.deletedAt)))
         .limit(1),
+      // "Has been enriched?" keys on ACTIVE premises, not a `user_profiles` row
+      // (WS10/IND-367 — same existence-via-user_profiles anti-pattern WS5 removed from
+      // profile.graph). `getProfile` returns a users-sourced row for every user, so it
+      // can't signal enrichment; the premise graph is the source of truth.
       db
-        .select({ id: userProfiles.id })
-        .from(userProfiles)
-        .where(eq(userProfiles.userId, data.userId))
+        .select({ id: premises.id })
+        .from(premises)
+        .where(and(eq(premises.userId, data.userId), eq(premises.status, 'ACTIVE')))
         .limit(1),
     ]);
 
-    const hasExistingProfile = !!profile;
+    const hasExistingProfile = !!premise;
     if (!network) {
       return { allowed: false, policy: 'disabled', reason: 'network_not_found', hasExistingProfile };
     }
 
-    const policy = getProfileEnrichmentPolicy(network.permissions);
+    const policy = getEnrichmentPolicy(network.permissions);
     if (!user) {
       return { allowed: false, policy, reason: 'user_not_found', hasExistingProfile };
     }
@@ -300,7 +304,7 @@ export class EnrichmentQueue {
       return { allowed: true, policy, reason: 'existing_profile_no_public_enrichment_needed', hasExistingProfile };
     }
 
-    const allowed = canRunPublicProfileEnrichment({
+    const allowed = canRunPublicEnrichment({
       policy,
       onboarding: user.onboarding as OnboardingState | null | undefined,
       isGhost: user.isGhost,
@@ -330,7 +334,7 @@ export class EnrichmentQueue {
   }
 
   private async invokeProfileGraph(userId: string, operationMode: 'write' | 'generate') {
-    const database = new ProfileDatabaseAdapter();
+    const database = new EnrichmentDatabaseAdapter();
     const premiseDatabase = new ChatDatabaseAdapter();
     const scraper = new ScraperAdapter();
     const embedder = new EmbedderAdapter();
@@ -341,7 +345,7 @@ export class EnrichmentQueue {
     // Inject the env-gated questioner enqueue so profile regeneration runs
     // (onboarding, premise cascades) generate profile-gap questions instead
     // of silently dropping them (the gap that left prod's questions table empty).
-    const factory = new ProfileGraphFactory(database, scraper, { enrichUserProfile }, questionerEnqueueIfEnabled(), premiseGraph);
+    const factory = new EnrichmentGraphFactory(database, scraper, { enrichUserProfile }, questionerEnqueueIfEnabled(), premiseGraph);
     const graph = factory.createGraph();
     return graph.invoke({ userId, operationMode });
   }

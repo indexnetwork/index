@@ -165,24 +165,12 @@ interface IntentListRow {
    */
   networks: { id: string; title: string }[];
 }
-// Shapes matching schemas/database.schema userProfiles columns (no lib/protocol import)
-interface ProfileIdentity {
-  name: string;
-  bio: string;
-  location: string;
-}
-interface ProfileNarrative {
+// UserIdentity shape (aligned with `@indexnetwork/protocol`'s UserIdentity; defined
+// locally to honor the adapter layering rule of not importing protocol interfaces).
+interface UserIdentity {
+  userId?: string;
+  identity: { name: string; bio: string; location: string };
   context: string;
-}
-interface ProfileAttributes {
-  interests: string[];
-  skills: string[];
-}
-interface ProfileRow {
-  userId: string;
-  identity: ProfileIdentity;
-  narrative: ProfileNarrative;
-  attributes: ProfileAttributes;
 }
 
 interface NetworkMembershipRow {
@@ -196,10 +184,74 @@ interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions, userSocials, userContexts } = schema;
+const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, links, sessions, userSocials, userContexts } = schema;
+
+/**
+ * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
+ * replacing the retired `user_profiles` read. Identity (name/bio/location) is sourced
+ * from `users` (`name`/`intro`->bio/`location`). The `context` paragraph is sourced
+ * elsewhere (the global user_context) and is left empty here.
+ *
+ * @param userId - The user whose identity representation to build.
+ * @returns A UserIdentity, or null when the user does not exist.
+ */
+async function buildProfileFromUser(userId: string): Promise<UserIdentity | null> {
+  const rows = await db.select({
+    id: users.id,
+    name: users.name,
+    intro: users.intro,
+    location: users.location,
+  })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const user = rows[0];
+  if (!user) return null;
+  return {
+    userId: user.id,
+    identity: { name: user.name ?? '', bio: user.intro ?? '', location: user.location ?? '' },
+    context: '',
+  };
+}
+
+/**
+ * {@link buildProfileFromUser} variant returning the legacy `& { id }` shape. Since the
+ * `user_profiles` row no longer exists, `id` is the stable `userId`. Its sole consumer
+ * (the WS8-bound enrichment-graph aggregate node) only uses it for existence/merge.
+ *
+ * @param userId - The user whose identity representation to build.
+ * @returns A UserIdentity with an `id`, or null when the user does not exist.
+ */
+async function buildProfileWithIdFromUser(userId: string): Promise<(UserIdentity & { id: string }) | null> {
+  const profile = await buildProfileFromUser(userId);
+  if (!profile) return null;
+  return { id: profile.userId ?? userId, ...profile };
+}
+
+/**
+ * Persist a profile draft's identity to the canonical `users` table (WS8 / IND-365).
+ * The `user_profiles` table was dropped; identity (name/bio/location) lives on `users`
+ * (`name`/`intro`<-bio/`location`), while skills/interests/narrative are derived from
+ * premises + the global user_context and have no column to persist. Empty identity
+ * fields are skipped so a partial draft never clobbers existing identity.
+ *
+ * @param userId - The user whose identity to update.
+ * @param profile - The identity draft whose `identity` fields are persisted.
+ */
+async function persistProfileIdentityToUser(userId: string, profile: UserIdentity): Promise<void> {
+  const identity = profile.identity ?? { name: '', bio: '', location: '' };
+  const update: { name?: string; intro?: string; location?: string } = {};
+  if (identity.name?.trim()) update.name = identity.name.trim();
+  if (identity.bio?.trim()) update.intro = identity.bio.trim();
+  if (identity.location?.trim()) update.location = identity.location.trim();
+  if (Object.keys(update).length === 0) return;
+  await db.update(users)
+    .set({ ...update, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+}
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
-type HydeSourceTypeLocal = 'intent' | 'profile' | 'query' | 'context';
+type HydeSourceTypeLocal = 'intent' | 'query' | 'context';
 interface HydeDocumentRow {
   id: string;
   sourceType: HydeSourceTypeLocal;
@@ -238,6 +290,23 @@ function toHydeDocument(row: typeof hydeDocuments.$inferSelect): HydeDocumentRow
  * Database adapter for intent CRUD (Intent Graph).
  */
 export class IntentDatabaseAdapter {
+  /**
+   * Retrieve a single user_context row (global when networkId is null), or null.
+   * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the intent graph.
+   */
+  async getUserContext(userId: string, networkId: string | null) {
+    const rows = await db.select()
+      .from(userContexts)
+      .where(and(
+        eq(userContexts.userId, userId),
+        networkId === null ? isNull(userContexts.networkId) : eq(userContexts.networkId, networkId),
+      ))
+      .limit(1);
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
+  }
+
   async getActiveIntents(userId: string): Promise<ActiveIntentRow[]> {
     try {
       const result = await db.select({
@@ -653,19 +722,8 @@ export class IntentDatabaseAdapter {
 
   // --- Profile check (required by IntentGraphDatabase for prepNode gate) ---
 
-  async getProfile(userId: string): Promise<ProfileRow | null> {
-    const result = await db.select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+  async getProfile(userId: string): Promise<UserIdentity | null> {
+    return buildProfileFromUser(userId);
   }
 
   // --- Read mode methods (required by IntentGraphDatabase for queryNode) ---
@@ -928,19 +986,8 @@ export class ChatDatabaseAdapter {
   // Chat Graph Methods (Profiles, Intents, Indexes)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  async getProfile(userId: string): Promise<ProfileRow | null> {
-    const result = await db.select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+  async getProfile(userId: string): Promise<UserIdentity | null> {
+    return buildProfileFromUser(userId);
   }
 
   async getActiveIntents(userId: string): Promise<ActiveIntentRow[]> {
@@ -1059,7 +1106,7 @@ export class ChatDatabaseAdapter {
   }
 
   async getUser(userId: string) {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.getUser(userId);
   }
 
@@ -1067,55 +1114,43 @@ export class ChatDatabaseAdapter {
     userId: string,
     data: { name?: string; intro?: string; location?: string; onboarding?: OnboardingState }
   ) {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.updateUser(userId, data);
   }
 
   async getUserSocials(userId: string) {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.getUserSocials(userId);
   }
 
   async findTelegramHandleOwners(handle: string) {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.findTelegramHandleOwners(handle);
   }
 
   async setUserSocials(userId: string, socials: { label: string; value: string }[]) {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.setUserSocials(userId, socials);
   }
 
-  async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
-    const data = {
-      userId,
-      identity: profile.identity,
-      narrative: profile.narrative,
-      attributes: profile.attributes,
-      updatedAt: new Date(),
-    };
-    await db.insert(schema.userProfiles)
-      .values(data)
-      .onConflictDoUpdate({
-        target: schema.userProfiles.userId,
-        set: data,
-      });
+  async saveProfile(userId: string, profile: UserIdentity): Promise<void> {
+    await persistProfileIdentityToUser(userId, profile);
   }
 
   /**
    * Soft-delete a ghost user and all their contact memberships.
-   * Delegates to ProfileDatabaseAdapter.
+   * Delegates to EnrichmentDatabaseAdapter.
    * @param userId - The ghost user to soft-delete
    * @returns true if the user was soft-deleted
    */
   async softDeleteGhost(userId: string): Promise<boolean> {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.softDeleteGhost(userId);
   }
 
   /**
    * Find an existing user that shares any of the given social handles with the specified ghost.
-   * Delegates to ProfileDatabaseAdapter.
+   * Delegates to EnrichmentDatabaseAdapter.
    * @param userId - The ghost user ID to exclude from results
    * @param socials - Social handles to match against
    * @returns The matching user's ID, or null if no match found
@@ -1124,19 +1159,19 @@ export class ChatDatabaseAdapter {
     userId: string,
     socials: Array<{ id: string; userId: string; label: string; value: string }>,
   ): Promise<{ id: string } | null> {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.findDuplicateUser(userId, socials);
   }
 
   /**
    * Merge a ghost user (source) into a target user.
    * Re-points all data from source to target, cleans up ghost-only records, and soft-deletes source.
-   * Delegates to ProfileDatabaseAdapter.
+   * Delegates to EnrichmentDatabaseAdapter.
    * @param sourceId - The ghost user to merge away (must be an active ghost)
    * @param targetId - The user to merge into
    */
   async mergeGhostUser(sourceId: string, targetId: string): Promise<void> {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.mergeGhostUser(sourceId, targetId);
   }
 
@@ -1838,7 +1873,7 @@ export class ChatDatabaseAdapter {
 
   // HyDE document operations (delegate to HydeDatabaseAdapter)
   async getHydeDocument(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string,
     strategy: string
   ): Promise<HydeDocumentRow | null> {
@@ -1846,7 +1881,7 @@ export class ChatDatabaseAdapter {
   }
 
   async getHydeDocumentsForSource(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string
   ): Promise<HydeDocumentRow[]> {
     return this.hydeAdapter.getHydeDocumentsForSource(sourceType, sourceId);
@@ -1857,7 +1892,7 @@ export class ChatDatabaseAdapter {
   }
 
   async deleteHydeDocumentsForSource(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string
   ): Promise<number> {
     return this.hydeAdapter.deleteHydeDocumentsForSource(sourceType, sourceId);
@@ -2496,17 +2531,8 @@ export class ChatDatabaseAdapter {
       .where(eq(schema.networks.id, networkId));
   }
 
-  async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
-    const result = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, userId)).limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      id: profile.id,
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+  async getProfileByUserId(userId: string): Promise<(UserIdentity & { id: string }) | null> {
+    return buildProfileWithIdFromUser(userId);
   }
 
   /**
@@ -2677,8 +2703,11 @@ export class ChatDatabaseAdapter {
     return { success: true };
   }
 
-  async deleteProfile(userId: string): Promise<void> {
-    await db.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, userId));
+  // user_profiles was dropped in WS8 (IND-365); there is no separate profile row to
+  // delete. Identity lives on `users` and is removed via user soft-delete, not here.
+  // Retained as a no-op so existing callers/interface stay stable.
+  async deleteProfile(_userId: string): Promise<void> {
+    return;
   }
 
   /**
@@ -3306,13 +3335,8 @@ export class ChatDatabaseAdapter {
       .returning({ id: schema.users.id });
 
     if (result[0]) {
-      // New ghost created or existing ghost updated
-      if (result[0].id === id) {
-        // Truly new ghost — create empty profile
-        await db.insert(schema.userProfiles).values({
-          userId: id,
-        }).onConflictDoNothing();
-      }
+      // New ghost created or existing ghost updated. No profile row to seed since
+      // user_profiles was dropped in WS8 (IND-365); identity lives on `users`.
       return { id: result[0].id };
     }
 
@@ -3473,24 +3497,7 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Returns the subset of user IDs that have no enriched profile (identity IS NULL).
-   * @param userIds - User IDs to check
-   * @returns Set of user IDs lacking a profile
-   */
-  async getUserIdsWithoutProfile(userIds: string[]): Promise<Set<string>> {
-    if (userIds.length === 0) return new Set();
-    const rows = await db
-      .select({ userId: schema.userProfiles.userId })
-      .from(schema.userProfiles)
-      .where(and(
-        inArray(schema.userProfiles.userId, userIds),
-        isNull(schema.userProfiles.identity),
-      ));
-    return new Set(rows.map(r => r.userId));
-  }
-
-  /**
-   * Bulk create ghost users with empty profiles.
+   * Bulk create ghost users.
    * @param data - Array of {name, email} for ghost users
    * @returns Array of created ghost users with their IDs
    */
@@ -3522,19 +3529,6 @@ export class ChatDatabaseAdapter {
 
     // Map back to our generated IDs vs actual IDs
     const emailToId = new Map(existingAfterInsert.map(u => [u.email, u.id]));
-    const actuallyCreatedIds = new Set(
-      usersToInsert
-        .filter(u => emailToId.get(u.email) === u.id)
-        .map(u => u.id)
-    );
-
-    // Create empty profiles only for newly created users
-    if (actuallyCreatedIds.size > 0) {
-      const profilesToInsert = usersToInsert
-        .filter(u => actuallyCreatedIds.has(u.id))
-        .map(u => ({ userId: u.id }));
-      await db.insert(schema.userProfiles).values(profilesToInsert);
-    }
 
     // Return results with correct IDs (actual DB IDs, not our generated ones)
     for (const u of usersToInsert) {
@@ -4207,6 +4201,48 @@ export class ChatDatabaseAdapter {
     return this.opportunityAdapter.searchPremisesBySimilarityBatch(params);
   }
 
+  /**
+   * Find the most-similar ACTIVE premise owned by the same user whose cosine
+   * similarity to `embedding` meets or exceeds `threshold`. Powers near-duplicate
+   * skipping on premise create. Returns null when nothing clears the threshold.
+   *
+   * @param params.userId - Owner whose premises are searched.
+   * @param params.embedding - Query embedding for the candidate premise.
+   * @param params.threshold - Minimum cosine similarity (0-1) to treat as a duplicate.
+   * @returns The nearest qualifying premise, or null.
+   */
+  async findSimilarActivePremise(params: {
+    userId: string;
+    embedding: number[];
+    threshold: number;
+  }): Promise<{ premiseId: string; assertionText: string; similarity: number } | null> {
+    const { userId, embedding, threshold } = params;
+    if (!embedding.length) return null;
+    const vectorStr = `[${embedding.join(',')}]`;
+    const rows = await db.execute<{
+      premiseId: string;
+      assertionText: string;
+      similarity: number;
+    }>(sql`
+      SELECT
+        p.id AS "premiseId",
+        p.assertion->>'text' AS "assertionText",
+        1 - (p.embedding <=> ${vectorStr}::vector) AS similarity
+      FROM ${schema.premises} p
+      WHERE p.user_id = ${userId}
+        AND p.status = 'ACTIVE'
+        AND p.embedding IS NOT NULL
+        AND p.deleted_at IS NULL
+      ORDER BY p.embedding <=> ${vectorStr}::vector
+      LIMIT 1
+    `);
+    const top = rows[0];
+    if (!top) return null;
+    const similarity = Number(top.similarity);
+    if (!Number.isFinite(similarity) || similarity < threshold) return null;
+    return { premiseId: top.premiseId, assertionText: top.assertionText, similarity };
+  }
+
   async updatePremise(premiseId: string, updates: {
     assertion?: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
     analysis?: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number };
@@ -4351,13 +4387,24 @@ export class ChatDatabaseAdapter {
    */
   async upsertUserContext(params: {
     userId: string;
-    networkId: string;
+    /** Concrete network id, or null for the user's global (profile-replacing) row. */
+    networkId: string | null;
     text: string;
     embedding: number[];
     premiseHash: string;
   }): Promise<{ id: string }> {
     const vectorStr = `[${params.embedding.join(',')}]`;
-    const rows = await db.insert(userContexts)
+    const setOnConflict = {
+      text: params.text,
+      embedding: sql`${vectorStr}::vector` as unknown as number[],
+      premiseHash: params.premiseHash,
+      generatedAt: new Date(),
+    };
+    // A null networkId conflicts on the partial `user_contexts_user_global_uniq`
+    // index (target = userId WHERE network_id IS NULL); concrete networks conflict
+    // on the composite `user_contexts_user_network_uniq` index. The two indexes are
+    // mutually exclusive, so the conflict target must match the row being written.
+    const insert = db.insert(userContexts)
       .values({
         userId: params.userId,
         networkId: params.networkId,
@@ -4365,29 +4412,34 @@ export class ChatDatabaseAdapter {
         embedding: sql`${vectorStr}::vector` as unknown as number[],
         premiseHash: params.premiseHash,
         generatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [userContexts.userId, userContexts.networkId],
-        set: {
-          text: params.text,
-          embedding: sql`${vectorStr}::vector` as unknown as number[],
-          premiseHash: params.premiseHash,
-          generatedAt: new Date(),
-        },
-      })
+      });
+    const rows = await (params.networkId === null
+      ? insert.onConflictDoUpdate({
+          target: userContexts.userId,
+          targetWhere: isNull(userContexts.networkId),
+          set: setOnConflict,
+        })
+      : insert.onConflictDoUpdate({
+          target: [userContexts.userId, userContexts.networkId],
+          targetWhere: isNotNull(userContexts.networkId),
+          set: setOnConflict,
+        }))
       .returning({ id: userContexts.id });
     return { id: rows[0].id };
   }
 
   /**
-   * Retrieve a single user context for a user+network pair.
+   * Retrieve a single user context for a user+network pair. Pass `null` for the
+   * user's global (profile-replacing) context row.
    */
-  async getUserContext(userId: string, networkId: string) {
+  async getUserContext(userId: string, networkId: string | null) {
     const rows = await db.select()
       .from(userContexts)
       .where(and(
         eq(userContexts.userId, userId),
-        eq(userContexts.networkId, networkId),
+        networkId === null
+          ? isNull(userContexts.networkId)
+          : eq(userContexts.networkId, networkId),
       ))
       .limit(1);
     if (rows.length === 0) return null;
@@ -4496,36 +4548,30 @@ export class ChatDatabaseAdapter {
 /**
  * Database adapter for Profile Graph.
  */
-export class ProfileDatabaseAdapter {
-  async getProfile(userId: string): Promise<ProfileRow | null> {
-    const result = await db.select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
+export class EnrichmentDatabaseAdapter {
+  /**
+   * Retrieve a single user_context row (global when networkId is null), or null.
+   * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the profile graph.
+   */
+  async getUserContext(userId: string, networkId: string | null) {
+    const rows = await db.select()
+      .from(userContexts)
+      .where(and(
+        eq(userContexts.userId, userId),
+        networkId === null ? isNull(userContexts.networkId) : eq(userContexts.networkId, networkId),
+      ))
       .limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
   }
 
-  async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
-    const data = {
-      userId,
-      identity: profile.identity,
-      narrative: profile.narrative,
-      attributes: profile.attributes,
-      updatedAt: new Date(),
-    };
-    await db.insert(schema.userProfiles)
-      .values(data)
-      .onConflictDoUpdate({
-        target: schema.userProfiles.userId,
-        set: data,
-      });
+  async getProfile(userId: string): Promise<UserIdentity | null> {
+    return buildProfileFromUser(userId);
+  }
+
+  async saveProfile(userId: string, profile: UserIdentity): Promise<void> {
+    await persistProfileIdentityToUser(userId, profile);
   }
 
   async getUser(userId: string) {
@@ -4655,63 +4701,32 @@ export class ProfileDatabaseAdapter {
   }
 
   /**
-   * Delete profile by userId (for test teardown).
+   * No-op since WS8 (IND-365) dropped user_profiles. Retained for interface/test stability.
    */
-  async deleteProfile(userId: string): Promise<void> {
-    await db.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, userId));
+  async deleteProfile(_userId: string): Promise<void> {
+    return;
   }
 
   /**
    * Get full profile row by userId (for test assertions).
    */
   async getProfileRow(userId: string): Promise<{
-    identity: ProfileIdentity;
-    narrative: ProfileNarrative;
-    attributes: ProfileAttributes;
+    identity: { name: string; bio: string; location: string };
+    context: string;
   } | null> {
-    const result = await db.select({
-      identity: schema.userProfiles.identity,
-      narrative: schema.userProfiles.narrative,
-      attributes: schema.userProfiles.attributes,
-    })
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const row = result[0];
-    if (!row) return null;
-    return {
-      identity: row.identity as ProfileIdentity,
-      narrative: row.narrative as ProfileNarrative,
-      attributes: row.attributes as ProfileAttributes,
-    };
+    const profile = await buildProfileFromUser(userId);
+    if (!profile) return null;
+    return { identity: profile.identity, context: profile.context };
   }
 
-  async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
-    const result = await db.select({
-      id: schema.userProfiles.id,
-      userId: schema.userProfiles.userId,
-      identity: schema.userProfiles.identity,
-      narrative: schema.userProfiles.narrative,
-      attributes: schema.userProfiles.attributes,
-    })
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      id: profile.id,
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+  async getProfileByUserId(userId: string): Promise<(UserIdentity & { id: string }) | null> {
+    return buildProfileWithIdFromUser(userId);
   }
 
   private hydeAdapter = new HydeDatabaseAdapter();
 
   async getHydeDocument(
-    sourceType: 'intent' | 'profile' | 'query',
+    sourceType: 'intent' | 'query',
     sourceId: string,
     strategy: string
   ) {
@@ -4719,7 +4734,7 @@ export class ProfileDatabaseAdapter {
   }
 
   async saveHydeDocument(data: {
-    sourceType: 'intent' | 'profile' | 'query';
+    sourceType: 'intent' | 'query';
     sourceId?: string | null;
     sourceText?: string | null;
     strategy: string;
@@ -4821,21 +4836,12 @@ export class ProfileDatabaseAdapter {
 
       // ── 1. Delete ghost-only records (unique constraints prevent re-pointing) ──
 
-      await tx.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, sourceId));
       await tx.delete(schema.userNotificationSettings).where(eq(schema.userNotificationSettings.userId, sourceId));
       await tx.delete(schema.sessions).where(eq(schema.sessions.userId, sourceId));
       await tx.delete(schema.accounts).where(eq(schema.accounts.userId, sourceId));
       await tx.delete(schema.apikeys).where(eq(schema.apikeys.userId, sourceId));
       await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.userId, sourceId));
       await tx.delete(schema.agents).where(eq(schema.agents.ownerId, sourceId));
-
-      // Delete ghost's HyDE profile documents
-      await tx.delete(schema.hydeDocuments).where(
-        and(
-          eq(schema.hydeDocuments.sourceType, 'profile'),
-          eq(schema.hydeDocuments.sourceId, sourceId),
-        ),
-      );
 
       // ── 2. Re-point simple FK references ──
 
@@ -5077,19 +5083,8 @@ function toOpportunityRow(row: typeof opportunities.$inferSelect): OpportunityRo
  * Database adapter for Opportunity Graph and opportunity controller.
  */
 export class OpportunityDatabaseAdapter {
-  async getProfile(userId: string): Promise<ProfileRow | null> {
-    const result = await db.select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-    const profile = result[0];
-    if (!profile) return null;
-    return {
-      userId: profile.userId,
-      identity: profile.identity as ProfileIdentity,
-      narrative: profile.narrative as ProfileNarrative,
-      attributes: profile.attributes as ProfileAttributes,
-    };
+  async getProfile(userId: string): Promise<UserIdentity | null> {
+    return buildProfileFromUser(userId);
   }
 
   async createOpportunity(data: CreateOpportunityInput): Promise<OpportunityRow> {
@@ -6117,7 +6112,8 @@ interface UserWithGraph {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
-  profile: typeof userProfiles.$inferSelect | null;
+  /** True when the user has been enriched into a global user_context row (the user_profiles replacement). */
+  hasProfile: boolean;
   notificationPreferences: {
     connectionUpdates: boolean;
     weeklyNewsletter: boolean;
@@ -6309,11 +6305,9 @@ export class UserDatabaseAdapter {
     const userResult = await db.select({
       user: users,
       settings: userNotificationSettings,
-      profile: userProfiles
     })
       .from(users)
       .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
-      .leftJoin(userProfiles, eq(users.id, userProfiles.userId))
       .where(eq(users.id, userId))
       .limit(1);
 
@@ -6321,16 +6315,24 @@ export class UserDatabaseAdapter {
       return null;
     }
 
-    const { user, settings, profile } = userResult[0];
+    const { user, settings } = userResult[0];
 
     const socialRows = await db.select()
       .from(userSocials)
       .where(eq(userSocials.userId, userId));
 
+    // "Has a profile" now means the user has been enriched into a global user_context
+    // row (networkId = null) -- the profile replacement. Replaces the retired
+    // user_profiles existence check that gated background auto-enrichment.
+    const globalContext = await db.select({ id: userContexts.id })
+      .from(userContexts)
+      .where(and(eq(userContexts.userId, userId), isNull(userContexts.networkId)))
+      .limit(1);
+
     return {
       ...user,
       socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
-      profile,
+      hasProfile: globalContext.length > 0,
       notificationPreferences: settings?.preferences as {
         connectionUpdates: boolean;
         weeklyNewsletter: boolean;
@@ -6349,7 +6351,7 @@ export class UserDatabaseAdapter {
   }
 
   async setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
-    const profileAdapter = new ProfileDatabaseAdapter();
+    const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.setUserSocials(userId, socials);
   }
 
@@ -7329,6 +7331,23 @@ export interface ConversationSummary {
  * Uses Drizzle ORM against the `conversations` family of tables.
  */
 export class ConversationDatabaseAdapter {
+  /**
+   * Retrieve a single user_context row (global when networkId is null), or null.
+   * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the negotiation graph.
+   */
+  async getUserContext(userId: string, networkId: string | null) {
+    const rows = await db.select()
+      .from(userContexts)
+      .where(and(
+        eq(userContexts.userId, userId),
+        networkId === null ? isNull(userContexts.networkId) : eq(userContexts.networkId, networkId),
+      ))
+      .limit(1);
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Conversations
   // ─────────────────────────────────────────────────────────────────────────

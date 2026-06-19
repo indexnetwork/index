@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
-import { OpportunityDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { OpportunityDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 // ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ beforeAll(async () => {
 
 describe("OpportunityDatabaseAdapter Integration", () => {
   const userAdapter = new UserDatabaseAdapter();
-  const profileAdapter = new ProfileDatabaseAdapter();
+  const profileAdapter = new EnrichmentDatabaseAdapter();
   let adapter: OpportunityDatabaseAdapter;
   let testUserId: string;
   const testEmail = `test-opportunity-adapter-${Date.now()}@example.com`;
@@ -81,19 +81,17 @@ describe("OpportunityDatabaseAdapter Integration", () => {
     }
   });
 
-  test("getProfile should return profile document for existing user", async () => {
+  test("getProfile should return a users-sourced profile document for existing user", async () => {
+    // getProfile now sources identity from the `users` table (name/intro->bio/location);
+    // typed skills/interests/narrative.context are dropped (empty) -- see WS5 (IND-363).
     const profile = await adapter.getProfile(testUserId);
 
     expect(profile).not.toBeNull();
     expect(profile!.identity).toBeDefined();
     expect(profile!.identity.name).toBe("Test Opportunity Adapter User");
-    expect(profile!.identity.bio).toBe("Full-stack developer with focus on distributed systems");
+    expect(profile!.identity.bio).toBe("Test user for opportunity adapter tests");
     expect(profile!.identity.location).toBe("Test City");
-    expect(profile!.narrative).toBeDefined();
-    expect(profile!.narrative.context).toBe("Building scalable applications and exploring new technologies");
-    expect(profile!.attributes).toBeDefined();
-    expect(profile!.attributes.interests).toContain("distributed systems");
-    expect(profile!.attributes.skills).toContain("Node.js");
+    expect(profile!.context).toBe("");
   });
 
   test("getProfile should return null for non-existent user", async () => {
@@ -112,7 +110,7 @@ describe("OpportunityController Integration", () => {
   let controller: InstanceType<typeof OpportunityControllerClass>;
   let indexOpportunityController: InstanceType<typeof NetworkOpportunityControllerClass>;
   const userAdapter = new UserDatabaseAdapter();
-  const profileAdapter = new ProfileDatabaseAdapter();
+  const profileAdapter = new EnrichmentDatabaseAdapter();
   const chatDbAdapter = new ChatDatabaseAdapter();
   const opportunityAdapter = new OpportunityDatabaseAdapter();
   let testUserId: string;

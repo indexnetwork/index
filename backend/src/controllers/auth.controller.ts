@@ -5,7 +5,7 @@ import { Controller, Get, Patch, Delete, UseGuards } from '../lib/router/router.
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
-import { profileService } from '../services/profile.service';
+import { enrichmentService } from '../services/enrichment.service';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
@@ -35,10 +35,10 @@ export function hasAtLeastOneSocial(socials: unknown): boolean {
 export function shouldAutoGenerateProfile(user: {
   name?: string | null;
   socials?: unknown;
-  profile?: unknown;
+  hasProfile?: boolean;
 }): boolean {
   const hasName = typeof user.name === 'string' && user.name.trim().length > 0;
-  return hasName && hasAtLeastOneSocial(user.socials) && !user.profile;
+  return hasName && hasAtLeastOneSocial(user.socials) && !user.hasProfile;
 }
 
 @Controller('/auth')
@@ -71,7 +71,7 @@ export class AuthController {
 
     if (shouldAutoGenerateProfile(fullUser)) {
       logger.verbose('Auto-generating profile', { userId: user.id });
-      profileService.syncProfile(user.id).catch((error) => {
+      enrichmentService.syncProfile(user.id).catch((error) => {
         logger.error('Background profile sync failed', {
           userId: user.id,
           error: error instanceof Error ? error.message : String(error),
@@ -79,7 +79,7 @@ export class AuthController {
       });
     }
 
-    const { profile: _profile, notificationPreferences, ...userFields } = fullUser;
+    const { hasProfile: _hasProfile, notificationPreferences, ...userFields } = fullUser;
     return Response.json({
       user: {
         ...userFields,
@@ -115,7 +115,7 @@ export class AuthController {
     if (!fullUser) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
-    const { profile: _profileOut, notificationPreferences: prefs, ...userFieldsOut } = fullUser;
+    const { hasProfile: _hasProfileOut, notificationPreferences: prefs, ...userFieldsOut } = fullUser;
     return Response.json({
       user: { ...userFieldsOut, notificationPreferences: prefs },
     });

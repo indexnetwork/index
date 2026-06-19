@@ -9,16 +9,15 @@
  *
  * Flow:
  * 1. Load 3 users by seed emails and one index.
- * 2. Ensure minimal user_profiles for each (so evaluator has profile data).
- * 3. Create one intent for User A and assign to index.
- * 4. Run HyDE for that intent (lens-inferred strategies).
- * 5. Add a profile HyDE for User B with the first inferred lens embedding so discovery finds B.
- * 6. Run opportunity discovery (creates latent opportunities).
- * 7. Print opportunities per user.
+ * 2. Create one intent for User A and assign to index.
+ * 3. Run HyDE for that intent (lens-inferred strategies).
+ * 4. Add a profile HyDE for User B with the first inferred lens embedding so discovery finds B.
+ * 5. Run opportunity discovery (creates latent opportunities).
+ * 6. Print opportunities per user.
  */
 import dotenv from 'dotenv';
 import path from 'path';
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.development') });
 
@@ -34,7 +33,6 @@ import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
 import { TESTER_PERSONAS } from './test-data';
 
 const INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c'; // Commons from seed
-const DIMENSIONS = 2000;
 
 async function main() {
   console.log('=== Three-user opportunity test ===\n');
@@ -50,20 +48,6 @@ async function main() {
   }
   const [userA, userB, userC] = userRows.slice(0, 3);
   console.log('Users:', userA.name, userA.id, '|', userB.name, userB.id, '|', userC.name, userC.id);
-
-  // Ensure minimal profiles (evaluator needs profile for entity bundle)
-  for (const u of userRows.slice(0, 3)) {
-    const [existing] = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, u.id)).limit(1);
-    if (!existing) {
-      await db.insert(schema.userProfiles).values({
-        userId: u.id,
-        identity: { name: u.name ?? 'Test', bio: '', location: '' },
-        narrative: { context: '' },
-        attributes: { interests: [], skills: [] },
-      });
-      console.log('  Created minimal profile for', u.name);
-    }
-  }
 
   const database = new ChatDatabaseAdapter();
   const graphDb = database as unknown as HydeGraphDatabase & OpportunityGraphDatabase;
@@ -93,29 +77,13 @@ async function main() {
   const inferrer = new LensInferrer();
   const generator = new HydeGenerator();
   const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
-  const hydeResult = await hydeGraph.invoke({
+  await hydeGraph.invoke({
     sourceText: intentPayload,
     sourceType: 'intent',
     sourceId: created.id,
     forceRegenerate: true,
   });
   console.log('HyDE generated for intent');
-
-  // So discovery can find User B: add profile HyDE for B using the first inferred lens embedding
-  const hydeEmbeddings = hydeResult.hydeEmbeddings ?? {};
-  const firstLensLabel = Object.keys(hydeEmbeddings)[0];
-  const firstEmbedding = firstLensLabel ? hydeEmbeddings[firstLensLabel] : undefined;
-  if (firstEmbedding?.length === DIMENSIONS) {
-    await database.saveHydeDocument({
-      sourceType: 'profile',
-      sourceId: userB.id,
-      strategy: firstLensLabel,
-      targetCorpus: 'profiles',
-      hydeText: `${userB.name} – developer, React, startup.`,
-      hydeEmbedding: firstEmbedding,
-    });
-    console.log('Profile HyDE for', userB.name, '(lens:', firstLensLabel, ') so discovery can match');
-  }
 
   // Run opportunity discovery (synchronous)
   await fromIntentQueue.processJob('discover_opportunities', {

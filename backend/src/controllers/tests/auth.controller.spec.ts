@@ -9,7 +9,7 @@ import { UserDatabaseAdapter } from "../../adapters/database.adapter";
 import db from "../../lib/drizzle/drizzle";
 import { userSocials } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
-import { profileService } from "../../services/profile.service";
+import { enrichmentService } from "../../services/enrichment.service";
 import { userService } from "../../services/user.service";
 
 describe("AuthController Integration", () => {
@@ -80,12 +80,12 @@ describe("AuthController Integration", () => {
         value: "https://github.com/trigger-user",
       });
 
-      const originalSyncProfile = profileService.syncProfile;
+      const originalSyncProfile = enrichmentService.syncProfile;
       let syncCallCount = 0;
-      profileService.syncProfile = (async () => {
+      enrichmentService.syncProfile = (async () => {
         syncCallCount += 1;
         return {};
-      }) as typeof profileService.syncProfile;
+      }) as typeof enrichmentService.syncProfile;
 
       try {
         const req = new Request("http://localhost/auth/me");
@@ -97,7 +97,7 @@ describe("AuthController Integration", () => {
         expect(data.user!.id).toBe(testUserId);
         expect(syncCallCount).toBe(1);
       } finally {
-        profileService.syncProfile = originalSyncProfile;
+        enrichmentService.syncProfile = originalSyncProfile;
       }
     });
 
@@ -105,12 +105,12 @@ describe("AuthController Integration", () => {
       await userAdapter.update(testUserId, { name: "No Social User" });
       await db.delete(userSocials).where(eq(userSocials.userId, testUserId));
 
-      const originalSyncProfile = profileService.syncProfile;
+      const originalSyncProfile = enrichmentService.syncProfile;
       let syncCallCount = 0;
-      profileService.syncProfile = (async () => {
+      enrichmentService.syncProfile = (async () => {
         syncCallCount += 1;
         return {};
-      }) as typeof profileService.syncProfile;
+      }) as typeof enrichmentService.syncProfile;
 
       try {
         const req = new Request("http://localhost/auth/me");
@@ -122,13 +122,13 @@ describe("AuthController Integration", () => {
         expect(data.user!.id).toBe(testUserId);
         expect(syncCallCount).toBe(0);
       } finally {
-        profileService.syncProfile = originalSyncProfile;
+        enrichmentService.syncProfile = originalSyncProfile;
       }
     });
 
     test("should not trigger background profile sync when profile already exists", async () => {
       const originalFindWithGraph = userService.findWithGraph;
-      const originalSyncProfile = profileService.syncProfile;
+      const originalSyncProfile = enrichmentService.syncProfile;
 
       let syncCallCount = 0;
 
@@ -144,15 +144,7 @@ describe("AuthController Integration", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         deletedAt: null,
-        profile: {
-          id: "profile-id",
-          userId: testUserId,
-          identity: { name: "Existing Profile User", bio: "Bio", location: "Test City" },
-          narrative: { context: "Context" },
-          attributes: { interests: ["A"], skills: ["B"] },
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
+        hasProfile: true,
         notificationPreferences: {
           connectionUpdates: true,
           weeklyNewsletter: true,
@@ -161,10 +153,10 @@ describe("AuthController Integration", () => {
         lastWeeklyEmailSentAt: null,
       })) as typeof userService.findWithGraph;
 
-      profileService.syncProfile = (async () => {
+      enrichmentService.syncProfile = (async () => {
         syncCallCount += 1;
         return {};
-      }) as typeof profileService.syncProfile;
+      }) as typeof enrichmentService.syncProfile;
 
       try {
         const req = new Request("http://localhost/auth/me");
@@ -178,7 +170,7 @@ describe("AuthController Integration", () => {
         expect(syncCallCount).toBe(0);
       } finally {
         userService.findWithGraph = originalFindWithGraph;
-        profileService.syncProfile = originalSyncProfile;
+        enrichmentService.syncProfile = originalSyncProfile;
       }
     });
   });

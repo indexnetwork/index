@@ -37,9 +37,9 @@ describe("handleQuestionAnswered", () => {
     expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
   });
 
-  it("calls createPremiseFromAnswer for profile mode", async () => {
+  it("calls createPremiseFromAnswer for enrichment mode", async () => {
     await handleQuestionAnswered(
-      { ...basePayload, mode: "profile", sourceType: "profile", sourceId: "prof-1" },
+      { ...basePayload, mode: "enrichment", sourceType: "profile", sourceId: "prof-1" },
       deps,
     );
     expect(deps.createPremiseFromAnswer).toHaveBeenCalledTimes(1);
@@ -91,7 +91,7 @@ describe("handleQuestionAnswered", () => {
     });
     // Should not throw
     await handleQuestionAnswered(
-      { ...basePayload, mode: "profile", sourceType: "profile", sourceId: "prof-1" },
+      { ...basePayload, mode: "enrichment", sourceType: "profile", sourceId: "prof-1" },
       failDeps,
     );
     expect(failDeps.createPremiseFromAnswer).toHaveBeenCalledTimes(1);

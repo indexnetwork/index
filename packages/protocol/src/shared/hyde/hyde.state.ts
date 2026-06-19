@@ -21,7 +21,7 @@ export const HydeGraphState = Annotation.Root({
   // ─── Inputs ─────────────────────────────────────────────────────────────
 
   /** Source type: intent, profile, user context, or ad-hoc query. */
-  sourceType: Annotation<'intent' | 'profile' | 'query' | 'context'>,
+  sourceType: Annotation<'intent' | 'query' | 'context'>,
 
   /** Source entity ID (e.g. intent ID, user ID). Omitted for ad-hoc query. */
   sourceId: Annotation<Id<'intents'> | Id<'users'> | undefined>({

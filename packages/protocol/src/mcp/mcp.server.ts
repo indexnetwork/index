@@ -222,7 +222,7 @@ export const computeAgentIndexScope = (
 /**
  * Promotes a network-scoped agent's bound network into the resolved tool
  * context as the implicit chat scope. Every tool that branches on
- * `context.networkId` (read_networks, read_intents, read_user_profiles,
+ * `context.networkId` (read_networks, read_intents, read_user_contexts,
  * opportunity tools, etc.) then enforces scope automatically — without this
  * step the DB-level `indexScope` clamp guards cross-user data but tools that
  * shape their response off `context.networkId` (notably `read_networks`'
@@ -272,17 +272,25 @@ export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
   'read_docs',
   'scrape_url',
   'record_onboarding_privacy_consent',
+  // Canonical *_user_context / *_enrichment_run names (IND-371)
+  'preview_user_context',
+  'get_enrichment_run',
+  'cancel_enrichment_run',
+  'confirm_user_context',
+  'create_user_context',
+  'read_user_contexts',
+  // Deprecated aliases retained so mid-migration clients can still onboard (IND-373 removes them)
   'preview_user_profile',
   'get_profile_run',
   'cancel_profile_run',
   'confirm_user_profile',
   'create_user_profile',
+  'read_user_profiles',
   'complete_onboarding',
   'import_gmail_contacts',
   'read_networks',
   'create_network_membership',
   'create_intent',
-  'read_user_profiles',
 ]);
 
 /**
@@ -309,8 +317,8 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     `${nameStep}\n` +
     `2. Ask whether the user allows use of event/EdgeOS profile data, then call record_onboarding_privacy_consent(edgeosImportGranted=...).\n` +
     `3. Ask separately whether the user allows public internet/profile lookup, then call record_onboarding_privacy_consent(publicProfileLookupGranted=...).\n` +
-    `4. Call preview_user_profile(...) using only allowed inputs; do not run public lookup unless consent was granted. If it returns profileRunId, poll get_profile_run(profileRunId=...) until status is succeeded, then use its result as the draft.\n` +
-    `5. Present the profile draft and ask "Does that look right?" On approval/correction, call confirm_user_profile(...).\n` +
+    `4. Call preview_user_context(...) using only allowed inputs; do not run public lookup unless consent was granted. If it returns profileRunId, poll get_enrichment_run(profileRunId=...) until status is succeeded, then use its result as the draft.\n` +
+    `5. Present the profile draft and ask "Does that look right?" On approval/correction, call confirm_user_context(...).\n` +
     `${communityStep}\n` +
     `6. Ask what the user is looking for and call create_intent(description="...", autoApprove=true) so the first signal is persisted.\n` +
     `7. Call complete_onboarding() to finish setup. Gmail/contact import and discovery are optional after onboarding, never mandatory.`

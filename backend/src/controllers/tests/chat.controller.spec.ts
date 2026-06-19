@@ -5,7 +5,7 @@ config({ path: '.env.test', override: true });
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { eq } from "drizzle-orm";
 import { ChatController } from "../chat.controller";
-import { ChatDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, IntentDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { ChatDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, IntentDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import { chatSessionService } from "../../services/chat.service";
 import { chatFactory } from "../mcp.controller";
 import db from "../../lib/drizzle/drizzle";
@@ -25,7 +25,7 @@ describe("ChatController Integration", () => {
   let controller: ChatController;
   const chatAdapter = new ChatDatabaseAdapter();
   const userAdapter = new UserDatabaseAdapter();
-  const profileAdapter = new ProfileDatabaseAdapter();
+  const profileAdapter = new EnrichmentDatabaseAdapter();
   const intentAdapter = new IntentDatabaseAdapter();
   const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;

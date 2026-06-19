@@ -28,7 +28,8 @@ const gatherPresenterContextMock = mock(async (
 }));
 
 import type { ToolDeps, DefineTool } from '../../shared/agent/tool.helpers.js';
-import type { ChatGraphCompositeDatabase, Opportunity, UserRecord, ProfileRow } from '../../shared/interfaces/database.interface.js';
+import type { ChatGraphCompositeDatabase, Opportunity, UserRecord } from '../../shared/interfaces/database.interface.js';
+import type { UserIdentity } from '../../shared/schemas/identity.schema.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ function makeDeps(opts: {
   const getProfile = mock(async (id: string) => ({
     identity: { name: opts.profiles?.[id] ?? `Profile ${id}`, bio: '', location: '' },
     userId: id,
-  }) as unknown as ProfileRow | null);
+  }) as unknown as UserIdentity | null);
 
   const mockDb = {
     getOpportunitiesForUser: getOppsForUser,

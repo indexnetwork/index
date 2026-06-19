@@ -412,6 +412,7 @@ export class NegotiationGraphFactory {
             ? 'timeout'
             : 'stalled';
 
+        const userContext = (await database.getUserContext(state.sourceUser.id, null))?.text ?? '';
         questionerEnqueue({
           mode: 'negotiation',
           userId: state.sourceUser.id,
@@ -423,7 +424,7 @@ export class NegotiationGraphFactory {
             indexContext: state.indexContext.prompt,
             outcomeReason: stallReason,
             keyTake: outcome.reasoning,
-            userProfile: state.sourceUser.profile,
+            userContext,
           },
         }).catch((err) =>
           logger.error('[Graph:Finalize] Failed to enqueue negotiation question generation', {

@@ -65,16 +65,16 @@ mock.module('../../adapters/database.adapter', () => ({
     getOpportunitiesForUser = async () => [];
     updateOpportunityStatus = async () => {};
   },
-  ProfileDatabaseAdapter: class {
+  EnrichmentDatabaseAdapter: class {
     getProfile = async () => null;
   },
 }));
 
 // ---------------------------------------------------------------------------
-// Protocol mock — ProfileGraphFactory not needed for unit tests
+// Protocol mock — EnrichmentGraphFactory not needed for unit tests
 // ---------------------------------------------------------------------------
 mock.module('@indexnetwork/protocol', () => ({
-  ProfileGraphFactory: class {
+  EnrichmentGraphFactory: class {
     createGraph() {
       return { invoke: mock(async () => {}) };
     }
@@ -256,25 +256,25 @@ describe('PremiseQueue — premise_cascade', () => {
 // PremiseQueue profile_regen tests
 // ---------------------------------------------------------------------------
 describe('PremiseQueue — profile_regen', () => {
-  it('invokes profile aggregate for the given userId', async () => {
-    const aggregateCalls: string[] = [];
+  it('enqueues context regen for the given userId', async () => {
+    const regenCalls: string[] = [];
     const deps: PremiseQueueDeps = {
-      invokeProfileAggregate: async (userId) => {
-        aggregateCalls.push(userId);
+      enqueueContextRegen: async (userId) => {
+        regenCalls.push(userId);
       },
     };
     const queue = new PremiseQueue(deps);
     await queue.processJob('profile_regen', { userId: 'u-1', trigger: 'premise_created' });
-    expect(aggregateCalls).toEqual(['u-1']);
+    expect(regenCalls).toEqual(['u-1']);
   });
 
-  it('invokes profile aggregate exactly once per job', async () => {
-    const invokeProfileAggregate = mock(async (_userId: string) => {});
-    const deps: PremiseQueueDeps = { invokeProfileAggregate };
+  it('enqueues context regen exactly once per job', async () => {
+    const enqueueContextRegen = mock(async (_userId: string) => {});
+    const deps: PremiseQueueDeps = { enqueueContextRegen };
     const queue = new PremiseQueue(deps);
     await queue.processJob('profile_regen', { userId: 'u-2', trigger: 'premise_updated' });
-    expect(invokeProfileAggregate).toHaveBeenCalledTimes(1);
-    expect(invokeProfileAggregate).toHaveBeenCalledWith('u-2');
+    expect(enqueueContextRegen).toHaveBeenCalledTimes(1);
+    expect(enqueueContextRegen).toHaveBeenCalledWith('u-2');
   });
 
   it('works for all trigger types', async () => {
@@ -286,26 +286,21 @@ describe('PremiseQueue — profile_regen', () => {
     ] as const;
 
     for (const trigger of triggers) {
-      const invokeProfileAggregate = mock(async (_userId: string) => {});
-      const deps: PremiseQueueDeps = { invokeProfileAggregate };
+      const enqueueContextRegen = mock(async (_userId: string) => {});
+      const deps: PremiseQueueDeps = { enqueueContextRegen };
       const queue = new PremiseQueue(deps);
       await queue.processJob('profile_regen', { userId: 'u-trigger', trigger });
-      expect(invokeProfileAggregate).toHaveBeenCalledWith('u-trigger');
+      expect(enqueueContextRegen).toHaveBeenCalledWith('u-trigger');
     }
   });
 
-  it('completes without errors when no invokeProfileAggregate dep is provided', async () => {
-    // Without a dep, it falls through to the default which calls adapters.
-    // We just verify processJob resolves (or rejects gracefully — adapters throw without DB).
-    const deps: PremiseQueueDeps = {};
-    const queue = new PremiseQueue(deps);
-    // Default impl will try to instantiate real adapters — we only verify the injected path works
-    const invokeProfileAggregate = mock(async (_userId: string) => {});
-    const queueWithDep = new PremiseQueue({ invokeProfileAggregate });
+  it('completes via the injected context-regen dep', async () => {
+    const enqueueContextRegen = mock(async (_userId: string) => {});
+    const queueWithDep = new PremiseQueue({ enqueueContextRegen });
     await expect(
       queueWithDep.processJob('profile_regen', { userId: 'u-3', trigger: 'premise_expired' })
     ).resolves.toBeUndefined();
-    expect(invokeProfileAggregate).toHaveBeenCalledWith('u-3');
+    expect(enqueueContextRegen).toHaveBeenCalledWith('u-3');
   });
 });
 

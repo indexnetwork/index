@@ -30,8 +30,9 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
-import { intents, networkMembers, questions, userProfiles, users } from '../schemas/database.schema';
+import { intents, networkMembers, questions, users } from '../schemas/database.schema';
 import { questionerQueue } from '../queues/questioner.queue';
+import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 
 // ---------------------------------------------------------------------------
 // Arg parsing
@@ -81,8 +82,6 @@ async function main(): Promise<void> {
     payload: intents.payload,
     summary: intents.summary,
     userId: intents.userId,
-    identity: userProfiles.identity,
-    attributes: userProfiles.attributes,
   };
 
   const rows = networkId
@@ -90,7 +89,6 @@ async function main(): Promise<void> {
       .select(selection)
       .from(intents)
       .innerJoin(users, eq(intents.userId, users.id))
-      .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
       .innerJoin(networkMembers, eq(networkMembers.userId, users.id))
       .where(and(...baseConditions, eq(networkMembers.networkId, networkId)))
       .orderBy(desc(intents.createdAt))
@@ -98,7 +96,6 @@ async function main(): Promise<void> {
       .select(selection)
       .from(intents)
       .innerJoin(users, eq(intents.userId, users.id))
-      .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
       .where(and(...baseConditions))
       .orderBy(desc(intents.createdAt));
 
@@ -148,12 +145,7 @@ async function main(): Promise<void> {
         intentId: row.intentId,
         payload: row.payload,
         ...(row.summary ? { summary: row.summary } : {}),
-        userProfile: {
-          name: row.identity?.name,
-          bio: row.identity?.bio,
-          skills: row.attributes?.skills,
-          interests: row.attributes?.interests,
-        },
+        userContext: await ensureGlobalUserContext(row.userId),
       },
     });
     enqueued += 1;

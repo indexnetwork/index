@@ -3,14 +3,14 @@
  * Seed an experiment network with headless historical-figure personas.
  *
  * Reuses the same persona fixtures as `db-seed` (Tesla, Curie, Darwin, …) and
- * provisions them as full Index Network users — profile, embeddings, network
- * membership, and intents — but without minting per-user agents or API keys.
- * They are pure record-only stand-ins: when an opportunity dispatches to one,
- * no personal agent is online and the system negotiator runs inline (the
- * existing `last_seen_at` fallback path).
+ * provisions them as full Index Network users — network membership and intents
+ * — but without minting per-user agents or API keys. They are pure record-only
+ * stand-ins: when an opportunity dispatches to one, no personal agent is online
+ * and the system negotiator runs inline (the existing `last_seen_at` fallback
+ * path).
  *
- * Idempotent: re-running upserts profiles, skips memberships that already
- * exist, and skips intents whose description already exists for that user.
+ * Idempotent: re-running skips memberships that already exist, and skips
+ * intents whose description already exists for that user.
  *
  * Production safety (all three checks must pass):
  *   1. NODE_ENV !== 'production'
@@ -31,12 +31,11 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { ensurePersonalNetwork } from '../adapters/database.adapter';
-import { intents, networkMembers, networks, userProfiles, users, userSocials } from '../schemas/database.schema';
+import { intents, networkMembers, networks, users, userSocials } from '../schemas/database.schema';
 import { intentService } from '../services/intent.service';
-import { profileService } from '../services/profile.service';
 
 import { TESTER_PERSONAS, TESTER_PERSONAS_MAX } from './test-data';
-import type { SeedProfile, TesterPersona } from './test-data';
+import type { TesterPersona } from './test-data';
 
 const EDGE_CITY_NETWORK_ID = 'fee18edc-1e60-4b13-b8c8-20e6f6ed1acb';
 
@@ -150,28 +149,6 @@ async function ensureUser(persona: TesterPersona): Promise<{ id: string; created
   return { id: userId, created: true };
 }
 
-async function upsertUserProfile(userId: string, profile: SeedProfile): Promise<void> {
-  const now = new Date();
-  await db
-    .insert(userProfiles)
-    .values({
-      userId,
-      identity: profile.identity,
-      narrative: profile.narrative,
-      attributes: profile.attributes,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: userProfiles.userId,
-      set: {
-        identity: profile.identity,
-        narrative: profile.narrative,
-        attributes: profile.attributes,
-        updatedAt: now,
-      },
-    });
-}
-
 async function joinNetwork(userId: string, networkId: string): Promise<boolean> {
   const inserted = await db
     .insert(networkMembers)
@@ -205,14 +182,11 @@ async function intentExists(userId: string, description: string): Promise<boolea
 interface RunStats {
   usersCreated: number;
   usersReused: number;
-  profilesUpserted: number;
   membershipsAdded: number;
   membershipsExisting: number;
   intentsCreated: number;
   intentsSkipped: number;
   intentsFailed: number;
-  embedded: number;
-  embedFailures: number;
 }
 
 async function run(): Promise<void> {
@@ -236,14 +210,11 @@ async function run(): Promise<void> {
   const stats: RunStats = {
     usersCreated: 0,
     usersReused: 0,
-    profilesUpserted: 0,
     membershipsAdded: 0,
     membershipsExisting: 0,
     intentsCreated: 0,
     intentsSkipped: 0,
     intentsFailed: 0,
-    embedded: 0,
-    embedFailures: 0,
   };
 
   const personaUsers: { id: string }[] = [];
@@ -257,24 +228,14 @@ async function run(): Promise<void> {
     if (created) stats.usersCreated++;
     else stats.usersReused++;
 
-    await upsertUserProfile(id, persona.profile);
-    stats.profilesUpserted++;
-
     await ensurePersonalNetwork(id);
 
     const added = await joinNetwork(id, opts.networkId);
     if (added) stats.membershipsAdded++;
     else stats.membershipsExisting++;
 
-    console.log(`${tag} — user ${created ? 'created' : 'reused'}, profile upserted, ${added ? 'joined' : 'already in'} network`);
+    console.log(`${tag} — user ${created ? 'created' : 'reused'}, ${added ? 'joined' : 'already in'} network`);
   }
-
-  console.log('');
-  console.log('Embedding profiles + generating HyDE...');
-  const { embedded, embedFailures } = await profileService.embedTesterProfiles(personaUsers, slice);
-  stats.embedded = embedded;
-  stats.embedFailures = embedFailures;
-  console.log(`  embedded: ${embedded}${embedFailures > 0 ? ` (${embedFailures} failed)` : ''}`);
 
   console.log('');
   console.log('Creating intents (skip if same description already exists)...');
@@ -301,8 +262,6 @@ async function run(): Promise<void> {
   console.log('Summary');
   console.log('-------');
   console.log(`  users:        ${stats.usersCreated} created, ${stats.usersReused} reused`);
-  console.log(`  profiles:     ${stats.profilesUpserted} upserted`);
-  console.log(`  embeddings:   ${stats.embedded} ok${stats.embedFailures > 0 ? `, ${stats.embedFailures} failed` : ''}`);
   console.log(`  memberships:  ${stats.membershipsAdded} joined, ${stats.membershipsExisting} already members`);
   console.log(`  intents:      ${stats.intentsCreated} created, ${stats.intentsSkipped} skipped${stats.intentsFailed > 0 ? `, ${stats.intentsFailed} failed` : ''}`);
 }

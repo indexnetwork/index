@@ -2,7 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { HydeGraphDatabase } from "../interfaces/database.interface.js";
 import { IntentGraphFactory } from "../../intent/intent.graph.js";
-import { ProfileGraphFactory } from "../../profile/profile.graph.js";
+import { EnrichmentGraphFactory } from "../../enrichment/enrichment.graph.js";
 import { OpportunityGraphFactory } from "../../opportunity/opportunity.graph.js";
 import { HydeGraphFactory } from "../hyde/hyde.graph.js";
 import { HydeGenerator } from "../hyde/hyde.generator.js";
@@ -19,7 +19,7 @@ import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 
 import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "./tool.helpers.js";
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
-import { createProfileTools } from "../../profile/profile.tools.js";
+import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";
 import { createIntentTools } from "../../intent/intent.tools.js";
 import { createNetworkTools } from "../../network/network.tools.js";
 import { createOpportunityTools } from "../../opportunity/opportunity.tools.js";
@@ -123,7 +123,7 @@ export async function createChatTools(
 
   const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue, sessionAwareEnqueue).createGraph();
   const premiseGraph = new PremiseGraphFactory(database, embedder).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, scraper, deps.enricher, sessionAwareEnqueue, premiseGraph).createGraph();
+  const profileGraph = new EnrichmentGraphFactory(database, scraper, deps.enricher, sessionAwareEnqueue, premiseGraph).createGraph();
   const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
   const hydeGenerator = new HydeGenerator();
@@ -193,8 +193,8 @@ export async function createChatTools(
     deliveryLedger: deps.deliveryLedger,
     discoveryRuns: deps.discoveryRuns,
     discoveryRunQueue: deps.discoveryRunQueue,
-    profileRuns: deps.profileRuns,
-    profileRunQueue: deps.profileRunQueue,
+    enrichmentRuns: deps.enrichmentRuns,
+    enrichmentRunQueue: deps.enrichmentRunQueue,
     mintConnectToken: deps.mintConnectToken,
     mintConnectLink: deps.mintConnectLink,
     frontendUrl: deps.frontendUrl,
@@ -216,7 +216,7 @@ export async function createChatTools(
   };
 
   // ─── Create domain tools ──────────────────────────────────────────────────
-  const profileTools = createProfileTools(defineTool, toolDeps);
+  const profileTools = createEnrichmentTools(defineTool, toolDeps);
   const intentTools = createIntentTools(defineTool, toolDeps);
   const networkTools = createNetworkTools(defineTool, toolDeps);
   const opportunityTools = createOpportunityTools(defineTool, toolDeps);

@@ -582,6 +582,34 @@
       "when": 1781047787318,
       "tag": "0082_add_assignment_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1781715440606,
+      "tag": "0083_alter_user_contexts_nullable_network",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1781778982774,
+      "tag": "0084_drop_user_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1781778982775,
+      "tag": "0085_rename_profile_tool_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1781778982776,
+      "tag": "0086_rename_question_mode_profile",
+      "breakpoints": true
     }
   ]
 }

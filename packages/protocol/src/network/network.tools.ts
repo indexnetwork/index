@@ -80,12 +80,15 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
-        // Onboarding-only: rank public networks by profile relevance.
-        // Guard: only when isOnboarding, userProfile exists, not scoped, and there are public networks to rank.
+        // Onboarding-only: rank public networks by relevance to the user's global
+        // user_context paragraph (the profile-replacing identity text). Guard: only
+        // when isOnboarding, not scoped, there are public networks to rank, and a
+        // user_context is resolvable (generated on demand by the injected resolver).
         let orderedNetworkIds: string[] | undefined;
+        const userContext = deps.getUserContextText ? await deps.getUserContextText(context.userId) : "";
         if (
           context.isOnboarding &&
-          context.userProfile &&
+          userContext &&
           Array.isArray(enriched.publicNetworks) &&
           (enriched.publicNetworks as Array<Record<string, unknown>>).length > 0
         ) {
@@ -107,12 +110,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             }
           });
           const rankingResult = await rankFn({
-            userProfile: {
-              bio: context.userProfile.identity.bio,
-              location: context.userProfile.identity.location || context.user.location || "",
-              interests: context.userProfile.attributes.interests,
-              skills: context.userProfile.attributes.skills,
-            },
+            userContext,
             networks: publicNetworksForRanking,
           }).catch((err: unknown) => {
             // Catches errors from a custom deps.networkRanker (the default fallback
@@ -173,7 +171,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Shared-context pattern.** To find overlap with another user: (1) omit `userId` to read your own " +
       "memberships, (2) call this tool with the other person's actual `userId` to get the shared indexes, " +
       "(3) call read_intents for each shared network to see what each is looking for there, (4) call " +
-      "read_user_profiles for the other party. That sequence gives you enough to decide whether to propose a " +
+      "read_user_contexts for the other party. That sequence gives you enough to decide whether to propose a " +
       "direct connection or an introduction.",
     querySchema: z.object({
       networkId: z.string().optional().describe("Index UUID — lists all members of this index. Get from read_networks. In index-scoped chats, only the scoped index can be queried."),
@@ -534,7 +532,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Returns:** Confirmation that the member was added (or a note that they were already a member). " +
       "After joining, the user's existing intents with autoAssign=true may be evaluated against the new index.",
     querySchema: z.object({
-      userId: z.string().optional().describe("User ID to add as a member. Omit to join the index yourself. Get user IDs from read_user_profiles(query=name) or read_network_memberships."),
+      userId: z.string().optional().describe("User ID to add as a member. Omit to join the index yourself. Get user IDs from read_user_contexts(query=name) or read_network_memberships."),
       networkId: z.string().optional().describe("Index UUID to add the member to. Get from read_networks. Defaults to the scoped index in index-scoped chats."),
     }),
     handler: async ({ context, query }) => {

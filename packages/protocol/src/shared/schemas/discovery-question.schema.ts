@@ -77,7 +77,8 @@ export type DiscoverySourceProfile = z.infer<typeof DiscoverySourceProfileSchema
  */
 export interface DiscoveryQuestionInput {
   query: string;
-  sourceProfile: DiscoverySourceProfile;
+  /** The seeker's global user_context paragraph (profile-replacing identity text). */
+  userContext: string;
   negotiationDigests: DiscoveryNegotiationDigest[];
   summary: DiscoverySummary;
   chatContext?: ChatContextDigest;

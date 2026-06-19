@@ -1,8 +1,37 @@
+import { execSync } from "node:child_process";
 import path from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-const CANONICAL_ROOT = process.env.INDEX_CANONICAL_ROOT ?? "/Users/aposto/Projects/index";
+/**
+ * Resolve the canonical (main) worktree root.
+ * Priority: explicit env override > git's main worktree > current working directory.
+ * `git worktree list` always lists the main worktree first, so we read that rather
+ * than `rev-parse --show-toplevel` (which would point at a linked worktree when cwd
+ * is itself a worktree).
+ */
+function resolveCanonicalRoot(): string {
+	if (process.env.INDEX_CANONICAL_ROOT) {
+		return path.resolve(process.env.INDEX_CANONICAL_ROOT);
+	}
+	try {
+		const firstLine = execSync("git worktree list --porcelain", {
+			cwd: process.cwd(),
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		})
+			.split("\n")
+			.find((line) => line.startsWith("worktree "));
+		if (firstLine) {
+			return path.resolve(firstLine.slice("worktree ".length).trim());
+		}
+	} catch {
+		// git not available or not a repo; fall through to cwd.
+	}
+	return path.resolve(process.cwd());
+}
+
+const CANONICAL_ROOT = resolveCanonicalRoot();
 const REQUIRED_BRANCH = process.env.INDEX_ROOT_BRANCH ?? "dev";
 const WORKTREES_DIR = path.join(CANONICAL_ROOT, ".worktrees");
 

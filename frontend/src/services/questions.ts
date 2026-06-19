@@ -15,7 +15,7 @@ export interface QuestionPayload {
 }
 
 export interface QuestionDetection {
-  mode: 'discovery' | 'intent' | 'profile' | 'negotiation';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;

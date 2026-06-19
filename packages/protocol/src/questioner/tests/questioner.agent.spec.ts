@@ -22,7 +22,7 @@ function makeQuestion(overrides: Record<string, unknown> = {}) {
 function makeDiscoveryInput(): QuestionerInput {
   const context: DiscoveryContext = {
     query: "test query",
-    sourceProfile: { name: "Tester" },
+    userContext: "Tester is a builder.",
     negotiationDigests: [],
     summary: {
       totalCandidates: 0,
@@ -59,7 +59,7 @@ function messageContent(message: unknown): string {
 function modeInput(mode: QuestionerInput["mode"]): QuestionerInput {
   const discoveryContext: DiscoveryContext = {
     query: "find decentralized identity protocol designers",
-    sourceProfile: { name: "Dana" },
+    userContext: "Dana is a builder of agent tools.",
     negotiationDigests: [],
     summary: {
       totalCandidates: 3,
@@ -74,10 +74,10 @@ function modeInput(mode: QuestionerInput["mode"]): QuestionerInput {
     intentId: "i-1",
     payload: "Connect with people building decentralized identity protocols",
     summary: "Decentralized identity protocol design collaborations",
-    userProfile: { name: "Dana" },
+    userContext: "Dana is a builder of agent tools.",
   };
   const profileContext: ProfileContext = {
-    userProfile: { name: "Dana", bio: "Builder of agent tools" },
+    userContext: "Dana is a builder of agent tools.",
     gaps: ["availability"],
     existingPremises: ["I build agent tools for event communities"],
   };
@@ -87,12 +87,12 @@ function modeInput(mode: QuestionerInput["mode"]): QuestionerInput {
     indexContext: "AI founders community",
     outcomeReason: "turn_cap",
     keyTake: "Both interested but scope unclear",
-    userProfile: { name: "Dana" },
+    userContext: "Dana is a builder of agent tools.",
   };
   const contexts = {
     discovery: discoveryContext,
     intent: intentContext,
-    profile: profileContext,
+    enrichment: profileContext,
     negotiation: negotiationContext,
   } satisfies Record<QuestionerInput["mode"], DiscoveryContext | IntentContext | ProfileContext | NegotiationContext>;
   return {
@@ -195,7 +195,7 @@ describe("QuestionerAgent", () => {
   it.each([
     { mode: "discovery" as const, contextNeedles: ["find decentralized identity protocol designers", "3 people reviewed"] },
     { mode: "intent" as const, contextNeedles: ["Connect with people building decentralized identity protocols", "Decentralized identity protocol design collaborations"] },
-    { mode: "profile" as const, contextNeedles: ["availability", "I build agent tools for event communities"] },
+    { mode: "enrichment" as const, contextNeedles: ["availability", "I build agent tools for event communities"] },
     { mode: "negotiation" as const, contextNeedles: ["AI infra founder, Berlin", "Both interested but scope unclear"] },
   ])("mode '$mode' sends standalone-context instructions alongside source evidence", async ({ mode, contextNeedles }) => {
     let capturedMessages: unknown[] | undefined;
@@ -218,18 +218,18 @@ describe("QuestionerAgent", () => {
     }
   });
 
-  it.each(["discovery", "intent", "profile", "negotiation"] as const)("mode '%s' invokes the LLM and returns questions", async (mode) => {
+  it.each(["discovery", "intent", "enrichment", "negotiation"] as const)("mode '%s' invokes the LLM and returns questions", async (mode) => {
     const agent = makeAgent(async () => ({
       questions: [makeQuestion({ title: "Test" })],
     }));
     const discoveryContext: DiscoveryContext = makeDiscoveryInput().context as DiscoveryContext;
-    const intentContext: IntentContext = { intentId: "i-1", payload: "test intent", userProfile: { name: "Test" } };
-    const profileContext: ProfileContext = { userProfile: { name: "Test" }, gaps: ["location"] };
-    const negotiationContext: NegotiationContext = { negotiationId: "n-1", counterpartyHint: "founder", indexContext: "AI", outcomeReason: "turn_cap" as const, keyTake: "test", userProfile: { name: "Test" } };
+    const intentContext: IntentContext = { intentId: "i-1", payload: "test intent", userContext: "Test user." };
+    const profileContext: ProfileContext = { userContext: "Test user.", gaps: ["location"] };
+    const negotiationContext: NegotiationContext = { negotiationId: "n-1", counterpartyHint: "founder", indexContext: "AI", outcomeReason: "turn_cap" as const, keyTake: "test", userContext: "Test user." };
     const contexts = {
       discovery: discoveryContext,
       intent: intentContext,
-      profile: profileContext,
+      enrichment: profileContext,
       negotiation: negotiationContext,
     };
     const input: QuestionerInput = {

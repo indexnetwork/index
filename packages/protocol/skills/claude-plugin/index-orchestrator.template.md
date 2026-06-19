@@ -10,7 +10,7 @@ description: Use when the user asks about finding people, connections, opportuni
 ## Setup
 
 On activation, silently call (do not show raw output):
-1. `read_user_profiles` — load the current user's profile
+1. `read_user_contexts` — load the current user's profile
 2. `read_intents` — load their active signals
 3. `read_network_memberships` — load their index memberships (note which has `isPersonal: true`)
 
@@ -25,7 +25,7 @@ If MCP tools are unavailable:
 When the user mentions a person by name ("find [name]", "who is [name]?"):
 
 ```
-1. read_user_profiles(query="name")
+1. read_user_contexts(query="name")
    → one match: present profile naturally
    → multiple matches: list and ask user to clarify
    → no match: tell user; offer semantic discovery (Pattern 1)
@@ -73,7 +73,7 @@ Never ask multiple questions at once if the first answer would make the others i
 When the user mentions a specific person AND wants to connect:
 
 ```
-1. read_user_profiles(userId=X) + read_network_memberships(userId=X)
+1. read_user_contexts(userId=X) + read_network_memberships(userId=X)
 2. Intersect their indexes with the current user's preloaded memberships → find shared indexes
 3. If no shared indexes: tell the user there is no connection path
 4. discover_opportunities(targetUserId=X, searchQuery="<synthesized reason>")
@@ -88,7 +88,7 @@ When the user explicitly says "save", "create an intent", "add a signal", "remem
 
 ```
 IF vague ("find a job", "meet people"):
-  1. read_user_profiles() → get their background
+  1. read_user_contexts() → get their background
   2. read_intents() → see existing signals for context
   3. Suggest a refined version: "Based on your background in X, did you mean 'Y'?"
   4. Wait for confirmation, then: create_intent(description=refined_text)
@@ -111,7 +111,7 @@ When the user pastes a URL alongside an intent request:
 3. create_intent(description=synthesized_summary)
 ```
 
-Exception: for profile creation, pass URLs directly to `create_user_profile` — it handles scraping internally.
+Exception: for profile creation, pass URLs directly to `create_user_context` — it handles scraping internally.
 
 ## Pattern 4: Update or delete an intent
 
@@ -128,7 +128,7 @@ Exception: for profile creation, pass URLs directly to `create_user_profile` —
 ```
 1. read_network_memberships(userId=A) + read_network_memberships(userId=B) → shared indexes
 2. If no shared indexes: tell user there is no shared community
-3. read_user_profiles(userId=A) + read_user_profiles(userId=B)
+3. read_user_contexts(userId=A) + read_user_contexts(userId=B)
 4. For each shared index: read_intents(networkId=X, userId=A) + read_intents(networkId=X, userId=B)
 5. Summarize: "Here's what I found about A and B..."
 6. discover_opportunities(partyUserIds=[A,B], entities=[{userId:A, profile:{...}, intents:[...], networkId:sharedId}, {userId:B, ...}], hint="user's reason")

@@ -15,11 +15,10 @@ import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.j
  * Following the intent graph pattern with Annotation-based state management.
  */
 
-/** Asker's profile shape (identity/narrative/attributes). Used by sourceProfile annotation. */
+/** Asker's profile shape (identity + context). Used by sourceProfile annotation. */
 export interface SourceProfileData {
   identity?: { name?: string; bio?: string; location?: string };
-  narrative?: { context?: string };
-  attributes?: { skills?: string[]; interests?: string[] };
+  context?: string;
 }
 
 /**
@@ -349,8 +348,8 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => ({}),
   }),
 
-  /** Whether discovery used intent (path A) or profile (path B/C). Used by persist for triggeredBy. */
-  discoverySource: Annotation<'intent' | 'profile'>({
+  /** Whether discovery used intent (path A) or user context (path B/C). Used by persist for triggeredBy. In-memory routing state only; never persisted. */
+  discoverySource: Annotation<'intent' | 'context'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'intent',
   }),

@@ -274,16 +274,6 @@ export const apikeys = pgTable('apikey', {
   permissions: text('permissions'),
 });
 
-export const userProfiles = pgTable('user_profiles', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
-  identity: json('identity').$type<{ name: string; bio: string; location: string }>(),
-  narrative: json('narrative').$type<{ context: string }>(),
-  attributes: json('attributes').$type<{ interests: string[]; skills: string[] }>(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
 export const userNotificationSettings = pgTable('user_notification_settings', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
@@ -356,19 +346,29 @@ export const premiseNetworks = pgTable('premise_networks', {
 export const userContexts = pgTable('user_contexts', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  // Nullable: a null networkId is the user's single global, profile-replacing
+  // context row. Per-network rows carry a concrete networkId.
+  networkId: text('network_id').references(() => networks.id, { onDelete: 'cascade' }),
   text: text('text').notNull(),
   embedding: vector('embedding', { dimensions: 2000 }),
   premiseHash: text('premise_hash'),
   generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  userNetworkUniq: uniqueIndex('user_contexts_user_network_uniq').on(table.userId, table.networkId),
+  // One row per (user, network) for concrete networks. A NULL networkId is excluded
+  // here (Postgres treats NULLs as distinct), so the global row is enforced separately.
+  userNetworkUniq: uniqueIndex('user_contexts_user_network_uniq')
+    .on(table.userId, table.networkId)
+    .where(sql`${table.networkId} IS NOT NULL`),
+  // Exactly one global (networkId IS NULL) row per user.
+  userGlobalUniq: uniqueIndex('user_contexts_user_global_uniq')
+    .on(table.userId)
+    .where(sql`${table.networkId} IS NULL`),
   embeddingIdx: index('user_contexts_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
   userIdIdx: index('user_contexts_user_id_idx').on(table.userId),
   networkIdIdx: index('user_contexts_network_id_idx').on(table.networkId),
 }));
 
-export type HydeSourceType = 'intent' | 'profile' | 'query' | 'context';
+export type HydeSourceType = 'intent' | 'query' | 'context';
 
 export const hydeDocuments = pgTable('hyde_documents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -474,7 +474,7 @@ export const opportunityDiscoveryRuns = pgTable('opportunity_discovery_runs', {
   expiresAtIdx: index('opportunity_discovery_runs_expires_at_idx').on(table.expiresAt),
 }));
 
-export const profileToolRuns = pgTable('profile_tool_runs', {
+export const enrichmentToolRuns = pgTable('enrichment_tool_runs', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   agentId: text('agent_id').references(() => agents.id, { onDelete: 'set null' }),
@@ -491,14 +491,14 @@ export const profileToolRuns = pgTable('profile_tool_runs', {
   completedAt: timestamp('completed_at', { withTimezone: true }),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
 }, (table) => ({
-  userCreatedIdx: index('profile_tool_runs_user_created_idx').on(table.userId, table.createdAt),
-  statusCreatedIdx: index('profile_tool_runs_status_created_idx').on(table.status, table.createdAt),
-  operationCreatedIdx: index('profile_tool_runs_operation_created_idx').on(table.operation, table.createdAt),
-  expiresAtIdx: index('profile_tool_runs_expires_at_idx').on(table.expiresAt),
+  userCreatedIdx: index('enrichment_tool_runs_user_created_idx').on(table.userId, table.createdAt),
+  statusCreatedIdx: index('enrichment_tool_runs_status_created_idx').on(table.status, table.createdAt),
+  operationCreatedIdx: index('enrichment_tool_runs_operation_created_idx').on(table.operation, table.createdAt),
+  expiresAtIdx: index('enrichment_tool_runs_expires_at_idx').on(table.expiresAt),
 }));
 
 export interface QuestionDetection {
-  mode: 'discovery' | 'intent' | 'profile' | 'negotiation';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -798,22 +798,11 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     fields: [users.id],
     references: [userNotificationSettings.userId],
   }),
-  profile: one(userProfiles, {
-    fields: [users.id],
-    references: [userProfiles.userId],
-  }),
 }));
 
 export const userSocialsRelations = relations(userSocials, ({ one }) => ({
   user: one(users, {
     fields: [userSocials.userId],
-    references: [users.id],
-  }),
-}));
-
-export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
-  user: one(users, {
-    fields: [userProfiles.userId],
     references: [users.id],
   }),
 }));
@@ -942,8 +931,6 @@ export const agentPermissionsRelations = relations(agentPermissions, ({ one }) =
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-export type UserProfile = typeof userProfiles.$inferSelect;
-export type NewUserProfile = typeof userProfiles.$inferInsert;
 export type Intent = typeof intents.$inferSelect;
 export type NewIntent = typeof intents.$inferInsert;
 export type Network = typeof networks.$inferSelect;

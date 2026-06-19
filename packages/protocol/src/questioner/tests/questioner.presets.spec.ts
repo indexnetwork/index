@@ -15,7 +15,7 @@ const standaloneModeExpectations = [
     negativeExample: "What kind of collaboration are you looking for?",
   },
   {
-    mode: "profile" as const,
+    mode: "enrichment" as const,
     anchors: ["profile signal or gap", "current profile", "existing premises", "identified gaps"],
     positiveExample: "To improve matches from your founder/operator profile",
     negativeExample: "What kind of role are you looking for?",
@@ -29,7 +29,7 @@ const standaloneModeExpectations = [
 ];
 
 // Modes whose prompts must carry the shared referential-closure guardrail.
-const ALL_MODES = ["discovery", "intent", "profile", "negotiation"] as const;
+const ALL_MODES = ["discovery", "intent", "enrichment", "negotiation"] as const;
 
 describe("standalone prompt contract", () => {
   it.each(standaloneModeExpectations)("mode '$mode' requires self-contained generated prompt text", ({ mode, anchors, positiveExample, negativeExample }) => {
@@ -60,7 +60,7 @@ describe("getPreset", () => {
     const preset = getPreset("discovery");
     const result = preset.buildPrompt({
       query: "looking for ML engineers",
-      sourceProfile: { name: "Alice" },
+      userContext: "Alice is an AI researcher.",
       negotiationDigests: [],
       summary: {
         totalCandidates: 5,
@@ -98,7 +98,7 @@ describe("intent preset", () => {
     const result = preset.buildPrompt({
       intentId: "intent-1",
       payload: "I want to find a cofounder for my AI startup",
-      userProfile: { name: "Alice", bio: "AI researcher" },
+      userContext: "Alice is an AI researcher.",
     });
     expect(typeof result).toBe("string");
     expect(result).toContain("cofounder");
@@ -116,7 +116,7 @@ describe("intent preset", () => {
 
 describe("profile preset", () => {
   it("returns the profile preset with systemPrompt and buildPrompt", () => {
-    const preset = getPreset("profile");
+    const preset = getPreset("enrichment");
     expect(preset).toBeDefined();
     expect(typeof preset.systemPrompt).toBe("string");
     expect(preset.systemPrompt.length).toBeGreaterThan(0);
@@ -124,9 +124,9 @@ describe("profile preset", () => {
   });
 
   it("profile buildPrompt produces a string containing the gaps", () => {
-    const preset = getPreset("profile");
+    const preset = getPreset("enrichment");
     const result = preset.buildPrompt({
-      userProfile: { name: "Bob", bio: "Engineer" },
+      userContext: "Bob is an engineer.",
       gaps: ["location", "current work"],
     });
     expect(typeof result).toBe("string");
@@ -136,9 +136,9 @@ describe("profile preset", () => {
   });
 
   it("profile buildPrompt includes existing premises when provided", () => {
-    const preset = getPreset("profile");
+    const preset = getPreset("enrichment");
     const result = preset.buildPrompt({
-      userProfile: { name: "Bob", bio: "Engineer" },
+      userContext: "Bob is an engineer.",
       gaps: ["goals"],
       existingPremises: ["I live in Berlin", "I am a CTO at Acme Corp"],
     });
@@ -148,9 +148,9 @@ describe("profile preset", () => {
   });
 
   it("profile buildPrompt shows (none) when existingPremises is empty", () => {
-    const preset = getPreset("profile");
+    const preset = getPreset("enrichment");
     const result = preset.buildPrompt({
-      userProfile: { name: "Bob" },
+      userContext: "Bob is an engineer.",
       gaps: ["location"],
       existingPremises: [],
     });
@@ -159,9 +159,9 @@ describe("profile preset", () => {
   });
 
   it("profile buildPrompt shows (none) when existingPremises is absent", () => {
-    const preset = getPreset("profile");
+    const preset = getPreset("enrichment");
     const result = preset.buildPrompt({
-      userProfile: { name: "Bob" },
+      userContext: "Bob is an engineer.",
       gaps: ["location"],
     });
     expect(result).toContain("## Existing premises");
@@ -169,12 +169,12 @@ describe("profile preset", () => {
   });
 
   it("profile system prompt mentions premises", () => {
-    const preset = getPreset("profile");
+    const preset = getPreset("enrichment");
     expect(preset.systemPrompt).toContain("premises");
   });
 
   it("requires profile prompts to naturally include profile context", () => {
-    const preset = getPreset("profile");
+    const preset = getPreset("enrichment");
     expect(preset.systemPrompt).toContain("Standalone prompt rule");
     expect(preset.systemPrompt).toContain("profile signal or gap");
     expect(preset.systemPrompt).toContain("To improve matches from your founder/operator profile");
@@ -198,7 +198,7 @@ describe("negotiation preset", () => {
       indexContext: "AI founders community",
       outcomeReason: "turn_cap",
       keyTake: "Both interested but scope unclear",
-      userProfile: { name: "Alice" },
+      userContext: "Alice is a builder.",
     });
     expect(typeof result).toBe("string");
     expect(result).toContain("turn_cap");

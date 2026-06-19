@@ -15,7 +15,7 @@ export function createUtilityTools(defineTool: DefineTool, deps: ToolDeps) {
       "Returns the page's text content (up to 10,000 characters) for use in subsequent tool calls.\n\n" +
       "**When to use:**\n" +
       "- Before create_intent: when the user shares a URL and wants to create an intent from it. Scrape first, then synthesize into a description.\n" +
-      "- Before create_user_profile or update_user_profile: when the user shares a profile URL to update their profile from.\n" +
+      "- Before create_user_context or update_user_context: when the user shares a profile URL to update their profile from.\n" +
       "- When the user asks about content at a URL.\n\n" +
       "**URL format:** Bare domains work fine (e.g. 'github.com/user/repo') — protocol (https://) is added automatically.\n\n" +
       "**Returns:** `{ url, contentLength, content }`. Content is truncated at 10,000 chars. " +
@@ -162,8 +162,8 @@ Profiles are the user's identity on the platform, used for semantic matching in 
   - Mirror: self-description of the person
   - Reciprocal: what this person would look for in others
   - Neighborhood: related community context
-- **Onboarding flow**: create_user_profile() → preview → create_user_profile(confirm=true) → complete_onboarding()
-- **Updates**: Use update_user_profile for targeted changes, create_user_profile for full regeneration.
+- **Onboarding flow**: create_user_context() → preview → create_user_context(confirm=true) → complete_onboarding()
+- **Updates**: Use update_user_context for targeted changes, create_user_context for full regeneration.
 
 ### Profile Best Practices
 - Richer profiles produce better opportunity matches
@@ -208,7 +208,7 @@ Discovery is the process of finding meaningful connections between users based o
         workflows: `## Common Tool Workflows
 
 ### New User Setup
-1. create_user_profile(linkedinUrl/githubUrl) → generate profile from social data
+1. create_user_context(linkedinUrl/githubUrl) → generate profile from social data
 2. complete_onboarding() → unlock full access
 3. read_networks() → see available communities
 4. create_network_membership(networkId) → join a community
@@ -222,7 +222,7 @@ Discovery is the process of finding meaningful connections between users based o
 
 ### Making an Introduction
 1. read_network_memberships(networkId) → find members in shared community
-2. read_user_profiles(userId) → get profiles of both parties
+2. read_user_contexts(userId) → get profiles of both parties
 3. read_intents(networkId, userId) → get intents of both parties
 4. discover_opportunities(partyUserIds=[id1,id2], entities=[...], hint="reason") → create introduction
 

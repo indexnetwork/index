@@ -21,6 +21,31 @@
     "neon": {
       "type": "http",
       "url": "https://mcp.neon.tech/mcp"
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "index-main": {
+      "url": "https://protocol.index.network/mcp",
+      "auth": "oauth",
+      "oauth": {
+        "clientName": "Pi Index Network Main"
+      }
+    },
+    "index-dev": {
+      "url": "https://protocol.dev.index.network/mcp",
+      "auth": "oauth",
+      "oauth": {
+        "clientName": "Pi Index Network Dev"
+      }
+    },
+    "index-local": {
+      "url": "http://localhost:3001/mcp",
+      "auth": "oauth",
+      "oauth": {
+        "clientName": "Pi Index Network Local"
+      }
     }
   }
 }

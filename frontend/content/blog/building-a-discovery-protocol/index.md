@@ -54,7 +54,7 @@ This distinction matters. You're not broadcasting yourself to everyone hoping so
 
 Here's where it gets technically interesting: how do you match people on nuanced, multi-dimensional intents without exposing all their data?
 
-Index uses zero-knowledge proofs and homomorphic encryption. Your detailed intents—the full context of what you're building, what you need, what matters to you—stay private. But agents can still compute compatibility and suggest connections.
+Index uses contextual privacy primitives to ensure appropriate information flows. Your detailed intents—the full context of what you're building, what you need, what matters to you—stay private. But agents can still compute compatibility and suggest connections.
 
 As Chad says it: "Privacy isn't just about hiding information, but it's also about being able to use your most valuable or personal information to make things better for you and for others."
 

@@ -94,7 +94,7 @@ describe('HydeQueue', () => {
       const db = {
         deleteExpiredHydeDocuments: async () => 0,
         getStaleHydeDocuments: async () => [
-          { sourceId: 's1', sourceType: 'profile', strategy: 'mirror' },
+          { sourceId: 's1', sourceType: 'query', strategy: 'mirror' },
         ] as Awaited<ReturnType<HydeQueueDatabase['getStaleHydeDocuments']>>,
         getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<HydeQueueDatabase['getIntentForIndexing']>>,
         deleteHydeDocumentsForSource: async () => 0,

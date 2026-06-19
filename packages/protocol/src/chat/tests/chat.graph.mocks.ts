@@ -8,13 +8,12 @@ import type { ChatGraphCompositeDatabase, CreateIntentData, ActiveIntent, Indexe
 import type { ChatSessionReader } from "../../shared/interfaces/chat-session.interface.js";
 import type { ProtocolDeps } from "../../shared/agent/tool.helpers.js";
 
-// Minimal profile shape for getProfileByUserId (avoids importing ProfileDocument)
+// Minimal profile shape for getProfileByUserId (UserIdentity-shaped: identity + context)
 export interface MockProfileFixture {
   id: string;
   userId: string;
   identity: { name: string; bio: string; location: string };
-  narrative: { context: string };
-  attributes: { skills: string[]; interests: string[] };
+  context: string;
   embedding: number[] | null;
 }
 
@@ -151,8 +150,7 @@ export function mockProfile(overrides: { userId?: string; name?: string }): Mock
       bio: "Test bio",
       location: "NYC",
     },
-    narrative: { context: "Test context" },
-    attributes: { skills: ["TypeScript"], interests: ["AI"] },
+    context: "Test context",
     embedding: null,
   };
 }

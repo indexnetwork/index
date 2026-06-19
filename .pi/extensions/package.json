@@ -1,0 +1,8 @@
+{
+  "name": "index-pi-extensions",
+  "private": true,
+  "description": "Local types for project-local pi extensions. Resolves @earendil-works/pi-coding-agent for the editor's TypeScript server; pi resolves it itself at runtime via jiti.",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.79.6"
+  }
+}

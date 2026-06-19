@@ -41,8 +41,11 @@ function makeOnboardingContext(userId = "user-1"): ResolvedToolContext {
   } as unknown as ResolvedToolContext;
 }
 
+const SAMPLE_USER_CONTEXT = "Alice is an AI researcher based in Berlin, interested in AI and skilled in TypeScript.";
+
 describe("read_networks — onboarding orderedNetworkIds", () => {
   const baseDeps = {
+    getUserContextText: async () => SAMPLE_USER_CONTEXT,
     graphs: {
       index: {
         invoke: async () => ({
@@ -66,12 +69,11 @@ describe("read_networks — onboarding orderedNetworkIds", () => {
     expect(result.data.orderedNetworkIds).toBeUndefined();
   });
 
-  test("omits orderedNetworkIds when context.userProfile is null", async () => {
-    const ctx = makeOnboardingContext();
-    (ctx as unknown as Record<string, unknown>).userProfile = null;
-    const tool = captureTool("read_networks", baseDeps);
+  test("omits orderedNetworkIds when the user context is empty", async () => {
+    const deps = { ...baseDeps, getUserContextText: async () => "" };
+    const tool = captureTool("read_networks", deps);
     const result = JSON.parse(
-      await tool.handler({ context: ctx, query: {} })
+      await tool.handler({ context: makeOnboardingContext(), query: {} })
     );
     expect(result.success).toBe(true);
     expect(result.data.orderedNetworkIds).toBeUndefined();

@@ -25,7 +25,7 @@ Complete reference for all HTTP endpoints exposed by the protocol server. All ro
 - [Link](#link)
 - [Opportunity](#opportunity)
 - [Network Opportunity](#network-opportunity)
-- [Profile](#profile)
+- [Enrichment](#enrichment)
 - [Storage](#storage)
 - [Subscribe](#subscribe)
 - [Unsubscribe](#unsubscribe)
@@ -2675,17 +2675,17 @@ Create a manual opportunity (curator). Requires owner or member permission.
 
 ---
 
-## Profile
+## Enrichment
 
-**Controller prefix**: `/profiles`
+**Controller prefix**: `/enrichment`
 
-### POST /api/profiles/sync
+### POST /api/enrichment/sync
 
-Trigger profile sync/generation for the authenticated user. Runs the profile graph.
+Trigger enrichment sync/generation for the authenticated user. Runs the enrichment graph.
 
 **Auth**: AuthGuard
 
-**Response**: JSON with profile generation result.
+**Response**: JSON with enrichment result.
 
 ---
 

@@ -116,18 +116,14 @@ export function buildDiscovererContext(
 
   if (profile) {
     const identity = profile.identity;
-    const attrs = profile.attributes;
     if (identity?.name || identity?.bio) {
       lines.push(`Profile: ${[identity.name, identity.bio].filter(Boolean).join(', ')}`);
     }
     if (identity?.location) {
       lines.push(`Location: ${identity.location}`);
     }
-    if (attrs?.skills?.length) {
-      lines.push(`Skills: ${attrs.skills.join(', ')}`);
-    }
-    if (attrs?.interests?.length) {
-      lines.push(`Interests: ${attrs.interests.join(', ')}`);
+    if (profile.context) {
+      lines.push(`Context: ${profile.context}`);
     }
   }
 
@@ -286,8 +282,7 @@ export class OpportunityGraphFactory {
             const sourceProfile = profile
               ? {
                   identity: profile.identity ?? undefined,
-                  narrative: profile.narrative ?? undefined,
-                  attributes: profile.attributes ?? undefined,
+                  context: profile.context ?? undefined,
                 }
               : null;
             // Source premises are loaded after scope is resolved so premise discovery
@@ -300,8 +295,10 @@ export class OpportunityGraphFactory {
               ? await this.database.getUserContexts(discoveryUserId)
               : [];
             const sourceContexts = rawContexts
-              .filter((c: { id: string; networkId: string; embedding: number[] | null }) => c.embedding && c.embedding.length > 0 && userNetworkIds.includes(c.networkId as Id<'networks'>))
-              .map((c: { id: string; networkId: string; embedding: number[] | null }) => ({
+              // The global row (networkId: null) is excluded here — it is not in
+              // userNetworkIds — so context-to-intent discovery stays network-scoped.
+              .filter((c: { id: string; networkId: string | null; embedding: number[] | null }) => c.embedding && c.embedding.length > 0 && c.networkId !== null && userNetworkIds.includes(c.networkId as Id<'networks'>))
+              .map((c: { id: string; networkId: string | null; embedding: number[] | null }) => ({
                 contextId: c.id,
                 networkId: c.networkId as Id<'networks'>,
                 embedding: c.embedding!,
@@ -535,7 +532,7 @@ export class OpportunityGraphFactory {
             const inTarget = inNetwork.some((id) => targetIndexIds.includes(id as Id<'networks'>));
             resolvedIntentId = state.triggerIntentId;
             const resolvedIntentInIndex = inTarget;
-            const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('profile' as const);
+            const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('context' as const);
             return {
               resolvedTriggerIntentId: resolvedIntentId,
               resolvedIntentInIndex,
@@ -550,7 +547,7 @@ export class OpportunityGraphFactory {
               resolvedIntentId = matched.intentId;
               const inNetwork = await this.database.getNetworkIdsForIntent(matched.intentId);
               const resolvedIntentInIndex = inNetwork.some((id) => targetIndexIds.includes(id as Id<'networks'>));
-              const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('profile' as const);
+              const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('context' as const);
               return {
                 resolvedTriggerIntentId: resolvedIntentId,
                 resolvedIntentInIndex,
@@ -566,7 +563,7 @@ export class OpportunityGraphFactory {
           return {
             resolvedTriggerIntentId: undefined,
             resolvedIntentInIndex: false,
-            discoverySource: 'profile' as const,
+            discoverySource: 'context' as const,
           };
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -578,7 +575,7 @@ export class OpportunityGraphFactory {
           return {
             resolvedTriggerIntentId: undefined,
             resolvedIntentInIndex: false,
-            discoverySource: 'profile' as const,
+            discoverySource: 'context' as const,
             error: errMsg || 'Resolve failed',
             trace: [{
               node: "resolve_fatal",
@@ -743,10 +740,10 @@ export class OpportunityGraphFactory {
           // Similarity threshold for recall (0.30 = 30% similarity)
           const minScore = 0.3;
 
-          if (state.discoverySource === 'profile') {
-            // Profile-context discovery: HyDE (when search query exists) + premise-to-premise.
+          if (state.discoverySource === 'context') {
+            // Context discovery: HyDE (when search query exists) + premise-to-premise.
             if (state.searchQuery?.trim()) {
-              logger.verbose('[Graph:Discovery] Profile source with searchQuery → running query HyDE + premise paths', {
+              logger.verbose('[Graph:Discovery] Context source with searchQuery → running query HyDE + premise paths', {
                 searchQuery: state.searchQuery.trim().substring(0, 80),
               });
               const queryCandidates = await runQueryHydeDiscovery();
@@ -1464,9 +1461,7 @@ export class OpportunityGraphFactory {
               name: sourceProfile?.identity?.name,
               bio: sourceProfile?.identity?.bio,
               location: sourceProfile?.identity?.location,
-              interests: sourceProfile?.attributes?.interests,
-              skills: sourceProfile?.attributes?.skills,
-              context: sourceProfile?.narrative?.context,
+              context: sourceProfile?.context,
             },
             intents: state.indexedIntents.slice(0, 5).map((i) => ({
               intentId: i.intentId,
@@ -1498,9 +1493,7 @@ export class OpportunityGraphFactory {
                   name: profile?.identity?.name,
                   bio: profile?.identity?.bio,
                   location: profile?.identity?.location,
-                  interests: profile?.attributes?.interests,
-                  skills: profile?.attributes?.skills,
-                  context: profile?.narrative?.context,
+                  context: profile?.context,
                 },
                 intents:
                   c.candidateIntentId != null
@@ -1882,8 +1875,6 @@ export class OpportunityGraphFactory {
             name: state.sourceProfile?.identity?.name ?? sourceAccount?.name,
             bio: state.sourceProfile?.identity?.bio ?? sourceAccount?.intro ?? undefined,
             location: state.sourceProfile?.identity?.location ?? sourceAccount?.location ?? undefined,
-            skills: state.sourceProfile?.attributes?.skills,
-            interests: state.sourceProfile?.attributes?.interests,
           },
         };
 
@@ -1967,8 +1958,6 @@ export class OpportunityGraphFactory {
                   name: profile?.identity?.name ?? user?.name,
                   bio: profile?.identity?.bio ?? user?.intro ?? undefined,
                   location: profile?.identity?.location ?? user?.location ?? undefined,
-                  skills: profile?.attributes?.skills,
-                  interests: profile?.attributes?.interests,
                 },
               },
             };
@@ -3471,8 +3460,6 @@ export class OpportunityGraphFactory {
             name: sourceProfile?.identity?.name ?? sourceUserAccount?.name,
             bio: sourceProfile?.identity?.bio ?? sourceUserAccount?.intro ?? undefined,
             location: sourceProfile?.identity?.location ?? sourceUserAccount?.location ?? undefined,
-            skills: sourceProfile?.attributes?.skills,
-            interests: sourceProfile?.attributes?.interests,
           },
         };
 
@@ -3491,8 +3478,6 @@ export class OpportunityGraphFactory {
               name: candidateProfile?.identity?.name ?? candidateAccount?.name,
               bio: candidateProfile?.identity?.bio ?? candidateAccount?.intro ?? undefined,
               location: candidateProfile?.identity?.location ?? candidateAccount?.location ?? undefined,
-              skills: candidateProfile?.attributes?.skills,
-              interests: candidateProfile?.attributes?.interests,
             },
           },
         };

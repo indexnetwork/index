@@ -22,7 +22,7 @@ const logger = log.service.from('QuestionAnswerHandler');
 interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
-  mode: 'discovery' | 'intent' | 'profile' | 'negotiation';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
   sourceType: string;
   sourceId: string;
   answer: {
@@ -81,7 +81,7 @@ export async function handleQuestionAnswered(
         // and will be picked up by the next ChatContextDigest read.
         break;
 
-      case 'profile':
+      case 'enrichment':
         await deps.createPremiseFromAnswer({
           userId,
           questionId,

@@ -77,8 +77,6 @@ export class NegotiationService {
         name: profile?.identity?.name,
         bio: profile?.identity?.bio,
         location: profile?.identity?.location,
-        skills: profile?.attributes?.skills,
-        interests: profile?.attributes?.interests,
       },
     };
   }

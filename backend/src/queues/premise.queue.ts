@@ -3,9 +3,7 @@ import { Job, JobsOptions } from 'bullmq';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
-import { ChatDatabaseAdapter, OpportunityDatabaseAdapter, ProfileDatabaseAdapter } from '../adapters/database.adapter';
-import { ScraperAdapter } from '../adapters/scraper.adapter';
-import { ProfileGraphFactory } from '@indexnetwork/protocol';
+import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../adapters/database.adapter';
 
 import { PremiseEvents } from '../events/premise.event';
 import { userContextQueue } from './usercontext.queue';
@@ -74,14 +72,9 @@ export interface PremiseQueueDeps {
   updateOpportunityStatus?: (opportunityId: string, status: 'expired' | 'stalled') => Promise<void>;
 
   /**
-   * Invoke the profile graph in `aggregate` mode for the given user,
-   * rebuilding the profile from their current active premises.
-   */
-  invokeProfileAggregate?: (userId: string) => Promise<void>;
-
-  /**
-   * Enqueue per-network user-context regeneration. Called after the global profile
-   * aggregate completes so the per-network representation derives from a fresh profile.
+   * Enqueue user-context regeneration (global + per-network) for the user.
+   * Called whenever the user's premises change so their context representation
+   * (the profile replacement) is rebuilt from the fresh premise set.
    */
   enqueueContextRegen?: (userId: string) => Promise<void>;
 
@@ -376,33 +369,17 @@ export class PremiseQueue {
     const { userId, trigger } = data;
     this.logger.info('[ProfileRegen] Starting profile regeneration', { userId, trigger });
 
-    const invokeProfileAggregate =
-      this.deps?.invokeProfileAggregate ??
-      ((uid: string) => this.defaultInvokeProfileAggregate(uid));
-
     const enqueueContextRegen =
       this.deps?.enqueueContextRegen ??
       ((uid: string) => this.defaultEnqueueContextRegen(uid));
 
-    await invokeProfileAggregate(userId);
-
-    // Global profile is now fresh; enqueue per-network context regeneration downstream.
+    // Premises changed; rebuild the user's context representation (global + per-network),
+    // which is the profile replacement. The legacy profile-graph `aggregate` step (which
+    // synthesized the now-removed user_profiles identity document) was dropped in WS8/IND-365.
     // Log completion only after the enqueue settles so a failed/retried job is not
     // preceded by a misleading "complete" line.
     await enqueueContextRegen(userId);
     this.logger.info('[ProfileRegen] Profile regeneration complete', { userId, trigger });
-  }
-
-  /**
-   * Default production implementation: invoke the profile graph in `aggregate` mode.
-   * Reads the user's active premises and rebuilds profile + embeddings.
-   */
-  private async defaultInvokeProfileAggregate(userId: string): Promise<void> {
-    const database = new ProfileDatabaseAdapter();
-    const scraper = new ScraperAdapter();
-    const factory = new ProfileGraphFactory(database, scraper);
-    const graph = factory.createGraph();
-    await graph.invoke({ userId, operationMode: 'aggregate' });
   }
 
   /**

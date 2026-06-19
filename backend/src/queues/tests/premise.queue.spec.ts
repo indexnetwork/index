@@ -30,29 +30,25 @@ afterAll(() => {
 import { PremiseQueue } from '../premise.queue';
 
 describe('PremiseQueue — profile regen chaining', () => {
-  it('enqueues context regen AFTER the profile aggregate completes', async () => {
+  it('enqueues context regen for the user when premises change', async () => {
     const calls: string[] = [];
     const queue = new PremiseQueue({
-      invokeProfileAggregate: async () => { calls.push('aggregate'); },
-      enqueueContextRegen: async () => { calls.push('context'); },
+      enqueueContextRegen: async (uid) => { calls.push(`context:${uid}`); },
     });
 
     await queue.processJob('profile_regen', { userId: 'u1', trigger: 'premise_created' });
 
-    expect(calls).toEqual(['aggregate', 'context']);
+    expect(calls).toEqual(['context:u1']);
   });
 
-  it('does NOT enqueue context regen when the aggregate throws', async () => {
-    const enqueueContextRegen = mock(async () => {});
+  it('propagates errors when context regen enqueue fails', async () => {
     const queue = new PremiseQueue({
-      invokeProfileAggregate: async () => { throw new Error('boom'); },
-      enqueueContextRegen,
+      enqueueContextRegen: async () => { throw new Error('boom'); },
     });
 
     await expect(
       queue.processJob('profile_regen', { userId: 'u1', trigger: 'premise_created' }),
     ).rejects.toThrow('boom');
-    expect(enqueueContextRegen).not.toHaveBeenCalled();
   });
 });
 
