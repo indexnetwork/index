@@ -39,10 +39,6 @@ bun test --watch                            # Run tests in watch mode
 bun run lint                                # Run ESLint
 
 # Maintenance/CLI tools
-bun run maintenance:trigger-integration     # Manually trigger integration sync
-bun run maintenance:export-slack            # Export Slack data
-bun run maintenance:import-slack-export     # Import Slack export files
-bun run maintenance:reset-brokers           # Reset context brokers
 bun run maintenance:backfill-premises       # Backfill: enqueue enrichment for users in a network
 bun run maintenance:backfill-context-hyde   # Backfill: generate HyDE docs for user contexts
 bun run maintenance:backfill-global-user-contexts # Backfill: generate the global user_context (networkId=null) for every user, synthesized from active premises
@@ -51,7 +47,6 @@ bun run maintenance:backfill-intent-questions # Backfill: enqueue intent-refinem
 # Background workers
 bun run integration-worker                  # Start integration sync worker
 bun run social-worker                       # Start social media sync worker
-bun run audit-freshness                     # Audit intent freshness
 ```
 
 ### Frontend
