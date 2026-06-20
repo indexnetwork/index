@@ -1,6 +1,6 @@
 ---
 name: git-worktree-workflow
-description: Create and operate git worktrees in the index monorepo using the project's `bun run worktree:*` helpers instead of raw git. Use whenever you need an isolated branch checkout to make changes (the canonical root must stay on dev and is read-only for the assistant), or when a worktree is missing env files, node_modules, or git hooks. Covers the dashed-folder / slashed-branch naming convention and why `worktree:setup` is mandatory after creating a worktree.
+description: Create and operate git worktrees in the index monorepo using the project's `bun run worktree:*` helpers instead of raw git. Use whenever you need an isolated branch checkout to make changes (the canonical root must stay on dev and is read-only for the assistant, enforced by the root-dev-guard extension), or when a worktree is missing env files, node_modules, or git hooks, or when a tool/bash call is blocked for touching the canonical root. Covers the dashed-folder / slashed-branch naming convention and why `worktree:setup` is mandatory after creating a worktree.
 ---
 
 # git-worktree-workflow
@@ -51,10 +51,33 @@ bun run worktree:build <type-desc>   # build in that worktree (no arg = build at
 bun run worktree:list                # list worktrees + setup status
 ```
 
+## Enforcement: the root-dev-guard extension
+
+`.pi/extensions/root-dev-guard.ts` enforces all of the above automatically at runtime —
+the skill documents the convention; the extension makes it non-bypassable. It:
+
+- **Keeps the root on `dev`**: on `session_start` it switches the canonical root back to
+  `dev` if the tree is clean, or errors (telling you to move work to a worktree) if the
+  root has tracked changes.
+- **Blocks `write`/`edit`** to any path inside the canonical root that is *not* under
+  `.worktrees/`.
+- **Blocks mutating `bash`** run from the canonical root — `git add/commit/push/merge/
+  reset/...`, `rm/mv/cp/mkdir/...`, `bun|npm install`, `bun run build/dev/db:*`, and
+  output redirects (`>`, `| tee`).
+- **Blocks branch switches** in the root (only a bare `git switch dev` is allowed).
+
+**Sanctioned escapes the guard allows** (use these instead of fighting it):
+- `git worktree ...` and `bun run worktree:*` from the root.
+- Any command that targets a worktree — `cd .worktrees/<name> && ...` or
+  `git -C .worktrees/<name> ...`.
+- Read-only git against the root via `-C` from outside it (see below).
+
+Overridable via env: `INDEX_CANONICAL_ROOT` (root path), `INDEX_ROOT_BRANCH` (default `dev`).
+
 ## Running git/bash against the read-only root
 
-The assistant's bash tool blocks commands whose cwd is the canonical root. Run from
-`/tmp` (or the worktree) and target the root with `-C`:
+The guard blocks mutating commands whose cwd is the canonical root. For inspection, run
+from `/tmp` (or a worktree) and target the root with `-C`:
 
 ```bash
 cd /tmp && git -C /Users/yanek/Projects/index worktree list
@@ -80,3 +103,4 @@ git -C /Users/yanek/Projects/index branch -d <type>/<desc>
   `git submodule update --remote` advances to the tracked branch tip. See
   `docs/guides/agentvillage-submodule.md` and the Subtrees/submodule section of `CLAUDE.md`.
 - Worktree conventions also summarized in `CLAUDE.md` → Git Workflow → Worktrees.
+- Runtime enforcer: `.pi/extensions/root-dev-guard.ts` (see Enforcement above).
