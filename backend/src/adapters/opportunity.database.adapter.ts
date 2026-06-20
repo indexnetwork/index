@@ -1,4 +1,4 @@
-import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, sql, toOpportunityRow, traceAppOperation } from './_shared';
+import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, sql, toOpportunityRow, traceAppOperation } from './database.shared';
 
 export class OpportunityDatabaseAdapter {
   async getProfile(userId: string): Promise<UserIdentity | null> {

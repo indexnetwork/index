@@ -1,4 +1,4 @@
-import { LinkRow, and, db, eq, links } from './_shared';
+import { LinkRow, and, db, eq, links } from './database.shared';
 
 export class LinkDatabaseAdapter {
   async listLinks(userId: string): Promise<LinkRow[]> {

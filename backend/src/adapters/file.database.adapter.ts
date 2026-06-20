@@ -1,4 +1,4 @@
-import { CreateFileInput, FileListResult, FileMetadata, FileRow, and, count, db, desc, eq, files, inArray, isNull } from './_shared';
+import { CreateFileInput, FileListResult, FileMetadata, FileRow, and, count, db, desc, eq, files, inArray, isNull } from './database.shared';
 
 export class FileDatabaseAdapter {
   /**

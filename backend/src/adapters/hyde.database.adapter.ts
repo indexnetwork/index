@@ -1,4 +1,4 @@
-import { HydeDocumentRow, HydeSourceTypeLocal, SaveHydeDocumentInput, and, db, eq, hydeDocuments, isNotNull, lt, lte, toHydeDocument } from './_shared';
+import { HydeDocumentRow, HydeSourceTypeLocal, SaveHydeDocumentInput, and, db, eq, hydeDocuments, isNotNull, lt, lte, toHydeDocument } from './database.shared';
 
 export class HydeDatabaseAdapter {
   async getHydeDocument(

@@ -4,16 +4,16 @@
  * No dependency on lib/protocol. Imported by every database/*.adapter.ts file.
  */
 import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm';
-import * as schema from '../../schemas/database.schema';
-import db from '../../lib/drizzle/drizzle';
-import { traceAppOperation } from '../../lib/sentry-performance';
-import { normalizeEmbedding } from '../../lib/embedding/vector';
-import { normalizeTelegramSocialValue } from '../../lib/telegram/socials';
-import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../../schemas/database.schema';
-import type { Conversation, ConversationParticipant, Message, Task, Artifact } from '../../schemas/conversation.schema';
-import type { Id } from '../../types/common.types';
-import { log } from '../../lib/log';
-import { NetworkMembershipEvents } from '../../events/network_membership.event';
+import * as schema from '../schemas/database.schema';
+import db from '../lib/drizzle/drizzle';
+import { traceAppOperation } from '../lib/sentry-performance';
+import { normalizeEmbedding } from '../lib/embedding/vector';
+import { normalizeTelegramSocialValue } from '../lib/telegram/socials';
+import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
+import type { Conversation, ConversationParticipant, Message, Task, Artifact } from '../schemas/conversation.schema';
+import type { Id } from '../types/common.types';
+import { log } from '../lib/log';
+import { NetworkMembershipEvents } from '../events/network_membership.event';
 
 // Re-export the import surface so domain adapter files import everything from one module.
 export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log, NetworkMembershipEvents };

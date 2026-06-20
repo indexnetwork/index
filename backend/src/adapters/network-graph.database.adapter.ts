@@ -1,4 +1,4 @@
-import { upsertIntentNetworkAssignment, and, db, eq, intentNetworks, intents, isNull, networkMembers, networks } from './_shared';
+import { upsertIntentNetworkAssignment, and, db, eq, intentNetworks, intents, isNull, networkMembers, networks } from './database.shared';
 
 export class NetworkGraphDatabaseAdapter {
   async getIntentForIndexing(intentId: string) {

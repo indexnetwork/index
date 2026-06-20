@@ -5,33 +5,33 @@
  */
 
 // ── Domain adapter classes (public surface) ──
-export { IntentDatabaseAdapter } from './database/intent.database.adapter';
-export { ChatDatabaseAdapter } from './database/chat.database.adapter';
-export { EnrichmentDatabaseAdapter } from './database/enrichment.database.adapter';
-export { OpportunityDatabaseAdapter } from './database/opportunity.database.adapter';
-export { NetworkGraphDatabaseAdapter } from './database/network-graph.database.adapter';
-export { HydeDatabaseAdapter } from './database/hyde.database.adapter';
-export { UserDatabaseAdapter } from './database/user.database.adapter';
-export { FileDatabaseAdapter } from './database/file.database.adapter';
-export { LinkDatabaseAdapter } from './database/link.database.adapter';
-export { ConversationDatabaseAdapter } from './database/conversation.database.adapter';
+export { IntentDatabaseAdapter } from './intent.database.adapter';
+export { ChatDatabaseAdapter } from './chat.database.adapter';
+export { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
+export { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
+export { NetworkGraphDatabaseAdapter } from './network-graph.database.adapter';
+export { HydeDatabaseAdapter } from './hyde.database.adapter';
+export { UserDatabaseAdapter } from './user.database.adapter';
+export { FileDatabaseAdapter } from './file.database.adapter';
+export { LinkDatabaseAdapter } from './link.database.adapter';
+export { ConversationDatabaseAdapter } from './conversation.database.adapter';
 
 // ── Public helpers + DTO types ──
-export { ensurePersonalNetwork, getPersonalIndexId } from './database/_shared';
+export { ensurePersonalNetwork, getPersonalIndexId } from './database.shared';
 export type {
   ChatSession, ChatMessage, ChatConversationMeta, ChatMessageMeta,
   CreateSessionInput, CreateMessageInput, CreateFileInput, LinkRow,
   ResolvedParticipant, ConversationSummary,
-} from './database/_shared';
+} from './database.shared';
 
 // ── Imports for singletons + scoped-DB factories ──
-import { IntentDatabaseAdapter } from './database/intent.database.adapter';
-import { ChatDatabaseAdapter } from './database/chat.database.adapter';
-import { UserDatabaseAdapter } from './database/user.database.adapter';
-import { FileDatabaseAdapter } from './database/file.database.adapter';
-import { LinkDatabaseAdapter } from './database/link.database.adapter';
-import { ConversationDatabaseAdapter } from './database/conversation.database.adapter';
-import { Id, SimilarIntent, VectorStore, canActorSeeOpportunity, getPersonalIndexId, log } from './database/_shared';
+import { IntentDatabaseAdapter } from './intent.database.adapter';
+import { ChatDatabaseAdapter } from './chat.database.adapter';
+import { UserDatabaseAdapter } from './user.database.adapter';
+import { FileDatabaseAdapter } from './file.database.adapter';
+import { LinkDatabaseAdapter } from './link.database.adapter';
+import { ConversationDatabaseAdapter } from './conversation.database.adapter';
+import { Id, SimilarIntent, VectorStore, canActorSeeOpportunity, getPersonalIndexId, log } from './database.shared';
 
 // ── Singletons ──
 export const chatDatabaseAdapter = new ChatDatabaseAdapter();
