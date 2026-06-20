@@ -1,6 +1,6 @@
 ---
 name: cleaning-up-codebases
-description: "Systematically audit and clean a package in the index monorepo for dead code, unused exports, scope creep, anti-patterns, and architectural drift. Asks 'should this exist?' before 'how do I improve this?', classifies findings into tiers (T1 safe deletes through T4 architectural), negotiates scope with the owner, and verifies lint/test/build before and after every change. Use when reviewing or cleaning a backend/frontend/protocol/cli package, removing cruft from a rapidly-developed feature, or doing a pre-refactor audit. Not for greenfield code or single targeted bug fixes."
+description: "Systematically audit and clean a package in the index monorepo for dead code, unused exports, scope creep, anti-patterns, complexity, coupling, and architectural drift. Asks 'should this exist?' before 'how do I improve this?', fans out a per-dimension audit with hard metric thresholds, classifies findings into tiers (T1 safe deletes through T4 architectural), negotiates scope with the owner, and verifies lint/test/build before and after every change. Use when reviewing or cleaning a backend/frontend/protocol/cli package, removing cruft from a rapidly-developed feature, or doing a pre-refactor audit. Not for greenfield code or single targeted bug fixes."
 ---
 
 # cleaning-up-codebases
@@ -11,6 +11,11 @@ abstractions to an already over-abstracted mess.
 
 **Core principle:** Removal over refactoring. Simplification over restructuring. Verify
 before and after every change. Cleanup means *less* code, not different code.
+
+**Measure, don't eyeball.** Every finding is backed by a deterministic signal — a tool
+output, a grep count, or a metric threshold — never a vibe. Probabilistic models are good
+at *applying* known patterns but bad at *deciding* what is dead; let deterministic tools
+(linters, dead-code scans, type checker, complexity meters) make that call.
 
 ## Repo guardrails (read first)
 
@@ -26,7 +31,7 @@ before and after every change. Cleanup means *less* code, not different code.
 
 - A feature/package that grew organically and accumulated cruft
 - Suspected dead code, half-finished features, unused exports, or scope creep
-- Code that drifted from the architecture guidance
+- Code that drifted from the architecture guidance, or grew tangled coupling
 - Pre-refactor audit to decide what is worth keeping
 
 **When NOT to use:** greenfield code, a single targeted bug fix, or performance work.
@@ -48,24 +53,55 @@ Run the package's checks and **record numbers** before touching anything:
 If a check is already broken, **that is your first finding** — fix the baseline before
 adding cleanup on top.
 
-### 3. Survey with automated scans (count, don't eyeball)
-See `references/audit-signals.md` for the full monorepo-specific signal list (dead code,
-unused exports, TS/React/Drizzle/protocol-specific smells, scope creep). Produce concrete
-counts ("14 unused exports, 3 orphaned files"), not vague impressions.
+### 3. Survey by dimension (fan out, count, don't eyeball)
+Don't do one vague "look at the code" pass. Audit each dimension below as its own focused
+sweep, producing concrete counts ("14 unused exports, 3 orphaned files, 2 god-files >500
+lines"). For large packages, dispatch independent dimensions to parallel `Explore` agents
+— each is read-only and returns findings, not edits. Full monorepo-specific commands live
+in `references/audit-signals.md`.
 
-### 4. Question existence
+| # | Dimension | Hunting for |
+|---|---|---|
+| **D1** | Dead code & reachability | Orphan files, unused exports, commented blocks, unreachable branches, abandoned `*_v2`/`_old` |
+| **D2** | Duplication & over-abstraction | Copy-pasted blocks >6 lines, parallel implementations, one-use abstractions, premature generics (KISS/DRY/YAGNI) |
+| **D3** | Complexity & god-files | Functions over the thresholds below, files >500 lines, deep nesting (4+), long if/elif chains |
+| **D4** | Type & error hygiene | `any`/`as any`, non-null `!` abuse, `@ts-ignore`, empty `catch {}`, swallowed errors, `console.log` |
+| **D5** | Coupling & dependency topology | Layer-boundary violations, import cycles, high fan-in/fan-out modules, cross-feature reach-ins |
+| **D6** | Scope creep | Modules outside the package's stated purpose, deps pulled for one non-core feature, separable sub-packages |
+| **D7** | Schema & data lifecycle | Columns/tables with no read or write path, parallel schema defs, hand-edited generated artifacts |
+
+### Metric thresholds (refactor candidates)
+Treat a breach as a *finding to triage*, not an automatic edit. Adjust only with owner buy-in.
+
+| Metric | Threshold | Tool / how |
+|---|---|---|
+| Cyclomatic complexity | ≥ 11 → split | eslint `complexity` rule, or `bunx` a complexity reporter |
+| Cognitive complexity | > 15 → split | `eslint-plugin-sonarjs` `cognitive-complexity` |
+| Maintainability | low → refactor | trend via churn × complexity (hotspots) |
+| File length | > 500 lines → split | `awk 'END{print NR}' <file>` |
+| Function length | > ~50 lines → extract | scan + judgement |
+| Nesting depth | ≥ 4 → guard clauses | grep indentation / `max-depth` rule |
+| Duplicate block | > 6 lines repeated | `jscpd`, or `eslint-plugin-sonarjs` `no-duplicate-string` |
+
+### 4. Question existence (before improving)
 For every major module/feature ask: does it align with stated purpose? Is it reachable
-from an entry point? Could it be a separate package? Was it fully finished? **Never
-default to "refactor to be better" — first ask "should this exist at all?"**
+from an entry point? Could it be a separate package? Was it fully finished? Apply
+**KISS/DRY/YAGNI**: is an abstraction earning its keep (≥2 real call sites, real
+variation), or is it speculative generality? **Never default to "refactor to be better" —
+first ask "should this exist at all?"** A delete beats the cleanest refactor.
 
 ### 5. Classify into tiers (never mix)
 
 | Tier | What it is | Examples | Effort |
 |---|---|---|---|
 | **T1** Safe deletes | Dead code, unused files/exports, abandoned experiments | Orphaned `*_v2.ts`, unused export, commented-out blocks | Minutes |
-| **T2** Quick fixes | Isolated, no architectural impact | Add missing error handling, remove stale TODO, fix lint warning, drop `console.log` | Hours |
-| **T3** Focused refactors | Targeted module improvements | Split a god service, consolidate duplicated logic | Days |
-| **T4** Architectural / schema | Structural or destructive | Change a layer boundary, drop a column/table (needs backfill + migration) | Weeks |
+| **T2** Quick fixes | Isolated, no architectural impact | Add missing error handling, remove stale TODO, fix lint warning, drop `console.log`, kill an `as any` | Hours |
+| **T3** Focused refactors | Targeted module improvements via named patterns | Split a god service, consolidate duplicated logic, guard-clause a deep nest, lookup-table an if/elif chain | Days |
+| **T4** Architectural / schema | Structural or destructive | Break an import cycle, change a layer boundary, drop a column/table (needs backfill + migration) | Weeks |
+
+For T3 work, apply the named catalog in `references/refactoring-patterns.md` (Extract
+Function, Guard Clauses, Lookup Table, Extract Magic Number, Collapse Duplication, etc.)
+rather than ad-hoc restructuring — named patterns are reviewable and reversible.
 
 ### 6. Negotiate scope with the owner
 Present findings before changing anything: "N things I can safely delete now — proceed?",
@@ -81,11 +117,13 @@ work belongs on its own branch and must follow `release-prod-safety` (a stale ro
 ## Red flags — you're doing it wrong
 - You're writing more code than you're deleting
 - You're creating new files or adding an abstraction during a *cleanup*
+- You flagged something as dead/complex/duplicated **without a tool output or grep count** behind it
+- You're refactoring a module you haven't first asked "should this exist?"
 - Your plan has 5+ phases spanning weeks (start with T1, reassess)
-- You flagged something dead without grepping for all usages first
 - You haven't verified the build passes, or haven't asked the owner what to keep
 
 ## See also
 - `.pi/skills/git-worktree-workflow/SKILL.md` — mandatory for any mutating work
 - `.pi/skills/release-prod-safety/SKILL.md` — before any destructive migration reaches main
-- `references/audit-signals.md` — full scan/grep signal catalogue for this monorepo
+- `references/audit-signals.md` — full per-dimension scan/grep/metric catalogue for this monorepo
+- `references/refactoring-patterns.md` — named T3 refactoring patterns with before/after
