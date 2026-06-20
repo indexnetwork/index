@@ -19,6 +19,7 @@ afterAll(() => {
 });
 
 import { NetworkController } from "../network.controller";
+import { NetworkExperimentController } from "../network-experiment.controller";
 import db from "../../lib/drizzle/drizzle";
 import * as schema from "../../schemas/database.schema";
 import { UserDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
@@ -26,6 +27,7 @@ import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 describe("NetworkController Integration", () => {
   const controller = new NetworkController();
+  const experimentController = new NetworkExperimentController();
   const userAdapter = new UserDatabaseAdapter();
   const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;
@@ -306,7 +308,7 @@ describe("NetworkController Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      const res = await controller.inviteMember(req, mockUser(), { id: experimentNetworkId });
+      const res = await experimentController.inviteMember(req, mockUser(), { id: experimentNetworkId });
       const data = (await res.json()) as { error?: string };
 
       expect(res.status).toBe(400);
@@ -319,7 +321,7 @@ describe("NetworkController Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: "not-an-email" }),
       });
-      const res = await controller.inviteMember(req, mockUser(), { id: experimentNetworkId });
+      const res = await experimentController.inviteMember(req, mockUser(), { id: experimentNetworkId });
       const data = (await res.json()) as { error?: string };
 
       expect(res.status).toBe(400);
@@ -332,7 +334,7 @@ describe("NetworkController Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: `target-${Date.now()}@example.com` }),
       });
-      const res = await controller.inviteMember(req, mockUser(), { id: createdIndexId });
+      const res = await experimentController.inviteMember(req, mockUser(), { id: createdIndexId });
 
       expect(res.status).toBe(403);
     });
@@ -345,7 +347,7 @@ describe("NetworkController Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: inviteeEmail }),
       });
-      const res = await controller.inviteMember(req, mockUser(), { id: experimentNetworkId });
+      const res = await experimentController.inviteMember(req, mockUser(), { id: experimentNetworkId });
       const data = (await res.json()) as {
         user?: { id: string; email: string };
         created?: boolean;
@@ -386,7 +388,7 @@ describe("NetworkController Integration", () => {
       const req = new Request(`http://localhost/networks/${rotateNetworkId}/rotate-master-key`, {
         method: "POST",
       });
-      const res = await controller.rotateMasterKey(req, mockUser(), { id: rotateNetworkId });
+      const res = await experimentController.rotateMasterKey(req, mockUser(), { id: rotateNetworkId });
       const data = (await res.json()) as { masterKey?: string };
 
       expect(res.status).toBe(200);
@@ -398,7 +400,7 @@ describe("NetworkController Integration", () => {
       const req = new Request(`http://localhost/networks/${createdIndexId}/rotate-master-key`, {
         method: "POST",
       });
-      const res = await controller.rotateMasterKey(req, mockUser(), { id: createdIndexId });
+      const res = await experimentController.rotateMasterKey(req, mockUser(), { id: createdIndexId });
       expect(res.status).toBe(403);
     });
 
@@ -407,7 +409,7 @@ describe("NetworkController Integration", () => {
       const req = new Request(`http://localhost/networks/${fakeId}/rotate-master-key`, {
         method: "POST",
       });
-      const res = await controller.rotateMasterKey(req, mockUser(), { id: fakeId });
+      const res = await experimentController.rotateMasterKey(req, mockUser(), { id: fakeId });
       // assertExperimentOwner returns 404 for null networks but 403 for any other access failure → accept either
       expect([403, 404]).toContain(res.status);
     });
