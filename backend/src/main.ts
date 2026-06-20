@@ -43,7 +43,6 @@ import { adminQueuesApp } from './controllers/queues.controller';
 import { mcpHandler, chatFactory } from './controllers/mcp.controller';
 import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
-import { getStats } from './lib/performance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
@@ -392,7 +391,6 @@ function classifyRequestSubsystem(pathname: string): string {
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
   if (pathname.startsWith('/api/tools')) return 'protocol';
   if (pathname.startsWith('/dev/queues')) return 'queue-admin';
-  if (pathname.startsWith('/dev/performance')) return 'performance';
   if (pathname.startsWith('/api/')) return 'controller';
   return 'server';
 }
@@ -456,11 +454,6 @@ const server = Bun.serve({
       const newHeaders = new Headers(res.headers);
       Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
-    }
-
-    // Performance stats at /dev/performance (dev only, alongside Bull Board)
-    if (!IS_PRODUCTION && url.pathname === '/dev/performance') {
-      return Response.json(getStats(), { headers: corsHeaders });
     }
 
     // Better Auth handles its own /api/auth/* routes (sign-in, sign-up, session, etc.)
