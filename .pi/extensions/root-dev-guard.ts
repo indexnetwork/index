@@ -92,6 +92,20 @@ function commandTargetsWorktree(command: string): boolean {
 		|| new RegExp(`^git\\s+-C\\s+${absoluteWorktreeArg}/`).test(normalized);
 }
 
+/**
+ * A fast-forward-only pull is the sanctioned way to keep the canonical root current
+ * with its upstream (e.g. after a PR merges into dev). It cannot create a merge commit
+ * or diverge the branch — git aborts harmlessly when a fast-forward is not possible —
+ * so it is safe to allow on the root. A bare `git pull` (which may synthesize a merge
+ * commit) stays blocked. Only a standalone pull is allowed: any shell chaining,
+ * piping, or redirection disqualifies it so the exception cannot smuggle other commands.
+ */
+function isAllowedFastForwardPull(command: string): boolean {
+	const normalized = normalizeCommand(command);
+	if (/(?:&&|;|\||>|`|\$\()/.test(normalized)) return false;
+	return /^git(?:\s+-C\s+\S+)?\s+pull\b/.test(normalized) && /(?:^|\s)--ff-only(?:\s|$)/.test(normalized);
+}
+
 function isLikelyRootMutation(command: string): boolean {
 	if (!isRunningFromCanonicalRoot()) return false;
 	const normalized = normalizeCommand(command);
@@ -99,6 +113,11 @@ function isLikelyRootMutation(command: string): boolean {
 	// Creating/removing worktrees is the sanctioned way to make changes off the root worktree.
 	// Commands that explicitly run inside .worktrees/* are also allowed.
 	if (/^git\s+worktree\s+/.test(normalized) || /^bun\s+run\s+worktree:/.test(normalized) || commandTargetsWorktree(command)) {
+		return false;
+	}
+
+	// A fast-forward-only pull is allowed: it keeps the root in sync without mutating history.
+	if (isAllowedFastForwardPull(command)) {
 		return false;
 	}
 
