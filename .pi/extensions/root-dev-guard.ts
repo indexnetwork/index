@@ -161,7 +161,7 @@ export default function (pi: ExtensionAPI) {
 		return {
 			systemPrompt:
 				event.systemPrompt +
-				`\n\nProject branch guard: the canonical root ${CANONICAL_ROOT} must remain on ${REQUIRED_BRANCH}. Do not modify files in that root worktree. Create and use ${WORKTREES_DIR}/<name> for implementation changes, and run mutating commands from the worktree.`,
+				`\n\nProject branch guard: the canonical root ${CANONICAL_ROOT} must remain on ${REQUIRED_BRANCH}. Do not modify files in that root worktree. Create and use ${WORKTREES_DIR}/<name> for implementation changes, and run mutating commands from the worktree. See the git-worktree-workflow skill (.pi/skills/git-worktree-workflow/SKILL.md) for the naming convention, the mandatory \`bun run worktree:setup\` step, and the sanctioned escapes this guard allows.`,
 		};
 	});
 
