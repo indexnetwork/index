@@ -71,6 +71,12 @@ the skill documents the convention; the extension makes it non-bypassable. It:
 - Any command that targets a worktree — `cd .worktrees/<name> && ...` or
   `git -C .worktrees/<name> ...`.
 - Read-only git against the root via `-C` from outside it (see below).
+- `git pull --ff-only` from the root — the sanctioned way to bring the root current
+  with `origin/dev` after a PR merges. It is allowed *only* with `--ff-only` (a
+  fast-forward cannot create a merge commit or diverge the branch, and aborts harmlessly
+  when no fast-forward is possible) and *only* as a standalone command — any chaining
+  (`&&`, `;`, `|`), redirect, or command substitution disqualifies it. A bare `git pull`
+  stays blocked.
 
 Overridable via env: `INDEX_CANONICAL_ROOT` (root path), `INDEX_ROOT_BRANCH` (default `dev`).
 
