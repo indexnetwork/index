@@ -961,36 +961,6 @@ export class ChatDatabaseAdapter {
     return this._opportunityAdapter;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Chat Session Methods — delegated to ConversationDatabaseAdapter
-  // (kept for backward compatibility; new code should use conversationDatabaseAdapter directly)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /** @deprecated Use conversationDatabaseAdapter.createChatSession */
-  async createSession(data: CreateSessionInput): Promise<void> { return _convDb().createChatSession(data); }
-  /** @deprecated Use conversationDatabaseAdapter.getChatSession */
-  async getSession(sessionId: string): Promise<ChatSession | null> { return _convDb().getChatSession(sessionId); }
-  /** @deprecated Use conversationDatabaseAdapter.getUserChatSessions */
-  async getUserSessions(userId: string, limit: number): Promise<ChatSession[]> { return _convDb().getUserChatSessions(userId, limit); }
-  /** @deprecated Use conversationDatabaseAdapter.updateChatSessionIndex */
-  async updateSessionIndex(sessionId: string, networkId: string | null): Promise<void> { return _convDb().updateChatSessionIndex(sessionId, networkId); }
-  /** @deprecated Use conversationDatabaseAdapter.updateChatSessionTitle */
-  async updateSessionTitle(sessionId: string, title: string): Promise<void> { return _convDb().updateChatSessionTitle(sessionId, title); }
-  /** @deprecated Use conversationDatabaseAdapter.updateChatSessionTimestamp */
-  async updateSessionTimestamp(sessionId: string): Promise<void> { return _convDb().updateChatSessionTimestamp(sessionId); }
-  /** @deprecated Use conversationDatabaseAdapter.deleteChatSession */
-  async deleteSession(sessionId: string): Promise<void> { return _convDb().deleteChatSession(sessionId); }
-  /** @deprecated Use conversationDatabaseAdapter.createChatMessage */
-  async createMessage(data: CreateMessageInput): Promise<void> { return _convDb().createChatMessage(data); }
-  /** @deprecated Use conversationDatabaseAdapter.getChatSessionMessages */
-  async getSessionMessages(sessionId: string, limit?: number): Promise<ChatMessage[]> { return _convDb().getChatSessionMessages(sessionId, limit); }
-  /** @deprecated Use conversationDatabaseAdapter.getChatMessageMetadataByIds */
-  async getMessageMetadataByMessageIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; streamingDrafts: unknown; createdAt: Date }>> { return _convDb().getChatMessageMetadataByIds(messageIds); }
-  /** @deprecated Use conversationDatabaseAdapter.upsertChatSessionMetadata */
-  async upsertSessionMetadata(params: { id: string; sessionId: string; metadata: unknown }): Promise<void> { return _convDb().upsertChatSessionMetadata(params); }
-  /** @deprecated Use conversationDatabaseAdapter.getChatSessionMetadata */
-  async getSessionMetadata(sessionId: string): Promise<{ id: string; sessionId: string; metadata: unknown; createdAt: Date; updatedAt: Date } | undefined> { return _convDb().getChatSessionMetadata(sessionId); }
-
   // Negotiation context methods — required by HomeGraphDatabase
   async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
   async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
