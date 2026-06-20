@@ -28,7 +28,7 @@ function detectSocialLabel(value: string): string {
 }
 
 /** Sentinel participant ID for the built-in chat agent. */
-export const SYSTEM_AGENT_ID = 'system-agent';
+const SYSTEM_AGENT_ID = 'system-agent';
 
 /**
  * Creates a personal index for the user if one doesn't exist.
@@ -980,18 +980,10 @@ export class ChatDatabaseAdapter {
   async updateSessionTimestamp(sessionId: string): Promise<void> { return _convDb().updateChatSessionTimestamp(sessionId); }
   /** @deprecated Use conversationDatabaseAdapter.deleteChatSession */
   async deleteSession(sessionId: string): Promise<void> { return _convDb().deleteChatSession(sessionId); }
-  /** @deprecated Use conversationDatabaseAdapter.setChatShareToken */
-  async setShareToken(sessionId: string, token: string | null): Promise<void> { return _convDb().setChatShareToken(sessionId, token); }
-  /** @deprecated Use conversationDatabaseAdapter.getChatSessionByShareToken */
-  async getSessionByShareToken(token: string): Promise<ChatSession | null> { return _convDb().getChatSessionByShareToken(token); }
   /** @deprecated Use conversationDatabaseAdapter.createChatMessage */
   async createMessage(data: CreateMessageInput): Promise<void> { return _convDb().createChatMessage(data); }
   /** @deprecated Use conversationDatabaseAdapter.getChatSessionMessages */
   async getSessionMessages(sessionId: string, limit?: number): Promise<ChatMessage[]> { return _convDb().getChatSessionMessages(sessionId, limit); }
-  /** @deprecated Use conversationDatabaseAdapter.verifyChatMessageOwnership */
-  async verifyMessageOwnership(messageId: string, userId: string): Promise<boolean> { return _convDb().verifyChatMessageOwnership(messageId, userId); }
-  /** @deprecated Use conversationDatabaseAdapter.upsertChatMessageMetadata */
-  async upsertMessageMetadata(params: { id: string; messageId: string; traceEvents?: unknown; debugMeta?: unknown; streamingDrafts?: unknown }): Promise<void> { return _convDb().upsertChatMessageMetadata(params); }
   /** @deprecated Use conversationDatabaseAdapter.getChatMessageMetadataByIds */
   async getMessageMetadataByMessageIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; streamingDrafts: unknown; createdAt: Date }>> { return _convDb().getChatMessageMetadataByIds(messageIds); }
   /** @deprecated Use conversationDatabaseAdapter.upsertChatSessionMetadata */
