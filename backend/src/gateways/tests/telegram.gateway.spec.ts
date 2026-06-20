@@ -37,7 +37,9 @@ function defaultDeps() {
     setUserSocials: mock(async (userId: string, socials: { label: string; value: string }[]) => { userSocials.set(userId, socials); }),
     createChatSession: async (data: { id: string; userId: string; title?: string }) => { sessions.set(data.id, data); },
     createChatMessage: async (data: { id: string; sessionId: string; role: string; content: string }) => { messages.push(data); },
-    processMessage: async (_userId: string, _text: string) => ({ responseText: 'Hello from Index!' }),
+    streamMessage: async function* (_userId: string, _text: string, _sessionId: string): AsyncGenerator<GatewayStreamEvent> {
+      yield { type: 'response_complete', response: 'Hello from Index!' };
+    },
     sendTelegramMessage: async (chatId: string, text: string, keyboard?: unknown, parseMode?: string) => { sent.push({ chatId, text, keyboard, parseMode }); },
     sendChatAction: async (chatId: string) => { chatActions.push(chatId); },
     seedTelegramUser: (userId: string, prefs: TelegramPrefs) => {
@@ -123,9 +125,9 @@ describe('handleOutbound', () => {
   });
 });
 
-// ── Tests: handleInbound (blocking fallback) ────────────────────────────────
+// ── Tests: handleInbound (connection & message routing) ─────────────────────
 
-describe('handleInbound (blocking)', () => {
+describe('handleInbound (routing)', () => {
   let deps: ReturnType<typeof makeDeps>;
   let redisFake: Map<string, string>;
 
