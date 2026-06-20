@@ -1,6 +1,7 @@
 [submodule "packages/edge-city/agentvillage"]
 	path = packages/edge-city/agentvillage
 	url = https://github.com/Edge-City/agentvillage.git
+	branch = main
 [submodule "packages/edge-city/agentvillage-landing"]
 	path = packages/edge-city/agentvillage-landing
 	url = git@github.com:Edge-City/agentvillage-landing.git
