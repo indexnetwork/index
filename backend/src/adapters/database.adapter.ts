@@ -448,9 +448,3 @@ export function createSystemDatabase(
     getStaleHydeDocuments: (threshold: Date) => db.getStaleHydeDocuments(threshold),
   };
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Conversation Database Adapter
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Participant with resolved user info. */
