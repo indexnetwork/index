@@ -35,7 +35,7 @@ export interface GatewayStreamEvent {
 
 // ── Dependency interface (injected in tests, resolved from singletons in prod) ─
 
-export interface GatewayDeps {
+interface GatewayDeps {
   getTelegramPrefs(userId: string): Promise<TelegramPrefs | null>;
   updateTelegramPrefs(userId: string, prefs: TelegramPrefs): Promise<void>;
   findByTelegramChatId(chatId: string): Promise<{ userId: string; sessionId?: string } | null>;
@@ -43,10 +43,9 @@ export interface GatewayDeps {
   setUserSocials(userId: string, socials: { label: string; value: string }[]): Promise<void>;
   createChatSession(data: { id: string; userId: string; title?: string }): Promise<void>;
   createChatMessage(data: { id: string; sessionId: string; role: 'user' | 'assistant' | 'system'; content: string }): Promise<void>;
-  processMessage(userId: string, text: string): Promise<{ responseText: string; error?: string }>;
   sendTelegramMessage(chatId: string, text: string, keyboard?: Array<Array<{ text: string; url: string }>>, parseMode?: 'HTML' | 'MarkdownV2'): Promise<void>;
   sendChatAction(chatId: string): Promise<void>;
-  streamMessage?(userId: string, text: string, sessionId: string): AsyncGenerator<GatewayStreamEvent>;
+  streamMessage(userId: string, text: string, sessionId: string): AsyncGenerator<GatewayStreamEvent>;
 }
 
 /**
@@ -68,7 +67,6 @@ function productionDeps(): GatewayDeps {
     setUserSocials: (userId, socials) => userDatabaseAdapter.setSocials(userId, socials),
     createChatSession: (data) => conversationDatabaseAdapter.createChatSession(data),
     createChatMessage: (data) => conversationDatabaseAdapter.createChatMessage(data),
-    processMessage: (userId, text) => chatSessionService.processMessage(userId, text),
     sendTelegramMessage: sendMessage,
     sendChatAction: (chatId) => sendChatAction(chatId),
     streamMessage: async function* (userId, text, sessionId) {
@@ -255,8 +253,7 @@ async function sendFormattedResponse(
 
 /**
  * Handle an update received from Telegram (text message or /start command).
- * Uses the streaming graph interface when available, falling back to
- * the blocking `processMessage` path otherwise.
+ * Routes the message through the streaming graph interface.
  *
  * While the graph runs the user sees a typing indicator and short
  * status messages as tools execute (e.g. "Looking at your signals...").
@@ -310,10 +307,7 @@ export async function handleInbound(
     content: text,
   }).catch((err) => logger.warn('Failed to write user message to conversation', { error: err }));
 
-  // Choose streaming or blocking path
-  const responseText = deps.streamMessage
-    ? await handleInboundStreaming(chatId, userId, text, sessionId, deps)
-    : await handleInboundBlocking(chatId, userId, text, deps);
+  const responseText = await handleInboundStreaming(chatId, userId, text, sessionId, deps);
 
   // Write assistant response (best-effort)
   await deps.createChatMessage({
@@ -378,7 +372,7 @@ async function handleInboundStreaming(
       }
     };
 
-    const stream = deps.streamMessage!(userId, text, sessionId);
+    const stream = deps.streamMessage(userId, text, sessionId);
 
     // Race the stream against a hard timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -433,34 +427,6 @@ function agentStatusText(agentName: string): string | undefined {
   const lower = agentName.toLowerCase();
   if (lower.includes('negotiat')) return 'Evaluating a potential connection...';
   return undefined;
-}
-
-/**
- * Blocking fallback path: calls processMessage with a timeout.
- * Used when streamMessage is not available (e.g. in tests without streaming deps).
- */
-async function handleInboundBlocking(
-  chatId: string,
-  userId: string,
-  text: string,
-  deps: GatewayDeps,
-): Promise<string> {
-  const stopTyping = startTypingIndicator(chatId, deps);
-
-  try {
-    const result = await Promise.race([
-      deps.processMessage(userId, text),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('processMessage timed out')), PROCESS_TIMEOUT_MS),
-      ),
-    ]);
-    return result.responseText || 'Sorry, I could not process your message.';
-  } catch (err) {
-    logger.error('processMessage failed for Telegram user', { userId, chatId, error: err });
-    return 'Sorry, something went wrong. Please try again.';
-  } finally {
-    stopTyping();
-  }
 }
 
 /**
