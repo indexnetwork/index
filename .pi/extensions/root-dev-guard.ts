@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import path from "node:path";
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 /**
  * Resolve the canonical (main) worktree root.
@@ -35,6 +35,19 @@ const CANONICAL_ROOT = resolveCanonicalRoot();
 const REQUIRED_BRANCH = process.env.INDEX_ROOT_BRANCH ?? "dev";
 const WORKTREES_DIR = path.join(CANONICAL_ROOT, ".worktrees");
 
+/**
+ * Enforcement posture:
+ * - "warn" (default): root mutations are ALLOWED but the agent is nudged toward a
+ *   worktree via an advisory appended to the tool result (so the model learns), plus a
+ *   UI warning. This keeps the convention visible without hard-stopping the agent.
+ * - "block": the original hard-block behavior. Opt in with INDEX_ROOT_GUARD_MODE=block.
+ */
+const GUARD_MODE: "warn" | "block" =
+	(process.env.INDEX_ROOT_GUARD_MODE ?? "warn").toLowerCase() === "block" ? "block" : "warn";
+
+/** Advisories keyed by toolCallId, drained by the tool_result handler in warn mode. */
+const pendingAdvisories = new Map<string, string>();
+
 function isInside(parent: string, child: string): boolean {
 	const relative = path.relative(parent, child);
 	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -57,6 +70,22 @@ function normalizeCommand(command: string): string {
 	return command.replace(/\\\n/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Remove quoted spans and heredoc bodies so command *arguments* (PR/commit bodies,
+ * `echo`/`grep` text, etc.) cannot trip the mutating-command patterns. Only the command
+ * structure outside quotes is inspected. Heredocs are stripped first — by their tag — so
+ * inner quotes inside a `--body "$(cat <<'EOF' ... EOF)"` don't desync quote matching.
+ * Operates on the normalized (newlines-collapsed) string.
+ */
+function stripArgText(command: string): string {
+	let out = command;
+	// Heredoc bodies: <<EOF ... EOF / <<'EOF' ... EOF / <<-"EOF" ... EOF.
+	out = out.replace(/<<-?\s*'?"?(\w+)'?"?[\s\S]*?\s\1\b/g, " ");
+	// Double- then single-quoted spans.
+	out = out.replace(/"[^"]*"/g, " ").replace(/'[^']*'/g, " ");
+	return out;
+}
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -69,7 +98,7 @@ function isAllowedDevSwitch(command: string): boolean {
 }
 
 function targetsCanonicalRootBranch(command: string): boolean {
-	const normalized = normalizeCommand(command);
+	const normalized = stripArgText(normalizeCommand(command));
 	const escapedRoot = escapeRegex(CANONICAL_ROOT);
 	const rootArg = `(?:${escapedRoot}|"${escapedRoot}"|'${escapedRoot}')`;
 
@@ -90,6 +119,16 @@ function commandTargetsWorktree(command: string): boolean {
 		|| new RegExp(`^cd\\s+${absoluteWorktreeArg}/`).test(normalized)
 		|| /^git\s+-C\s+\.worktrees\//.test(normalized)
 		|| new RegExp(`^git\\s+-C\\s+${absoluteWorktreeArg}/`).test(normalized);
+}
+
+/**
+ * `gh` operates on the GitHub remote (PRs, issues, reviews, checks) — it never mutates
+ * the canonical root's working tree or branch — so a leading `gh` invocation is not a
+ * root mutation. Restricted to the leading token so chained shell (`gh ... && rm ...`)
+ * still has its other segments inspected.
+ */
+function isLeadingGhCommand(command: string): boolean {
+	return /^gh\s+/.test(normalizeCommand(command));
 }
 
 /**
@@ -121,20 +160,55 @@ function isLikelyRootMutation(command: string): boolean {
 		return false;
 	}
 
+	// `gh` targets the remote, not the local root tree — not a root mutation.
+	if (isLeadingGhCommand(command)) {
+		return false;
+	}
+
+	// Inspect only the command structure, not quoted argument text (PR bodies, commit
+	// messages, echo/grep patterns), so prose mentioning `bun run build`, `git commit`,
+	// `ln`, etc. does not produce false positives.
+	const inspected = stripArgText(normalized);
+
+	// A mutating verb only counts when it sits at a *command position* — the start of the
+	// line or right after a shell separator (`|`, `&`, `;`, `(`, `&&`, `||`). This stops a
+	// flag or path fragment like `grep -ln` (the `ln` symlink verb) or `--reset-author`
+	// from matching mid-token.
+	const cmdStart = String.raw`(?:^|[|&;(]|&&|\|\|)\s*`;
 	const mutatingPatterns = [
-		/\bgit\s+(?:add|commit|merge|rebase|cherry-pick|reset|restore|apply|am|clean|stash|pull|push|switch|checkout)\b/,
-		/\b(?:rm|mv|cp|touch|mkdir|rmdir|ln|chmod|chown)\b/,
-		/\b(?:bun|npm|pnpm|yarn)\s+(?:install|add|remove|run\s+(?:build|dev|start|db:generate|db:migrate|db:seed|db:flush|lint|test))\b/,
+		new RegExp(cmdStart + String.raw`git\s+(?:add|commit|merge|rebase|cherry-pick|reset|restore|apply|am|clean|stash|pull|push|switch|checkout)\b`),
+		new RegExp(cmdStart + String.raw`(?:sudo\s+)?(?:rm|mv|cp|touch|mkdir|rmdir|ln|chmod|chown)\b`),
+		new RegExp(cmdStart + String.raw`(?:bun|npm|pnpm|yarn)\s+(?:install|add|remove|run\s+(?:build|dev|start|db:generate|db:migrate|db:seed|db:flush|lint|test))\b`),
 		/(?:^|\s)(?:>|>>)|\|\s*tee\b/,
 	];
 
-	return mutatingPatterns.some((pattern) => pattern.test(normalized));
+	return mutatingPatterns.some((pattern) => pattern.test(inspected));
 }
 
 async function notify(ctx: ExtensionContext, message: string, level: "info" | "warning" | "error" = "info") {
 	if (ctx.hasUI) {
 		ctx.ui.notify(message, level);
 	}
+}
+
+/**
+ * Decide what to do with a detected root-touching operation. In block mode this returns
+ * a hard block; in warn mode it records an advisory (drained into the tool result so the
+ * model sees it), surfaces a UI warning, and allows the call to proceed.
+ */
+async function handleViolation(
+	ctx: ExtensionContext,
+	event: ToolCallEvent,
+	blockReason: string,
+	advisory: string,
+): Promise<{ block: true; reason: string } | undefined> {
+	if (GUARD_MODE === "block") {
+		await notify(ctx, blockReason, "warning");
+		return { block: true, reason: blockReason };
+	}
+	pendingAdvisories.set(event.toolCallId, advisory);
+	await notify(ctx, advisory, "warning");
+	return undefined;
 }
 
 async function getRootBranch(pi: ExtensionAPI): Promise<string | undefined> {
@@ -177,20 +251,26 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (event) => {
+		const posture =
+			GUARD_MODE === "block"
+				? `Do not modify files in that root worktree.`
+				: `Prefer not to modify files in that root worktree — root writes/mutations are allowed but will warn (and dirty ${REQUIRED_BRANCH}).`;
 		return {
 			systemPrompt:
 				event.systemPrompt +
-				`\n\nProject branch guard: the canonical root ${CANONICAL_ROOT} must remain on ${REQUIRED_BRANCH}. Do not modify files in that root worktree. Create and use ${WORKTREES_DIR}/<name> for implementation changes, and run mutating commands from the worktree. See the git-worktree-workflow skill (.pi/skills/git-worktree-workflow/SKILL.md) for the naming convention, the mandatory \`bun run worktree:setup\` step, and the sanctioned escapes this guard allows.`,
+				`\n\nProject branch guard: the canonical root ${CANONICAL_ROOT} should remain on ${REQUIRED_BRANCH}. ${posture} Create and use ${WORKTREES_DIR}/<name> for implementation changes, and run mutating commands from the worktree. See the git-worktree-workflow skill (.pi/skills/git-worktree-workflow/SKILL.md) for the naming convention, the mandatory \`bun run worktree:setup\` step, and the sanctioned escapes this guard allows.`,
 		};
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
 		if ((event.toolName === "write" || event.toolName === "edit") && typeof event.input.path === "string") {
 			if (isProtectedRootPath(event.input.path)) {
-				return {
-					block: true,
-					reason: `Blocked ${event.toolName} in canonical root. Create/use a worktree under ${WORKTREES_DIR} instead.`,
-				};
+				return handleViolation(
+					ctx,
+					event,
+					`Blocked ${event.toolName} in canonical root. Create/use a worktree under ${WORKTREES_DIR} instead.`,
+					`⚠️ root-dev-guard: this ${event.toolName} targeted the canonical root (${event.input.path}) while it is on ${REQUIRED_BRANCH}. It was allowed (warn mode) but dirties ${REQUIRED_BRANCH} — prefer a worktree under ${WORKTREES_DIR}/<name> (see git-worktree-workflow).`,
+				);
 			}
 		}
 
@@ -200,20 +280,33 @@ export default function (pi: ExtensionAPI) {
 
 		const command = event.input.command;
 		if (targetsCanonicalRootBranch(command) && !isAllowedDevSwitch(command)) {
-			return {
-				block: true,
-				reason: `Blocked branch switch in canonical root. ${CANONICAL_ROOT} must stay on ${REQUIRED_BRANCH}; use git worktree for feature branches.`,
-			};
+			return handleViolation(
+				ctx,
+				event,
+				`Blocked branch switch in canonical root. ${CANONICAL_ROOT} must stay on ${REQUIRED_BRANCH}; use git worktree for feature branches.`,
+				`⚠️ root-dev-guard: this command switches the canonical root off ${REQUIRED_BRANCH}. Allowed (warn mode) but the root should stay on ${REQUIRED_BRANCH} — use a worktree for feature branches.`,
+			);
 		}
 
 		if (isLikelyRootMutation(command)) {
-			await notify(ctx, `Blocked mutating command in canonical root. Run it from ${WORKTREES_DIR}/<name>.`, "warning");
-			return {
-				block: true,
-				reason: `Canonical root is read-only for assistant changes; use a worktree under ${WORKTREES_DIR}.`,
-			};
+			return handleViolation(
+				ctx,
+				event,
+				`Canonical root is read-only for assistant changes; use a worktree under ${WORKTREES_DIR}.`,
+				`⚠️ root-dev-guard: this mutating command ran from the canonical root. Allowed (warn mode) but it mutates/dirties ${REQUIRED_BRANCH} — prefer running it from ${WORKTREES_DIR}/<name>.`,
+			);
 		}
 
 		return undefined;
+	});
+
+	// Warn mode: surface the advisory to the model by appending it to the tool result.
+	pi.on("tool_result", async (event) => {
+		const advisory = pendingAdvisories.get(event.toolCallId);
+		if (!advisory) return undefined;
+		pendingAdvisories.delete(event.toolCallId);
+		return {
+			content: [...event.content, { type: "text" as const, text: advisory }],
+		};
 	});
 }

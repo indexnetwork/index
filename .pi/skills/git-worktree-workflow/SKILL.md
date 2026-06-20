@@ -54,17 +54,30 @@ bun run worktree:list                # list worktrees + setup status
 ## Enforcement: the root-dev-guard extension
 
 `.pi/extensions/root-dev-guard.ts` enforces all of the above automatically at runtime —
-the skill documents the convention; the extension makes it non-bypassable. It:
+the skill documents the convention; the extension keeps it visible. It:
 
 - **Keeps the root on `dev`**: on `session_start` it switches the canonical root back to
   `dev` if the tree is clean, or errors (telling you to move work to a worktree) if the
   root has tracked changes.
-- **Blocks `write`/`edit`** to any path inside the canonical root that is *not* under
+- **Flags `write`/`edit`** to any path inside the canonical root that is *not* under
   `.worktrees/`.
-- **Blocks mutating `bash`** run from the canonical root — `git add/commit/push/merge/
+- **Flags mutating `bash`** run from the canonical root — `git add/commit/push/merge/
   reset/...`, `rm/mv/cp/mkdir/...`, `bun|npm install`, `bun run build/dev/db:*`, and
-  output redirects (`>`, `| tee`).
-- **Blocks branch switches** in the root (only a bare `git switch dev` is allowed).
+  output redirects (`>`, `| tee`). Read-only commands (`git status/log/diff`, `ls`,
+  `cat`, `grep`, `find`) are **not** flagged — you do not need `cd /tmp` for inspection.
+  `gh` (PRs/issues/reviews) and fast-forward-only `git pull --ff-only` are exempt.
+- **Flags branch switches** in the root (only a bare `git switch dev` is allowed).
+
+### Modes: warn (default) vs block
+
+The guard is **advisory by default** (`INDEX_ROOT_GUARD_MODE=warn`): a flagged operation
+is **allowed** but the agent gets an advisory appended to the tool result (and you get a
+UI warning) nudging it to use a worktree. Root writes still dirty `dev`, so prefer a
+worktree regardless. Set **`INDEX_ROOT_GUARD_MODE=block`** to restore the old hard-block
+behavior (flagged operations are refused). Command classification strips quoted/heredoc
+argument text before matching, so prose like a PR body mentioning `bun run build` no
+longer trips it, and mutating verbs only match at a command position (so `grep -ln`
+is fine).
 
 **Sanctioned escapes the guard allows** (use these instead of fighting it):
 - `git worktree ...` and `bun run worktree:*` from the root.
