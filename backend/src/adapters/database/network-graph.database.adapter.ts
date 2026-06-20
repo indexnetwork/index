@@ -1,4 +1,4 @@
-import { and, db, eq, intentNetworks, intents, isNull, networkMembers, networks } from './_shared';
+import { upsertIntentNetworkAssignment, and, db, eq, intentNetworks, intents, isNull, networkMembers, networks } from './_shared';
 
 export class NetworkGraphDatabaseAdapter {
   async getIntentForIndexing(intentId: string) {
@@ -78,20 +78,7 @@ export class NetworkGraphDatabaseAdapter {
     relevancyScore?: number,
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
   ): Promise<void> {
-    await db.insert(intentNetworks)
-      .values({
-        intentId,
-        networkId,
-        relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
-        ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
-      })
-      .onConflictDoUpdate({
-        target: [intentNetworks.intentId, intentNetworks.networkId],
-        set: {
-          relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
-          ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
-        },
-      });
+    return upsertIntentNetworkAssignment(intentId, networkId, relevancyScore, assignmentMetadata);
   }
 
   async unassignIntentFromIndex(intentId: string, networkId: string): Promise<void> {

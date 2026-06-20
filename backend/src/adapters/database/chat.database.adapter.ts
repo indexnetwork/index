@@ -1,4 +1,4 @@
-import { schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './_shared';
+import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './_shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
@@ -848,20 +848,7 @@ export class ChatDatabaseAdapter {
     relevancyScore?: number,
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
   ): Promise<void> {
-    await db.insert(intentNetworks)
-      .values({
-        intentId,
-        networkId,
-        relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
-        ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
-      })
-      .onConflictDoUpdate({
-        target: [intentNetworks.intentId, intentNetworks.networkId],
-        set: {
-          relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
-          ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
-        },
-      });
+    return upsertIntentNetworkAssignment(intentId, networkId, relevancyScore, assignmentMetadata);
   }
 
   async getIntentIndexScores(intentId: string): Promise<Array<{
@@ -3254,31 +3241,7 @@ export class ChatDatabaseAdapter {
     status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
     createdAt: Date; updatedAt: Date; retractedAt: Date | null;
   }>> {
-    const conditions: ReturnType<typeof eq>[] = [
-      eq(schema.premises.userId, userId),
-      isNull(schema.premises.deletedAt),
-    ];
-    if (status) {
-      conditions.push(eq(schema.premises.status, status));
-    }
-    const rows = await db
-      .select()
-      .from(schema.premises)
-      .where(and(...conditions))
-      .orderBy(desc(schema.premises.createdAt));
-    return rows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
-      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
-      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
-      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
-      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      retractedAt: row.retractedAt ?? null,
-    }));
+    return readPremisesForUser(userId, status);
   }
 
   /**
@@ -3549,24 +3512,7 @@ export class ChatDatabaseAdapter {
    * user's global (profile-replacing) context row.
    */
   async getUserContext(userId: string, networkId: string | null) {
-    const rows = await db.select()
-      .from(userContexts)
-      .where(and(
-        eq(userContexts.userId, userId),
-        networkId === null
-          ? isNull(userContexts.networkId)
-          : eq(userContexts.networkId, networkId),
-      ))
-      .limit(1);
-    if (rows.length === 0) return null;
-    const r = rows[0];
-    return {
-      id: r.id,
-      text: r.text,
-      embedding: r.embedding as unknown as number[],
-      premiseHash: r.premiseHash ?? '',
-      generatedAt: r.generatedAt,
-    };
+    return readUserContext(userId, networkId);
   }
 
   /**

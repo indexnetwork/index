@@ -1,4 +1,4 @@
-import { schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, opportunities, or, sql, userContexts } from './_shared';
+import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, opportunities, or, sql } from './_shared';
 
 
 export class ConversationDatabaseAdapter {
@@ -7,16 +7,7 @@ export class ConversationDatabaseAdapter {
    * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the negotiation graph.
    */
   async getUserContext(userId: string, networkId: string | null) {
-    const rows = await db.select()
-      .from(userContexts)
-      .where(and(
-        eq(userContexts.userId, userId),
-        networkId === null ? isNull(userContexts.networkId) : eq(userContexts.networkId, networkId),
-      ))
-      .limit(1);
-    if (rows.length === 0) return null;
-    const r = rows[0];
-    return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
+    return readUserContext(userId, networkId);
   }
 
   // ─────────────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, desc, detectSocialLabel, eq, isNull, normalizeTelegramSocialValue, not, persistProfileIdentityToUser, sql, userContexts } from './_shared';
+import { readUserContext, readPremisesForUser, schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, isNull, normalizeTelegramSocialValue, not, persistProfileIdentityToUser, sql } from './_shared';
 
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 
@@ -8,16 +8,7 @@ export class EnrichmentDatabaseAdapter {
    * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the profile graph.
    */
   async getUserContext(userId: string, networkId: string | null) {
-    const rows = await db.select()
-      .from(userContexts)
-      .where(and(
-        eq(userContexts.userId, userId),
-        networkId === null ? isNull(userContexts.networkId) : eq(userContexts.networkId, networkId),
-      ))
-      .limit(1);
-    if (rows.length === 0) return null;
-    const r = rows[0];
-    return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
+    return readUserContext(userId, networkId);
   }
 
   async getProfile(userId: string): Promise<UserIdentity | null> {
@@ -457,31 +448,7 @@ export class EnrichmentDatabaseAdapter {
     status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
     createdAt: Date; updatedAt: Date; retractedAt: Date | null;
   }>> {
-    const conditions: ReturnType<typeof eq>[] = [
-      eq(schema.premises.userId, userId),
-      isNull(schema.premises.deletedAt),
-    ];
-    if (status) {
-      conditions.push(eq(schema.premises.status, status));
-    }
-    const rows = await db
-      .select()
-      .from(schema.premises)
-      .where(and(...conditions))
-      .orderBy(desc(schema.premises.createdAt));
-    return rows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
-      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
-      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
-      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
-      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      retractedAt: row.retractedAt ?? null,
-    }));
+    return readPremisesForUser(userId, status);
   }
 }
 
