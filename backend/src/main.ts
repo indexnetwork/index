@@ -64,7 +64,6 @@ import { integrationSyncQueue } from './queues/integration.queue';
 import { questionerQueue } from './queues/questioner.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
-import { NegotiationEvents } from './events/negotiation.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
@@ -281,11 +280,6 @@ IntentEvents.onCreated = (intentId: string, userId: string) => {
   opportunityService.triggerMaintenance(userId, 'intent-created');
 };
 
-IntentEvents.onUpdated = (intentId: string, userId: string) => {
-  log.job.from('IntentEvents').verbose('Intent updated, triggering maintenance', { intentId, userId });
-  opportunityService.triggerMaintenance(userId, 'intent-updated');
-};
-
 IntentEvents.onArchived = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent archived, triggering maintenance', { intentId, userId });
   opportunityService.triggerMaintenance(userId, 'intent-archived');
@@ -296,18 +290,6 @@ const GLOBAL_PREFIX = '/api';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
-
-// ── NegotiationEvents → Telegram notifications ──────────────────────────────
-NegotiationEvents.onTurnReceived = (data) => {
-  notificationQueue.queueNegotiationNotification(
-    data.negotiationId,
-    data.userId,
-    data.turnNumber,
-    data.counterpartyAction,
-  ).catch((err) => {
-    logger.error('Failed to enqueue negotiation notification', { negotiationId: data.negotiationId, error: err });
-  });
-};
 
 // ── Telegram bot startup ────────────────────────────────────────────────────
 if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET) {
