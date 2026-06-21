@@ -4,6 +4,5 @@
  */
 export const IntentEvents = {
   onCreated: (_intentId: string, _userId: string): void => {},
-  onUpdated: (_intentId: string, _userId: string): void => {},
   onArchived: (_intentId: string, _userId: string): void => {},
 };

@@ -461,25 +461,3 @@ describe('processOpportunityNotification — Telegram delivery', () => {
     expect(received).toHaveLength(0);
   });
 });
-
-describe('processJob — process_negotiation_notification', () => {
-  it('handles the job type without emitting Telegram notifications', async () => {
-    const received: unknown[] = [];
-    const unsub = onTelegramNotification((p) => received.push(p));
-
-    const db = makeDb({
-      opportunity: makeOpportunity('opp-x', 'user-x', 'ignored'),
-      telegramPrefs: { opportunityAccepted: true },
-    });
-    const queue = new NotificationQueue({ database: db as unknown as NotificationQueueDatabase });
-    await queue.processJob('process_negotiation_notification', {
-      negotiationId: 'neg-1',
-      recipientId: 'user-x',
-      turnNumber: 2,
-      counterpartyAction: 'propose',
-    } as unknown as NotificationJobData);
-
-    unsub();
-    expect(received).toHaveLength(0);
-  });
-});

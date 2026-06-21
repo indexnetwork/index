@@ -1,6 +1,6 @@
 ---
 name: release-prod-safety
-description: Pre-merge and post-merge safety checks for promoting a dev→main release in this monorepo, capturing two non-obvious ways a release can break or lose data: (1) a stale root bun.lock fails the prod build under --frozen-lockfile even though dev never caught it, and (2) a destructive Drizzle migration (e.g. DROP TABLE) silently loses prod data when the operational backfill never ran on prod. Use when cutting/merging a release PR to main, when a prod deploy build fails on "lockfile is frozen", or before merging any PR carrying a DROP/destructive migration.
+description: "Pre-merge and post-merge safety checks for promoting a dev→main release in this monorepo, capturing two non-obvious ways a release can break or lose data: (1) a stale root bun.lock fails the prod build under --frozen-lockfile even though dev never caught it, and (2) a destructive Drizzle migration (e.g. DROP TABLE) silently loses prod data when the operational backfill never ran on prod. Use when cutting/merging a release PR to main, when a prod deploy build fails on 'lockfile is frozen', or before merging any PR carrying a DROP/destructive migration."
 ---
 
 # release-prod-safety

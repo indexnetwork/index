@@ -1,5 +1,23 @@
 import type { ResolvedToolContext } from "../agent/tool.helpers.js";
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Discovery run persistence + queue
+//
+// Models an async `discover_opportunities` job as a durable, owner-scoped record.
+//
+// Port contract (host application implements `DiscoveryRunStore` + `DiscoveryRunQueue`):
+//   • Status is a one-way lifecycle: queued → running → (succeeded | failed | cancelled).
+//     The `mark*` transitions must be idempotent — re-applying a terminal state is a no-op.
+//   • Every read is owner-scoped: `get` and `requestCancel` take `userId` and MUST
+//     return `null` when the run is missing or owned by another user (no cross-user reads).
+//   • `isCancelRequested` is polled cooperatively by the running graph; the store sets
+//     the flag via `requestCancel`, the worker observes it and calls `markCancelled`.
+//   • `listActive` returns queued/running runs only (used to coalesce duplicate
+//     discovery requests) — empty array, never null.
+//   • `DiscoveryRunQueue.cancel` returns `true` if a pending job was removed, `false`
+//     if nothing was queued (already running/finished).
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export type DiscoveryRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
 export interface DiscoveryRunInput {

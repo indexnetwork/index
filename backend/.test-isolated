@@ -1,4 +1,12 @@
-src/events/tests/premise.event.spec.ts
+# Spec files that call mock.module(). Bun's mock.module() permanently
+# contaminates the process-wide module cache (mock.restore() does NOT undo it),
+# so these MUST run in their own process. scripts/test-safe.sh excludes every
+# path listed here; scripts/test-isolated.sh runs each one individually.
+#
+# Keep this in sync: any spec that adds mock.module() must be added here, or it
+# will pollute the shared `bun run test` batch and break sibling specs' imports.
+# Derived from: grep -rlE 'mock\.module' src tests --include='*.spec.ts' --include='*.test.ts'
+src/adapters/tests/enrichment.database.adapter.privacy.spec.ts
 src/adapters/tests/scraper.adapter.spec.ts
 src/adapters/tests/storage.adapter.spec.ts
 src/adapters/tests/system-database.spec.ts
@@ -6,24 +14,31 @@ src/controllers/tests/agent.controller.delivery-stats.spec.ts
 src/controllers/tests/agent.controller.heartbeat.spec.ts
 src/controllers/tests/network.controller.spec.ts
 src/controllers/tests/opportunity.controller.spec.ts
+src/events/tests/premise.event.spec.ts
 src/lib/bullmq/bullmq.spec.ts
-src/lib/email/tests/email-handlers.test.ts
+src/lib/email/tests/email-handlers.spec.ts
+src/queues/tests/claim-timeout.queue.spec.ts
+src/queues/tests/enrichment-privacy-gate.spec.ts
+src/queues/tests/enrichment-run.queue.spec.ts
+src/queues/tests/enrichment.queue.jobs.spec.ts
+src/queues/tests/enrichment.queue.spec.ts
 src/queues/tests/expiration.queue.spec.ts
+src/queues/tests/from-enrichment.queue.spec.ts
 src/queues/tests/from-intent.queue.spec.ts
 src/queues/tests/from-introducer.queue.spec.ts
 src/queues/tests/hyde.queue.spec.ts
+src/queues/tests/integration.queue.spec.ts
 src/queues/tests/intent.queue.spec.ts
 src/queues/tests/notification.queue.spec.ts
-src/queues/tests/profile.queue.spec.ts
+src/queues/tests/premise.queue.spec.ts
 src/queues/tests/run-existing.queue.spec.ts
+src/queues/tests/timeout.queue.spec.ts
+src/queues/tests/usercontext.queue.spec.ts
 src/services/tests/chat.service.spec.ts
 src/services/tests/network-invitation.service.spec.ts
 src/services/tests/network.service.master-key-rotation.spec.ts
 src/services/tests/opportunity-delivery.cache.spec.ts
 src/services/tests/opportunity.service.getChatContext.spec.ts
 src/services/tests/opportunity.service.rediscovery.spec.ts
-tests/network-invitation-resend.test.ts
-tests/network-scoped-import.test.ts
-
-# E2E (need running dev server — run manually with: bun test tests/network-resend-invite.e2e.test.ts)
-tests/network-resend-invite.e2e.test.ts
+tests/network-invitation-resend.spec.ts
+tests/network-scoped-import.spec.ts

@@ -306,47 +306,31 @@ export class EnrichmentService {
   \`\`\`
 - **Definition**: Queues are defined in \`src/queues/\` using \`QueueFactory.createQueue\`.
 
-### 7. Postgres Searcher Injection
+### 7. Postgres Vector Search
 - **Context**: If your service needs to perform vector search on its own entities using `pgvector`.
-- **Pattern**: Implement a `searcher` method and inject it into the `IndexEmbedder`.
+- **Pattern**: Add a typed `<=>` cosine-distance query to `EmbedderAdapter` (`adapters/embedder.adapter.ts`), which already owns pgvector search (`search`, `searchWithHydeEmbeddings`). Do not reintroduce a per-service searcher: keep the SQL in the adapter and call it from the service.
 - **Example**:
   \`\`\`typescript
-  import { IndexEmbedder } from '../lib/embedder';
-  import { VectorStoreOption, VectorSearchResult } from '../agents/common/types';
-  import { sql, isNotNull, desc } from 'drizzle-orm';
-  
-  export class MyService {
-    private embedder: IndexEmbedder;
-  
-    constructor() {
-      // Inject the local search method
-      this.embedder = new IndexEmbedder({
-        searcher: this.searchMyEntities.bind(this)
-      });
-    }
-  
-    /**
-     * Implementation of the Searcher interface for 'my_table'
-     */
-    private async searchMyEntities<T>(vector: number[], collection: string, options?: VectorStoreOption<T>): Promise<VectorSearchResult<T>[]> {
-      const limit = options?.limit || 10;
-      const vectorString = JSON.stringify(vector);
-  
-      // Use pgvector operator <=> for cosine distance
-      const results = await db.select({
-        item: myTable,
-        distance: sql<number>\`\${myTable.embedding} <=> \${vectorString}\`
-      })
-        .from(myTable)
-        .where(isNotNull(myTable.embedding))
-        .orderBy(sql\`\${myTable.embedding} <=> \${vectorString}\`)
-        .limit(limit);
-  
-      return results.map(r => ({
-        item: r.item as unknown as T,
-        score: 1 - r.distance // Convert distance to similarity score
-      }));
-    }
+  // In adapters/embedder.adapter.ts — a new corpus search method on EmbedderAdapter
+  import { sql, isNotNull } from 'drizzle-orm';
+
+  async searchMyEntities<T>(vector: number[], limit = 10): Promise<{ item: T; score: number }[]> {
+    const vectorString = JSON.stringify(vector);
+
+    // Use pgvector operator <=> for cosine distance
+    const results = await db.select({
+      item: myTable,
+      distance: sql<number>\`\${myTable.embedding} <=> \${vectorString}\`,
+    })
+      .from(myTable)
+      .where(isNotNull(myTable.embedding))
+      .orderBy(sql\`\${myTable.embedding} <=> \${vectorString}\`)
+      .limit(limit);
+
+    return results.map((r) => ({
+      item: r.item as unknown as T,
+      score: 1 - r.distance, // Convert distance to similarity score
+    }));
   }
   \`\`\`
 

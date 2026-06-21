@@ -4,11 +4,9 @@ import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import type { Id } from '../../types/common.types';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import { EmbedderAdapter } from '../../adapters/embedder.adapter';
-import { RedisCacheAdapter } from '../../adapters/cache.adapter';
-import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
-import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
+import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
+
+import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
 
 export const QUEUE_NAME = 'opportunity-from-intent';
 
@@ -44,14 +42,14 @@ export class FromIntentQueue {
   private readonly logger = log.job.from('FromIntentJob');
   private readonly queueLogger = log.queue.from('FromIntentQueue');
   private readonly database: FromIntentDatabase | ChatDatabaseAdapter;
-  private readonly graphDb: OpportunityGraphDatabase & HydeGraphDatabase;
+  private readonly graphDb: OpportunityGraphDb;
   private deps: FromIntentDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<FromIntentJobData>> | null = null;
 
   constructor(deps?: FromIntentDeps) {
     this.deps = deps;
     this.database = deps?.database ?? new ChatDatabaseAdapter();
-    this.graphDb = (this.database as ChatDatabaseAdapter) as unknown as OpportunityGraphDatabase & HydeGraphDatabase;
+    this.graphDb = createOpportunityGraphDb(this.database);
   }
 
   setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'negotiationGraph' | 'agentDispatcher'>): void {
@@ -106,53 +104,14 @@ export class FromIntentQueue {
       options: { initialStatus: 'latent' },
     };
 
-    if (this.deps?.invokeOpportunityGraph) {
-      await this.deps.invokeOpportunityGraph(invokeOpts);
-      return;
-    }
-
-    const embedder: Embedder = new EmbedderAdapter();
-    const cache: HydeCache = new RedisCacheAdapter();
-    const inferrer = new LensInferrer();
-    const generator = new HydeGenerator();
-    const hydeGraph = new HydeGraphFactory(this.graphDb, embedder, cache, inferrer, generator).createGraph();
-    const opportunityGraph = new OpportunityGraphFactory(
-      this.graphDb,
-      embedder,
-      hydeGraph,
-      undefined,
-      undefined,
-      this.deps?.negotiationGraph,
-      this.deps?.agentDispatcher,
-      async (opportunityId: string, userId: string) => {
-        await negotiationRunExistingQueue.addJob({ opportunityId, userId });
-      },
-    ).createGraph();
-
-    const result = await opportunityGraph.invoke(invokeOpts);
-    if (result.error) {
-      this.logger.error('[FromIntent] Graph failed', { intentId, userId, error: result.error });
-      throw new Error(typeof result.error === 'string' ? result.error : 'from-intent graph failed');
-    }
-
-    const trace = Array.isArray(result.trace) ? result.trace : [];
-    const candidates = Array.isArray(result.candidates) ? result.candidates : [];
-    const opportunitiesArr = Array.isArray(result.opportunities) ? result.opportunities : [];
-
-    this.logger.info('[FromIntent] Graph complete', {
-      intentId,
-      userId,
-      candidatesFound: candidates.length,
-      opportunitiesCreated: opportunitiesArr.length,
-    });
-    this.logger.verbose('[FromIntent] Graph trace', {
-      intentId,
-      userId,
-      trace: trace.map((t: { node: string; detail?: string; data?: Record<string, unknown> }) => ({
-        node: t.node,
-        detail: t.detail,
-        ...(t.data ? { data: t.data } : {}),
-      })),
+    await runOpportunityDiscovery({
+      graphDb: this.graphDb,
+      deps: this.deps,
+      invokeOpts,
+      logger: this.logger,
+      label: 'FromIntent',
+      errorLabel: 'from-intent',
+      logContext: { intentId, userId },
     });
   }
 

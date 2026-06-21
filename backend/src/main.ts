@@ -8,6 +8,7 @@ import { ToolController } from './controllers/tool.controller';
 import { ToolService } from './services/tool.service';
 import { S3StorageAdapter } from './adapters/storage.adapter';
 import { NetworkController } from './controllers/network.controller';
+import { NetworkExperimentController } from './controllers/network-experiment.controller';
 import { IntentController } from './controllers/intent.controller';
 import { LinkController } from './controllers/link.controller';
 import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
@@ -43,7 +44,6 @@ import { adminQueuesApp } from './controllers/queues.controller';
 import { mcpHandler, chatFactory } from './controllers/mcp.controller';
 import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
-import { getStats } from './lib/performance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
@@ -63,7 +63,6 @@ import { integrationSyncQueue } from './queues/integration.queue';
 import { questionerQueue } from './queues/questioner.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
-import { NegotiationEvents } from './events/negotiation.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
@@ -280,11 +279,6 @@ IntentEvents.onCreated = (intentId: string, userId: string) => {
   opportunityService.triggerMaintenance(userId, 'intent-created');
 };
 
-IntentEvents.onUpdated = (intentId: string, userId: string) => {
-  log.job.from('IntentEvents').verbose('Intent updated, triggering maintenance', { intentId, userId });
-  opportunityService.triggerMaintenance(userId, 'intent-updated');
-};
-
 IntentEvents.onArchived = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent archived, triggering maintenance', { intentId, userId });
   opportunityService.triggerMaintenance(userId, 'intent-archived');
@@ -295,18 +289,6 @@ const GLOBAL_PREFIX = '/api';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
-
-// ── NegotiationEvents → Telegram notifications ──────────────────────────────
-NegotiationEvents.onTurnReceived = (data) => {
-  notificationQueue.queueNegotiationNotification(
-    data.negotiationId,
-    data.userId,
-    data.turnNumber,
-    data.counterpartyAction,
-  ).catch((err) => {
-    logger.error('Failed to enqueue negotiation notification', { negotiationId: data.negotiationId, error: err });
-  });
-};
 
 // ── Telegram bot startup ────────────────────────────────────────────────────
 if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET) {
@@ -364,6 +346,7 @@ controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(EnrichmentController, new EnrichmentController());
 controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(NetworkController, new NetworkController());
+controllerInstances.set(NetworkExperimentController, new NetworkExperimentController());
 controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(LinkController, new LinkController());
 controllerInstances.set(OpportunityController, new OpportunityController());
@@ -392,7 +375,6 @@ function classifyRequestSubsystem(pathname: string): string {
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
   if (pathname.startsWith('/api/tools')) return 'protocol';
   if (pathname.startsWith('/dev/queues')) return 'queue-admin';
-  if (pathname.startsWith('/dev/performance')) return 'performance';
   if (pathname.startsWith('/api/')) return 'controller';
   return 'server';
 }
@@ -456,11 +438,6 @@ const server = Bun.serve({
       const newHeaders = new Headers(res.headers);
       Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
-    }
-
-    // Performance stats at /dev/performance (dev only, alongside Bull Board)
-    if (!IS_PRODUCTION && url.pathname === '/dev/performance') {
-      return Response.json(getStats(), { headers: corsHeaders });
     }
 
     // Better Auth handles its own /api/auth/* routes (sign-in, sign-up, session, etc.)

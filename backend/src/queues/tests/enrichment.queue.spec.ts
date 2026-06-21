@@ -27,6 +27,10 @@ mock.module('@indexnetwork/protocol', () => ({
       return { invoke: async () => ({}) };
     }
   },
+  // enrichment.queue -> questioner.queue imports QuestionerAgent at module load.
+  // The env-gated enqueue is never armed in these tests, so a stub class is enough
+  // to satisfy the named import (the partial mock would otherwise fail to resolve it).
+  QuestionerAgent: class {},
 }));
 
 const { EnrichmentQueue, QUEUE_NAME } = await import('../enrichment.queue');

@@ -1,5 +1,4 @@
 import { Job } from 'bullmq';
-import { and, eq, isNull } from 'drizzle-orm';
 
 import { UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase } from '@indexnetwork/protocol';
@@ -7,8 +6,6 @@ import type { HydeGraphDatabase } from '@indexnetwork/protocol';
 import { log } from '../lib/log';
 import { computePremiseHash, type ContextPremise } from '../lib/usercontext/premise-hash';
 import { QueueFactory } from '../lib/bullmq/bullmq';
-import db from '../lib/drizzle/drizzle';
-import { networkMembers, networks } from '../schemas/database.schema';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
@@ -254,17 +251,7 @@ export class UserContextQueue {
 
   /** All non-personal network IDs the user is a member of. */
   private async defaultGetUserNetworkIds(userId: string): Promise<string[]> {
-    const rows = await db
-      .select({ networkId: networkMembers.networkId })
-      .from(networkMembers)
-      .innerJoin(networks, eq(networkMembers.networkId, networks.id))
-      .where(and(
-        eq(networkMembers.userId, userId),
-        isNull(networkMembers.deletedAt),
-        isNull(networks.deletedAt),
-        eq(networks.isPersonal, false),
-      ));
-    return rows.map((r) => r.networkId);
+    return chatDatabaseAdapter.getNonPersonalNetworkIds(userId);
   }
 
   /** The user's ACTIVE premises, narrowed to the fields contexts need. */

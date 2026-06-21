@@ -28,6 +28,23 @@ description: What it does AND when to use it. Be specific.
 - Optional: `license`, `compatibility`, `metadata`, `allowed-tools`,
   `disable-model-invocation` (`true` hides it from the prompt; only `/skill:name` runs it).
 
+**YAML safety — quote any value containing a colon.** A plain (unquoted) scalar that
+contains a `: ` (colon followed by space) makes the YAML loader read it as a nested
+mapping and the skill fails to load with `Nested mappings are not allowed in compact
+mappings`. This bites long `description` values that enumerate (`...lose data: (1) ...,
+and (2) ...`) or use `e.g.`-style asides. Wrap the whole value in double quotes and
+switch any inner double quotes to single quotes:
+
+```yaml
+# breaks: colon-space parsed as a nested map
+description: Checks two things: (1) the lockfile, and (2) the migration.
+# works
+description: "Checks two things: (1) the lockfile, and (2) the migration."
+```
+
+The same rule applies to any colon-bearing value (`metadata`, etc.), not just
+`description`.
+
 ## Structure
 
 A skill is a directory with `SKILL.md`; everything else is freeform.

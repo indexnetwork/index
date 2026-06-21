@@ -198,7 +198,7 @@ const JWKS = createRemoteJWKSet(
   new URL('/api/auth/jwks', BASE_URL),
 );
 
-export function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
+function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
   if (!raw) {
     return {};
   }

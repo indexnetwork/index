@@ -1,3 +1,18 @@
+// =============================================================================
+// @indexnetwork/protocol — public API barrel
+//
+// This file is the ONLY supported entry point. Deep imports
+// ("@indexnetwork/protocol/src/...") are not part of the contract and may break
+// in any release. Every symbol is re-exported explicitly (no wildcards) so the
+// surface is reviewable and changes are intentional.
+//
+// Stability tiers are defined in STABILITY.md. In short:
+//   • Stable       — Interfaces, Graph factories, Agents, createChatTools,
+//                    the tool/runtime helpers, and shared schemas.
+//   • Experimental — Sections marked @experimental below (advanced graph state
+//                    types and internal helpers); may change in a minor release.
+// =============================================================================
+
 // ─── Public API (recommended for external consumers) ──────────────────────────
 
 export { createChatTools } from "./shared/agent/tool.factory.js";
@@ -13,9 +28,9 @@ export type { ToolRuntimeErrorCode, ToolTimeoutClass, ToolTimeoutPolicy } from "
 
 // ─── Interfaces (implement these to wire up your infrastructure) ───────────────
 
-export type * from "./shared/interfaces/auth.interface.js";
-export type * from "./shared/interfaces/cache.interface.js";
-export type * from "./shared/interfaces/chat-session.interface.js";
+export type { McpAuthResolver } from "./shared/interfaces/auth.interface.js";
+export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./shared/interfaces/cache.interface.js";
+export type { ChatSessionReader, ChatSessionDetail, ChatSessionSummary } from "./shared/interfaces/chat-session.interface.js";
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
 export type { ChatMessageWriter } from "./shared/interfaces/chat-message-writer.interface.js";
 export type { QuestionGeneratorReader } from "./shared/interfaces/question-generator.interface.js";
@@ -23,19 +38,44 @@ export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, Questi
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer, buildFallbackDigest } from "./negotiation/negotiation.summarizer.js";
-export type * from "./shared/interfaces/contact.interface.js";
-export type * from "./shared/interfaces/database.interface.js";
-export type * from "./shared/interfaces/embedder.interface.js";
-export type * from "./shared/interfaces/enrichment.interface.js";
-export type * from "./shared/interfaces/integration.interface.js";
-export type * from "./shared/interfaces/queue.interface.js";
-export type * from "./shared/interfaces/scraper.interface.js";
-export type * from "./shared/interfaces/storage.interface.js";
-export type * from "./shared/interfaces/delivery-ledger.interface.js";
-export type * from "./shared/interfaces/connect-link.interface.js";
-export type * from "./shared/interfaces/discovery-run.interface.js";
-export type * from "./shared/interfaces/enrichment-run.interface.js";
-export type * from "./shared/interfaces/negotiation-events.interface.js";
+export type { ContactServiceAdapter, ContactEntry, ContactImportResult, ContactInput, ContactResult, ContactSearchResult } from "./shared/interfaces/contact.interface.js";
+export type {
+  ChatGraphCompositeDatabase, UserDatabase, SystemDatabase, Database,
+  OpportunityGraphDatabase, OpportunityControllerDatabase, HomeGraphDatabase,
+  IntentGraphDatabase, IntentNetworkGraphDatabase, NetworkGraphDatabase, NetworkMembershipGraphDatabase,
+  HydeGraphDatabase, EnrichmentGraphDatabase, PremiseGraphDatabase, NegotiationGraphDatabase,
+  NegotiationQueries, NegotiationUserAnswer,
+  Opportunity, OpportunityActor, OpportunityContext, OpportunityDetection, OpportunityInterpretation,
+  OpportunityQueryOptions, OpportunitySignal, OpportunityStatus,
+  ActiveIntent, CreatedIntent, CreateIntentData, UpdateIntentData, IntentRecord, SimilarIntent, SimilarIntentSearchOptions,
+  IndexedIntentDetails, IndexMemberDetails, NetworkAssignmentContext, NetworkMembership, OwnedIndex,
+  CreateHydeDocumentData, HydeDocument, HydeSourceType, CreateOpportunityData,
+  PremiseAnalysis, PremiseAssertion, PremiseProvenance, PremiseRecord, PremiseValidity,
+  OnboardingPrivacyState, OnboardingProfileSeed, OnboardingState, PrivacyConsentDecision, PrivacyConsentSource,
+  UpdateIndexSettingsData, UserRecord, UserSocial, ArchiveResult, Id,
+} from "./shared/interfaces/database.interface.js";
+export type {
+  Embedder, EmbeddingGenerator, EmbeddingGenerateOptions,
+  VectorStore, VectorStoreOption, VectorSearchResult,
+  HydeCandidate, HydeSearchOptions, LensEmbedding,
+} from "./shared/interfaces/embedder.interface.js";
+export type { ProfileEnricher, EnrichmentRequest, EnrichmentResult } from "./shared/interfaces/enrichment.interface.js";
+export type { IntegrationAdapter, IntegrationConnection, IntegrationSession, IntegrationSessionOptions, ToolActionResponse } from "./shared/interfaces/integration.interface.js";
+export type { IntentGraphQueue } from "./shared/interfaces/queue.interface.js";
+export type { Scraper, ExtractUrlContentOptions } from "./shared/interfaces/scraper.interface.js";
+export type { Storage } from "./shared/interfaces/storage.interface.js";
+export type { DeliveryLedger, DeliveredOpportunityRow } from "./shared/interfaces/delivery-ledger.interface.js";
+export type { MintConnectLink, ConnectLinkKind } from "./shared/interfaces/connect-link.interface.js";
+export type {
+  DiscoveryRunStore, DiscoveryRunQueue, DiscoveryRunInput, CreateDiscoveryRunInput,
+  DiscoveryRunRecord, DiscoveryRunStatus,
+} from "./shared/interfaces/discovery-run.interface.js";
+export type {
+  EnrichmentRunStore, EnrichmentRunQueue, EnrichmentRunInput, CreateEnrichmentRunInput,
+  UpdateUserEnrichmentRunInput, PreviewUserEnrichmentRunInput,
+  EnrichmentRunRecord, EnrichmentRunStatus, EnrichmentRunOperation,
+} from "./shared/interfaces/enrichment-run.interface.js";
+export type { NegotiationTimeoutQueue } from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
 export type { AgentRecord, AgentTransportRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, CreateTransportInput, GrantPermissionInput, AgentDatabase } from './shared/interfaces/agent.interface.js';
 export { SYSTEM_AGENT_IDS } from './shared/interfaces/agent.interface.js';
@@ -143,6 +183,7 @@ export { dispatchElicitations } from "./mcp/elicitation.dispatcher.js";
 export type { ElicitResultLike, ElicitInputFn, DispatchElicitationsParams } from "./mcp/elicitation.dispatcher.js";
 
 // ─── States (for advanced graph consumers) ────────────────────────────────────
+// @experimental — internal graph-state shapes; may change in a minor release.
 
 export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./shared/schemas/negotiation-state.schema.js";
 export type { NegotiationGraphLike } from "./negotiation/negotiation.state.js";

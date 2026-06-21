@@ -1,5 +1,4 @@
 import { Job } from 'bullmq';
-import { and, eq, isNull } from 'drizzle-orm';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
@@ -9,11 +8,9 @@ import { EnrichmentGraphFactory, PremiseGraphFactory } from '@indexnetwork/proto
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import db from '../lib/drizzle/drizzle';
 import { questionerEnqueueIfEnabled } from './questioner.queue';
 import { canRunPublicEnrichment, getEnrichmentPolicy } from '../lib/privacy/enrichment-policy';
-import { networks, premises, users } from '../schemas/database.schema';
-import type { OnboardingState, ProfileEnrichmentPolicy } from '../schemas/database.schema';
+import type { ProfileEnrichmentPolicy } from '../schemas/database.schema';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
 export const QUEUE_NAME = 'profile-hyde-queue';
@@ -268,29 +265,14 @@ export class EnrichmentQueue {
       return { allowed: true, policy: 'auto', reason: 'no_network_policy', hasExistingProfile: false };
     }
 
-    const [[user], [network], [premise]] = await Promise.all([
-      db
-        .select({ onboarding: users.onboarding, isGhost: users.isGhost })
-        .from(users)
-        .where(and(eq(users.id, data.userId), isNull(users.deletedAt)))
-        .limit(1),
-      db
-        .select({ permissions: networks.permissions })
-        .from(networks)
-        .where(and(eq(networks.id, data.networkId), isNull(networks.deletedAt)))
-        .limit(1),
-      // "Has been enriched?" keys on ACTIVE premises, not a `user_profiles` row
-      // (WS10/IND-367 — same existence-via-user_profiles anti-pattern WS5 removed from
-      // profile.graph). `getProfile` returns a users-sourced row for every user, so it
-      // can't signal enrichment; the premise graph is the source of truth.
-      db
-        .select({ id: premises.id })
-        .from(premises)
-        .where(and(eq(premises.userId, data.userId), eq(premises.status, 'ACTIVE')))
-        .limit(1),
-    ]);
+    // "Has been enriched?" keys on ACTIVE premises, not a `user_profiles` row
+    // (WS10/IND-367 — same existence-via-user_profiles anti-pattern WS5 removed from
+    // profile.graph). `getProfile` returns a users-sourced row for every user, so it
+    // can't signal enrichment; the premise graph is the source of truth.
+    const { user, network, hasActivePremise } = await new EnrichmentDatabaseAdapter()
+      .getEnrichmentPrivacyContext(data.userId, data.networkId);
 
-    const hasExistingProfile = !!premise;
+    const hasExistingProfile = hasActivePremise;
     if (!network) {
       return { allowed: false, policy: 'disabled', reason: 'network_not_found', hasExistingProfile };
     }
@@ -306,7 +288,7 @@ export class EnrichmentQueue {
 
     const allowed = canRunPublicEnrichment({
       policy,
-      onboarding: user.onboarding as OnboardingState | null | undefined,
+      onboarding: user.onboarding,
       isGhost: user.isGhost,
     });
 

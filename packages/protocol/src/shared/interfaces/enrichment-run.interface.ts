@@ -1,5 +1,20 @@
 import type { ResolvedToolContext } from "../agent/tool.helpers.js";
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Enrichment run persistence + queue
+//
+// Mirrors the discovery-run contract for the enrichment pipeline (profile/context
+// preview + update). See discovery-run.interface.ts for the shared lifecycle rules.
+//
+// Port contract (host application implements `EnrichmentRunStore` + `EnrichmentRunQueue`):
+//   • Status lifecycle queued → running → (succeeded | failed | cancelled); `mark*`
+//     transitions are idempotent.
+//   • `get` / `requestCancel` are owner-scoped and return `null` for missing or
+//     non-owned runs.
+//   • `listActive` returns queued/running runs (empty array, never null).
+//   • Legacy `*_user_profile` operations are read-compat only — never written by new code.
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export type EnrichmentRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 // Canonical run operations are the *_user_context names (IND-371). The legacy
 // *_user_profile values are retained so historical run rows persisted before the

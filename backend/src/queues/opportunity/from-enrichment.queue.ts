@@ -2,13 +2,9 @@ import { Job } from 'bullmq';
 import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import type { Id } from '../../types/common.types';
-import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import { EmbedderAdapter } from '../../adapters/embedder.adapter';
-import { RedisCacheAdapter } from '../../adapters/cache.adapter';
-import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
+import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
 
-import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
+import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
 
 export const QUEUE_NAME = 'opportunity-from-enrichment';
 
@@ -17,13 +13,15 @@ export interface FromEnrichmentJobData {
   networkId?: string;
 }
 
+export interface FromEnrichmentGraphInvokeOptions {
+  userId: string;
+  operationMode: 'create';
+  networkId?: string;
+  options: { initialStatus: 'latent' };
+}
+
 export interface FromEnrichmentDeps {
-  invokeOpportunityGraph?: (opts: {
-    userId: string;
-    operationMode: 'create';
-    networkId?: string;
-    options: { initialStatus: 'latent' };
-  }) => Promise<void>;
+  invokeOpportunityGraph?: (opts: FromEnrichmentGraphInvokeOptions) => Promise<void>;
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
 }
@@ -45,13 +43,13 @@ export class FromEnrichmentQueue {
 
   private readonly logger = log.job.from('FromEnrichmentJob');
   private readonly queueLogger = log.queue.from('FromEnrichmentQueue');
-  private readonly graphDb: OpportunityGraphDatabase & HydeGraphDatabase;
+  private readonly graphDb: OpportunityGraphDb;
   private deps: FromEnrichmentDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<FromEnrichmentJobData>> | null = null;
 
   constructor(deps?: FromEnrichmentDeps) {
     this.deps = deps;
-    this.graphDb = new ChatDatabaseAdapter() as unknown as OpportunityGraphDatabase & HydeGraphDatabase;
+    this.graphDb = createOpportunityGraphDb();
   }
 
   setRuntimeDeps(runtimeDeps: Pick<FromEnrichmentDeps, 'negotiationGraph' | 'agentDispatcher'>): void {
@@ -87,50 +85,22 @@ export class FromEnrichmentQueue {
 
     this.logger.info('[FromEnrichment] Starting profile-based discovery', { userId, networkId });
 
-    const invokeOpts = {
+    const invokeOpts: FromEnrichmentGraphInvokeOptions = {
       userId: userId as Id<'users'>,
-      operationMode: 'create' as const,
+      operationMode: 'create',
       networkId: networkId as Id<'networks'> | undefined,
-      options: { initialStatus: 'latent' as const },
+      options: { initialStatus: 'latent' },
     };
 
-    if (this.deps?.invokeOpportunityGraph) {
-      await this.deps.invokeOpportunityGraph(invokeOpts);
-      return;
-    }
-
-    const embedder: Embedder = new EmbedderAdapter();
-    const cache: HydeCache = new RedisCacheAdapter();
-    const inferrer = new LensInferrer();
-    const generator = new HydeGenerator();
-    const hydeGraph = new HydeGraphFactory(this.graphDb, embedder, cache, inferrer, generator).createGraph();
-    const opportunityGraph = new OpportunityGraphFactory(
-      this.graphDb,
-      embedder,
-      hydeGraph,
-      undefined,
-      undefined,
-      this.deps?.negotiationGraph,
-      this.deps?.agentDispatcher,
-      async (opportunityId: string, userId: string) => {
-        await negotiationRunExistingQueue.addJob({ opportunityId, userId });
-      },
-    ).createGraph();
-
-    const result = await opportunityGraph.invoke(invokeOpts);
-    if (result.error) {
-      this.logger.error('[FromEnrichment] Graph failed', { userId, networkId, error: result.error });
-      throw new Error(typeof result.error === 'string' ? result.error : 'from-enrichment graph failed');
-    }
-
-    const candidates = Array.isArray(result.candidates) ? result.candidates : [];
-    const opportunitiesArr = Array.isArray(result.opportunities) ? result.opportunities : [];
-
-    this.logger.info('[FromEnrichment] Graph complete', {
-      userId,
-      networkId,
-      candidatesFound: candidates.length,
-      opportunitiesCreated: opportunitiesArr.length,
+    await runOpportunityDiscovery({
+      graphDb: this.graphDb,
+      deps: this.deps,
+      invokeOpts,
+      logger: this.logger,
+      label: 'FromEnrichment',
+      errorLabel: 'from-enrichment',
+      logContext: { userId, networkId },
+      logTrace: false,
     });
   }
 

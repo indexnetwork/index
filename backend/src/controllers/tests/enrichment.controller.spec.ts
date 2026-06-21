@@ -80,9 +80,7 @@ describe("EnrichmentController Integration", () => {
       email: "test-enrichment-controller@example.com",
       name: "Test Profile User"
     };
-    const start = Date.now();
     await controller.sync(mockRequest, mockUser);
-    const duration = Date.now() - start;
 
     // Second run should be much faster as it skips generation (if logic holds)
     // Though without detailed logs inspection, we mainly verify it doesn't crash 
