@@ -122,6 +122,10 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/settings/page"),
       },
       {
+        path: "/questions",
+        lazy: () => import("@/app/questions/page"),
+      },
+      {
         path: "/profile",
         element: <Navigate to="/settings" replace />,
       },
