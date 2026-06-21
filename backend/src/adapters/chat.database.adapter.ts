@@ -383,6 +383,26 @@ export class ChatDatabaseAdapter {
   }
 
   /**
+   * IDs of all non-personal (community) networks the user is an active member of.
+   * Excludes soft-deleted memberships, soft-deleted networks, and personal indexes.
+   * @param userId - The user whose community memberships to resolve
+   * @returns Array of network IDs (possibly empty)
+   */
+  async getNonPersonalNetworkIds(userId: string): Promise<string[]> {
+    const rows = await db
+      .select({ networkId: schema.networkMembers.networkId })
+      .from(schema.networkMembers)
+      .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
+      .where(and(
+        eq(schema.networkMembers.userId, userId),
+        isNull(schema.networkMembers.deletedAt),
+        isNull(schema.networks.deletedAt),
+        eq(schema.networks.isPersonal, false),
+      ));
+    return rows.map((r) => r.networkId);
+  }
+
+  /**
    * Check whether an index is a personal index.
    * @param networkId - The index to check
    * @returns true if the index has isPersonal = true

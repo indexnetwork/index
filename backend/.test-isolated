@@ -6,6 +6,7 @@
 # Keep this in sync: any spec that adds mock.module() must be added here, or it
 # will pollute the shared `bun run test` batch and break sibling specs' imports.
 # Derived from: grep -rlE 'mock\.module' src tests --include='*.spec.ts' --include='*.test.ts'
+src/adapters/tests/enrichment.database.adapter.privacy.spec.ts
 src/adapters/tests/scraper.adapter.spec.ts
 src/adapters/tests/storage.adapter.spec.ts
 src/adapters/tests/system-database.spec.ts

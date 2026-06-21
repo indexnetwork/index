@@ -11,29 +11,12 @@ import path from 'path';
 const envFile = process.env.NODE_ENV === 'development' ? '.env.development' : '.env.production';
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
-import db, { closeDb } from '../lib/drizzle/drizzle';
-import { opportunities } from '../schemas/database.schema';
-import { and, isNotNull, lte, notInArray } from 'drizzle-orm';
-
-async function expireStaleOpportunities(): Promise<number> {
-  const now = new Date();
-  const updated = await db
-    .update(opportunities)
-    .set({ status: 'expired', updatedAt: now })
-    .where(
-      and(
-        isNotNull(opportunities.expiresAt),
-        lte(opportunities.expiresAt, now),
-        notInArray(opportunities.status, ['accepted', 'rejected', 'expired'])
-      )
-    )
-    .returning({ id: opportunities.id });
-  return updated.length;
-}
+import { closeDb } from '../lib/drizzle/drizzle';
+import { OpportunityDatabaseAdapter } from '../adapters/opportunity.database.adapter';
 
 async function main() {
   console.log('[expire-opportunities] Starting...');
-  const count = await expireStaleOpportunities();
+  const count = await new OpportunityDatabaseAdapter().expireStaleOpportunities();
   console.log(`[expire-opportunities] Expired ${count} opportunit${count === 1 ? 'y' : 'ies'}.`);
   await closeDb();
   process.exit(0);

@@ -1,28 +1,24 @@
 // backend/src/queues/opportunity/expiration.queue.ts
 import cron from 'node-cron';
-import { and, isNotNull, lte, notInArray } from 'drizzle-orm';
 import { log } from '../../lib/log';
-import db from '../../lib/drizzle/drizzle';
-import { opportunities } from '../../schemas/database.schema';
+import { OpportunityDatabaseAdapter } from '../../adapters/opportunity.database.adapter';
+
+/** The persistence surface the cron needs: a single stale-opportunity sweep. */
+export interface OpportunityExpirationDeps {
+  expireStaleOpportunities: () => Promise<number>;
+}
 
 export class OpportunityExpirationCron {
   private readonly logger = log.queue.from('OpportunityExpiration');
   private task: ReturnType<typeof cron.schedule> | null = null;
+  private readonly deps: OpportunityExpirationDeps;
+
+  constructor(deps?: OpportunityExpirationDeps) {
+    this.deps = deps ?? new OpportunityDatabaseAdapter();
+  }
 
   async expireStale(): Promise<number> {
-    const now = new Date();
-    const updated = await db
-      .update(opportunities)
-      .set({ status: 'expired', updatedAt: now })
-      .where(
-        and(
-          isNotNull(opportunities.expiresAt),
-          lte(opportunities.expiresAt, now),
-          notInArray(opportunities.status, ['accepted', 'rejected', 'expired']),
-        ),
-      )
-      .returning({ id: opportunities.id });
-    return updated.length;
+    return this.deps.expireStaleOpportunities();
   }
 
   start(): void {
