@@ -2,7 +2,7 @@
  * Shared config for embeddings: all embedding generation uses OpenRouter API
  * with the OpenAI embedding model (text-embedding-3-large) for consistency.
  *
- * Used by: OpenRouterGenerator (lib/embedder), EmbedderAdapter (adapters/).
+ * Used by: EmbedderAdapter (adapters/embedder.adapter.ts).
  */
 
 /** OpenRouter model id for embeddings (OpenAI model via OpenRouter). */
