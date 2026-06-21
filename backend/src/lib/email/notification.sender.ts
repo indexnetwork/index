@@ -4,7 +4,7 @@ import db from '../drizzle/drizzle';
 import { userNotificationSettings, users } from '../../schemas/database.schema';
 import { log } from '../log';
 
-import { sendEmail } from './transport.helper';
+import { sendEmail } from './transport.producer';
 import { connectionRequestTemplate } from './templates/connection-request.template';
 import { connectionAcceptedTemplate } from './templates/connection-accepted.template';
 

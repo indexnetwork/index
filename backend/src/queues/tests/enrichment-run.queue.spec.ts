@@ -76,9 +76,13 @@ mock.module('@indexnetwork/protocol', () => ({
   getToolTimeoutPolicy: () => ({ maxOutputBytes: 1_000_000 }),
   requestContext: { run: async (_ctx: unknown, fn: () => Promise<unknown>) => fn() },
   resolveChatContext: mockResolveChatContext,
+  // enrichment-run.queue -> questioner.queue imports QuestionerAgent at module load.
+  // Never instantiated here (env-gated enqueue stays off), so a stub class satisfies
+  // the named import that the partial protocol mock would otherwise drop.
+  QuestionerAgent: class {},
 }));
 
-const { EnrichmentRunQueue, QUEUE_NAME } = await import('../profile-run.queue');
+const { EnrichmentRunQueue, QUEUE_NAME } = await import('../enrichment-run.queue');
 
 type EnrichmentRunJobData = { runId: string };
 
