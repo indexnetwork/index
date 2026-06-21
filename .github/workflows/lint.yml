@@ -87,13 +87,21 @@ jobs:
     # systems (Redis/LLM/DB), so they need no services, secrets, or built
     # protocol dist. Keeps these regression pins gated in CI rather than
     # depending on local-only manual runs.
+    #
+    # NOTE: pinned to a newer Bun than the lint/typecheck jobs (1.2.20). The
+    # specs use a deferred `await import()` of the queue (so a fallback
+    # OPENROUTER_API_KEY is set before the protocol barrel's eager createModel
+    # evaluates); under `bun test` 1.2.20 that dynamic import mis-resolves
+    # drizzle-orm's `export * from "./relations.js"` re-export and fails to find
+    # the `relations` named export. Newer Bun resolves it correctly. The app
+    # runtime is unaffected (it imports the same schema fine).
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.2.20"
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         run: |
