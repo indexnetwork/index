@@ -98,6 +98,7 @@ export class FromEnrichmentQueue {
       invokeOpts,
       logger: this.logger,
       label: 'FromEnrichment',
+      errorLabel: 'from-enrichment',
       logContext: { userId, networkId },
       logTrace: false,
     });

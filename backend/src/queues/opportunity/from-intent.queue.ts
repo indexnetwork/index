@@ -110,6 +110,7 @@ export class FromIntentQueue {
       invokeOpts,
       logger: this.logger,
       label: 'FromIntent',
+      errorLabel: 'from-intent',
       logContext: { intentId, userId },
     });
   }
