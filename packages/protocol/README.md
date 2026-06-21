@@ -2,6 +2,21 @@
 
 The agent orchestration layer for Index Network. Implements LangGraph-based workflows for intent processing, opportunity discovery, and chat — decoupled from any specific infrastructure via adapter injection.
 
+## Stability & versioning
+
+This package follows [Semantic Versioning](https://semver.org/). The **only**
+supported entry point is the package root (`import { ... } from "@indexnetwork/protocol"`);
+deep imports are not part of the contract. Every symbol is re-exported explicitly from
+`src/index.ts` and tagged with a stability tier:
+
+- **Stable** — interfaces, graph factories, agents, `createChatTools`, the
+  tool/runtime helpers, and shared schemas. Breaking changes require a major bump.
+- **Experimental** (`@experimental`) — advanced graph-state types and internal
+  helpers; may change in a minor release.
+
+See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
+and [CHANGELOG.md](./CHANGELOG.md) for release history.
+
 ## Install
 
 ```bash
@@ -59,7 +74,7 @@ The package defines interfaces — your application provides the concrete implem
 | `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request (MCP server only) |
 | `DeliveryLedger` | Commits OpenClaw opportunity-delivery rows |
 | `DiscoveryRunStore` / `DiscoveryRunQueue` | Persist and execute async MCP discovery runs |
-| `ProfileRunStore` / `ProfileRunQueue` | Persist and execute async MCP profile builds |
+| `EnrichmentRunStore` / `EnrichmentRunQueue` | Persist and execute async MCP enrichment runs |
 | `MintConnectLink` | Mints short connect links for opportunity accepts |
 | `ChatSummaryReader` | Read-through chat-session digest |
 | `ChatMessageWriter` | Writes user messages into the most-recent chat session (MCP elicitation) |
@@ -102,8 +117,8 @@ const tools = await createChatTools({
   agentDatabase,        // AgentDatabase — agent registry
   agentDispatcher,      // AgentDispatcher — routes negotiation turns to personal agents
   deliveryLedger,       // DeliveryLedger — OpenClaw delivery commits
-  discoveryRuns,        // DiscoveryRunStore + discoveryRunQueue — async MCP discovery
-  profileRuns,          // ProfileRunStore + profileRunQueue — async MCP profile builds
+  discoveryRuns,        // DiscoveryRunStore (+ discoveryRunQueue) — async MCP discovery
+  enrichmentRuns,       // EnrichmentRunStore (+ enrichmentRunQueue) — async MCP enrichment runs
   mintConnectLink,      // short connect links for opportunity accepts
   modelConfig,          // override chat model / reasoning effort (see above)
 });
@@ -126,7 +141,7 @@ import {
   ChatGraphFactory,
   IntentGraphFactory,
   OpportunityGraphFactory,
-  ProfileGraphFactory,
+  EnrichmentGraphFactory,
   PremiseGraphFactory,
   NegotiationGraphFactory,
   HydeGraphFactory,
@@ -146,7 +161,7 @@ Each factory takes its typed dependencies in the constructor and exposes a
 | `ChatGraphFactory` | ReAct chat loop — LLM calls tools, responds to the user |
 | `IntentGraphFactory` | Clarify, infer, verify felicity, reconcile, and persist intents |
 | `OpportunityGraphFactory` | HyDE-based discovery: search, evaluate (valency), rank, persist |
-| `ProfileGraphFactory` | Generate/update user profiles with scraping and embedding |
+| `EnrichmentGraphFactory` | Enrich users (scrape + embed) and decompose into premises |
 | `PremiseGraphFactory` | Decompose and index a user's premises |
 | `NegotiationGraphFactory` | Multi-turn bilateral negotiation flows |
 | `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
