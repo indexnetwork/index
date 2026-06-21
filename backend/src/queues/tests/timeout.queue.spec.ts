@@ -112,6 +112,15 @@ describe('NegotiationTimeoutQueue.handleTimeout', () => {
     expect(db.updateOpportunityStatus).toHaveBeenCalledWith('opp-1', 'pending');
   });
 
+  it('reject: finalizes with rejected opportunity', async () => {
+    MOCK_TURN = { action: 'reject', assessment: { reasoning: 'no', suggestedRoles: { ownUser: 'role-ai' } } };
+    const { db } = makeDb(negTask(), [msg(), msg()]);
+    const q = new NegotiationTimeoutQueue({ database: db as never });
+    await q.processJob('negotiation_timeout', { negotiationId: 'task-1', turnNumber: 2 });
+    expect(db.updateTaskState).toHaveBeenCalledWith('task-1', 'completed');
+    expect(db.updateOpportunityStatus).toHaveBeenCalledWith('opp-1', 'rejected');
+  });
+
   it('counter under max: re-arms (waiting_for_agent + enqueue)', async () => {
     MOCK_TURN = { action: 'counter', assessment: { reasoning: 'more', suggestedRoles: { ownUser: 'role-ai' } } };
     const { db } = makeDb(negTask(), [msg(), msg()]);
