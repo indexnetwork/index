@@ -269,7 +269,7 @@ export class ResourceController {
   // Constructor initializes adapters and factory
   constructor() {
     this.db = new DrizzleDatabaseAdapter();
-    this.embedder = new IndexEmbedder();
+    this.embedder = new EmbedderAdapter();
     this.scraper = new ParallelScraperAdapter();
     this.factory = new SomeGraphFactory(this.db, this.embedder, this.scraper);
   }
