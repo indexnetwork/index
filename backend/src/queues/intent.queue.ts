@@ -359,14 +359,17 @@ export class IntentQueue implements IntentGraphQueue {
       this.logger.info('[IntentAssign] User assignment networks found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
 
       // Instantiate once per run so the same withStructuredOutput binding is
-      // reused across all network evaluations in the Promise.all below.
-      const defaultIndexer = this.deps?.evaluateIntentAssignment ? null : new IntentIndexer();
-      const evaluateIntentAssignment = this.deps?.evaluateIntentAssignment ?? ((o: {
-        intent: string;
-        indexPrompt: string | null;
-        memberPrompt: string | null;
-        sourceName?: string | null;
-      }) => defaultIndexer!.invoke(o.intent, o.indexPrompt, o.memberPrompt, o.sourceName ?? null));
+      // reused across all network evaluations in the Promise.all below (the
+      // IIFE runs once and the closure captures the single indexer instance).
+      const evaluateIntentAssignment = this.deps?.evaluateIntentAssignment ?? (() => {
+        const indexer = new IntentIndexer();
+        return (o: {
+          intent: string;
+          indexPrompt: string | null;
+          memberPrompt: string | null;
+          sourceName?: string | null;
+        }) => indexer.invoke(o.intent, o.indexPrompt, o.memberPrompt, o.sourceName ?? null);
+      })();
 
       const sourceName = intent.sourceType
         ? `${intent.sourceType}:${intent.sourceId ?? ''}`
