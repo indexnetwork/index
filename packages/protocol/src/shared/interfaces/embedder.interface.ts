@@ -49,6 +49,19 @@ export interface EmbeddingGenerateOptions {
   signal?: AbortSignal;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Embedding generation + vector / HyDE search
+//
+// Port contract (host application implements):
+//   • `generate` is shape-preserving: a `string` input yields one `number[]`; a
+//     `string[]` input yields `number[][]` in the same order. Vectors are
+//     `dimensions`-long (default per the adapter; the schema assumes 2000).
+//   • `search` returns matches sorted by descending `score` (cosine similarity in
+//     [0,1]); it returns an empty array — never null — when nothing clears `minScore`.
+//   • Implementations should be deterministic for a fixed input/model and must not
+//     throw for an empty corpus (return []). Network/model failures may throw.
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export interface EmbeddingGenerator {
   generate(text: string | string[], dimensions?: number, options?: EmbeddingGenerateOptions): Promise<number[] | number[][]>;
 }
