@@ -12,6 +12,8 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-06-21
+
 ### Added
 - `STABILITY.md` defining the public contract, stability tiers (Stable vs
   `@experimental`), SemVer policy, and the deprecation path.
@@ -82,7 +84,8 @@ the matching/opportunity/premise eval harnesses, premise source tracking and
 cascade retraction, network-scoped agents, and the agent registry. Reconstructed
 from git history; not itemized.
 
-[Unreleased]: https://github.com/indexnetwork/protocol/compare/v4.2.0...HEAD
+[Unreleased]: https://github.com/indexnetwork/protocol/compare/v4.3.0...HEAD
+[4.3.0]: https://github.com/indexnetwork/protocol/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/indexnetwork/protocol/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/indexnetwork/protocol/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/indexnetwork/protocol/compare/v3.6.0...v4.0.0
