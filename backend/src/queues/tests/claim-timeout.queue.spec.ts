@@ -7,6 +7,9 @@
  */
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
+// Fallback so the eager protocol barrel (createModel) can evaluate without a real
+// key when .env.test is absent (e.g. CI). Keeps the spec hermetic.
+process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 'test-key';
 
 import { describe, expect, it, mock, afterAll, beforeEach } from 'bun:test';
 
@@ -62,7 +65,9 @@ afterAll(() => {
   mock.restore();
 });
 
-import { NegotiationClaimTimeoutQueue } from '../negotiations/claim-timeout.queue';
+// Deferred import: ensures the mock.module(...) registrations above apply before
+// the real ../negotiations/claim-timeout.queue (and its protocol barrel) are evaluated.
+const { NegotiationClaimTimeoutQueue } = await import('../negotiations/claim-timeout.queue');
 
 function makeDb(messages: unknown[]) {
   const db = {

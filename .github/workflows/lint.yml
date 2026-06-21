@@ -1,8 +1,11 @@
-# Run type checks, architectural boundary checks, and adapter naming checks
-# on PRs to dev and on direct pushes to dev.
+# Run type checks, architectural boundary checks, adapter naming checks, and
+# hermetic pinning tests on PRs to dev/main and on direct pushes to dev/main.
 #
 # Enforces protocol layering rules (eslint-plugin-boundaries),
 # adapter naming conventions, and TypeScript compilation.
+#
+# `main` is included so release PRs (dev -> main) get an independent gate of
+# their own rather than riding solely on the per-PR checks that ran into dev.
 #
 # NOTE: Only boundary violations fail the lint check. Pre-existing lint
 # errors (no-explicit-any, no-unused-vars) are not gated here yet.
@@ -11,9 +14,9 @@ name: Lint and typecheck
 
 on:
   pull_request:
-    branches: [dev]
+    branches: [dev, main]
   push:
-    branches: [dev]
+    branches: [dev, main]
 
 concurrency:
   group: lint-${{ github.head_ref || github.ref }}
@@ -78,3 +81,29 @@ jobs:
 
       - name: Type check backend
         run: cd backend && bun run build
+
+  test:
+    # Runs the hermetic pinning/characterization specs that mock all external
+    # systems (Redis/LLM/DB), so they need no services, secrets, or built
+    # protocol dist. Keeps these regression pins gated in CI rather than
+    # depending on local-only manual runs.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.20"
+
+      - name: Install dependencies
+        run: |
+          bun install
+          cd backend && bun install
+
+      - name: Run hermetic pinning tests
+        run: |
+          cd backend
+          bun test \
+            src/adapters/tests/can-actor-see-opportunity.spec.ts \
+            src/queues/tests/timeout.queue.spec.ts \
+            src/queues/tests/claim-timeout.queue.spec.ts

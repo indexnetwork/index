@@ -62,14 +62,20 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
   deps?: OpportunityDiscoveryDeps & { invokeOpportunityGraph?: (opts: TOpts) => Promise<void> };
   invokeOpts: TOpts;
   logger: DiscoveryLogger;
-  /** Human label for log lines + the thrown error, e.g. `'FromIntent'` / `'from-intent'`. */
+  /** Human label for log-line prefixes, e.g. `'FromIntent'`. */
   label: string;
+  /**
+   * Label for the thrown fallback error message, e.g. `'from-intent'`. Kept
+   * distinct from `label` so the thrown message stays lowercase-dashed (matching
+   * the pre-split queues) while log prefixes stay PascalCase. Defaults to `label`.
+   */
+  errorLabel?: string;
   /** Identifier fields merged into every log line (e.g. `{ intentId, userId }`). */
   logContext: Record<string, unknown>;
   /** Whether to emit the verbose graph-trace line (from-enrichment opts out). Defaults to true. */
   logTrace?: boolean;
 }): Promise<void> {
-  const { graphDb, deps, invokeOpts, logger, label, logContext, logTrace = true } = params;
+  const { graphDb, deps, invokeOpts, logger, label, errorLabel = label, logContext, logTrace = true } = params;
 
   if (deps?.invokeOpportunityGraph) {
     await deps.invokeOpportunityGraph(invokeOpts);
@@ -80,7 +86,7 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
   const result = await opportunityGraph.invoke(invokeOpts);
   if (result.error) {
     logger.error(`[${label}] Graph failed`, { ...logContext, error: result.error });
-    throw new Error(typeof result.error === 'string' ? result.error : `${label} graph failed`);
+    throw new Error(typeof result.error === 'string' ? result.error : `${errorLabel} graph failed`);
   }
 
   const candidates = Array.isArray(result.candidates) ? result.candidates : [];

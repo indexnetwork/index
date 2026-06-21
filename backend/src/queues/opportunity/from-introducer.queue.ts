@@ -110,6 +110,7 @@ export class FromIntroducerQueue {
       invokeOpts,
       logger: this.logger,
       label: 'FromIntroducer',
+      errorLabel: 'from-introducer',
       logContext: { userId, contactUserId },
     });
   }
