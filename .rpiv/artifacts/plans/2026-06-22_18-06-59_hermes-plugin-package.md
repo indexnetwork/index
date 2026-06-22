@@ -14,7 +14,7 @@ phases:
   - { n: 2, title: Index dashboard preset templates }
   - { n: 3, title: Generator CLI with preset selection }
   - { n: 4, title: Tests and documentation }
-unresolved_phase_count: 3
+unresolved_phase_count: 2
 last_updated: 2026-06-22T18:06:59+0300
 last_updated_by: Yanek Yuk
 last_updated_note: "Revised to official Hermes plugin + dashboard template generator with basic and index-dashboard presets"
@@ -351,61 +351,235 @@ Depends on Phase 1; adds the `index-dashboard` preset that extends the basic plu
 **File**: packages/hermes-plugin/templates/index-dashboard/plugin.yaml
 **Changes**: NEW — preset manifest for an Index Network dashboard plugin skeleton
 ```yaml
+name: __PLUGIN_NAME__
+version: 0.1.0
+description: __PLUGIN_DESCRIPTION__
+provides_tools: []
+provides_hooks: []
 ```
 
 #### 2. packages/hermes-plugin/templates/index-dashboard/__init__.py
 **File**: packages/hermes-plugin/templates/index-dashboard/__init__.py
 **Changes**: NEW — registration template preserving skill registration and leaving dashboard discovery to Hermes
 ```python
+"""__PLUGIN_TITLE__ Hermes plugin — dashboard preset registration."""
+
+from pathlib import Path
+
+
+def _register_skills(ctx):
+    """Register bundled plugin skills as namespaced plugin skills."""
+    skills_dir = Path(__file__).parent / "skills"
+    if not skills_dir.exists():
+        return
+    for child in sorted(skills_dir.iterdir()):
+        skill_md = child / "SKILL.md"
+        if child.is_dir() and skill_md.exists():
+            ctx.register_skill(child.name, skill_md)
+
+
+def register(ctx):
+    """Register plugin-bundled skills.
+
+    The dashboard tab is discovered from dashboard/manifest.json by Hermes'
+    dashboard plugin loader; no Python registration is required for the UI.
+    """
+    _register_skills(ctx)
 ```
 
 #### 3. packages/hermes-plugin/templates/index-dashboard/schemas.py
 **File**: packages/hermes-plugin/templates/index-dashboard/schemas.py
 **Changes**: NEW — minimal placeholder schemas for future Index-specific tools
 ```python
+"""Tool schemas for __PLUGIN_TITLE__.
+
+This dashboard preset does not register tools by default. Add schemas here if
+future versions of your plugin expose LLM-callable tools via ctx.register_tool().
+"""
 ```
 
 #### 4. packages/hermes-plugin/templates/index-dashboard/tools.py
 **File**: packages/hermes-plugin/templates/index-dashboard/tools.py
 **Changes**: NEW — minimal placeholder handlers for future Index-specific tools
 ```python
+"""Tool handlers for __PLUGIN_TITLE__.
+
+This dashboard preset does not register tools by default. If you add handlers,
+return JSON strings and accept **kwargs for forward compatibility.
+"""
 ```
 
 #### 5. packages/hermes-plugin/templates/index-dashboard/skills/example-skill/SKILL.md
 **File**: packages/hermes-plugin/templates/index-dashboard/skills/example-skill/SKILL.md
 **Changes**: NEW — dashboard preset bundled skill placeholder
 ```md
+---
+name: index-dashboard
+description: Use when you want to explain or extend the generated Index Network dashboard view.
+---
+
+# Index Network Dashboard Skill
+
+This bundled skill accompanies the generated dashboard view. Use it to document
+what the dashboard tab shows and how to extend it.
+
+The dashboard files live under:
+
+```text
+dashboard/manifest.json
+dashboard/dist/index.js
+dashboard/dist/style.css
+dashboard/plugin_api.py
+```
+
+Replace this placeholder with Index Network-specific dashboard guidance as the
+view becomes connected to real data.
 ```
 
 #### 6. packages/hermes-plugin/templates/index-dashboard/dashboard/manifest.json
 **File**: packages/hermes-plugin/templates/index-dashboard/dashboard/manifest.json
 **Changes**: NEW — Hermes dashboard plugin manifest
 ```json
+{
+  "name": "__PLUGIN_NAME__",
+  "label": "Index Network",
+  "description": "Index Network dashboard view template",
+  "icon": "Network",
+  "version": "0.1.0",
+  "tab": {
+    "path": "/__PLUGIN_NAME__",
+    "position": "after:skills"
+  },
+  "entry": "dist/index.js",
+  "css": "dist/style.css",
+  "api": "plugin_api.py"
+}
 ```
 
 #### 7. packages/hermes-plugin/templates/index-dashboard/dashboard/dist/index.js
 **File**: packages/hermes-plugin/templates/index-dashboard/dashboard/dist/index.js
 **Changes**: NEW — IIFE dashboard tab bundle using Hermes dashboard SDK
 ```js
+(function () {
+  "use strict";
+
+  const SDK = window.__HERMES_PLUGIN_SDK__;
+  if (!SDK || !window.__HERMES_PLUGINS__) {
+    console.warn("[__PLUGIN_NAME__] Hermes dashboard plugin SDK is unavailable");
+    return;
+  }
+
+  const { React } = SDK;
+  const { useEffect, useState } = SDK.hooks;
+  const { Card, CardHeader, CardTitle, CardContent, Badge, Button } = SDK.components;
+
+  function IndexDashboardView() {
+    const [status, setStatus] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(function () {
+      SDK.fetchJSON("/api/plugins/__PLUGIN_NAME__/status")
+        .then(setStatus)
+        .catch(function (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        });
+    }, []);
+
+    return React.createElement(
+      "div",
+      { className: "index-dashboard-grid" },
+      React.createElement(
+        Card,
+        null,
+        React.createElement(
+          CardHeader,
+          null,
+          React.createElement(CardTitle, null, "Index Network"),
+        ),
+        React.createElement(
+          CardContent,
+          { className: "index-dashboard-stack" },
+          React.createElement(
+            "p",
+            { className: "text-sm text-muted-foreground" },
+            "A dashboard view template for Index Network context, signals, and opportunities.",
+          ),
+          React.createElement(Badge, { variant: "secondary" }, "Template"),
+          status
+            ? React.createElement("pre", { className: "index-dashboard-code" }, JSON.stringify(status, null, 2))
+            : React.createElement("p", { className: "text-xs text-muted-foreground" }, error || "Loading plugin status…"),
+          React.createElement(
+            Button,
+            { type: "button", onClick: function () { window.location.reload(); } },
+            "Refresh",
+          ),
+        ),
+      ),
+    );
+  }
+
+  window.__HERMES_PLUGINS__.register("__PLUGIN_NAME__", IndexDashboardView);
+}());
 ```
 
 #### 8. packages/hermes-plugin/templates/index-dashboard/dashboard/dist/style.css
 **File**: packages/hermes-plugin/templates/index-dashboard/dashboard/dist/style.css
 **Changes**: NEW — theme-aware dashboard CSS
 ```css
+.index-dashboard-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.index-dashboard-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.index-dashboard-code {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+  padding: 0.75rem;
+  overflow: auto;
+  font-size: 0.75rem;
+}
 ```
 
 #### 9. packages/hermes-plugin/templates/index-dashboard/dashboard/plugin_api.py
 **File**: packages/hermes-plugin/templates/index-dashboard/dashboard/plugin_api.py
 **Changes**: NEW — optional FastAPI router placeholder for dashboard backend routes
 ```python
+"""Dashboard backend routes for __PLUGIN_TITLE__."""
+
+from fastapi import APIRouter
+
+router = APIRouter()
+
+
+@router.get("/status")
+async def status():
+    """Return placeholder status for the generated dashboard tab."""
+    return {
+        "ok": True,
+        "plugin": "__PLUGIN_NAME__",
+        "message": "Replace this route with your Index Network dashboard data source.",
+    }
 ```
 
 ### Success Criteria:
 
 #### Automated Verification:
+- [ ] Index dashboard preset includes Hermes dashboard manifest and bundle: `test -f packages/hermes-plugin/templates/index-dashboard/dashboard/manifest.json && test -f packages/hermes-plugin/templates/index-dashboard/dashboard/dist/index.js`
+- [ ] Dashboard bundle registers the plugin through the Hermes dashboard registry: `grep -n '__HERMES_PLUGINS__\.register' packages/hermes-plugin/templates/index-dashboard/dashboard/dist/index.js`
+- [ ] Dashboard bundle uses the Hermes dashboard SDK instead of bundling React: `grep -n '__HERMES_PLUGIN_SDK__' packages/hermes-plugin/templates/index-dashboard/dashboard/dist/index.js`
+- [ ] Dashboard preset has no MCP/API-key/cron wiring: `! grep -R "mcp_servers\|INDEX_API_KEY\|hermes cron\|DIGEST_CRON" packages/hermes-plugin/templates/index-dashboard`
+- [ ] Dashboard backend route exports a FastAPI router: `grep -n 'router = APIRouter()' packages/hermes-plugin/templates/index-dashboard/dashboard/plugin_api.py`
 
 #### Manual Verification:
+- [ ] Confirm the dashboard preset is clearly an Index Network view skeleton, not a wired production integration.
+- [ ] Confirm the dashboard tab path and manifest name are placeholder-rendered from the plugin name.
 
 ## Phase 3: Generator CLI with preset selection
 
@@ -537,7 +711,7 @@ A: Approve.
 ## Plan History
 - Previous Phase 1/2 work — reopened and superseded after user corrected source model to official Hermes plugin docs.
 - Phase 1: Package scaffold and basic plugin preset — approved as generated
-- Phase 2: Index dashboard preset templates — pending
+- Phase 2: Index dashboard preset templates — approved as generated
 - Phase 3: Generator CLI with preset selection — pending
 - Phase 4: Tests and documentation — pending
 
