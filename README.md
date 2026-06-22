@@ -1,9 +1,7 @@
 <h1 align="center">
-    <a href="https://index.network/#gh-light-mode-only">
-    <img style="width:400px" src="https://index.network/logo-black.svg">
-    </a>
-    <a href="https://index.network/#gh-dark-mode-only">
-    <img style="width:400px" src="https://index.network/logo.svg">
+    <a href="https://index.network">
+    <img style="width:400px" src="apps/web/public/logos/logo-black-full.svg#gh-light-mode-only" alt="Index Network">
+    <img style="width:400px" src="apps/web/public/logos/logo-white-full.svg#gh-dark-mode-only" alt="Index Network">
     </a>
 </h1>
 
@@ -16,9 +14,6 @@
     <img src="https://img.shields.io/badge/mit-blue.svg?label=license" alt="license">
   </a>
   <br>
-  <a href="https://discord.gg/wvdxP6XvYu">
-    <img src="https://img.shields.io/badge/discord-7289da.svg" alt="discord">
-  </a>
   <a href="https://x.com/indexnetwork_">
     <img src="https://img.shields.io/twitter/follow/indexnetwork_?style=social" alt="X">
   </a>
