@@ -7,7 +7,8 @@
     "services/api",
     "packages/protocol",
     "packages/cli",
-    "packages/claude-plugin"
+    "packages/claude-plugin",
+    "packages/hermes-plugin"
   ],
   "scripts": {
     "dev": "bash scripts/dev.sh",
