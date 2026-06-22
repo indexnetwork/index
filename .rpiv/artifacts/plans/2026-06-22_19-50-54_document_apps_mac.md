@@ -9,13 +9,13 @@ tags:
   - documentation
   - apps-mac
   - apple-client
-status: in-progress
+status: ready
 parent: null
 phase_count: 2
 phases:
   - { n: 1, title: Desktop app README }
   - { n: 2, title: Subtree README }
-unresolved_phase_count: 2
+unresolved_phase_count: 0
 last_updated: 2026-06-22T19:50:54+0300
 last_updated_by: Yanek Yuk
 ---
@@ -127,14 +127,89 @@ Add the missing desktop-specific README; foundation phase for the top-level READ
 **File**: apps/mac/HaloApp/README.md
 **Changes**: NEW — desktop macOS WKWebView app README documenting layout, build, editing source-of-truth, generated artifacts, and native shell responsibilities.
 
-```markdown
+````markdown
+# halo — Workbench (macOS)
+
+Desktop prototype for Index Network's `halo` / **index** client. It is a thin native **macOS WKWebView** shell around an assembled React/HTML bundle with vendored scripts and JSX inlined: Swift owns the window, app menu, and bundled-file loading; the product UI and prototype data live in the editable web sources under `src/`.
+
+For the mobile counterpart, see [`../HaloApp-iOS/README.md`](../HaloApp-iOS/README.md). For the monorepo overview and subtree policy, see the canonical [root README](https://github.com/indexnetwork/index/blob/dev/README.md) and [CLAUDE.md](https://github.com/indexnetwork/index/blob/dev/CLAUDE.md).
+
+## Layout
+
+```text
+HaloApp/
+  Sources/main.swift        Cocoa AppDelegate + resizable WKWebView window
+  Info.plist                macOS bundle metadata (`network.index.halo.system6`)
+  assemble.py               inlines vendor scripts + JSX into Resources/index.html
+  build.sh                  assembles, compiles Swift, copies resources, codesigns
+  Resources/index.html      assembled bundle with scripts/JSX inlined (generated)
+  src/
+    halo-amiga.html         desktop shell: Workbench viewport, CSS, script tags
+    halo-amiga/             editable JSX modules for data, widgets, screens, app entry
+    vendor/                 pinned React / ReactDOM / Babel assets for offline bundling
+  dist/halo.app             built macOS app bundle (generated; tracked upstream today)
 ```
+
+## Build & run
+
+The desktop shell builds with the macOS SDK and `swiftc` (Command Line Tools or Xcode are enough):
+
+```sh
+./build.sh
+open dist/halo.app
+```
+
+`./build.sh` performs the whole local build:
+
+1. Runs `python3 assemble.py` to regenerate `Resources/index.html` from `src/`.
+2. Compiles `Sources/main.swift` with Cocoa and WebKit.
+3. Copies `Info.plist` and the assembled HTML into `dist/halo.app`.
+4. Attempts ad-hoc codesigning so the app opens locally.
+
+## Editing
+
+Edit the source files under `src/`, not the generated bundle:
+
+- `src/halo-amiga.html` defines the desktop HTML shell, Workbench styling, and JSX script order.
+- `src/halo-amiga/*.jsx` contains the prototype data, primitives, screens, and React entry point.
+- `src/vendor/` contains pinned React, ReactDOM, and Babel files so the WebView can load the JavaScript toolchain without CDN access.
+
+After editing, run either:
+
+```sh
+python3 assemble.py      # regenerate Resources/index.html only
+./build.sh               # regenerate and rebuild dist/halo.app
+```
+
+Do not hand-edit `Resources/index.html`; it is overwritten by `assemble.py`.
+
+## Native shell responsibilities
+
+Keep the Swift layer intentionally small:
+
+- Configure WKWebView file access so the inlined bundle can run from `file://`.
+- Create the resizable macOS window and native menu items (`⌘Q`, `⌘W`, copy/paste, etc.).
+- Load the bundled `index.html` from the app's `Resources` directory.
+- Surface JavaScript alerts as native `NSAlert` dialogs.
+
+Product behavior belongs in the web bundle or shared Index protocol/API surfaces, not in the native wrapper.
+
+## Generated artifacts
+
+`Resources/index.html` and `dist/halo.app` are generated outputs. The mac client subtree currently syncs to `indexnetwork/mac-client`, where built `.app` bundles under `dist/` are tracked, so avoid deleting or regenerating `dist/` casually unless the change intentionally updates the shipped artifact.
+````
 
 ### Success Criteria:
 
 #### Automated Verification:
+- [ ] Desktop README exists: `test -f apps/mac/HaloApp/README.md`
+- [ ] Desktop README has no placeholder text: `! grep -R "TODO\|TBD\|PLACEHOLDER" apps/mac/HaloApp/README.md`
+- [ ] Desktop README documents generated artifact caution: `grep -q "dist/halo.app" apps/mac/HaloApp/README.md && grep -q "Resources/index.html" apps/mac/HaloApp/README.md`
 
 #### Manual Verification:
+- [ ] `apps/mac/HaloApp/README.md` accurately reflects `apps/mac/HaloApp/build.sh:11-29`, `apps/mac/HaloApp/assemble.py:1-8`, and `apps/mac/HaloApp/Sources/main.swift:73-80`.
+- [ ] The README keeps Swift responsibilities thin and directs product behavior to the bundled web layer/shared surfaces.
+- [ ] The `../HaloApp-iOS/README.md` link is relative and correct from `apps/mac/HaloApp/`, and canonical root-doc links point to `https://github.com/indexnetwork/index/blob/dev/README.md` and `https://github.com/indexnetwork/index/blob/dev/CLAUDE.md`.
 
 ## Phase 2: Subtree README
 
@@ -149,14 +224,88 @@ Add the top-level `apps/mac` README that connects the desktop README from Phase 
 **File**: apps/mac/README.md
 **Changes**: NEW — subtree-level orientation README summarizing layout, commands, editing workflow, generated artifacts, and sync policy.
 
-```markdown
+````markdown
+# Index Network Apple clients
+
+Native Apple client prototypes for Index Network. This subtree contains thin Swift **WKWebView** shells around assembled React/HTML bundles with vendored scripts and JSX inlined for desktop and mobile experiments, plus the design handoff bundle that seeded the UI.
+
+For the full monorepo overview, see the canonical [root README](https://github.com/indexnetwork/index/blob/dev/README.md) and [CLAUDE.md](https://github.com/indexnetwork/index/blob/dev/CLAUDE.md). This directory syncs to the standalone [`indexnetwork/mac-client`](https://github.com/indexnetwork/mac-client) repository from `dev` and `main`.
+
+## What's in here
+
+```text
+apps/mac/
+  HaloApp/              macOS Workbench prototype (`halo.app`)
+  HaloApp-iOS/          iOS wrapper plus macOS preview shell for the mobile UI
+  design_bundle/        Claude Design handoff artifacts and standalone prototypes
+  index _standalone_.html
+                        older standalone prototype artifact
 ```
+
+## App docs
+
+| Area | Docs | Purpose |
+| --- | --- | --- |
+| macOS desktop | [`HaloApp/README.md`](HaloApp/README.md) | Build and edit the desktop Workbench WKWebView app. |
+| iOS/mobile | [`HaloApp-iOS/README.md`](HaloApp-iOS/README.md) | Build the iOS simulator/device wrapper and macOS preview shell. |
+| Design handoff | [`design_bundle/halo/README.md`](design_bundle/halo/README.md) | Understand the Claude Design source material before changing the prototype UI. |
+
+## Common commands
+
+Run commands from the app directory shown unless noted otherwise.
+
+| Task | Command |
+| --- | --- |
+| Build the macOS app | `cd apps/mac/HaloApp && ./build.sh` |
+| Open the macOS app | `open apps/mac/HaloApp/dist/halo.app` |
+| Reassemble the mobile bundle without Xcode | `cd apps/mac/HaloApp-iOS && ./build.sh assemble` |
+| Build/install/launch the iOS simulator app | `cd apps/mac/HaloApp-iOS && ./build.sh` |
+| Build the mobile macOS preview shell | `cd apps/mac/HaloApp-iOS && ./preview/build-preview.sh` |
+| Open the mobile preview shell | `open apps/mac/HaloApp-iOS/preview/dist/index-preview.app` |
+
+The iOS simulator/device build requires a full Xcode install with the iOS SDK. The macOS desktop app and mobile preview shell can build with the macOS SDK.
+
+## Editing workflow
+
+- Edit desktop UI sources under `HaloApp/src/halo-amiga.html` and `HaloApp/src/halo-amiga/*.jsx`.
+- Edit mobile UI sources under `HaloApp-iOS/src/halo-mobile.html` and `HaloApp-iOS/src/halo-mobile/*.jsx`.
+- Keep the Swift shells thin: app/window lifecycle, WKWebView configuration, native alerts/menus, and bundled `index.html` loading. Product behavior belongs in the web bundle or shared Index protocol/API surfaces.
+- After web-layer edits, run the local `assemble.py` or `build.sh` so `Resources/index.html` reflects the source tree.
+- Read the design bundle's chat transcripts before reviving or reworking prototype UI from `design_bundle/halo/`; the README there explains the handoff expectations.
+
+## Generated artifacts
+
+Both apps inline vendored React, ReactDOM, Babel, and JSX modules into generated HTML bundles:
+
+```text
+HaloApp/Resources/index.html       generated from HaloApp/src/
+HaloApp-iOS/Resources/index.html   generated from HaloApp-iOS/src/
+```
+
+Do not hand-edit those generated HTML files. Regenerate them via each app's `assemble.py` or `build.sh`.
+
+The standalone mac client repository currently tracks built `.app` bundles under `dist/` as generated artifacts. Avoid deleting or regenerating `HaloApp/dist/` or `HaloApp-iOS/preview/dist/` casually; only commit those changes when you intentionally want the synced `indexnetwork/mac-client` artifact to change.
+
+## Subtree sync
+
+`apps/mac/` is a derived subtree that syncs to `indexnetwork/mac-client` when `dev` or `main` moves in the canonical `indexnetwork/index` repository. The sync workflow splits the `apps/mac` prefix and force-pushes it to the matching branch in the standalone repo.
+
+Normal development should happen in this monorepo. Manual subtree push/pull commands are documented in canonical [CLAUDE.md](https://github.com/indexnetwork/index/blob/dev/CLAUDE.md) for recovery cases.
+````
 
 ### Success Criteria:
 
 #### Automated Verification:
+- [x] Top-level mac README exists: `test -f apps/mac/README.md`
+- [x] Top-level mac README has no placeholder text: `! grep -R "TODO\|TBD\|PLACEHOLDER" apps/mac/README.md`
+- [x] README links to both app docs: `grep -q "HaloApp/README.md" apps/mac/README.md && grep -q "HaloApp-iOS/README.md" apps/mac/README.md`
+- [x] README documents subtree sync target: `grep -q "indexnetwork/mac-client" apps/mac/README.md`
+- [x] Generated bundles and app artifacts remain untouched: `test -z "$(git diff --name-only -- apps/mac | grep -E 'Resources/index.html|/dist/' || true)"`
 
 #### Manual Verification:
+- [ ] Common commands match `apps/mac/HaloApp/build.sh:11-29`, `apps/mac/HaloApp-iOS/build.sh:9-14`, and `apps/mac/HaloApp-iOS/preview/build-preview.sh:1-18`.
+- [ ] Links to `HaloApp/README.md`, `HaloApp-iOS/README.md`, and `design_bundle/halo/README.md` are relative and correct from `apps/mac/`, and canonical root-doc links point to `https://github.com/indexnetwork/index/blob/dev/README.md` and `https://github.com/indexnetwork/index/blob/dev/CLAUDE.md`.
+- [ ] Generated artifact warning matches `.rpiv/guidance/apps/mac/architecture.md:29-30` and does not tell contributors to delete or rebuild `dist/` casually.
 
 ## Ordering Constraints
 
@@ -192,11 +341,26 @@ Not applicable. No persisted schema, data migration, or runtime compatibility ch
 - Scope question: "`apps/mac/` has no top-level README, while `HaloApp-iOS` already has one (`apps/mac/HaloApp-iOS/README.md:1-80`) and desktop `HaloApp` only exposes comments/scripts (`apps/mac/HaloApp/build.sh:1-30`, `apps/mac/HaloApp/assemble.py:1-8`). Which documentation scope should this plan cover?" Answer: "Top + desktop".
 - Design confirmation: add `apps/mac/README.md` and `apps/mac/HaloApp/README.md`; do not rewrite iOS README, source files, or root docs. Answer: "Proceed (Recommended)".
 - Decomposition confirmation: Phase 1 desktop README, Phase 2 subtree README. Answer: "Approve (Recommended)".
+- Micro-checkpoint Slice 1: presented desktop README summary/signatures/key blocks grounded in `apps/mac/HaloApp/build.sh:11-29`, `apps/mac/HaloApp/assemble.py:1-8`, and `apps/mac/HaloApp/Sources/main.swift:73-80`. Answer: "Approve (Recommended)".
+- Micro-checkpoint Slice 2: presented subtree README summary/signatures/key blocks grounded in `apps/mac/HaloApp-iOS/build.sh:9-14`, `apps/mac/HaloApp-iOS/preview/build-preview.sh:1-18`, `.github/workflows/sync-subtrees.yml:50-51`, and `.rpiv/guidance/apps/mac/architecture.md:29-30`. Answer: "Approve (Recommended)".
+- Step 8 triage: root-doc link concerns for both README files were marked `applied`; phase code fences now use canonical GitHub links to `indexnetwork/index` root docs.
+- Step 8 triage: offline/self-contained wording concerns for both README files were marked `applied`; phase code fences now qualify claims to generated HTML bundles with vendored scripts/JSX inlined.
 
 ## Plan History
 
-- Phase 1: Desktop app README — pending
-- Phase 2: Subtree README — pending
+- Phase 1: Desktop app README — approved as generated
+- Phase 2: Subtree README — approved as generated
+
+## Plan Review (Step 8)
+
+_Independent post-finalization review by artifact-code-reviewer and artifact-coverage-reviewer subagents. Findings triaged at Step 9._
+
+| source | plan-loc | codebase-loc | severity | dimension | finding | recommendation | resolution |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| code | Phase 1 §1 (apps/mac/HaloApp/README.md) | .github/workflows/sync-subtrees.yml:50-51 | concern | codebase-fit | Because `apps/mac` is split to `indexnetwork/mac-client`, Phase 1's `../../../README.md` and `../../../CLAUDE.md` links will point outside the standalone repo after sync. | Replace those root-doc links with absolute links to the canonical `indexnetwork/index` README and CLAUDE.md. | applied: changed desktop README code fence and link success criterion to canonical GitHub URLs. |
+| code | Phase 1 §1 (apps/mac/HaloApp/README.md) | apps/mac/HaloApp/src/halo-amiga.html:7-9 | concern | codebase-fit | Phase 1 calls the desktop bundle `self-contained` and `fully offline`, but the source template still loads Google Fonts from `fonts.googleapis.com` and `fonts.gstatic.com`. | Qualify the offline claim to vendored JS/JSX only, or vendor the fonts before claiming the whole bundle is fully offline. | applied: qualified wording to assembled bundle with vendored scripts/JSX inlined and removed full-offline claim. |
+| code | Phase 2 §1 (apps/mac/README.md) | .github/workflows/sync-subtrees.yml:50-51 | concern | codebase-fit | Because `apps/mac/README.md` becomes the standalone repo root README, Phase 2's `../../README.md` and `../../CLAUDE.md` links will point outside `indexnetwork/mac-client` after sync. | Replace those root-doc links with absolute links to the canonical `indexnetwork/index` README and CLAUDE.md. | applied: changed top-level README code fence and link success criterion to canonical GitHub URLs. |
+| code | Phase 2 §1 (apps/mac/README.md) | apps/mac/HaloApp-iOS/src/halo-mobile.html:11-13 | concern | codebase-fit | Phase 2 says both apps produce `generated offline bundles`, but the mobile source template still includes Google Fonts network links. | Qualify the generated-bundle wording to say vendored scripts/JSX are inlined, or vendor the fonts before documenting the bundles as offline. | applied: qualified top-level wording to generated HTML bundles with vendored scripts/JSX inlined. |
 
 ## References
 

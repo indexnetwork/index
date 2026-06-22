@@ -1,9 +1,7 @@
 <h1 align="center">
-    <a href="https://index.network/#gh-light-mode-only">
-    <img style="width:400px" src="https://index.network/logo-black.svg">
-    </a>
-    <a href="https://index.network/#gh-dark-mode-only">
-    <img style="width:400px" src="https://index.network/logo.svg">
+    <a href="https://index.network">
+    <img style="width:400px" src="apps/web/public/logos/logo-black-full.svg#gh-light-mode-only" alt="Index Network">
+    <img style="width:400px" src="apps/web/public/logos/logo-white-full.svg#gh-dark-mode-only" alt="Index Network">
     </a>
 </h1>
 
@@ -16,9 +14,6 @@
     <img src="https://img.shields.io/badge/mit-blue.svg?label=license" alt="license">
   </a>
   <br>
-  <a href="https://discord.gg/wvdxP6XvYu">
-    <img src="https://img.shields.io/badge/discord-7289da.svg" alt="discord">
-  </a>
   <a href="https://x.com/indexnetwork_">
     <img src="https://img.shields.io/twitter/follow/indexnetwork_?style=social" alt="X">
   </a>
@@ -26,59 +21,59 @@
 
 ## About Index Network
 
-Index Network enables **private, intent-driven discovery** through a sophisticated opportunity detection system. Users express what they're seeking as structured intents, and the protocol identifies **opportunities** -- legible coordination points that emerge when aligned intents intersect with trust thresholds, timing constraints, and expected value calculations, making action rational for all parties involved.
+Index Network is a **private, intent-driven discovery protocol**. You or your agent tell it your intents — what you're looking for or what you can offer — and, in the background, agents negotiate over each other's intents: whether there's mutual interest, whether the timing is right, whether it's valuable to both sides, and everything in between.
 
-Unlike traditional matching systems that operate on profile similarity, Index treats opportunities as **first-class coordination primitives**: they exist as distinct entities with their own lifecycle, interpretations, and contextual metadata, enabling nuanced understanding of *why* and *when* a connection makes sense, not just *that* it matches.
+When there's alignment between agents, that's called an **opportunity** — surfaced to you along with the reasoning for why it's worth your time.
 
-## Key Features
+## Why it's different
 
-### Private Intent-Driven Discovery
+Most discovery is search over static profiles: you match on keywords and hope someone's bio reflects what they need right now. Index works on **intents**, not profiles — the live, specific things people are seeking and offering — and it never makes you broadcast them. Your intents stay private; agents do the reaching out, weighing, and negotiating on your behalf, and you only hear about a connection once it's been judged worth making for both sides.
 
-- **Intent-Based**: Express specific needs like "finding a privacy-focused AI engineer"
-- **Privacy by Design**: Index-based access control with granular permissions
-- **Opportunity Detection**: Context-aware agents surface coordination points when intents align
-- **Semantic Understanding**: Vector similarity and HyDE strategies for intelligent matching
-- **Agent Orchestration**: LangGraph-powered workflows for complex discovery tasks
-- **Bilateral Negotiation**: Two AI agents -- one per user -- debate proposed matches before they become opportunities, ensuring both sides genuinely benefit
+## How it works
 
-## How It Works
+1. **Express your intents.** You — or your agent — state what you're looking for or what you can offer, in plain language, scoped to the indexes (communities) you choose.
+2. **Agents negotiate in the background.** For each potential pairing, two agents debate the other's intents — mutual interest, timing, value to both sides, and everything in between — before anything reaches you. Neither side sees the other's raw private data.
+3. **Alignment becomes an opportunity.** When the agents agree there's a real fit, the protocol records an opportunity with a dual-perspective explanation of why it matters to each party.
+4. **You decide.** The opportunity is surfaced to you with its reasoning; you accept or decline.
+5. **Discovery never stops.** As your intents and context evolve, agents keep negotiating and new opportunities keep surfacing.
 
-1. **Users Express Intents**: Define what you're seeking in natural language
-2. **Context Organization**: Group intents into indexes with privacy controls
-3. **Opportunity Detection**: Agents identify coordination points when profiles and intents align
-4. **Bilateral Negotiation**: A proposer and responder agent debate each match, agreeing on fit scores and roles before persisting
-5. **Connection Facilitation**: Dual-perspective descriptions preserve privacy while explaining value
-6. **Continuous Discovery**: Profile updates trigger new opportunity searches
+## What makes it work
 
-## Architecture
+- **Intents, not profiles.** The unit of discovery is what you're seeking or offering right now — high-signal, time-aware, and private.
+- **Agent-to-agent negotiation.** Two AI agents, one per person, negotiate over each other's intents before any introduction, so opportunities are mutually worthwhile by construction.
+- **Bring your own agent.** Your personal agent can run inside your own MCP runtime — Claude Code, Codex, or any MCP-capable client — negotiating on your behalf. When no personal agent is connected, the system `Index Negotiator` steps in.
+- **Opportunities you can reason about.** Every surfaced opportunity comes with the reasoning for why it's worth your time, not just a similarity score.
+- **Private by design.** Index-based access control with granular permissions; discovery runs over embeddings and synthesized context, never raw profiles.
+
+---
+
+## How it's built
+
+Index is a Bun-managed monorepo. The backend (`services/api`, the "protocol") is a native `Bun.serve` HTTP server hosting the API, a LangGraph-based agent system, the database layer, job queues, and event infrastructure. The web client is a Vite + React Router SPA (`apps/web`), alongside a native macOS/iOS client in `apps/mac`.
+
+Under the hood, an intent becomes an opportunity through a discovery pipeline:
 
 ```
-+------------------------+    +------------------------+    +------------------------+
-|   Intent Graph         |--->|  Opportunity Engine     |--->|  Discovery Layer       |
-|                        |    |                        |    |                        |
-| - Semantic vectors     |    | - Multi-strategy       |    | - Bilateral            |
-| - Index partitions     |    |   HyDE generation      |    |   negotiation          |
-| - Speech act types     |    | - 4-dimensional        |    | - Dual synthesis       |
-| - Felicity scores      |    |   threshold eval       |    | - Contextual           |
-| - Temporal decay       |    | - Confidence scoring   |    |   integrity            |
-+------------------------+    +------------------------+    +------------------------+
+  intent     ──▶   discovery      ──▶   evaluation    ──▶   negotiation   ──▶   opportunity
+(seek/offer)      (context-to-intent    (fit scoring +       (agent-to-agent     (surfaced with
+                   + premise search)     valency roles)       deliberation)       reasoning)
 ```
 
-**Three-Layer Architecture**:
+- **Intent** — structured intents (seeking or offering) with semantic embeddings, index-based access control, and quality scores (semantic entropy, felicity conditions) keeping inputs high-signal.
+- **Discovery** — finds candidate intents across the network via context-to-intent and premise similarity search.
+- **Evaluation** — scores each candidate for fit and assigns valency roles (seeker, provider, peer) that govern who sees the opportunity and when.
+- **Negotiation** — the two parties' agents deliberate over each other's intents before anything is surfaced; the system `Index Negotiator` stands in when no personal agent is connected.
+- **Opportunity** — surfaced to each party with dual-perspective, privacy-preserving reasoning — never the raw data.
 
-1. **Intent Graph**: Structured intent storage with semantic embeddings, speech act validation, and index-based access control. Intents are first-class entities with quality scores (semantic entropy, felicity conditions) ensuring high-signal inputs.
+**Core infrastructure:**
 
-2. **Opportunity Engine**: Multi-dimensional detection system that generates hypothetical documents (HyDE) across LLM-inferred search lenses, evaluates candidates against trust/timing/value/alignment thresholds, and produces scored opportunities with dual-perspective interpretations.
-
-3. **Discovery Layer**: Privacy-preserving presentation system with bilateral negotiation. Two AI agents (proposer and responder) debate each candidate match before it becomes a real opportunity. Each party receives synthesized insights about potential connections without exposure to raw private data.
-
-**Core Infrastructure**:
-
-- **LangGraph** for 11 agent state machines (intent, opportunity, negotiation, profile, chat, and more) orchestrating complex workflows
+- **LangGraph** for the agent state machines (chat, intent, enrichment, opportunity, negotiation, and more) orchestrating complex workflows
 - **PostgreSQL with pgvector** for 2000-dimensional semantic search (HNSW indexes)
-- **Drizzle ORM** for type-safe database operations with schema-driven types
+- **Drizzle ORM** for type-safe, schema-driven database access
 - **OpenRouter** for LLM-powered agents with Zod-validated structured output
 - **BullMQ (Redis)** for asynchronous job processing and event-driven orchestration
+
+The code follows strict inward-pointing layering — **Controllers -> Services -> Adapters -> Infrastructure** — with the self-contained `@indexnetwork/protocol` package (graphs, agents, tools) receiving all dependencies via constructor injection. See [docs/design/architecture-overview.md](docs/design/architecture-overview.md) for the full picture.
 
 ## CLI
 
@@ -131,7 +126,7 @@ index opportunity accept <id>
 | `index conversation list` | List all conversations (H2A + H2H) |
 | `index conversation with <user-id>` | Open or resume a DM |
 | `index profile` | Show your profile |
-| `index profile sync` | Regenerate your profile |
+| `index profile sync` | Refresh your synthesized context |
 | `index profile search <query>` | Search profiles by name |
 | `index intent list` | List your signals |
 | `index intent create <content>` | Create a signal |
@@ -230,8 +225,8 @@ The `services/api/` directory contains the core agent infrastructure:
 
 ### Key Components
 
-- **Agents**: LangGraph-based agents for intent inference, opportunity evaluation, profile generation, and bilateral negotiation
-- **Graph Workflows**: 11 state machines (Chat, Intent, Index, Index Membership, Intent Index, Opportunity, Negotiation, Profile, HyDE, Home, Maintenance) orchestrating complex operations
+- **Agents**: LangGraph-based agents for intent inference, opportunity evaluation, user enrichment, and agent-to-agent negotiation
+- **Graph Workflows**: state machines (Chat, Intent, Enrichment, Opportunity, HyDE, Network, NetworkMembership, IntentNetwork, Home, Maintenance, Negotiation) orchestrating complex operations
 - **Database Layer**: PostgreSQL with pgvector for semantic search and Drizzle ORM for type safety
 - **Semantic Governance**: Intent quality validation using speech act theory and felicity conditions
 
