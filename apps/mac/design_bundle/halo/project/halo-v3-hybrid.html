@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>halo · hybrid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f4ef;
+    --paper:#ffffff;
+    --ink:#1c1b18;
+    --ink-2:#52504a;
+    --ink-3:#86837b;
+    --line:#e6e2d8;
+    --line-2:#d6d1c3;
+    --accent:#c45a2e;
+    --accent-soft:#f3e3d6;
+    --accent-ink:#7a3414;
+    --green:#3f7a4f;
+    --green-soft:#dfeede;
+    --amber:#a07530;
+    --amber-soft:#f3e7c8;
+    --blue:#3060a4;
+    --blue-soft:#dde6f3;
+    --purple:#6a4a9a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size:13.5px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  .mono{font-family:'JetBrains Mono', ui-monospace, Menlo, monospace}
+
+  .app{
+    position:fixed; inset:0;
+    display:grid;
+    grid-template-columns: 220px 1fr 320px;
+    grid-template-rows: 44px 1fr 64px;
+  }
+
+  /* top bar — spans all */
+  .topbar{
+    grid-column:1 / -1;
+    display:flex; align-items:center;
+    padding:0 18px;
+    background:var(--paper);
+    border-bottom:1px solid var(--line);
+    gap:18px;
+  }
+  .topbar .logo{
+    width:22px; height:22px; border-radius:99px;
+    background:radial-gradient(circle at 35% 35%, var(--accent), var(--accent-ink) 70%);
+    box-shadow:0 0 0 1px var(--line-2), 0 0 14px rgba(196,90,46,.25);
+    flex:0 0 auto;
+  }
+  .topbar .brand{font-weight:600; letter-spacing:-.2px}
+  .topbar .brand small{color:var(--ink-3); font-weight:400; margin-left:6px}
+  .topbar .crumb{
+    color:var(--ink-2); font-size:12.5px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .topbar .crumb b{color:var(--ink); font-weight:500}
+  .topbar .crumb .chev{color:var(--ink-3)}
+  .topbar .live{
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--accent); background:var(--accent-soft);
+    padding:3px 8px; border-radius:99px;
+    display:inline-flex; align-items:center; gap:6px;
+    font-weight:500;
+  }
+  .topbar .live::before{
+    content:""; width:6px; height:6px; border-radius:99px; background:var(--accent);
+  }
+  .topbar .right{
+    margin-left:auto; display:flex; align-items:center; gap:6px;
+  }
+  .topbar .iconbtn{
+    width:30px; height:30px; border-radius:6px;
+    border:1px solid var(--line); background:var(--paper);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; color:var(--ink-2);
+    font-size:13px;
+  }
+  .topbar .iconbtn:hover{background:#fafaf6}
+  .topbar .you{
+    display:flex; align-items:center; gap:8px;
+    padding:4px 10px 4px 4px;
+    border:1px solid var(--line); border-radius:99px;
+    background:var(--paper); margin-left:6px;
+  }
+  .topbar .you .av{
+    width:22px; height:22px; border-radius:99px;
+    background:linear-gradient(135deg, #2d2b27, #57544c);
+    color:#fff; font-size:10px; font-weight:600;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  /* left sidebar */
+  .side{
+    border-right:1px solid var(--line);
+    background:#fbfaf6;
+    padding:18px 14px; overflow:auto;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .side .sec-label{
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--ink-3); padding:14px 8px 6px;
+    font-weight:500;
+  }
+  .side .sec-label:first-child{padding-top:0}
+  .side .item{
+    display:flex; align-items:center; gap:10px;
+    padding:7px 9px; border-radius:7px;
+    color:var(--ink-2); font-size:13px; cursor:pointer;
+  }
+  .side .item:hover{background:#f0ede4}
+  .side .item.active{background:var(--ink); color:#fff}
+  .side .item.active .count{color:#d7d3ca}
+  .side .item .ic{
+    width:14px; height:14px; flex:0 0 auto;
+    color:currentColor; opacity:.85;
+  }
+  .side .item .label{flex:1; min-width:0}
+  .side .item .count{
+    color:var(--ink-3); font-size:11.5px;
+    font-variant-numeric:tabular-nums;
+  }
+  .side .item .pulse{
+    width:6px; height:6px; border-radius:99px; background:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .side .field-card{
+    margin-top:auto;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--paper);
+    padding:12px;
+  }
+  .side .field-card .name{
+    font-weight:600; font-size:14px; margin-bottom:2px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .side .field-card .where{
+    color:var(--ink-3); font-size:11.5px;
+  }
+  .side .field-card .row{
+    display:flex; justify-content:space-between;
+    margin-top:8px; font-size:11.5px; color:var(--ink-2);
+  }
+  .side .field-card .row b{color:var(--ink); font-weight:500}
+
+  /* center column */
+  .center{
+    overflow:auto;
+    padding:20px 22px 12px;
+    display:flex; flex-direction:column; gap:14px;
+    min-width:0;
+  }
+
+  .h1{
+    font-size:22px; font-weight:600; letter-spacing:-.4px;
+    display:flex; align-items:center; gap:12px;
+    margin-bottom:-2px;
+  }
+  .h1 .sub{
+    font-size:12.5px; font-weight:400; color:var(--ink-3);
+    margin-left:auto;
+  }
+
+  /* metric strip */
+  .metrics{
+    display:grid; grid-template-columns:repeat(4, 1fr);
+    gap:10px;
+  }
+  .metric{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:12px 14px;
+  }
+  .metric .k{
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--ink-3); margin-bottom:4px;
+  }
+  .metric .v{
+    font-size:22px; font-weight:600; letter-spacing:-.5px;
+    display:flex; align-items:baseline; gap:6px;
+    font-variant-numeric:tabular-nums;
+  }
+  .metric .v small{color:var(--ink-3); font-size:12px; font-weight:400}
+  .metric .delta{
+    font-size:11px; color:var(--green); margin-top:4px;
+  }
+  .metric .delta.neutral{color:var(--ink-3)}
+
+  /* card */
+  .card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:12px;
+    overflow:hidden;
+  }
+  .card .card-head{
+    display:flex; align-items:center; gap:10px;
+    padding:13px 18px;
+    border-bottom:1px solid var(--line);
+    font-size:13px;
+  }
+  .card .card-head h3{
+    font-size:13px; font-weight:600; letter-spacing:-.1px;
+  }
+  .card .card-head .badge{
+    font-size:10.5px; letter-spacing:1px; text-transform:uppercase;
+    background:var(--accent-soft); color:var(--accent-ink);
+    padding:2px 7px; border-radius:99px;
+    font-weight:500;
+  }
+  .card .card-head .right{margin-left:auto; color:var(--ink-3); font-size:11.5px}
+  .card .card-head .right kbd{
+    color:var(--ink); padding:1px 5px;
+    border:1px solid var(--line-2); border-bottom-width:2px;
+    border-radius:4px; background:#fafaf6;
+    font:inherit; font-size:10.5px;
+    margin:0 1px;
+  }
+
+  /* intros list */
+  .intro-list{display:flex; flex-direction:column}
+  .intro{
+    display:grid;
+    grid-template-columns: 36px 1fr auto;
+    gap:14px;
+    padding:14px 18px;
+    border-bottom:1px solid var(--line);
+    align-items:center;
+  }
+  .intro:last-child{border-bottom:none}
+  .intro .av{
+    width:36px; height:36px; border-radius:99px;
+    background:var(--line-2);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--ink-2); font-size:12.5px; font-weight:500;
+    flex:0 0 auto;
+  }
+  .intro .av.a1{background:#e6dcc8; color:#7a5a14}
+  .intro .av.a2{background:#dcdcec; color:#3a3a72}
+  .intro .body .who{
+    font-weight:500; display:flex; align-items:center; gap:8px;
+    font-size:13.5px;
+  }
+  .intro .body .who .id{
+    color:var(--ink-3); font-size:11px; font-weight:400;
+    font-family:'JetBrains Mono', monospace;
+  }
+  .intro .body .basis{
+    color:var(--ink-2); font-size:12.5px; margin-top:2px;
+  }
+  .intro .body .basis .tag{
+    color:var(--accent-ink); background:var(--accent-soft);
+    padding:1px 6px; border-radius:4px; font-size:11.5px;
+  }
+  .intro .right{
+    display:flex; flex-direction:column; align-items:flex-end; gap:8px;
+  }
+  .intro .conf{
+    font-size:13.5px; font-weight:600; color:var(--accent);
+    font-variant-numeric:tabular-nums;
+  }
+  .intro .conf small{
+    color:var(--ink-3); font-weight:400; font-size:10.5px;
+    letter-spacing:1px; text-transform:uppercase; margin-left:4px;
+  }
+  .intro .btns{display:flex; gap:6px}
+  .btn{
+    font:inherit; font-size:12px;
+    padding:5px 11px; border-radius:7px;
+    border:1px solid var(--line); background:var(--paper);
+    color:var(--ink-2); cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .btn:hover{background:#fafaf6; border-color:var(--line-2)}
+  .btn.primary{
+    background:var(--ink); color:#fff; border-color:var(--ink);
+  }
+  .btn.primary:hover{background:#000}
+  .btn kbd{
+    color:inherit; opacity:.7;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+  }
+  .btn.primary kbd{opacity:.8}
+
+  /* live feed (compact) */
+  .feed{
+    padding:4px 18px 8px;
+    max-height:240px; overflow:auto;
+  }
+  .feed .row{
+    display:grid;
+    grid-template-columns: 60px 20px 1fr;
+    gap:10px;
+    align-items:baseline;
+    padding:5px 0;
+    font-size:12.5px;
+    border-bottom:1px dashed var(--line);
+  }
+  .feed .row:last-child{border-bottom:none}
+  .feed .ts{
+    color:var(--ink-3); font-family:'JetBrains Mono', monospace;
+    font-size:11px; font-variant-numeric:tabular-nums;
+  }
+  .feed .ic{
+    width:14px; height:14px; border-radius:99px;
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:8px; color:#fff; font-weight:600;
+  }
+  .feed .ic.neg{background:var(--accent)}
+  .feed .ic.ok{background:var(--green)}
+  .feed .ic.info{background:var(--blue)}
+  .feed .ic.warn{background:var(--amber)}
+  .feed .msg{color:var(--ink-2)}
+  .feed .msg b{color:var(--ink); font-weight:500}
+  .feed .msg .id{color:var(--purple); font-family:'JetBrains Mono', monospace; font-size:11.5px}
+  .feed .msg .acc{color:var(--accent-ink); background:var(--accent-soft); padding:1px 5px; border-radius:4px; font-size:11.5px}
+
+  /* right rail */
+  .rail{
+    border-left:1px solid var(--line);
+    background:var(--paper);
+    overflow:auto; padding:20px 18px;
+    display:flex; flex-direction:column; gap:18px;
+  }
+  .rail .sec-label{
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--ink-3); font-weight:500;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .agent-block{
+    border:1px solid var(--line); border-radius:10px;
+    padding:14px;
+  }
+  .agent-block .head{
+    display:flex; align-items:center; gap:10px; margin-bottom:8px;
+  }
+  .agent-block .head .name{font-weight:600}
+  .agent-block .head .state{
+    margin-left:auto;
+    font-size:10.5px; letter-spacing:1px; text-transform:uppercase;
+    color:var(--green); background:var(--green-soft);
+    padding:2px 7px; border-radius:99px; font-weight:500;
+  }
+  .agent-block .quote{
+    color:var(--ink); font-size:13px;
+    font-style:italic;
+    border-left:2px solid var(--line-2);
+    padding-left:10px;
+    margin:6px 0 10px;
+  }
+  .agent-block .row{
+    display:flex; justify-content:space-between;
+    font-size:11.5px; color:var(--ink-2);
+    padding:3px 0;
+  }
+  .agent-block .row b{
+    color:var(--ink); font-weight:500;
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+  }
+
+  .signals .item{
+    padding:10px 0; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; gap:10px;
+  }
+  .signals .item:last-child{border-bottom:none}
+  .signals .item .dot{
+    width:8px; height:8px; border-radius:99px;
+    background:var(--accent); margin-top:6px; flex:0 0 auto;
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .signals .item .txt{
+    font-size:12.5px; color:var(--ink); flex:1;
+  }
+  .signals .item .txt .meta{
+    color:var(--ink-3); font-size:11px; margin-top:2px;
+  }
+  .signals .add{
+    margin-top:6px; width:100%; justify-content:center;
+  }
+
+  .privacy{
+    background:var(--green-soft);
+    border:1px solid #c6dec3;
+    border-radius:10px;
+    padding:12px 14px;
+    display:flex; gap:10px; align-items:flex-start;
+  }
+  .privacy .ic{
+    width:18px; height:18px; flex:0 0 auto; margin-top:1px;
+    border-radius:99px; background:var(--green);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-size:10px; font-weight:700;
+  }
+  .privacy .t{font-size:12.5px; color:#2a4f33}
+  .privacy .t b{font-weight:600; color:#1f3d27}
+  .privacy .t small{color:#476b50; display:block; margin-top:2px; font-size:11px}
+
+  /* bottom palette */
+  .palette{
+    grid-column:1 / -1;
+    border-top:1px solid var(--line);
+    background:var(--paper);
+    display:flex; align-items:center; gap:14px;
+    padding:0 20px;
+  }
+  .palette .prompt{
+    display:flex; align-items:center; gap:6px;
+    color:var(--ink-3); font-size:12.5px;
+    font-family:'JetBrains Mono', monospace;
+  }
+  .palette .prompt .field{color:var(--accent)}
+  .palette .prompt .arrow{color:var(--accent); font-size:14px}
+  .palette input{
+    flex:1; background:transparent; border:0; outline:0;
+    font:inherit; font-size:14px; color:var(--ink); padding:0;
+  }
+  .palette input::placeholder{color:var(--ink-3)}
+  .palette .chip{
+    display:inline-flex; align-items:center; gap:5px;
+    padding:4px 9px;
+    border:1px solid var(--line); border-radius:99px;
+    font-size:11.5px; color:var(--ink-2); cursor:pointer;
+    background:#fbfaf6;
+  }
+  .palette .chip:hover{background:#f3f1e8}
+  .palette .chip kbd{
+    color:var(--ink); font-family:'JetBrains Mono', monospace;
+    font-size:10px; padding:0 3px;
+    border:1px solid var(--line-2); border-radius:3px;
+    background:var(--paper);
+  }
+  .palette .right{
+    margin-left:auto; display:flex; gap:8px; align-items:center;
+  }
+  .palette .send{
+    background:var(--ink); color:#fff;
+    padding:7px 14px; border-radius:7px;
+    font-size:12.5px; font-weight:500; cursor:pointer;
+    border:0;
+    display:flex; align-items:center; gap:6px;
+  }
+  .palette .send kbd{
+    color:#d7d3ca; font-family:'JetBrains Mono', monospace;
+    font-size:10px; border:1px solid #555; padding:0 4px; border-radius:3px;
+  }
+
+  /* tiny svg helpers */
+  .ic-svg{width:14px; height:14px; flex:0 0 auto}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- TOP -->
+  <header class="topbar">
+    <div class="logo"></div>
+    <div class="brand">halo<small>0.4.2</small></div>
+    <div class="crumb">
+      <span>field</span>
+      <span class="chev">/</span>
+      <b>synthesis</b>
+      <span class="chev">·</span>
+      <span class="mono" style="font-size:11.5px;color:var(--ink-3)">syn-0518-bk-04</span>
+    </div>
+    <span class="live">live</span>
+    <div class="right">
+      <span class="mono" style="color:var(--ink-3); font-size:11.5px; margin-right:6px">62/251 online · 19:42</span>
+      <button class="iconbtn" title="signal"><svg class="ic-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 13 L8 8 L13 13" /><circle cx="8" cy="4" r="1.5" fill="currentColor"/></svg></button>
+      <button class="iconbtn" title="privacy"><svg class="ic-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1 L13 4 V8 C13 11 8 14 8 14 C8 14 3 11 3 8 V4 Z"/></svg></button>
+      <div class="you"><div class="av">YO</div>you</div>
+    </div>
+  </header>
+
+  <!-- LEFT -->
+  <aside class="side">
+
+    <div class="sec-label">tonight</div>
+    <div class="item active">
+      <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>
+      <span class="label">field</span>
+      <span class="count">live</span>
+    </div>
+    <div class="item">
+      <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8 H13"/><path d="M3 4 H13"/><path d="M3 12 H10"/></svg>
+      <span class="label">negotiations</span>
+      <span class="count">42</span>
+    </div>
+    <div class="item">
+      <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5" cy="6" r="2"/><circle cx="11" cy="6" r="2"/><path d="M2 13 C2 11 4 10 5 10 C6 10 8 11 8 13 M8 13 C8 11 10 10 11 10 C12 10 14 11 14 13"/></svg>
+      <span class="label">intros</span>
+      <span class="pulse"></span>
+      <span class="count">2</span>
+    </div>
+    <div class="item">
+      <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8 H14 M8 2 C10 4 10 12 8 14 C6 12 6 4 8 2"/></svg>
+      <span class="label">peers</span>
+      <span class="count">62</span>
+    </div>
+
+    <div class="sec-label">history</div>
+    <div class="item">
+      <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1"/><path d="M5 1 V5 M11 1 V5 M2 7 H14"/></svg>
+      <span class="label">past fields</span>
+      <span class="count">14</span>
+    </div>
+    <div class="item">
+      <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 13 L3 3 L13 3 L13 13 Z"/><path d="M6 6 H10 M6 9 H10"/></svg>
+      <span class="label">receipts</span>
+      <span class="count">87</span>
+    </div>
+
+    <div class="sec-label">agent</div>
+    <div class="item">
+      <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14 C3 11 5 10 8 10 C11 10 13 11 13 14"/></svg>
+      <span class="label">your halo</span>
+    </div>
+    <div class="item">
+      <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4 V8 L11 10"/></svg>
+      <span class="label">settings</span>
+    </div>
+
+    <div class="field-card">
+      <div class="name">
+        <span>synthesis</span>
+      </div>
+      <div class="where">the hex · brooklyn · thu may 18</div>
+      <div class="row"><span>arrived</span><b>88 / 251</b></div>
+      <div class="row"><span>your time</span><b>2h 14m</b></div>
+    </div>
+
+  </aside>
+
+  <!-- CENTER -->
+  <main class="center">
+
+    <div class="h1">
+      synthesis
+      <span class="sub">2 intros pending your nod · 42 negotiations underway</span>
+    </div>
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="k">arrived</div>
+        <div class="v">88<small>/ 251</small></div>
+        <div class="delta">+7 in last 10m</div>
+      </div>
+      <div class="metric">
+        <div class="k">online</div>
+        <div class="v">62<small>/ 251</small></div>
+        <div class="delta neutral">stable</div>
+      </div>
+      <div class="metric">
+        <div class="k">negotiating</div>
+        <div class="v">3<small>live</small></div>
+        <div class="delta">+1</div>
+      </div>
+      <div class="metric">
+        <div class="k">intros made</div>
+        <div class="v">12<small>tonight</small></div>
+        <div class="delta">+2 last hour</div>
+      </div>
+    </div>
+
+    <!-- intros -->
+    <div class="card">
+      <div class="card-head">
+        <h3>intros</h3>
+        <span class="badge">2 pending</span>
+        <div class="right"><kbd>a</kbd>accept · <kbd>d</kbd>decline · <kbd>?</kbd>why</div>
+      </div>
+
+      <div class="intro-list">
+
+        <div class="intro">
+          <div class="av a1">L</div>
+          <div class="body">
+            <div class="who">someone @ the bar <span class="id">intr-2901</span></div>
+            <div class="basis">both reading <span class="tag">le guin</span> · both came alone · mutual quiet</div>
+          </div>
+          <div class="right">
+            <div class="conf">91%<small>match</small></div>
+            <div class="btns">
+              <button class="btn">decline <kbd>d</kbd></button>
+              <button class="btn primary">accept <kbd>a</kbd></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="intro">
+          <div class="av a2">F</div>
+          <div class="body">
+            <div class="who">someone near the speakers <span class="id">intr-2902</span></div>
+            <div class="basis">mentioned <span class="tag">"field recordings"</span> · 2 mutual silent acks</div>
+          </div>
+          <div class="right">
+            <div class="conf">78%<small>match</small></div>
+            <div class="btns">
+              <button class="btn">decline <kbd>d</kbd></button>
+              <button class="btn primary">accept <kbd>a</kbd></button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- live feed -->
+    <div class="card">
+      <div class="card-head">
+        <h3>negotiations</h3>
+        <span class="badge" style="background:var(--blue-soft);color:#1f3d6a">streaming</span>
+        <div class="right mono">0.4 events/s</div>
+      </div>
+      <div class="feed">
+        <div class="row"><span class="ts">19:42:01</span><span class="ic ok">✓</span><span class="msg">intent matched · basis: <span class="acc">both reading le guin</span> · conf 87%</span></div>
+        <div class="row"><span class="ts">19:42:03</span><span class="ic info">i</span><span class="msg">gossip: <b>7</b> new attendees in last 60s</span></div>
+        <div class="row"><span class="ts">19:42:04</span><span class="ic neg">⇌</span><span class="msg">agent <span class="id">7e4d</span> proposed <span class="acc">"small rooms"</span> · 4 responses</span></div>
+        <div class="row"><span class="ts">19:42:06</span><span class="ic warn">!</span><span class="msg">peer <span class="id">9f01</span> declined — basis withheld</span></div>
+        <div class="row"><span class="ts">19:42:07</span><span class="ic ok">✓</span><span class="msg">handshake 3/3 signed · intro queued</span></div>
+        <div class="row"><span class="ts">19:42:09</span><span class="ic neg">⇌</span><span class="msg">cluster forming around <span class="acc">"field recordings"</span> · 5 agents</span></div>
+        <div class="row"><span class="ts">19:42:11</span><span class="ic info">i</span><span class="msg">privacy: 0 bytes egress · all local</span></div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- RIGHT -->
+  <aside class="rail">
+
+    <div class="sec-label">your agent</div>
+    <div class="agent-block">
+      <div class="head">
+        <div class="logo" style="width:18px;height:18px"></div>
+        <div class="name">halo</div>
+        <div class="state">listening</div>
+      </div>
+      <div class="quote">"the room is the algorithm."</div>
+      <div class="row"><span>identity</span><b>F3a9…c70b</b></div>
+      <div class="row"><span>personality</span><b>v3</b></div>
+      <div class="row"><span>autonomy</span><b>ask before intro</b></div>
+    </div>
+
+    <div class="sec-label">
+      <span>your signals</span>
+      <span style="color:var(--ink-3); font-size:10.5px; text-transform:none; letter-spacing:0">live · local-only</span>
+    </div>
+    <div class="signals">
+      <div class="item">
+        <span class="dot"></span>
+        <div class="txt">
+          slow software
+          <div class="meta">signaled 12m ago · 1 peer also did</div>
+        </div>
+      </div>
+      <div class="item">
+        <span class="dot" style="background:var(--blue); box-shadow:0 0 0 3px var(--blue-soft)"></span>
+        <div class="txt">
+          letter-writing
+          <div class="meta">signaled 4m ago · 0 matches yet</div>
+        </div>
+      </div>
+      <div class="item">
+        <span class="dot" style="background:var(--green); box-shadow:0 0 0 3px var(--green-soft)"></span>
+        <div class="txt">
+          came alone
+          <div class="meta">implicit · 23 peers also</div>
+        </div>
+      </div>
+      <button class="btn add">+ add a signal</button>
+    </div>
+
+    <div class="privacy">
+      <div class="ic">✓</div>
+      <div class="t">
+        <b>local-first.</b>
+        <small>nothing leaves your device until you accept an intro. egress: 0 B.</small>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- BOTTOM -->
+  <div class="palette">
+    <span class="prompt"><span class="field">halo</span>·syn-0518-bk-04<span class="arrow">›</span></span>
+    <input placeholder="signal something, ask halo why, or type a command — try /signal &quot;small rooms&quot;" />
+    <span class="chip"><kbd>/</kbd>commands</span>
+    <span class="chip"><kbd>i</kbd>intros</span>
+    <span class="chip"><kbd>?</kbd>help</span>
+    <button class="send">send <kbd>↵</kbd></button>
+  </div>
+
+</div>
+
+</body>
+</html>

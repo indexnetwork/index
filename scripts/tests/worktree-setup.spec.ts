@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, lstatSync, readlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, lstatSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe("worktree-setup.sh", () => {
-  it("links env files for backend and package workspaces into the worktree", async () => {
+  it("links env files for API, web, and package workspaces into the worktree", async () => {
     const repo = makeTempRepo();
     const scriptSrc = resolve(import.meta.dir, "..", "worktree-setup.sh");
     const scriptsDir = join(repo, "scripts");
@@ -53,22 +53,24 @@ describe("worktree-setup.sh", () => {
     writeFileSync(join(hooksDir, "pre-commit"), "#!/usr/bin/env bash\n");
 
     for (const dir of [
-      "backend",
-      "frontend",
+      "services/api",
+      "apps/web",
       "packages/protocol",
       "packages/cli",
-      ".worktrees/fixture/backend/node_modules",
-      ".worktrees/fixture/frontend/node_modules",
+      ".worktrees/fixture/services/api/node_modules",
+      ".worktrees/fixture/apps/web/node_modules",
       ".worktrees/fixture/packages/protocol",
       ".worktrees/fixture/packages/cli",
     ]) {
       mkdirSync(join(repo, dir), { recursive: true });
     }
 
-    writeFileSync(join(repo, "backend", ".env.test"), "BACKEND_TEST=1\n");
+    writeFileSync(join(repo, "services/api", ".env.test"), "API_TEST=1\n");
+    writeFileSync(join(repo, "apps/web", ".env.local"), "WEB_TEST=1\n");
     writeFileSync(join(repo, "packages/protocol", ".env.test"), "PROTOCOL_TEST=1\n");
     writeFileSync(join(repo, "packages/cli", ".env.test"), "CLI_TEST=1\n");
-    writeFileSync(join(repo, "backend", ".env.example"), "IGNORE=1\n");
+    writeFileSync(join(repo, "services/api", ".env.example"), "IGNORE=1\n");
+    writeFileSync(join(repo, "apps/web", ".env.example"), "IGNORE=1\n");
     writeFileSync(join(repo, "packages/protocol", ".env.example"), "IGNORE=1\n");
     writeFileSync(join(repo, "packages/cli", ".env.example"), "IGNORE=1\n");
 
@@ -80,7 +82,8 @@ describe("worktree-setup.sh", () => {
     expect(result.code).toBe(0);
 
     const linkedFiles = [
-      ["backend/.env.test", "backend/.env.test"],
+      ["services/api/.env.test", "services/api/.env.test"],
+      ["apps/web/.env.local", "apps/web/.env.local"],
       ["packages/protocol/.env.test", "packages/protocol/.env.test"],
       ["packages/cli/.env.test", "packages/cli/.env.test"],
     ] as const;
@@ -89,7 +92,7 @@ describe("worktree-setup.sh", () => {
       const linkPath = join(worktreeDir, target);
       expect(existsSync(linkPath)).toBe(true);
       expect(lstatSync(linkPath).isSymbolicLink()).toBe(true);
-      expect(readlinkSync(linkPath)).toBe(join(repo, source));
+      expect(realpathSync(linkPath)).toBe(realpathSync(join(repo, source)));
     }
   });
 });

@@ -1,6 +1,6 @@
 # CLAUDE.md — @indexnetwork/protocol
 
-Agent graphs, interfaces, and tools layer of Index Network. Published as an npm package; consumed by `backend/` as a versioned dependency. Zero imports from the app — all infrastructure is injected via constructor through the interfaces in `shared/interfaces/`.
+Agent graphs, interfaces, and tools layer of Index Network. Published as an npm package; consumed by `services/api/` as a versioned dependency. Zero imports from the app — all infrastructure is injected via constructor through the interfaces in `shared/interfaces/`.
 
 ## Commands
 
@@ -30,13 +30,13 @@ Each domain exposes a `*GraphFactory` class. Pattern:
 2. `{domain}/{domain}.graph.ts` — `*GraphFactory` class; constructor receives typed deps (subsets of the interfaces in `shared/interfaces/`). Compile graph in the constructor.
 3. Export the factory from `src/index.ts`.
 
-Graphs must not import from `backend/` or use global config state — they call `createModel()` from `shared/agent/model.config.ts`.
+Graphs must not import from `services/api/` or use global config state — they call `createModel()` from `shared/agent/model.config.ts`.
 
 ## Adding a new infrastructure interface
 
 1. Create `shared/interfaces/{concept}.interface.ts` with the interface and any supporting types.
 2. Export it from `src/index.ts` under the `// ─── Interfaces` section.
-3. The backend's `src/adapters/` will implement it and inject it at composition root (`src/protocol-init.ts`). Adapters must not import from this package's interfaces — they define their own aligned types.
+3. The API service's `src/adapters/` will implement it and inject it at composition root (`src/protocol-init.ts`). Adapters must not import from this package's interfaces — they define their own aligned types.
 
 ## Skills templates
 

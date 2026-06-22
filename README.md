@@ -180,16 +180,16 @@ bun install
 3. **Set up environment variables**
 
 ```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
+cp services/api/.env.example services/api/.env
+cp apps/web/.env.example apps/web/.env
 
-# Edit backend/.env: set DATABASE_URL, OPENROUTER_API_KEY, BETTER_AUTH_SECRET
+# Edit services/api/.env: set DATABASE_URL, OPENROUTER_API_KEY, BETTER_AUTH_SECRET
 ```
 
 4. **Initialize the database**
 
 ```bash
-cd backend
+cd services/api
 bun run db:migrate
 bun run db:seed       # optional: populate sample data
 ```
@@ -197,12 +197,12 @@ bun run db:seed       # optional: populate sample data
 5. **Start the development servers**
 
 ```bash
-# Terminal 1: Backend server (port 3001)
-cd backend
+# Terminal 1: API service (port 3001)
+cd services/api
 bun run dev
 
-# Terminal 2: Frontend dev server (port 3000, proxies /api to backend)
-cd frontend
+# Terminal 2: Web dev server (port 3000, proxies /api to API service)
+cd apps/web
 bun run dev
 ```
 
@@ -214,15 +214,19 @@ Visit `http://localhost:3000` to see the application.
 
 ```
 index/
-├── backend/           # Backend API and agent engine (Bun, Express, TypeScript)
-├── frontend/          # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
+├── apps/
+│   ├── web/           # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
+│   └── mac/           # Native Apple client subtree → indexnetwork/mac-client
+├── services/
+│   └── api/           # Backend API and agent engine (Bun, TypeScript)
+├── packages/          # Shared protocol, CLI, and plugin packages
 ├── docs/              # Project documentation (see Documentation section)
 └── scripts/           # Worktree helpers, hooks, dev launcher
 ```
 
 ## Protocol Implementation
 
-The `backend/` directory contains the core agent infrastructure:
+The `services/api/` directory contains the core agent infrastructure:
 
 ### Key Components
 
@@ -233,10 +237,10 @@ The `backend/` directory contains the core agent infrastructure:
 
 ### Development Commands
 
-For the full list of backend commands (DB, workers, maintenance), see [CLAUDE.md](CLAUDE.md).
+For the full list of API service commands (DB, workers, maintenance), see [CLAUDE.md](CLAUDE.md).
 
 ```bash
-cd backend
+cd services/api
 
 # Start development server (Bun.serve, port 3001)
 bun run dev
@@ -306,7 +310,7 @@ bun run worktree:setup feat-your-feature
 bun run worktree:dev feat-your-feature
 
 # Make changes and test
-cd backend && bun test path/to/affected.spec.ts
+cd services/api && bun test path/to/affected.spec.ts
 
 # Submit PR targeting dev
 gh pr create --base dev --title "feat: your feature" --body "..."

@@ -3,8 +3,25 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKTREES_DIR="$REPO_ROOT/.worktrees"
-INSTALL_WORKSPACES=("backend" "frontend")
-ENV_WORKSPACES=("backend" "frontend" "packages/protocol" "packages/cli")
+INSTALL_WORKSPACES=("services/api" "apps/web")
+ENV_WORKSPACES=("services/api" "apps/web" "packages/protocol" "packages/cli")
+
+# Local secrets are gitignored. During the backend/frontend -> services/api/apps/web
+# transition, developers may still have .env files in the legacy directories, so
+# link from the new location first and then fall back to the old one.
+env_source_dirs() {
+  case "$1" in
+    services/api)
+      printf '%s\n' "$REPO_ROOT/services/api" "$REPO_ROOT/backend"
+      ;;
+    apps/web)
+      printf '%s\n' "$REPO_ROOT/apps/web" "$REPO_ROOT/frontend"
+      ;;
+    *)
+      printf '%s\n' "$REPO_ROOT/$1"
+      ;;
+  esac
+}
 
 if [ -z "${1:-}" ]; then
   echo "Usage: bun run worktree:setup <worktree-name>"
@@ -28,7 +45,6 @@ echo "Setting up worktree: $1"
 echo ""
 
 for ws in "${ENV_WORKSPACES[@]}"; do
-  ws_src="$REPO_ROOT/$ws"
   ws_dst="$WORKTREE/$ws"
 
   if [ ! -d "$ws_dst" ]; then
@@ -55,18 +71,25 @@ for ws in "${ENV_WORKSPACES[@]}"; do
   fi
 
   # Symlink .env* files (excluding .env.example)
-  for env_file in "$ws_src"/.env*; do
-    [ -e "$env_file" ] || continue
-    basename="$(basename "$env_file")"
-    [ "$basename" = ".env.example" ] && continue
+  while IFS= read -r ws_src; do
+    [ -d "$ws_src" ] || continue
+    for env_file in "$ws_src"/.env*; do
+      [ -e "$env_file" ] || continue
+      basename="$(basename "$env_file")"
+      [ "$basename" = ".env.example" ] && continue
 
-    if [ -L "$ws_dst/$basename" ]; then
-      echo "  [$ws] $basename already linked"
-    else
-      ln -s "$env_file" "$ws_dst/$basename"
-      echo "  [$ws] $basename -> linked"
-    fi
-  done
+      if [ -e "$ws_dst/$basename" ] || [ -L "$ws_dst/$basename" ]; then
+        if [ -L "$ws_dst/$basename" ]; then
+          echo "  [$ws] $basename already linked"
+        else
+          echo "  [$ws] $basename exists (not a symlink, skipping)"
+        fi
+      else
+        ln -s "$env_file" "$ws_dst/$basename"
+        echo "  [$ws] $basename -> linked"
+      fi
+    done
+  done < <(env_source_dirs "$ws")
 done
 
 # Symlink .claude/settings.local.json (gitignored, not present in worktrees)

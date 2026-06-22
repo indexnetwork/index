@@ -209,8 +209,8 @@ The `MSG_PARAM_CLAUSE` has been updated to explicitly scope greeting composition
 
 | File | Change |
 |------|--------|
-| `backend/src/controllers/opportunity.controller.ts` | New `GET /:id/approve-introduction` endpoint |
-| `backend/src/services/opportunity.service.ts` | Approval logic if not already exposed for this flow |
+| `services/api/src/controllers/opportunity.controller.ts` | New `GET /:id/approve-introduction` endpoint |
+| `services/api/src/services/opportunity.service.ts` | Approval logic if not already exposed for this flow |
 | `packages/openclaw-plugin/src/lib/delivery/main-agent.prompt.ts` | Add `feedCategory` to `OpportunityCandidate`, `totalPending` to payloads, rewrite `perTypeInstruction` for welcome/daily/ambient |
 | `packages/openclaw-plugin/src/polling/ambient-discovery/ambient-discovery.poller.ts` | Thread `feedCategory`, `totalPending`, build approve URLs for connector-flow |
 | `packages/openclaw-plugin/src/polling/daily-digest/daily-digest.poller.ts` | Same |

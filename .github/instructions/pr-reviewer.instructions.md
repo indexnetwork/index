@@ -7,7 +7,7 @@ applyTo: "**"
 - Flag any controller that imports directly from an adapter (e.g. `drizzle.ts`, `database.adapter.ts`) — controllers must delegate to services only.
 - Flag any service that imports another service — use events, queues, or shared lib for cross-service orchestration.
 - Flag any agent file that imports from the database schema or adapters — agents must remain pure and receive dependencies via constructor injection.
-- Flag any `@indexnetwork/protocol` package code that imports from the app layer (`backend/src/`) — the protocol package must be fully self-contained.
+- Flag any `@indexnetwork/protocol` package code that imports from the app layer (`services/api/src/`) — the protocol package must be fully self-contained.
 
 ## TypeScript
 

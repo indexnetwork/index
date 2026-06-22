@@ -28,10 +28,32 @@ jobs:
         include:
           - prefix: packages/protocol
             repo: indexnetwork/protocol
+            source_branch: ''
+            upstream_repo: ''
+            target_branch: ''
+            ignore_joins: 'false'
+            rebase_onto_main: 'false'
           - prefix: packages/cli
             repo: indexnetwork/cli
+            source_branch: ''
+            upstream_repo: ''
+            target_branch: ''
+            ignore_joins: 'false'
+            rebase_onto_main: 'false'
           - prefix: packages/claude-plugin
             repo: indexnetwork/claude-plugin
+            source_branch: ''
+            upstream_repo: ''
+            target_branch: ''
+            ignore_joins: 'false'
+            rebase_onto_main: 'false'
+          - prefix: apps/mac
+            repo: indexnetwork/mac-client
+            source_branch: ''
+            upstream_repo: ''
+            target_branch: ''
+            ignore_joins: 'false'
+            rebase_onto_main: 'false'
     steps:
       - uses: actions/checkout@v4
         with:

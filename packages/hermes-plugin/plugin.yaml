@@ -1,0 +1,5 @@
+name: index-network
+version: 0.1.0
+description: Empty Index Network Hermes plugin starter. Fill in MCP tools and dashboard extensions later.
+provides_tools: []
+provides_hooks: []

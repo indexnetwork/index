@@ -12,7 +12,7 @@ export default tseslint.config(
       "**/node_modules/",
       "**/.worktrees/",
       "**/.claude/",
-      "backend/drizzle/",
+      "services/api/drizzle/",
       "scripts/",
       "docs/",
       "**/*.js",
@@ -70,43 +70,43 @@ export default tseslint.config(
     },
   },
 
-  // ── Backend lib internals: decorator/utility patterns ───────────────
+  // ── API lib internals: decorator/utility patterns ───────────────
   {
-    files: ["backend/src/lib/**/*.ts"],
+    files: ["services/api/src/lib/**/*.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unsafe-function-type": "warn",
     },
   },
 
-  // ── Backend integration tests (outside src/) ────────────────────────
+  // ── API integration tests (outside src/) ────────────────────────
   {
-    files: ["backend/tests/**/*.ts"],
+    files: ["services/api/tests/**/*.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-require-imports": "off",
     },
   },
 
-  // ── Backend runtime: route logs through lib/log so Sentry receives them ──
+  // ── API runtime: route logs through lib/log so Sentry receives them ──
   {
-    files: ["backend/src/**/*.ts"],
+    files: ["services/api/src/**/*.ts"],
     ignores: [
-      "backend/src/**/*.spec.ts",
-      "backend/src/**/*.test.ts",
-      "backend/src/**/tests/**",
-      "backend/src/cli/**/*.ts",
-      "backend/src/lib/log.ts",
-      "backend/src/startup.env.ts",
+      "services/api/src/**/*.spec.ts",
+      "services/api/src/**/*.test.ts",
+      "services/api/src/**/tests/**",
+      "services/api/src/cli/**/*.ts",
+      "services/api/src/lib/log.ts",
+      "services/api/src/startup.env.ts",
     ],
     rules: {
       "no-console": "error",
     },
   },
 
-  // ── Frontend: React-specific rules ──────────────────────────────────
+  // ── Web app: React-specific rules ──────────────────────────────────
   {
-    files: ["frontend/src/**/*.{ts,tsx}"],
+    files: ["apps/web/src/**/*.{ts,tsx}"],
     plugins: {
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh,
@@ -122,13 +122,13 @@ export default tseslint.config(
     },
   },
 
-  // ── Backend: Architectural boundary enforcement ─────────────────────
+  // ── API: Architectural boundary enforcement ─────────────────────
   {
-    files: ["backend/src/**/*.ts"],
+    files: ["services/api/src/**/*.ts"],
     ignores: [
-      "backend/src/**/*.spec.ts",
-      "backend/src/**/*.test.ts",
-      "backend/src/**/tests/**",
+      "services/api/src/**/*.spec.ts",
+      "services/api/src/**/*.test.ts",
+      "services/api/src/**/tests/**",
     ],
     plugins: { boundaries },
     settings: {
@@ -298,13 +298,13 @@ export default tseslint.config(
     },
   },
 
-  // ── Backend: Prevent adapters from importing @indexnetwork/protocol ──
+  // ── API: Prevent adapters from importing @indexnetwork/protocol ──
   {
-    files: ["backend/src/adapters/**/*.ts"],
+    files: ["services/api/src/adapters/**/*.ts"],
     ignores: [
-      "backend/src/adapters/tests/**",
-      "backend/src/adapters/**/*.spec.ts",
-      "backend/src/adapters/**/*.test.ts",
+      "services/api/src/adapters/tests/**",
+      "services/api/src/adapters/**/*.spec.ts",
+      "services/api/src/adapters/**/*.test.ts",
     ],
     rules: {
       "no-restricted-imports": [

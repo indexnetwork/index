@@ -1,7 +1,7 @@
 # Claude Plugin Package
 
 ## Responsibility
-Static plugin distribution package for Claude Code/Codex-style clients. It ships plugin manifests, MCP endpoint configuration, and generated Index Network skill instructions; it does not implement backend business logic.
+Static plugin distribution package for Claude Code/Codex-style clients. It ships plugin manifests, MCP endpoint configuration, and generated Index Network skill instructions; it does not implement API-service business logic.
 
 ## Dependencies
 - **Claude/Codex plugin manifests**: host-specific metadata and capabilities.
@@ -57,8 +57,8 @@ On activation, call the relevant MCP read tools.
 
 ## Boundary Rules
 - Do not edit generated `packages/claude-plugin/skills/**/SKILL.md` as the source of truth.
-- Keep orchestration guidance in skills; MCP tools remain single-purpose primitives implemented by protocol/backend.
-- Do not add repositories/services/controllers/components here; add execution logic in protocol/backend/frontend packages.
+- Keep orchestration guidance in skills; MCP tools remain single-purpose primitives implemented by protocol/API service.
+- Do not add repositories/services/controllers/components here; add execution logic in protocol, services/api, or apps/web packages.
 
 <important if="you are updating plugin skills">
 1. Edit `packages/protocol/skills/claude-plugin/*.template.md` or `packages/protocol/skills/core-guidance.partial.md`.

@@ -11,7 +11,7 @@ Adapter-free protocol layer: LangGraph workflows, structured LLM agents, MCP/cha
 
 ## Consumers
 - **Backend**: imports factories/tools/interfaces and injects adapters.
-- **CLI/plugin/frontend indirectly**: consume protocol behavior through backend APIs/MCP.
+- **CLI/plugin/web/native apps indirectly**: consume protocol behavior through API/MCP surfaces.
 
 ## Module Structure
 ```
@@ -57,7 +57,7 @@ export function createFeatureTools(defineTool: DefineTool, deps: ToolDeps) {
 ```
 
 ## Boundary Rules
-- Never import backend adapters, controllers, services, Drizzle schema, or frontend code.
+- Never import API-service adapters, controllers, services, Drizzle schema, or app code.
 - Ports return plain values/null/arrays or throw for invariants; not HTTP responses.
 - User-facing LLM output must be schema-validated and sanitized where IDs/internal data could leak.
 
@@ -65,6 +65,6 @@ export function createFeatureTools(defineTool: DefineTool, deps: ToolDeps) {
 1. Define narrow interfaces/types in the owning module or `shared/interfaces`.
 2. Implement graph/agent/tool with injected deps and Zod schemas.
 3. Export the public surface from `src/index.ts` only when host packages need it.
-4. Implement backend adapter/wiring separately.
+4. Implement API-service adapter/wiring separately.
 5. Add protocol unit tests with stubbed deps/models.
 </important>

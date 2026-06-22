@@ -12,6 +12,10 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+### Changed
+- Reframed `README.md` as the public-facing Index Network Protocol document and moved package integration details into `IMPLEMENTATION.md`.
+- Included protocol documentation files in the published package tarball so README links remain available to package consumers.
+
 ## [4.3.0] - 2026-06-21
 
 ### Added

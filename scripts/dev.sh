@@ -17,8 +17,8 @@ if [ -d "$WORKTREES_DIR" ] && [ -n "$(ls -A "$WORKTREES_DIR" 2>/dev/null)" ]; th
     name="$(basename "$wt")"
     WORKTREE_NAMES+=("$name")
     setup="not set up"
-    for ws in backend frontend; do
-      if [ -d "$wt$ws/node_modules" ]; then
+    for ws in services/api apps/web; do
+      if [ -d "$wt/$ws/node_modules" ]; then
         setup="set up"
         break
       fi
@@ -38,13 +38,13 @@ select opt in "${CHOICES[@]}"; do
   fi
   if [ "$opt" = "Branch (root): $BRANCH" ]; then
     echo ""
-    echo "Building (backend + frontend)..."
+    echo "Building (api + web)..."
     cd "$REPO_ROOT"
     bun run build
     echo ""
     echo "Starting dev servers at root..."
-    bun run dev:backend &
-    bun run dev:frontend &
+    bun run dev:api &
+    bun run dev:web &
     wait
     exit 0
   fi
