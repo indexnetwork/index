@@ -1,253 +1,159 @@
-# @indexnetwork/protocol
+# Index Network Protocol
 
-The agent orchestration layer for Index Network. Implements LangGraph-based workflows for intent processing, opportunity discovery, and chat — decoupled from any specific infrastructure via adapter injection.
+Index Network is a private, intent-driven discovery protocol.
 
-## Stability & versioning
+It helps people and their agents find the right opportunities through stated intent, contextual signal, shared communities, and consent-gated introductions — without turning human relationships into a public search index.
 
-This package follows [Semantic Versioning](https://semver.org/). The **only**
-supported entry point is the package root (`import { ... } from "@indexnetwork/protocol"`);
-deep imports are not part of the contract. Every symbol is re-exported explicitly from
-`src/index.ts` and tagged with a stability tier:
+This repository contains the canonical TypeScript implementation of the protocol, published as `@indexnetwork/protocol`. The README is the protocol surface. Implementation details live in [IMPLEMENTATION.md](./IMPLEMENTATION.md).
 
-- **Stable** — interfaces, graph factories, agents, `createChatTools`, the
-  tool/runtime helpers, and shared schemas. Breaking changes require a major bump.
-- **Experimental** (`@experimental`) — advanced graph-state types and internal
-  helpers; may change in a minor release.
+## What the protocol is for
 
-See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
-and [CHANGELOG.md](./CHANGELOG.md) for release history.
+Most networks ask people to broadcast identity and hope the right person sees it. Index Network inverts that pattern:
 
-## Install
+1. A participant states what they are looking for, offering, building, learning, funding, hiring, or exploring.
+2. Their agent turns that statement into a durable signal.
+3. The signal is scoped to one or more communities where it is relevant.
+4. The protocol discovers semantic overlap with other participants' signals and context.
+5. Agents negotiate whether the overlap is real, timely, reciprocal, and worth surfacing.
+6. A draft opportunity is shown to the appropriate participant.
+7. A direct connection happens only after explicit consent.
 
-```bash
-npm install @indexnetwork/protocol
-```
+The goal is not more reach. The goal is higher-quality discovery with less noise, less performative posting, and better timing.
 
-## Setup
+## Protocol vocabulary
 
-### 1. Configure the LLM
-
-The package reads `OPENROUTER_API_KEY` (required), `CHAT_MODEL`, and `CHAT_REASONING_EFFORT` from environment variables. No startup call is needed.
-
-To override the chat model or reasoning effort when using the built-in chat runtime (`ChatGraphFactory` / `ChatAgent`), pass `modelConfig` on `ToolContext`. `ChatAgent` reads these fields when the chat graph runs; the tools themselves do not consume `modelConfig`:
-
-```typescript
-import { createChatTools } from "@indexnetwork/protocol";
-
-const tools = await createChatTools({
-  // ... other deps ...
-  modelConfig: {
-    chatModel: "google/gemini-2.5-flash",       // optional — has a default
-    chatReasoningEffort: "low",                  // optional: minimal | low | medium | high | xhigh
-  },
-});
-```
-
-`apiKey` and `baseURL` can also be overridden this way. All other protocol agents (evaluators, generators, etc.) rely on `OPENROUTER_API_KEY` set in the environment regardless of `modelConfig`.
-
-### 2. Implement the adapters
-
-The package defines interfaces — your application provides the concrete implementations.
-
-**Required** (always needed by `createChatTools`):
-
-| Interface | Responsibility |
+| Protocol term | Meaning |
 |---|---|
-| `ChatGraphCompositeDatabase` | Core data access (users, intents, indexes/networks, opportunities) |
-| `UserDatabase` / `SystemDatabase` | Context-bound databases built by `createUserDatabase` / `createSystemDatabase` |
-| `Embedder` | Vector embeddings for semantic search |
-| `Scraper` | Web content extraction |
-| `Cache` / `HydeCache` | Result caching (HyDE may share the general cache) |
-| `IntegrationAdapter` | OAuth and external tool actions |
-| `IntentGraphQueue` | Background intent processing queue |
-| `ContactServiceAdapter` | Contact management |
-| `ChatSessionReader` | Load conversation history |
-| `ProfileEnricher` | Enrich profiles from external sources |
-| `NegotiationGraphDatabase` | Negotiation state persistence |
+| **Participant** | A person using Index Network directly or through an agent. |
+| **Agent** | A software representative that can read, reason, discover, negotiate, and ask for consent on behalf of a participant. |
+| **Signal** | A participant's stated intent: what they want, offer, need, seek, or are open to. |
+| **Context** | The facts, background, constraints, and current work that explain why a signal is meaningful. |
+| **Community** | A bounded discovery space with a purpose, membership, and local norms. |
+| **Opportunity** | A discovered overlap between participants that may justify an introduction, collaboration, exchange, or next conversation. |
+| **Negotiation** | A bounded agent-to-agent exchange that tests fit before an opportunity is surfaced. |
+| **Connection** | A consented channel opened after an opportunity is accepted. |
 
-**Optional** (enable specific capabilities; omit to run without that feature):
+Some implementation surfaces still expose lower-level or historical names (`intent`, `index`, `latent`, `pending`). Public agents should use the protocol vocabulary above: **signal**, **community**, **context**, **draft**, **sent**, and **connected**.
 
-| Interface | Responsibility |
+## The discovery loop
+
+### 1. Establish context
+
+A participant or agent supplies context: bio, current work, constraints, interests, past activity, links, or other self-descriptive material.
+
+The protocol decomposes this into atomic premises: claims about who the participant is, what they can credibly do, and what circumstances shape their availability. Context can be global or community-scoped.
+
+### 2. Capture a signal
+
+A signal is not a keyword query. It is a commitment or request with enough shape to be acted on:
+
+- "I want to meet climate founders raising a pre-seed round in Europe."
+- "I can help early teams turn protocol research into developer documentation."
+- "I am looking for a design partner for privacy-preserving agent infrastructure."
+
+Underspecified signals should trigger clarification before discovery. Invalid or insincere signals should not enter the graph.
+
+### 3. Scope to communities
+
+Discovery happens inside communities. A community provides:
+
+- membership boundaries,
+- purpose and norms,
+- relevance criteria,
+- privacy expectations,
+- and a shared frame for judging fit.
+
+A participant's personal community also represents their trusted contacts.
+
+### 4. Discover semantic overlap
+
+The protocol compares signals and context by meaning, not by exact terms. It looks for complementary roles, adjacent goals, shared constraints, and reciprocal value.
+
+Discovery can happen from multiple directions:
+
+- signal → context,
+- context → signal,
+- signal → signal,
+- premise → premise,
+- and agent-supplied discovery prompts.
+
+### 5. Evaluate fit
+
+An overlap is not an opportunity until it passes evaluation. The protocol asks:
+
+- Is there a real role fit?
+- Is the timing plausible?
+- Is the participant credible for this signal?
+- Is the candidate likely to benefit too?
+- Is the overlap specific enough to explain?
+- Is there a safe next action?
+
+Good opportunities are explainable. If the protocol cannot state why something surfaced, it should not be promoted.
+
+### 6. Negotiate before surfacing
+
+Agents may negotiate before a participant sees an opportunity. Negotiation is deliberately bounded: it should test fit, clarify constraints, and decide whether to propose, counter, accept, reject, or ask a question.
+
+If negotiation stalls because human judgment is needed, the agent should ask a small number of structured questions rather than guessing.
+
+### 7. Reveal with consent
+
+Opportunities move through a consent-gated lifecycle:
+
+| Stage | Public meaning |
 |---|---|
-| `AgentDatabase` | Agent registry CRUD (agents, transports, permissions) |
-| `AgentDispatcher` | Resolves and invokes personal agents during negotiation turns — required to register the negotiation tools |
-| `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request (MCP server only) |
-| `DeliveryLedger` | Commits OpenClaw opportunity-delivery rows |
-| `DiscoveryRunStore` / `DiscoveryRunQueue` | Persist and execute async MCP discovery runs |
-| `EnrichmentRunStore` / `EnrichmentRunQueue` | Persist and execute async MCP enrichment runs |
-| `MintConnectLink` | Mints short connect links for opportunity accepts |
-| `ChatSummaryReader` | Read-through chat-session digest |
-| `ChatMessageWriter` | Writes user messages into the most-recent chat session (MCP elicitation) |
-| `QuestionGeneratorReader` / `QuestionerDatabase` | Decision-question generation and persistence |
-| `NegotiationSummaryReader` | Negotiation-digest summarization (falls back to deterministic digests) |
+| **Draft** | The protocol found something plausible, but it has not been sent. |
+| **Sent** | One side has shared or received the opportunity and is waiting for a response. |
+| **Connected** | Both sides accepted and a conversation can begin. |
+| **Declined / expired** | The opportunity should not continue. |
 
-All interfaces are exported from the package root — import them with `import type { ... } from "@indexnetwork/protocol"`.
+Agents must never accept a received opportunity without explicit approval in the current conversation.
 
-### 3. Create tools
+## Agent operating contract
 
-Pass your adapter implementations to `createChatTools` to get a set of LangChain-compatible tools bound to a user session:
+Agents connecting to Index Network are expected to follow the protocol's behavioral contract:
 
-```typescript
-import { createChatTools } from "@indexnetwork/protocol";
+- Be calm, direct, analytical, and concise.
+- Prefer the language of **opportunity**, **overlap**, **signal**, **pattern**, **emerging**, **relevant**, and **adjacency**.
+- Do not say "search". Use **find**, **discover**, **look up**, or **check** depending on the action.
+- Do not expose internal IDs, raw JSON, database fields, or tool names unless an ID is directly actionable for the participant.
+- Do not fabricate data. If the agent lacks information, it should use the appropriate protocol tool or say what is missing.
+- Surface the top 1–3 relevant points by default.
+- Ask for confirmation before sending, accepting, or escalating an opportunity.
+- Treat community scope and participant privacy as hard boundaries.
 
-const tools = await createChatTools({
-  userId: "user-uuid",
+The MCP server exports these rules as canonical runtime instructions for connected agents.
 
-  // ── Required adapters ──
-  database,             // ChatGraphCompositeDatabase
-  embedder,             // Embedder
-  scraper,              // Scraper
-  cache,                // Cache
-  hydeCache,            // HydeCache
-  integration,          // IntegrationAdapter
-  intentQueue,          // IntentGraphQueue
-  contactService,       // ContactServiceAdapter
-  chatSession,          // ChatSessionReader
-  enricher,             // ProfileEnricher
-  negotiationDatabase,  // NegotiationGraphDatabase
-  integrationImporter,  // bulk contact import
-  createUserDatabase,   // (db, userId) => UserDatabase
-  createSystemDatabase, // (db, userId, indexScope, embedder?) => SystemDatabase
+## Design principles
 
-  // ── Optional scoping ──
-  networkId: "optional-network-uuid", // scope tools to a specific index/network
-  sessionId: "chat-session-id",       // enables draft opportunities with conversation context
+### Intent before graph
 
-  // ── Optional capabilities (enable when the host supports them) ──
-  agentDatabase,        // AgentDatabase — agent registry
-  agentDispatcher,      // AgentDispatcher — routes negotiation turns to personal agents
-  deliveryLedger,       // DeliveryLedger — OpenClaw delivery commits
-  discoveryRuns,        // DiscoveryRunStore (+ discoveryRunQueue) — async MCP discovery
-  enrichmentRuns,       // EnrichmentRunStore (+ enrichmentRunQueue) — async MCP enrichment runs
-  mintConnectLink,      // short connect links for opportunity accepts
-  modelConfig,          // override chat model / reasoning effort (see above)
-});
+The protocol starts from what someone wants or can offer now, not from static identity alone.
 
-// tools is an array of LangChain Tool objects ready to bind to an agent
-```
+### Privacy before reach
 
-`createChatTools` accepts a single `ToolContext` object. The required adapters
-above are always needed; the optional capabilities default to a degraded-but-
-functional mode when omitted (e.g. without `agentDispatcher` the negotiation
-tools are not registered, and without `discoveryRuns` MCP discovery runs
-synchronously).
+Discovery should happen in bounded contexts. More visibility is not automatically better.
 
-## Graphs
+### Semantic fit over keyword fit
 
-For direct graph invocation (bypassing the tool layer), a `*GraphFactory` class is exported for each workflow:
+The protocol should find complements, not merely text matches.
 
-```typescript
-import {
-  ChatGraphFactory,
-  IntentGraphFactory,
-  OpportunityGraphFactory,
-  EnrichmentGraphFactory,
-  PremiseGraphFactory,
-  NegotiationGraphFactory,
-  HydeGraphFactory,
-  NetworkGraphFactory,
-  NetworkMembershipGraphFactory,
-  IntentNetworkGraphFactory,
-  HomeGraphFactory,
-  MaintenanceGraphFactory,
-} from "@indexnetwork/protocol";
-```
+### Explanation over mystery
 
-Each factory takes its typed dependencies in the constructor and exposes a
-`.createGraph()` method that returns a compiled LangGraph ready for `.invoke()`.
+Every surfaced opportunity should be legible: why this, why now, why these people, and what next.
 
-| Factory | Workflow |
-|---|---|
-| `ChatGraphFactory` | ReAct chat loop — LLM calls tools, responds to the user |
-| `IntentGraphFactory` | Clarify, infer, verify felicity, reconcile, and persist intents |
-| `OpportunityGraphFactory` | HyDE-based discovery: search, evaluate (valency), rank, persist |
-| `EnrichmentGraphFactory` | Enrich users (scrape + embed) and decompose into premises |
-| `PremiseGraphFactory` | Decompose and index a user's premises |
-| `NegotiationGraphFactory` | Multi-turn bilateral negotiation flows |
-| `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
-| `NetworkGraphFactory` | Manage index/network CRUD |
-| `NetworkMembershipGraphFactory` | Manage index/network member join/leave |
-| `IntentNetworkGraphFactory` | Evaluate and assign/unassign intents to indexes |
-| `HomeGraphFactory` | Categorize and curate home-feed content |
-| `MaintenanceGraphFactory` | Periodic maintenance (feed health, opportunity expiration) |
+### Human consent at the edge
 
-## MCP server
+Agents may discover and negotiate, but they do not create relationships without human approval.
 
-The package exports a factory that registers every chat tool over the Model Context Protocol and attaches a canonical `instructions` block (`MCP_INSTRUCTIONS`) that every connecting runtime follows. The factory takes three arguments:
+### Interoperable agents
 
-```typescript
-import { createMcpServer, type McpAuthResolver } from "@indexnetwork/protocol";
+The protocol assumes multiple agents can participate: first-party agents, personal agents, community agents, and external MCP clients.
 
-const authResolver: McpAuthResolver = {
-  async resolveIdentity(req) {
-    // Look up the API key in `x-api-key` and return { userId, agentId? }.
-    // `agentId` should come from Better Auth token metadata so downstream
-    // tool handlers can attribute every call to a concrete agent identity.
-    return resolveFromApiKey(req);
-  },
-};
+## Canonical implementation
 
-const server = createMcpServer(
-  deps,
-  authResolver,
-  {
-    // Per-request factory for scoped user/system databases.
-    create: (userId, indexScope) => createScopedDeps(userId, indexScope),
-  },
-);
-```
+`@indexnetwork/protocol` is the canonical implementation of these rules as agent graphs, tools, schemas, and MCP runtime behavior.
 
-On every tool call the server:
-
-1. Extracts the HTTP request from the MCP `ServerContext`.
-2. Calls `authResolver.resolveIdentity(req)` to get `{ userId, agentId }`.
-3. Gates access: MCP callers without a resolved `agentId` are blocked from every tool except `register_agent`, `read_docs`, and `scrape_url` until they register.
-4. Builds per-request scoped databases via `scopedDepsFactory` and invokes the tool handler through the shared runtime.
-
-### Runtime controls
-
-MCP tools are bounded by `ToolInvocationRuntime`:
-
-| Class | Default | Class override |
-|---|---:|---|
-| `fast` | 10 s | `MCP_TOOL_TIMEOUT_FAST_MS` |
-| `bounded_slow` | 45 s | `MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS` |
-| `async_candidate` | 50 s | `MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS` |
-
-Per-tool timeout overrides use `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, such as `MCP_TOOL_TIMEOUT_DISCOVER_OPPORTUNITIES_MS`. Tool outputs are capped by `MCP_TOOL_MAX_OUTPUT_BYTES` (default `1000000`) or `MCP_TOOL_MAX_OUTPUT_<TOOL_NAME>_BYTES`; inbound MCP request bodies are capped by the backend with `MCP_MAX_REQUEST_BYTES` (default `1000000`). Runtime failures return JSON text envelopes with stable `code` values: `TOOL_TIMEOUT`, `TOOL_CANCELLED`, or `TOOL_OUTPUT_TOO_LARGE`.
-
-For MCP callers, `discover_opportunities` is async: it returns a `discoveryRunId` immediately, and clients poll `get_discovery_run` or request cancellation with `cancel_discovery_run`. Non-MCP chat/web paths stay synchronous.
-
-### `MCP_INSTRUCTIONS`
-
-The instructions string is the single canonical behavioral contract for every runtime that connects to Index Network — voice, entity model, discovery-first rule, output rules, and the **Negotiation turn mode** block that tells a silent subagent how to handle a live negotiation turn when its session key is prefixed `index:negotiation:`. Plugin skills and bootstrap scripts do **not** redefine this guidance; they defer to whatever ships in `MCP_INSTRUCTIONS`.
-
-### Negotiation-facing tools
-
-Personal agents participate in bilateral negotiation via a small set of MCP tools:
-
-| Tool | Purpose |
-|---|---|
-| `get_negotiation` | Fetch the full turn history and assessment seed for a negotiation |
-| `list_negotiations` | List negotiations awaiting a response from this agent's user |
-| `respond_to_negotiation` | Submit a turn (propose / counter / accept / reject / question) |
-
-## Publishing
-
-Publishing is handled via CI:
-
-```bash
-# dev pushes publish an rc prerelease
-git push <remote> dev
-
-# main pushes publish the stable release if the package version is new
-git push <remote> main
-```
-
-`dev` publishes prerelease versions derived from `package.json` using npm's `rc` tag, for example `3.6.3-rc.123.1`. `main` publishes the base version from `package.json` to `latest` only when that version is not already on npm.
-
-Or publish manually from `packages/protocol/`:
-
-```bash
-npm publish --access public
-```
+- For package setup, exported APIs, adapter contracts, graph factories, and publishing notes, see [IMPLEMENTATION.md](./IMPLEMENTATION.md).
+- For the public API stability contract, see [STABILITY.md](./STABILITY.md).
+- For release history, see [CHANGELOG.md](./CHANGELOG.md).
