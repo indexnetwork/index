@@ -1,0 +1,180 @@
+/**
+ * Standalone Index API client for the macOS/iOS prototypes.
+ *
+ * This module is intentionally not imported by HaloApp or HaloApp-iOS yet. It
+ * gives the mac subtree a dedicated place to evolve API consumption without
+ * coupling live transport to the current fake-data prototype screens.
+ */
+
+const DEFAULT_API_BASE_URL = 'http://localhost:3001/api';
+
+/**
+ * @typedef {Object} IndexApiClientOptions
+ * @property {string} [apiBaseUrl] Absolute API base URL, including `/api`.
+ * @property {() => (string | Promise<string | null | undefined>)} [getToken]
+ *   Optional bearer-token provider. Native shells can later source this from
+ *   Keychain and inject it into the web layer.
+ * @property {typeof fetch} [fetchImpl] Optional fetch implementation for tests.
+ */
+
+/**
+ * @typedef {Object} RequestOptions
+ * @property {string} [method]
+ * @property {unknown} [body]
+ * @property {boolean} [auth]
+ * @property {AbortSignal} [signal]
+ */
+
+/** Error thrown for non-2xx API responses. */
+export class IndexApiError extends Error {
+  /**
+   * @param {string} message
+   * @param {number} status
+   * @param {unknown} [response]
+   */
+  constructor(message, status, response) {
+    super(message);
+    this.name = 'IndexApiError';
+    this.status = status;
+    this.response = response;
+  }
+}
+
+/**
+ * Normalize an API base URL so endpoint construction is stable.
+ * @param {string | undefined} value
+ * @returns {string}
+ */
+export function normalizeApiBaseUrl(value) {
+  const raw = value || DEFAULT_API_BASE_URL;
+  return raw.replace(/\/+$/, '');
+}
+
+/**
+ * Create a resource-oriented client for services/api.
+ * @param {IndexApiClientOptions} [options]
+ */
+export function createIndexApiClient(options = {}) {
+  const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl);
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('createIndexApiClient requires a fetch implementation');
+  }
+
+  /**
+   * @template T
+   * @param {string} endpoint
+   * @param {RequestOptions} [requestOptions]
+   * @returns {Promise<T>}
+   */
+  async function request(endpoint, requestOptions = {}) {
+    const { method = 'GET', body, auth = true, signal } = requestOptions;
+    const headers = { 'Content-Type': 'application/json' };
+
+    if (auth && options.getToken) {
+      const token = await options.getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetchImpl(`${apiBaseUrl}${endpoint}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+    });
+
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await response.json().catch(() => ({}))
+      : await response.text().catch(() => '');
+
+    if (!response.ok) {
+      const message = payload && typeof payload === 'object' && 'error' in payload
+        ? String(payload.error)
+        : `HTTP ${response.status}: ${response.statusText}`;
+      throw new IndexApiError(message, response.status, payload);
+    }
+
+    return /** @type {T} */ (payload || {});
+  }
+
+  return {
+    request,
+
+    auth: {
+      me: (options = {}) => request('/auth/me', options),
+    },
+
+    networks: {
+      list: (options = {}) => request('/networks', options),
+      overview: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/overview`, options),
+      myIntents: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/my-intents`, options),
+    },
+
+    intents: {
+      list: (body = {}, options = {}) => request('/intents/list', { ...options, method: 'POST', body }),
+      get: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}`, options),
+      archive: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}/archive`, { ...options, method: 'PATCH' }),
+    },
+
+    opportunities: {
+      list: (query = {}, options = {}) => request(`/opportunities${toQueryString(query)}`, options),
+      home: (query = {}, options = {}) => request(`/opportunities/home${toQueryString(query)}`, options),
+      get: (opportunityId, options = {}) => request(`/opportunities/${encodeURIComponent(opportunityId)}`, options),
+      updateStatus: (opportunityId, status, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/status`,
+        { ...options, method: 'PATCH', body: { status } },
+      ),
+      startChat: (opportunityId, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
+        { ...options, method: 'POST', body: {} },
+      ),
+    },
+
+    questions: {
+      pending: (filters = {}, options = {}) => request(
+        `/questions${toQueryString({ status: 'pending', ...filters })}`,
+        options,
+      ),
+      answer: (questionId, body, options = {}) => request(
+        `/questions/${encodeURIComponent(questionId)}/answer`,
+        { ...options, method: 'POST', body },
+      ),
+      dismiss: (questionId, options = {}) => request(
+        `/questions/${encodeURIComponent(questionId)}/dismiss`,
+        { ...options, method: 'POST', body: {} },
+      ),
+    },
+
+    conversations: {
+      list: (options = {}) => request('/conversations', options),
+      messages: (conversationId, query = {}, options = {}) => request(
+        `/conversations/${encodeURIComponent(conversationId)}/messages${toQueryString(query)}`,
+        options,
+      ),
+      sendMessage: (conversationId, body, options = {}) => request(
+        `/conversations/${encodeURIComponent(conversationId)}/messages`,
+        { ...options, method: 'POST', body },
+      ),
+      getOrCreateDm: (peerUserId, options = {}) => request(
+        '/conversations/dm',
+        { ...options, method: 'POST', body: { peerUserId } },
+      ),
+    },
+  };
+}
+
+/**
+ * Convert an object of query params into a stable query string.
+ * @param {Record<string, unknown>} query
+ * @returns {string}
+ */
+export function toQueryString(query = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === '') continue;
+    params.set(key, String(value));
+  }
+  const raw = params.toString();
+  return raw ? `?${raw}` : '';
+}
