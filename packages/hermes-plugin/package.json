@@ -1,0 +1,27 @@
+{
+  "name": "@indexnetwork/hermes-plugin",
+  "version": "0.1.0",
+  "description": "Hermes plugin template generator",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://index.network",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/indexnetwork/index.git",
+    "directory": "packages/hermes-plugin"
+  },
+  "files": [
+    "templates/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "bun test --pass-with-no-tests"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}

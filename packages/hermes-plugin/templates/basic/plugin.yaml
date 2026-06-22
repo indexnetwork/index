@@ -1,0 +1,6 @@
+name: __PLUGIN_NAME__
+version: 0.1.0
+description: __PLUGIN_DESCRIPTION_YAML__
+provides_tools:
+  - hello_world
+provides_hooks: []
