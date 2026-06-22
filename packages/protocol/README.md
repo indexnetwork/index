@@ -32,8 +32,9 @@ flowchart LR
 
     Scope --> CandidateGeneration[Candidate generation]
     CandidateGeneration --> Evaluation[Evaluation]
-    Evaluation -->|plausible but uncertain| Negotiation[Bounded negotiation]
-    Evaluation -->|clear fit| Opportunity[Opportunity]
+    Evaluation -->|plausible but uncertain| Opportunity[Draft or negotiating opportunity]
+    Evaluation -->|clear fit| Opportunity[Draft or pending opportunity]
+    Opportunity -->|needs agent clarification| Negotiation[Bounded negotiation]
     Negotiation -->|fit established| Opportunity
     Negotiation -->|human judgment required| Questions[Structured questions]
     Questions --> Participant
@@ -44,7 +45,7 @@ flowchart LR
     Consent -->|no| Terminal[Declined or expired]
 ```
 
-The graph is intentionally consent-centered: agents can construct context, discover candidates, evaluate fit, and negotiate constraints, but relationship-forming transitions terminate at participant approval.
+The graph is intentionally consent-centered: agents can construct context, discover candidates, evaluate fit, and negotiate constraints, but relationship-forming transitions require participant approval before a connection is opened.
 
 ## Design goals
 
@@ -76,13 +77,13 @@ The protocol does not attempt to be:
 | **Premise** | An atomic contextual claim about a participant, used to ground what signals are plausible or relevant. |
 | **Context** | A synthesized representation of premises, history, constraints, and community-specific relevance. |
 | **Community** | A bounded discovery scope with membership, purpose, norms, and relevance criteria. |
-| **Membership** | The relationship between a participant or agent and a community, including permissions and scope. |
+| **Membership** | The relationship between a participant and a community. Agents receive community authority through separate scoped permissions. |
 | **Candidate** | A possible counterpart or opportunity component identified during discovery but not yet surfaced. |
 | **Opportunity** | A candidate overlap that has passed evaluation and may be shown to one or more participants. |
 | **Negotiation** | A bounded agent-to-agent exchange used to test fit, constraints, timing, or consent before surfacing or advancing an opportunity. |
 | **Connection** | A participant-approved communication channel or introduction resulting from an accepted opportunity. |
 
-Some implementation APIs may expose historical names such as `intent`, `index`, `latent`, or `pending`. Public-facing agents SHOULD translate these into the protocol terms **signal**, **community**, **draft**, and **sent**.
+Some implementation APIs may expose historical names such as `intent`, `index`, `network`, `latent`, `pending`, `accepted`, `rejected`, `negotiating`, or `stalled`. Public-facing agents SHOULD translate stable participant states into protocol terms such as **signal**, **community**, **draft**, **sent**, **connected**, and **declined**, while treating negotiating or stalled states as internal process state unless the participant needs to act on them.
 
 ## Object relationship model
 
@@ -93,7 +94,9 @@ erDiagram
     PARTICIPANT ||--o{ PREMISE : asserts
     PARTICIPANT ||--o{ CONTEXT : represented_by
     PARTICIPANT ||--o{ MEMBERSHIP : holds
+    AGENT ||--o{ AGENT_PERMISSION : receives
     COMMUNITY ||--o{ MEMBERSHIP : contains
+    COMMUNITY ||--o{ AGENT_PERMISSION : scopes
     COMMUNITY ||--o{ SIGNAL : scopes
     COMMUNITY ||--o{ CONTEXT : lenses
     SIGNAL ||--o{ CANDIDATE : generates
@@ -138,7 +141,7 @@ The protocol distinguishes human principals from software actors.
 
 ### Scope
 
-All discovery is scope-bound. A protocol operation MUST resolve an effective scope before reading or evaluating signals, context, or opportunities.
+All discovery is scope-bound. A protocol operation MUST resolve an effective scope before cross-participant discovery, candidate generation, or opportunity evaluation. Implementations MAY read the requesting participant's own signals or context while preparing that operation.
 
 A scope may include:
 
@@ -156,7 +159,7 @@ flowchart TD
     Request[Request-time scope] --> Intersect[Intersect scopes]
     ParticipantMemberships[Participant memberships] --> Intersect
     AgentPermissions[Agent permissions] --> Intersect
-    CommunityPolicy[Community policy] --> Intersect
+    CommunityPolicy[Community rules where implemented] --> Intersect
     PersonalCommunity[Personal community boundary] --> Intersect
 
     Intersect --> Empty{Empty intersection?}
@@ -171,7 +174,7 @@ flowchart TD
     Evaluation --> Audit
 ```
 
-A broader credential MUST NOT expand a narrower request. A narrower agent permission MUST clamp a broader participant membership.
+A broader credential MUST NOT expand a narrower request. A narrower agent permission MUST clamp a broader participant membership. Community-specific policy checks MAY further reduce effective scope where an implementation defines them.
 
 ### Public and private surfaces
 
@@ -244,7 +247,7 @@ Opportunity states are participant-facing as follows:
 | **Declined** | Declined | A participant rejected the opportunity. |
 | **Expired** | Expired | The opportunity is no longer actionable. |
 
-An agent MUST NOT advance a received opportunity to **Connected** without explicit approval from the receiving participant in the current interaction.
+A conforming agent MUST NOT present a received opportunity as **Connected** without explicit approval from the receiving participant. The reference implementation enforces actor authorization and valid source statuses for acceptance, while current-approval capture is handled by the agent or user-interface flow invoking the transition.
 
 ### Opportunity lifecycle
 
@@ -252,6 +255,7 @@ An agent MUST NOT advance a received opportunity to **Connected** without explic
 stateDiagram-v2
     [*] --> Draft: candidate promoted
     Draft --> Sent: sender approves send
+    Draft --> Connected: direct acceptance or connection link
     Draft --> Declined: sender declines
     Draft --> Expired: TTL or invalidated
 
@@ -270,7 +274,7 @@ stateDiagram-v2
 
     note right of Sent
       One side is waiting.
-      Acceptance requires current approval.
+      Acceptance requires participant approval.
     end note
 
     note right of Connected
@@ -324,7 +328,7 @@ The protocol determines the effective communities in which the signal can operat
 
 ### 4. Candidate generation
 
-The protocol generates candidates by comparing signals and context inside the effective scope. Candidate generation MAY use multiple strategies, including signal-to-context, context-to-signal, signal-to-signal, and premise-to-premise discovery.
+The protocol generates candidates by comparing signals and context inside the effective scope. Candidate generation MAY use multiple strategies, including signal-to-signal, context-to-signal, premise-to-premise, semantic retrieval, and directed target construction.
 
 Candidate generation is not surfacing. Candidate data MUST remain internal until evaluation and visibility checks pass.
 
@@ -334,7 +338,7 @@ The protocol evaluates candidates for role fit, constraint satisfaction, credibi
 
 ### 6. Negotiation
 
-When fit is plausible but uncertain, agents MAY negotiate. Negotiation MUST be bounded. It SHOULD clarify constraints, test mutual relevance, and decide among a small set of actions: propose, counter, accept, reject, or ask a question.
+When fit is plausible but uncertain, agents MAY negotiate. Negotiation MUST be bounded. It SHOULD clarify constraints, test mutual relevance, and decide among a small set of actions: propose, counter, accept, reject, or ask a question. Implementations MAY persist an opportunity before negotiation completes and then update its public state from the negotiation outcome.
 
 If negotiation requires human judgment, the agent SHOULD stop and ask the participant a small number of structured questions rather than fabricating preferences.
 
@@ -381,7 +385,7 @@ The following invariants define the protocol's trust boundary:
 4. **Legibility invariant** — surfaced opportunities SHOULD be explainable in participant-facing language.
 5. **Minimization invariant** — participant-facing output SHOULD reveal only what is needed for the next decision.
 6. **No-fabrication invariant** — agents MUST NOT invent facts to complete an opportunity narrative.
-7. **Terminality invariant** — declined, expired, or otherwise terminal opportunities MUST NOT continue to advance unless explicitly reopened through a valid protocol action.
+7. **Terminality invariant** — declined, expired, or otherwise terminal opportunities SHOULD NOT produce further automatic advancement unless explicitly reopened or changed through an authorized protocol action.
 
 ## Interoperability
 
@@ -391,10 +395,10 @@ The reference implementation exposes the protocol to agents through a Model Cont
 flowchart LR
     ExternalAgent[External agent] -->|MCP tools| McpServer[Index Network MCP server]
     FirstPartyAgent[First-party agent] -->|typed runtime| Runtime[Protocol runtime]
-    PersonalAgent[Personal agent] -->|negotiation turns| McpServer
+    PersonalAgent[Personal agent] -->|MCP tools or REST polling| McpServer
 
     McpServer --> Identity[Identity resolution]
-    Identity --> AgentGate[Agent registration and permissions]
+    Identity --> AgentGate[Agent registration and scope]
     AgentGate --> ScopedDeps[Scoped protocol dependencies]
     ScopedDeps --> Runtime
 
