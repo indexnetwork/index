@@ -1,7 +1,9 @@
 <h1 align="center">
     <a href="https://index.network">
-    <img style="width:400px" src="apps/web/public/logos/logo-black-full.svg#gh-light-mode-only" alt="Index Network">
-    <img style="width:400px" src="apps/web/public/logos/logo-white-full.svg#gh-dark-mode-only" alt="Index Network">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/logos/logo-white-full.svg">
+      <img width="400" src="apps/web/public/logos/logo-black-full.svg" alt="Index Network">
+    </picture>
     </a>
 </h1>
 
