@@ -1,11 +1,11 @@
-# Touch to trigger a Railway dev redeploy (no functional change).
+# Railway API service configuration.
 [build]
-watchPatterns = ["/backend/**", "/packages/protocol/**", "/bun.lock", "/package.json", "/railway.toml"]
-buildCommand = "bun run build:package:protocol && bun run build:backend"
+watchPatterns = ["/services/api/**", "/packages/protocol/**", "/bun.lock", "/package.json", "/railway.toml"]
+buildCommand = "bun run build:package:protocol && bun run build:api"
 
 [deploy]
-preDeployCommand = "cd backend && bun run db:migrate"
-startCommand = "cd backend && bun run start"
+preDeployCommand = "cd services/api && bun run db:migrate"
+startCommand = "cd services/api && bun run start"
 healthcheckPath = "/health"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

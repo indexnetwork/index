@@ -18,8 +18,8 @@ for wt in "$WORKTREES_DIR"/*/; do
 
   # Check setup status by looking for any node_modules directory
   setup="not set up"
-  for ws in backend frontend evaluator; do
-    if [ -d "$wt$ws/node_modules" ]; then
+  for ws in services/api apps/web evaluator; do
+    if [ -d "$wt/$ws/node_modules" ]; then
       setup="set up"
       break
     fi

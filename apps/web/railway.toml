@@ -1,0 +1,9 @@
+# Railway web app service configuration.
+[build]
+watchPatterns = ["/apps/web/**", "/bun.lock", "/package.json"]
+buildCommand = "bun run build:web"
+
+[deploy]
+startCommand = "cd apps/web && bun run start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

@@ -119,8 +119,8 @@ Use project guidance first. For this repository, prefer targeted commands:
 
 ```bash
 cd packages/protocol && bun run build
-cd backend && bun run build
-cd frontend && bun run build
+cd services/api && bun run build
+cd apps/web && bun run build
 ```
 
 Run targeted tests relevant to the diff. Avoid full slow suites unless the PR is broad or the user asks.

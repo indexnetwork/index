@@ -33,7 +33,7 @@ postgres/
 # ===================
 # Temporary Data & Uploads
 # ===================
-backend/temp-uploads/
+services/api/temp-uploads/
 txt/
 
 # ===================

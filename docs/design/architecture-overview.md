@@ -16,24 +16,29 @@ For domain-specific deep dives, see the design papers in `packages/protocol/src/
 
 ## 1. Monorepo Structure
 
-The repository is organized as a Bun-managed monorepo with two primary workspaces.
+The repository is organized as a Bun-managed monorepo with user-facing apps, deployable services, and reusable packages.
 
 ```
 index/
-  backend/           Backend API and Agent Engine (Bun, TypeScript)
-  frontend/          Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
+  apps/
+    web/             Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
+    mac/             Native Apple client subtree (macOS/iOS WKWebView prototype)
+  services/
+    api/             Backend API and Agent Engine (Bun, TypeScript)
   packages/
     protocol/        @indexnetwork/protocol NPM package (agent graphs, interfaces, tools)
     cli/             CLI client (@indexnetwork/cli, Bun, TypeScript)
 ```
 
-**Protocol** is the backend: a native Bun HTTP server (`Bun.serve`) running on port 3001. It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
+**API service** is a native Bun HTTP server (`Bun.serve`) running on port 3001. It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
 
-**Frontend** is a single-page application built with Vite and React Router v7. In development, Vite proxies `/api/*` requests to the protocol backend. In production, a reverse proxy handles routing.
+**Web app** is a single-page application built with Vite and React Router v7. In development, Vite proxies `/api/*` requests to the API service. In production, a reverse proxy handles routing.
+
+**Mac app** is a subtree-synced native Apple prototype under `apps/mac/`, with Swift WKWebView shells wrapping self-contained React/HTML bundles.
 
 **CLI** is a standalone command-line client (`@indexnetwork/cli`) that wraps the Tool HTTP API. It provides authentication, command parsing, formatted terminal output, and `--json` mode for machine-readable output. Published to npm with platform-specific native binaries.
 
-Both protocol and frontend workspaces share the same repository and are installed together via `bun install` at the root. Development uses git worktrees (`.worktrees/`) to isolate feature and fix branches from the stable `dev` branch.
+The Bun workspaces share the same repository and are installed together via `bun install` at the root. Development uses git worktrees (`.worktrees/`) to isolate feature and fix branches from the stable `dev` branch.
 
 ---
 
@@ -263,7 +268,7 @@ Every tool and negotiation endpoint checks the caller's `agent_permissions` for 
 
 `agent_permissions.scope` accepts `'global' | 'node' | 'network'`. A network-scoped permission row — `scope='network', scopeId=<networkId>` — restricts the agent to a single network. Two enforcement layers:
 
-- **HTTP**: `backend/src/guards/agent-scope.guard.ts` exposes `resolveAgentNetworkScope(req)`, `assertAgentNetworkScope(req, networkId)`, and `withAgentScope(req, user)`. Network/intent/opportunity controllers assert on writes that take a path-param networkId, and filter list endpoints via `withAgentScope`. Mismatches throw `ScopeViolationError`, mapped to HTTP 403 in `main.ts`.
+- **HTTP**: `services/api/src/guards/agent-scope.guard.ts` exposes `resolveAgentNetworkScope(req)`, `assertAgentNetworkScope(req, networkId)`, and `withAgentScope(req, user)`. Network/intent/opportunity controllers assert on writes that take a path-param networkId, and filter list endpoints via `withAgentScope`. Mismatches throw `ScopeViolationError`, mapped to HTTP 403 in `main.ts`.
 - **MCP**: the auth resolver also returns `networkScopeId`. `applyNetworkScopeToContext` (in `packages/protocol/src/mcp/mcp.server.ts`) clamps `ResolvedToolContext.indexScope` to `[networkScopeId, personalIndex]`, and the per-request `systemDb` is constructed from that same set, so every downstream tool call is bounded at both the prompt-visible scope and the DB-level scope check.
 - **Chat tools (shared)**: the same `[scopedNetwork, personalIndex]` clamp applies on the web-chat path via `resolveChatContext({ networkId })` — so an MCP-scoped agent and a web-scoped chat see the same data perimeter. `createChatTools` constructs `systemDb` from `resolvedContext.indexScope`, keeping the prompt-advertised reach and the DB-level clamp consistent.
 - **DB (opportunity reads)**: `OpportunityDatabaseAdapter.getOpportunitiesForUser` requires the requesting user's *own* actor entry to be anchored on the bound network — `EXISTS actor WHERE userId=$1 AND networkId=$2`, not two independent `actors @>` checks. `update_opportunity` mirrors the rule. `actors[].networkId` is the source of truth for scope; the `opportunity.context.networkId` denormalization is no longer consulted by security-relevant filters.
@@ -480,7 +485,7 @@ Bull Board UI is served at `http://localhost:3001/dev/queues/` when the protocol
 
 ### Schema Organization
 
-The canonical schema lives in `backend/src/schemas/database.schema.ts`. All table definitions, relations, and types are defined here. Drizzle generates TypeScript types from the schema, eliminating manual type maintenance.
+The canonical schema lives in `services/api/src/schemas/database.schema.ts`. All table definitions, relations, and types are defined here. Drizzle generates TypeScript types from the schema, eliminating manual type maintenance.
 
 ### Core Tables
 

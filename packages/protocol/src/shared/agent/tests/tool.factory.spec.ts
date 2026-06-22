@@ -6,9 +6,9 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { mock, afterAll } from "bun:test";
-mock.module("../../../../../backend/queues/notification.queue", () => ({
+mock.module("../../../../../../services/api/src/queues/notification.queue", () => ({
   queueOpportunityNotification: async () =>
-    ({ id: "mock-job" } as unknown as Awaited<ReturnType<typeof import("../../../../../backend/queues/notification.queue").queueOpportunityNotification>>),
+    ({ id: "mock-job" } as unknown as Awaited<ReturnType<typeof import("../../../../../../services/api/src/queues/notification.queue").queueOpportunityNotification>>),
 }));
 mock.module("../../../intent/intent.graph.js", () => ({
   IntentGraphFactory: class {

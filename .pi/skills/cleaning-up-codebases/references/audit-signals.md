@@ -27,11 +27,11 @@ grep -rniE 'coming soon|not implemented|placeholder|stub|wip' <pkg>/src
 
 **Unused exports** (no knip in this repo yet). Either:
 - Add `knip` ad-hoc: `bunx knip --workspace <pkg>` (don't commit config unless asked), or
-- Manual: for each `export`, grep the symbol across `backend frontend packages` — a symbol
+- Manual: for each `export`, grep the symbol across `services/api apps/web packages` — a symbol
   exported but referenced only at its definition is dead. The eslint config
   (`no-unused-vars`) already flags unused *locals*, not unused exports.
 
-**Reachability:** trace from entry points (`backend/src/main.ts`, frontend routes in
+**Reachability:** trace from entry points (`services/api/src/main.ts`, web routes in
 `src/app/`, CLI `main.ts`, protocol factory exports). A module reachable from none is a
 removal candidate regardless of internal quality.
 
@@ -92,7 +92,7 @@ grep -rn '@ts-ignore\|@ts-expect-error\|eslint-disable' <pkg>/src  # suppressed 
 
 Run the toolchain and record numbers:
 - `bun run lint` (root `eslint .`) or `cd <pkg> && eslint src/`
-- `cd backend && bun test [path]` (targeted; full suite is slow)
+- `cd services/api && bun test [path]` (targeted; full suite is slow)
 - `bun run build:<pkg>`
 
 A baseline that doesn't lint/test/build clean is **finding #1** — fix it before cleanup.
@@ -106,11 +106,11 @@ self-contained `packages/protocol`. Confirm by grep and treat violations as real
 
 ```bash
 # Controllers importing adapters (forbidden)
-grep -rn "adapters/" backend/src/controllers
+grep -rn "adapters/" services/api/src/controllers
 # Services importing other services (forbidden — use events/queues)
-grep -rn "services/" backend/src/services
+grep -rn "services/" services/api/src/services
 # protocol importing app code (forbidden — must be injected)
-grep -rnE "from ['\"].*(backend|frontend)" packages/protocol/src
+grep -rnE "from ['\"].*(services/api|apps/web)" packages/protocol/src
 ```
 
 Topology / coupling metrics (find the tangles, not just rule breaks):
@@ -161,7 +161,7 @@ owner wants it completed?
 - **Canonical schema:** imports from `lib/schema` instead of
   `src/schemas/database.schema.ts`, or any parallel schema definition, are drift.
 - **TypeScript:** manual types where Drizzle inference exists.
-- **React (frontend):** unused props, `useEffect` missing deps (eslint `react-hooks`), dead
+- **React (web app):** unused props, `useEffect` missing deps (eslint `react-hooks`), dead
   lazy-loaded routes in `src/app/`, components nothing renders.
 - **Generated artifacts:** never hand-edit `packages/claude-plugin/skills/**/SKILL.md` —
   edit the protocol templates and run `bun run build:skills`. Flag hand-edits as drift.

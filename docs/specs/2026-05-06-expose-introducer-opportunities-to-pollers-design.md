@@ -80,8 +80,8 @@ interface PendingCandidate {
 
 ## Files to change
 
-- `backend/src/services/opportunity-delivery.service.ts` — rewrite `fetchPendingCandidates`, update `PendingCandidate` type
-- `backend/src/controllers/agent.controller.ts` — update response shape to include `totalPending`
+- `services/api/src/services/opportunity-delivery.service.ts` — rewrite `fetchPendingCandidates`, update `PendingCandidate` type
+- `services/api/src/controllers/agent.controller.ts` — update response shape to include `totalPending`
 - `docs/specs/api-reference.md` — update endpoint documentation
 - Tests covering the new behavior
 

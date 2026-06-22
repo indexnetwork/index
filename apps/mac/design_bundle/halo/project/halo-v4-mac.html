@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>halo · macintosh</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#bbbbbb;       /* classic mac desktop dither bg base */
+    --paper:#ffffff;
+    --ink:#000000;
+    --ink-2:#222222;
+    --ink-3:#5a5a5a;
+    --line:#000000;
+    --shade:#e6e6e6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:
+      repeating-conic-gradient(#aeaeae 0% 25%, #bcbcbc 0% 50%) 0 0/3px 3px;
+    color:var(--ink);
+    font-family: "ChicagoFLF", "Charcoal", "Geneva", -apple-system, system-ui, sans-serif;
+    font-size:12px;
+    line-height:1.35;
+    -webkit-font-smoothing:none;
+    image-rendering:pixelated;
+    overflow:hidden;
+  }
+  .mono{font-family:"Geist Mono", "Monaco", ui-monospace, monospace}
+
+  /* menubar */
+  .menubar{
+    position:fixed; top:0; left:0; right:0; height:22px;
+    background:#fff;
+    border-bottom:1px solid #000;
+    display:flex; align-items:center;
+    padding:0 10px;
+    font-size:12px;
+    z-index:5;
+    gap:18px;
+  }
+  .menubar .apple{
+    font-size:14px; line-height:1; margin-right:8px;
+  }
+  .menubar .m{padding:0 4px; cursor:default}
+  .menubar .m:hover{background:#000; color:#fff}
+  .menubar .right{
+    margin-left:auto; display:flex; align-items:center; gap:12px;
+    color:var(--ink-2);
+  }
+  .menubar .right .live{
+    border:1px solid #000; padding:0 6px;
+    font-size:10px; letter-spacing:1px;
+    text-transform:uppercase;
+  }
+
+  /* desktop */
+  .desktop{
+    position:fixed; inset:22px 0 0 0;
+    padding:24px 28px 28px;
+    overflow:hidden;
+  }
+
+  /* window */
+  .win{
+    background:#fff;
+    border:1px solid #000;
+    box-shadow: 2px 2px 0 #000;
+    display:flex; flex-direction:column;
+    position:absolute;
+  }
+  .win > .titlebar{
+    height:19px;
+    border-bottom:1px solid #000;
+    display:flex; align-items:center;
+    padding:0 6px;
+    font-size:12px;
+    background:
+      repeating-linear-gradient(0deg, #fff 0, #fff 1px, #000 1px, #000 2px);
+    position:relative;
+  }
+  .win > .titlebar .close{
+    width:11px; height:11px;
+    border:1px solid #000;
+    background:#fff;
+    flex:0 0 auto;
+  }
+  .win > .titlebar .title{
+    background:#fff;
+    padding:0 10px;
+    margin:0 auto;
+    font-size:12px;
+    border-left:1px solid #fff;
+    border-right:1px solid #fff;
+    white-space:nowrap;
+  }
+  .win > .titlebar .zoom{
+    width:11px; height:11px;
+    border:1px solid #000;
+    background:#fff;
+    position:relative;
+    flex:0 0 auto;
+  }
+  .win > .titlebar .zoom::before{
+    content:""; position:absolute; inset:1px;
+    border:1px solid #000;
+  }
+  .win > .body{
+    flex:1; display:flex; min-height:0;
+  }
+  .win.inactive > .titlebar{background:#fff}
+  .win.inactive > .titlebar .close, .win.inactive > .titlebar .zoom{visibility:hidden}
+
+  /* main window */
+  .w-main{
+    top:0; left:0; right:0; bottom:0;
+  }
+
+  /* left list */
+  .field-list{
+    width:200px;
+    border-right:1px solid #000;
+    background:#fff;
+    overflow:auto;
+    display:flex; flex-direction:column;
+  }
+  .field-list .head{
+    padding:8px 10px;
+    border-bottom:1px solid #000;
+    font-size:12px;
+  }
+  .field-list .head .meta{
+    color:var(--ink-3); margin-top:2px; font-size:11px;
+  }
+  .field-list .item{
+    padding:6px 10px;
+    border-bottom:1px dotted #999;
+    font-size:12px;
+    cursor:default;
+    display:flex; align-items:center; gap:6px;
+  }
+  .field-list .item .icon{
+    width:14px; height:14px; flex:0 0 auto;
+    border:1px solid #000; background:#fff;
+    position:relative;
+  }
+  .field-list .item.field .icon{
+    border-radius:99px;
+  }
+  .field-list .item.field .icon::after{
+    content:""; position:absolute; inset:3px;
+    border:1px solid #000; border-radius:99px;
+  }
+  .field-list .item.folder .icon{
+    border-top:0;
+    width:14px; height:11px;
+  }
+  .field-list .item.folder .icon::before{
+    content:""; position:absolute; top:-3px; left:0; width:5px; height:3px;
+    border:1px solid #000; background:#fff;
+  }
+  .field-list .item.selected{
+    background:#000; color:#fff;
+  }
+  .field-list .item.selected .icon{background:#fff}
+  .field-list .item .count{margin-left:auto; color:inherit; opacity:.6; font-size:11px}
+  .field-list .item.selected .count{opacity:.7}
+
+  .field-list .sep{
+    border-top:1px solid #000;
+    padding:6px 10px 4px;
+    font-size:11px;
+    background:#eaeaea;
+  }
+
+  /* center: main content */
+  .main-col{
+    flex:1; display:flex; flex-direction:column; min-width:0;
+    overflow:hidden;
+  }
+
+  .field-header{
+    padding:14px 16px 12px;
+    border-bottom:1px solid #000;
+    display:flex; align-items:baseline; gap:14px;
+  }
+  .field-header h1{
+    font-size:18px; font-weight:normal;
+    letter-spacing:.2px;
+  }
+  .field-header .where{
+    color:var(--ink-3); font-size:12px;
+  }
+  .field-header .where .sep{padding:0 6px; color:#999}
+  .field-header .right{
+    margin-left:auto; font-size:11px; color:var(--ink-3);
+  }
+  .field-header .right .live{
+    border:1px solid #000; background:#000; color:#fff;
+    padding:1px 6px; margin-left:6px;
+    font-size:10px; letter-spacing:1px; text-transform:uppercase;
+  }
+
+  /* split center */
+  .center-split{
+    flex:1; display:grid;
+    grid-template-columns: 1fr 1px 280px;
+    min-height:0;
+  }
+  .center-split > .v{background:#000}
+
+  /* log scroll */
+  .scroll{
+    overflow:auto; padding:10px 14px;
+    font-size:12px;
+  }
+  .scroll-head{
+    display:flex; align-items:center;
+    padding:6px 14px;
+    border-bottom:1px solid #000;
+    background:#f4f4f4;
+    font-size:11px;
+  }
+  .scroll-head .col{flex:0 0 auto; padding:0 10px 0 0; color:var(--ink-3)}
+  .scroll-head .col.time{width:60px}
+  .scroll-head .col.k{width:60px}
+  .scroll-head .col.msg{flex:1}
+
+  .log-row{
+    display:grid;
+    grid-template-columns: 60px 60px 1fr;
+    gap:10px;
+    padding:3px 0;
+    border-bottom:1px dotted #cfcfcf;
+    font-size:11.5px;
+    align-items:baseline;
+  }
+  .log-row .t{color:var(--ink-3); font-size:11px}
+  .log-row .k{font-size:10.5px; letter-spacing:.5px; text-transform:uppercase}
+  .log-row .k.neg{}
+  .log-row .k.ok{}
+  .log-row .k.info{color:var(--ink-3)}
+  .log-row .k.warn{}
+  .log-row .m{color:var(--ink)}
+  .log-row .m b{font-weight:normal; text-decoration:underline}
+  .log-row .m .id{
+    font-family:"Geist Mono", monospace; font-size:11px;
+    background:#000; color:#fff; padding:0 4px;
+  }
+
+  /* right column inside main */
+  .right-col{
+    display:flex; flex-direction:column;
+    min-height:0;
+  }
+  .right-col .section{
+    padding:12px 14px;
+    border-bottom:1px solid #000;
+  }
+  .right-col .section:last-child{border-bottom:none; flex:1; overflow:auto}
+  .right-col .label{
+    font-size:11px; color:var(--ink-3); margin-bottom:6px;
+    text-transform:uppercase; letter-spacing:1px;
+  }
+  .stat{
+    display:flex; justify-content:space-between;
+    padding:2px 0;
+    font-size:12px;
+  }
+  .stat b{font-weight:normal}
+  .stat .bar{
+    width:100%; height:8px;
+    border:1px solid #000;
+    margin-top:3px;
+    position:relative;
+    background:
+      repeating-linear-gradient(90deg, #fff 0 2px, #ccc 2px 3px);
+  }
+  .stat .bar > i{
+    display:block; height:100%; background:#000;
+  }
+
+  /* intro inner-window (a dialog inside the main window) */
+  .intros-stack{
+    padding:12px;
+    background:
+      repeating-conic-gradient(#cfcfcf 0% 25%, #d9d9d9 0% 50%) 0 0/2px 2px;
+    border-top:1px solid #000;
+  }
+  .intros-stack .group-label{
+    font-size:11px; color:#000;
+    background:#fff; border:1px solid #000;
+    padding:1px 6px; display:inline-block;
+    margin-bottom:8px;
+  }
+  .intro-card{
+    background:#fff; border:1px solid #000;
+    box-shadow:1px 1px 0 #000;
+    margin-bottom:8px;
+    padding:10px 12px;
+    display:grid;
+    grid-template-columns: 1fr auto;
+    gap:6px 12px;
+    align-items:start;
+  }
+  .intro-card:last-child{margin-bottom:0}
+  .intro-card .who{
+    font-size:13px;
+    display:flex; align-items:baseline; gap:8px;
+  }
+  .intro-card .who .id{
+    font-size:11px; color:var(--ink-3);
+    font-family:"Geist Mono", monospace;
+  }
+  .intro-card .basis{
+    font-size:12px; color:var(--ink-2); grid-column:1;
+  }
+  .intro-card .basis u{
+    text-decoration:underline; text-underline-offset:2px;
+  }
+  .intro-card .conf{
+    text-align:right; font-size:13px;
+    font-family:"Geist Mono", monospace;
+  }
+  .intro-card .conf small{
+    display:block; font-size:10px; color:var(--ink-3);
+    letter-spacing:1px; text-transform:uppercase; margin-top:1px;
+  }
+  .intro-card .btns{
+    grid-column:1 / -1;
+    margin-top:4px;
+    display:flex; gap:6px;
+  }
+  .mac-btn{
+    font:inherit; font-size:12px;
+    padding:2px 14px;
+    border:1px solid #000; background:#fff;
+    box-shadow:1px 1px 0 #000;
+    cursor:pointer;
+    border-radius:8px;
+  }
+  .mac-btn:active{box-shadow:none; transform:translate(1px,1px)}
+  .mac-btn.default{
+    background:#000; color:#fff;
+    box-shadow:1px 1px 0 #000, 0 0 0 2px #fff inset;
+    border:2px solid #000;
+    padding:1px 13px;
+  }
+  .mac-btn kbd{
+    font:inherit; font-size:11px;
+    margin-right:4px;
+    opacity:.6;
+  }
+
+  /* command bar (very small) */
+  .cmd{
+    border-top:1px solid #000;
+    background:#fff;
+    height:24px;
+    display:flex; align-items:center;
+    padding:0 10px;
+    font-size:12px;
+  }
+  .cmd .prompt{margin-right:6px}
+  .cmd input{
+    flex:1; background:transparent; border:0; outline:0;
+    font:inherit; font-size:12px;
+  }
+  .cmd .hint{color:var(--ink-3); font-size:11px}
+  .cmd .hint kbd{
+    font:inherit; font-size:10px;
+    border:1px solid #000; padding:0 4px;
+    background:#fff;
+  }
+
+  /* growbox */
+  .growbox{
+    position:absolute; right:-1px; bottom:-1px;
+    width:14px; height:14px;
+    background:#fff; border:1px solid #000;
+    background-image:
+      linear-gradient(135deg, transparent 45%, #000 45%, #000 55%, transparent 55%),
+      linear-gradient(135deg, transparent 65%, #000 65%, #000 75%, transparent 75%),
+      linear-gradient(135deg, transparent 85%, #000 85%, #000 95%, transparent 95%);
+  }
+
+  /* desktop icons (a couple, restrained) */
+  .desk-icon{
+    position:absolute; right:18px;
+    width:64px; text-align:center;
+    color:#000;
+  }
+  .desk-icon .glyph{
+    width:34px; height:34px;
+    border:1px solid #000; background:#fff;
+    margin:0 auto 2px;
+    position:relative;
+  }
+  .desk-icon .glyph.disk{
+    border-radius:0;
+  }
+  .desk-icon .glyph.disk::before{
+    content:""; position:absolute; top:4px; left:4px; right:4px; height:10px;
+    border-bottom:1px solid #000;
+  }
+  .desk-icon .glyph.disk::after{
+    content:""; position:absolute; right:6px; top:6px; width:3px; height:6px;
+    background:#000;
+  }
+  .desk-icon .name{
+    background:#fff;
+    border:1px solid #000;
+    font-size:11px;
+    padding:0 4px;
+    display:inline-block;
+  }
+
+  .desk-icon.trash{top:380px}
+  .desk-icon.disk{top:24px}
+  .desk-icon .glyph.trash{
+    width:30px; height:34px;
+    background:#fff;
+  }
+  .desk-icon .glyph.trash::before{
+    content:""; position:absolute; top:0; left:-3px; right:-3px; height:5px;
+    border:1px solid #000; background:#fff;
+  }
+  .desk-icon .glyph.trash::after{
+    content:""; position:absolute; left:6px; right:6px; top:8px; bottom:4px;
+    border-left:1px solid #000; border-right:1px solid #000;
+  }
+</style>
+</head>
+<body>
+
+<!-- menubar -->
+<div class="menubar">
+  <span class="apple">▩</span>
+  <span class="m">File</span>
+  <span class="m">Edit</span>
+  <span class="m">View</span>
+  <span class="m">Field</span>
+  <span class="m">Agent</span>
+  <span class="m">Privacy</span>
+  <span class="m">Special</span>
+  <div class="right">
+    <span class="mono" style="font-size:11px">62 / 251 online</span>
+    <span class="live">Live</span>
+    <span class="mono" style="font-size:11px">19:42</span>
+  </div>
+</div>
+
+<div class="desktop">
+
+  <!-- main window — Halo -->
+  <div class="win w-main" style="left:0; top:0; right:88px; bottom:0">
+    <div class="titlebar">
+      <span class="close"></span>
+      <span class="title">Halo — Synthesis @ The Hex</span>
+      <span class="zoom"></span>
+    </div>
+
+    <div class="body">
+
+      <aside class="field-list">
+        <div class="head">
+          Fields
+          <div class="meta mono" style="font-size:10.5px">3 nearby · 1 joined</div>
+        </div>
+
+        <div class="item field selected">
+          <span class="icon"></span>
+          <span>Synthesis</span>
+          <span class="count">62</span>
+        </div>
+        <div class="item field">
+          <span class="icon"></span>
+          <span>Quiet Hours</span>
+          <span class="count">8</span>
+        </div>
+        <div class="item field">
+          <span class="icon"></span>
+          <span>Open Studio</span>
+          <span class="count">14</span>
+        </div>
+
+        <div class="sep">History</div>
+
+        <div class="item folder"><span class="icon"></span><span>Past Fields</span><span class="count">14</span></div>
+        <div class="item folder"><span class="icon"></span><span>Receipts</span><span class="count">87</span></div>
+        <div class="item folder"><span class="icon"></span><span>Signals</span><span class="count">23</span></div>
+
+        <div class="sep">Agent</div>
+
+        <div class="item folder"><span class="icon"></span><span>halo (you)</span></div>
+        <div class="item folder"><span class="icon"></span><span>Personality</span></div>
+        <div class="item folder"><span class="icon"></span><span>Privacy</span></div>
+
+      </aside>
+
+      <div class="main-col">
+
+        <header class="field-header">
+          <h1>Synthesis</h1>
+          <div class="where">
+            The Hex<span class="sep">·</span>Brooklyn<span class="sep">·</span>Thu May 18<span class="sep">·</span>Doors 20:00
+          </div>
+          <div class="right">syn-0518-bk-04 <span class="live">Live</span></div>
+        </header>
+
+        <div class="center-split">
+
+          <!-- left: log -->
+          <div style="display:flex; flex-direction:column; min-height:0;">
+            <div class="scroll-head">
+              <span class="col time">Time</span>
+              <span class="col k">Kind</span>
+              <span class="col msg">Negotiation</span>
+              <span style="margin-left:auto; color:var(--ink-3)">42 events</span>
+            </div>
+            <div class="scroll" style="flex:1">
+              <div class="log-row"><span class="t">19:42:01</span><span class="k ok">Match</span><span class="m">Intent matched · basis: <b>both reading le guin</b> · confidence 87%</span></div>
+              <div class="log-row"><span class="t">19:42:03</span><span class="k info">Info</span><span class="m">Gossip: 7 new attendees in last 60 seconds.</span></div>
+              <div class="log-row"><span class="t">19:42:04</span><span class="k neg">Neg</span><span class="m">Agent <span class="id">7e4d</span> proposed topic <b>"small rooms"</b> · 4 responses.</span></div>
+              <div class="log-row"><span class="t">19:42:06</span><span class="k warn">Warn</span><span class="m">Peer <span class="id">9f01</span> declined — basis withheld <i>(rate-limit ok)</i>.</span></div>
+              <div class="log-row"><span class="t">19:42:07</span><span class="k ok">Match</span><span class="m">Handshake 3/3 receipts signed · intro queued.</span></div>
+              <div class="log-row"><span class="t">19:42:08</span><span class="k info">Info</span><span class="m">BLE: rssi -54dBm · mesh hops 1.4 avg.</span></div>
+              <div class="log-row"><span class="t">19:42:09</span><span class="k neg">Neg</span><span class="m">Cluster forming around <b>"field recordings"</b> · 5 agents.</span></div>
+              <div class="log-row"><span class="t">19:42:10</span><span class="k ok">Match</span><span class="m">You mentioned <b>"slow software"</b> earlier · 1 peer also did.</span></div>
+              <div class="log-row"><span class="t">19:42:11</span><span class="k info">Info</span><span class="m">Privacy: 0 bytes egress · all local.</span></div>
+              <div class="log-row"><span class="t">19:42:12</span><span class="k neg">Neg</span><span class="m">Peer <span class="id">2c88</span> asked: "anyone else come alone?" · 7 silent acks.</span></div>
+            </div>
+
+            <!-- intros stack (inner panel feel) -->
+            <div class="intros-stack">
+              <span class="group-label">Intros — 2 pending your nod</span>
+
+              <div class="intro-card">
+                <div class="who">Someone @ the bar <span class="id">intr-2901</span></div>
+                <div class="conf">91% <small>match</small></div>
+                <div class="basis">Both reading <u>le guin</u>. Both came alone. Mutual quiet for ~6 min.</div>
+                <div class="btns">
+                  <button class="mac-btn default"><kbd>A</kbd>Accept</button>
+                  <button class="mac-btn"><kbd>D</kbd>Decline</button>
+                  <button class="mac-btn"><kbd>?</kbd>Why this intro</button>
+                </div>
+              </div>
+
+              <div class="intro-card">
+                <div class="who">Someone near the speakers <span class="id">intr-2902</span></div>
+                <div class="conf">78% <small>match</small></div>
+                <div class="basis">Mentioned <u>"field recordings"</u>. 2 mutual silent acks.</div>
+                <div class="btns">
+                  <button class="mac-btn default"><kbd>A</kbd>Accept</button>
+                  <button class="mac-btn"><kbd>D</kbd>Decline</button>
+                  <button class="mac-btn"><kbd>?</kbd>Why this intro</button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <div class="v"></div>
+
+          <!-- right sidebar -->
+          <div class="right-col">
+            <div class="section">
+              <div class="label">Vitals</div>
+              <div class="stat"><span>Arrived</span><b>88 / 251</b></div>
+              <div class="bar"><i style="width:35%"></i></div>
+              <div class="stat" style="margin-top:8px"><span>Online</span><b>62</b></div>
+              <div class="bar"><i style="width:62%"></i></div>
+              <div class="stat" style="margin-top:8px"><span>Negotiating</span><b>3 live</b></div>
+              <div class="bar"><i style="width:25%"></i></div>
+              <div class="stat" style="margin-top:8px"><span>Intros made</span><b>12 tonight</b></div>
+              <div class="bar"><i style="width:14%"></i></div>
+            </div>
+
+            <div class="section">
+              <div class="label">Your Agent</div>
+              <div style="font-size:12px; margin-bottom:6px">halo · v3 personality · listening</div>
+              <div style="font-size:11.5px; color:var(--ink-3); border-left:2px solid #000; padding-left:8px; margin:6px 0">"The room is the algorithm."</div>
+              <div class="stat"><span>Identity</span><span class="mono" style="font-size:11px">F3a9…c70b</span></div>
+              <div class="stat"><span>Autonomy</span><span>ask before intro</span></div>
+            </div>
+
+            <div class="section">
+              <div class="label">Privacy</div>
+              <div class="stat"><span>Mode</span><b>Local-first</b></div>
+              <div class="stat"><span>Egress</span><b>0 B</b></div>
+              <div class="stat"><span>Retention</span><b>24h rolling</b></div>
+              <div style="font-size:11.5px; color:var(--ink-3); margin-top:8px; border:1px solid #000; padding:6px 8px">
+                Only basis <i>hashes</i> leave your device. Raw signals never do.
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- command bar -->
+        <div class="cmd">
+          <span class="prompt mono">halo·syn-0518-bk-04 ›</span>
+          <input placeholder='Type a command, or signal "what you are sitting with"...' />
+          <span class="hint"><kbd>?</kbd>help &nbsp; <kbd>/</kbd>focus</span>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="growbox"></div>
+  </div>
+
+  <!-- desktop icons -->
+  <div class="desk-icon disk" style="right:14px; top:14px">
+    <div class="glyph disk"></div>
+    <span class="name">Halo HD</span>
+  </div>
+  <div class="desk-icon trash" style="right:14px; bottom:14px; top:auto">
+    <div class="glyph trash"></div>
+    <span class="name">Trash</span>
+  </div>
+
+</div>
+
+</body>
+</html>

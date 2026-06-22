@@ -13,17 +13,17 @@ staged=$(git diff --cached --name-only --diff-filter=d | grep -E '\.tsx?$' || tr
 errors=""
 
 # Type-check workspaces with staged files
-be_files=$(echo "$staged" | grep '^backend/' || true)
-if [ -n "$be_files" ]; then
-  tsc_out=$(cd backend && bunx tsc --noEmit 2>&1) || errors="${errors}
---- backend tsc ---
+api_files=$(echo "$staged" | grep '^services/api/' || true)
+if [ -n "$api_files" ]; then
+  tsc_out=$(cd services/api && bunx tsc --noEmit 2>&1) || errors="${errors}
+--- api tsc ---
 ${tsc_out}"
 fi
 
-fe_files=$(echo "$staged" | grep '^frontend/' || true)
-if [ -n "$fe_files" ]; then
-  tsc_out=$(cd frontend && bunx tsc --noEmit 2>&1) || errors="${errors}
---- frontend tsc ---
+web_files=$(echo "$staged" | grep '^apps/web/' || true)
+if [ -n "$web_files" ]; then
+  tsc_out=$(cd apps/web && bunx tsc --noEmit 2>&1) || errors="${errors}
+--- web tsc ---
 ${tsc_out}"
 fi
 

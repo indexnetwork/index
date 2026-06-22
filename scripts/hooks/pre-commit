@@ -8,7 +8,7 @@ if [[ -n "${changed_llms}" ]]; then
   scripts/generate-ctx.sh || {
     echo "[pre-commit] Warning: ctx generation failed; proceeding without blocking commit" >&2
   }
-  git add llms-ctx.txt llms-ctx-full.txt frontend/public/llms-ctx.txt frontend/public/llms-ctx-full.txt || true
+  git add llms-ctx.txt llms-ctx-full.txt apps/web/public/llms-ctx.txt apps/web/public/llms-ctx-full.txt || true
 fi
 
 # ── Lint staged files ────────────────────────────────────────────────
@@ -19,7 +19,7 @@ bunx lint-staged || {
 }
 
 # ── Adapter naming check (only if adapter files are staged) ─────────
-changed_adapters=$(git diff --cached --name-only | grep -E '^backend/src/adapters/.*\.ts$' || true)
+changed_adapters=$(git diff --cached --name-only | grep -E '^services/api/src/adapters/.*\.ts$' || true)
 if [[ -n "${changed_adapters}" ]]; then
   echo "[pre-commit] Checking adapter naming conventions..."
   scripts/check-adapter-names.sh || exit 1

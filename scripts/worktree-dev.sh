@@ -24,7 +24,7 @@ fi
 
 # Auto-setup if not already done
 has_node_modules=false
-for ws in backend frontend; do
+for ws in services/api apps/web; do
   [ -d "$WORKTREE/$ws/node_modules" ] && has_node_modules=true && break
 done
 if [ "$has_node_modules" = false ]; then

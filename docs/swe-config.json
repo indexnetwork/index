@@ -8,7 +8,7 @@
     "format": null,
     "typecheck": "tsc"
   },
-  "sourceRoot": "backend/src, frontend/src",
+  "sourceRoot": "services/api/src, apps/web/src",
   "integrations": {
     "coderabbit": true,
     "linear": true,
@@ -33,8 +33,8 @@
     ]
   },
   "versioning": [
-    "Bump backend/package.json version for changes under backend/",
-    "Bump frontend/package.json version for changes under frontend/",
+    "Bump services/api/package.json version for changes under services/api/",
+    "Bump apps/web/package.json version for changes under apps/web/",
     "Bump packages/cli/package.json version for changes under packages/cli/"
   ],
   "directives": {

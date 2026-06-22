@@ -27,8 +27,8 @@
     ]
   },
   "versioning": [
-    "Bump backend/package.json version for changes under backend/",
-    "Bump frontend/package.json version for changes under frontend/",
+    "Bump services/api/package.json version for changes under services/api/",
+    "Bump apps/web/package.json version for changes under apps/web/",
     "Bump packages/protocol/package.json version for changes under packages/protocol/",
     "Bump packages/cli/package.json version for changes under packages/cli/",
     "Bump packages/claude-plugin/package.json version for changes under packages/claude-plugin/"

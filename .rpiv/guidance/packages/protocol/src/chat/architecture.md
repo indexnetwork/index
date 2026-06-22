@@ -54,7 +54,7 @@ try {
 
 ## Boundary Rules
 - Chat binds tools; individual tool logic belongs in domain tool factories.
-- Preserve streaming event contracts consumed by frontend/CLI renderers.
+- Preserve streaming event contracts consumed by apps/web/CLI renderers.
 - Only `ChatAgent` reads per-request `ModelConfig` from `ToolContext`.
 
 <important if="you are adding chat-visible tool behavior">
