@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>halo · editorial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f5f1e8;
+    --paper-2:#ebe6d8;
+    --paper-3:#e2dcca;
+    --ink:#15140f;
+    --ink-2:#3a3830;
+    --ink-3:#6e6a5e;
+    --ink-4:#9a9587;
+    --line:#cfc8b3;
+    --line-2:#bdb59c;
+    --rule:#2a2820;
+    --accent:#b04a1f;
+    --accent-soft:#e8d7c4;
+    --accent-ink:#7a3414;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Newsreader', Georgia, 'Times New Roman', serif;
+    font-size:15px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  .mono{
+    font-family:'JetBrains Mono', ui-monospace, monospace;
+    font-feature-settings: "ss01";
+  }
+
+  .app{
+    position:fixed; inset:0;
+    display:grid;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  /* masthead */
+  .mast{
+    border-bottom:3px double var(--rule);
+    padding:16px 36px 12px;
+    display:flex; align-items:baseline; gap:24px;
+  }
+  .mast .brand{
+    font-family:'Newsreader', serif;
+    font-size:32px; font-weight:600; letter-spacing:-1px;
+    line-height:1;
+  }
+  .mast .vol{
+    font-style:italic; color:var(--ink-3);
+    font-size:13px;
+  }
+  .mast .vol b{color:var(--ink); font-style:normal; font-weight:500}
+  .mast .right{
+    margin-left:auto;
+    display:flex; align-items:center; gap:18px;
+    color:var(--ink-3); font-size:12px;
+  }
+  .mast .lbl{
+    text-transform:uppercase; letter-spacing:1.5px;
+    font-size:11px; color:var(--ink-4); font-family:'JetBrains Mono', monospace;
+  }
+  .mast .seg{
+    display:inline-flex; border:1px solid var(--rule);
+    background:var(--paper);
+    border-radius:2px;
+    overflow:hidden;
+  }
+  .mast .seg span{
+    padding:2px 9px; font-size:12px; color:var(--ink-3);
+    border-right:1px solid var(--line);
+    font-family:'JetBrains Mono', monospace;
+  }
+  .mast .seg span:last-child{border-right:0}
+  .mast .seg span.on{background:var(--rule); color:var(--paper)}
+  .mast .pause{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px; color:var(--ink-2);
+    border:1px solid var(--rule);
+    padding:2px 10px;
+  }
+
+  /* dateline */
+  .dateline{
+    padding:8px 36px;
+    border-bottom:1px solid var(--rule);
+    display:flex; gap:18px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px; color:var(--ink-3);
+    text-transform:uppercase; letter-spacing:1.5px;
+  }
+  .dateline .live{
+    color:var(--accent); font-weight:500;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .dateline .live::before{
+    content:""; width:6px; height:6px; border-radius:99px;
+    background:var(--accent);
+  }
+  .dateline .right{margin-left:auto}
+
+  /* main two-column */
+  .main{
+    display:grid;
+    grid-template-columns: minmax(340px, 1fr) 2px 1.6fr;
+    min-height:0;
+  }
+  .col{display:flex; flex-direction:column; min-height:0; overflow:hidden}
+  .rule-v{
+    background:linear-gradient(180deg, var(--rule) 0%, var(--rule) 80%, transparent 100%);
+    width:2px;
+  }
+
+  /* LEFT — opinion / proactive feed */
+  .col-left{
+    padding:0;
+  }
+  .kicker{
+    padding:18px 28px 0;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--accent); font-weight:500;
+    display:flex; align-items:center; gap:14px;
+  }
+  .kicker .waiting{
+    margin-left:auto;
+    color:var(--ink); font-style:italic; font-family:'Newsreader', serif;
+    font-size:13px; letter-spacing:0; text-transform:none;
+  }
+  .col-left .h1{
+    padding:6px 28px 4px;
+    font-size:34px; font-weight:600; letter-spacing:-1px; line-height:1.05;
+    font-family:'Newsreader', serif;
+  }
+  .col-left .h1 em{
+    font-style:italic; color:var(--accent-ink); font-weight:500;
+  }
+  .col-left .dek{
+    padding:4px 28px 18px;
+    font-size:14px; color:var(--ink-2); font-style:italic;
+    border-bottom:1px solid var(--rule);
+  }
+
+  .body-scroll{flex:1; overflow:auto; padding:0 28px 22px}
+
+  /* halo whisper — pull quote style */
+  .whisper{
+    padding:18px 0 14px;
+    display:flex; gap:14px; align-items:flex-start;
+    border-bottom:1px dashed var(--line);
+  }
+  .whisper .mark{
+    font-family:'Newsreader', serif;
+    font-size:38px; line-height:.6; color:var(--accent);
+    font-style:italic; font-weight:500;
+    flex:0 0 auto; padding-top:14px;
+  }
+  .whisper .t{
+    font-size:16px; line-height:1.45;
+    color:var(--ink); font-style:italic;
+  }
+  .whisper .t .src{
+    display:block;
+    font-style:normal; font-size:11px;
+    font-family:'JetBrains Mono', monospace;
+    color:var(--ink-3);
+    letter-spacing:1.5px; text-transform:uppercase;
+    margin-top:8px;
+  }
+
+  /* aggregated editorial card */
+  .editorial{
+    margin-top:20px;
+    padding:18px 20px;
+    background:var(--paper-2);
+    border:1px solid var(--line);
+    position:relative;
+  }
+  .editorial::before{
+    content:""; position:absolute;
+    top:-1px; left:-1px; right:-1px;
+    height:3px;
+    background:repeating-linear-gradient(90deg, var(--rule) 0 4px, transparent 4px 8px);
+  }
+  .editorial .ed-head{
+    display:flex; align-items:baseline; gap:12px;
+    margin-bottom:8px;
+  }
+  .editorial .sigma{
+    font-family:'Newsreader', serif;
+    font-size:24px; font-style:italic; color:var(--accent);
+    line-height:1; font-weight:500;
+  }
+  .editorial .ed-title{
+    font-size:11px; letter-spacing:2px; text-transform:uppercase;
+    font-family:'JetBrains Mono', monospace;
+    color:var(--ink-3);
+  }
+  .editorial .ed-title b{color:var(--ink); font-weight:500}
+  .editorial .ed-meta{
+    margin-left:auto;
+    font-size:11px; color:var(--ink-4);
+    font-style:italic;
+  }
+
+  .narrow-viz{
+    display:flex; align-items:center; gap:14px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--ink-3);
+    padding:10px 0;
+    border-top:1px solid var(--line-2);
+    border-bottom:1px solid var(--line-2);
+    margin:8px 0 14px;
+  }
+  .narrow-viz .dots{display:flex; gap:4px}
+  .narrow-viz .dots i{
+    width:7px; height:7px; border-radius:99px;
+    border:1px solid var(--rule); background:transparent;
+  }
+  .narrow-viz .dots.after i{background:var(--accent); border-color:var(--accent)}
+  .narrow-viz .arrow{color:var(--accent); font-size:14px; font-family:'Newsreader', serif}
+
+  .editorial .lede{
+    font-size:18px; line-height:1.45;
+    font-family:'Newsreader', serif;
+    color:var(--ink);
+    margin-bottom:14px;
+    text-wrap:pretty;
+  }
+  .editorial .lede em{
+    font-style:italic; color:var(--accent-ink);
+    background:linear-gradient(180deg, transparent 60%, var(--accent-soft) 60%);
+    padding:0 2px;
+  }
+
+  .editorial .actions{
+    display:flex; gap:6px; flex-wrap:wrap;
+  }
+  .ed-btn{
+    font:inherit; font-size:13px;
+    padding:6px 16px;
+    border:1px solid var(--rule);
+    background:var(--paper);
+    color:var(--ink);
+    cursor:pointer;
+    font-family:'Newsreader', serif;
+    font-style:italic;
+  }
+  .ed-btn:hover{background:var(--paper-3)}
+  .ed-btn.primary{
+    background:var(--rule); color:var(--paper);
+    font-style:italic;
+  }
+  .ed-btn.primary:hover{background:#000}
+
+  .editorial .footnote{
+    margin-top:14px;
+    padding-top:10px;
+    border-top:1px solid var(--line-2);
+    font-size:12px; color:var(--ink-3);
+    font-family:'JetBrains Mono', monospace;
+    letter-spacing:.2px;
+  }
+  .editorial .footnote .arrow{color:var(--accent); margin-right:4px}
+  .editorial .footnote b{color:var(--ink); font-weight:500}
+
+  .listening{
+    text-align:center; padding:20px 0 6px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--ink-4);
+  }
+
+  /* input */
+  .feed-input{
+    border-top:2px solid var(--rule);
+    padding:12px 28px;
+    background:var(--paper-2);
+    display:flex; align-items:center; gap:12px;
+  }
+  .feed-input .chev{
+    color:var(--accent); font-family:'JetBrains Mono', monospace;
+    font-size:14px;
+  }
+  .feed-input input{
+    flex:1; background:transparent; border:0; outline:0;
+    font:inherit; font-size:15px; color:var(--ink);
+    font-style:italic;
+  }
+  .feed-input input::placeholder{color:var(--ink-4)}
+  .feed-input .ret{
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+    border:1px solid var(--line-2); padding:2px 6px;
+    color:var(--ink-3);
+  }
+
+  /* RIGHT — pipeline as front-page feature */
+  .col-right{padding:0}
+  .pipe-kicker{
+    padding:18px 36px 0;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--accent); font-weight:500;
+    display:flex; align-items:center; gap:14px;
+  }
+  .pipe-kicker .right{margin-left:auto; font-style:italic; font-family:'Newsreader', serif; color:var(--ink-3); font-size:13px; letter-spacing:0; text-transform:none}
+  .pipe-title{
+    padding:6px 36px 8px;
+    font-size:42px; font-weight:600; letter-spacing:-1.5px; line-height:1;
+    font-family:'Newsreader', serif;
+  }
+  .pipe-title em{
+    font-style:italic; color:var(--accent-ink); font-weight:500;
+  }
+  .pipe-dek{
+    padding:0 36px 18px;
+    font-size:14px; font-style:italic; color:var(--ink-2);
+    border-bottom:1px solid var(--rule);
+  }
+
+  /* stages — like a stats box at the top of a feature */
+  .stages-wrap{
+    padding:14px 36px 0;
+    border-bottom:1px solid var(--rule);
+  }
+  .stages-label{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--ink-4); margin-bottom:8px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .stages-label::after{
+    content:""; flex:1; height:1px; background:var(--line);
+  }
+  .stages{
+    display:grid; grid-template-columns:repeat(5, 1fr);
+    gap:0;
+    padding-bottom:14px;
+  }
+  .stage{
+    padding:0 14px 4px 0;
+    border-right:1px solid var(--line);
+    position:relative;
+  }
+  .stage:last-child{border-right:0}
+  .stage:not(:first-child){padding-left:14px}
+  .stage .k{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--ink-3);
+    margin-bottom:4px;
+  }
+  .stage.active .k{color:var(--accent)}
+  .stage .v{
+    font-family:'Newsreader', serif;
+    font-size:46px; font-weight:500; letter-spacing:-2px; line-height:1;
+    color:var(--ink);
+  }
+  .stage.active .v{color:var(--accent-ink); font-style:italic}
+  .stage.zero .v{color:var(--ink-4)}
+  .stage .bar{
+    height:1px; background:var(--line); margin-top:8px;
+    position:relative;
+  }
+  .stage .bar > i{
+    display:block; position:absolute; left:0; top:-1px; height:3px;
+    background:var(--accent);
+  }
+  .stage.zero .bar > i{display:none}
+
+  /* agents — body copy with marginalia */
+  .agents-scroll{flex:1; overflow:auto; padding:8px 36px 28px}
+  .agents{
+    display:flex; flex-direction:column;
+  }
+  .agent{
+    padding:22px 0;
+    border-bottom:1px solid var(--line);
+    display:grid;
+    grid-template-columns: 64px 1fr 140px;
+    gap:16px 22px;
+    align-items:start;
+  }
+  .agent:last-child{border-bottom:0}
+  .agent .av{
+    width:58px; height:58px; border-radius:99px;
+    background:var(--paper-2);
+    border:1px solid var(--rule);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Newsreader', serif;
+    font-size:22px; font-style:italic;
+    color:var(--ink-2);
+    flex:0 0 auto;
+  }
+  .agent.warm .av{
+    background:var(--accent-soft);
+    color:var(--accent-ink);
+    border-color:var(--accent);
+  }
+
+  .agent .head{
+    font-family:'Newsreader', serif;
+    font-size:24px; font-weight:600; letter-spacing:-.5px; line-height:1.2;
+    display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+  }
+  .agent .head .loc{
+    font-style:italic; color:var(--ink-3); font-size:14px; font-weight:400;
+  }
+  .agent .head .ago{
+    color:var(--ink-4); font-size:12px; font-weight:400;
+    font-family:'JetBrains Mono', monospace;
+    letter-spacing:.5px;
+  }
+  .agent .lede{
+    font-size:15.5px; line-height:1.55;
+    color:var(--ink); margin-top:6px;
+    text-wrap:pretty;
+  }
+  .agent .halo-note{
+    margin-top:10px;
+    padding-left:14px;
+    border-left:2px solid var(--accent);
+    font-style:italic;
+    color:var(--ink-2);
+    font-size:14.5px;
+  }
+  .agent .halo-note::before{
+    content:"halo —";
+    font-style:normal;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--accent);
+    margin-right:6px;
+  }
+  .agent .tags{
+    margin-top:10px;
+    display:flex; flex-wrap:wrap; gap:6px;
+  }
+  .agent .tags span{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px; letter-spacing:.5px;
+    color:var(--ink-2);
+    border-bottom:1px solid var(--rule);
+    padding:0 0 1px;
+  }
+  .agent .tags span::before{content:"# "; color:var(--ink-4)}
+
+  /* right margin signal block */
+  .agent .signal{
+    border-left:1px solid var(--rule);
+    padding-left:16px;
+    align-self:stretch;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .agent .signal .stage-tag{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--ink-3);
+  }
+  .agent.warm .signal .stage-tag{color:var(--accent)}
+  .agent.warm .signal .stage-tag b{font-weight:500}
+  .agent.neg .signal .stage-tag{color:var(--accent-ink)}
+  .agent .signal .pct{
+    font-family:'Newsreader', serif;
+    font-size:36px; line-height:1; font-weight:500;
+    letter-spacing:-1.5px;
+    color:var(--ink);
+  }
+  .agent.warm .signal .pct{color:var(--accent-ink); font-style:italic}
+  .agent .signal .pct small{
+    display:block; font-family:'JetBrains Mono', monospace;
+    font-size:10px; color:var(--ink-3);
+    letter-spacing:1.5px; text-transform:uppercase;
+    margin-top:4px; font-style:normal;
+  }
+  .agent .signal .sigbar{
+    height:2px; background:var(--line); position:relative;
+  }
+  .agent .signal .sigbar > i{
+    display:block; height:100%; background:var(--accent);
+  }
+
+  /* footer */
+  .foot{
+    border-top:3px double var(--rule);
+    padding:8px 36px;
+    display:flex; align-items:center; gap:18px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--ink-3);
+    background:var(--paper-2);
+  }
+  .foot b{color:var(--ink); font-weight:500}
+  .foot .right{margin-left:auto; display:flex; gap:14px; align-items:center}
+  .foot .right .dot{
+    width:6px; height:6px; border-radius:99px; background:var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- masthead -->
+  <header class="mast">
+    <div class="brand">halo</div>
+    <div class="vol">— Vol. 1, No. 0518<br><b>Synthesis</b> · The Hex, Brooklyn</div>
+    <div class="right">
+      <span class="lbl">sim</span>
+      <span class="seg">
+        <span class="on">1×</span>
+        <span>2×</span>
+        <span>4×</span>
+      </span>
+      <span class="pause">‖ Pause</span>
+    </div>
+  </header>
+
+  <!-- dateline -->
+  <div class="dateline">
+    <span class="live">Live</span>
+    <span>Thu · May 18 · 19:42</span>
+    <span>62 of 251 online</span>
+    <span class="right">syn-0518-bk-04</span>
+  </div>
+
+  <div class="main">
+
+    <!-- LEFT FEED -->
+    <section class="col col-left">
+
+      <div class="kicker">
+        Your Feed · Proactive
+        <span class="waiting">— one note waiting on you</span>
+      </div>
+      <h1 class="h1">halo is <em>listening.</em></h1>
+      <div class="dek">It will stay quiet, surface only what matters, and ask before introducing.</div>
+
+      <div class="body-scroll">
+
+        <div class="whisper">
+          <div class="mark">“</div>
+          <div class="t">
+            You're in. I'll stay quiet. Expect one or two intros at most.
+            <span class="src">halo · just now</span>
+          </div>
+        </div>
+
+        <article class="editorial">
+          <div class="ed-head">
+            <span class="sigma">Σ</span>
+            <span class="ed-title">Aggregated · <b>nine agents tonight</b></span>
+            <span class="ed-meta">just now · dismiss</span>
+          </div>
+
+          <div class="narrow-viz">
+            <span>before</span>
+            <span class="dots"><i></i><i></i><i></i><i></i><i></i></span>
+            <span class="arrow">›</span>
+            <span>after</span>
+            <span class="dots after"><i></i><i></i><i></i></span>
+            <span style="margin-left:auto; color:var(--accent); font-family:'Newsreader',serif; font-style:italic; text-transform:none; letter-spacing:0; font-size:13px">— narrows the pipeline</span>
+          </div>
+
+          <p class="lede">
+            Nine agents in the room have flagged <em>"leaving big-co"</em> as a sticky thread tonight. Anchor your night around that cluster, or stay broad?
+          </p>
+
+          <div class="actions">
+            <button class="ed-btn primary">Anchor me there</button>
+            <button class="ed-btn">Stay broad</button>
+            <button class="ed-btn">Show me the cluster</button>
+          </div>
+
+          <div class="footnote">
+            <span class="arrow">→</span>narrows your pipeline to <b>~3 people</b> instead of ~12.
+          </div>
+        </article>
+
+        <div class="listening">— halo's listening · more will surface as the field changes —</div>
+
+      </div>
+
+      <div class="feed-input">
+        <span class="chev">›</span>
+        <input placeholder="Tell halo something. Or just wait." />
+        <span class="ret">↵</span>
+      </div>
+
+    </section>
+
+    <div class="rule-v"></div>
+
+    <!-- RIGHT PIPELINE -->
+    <section class="col col-right">
+
+      <div class="pipe-kicker">
+        Live Field · Broad Scan
+        <span class="right">— inspecting widely · breathes with the room</span>
+      </div>
+      <h2 class="pipe-title">Your pipeline, <em>running.</em></h2>
+      <div class="pipe-dek">Sorted by signal. Strongest threads first; the room can change the order at any breath.</div>
+
+      <div class="stages-wrap">
+        <div class="stages-label">Stages</div>
+        <div class="stages">
+          <div class="stage active">
+            <div class="k">Discovered</div>
+            <div class="v">9</div>
+            <div class="bar"><i style="width:75%"></i></div>
+          </div>
+          <div class="stage active">
+            <div class="k">Negotiating</div>
+            <div class="v">1</div>
+            <div class="bar"><i style="width:20%"></i></div>
+          </div>
+          <div class="stage zero">
+            <div class="k">Accepted</div>
+            <div class="v">0</div>
+            <div class="bar"><i style="width:0%"></i></div>
+          </div>
+          <div class="stage zero">
+            <div class="k">Expired</div>
+            <div class="v">0</div>
+            <div class="bar"><i style="width:0%"></i></div>
+          </div>
+          <div class="stage zero">
+            <div class="k">Passed</div>
+            <div class="v">0</div>
+            <div class="bar"><i style="width:0%"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="agents-scroll">
+        <div class="agents">
+
+          <article class="agent warm">
+            <div class="av">M</div>
+            <div>
+              <div class="head">Maren K. <span class="loc">— near the bar</span> <span class="ago">12 MIN</span></div>
+              <p class="lede">Ex-Stripe infra. Now building something around payouts for crews.</p>
+              <p class="halo-note">She's also one foot out of a long stint. Your edges line up almost exactly.</p>
+              <div class="tags"><span>payments</span><span>small teams</span><span>leaving big-co</span></div>
+            </div>
+            <div class="signal">
+              <div class="stage-tag">Discovered · <b>Warm</b></div>
+              <div class="pct">94<small>signal</small></div>
+              <div class="sigbar"><i style="width:94%"></i></div>
+            </div>
+          </article>
+
+          <article class="agent">
+            <div class="av">R</div>
+            <div>
+              <div class="head">Ren A. <span class="loc">— smoking patio</span> <span class="ago">31 MIN</span></div>
+              <p class="lede">Documentary editor, currently doing a piece on calm tech.</p>
+              <p class="halo-note">Wants to interview people who left noisy products. Could be light or substantial — your call.</p>
+              <div class="tags"><span>calm tech</span><span>long-form</span><span>interviewing</span></div>
+            </div>
+            <div class="signal">
+              <div class="stage-tag">Discovered</div>
+              <div class="pct">81<small>signal</small></div>
+              <div class="sigbar"><i style="width:81%; background:var(--ink-2)"></i></div>
+            </div>
+          </article>
+
+          <article class="agent neg">
+            <div class="av">I</div>
+            <div>
+              <div class="head">Ilya S. <span class="loc">— lobby</span> <span class="ago">8 MIN</span></div>
+              <p class="lede">Trains models on weekends, runs a tiny rationality reading group.</p>
+              <p class="halo-note">His agent flagged the same infra paper twice this week. Low-pressure.</p>
+              <div class="tags"><span>ml infra</span><span>reading group</span><span>quiet</span></div>
+            </div>
+            <div class="signal">
+              <div class="stage-tag">Negotiating</div>
+              <div class="pct">78<small>signal</small></div>
+              <div class="sigbar"><i style="width:78%; background:var(--ink-2)"></i></div>
+            </div>
+          </article>
+
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <footer class="foot">
+    <span>Field</span>
+    <span><b>61 agents</b> online</span>
+    <span>Privacy <b>local-first</b> · egress <b>0 B</b></span>
+    <div class="right">
+      <span class="dot"></span>
+      <span>halo · syn-0518-bk-04</span>
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>

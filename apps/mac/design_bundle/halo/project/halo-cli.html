@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>halod ─ syn-0518-bk-04</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0c;
+    --bg-2:#0e0e10;
+    --panel:#101013;
+    --line:#1c1b1a;
+    --line-2:#272421;
+    --text:#ebe7df;
+    --text-2:#a8a49b;
+    --dim:#6a6862;
+    --dimmer:#3a3835;
+    --orange:#ff7a1a;
+    --orange-2:#ffb27a;
+    --orange-dim:#a8541f;
+    --amber:#e8c577;
+    --green:#7bd88f;
+    --cyan:#7bb4d8;
+    --red:#e87b7b;
+    --magenta:#c77bd8;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+    font-size:13px;
+    line-height:1.5;
+    font-weight:400;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  body::before{
+    content:"";
+    position:fixed;inset:0;pointer-events:none;z-index:50;
+    background:repeating-linear-gradient(0deg, transparent 0, transparent 2px, rgba(0,0,0,0.18) 2px, rgba(0,0,0,0.18) 3px);
+    mix-blend-mode:multiply;opacity:.5;
+  }
+  body::after{
+    content:"";
+    position:fixed;inset:0;pointer-events:none;z-index:51;
+    background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
+  }
+
+  .app{
+    position:fixed;inset:0;
+    display:grid;
+    grid-template-rows: 22px 1fr 22px;
+    padding:8px;
+    gap:6px;
+  }
+
+  /* top status bar */
+  .topbar{
+    display:flex; align-items:center; gap:0;
+    border:1px solid var(--line-2);
+    background:var(--panel);
+    height:22px; padding:0 8px;
+    font-size:11px; letter-spacing:.2px;
+    color:var(--text-2);
+    overflow:hidden; white-space:nowrap;
+  }
+  .topbar .seg{padding:0 10px; border-right:1px solid var(--line-2); display:flex;align-items:center;gap:6px;height:100%}
+  .topbar .seg:first-child{padding-left:0}
+  .topbar .seg.right{margin-left:auto;border-right:none;border-left:1px solid var(--line-2)}
+  .topbar .seg.right + .seg.right{border-left:1px solid var(--line-2)}
+  .topbar .k{color:var(--dim)}
+  .topbar .v{color:var(--text)}
+  .topbar .accent{color:var(--orange)}
+  .dot{
+    display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--orange);
+    box-shadow:0 0 8px var(--orange), 0 0 1px var(--orange);
+    animation:pulse-dot 2.2s ease-out infinite;
+  }
+  @keyframes pulse-dot{
+    0%{transform:scale(1);opacity:1}
+    60%{transform:scale(1.55);opacity:.15}
+    100%{transform:scale(1);opacity:1}
+  }
+
+  /* main grid */
+  .main{
+    display:grid;
+    grid-template-columns: 1.05fr 1.6fr;
+    grid-template-rows: 1.35fr .85fr 1.5em;
+    gap:6px;
+    min-height:0;
+  }
+  .pane{
+    border:1px solid var(--line-2);
+    background:var(--panel);
+    display:flex; flex-direction:column;
+    min-height:0; min-width:0;
+    position:relative; overflow:hidden;
+  }
+  .pane > .title{
+    height:22px; flex:0 0 22px;
+    border-bottom:1px solid var(--line-2);
+    display:flex; align-items:center; gap:8px;
+    padding:0 10px;
+    font-size:10.5px; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--dim);
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  }
+  .pane > .title .badge{
+    color:var(--orange); border:1px solid var(--orange-dim);
+    padding:0 5px; font-size:9.5px; letter-spacing:1px;
+    border-radius:1px;
+  }
+  .pane > .title .right{margin-left:auto;color:var(--dimmer); font-size:10px; letter-spacing:1px}
+  .pane > .body{
+    flex:1; min-height:0; min-width:0;
+    overflow:auto; padding:10px 12px;
+  }
+  .pane > .body::-webkit-scrollbar{width:6px;height:6px}
+  .pane > .body::-webkit-scrollbar-track{background:transparent}
+  .pane > .body::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:0}
+
+  /* FIELD pane */
+  .field-pane{ grid-column:1; grid-row:1 / span 2; }
+  .field-head{
+    display:flex; align-items:baseline; gap:10px;
+    font-size:18px; font-weight:500; letter-spacing:-.3px;
+    margin-bottom:2px;
+  }
+  .field-head .live{
+    font-size:9.5px; letter-spacing:2px; color:var(--orange);
+    border:1px solid var(--orange-dim); padding:1px 5px;
+    text-transform:uppercase; font-weight:400;
+    animation:blink-soft 2s steps(2) infinite;
+  }
+  @keyframes blink-soft{50%{opacity:.35}}
+  .field-meta{
+    color:var(--text-2); font-size:11.5px; margin-bottom:14px;
+  }
+  .field-meta .sep{color:var(--dimmer); padding:0 6px}
+
+  .ascii-halo{
+    color:var(--orange);
+    font-size:9.5px; line-height:1.05;
+    white-space:pre;
+    text-shadow:0 0 8px rgba(255,122,26,0.5), 0 0 18px rgba(255,122,26,0.25);
+    padding:6px 0 10px;
+    text-align:center;
+    user-select:none; overflow:hidden;
+  }
+  .ascii-halo .core{color:var(--orange-2); text-shadow:0 0 12px var(--orange)}
+  .ascii-halo .ring{color:var(--orange-dim)}
+  .ascii-halo .outer{color:#5a2d10}
+
+  .kv{
+    display:grid; grid-template-columns: 110px 1fr; gap:2px 14px;
+    font-size:12px;
+  }
+  .kv .k{color:var(--dim)}
+  .kv .v{color:var(--text)}
+  .kv .v .ok{color:var(--green)}
+  .kv .v .acc{color:var(--orange)}
+  .kv .v .dim{color:var(--dim)}
+
+  .bar-row{display:flex; align-items:center; gap:6px; margin:2px 0; font-size:11.5px}
+  .bar-row .lbl{width:88px; color:var(--dim)}
+  .bar-row .bar{flex:1; height:6px; background:#161513; border:1px solid var(--line-2); position:relative}
+  .bar-row .bar > i{display:block;height:100%;background:var(--orange); box-shadow:0 0 6px var(--orange-dim)}
+  .bar-row .bar.cyan > i{background:var(--cyan)}
+  .bar-row .bar.green > i{background:var(--green)}
+  .bar-row .num{width:52px; text-align:right; color:var(--text); font-variant-numeric:tabular-nums}
+
+  /* NEGOTIATIONS pane */
+  .neg-pane{ grid-column:2; grid-row:1; }
+  .neg-pane .body{padding:6px 12px}
+  .log-line{
+    font-size:11.5px; line-height:1.55;
+    color:var(--text-2);
+    display:flex; gap:8px; align-items:baseline;
+    padding:1px 0;
+  }
+  .log-line .ts{color:var(--dimmer); flex:0 0 auto}
+  .log-line .lv{flex:0 0 auto; width:38px}
+  .log-line .lv.info{color:var(--cyan)}
+  .log-line .lv.neg{color:var(--orange)}
+  .log-line .lv.ok{color:var(--green)}
+  .log-line .lv.warn{color:var(--amber)}
+  .log-line .lv.err{color:var(--red)}
+  .log-line .msg{flex:1; min-width:0; word-wrap:break-word}
+  .log-line .id{color:var(--magenta)}
+  .log-line .acc{color:var(--orange)}
+  .log-line .ok{color:var(--green)}
+  .log-line .dim{color:var(--dim)}
+
+  /* INTROS pane */
+  .intros-pane{ grid-column:2; grid-row:2; }
+  .intro{
+    border:1px dashed var(--line-2);
+    padding:8px 10px; margin-bottom:6px;
+    font-size:11.5px;
+  }
+  .intro:last-child{margin-bottom:0}
+  .intro .head{display:flex; align-items:center; gap:10px; margin-bottom:4px}
+  .intro .id{color:var(--magenta); font-weight:500}
+  .intro .conf{color:var(--orange); margin-left:auto}
+  .intro .basis{color:var(--text-2)}
+  .intro .actions{margin-top:6px; display:flex; gap:6px}
+  .intro .actions span{
+    color:var(--dim); font-size:10.5px;
+    border:1px solid var(--line-2); padding:1px 6px;
+  }
+  .intro .actions .k{color:var(--orange); font-weight:500}
+
+  /* REPL */
+  .repl{
+    grid-column:1 / span 2; grid-row:3;
+    background:var(--panel);
+    border:1px solid var(--line-2);
+    display:flex; align-items:center; gap:0;
+    padding:0 10px;
+    min-height:24px;
+    font-size:12px;
+  }
+  .repl .prompt{color:var(--orange); flex:0 0 auto}
+  .repl .prompt b{color:var(--text); font-weight:400; margin:0 6px 0 4px}
+  .repl input{
+    flex:1; background:transparent; border:0; outline:0;
+    color:var(--text); font:inherit; padding:0 4px;
+    caret-color:transparent;
+  }
+  .repl .caret{
+    display:inline-block;width:8px;height:14px;background:var(--orange);
+    margin-left:-2px; transform:translateY(2px);
+    box-shadow:0 0 6px var(--orange);
+    animation:blink 1s steps(2) infinite;
+  }
+  @keyframes blink{50%{opacity:0}}
+
+  .botbar{
+    display:flex; align-items:center; gap:0;
+    border:1px solid var(--line-2);
+    background:var(--panel);
+    height:22px; padding:0 8px;
+    font-size:10.5px; letter-spacing:.3px;
+    color:var(--dim);
+    overflow:hidden; white-space:nowrap;
+  }
+  .botbar .seg{padding:0 10px; border-right:1px solid var(--line-2); height:100%; display:flex; align-items:center; gap:6px}
+  .botbar .seg:first-child{padding-left:0}
+  .botbar kbd{
+    color:var(--orange-2); border:1px solid var(--line-2); padding:0 4px;
+    background:#15130f; font:inherit; font-size:9.5px; letter-spacing:0;
+    border-radius:1px;
+  }
+  .botbar .right{margin-left:auto; border-right:none; border-left:1px solid var(--line-2)}
+
+  .repl-out{
+    grid-column:1 / span 2;
+    border:1px solid var(--line-2);
+    background:var(--bg-2);
+    padding:8px 12px;
+    font-size:11.5px;
+    color:var(--text-2);
+    white-space:pre-wrap;
+  }
+  .repl-out b{color:var(--text)}
+  .repl-out .k{color:var(--orange)}
+  .repl-out .c{color:var(--cyan)}
+  .repl-out .g{color:var(--green)}
+  .repl-out .d{color:var(--dim)}
+
+  .boot{
+    position:fixed; inset:0; z-index:60;
+    background:var(--bg);
+    color:var(--orange);
+    padding:24px;
+    font-size:12px; line-height:1.6;
+    overflow:hidden;
+    white-space:pre-wrap;
+  }
+  .boot.done{opacity:0; pointer-events:none; transition:opacity .4s}
+  .boot .ok{color:var(--green)}
+  .boot .dim{color:var(--dim)}
+  .boot .acc{color:var(--orange-2)}
+
+  .hr{height:1px; background:var(--line); margin:10px 0}
+  .sub{font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); margin-bottom:6px}
+
+  .radar{
+    display:grid; grid-template-columns: repeat(40, 1fr);
+    gap:2px; padding:4px 0; user-select:none;
+  }
+  .radar i{
+    width:6px; height:6px; background:#1a1816; border-radius:99px;
+    display:inline-block;
+  }
+  .radar i.on{background:var(--orange-dim)}
+  .radar i.hot{background:var(--orange); box-shadow:0 0 6px var(--orange)}
+  .radar i.neg{background:var(--cyan); box-shadow:0 0 6px var(--cyan); animation:negPulse 1.4s ease-in-out infinite}
+  @keyframes negPulse{50%{opacity:.3}}
+
+  @media (max-width: 980px){
+    .main{ grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; }
+    .field-pane{grid-column:1; grid-row:1}
+    .neg-pane{grid-column:1; grid-row:2}
+    .intros-pane{grid-column:1; grid-row:3}
+    .repl{grid-column:1; grid-row:4}
+  }
+</style>
+</head>
+<body>
+
+<div class="boot" id="boot"></div>
+
+<div class="app" id="app" style="visibility:hidden">
+
+  <div class="topbar">
+    <div class="seg"><span class="dot"></span><span class="v">halod</span><span class="k">0.4.2-rc1</span></div>
+    <div class="seg"><span class="k">field</span><span class="accent">syn-0518-bk-04</span></div>
+    <div class="seg"><span class="k">agent</span><span class="v">halo</span><span class="k">·</span><span class="v">idle, listening</span></div>
+    <div class="seg right"><span class="k">uptime</span><span class="v" id="uptime">00:00:00</span></div>
+    <div class="seg right"><span class="k">peers</span><span class="v" id="peers">62</span><span class="k">/</span><span class="v" id="attending">251</span></div>
+    <div class="seg right"><span class="k">load</span><span class="v" id="load">0.18 0.22 0.19</span></div>
+    <div class="seg right"><span class="k" id="clock">19:42:11</span></div>
+  </div>
+
+  <div class="main">
+
+    <section class="pane field-pane">
+      <div class="title">
+        <span>field</span><span class="badge">live</span>
+        <span class="right">tail -f /var/log/halo/field.log</span>
+      </div>
+      <div class="body" id="field-body">
+        <div class="field-head">
+          synthesis <span class="live">live</span>
+        </div>
+        <div class="field-meta">
+          the hex <span class="sep">·</span> brooklyn <span class="sep">·</span> thu may 18 <span class="sep">·</span> doors 20:00
+        </div>
+
+        <div class="ascii-halo" id="ascii-halo"></div>
+
+        <div class="sub">vitals</div>
+        <div class="bar-row"><span class="lbl">arrived</span><div class="bar"><i id="b-arrived" style="width:35%"></i></div><span class="num"><span id="n-arrived">88</span>/251</span></div>
+        <div class="bar-row"><span class="lbl">online</span><div class="bar cyan"><i id="b-online" style="width:62%"></i></div><span class="num"><span id="n-online">62</span>/251</span></div>
+        <div class="bar-row"><span class="lbl">negotiating</span><div class="bar"><i id="b-neg" style="width:5%"></i></div><span class="num"><span id="n-neg">3</span> live</span></div>
+        <div class="bar-row"><span class="lbl">intros made</span><div class="bar green"><i style="width:14%"></i></div><span class="num">12 tonight</span></div>
+
+        <div class="hr"></div>
+
+        <div class="sub">field map</div>
+        <div class="radar" id="radar"></div>
+
+        <div class="hr"></div>
+
+        <div class="kv">
+          <span class="k">your agent</span><span class="v">halo <span class="dim">·</span> <span class="acc">idle</span>, listening</span>
+          <span class="k">field id</span><span class="v">syn-0518-bk-04</span>
+          <span class="k">protocol</span><span class="v">halo/0.4 <span class="dim">·</span> mesh+ble+local</span>
+          <span class="k">privacy</span><span class="v"><span class="ok">local-first</span> <span class="dim">·</span> nothing leaves until you ok it</span>
+          <span class="k">signature</span><span class="v">ed25519:F3a9…c70b</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane neg-pane">
+      <div class="title">
+        <span>negotiations</span>
+        <span class="right">streaming · <span id="neg-rate">0.4/s</span></span>
+      </div>
+      <div class="body" id="neg-body"></div>
+    </section>
+
+    <section class="pane intros-pane">
+      <div class="title">
+        <span>intros</span>
+        <span class="badge" id="intro-badge">2 pending</span>
+        <span class="right">a/d to accept/decline · ↑↓ select</span>
+      </div>
+      <div class="body" id="intros-body"></div>
+    </section>
+
+    <form class="repl" id="repl" autocomplete="off">
+      <span class="prompt">halo<b>·</b>syn-0518-bk-04 <span style="color:var(--orange)">›</span></span>
+      <input id="repl-in" autocomplete="off" spellcheck="false" />
+      <span class="caret"></span>
+    </form>
+  </div>
+
+  <div class="botbar">
+    <div class="seg"><kbd>?</kbd> help</div>
+    <div class="seg"><kbd>s</kbd> signal</div>
+    <div class="seg"><kbd>p</kbd> peers</div>
+    <div class="seg"><kbd>i</kbd> intros</div>
+    <div class="seg"><kbd>f</kbd> field</div>
+    <div class="seg"><kbd>/</kbd> focus repl</div>
+    <div class="seg right">tx <span id="tx">0 B</span></div>
+    <div class="seg right">rx <span id="rx">0 B</span></div>
+    <div class="seg right">tty pts/0 · 100×34</div>
+  </div>
+
+</div>
+
+<script>
+const bootEl = document.getElementById('boot');
+const appEl  = document.getElementById('app');
+
+const bootLines = [
+  ['halod 0.4.2-rc1 (linux/aarch64) · build 2026-05-18', 'acc'],
+  ['(c) halo collective · ambient social layer', 'dim'],
+  ['', null],
+  ['[  0.001 ] loading kernel modules ......................... ', 'dim', 'ok', 'ok'],
+  ['[  0.043 ] mesh: scanning radios ........................... ', 'dim', 'ok', 'ok'],
+  ['[  0.118 ] ble: pairing local field ........................ ', 'dim', 'ok', 'ok'],
+  ['[  0.214 ] dht: bootstrap 4 peers .......................... ', 'dim', 'ok', 'ok'],
+  ['[  0.337 ] identity: ed25519:F3a9…c70b ..................... ', 'dim', 'ok', 'ok'],
+  ['[  0.402 ] privacy enclave: local-first ................... ', 'dim', 'ok', 'ok'],
+  ['[  0.488 ] agent: halo · personality v3 .................... ', 'dim', 'ok', 'ok'],
+  ['[  0.612 ] joining field syn-0518-bk-04 ................... ', 'dim', 'ok', 'ok'],
+  ['[  0.701 ] sync 62/251 peers ............................... ', 'dim', 'ok', 'ok'],
+  ['', null],
+  ['  field acquired: synthesis @ the hex · brooklyn', 'acc'],
+  ['  62 agents online · 3 negotiating · 0 intros pending', null],
+  ['', null],
+  ['  tip: type `help` or press ?  ─  press / to focus the prompt', 'dim'],
+  ['', null],
+  ['  starting tty…', 'dim'],
+];
+
+function renderBoot(){
+  let i = 0, acc = '';
+  function step(){
+    if (i >= bootLines.length){
+      setTimeout(()=> {
+        bootEl.classList.add('done');
+        appEl.style.visibility = 'visible';
+        startSystem();
+        setTimeout(()=> bootEl.remove(), 500);
+      }, 280);
+      return;
+    }
+    const [text, klass, suffix, sklass] = bootLines[i++];
+    let html = klass ? `<span class="${klass}">${text}</span>` : text;
+    if (suffix) html += `<span class="${sklass||''}">[ ${suffix} ]</span>`;
+    acc += html + '\n';
+    bootEl.innerHTML = acc;
+    bootEl.scrollTop = bootEl.scrollHeight;
+    setTimeout(step, 38 + Math.random()*50);
+  }
+  step();
+}
+renderBoot();
+
+/* ascii halo */
+function renderAsciiHalo(phase){
+  const w = 56, h = 13;
+  const cx = w/2, cy = h/2;
+  let out = '';
+  for (let y=0;y<h;y++){
+    for (let x=0;x<w;x++){
+      const dx = (x - cx) * 0.5;
+      const dy = (y - cy);
+      const d = Math.sqrt(dx*dx + dy*dy);
+      let ch=' ', cls='';
+      if (d < 0.7){ ch='●'; cls='core'; }
+      else if (d < 1.6){ ch='◉'; cls='core'; }
+      else {
+        const rings = [
+          {r:2.4, w:0.5,  ch:'·', cls:'ring'},
+          {r:3.7, w:0.45, ch:'∙', cls:'ring'},
+          {r:5.0, w:0.5,  ch:'•', cls:''},
+          {r:6.3, w:0.5,  ch:'·', cls:'outer'}
+        ];
+        for (let i=0;i<rings.length;i++){
+          const ring = rings[i];
+          if (Math.abs(d - ring.r) < ring.w){
+            ch = ring.ch; cls = ring.cls;
+            const focus = (phase * 4) % 4;
+            if (Math.abs(focus - i) < 0.6){ cls='core'; ch = ring.ch === '·' ? '∙' : '•'; }
+            break;
+          }
+        }
+      }
+      out += cls ? `<span class="${cls}">${ch}</span>` : ch;
+    }
+    out += '\n';
+  }
+  return out;
+}
+let haloPhase = 0;
+function tickHalo(){
+  haloPhase = (haloPhase + 0.012) % 1;
+  document.getElementById('ascii-halo').innerHTML = renderAsciiHalo(haloPhase);
+}
+
+/* radar */
+function renderRadar(){
+  const radar = document.getElementById('radar');
+  const N = 40 * 4;
+  let html = '';
+  for (let i=0;i<N;i++){
+    const r = Math.random();
+    let cls = '';
+    if (r > 0.78) cls = 'on';
+    if (r > 0.94) cls = 'hot';
+    if (r > 0.985) cls = 'neg';
+    html += `<i class="${cls}"></i>`;
+  }
+  radar.innerHTML = html;
+}
+
+/* negotiations log */
+const NEG_BODY = document.getElementById('neg-body');
+const peerIds = [];
+function randPeer(){
+  if (peerIds.length < 80 && Math.random() > 0.6){
+    const hex = Math.floor(Math.random()*0xffff).toString(16).padStart(4,'0');
+    peerIds.push(hex);
+  }
+  return peerIds[Math.floor(Math.random()*peerIds.length)] || 'a3f9';
+}
+function rand(a,b){return Math.floor(a + Math.random()*(b-a))}
+function randBook(){
+  const b = ['borges','calvino','ursula le guin','iain m. banks','clarice lispector','sebald','annie dillard','simone weil'];
+  return b[Math.floor(Math.random()*b.length)];
+}
+function randTopic(){
+  const t = ['tonight\'s djset','underrated cities','what to leave behind','the last good email','small rooms','field recordings','found objects','the c64 demoscene','slow software','dinner parties','rooftops','warehouse coffee','letter-writing','low-stakes friendships','sleep','quiet ambition'];
+  return t[Math.floor(Math.random()*t.length)];
+}
+const NEG_TEMPLATES = [
+  ()=>['neg', `peer#<span class="id">${randPeer()}</span> ⇌ peer#<span class="id">${randPeer()}</span> · negotiating common ground`],
+  ()=>['ok',  `intent matched · basis: <span class="acc">both reading ${randBook()}</span> · conf <span class="acc">${rand(72,94)}%</span>`],
+  ()=>['info',`gossip: <span class="dim">${rand(3,12)} new attendees in last 60s</span>`],
+  ()=>['neg', `agent#<span class="id">${randPeer()}</span> proposed topic <span class="acc">"${randTopic()}"</span> · 4 responses`],
+  ()=>['warn',`peer#<span class="id">${randPeer()}</span> declined — basis withheld <span class="dim">(rate-limit ok)</span>`],
+  ()=>['ok',  `handshake: <span class="ok">3/3 receipts signed</span> · intro queued`],
+  ()=>['info',`ble: rssi -${rand(42,78)}dBm · mesh hops ${rand(1,3)}`],
+  ()=>['neg', `cluster forming around <span class="acc">"${randTopic()}"</span> · ${rand(2,6)} agents`],
+  ()=>['ok',  `you mentioned <span class="acc">"${randTopic()}"</span> earlier · 1 peer also did`],
+  ()=>['info',`privacy: <span class="dim">0 bytes egress · all local</span>`],
+  ()=>['neg', `peer#<span class="id">${randPeer()}</span> asked: <i>"anyone else come alone?"</i> · 7 silent acks`],
+  ()=>['warn',`peer#<span class="id">${randPeer()}</span> dropped · radio quiet 14s`],
+  ()=>['ok',  `agreement: <span class="ok">intro #${rand(1000,9999)} confirmed</span> · awaiting your nod`],
+];
+function ts(){
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+function pushLog(level, msg){
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.innerHTML = `<span class="ts">${ts()}</span><span class="lv ${level}">${level.toUpperCase()}</span><span class="msg">${msg}</span>`;
+  NEG_BODY.appendChild(div);
+  while (NEG_BODY.children.length > 120) NEG_BODY.removeChild(NEG_BODY.firstChild);
+  NEG_BODY.scrollTop = NEG_BODY.scrollHeight;
+}
+function seedLogs(){
+  for (let i=0;i<6;i++){
+    const tpl = NEG_TEMPLATES[Math.floor(Math.random()*NEG_TEMPLATES.length)]();
+    pushLog(tpl[0], tpl[1]);
+  }
+}
+
+/* intros */
+const INTROS = [
+  { id: 'intr-2901', who: 'someone @ the bar',
+    basis: 'both reading <span class="acc">le guin</span> · both came alone', conf: 91 },
+  { id: 'intr-2902', who: 'someone near the speakers',
+    basis: 'mentioned <span class="acc">"field recordings"</span> · 2 mutual silent acks', conf: 78 },
+];
+function renderIntros(){
+  const el = document.getElementById('intros-body');
+  el.innerHTML = '';
+  if (INTROS.length === 0){
+    el.innerHTML = `<div style="color:var(--dim); font-size:11.5px; padding:6px 0">no pending intros. halo is listening.</div>`;
+  } else {
+    for (const it of INTROS){
+      const div = document.createElement('div');
+      div.className = 'intro';
+      div.innerHTML = `
+        <div class="head">
+          <span class="id">${it.id}</span>
+          <span style="color:var(--text)">${it.who}</span>
+          <span class="conf">${it.conf}% match</span>
+        </div>
+        <div class="basis">basis: ${it.basis}</div>
+        <div class="actions">
+          <span><span class="k">a</span> accept</span>
+          <span><span class="k">d</span> decline</span>
+          <span><span class="k">?</span> ask halo why</span>
+        </div>`;
+      el.appendChild(div);
+    }
+  }
+  document.getElementById('intro-badge').textContent = INTROS.length + ' pending';
+}
+
+/* clock / uptime / net counters */
+const start = Date.now();
+let tx = 0, rx = 0;
+function fmtBytes(n){
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/(1024*1024)).toFixed(2) + ' MB';
+}
+function tickClock(){
+  document.getElementById('clock').textContent = ts();
+  const up = Math.floor((Date.now() - start)/1000) + (2*3600 + 14*60 + 33);
+  const h = String(Math.floor(up/3600)).padStart(2,'0');
+  const m = String(Math.floor((up%3600)/60)).padStart(2,'0');
+  const s = String(up%60).padStart(2,'0');
+  document.getElementById('uptime').textContent = `${h}:${m}:${s}`;
+  const l1 = (0.18 + Math.sin(Date.now()/4000)*0.05).toFixed(2);
+  const l2 = (0.22 + Math.sin(Date.now()/7000)*0.04).toFixed(2);
+  const l3 = (0.19 + Math.sin(Date.now()/11000)*0.03).toFixed(2);
+  document.getElementById('load').textContent = `${l1} ${l2} ${l3}`;
+  rx += Math.floor(Math.random()*40);
+  tx += Math.floor(Math.random()*8);
+  document.getElementById('tx').textContent = fmtBytes(tx);
+  document.getElementById('rx').textContent = fmtBytes(rx);
+}
+
+let attending = 251, online = 62, neg = 3, arrived = 88;
+function tickVitals(){
+  if (Math.random() > 0.85) online = Math.max(40, Math.min(110, online + (Math.random()>.5?1:-1)));
+  if (Math.random() > 0.93) neg = Math.max(0, Math.min(8, neg + (Math.random()>.5?1:-1)));
+  if (Math.random() > 0.95) arrived = Math.min(attending, arrived + 1);
+  if (Math.random() > 0.97) attending += 1;
+  document.getElementById('peers').textContent = online;
+  document.getElementById('attending').textContent = attending;
+  document.getElementById('n-online').textContent = online;
+  document.getElementById('n-neg').textContent = neg;
+  document.getElementById('n-arrived').textContent = arrived;
+  document.getElementById('b-online').style.width = Math.min(100, (online/attending)*100) + '%';
+  document.getElementById('b-neg').style.width = Math.min(100, (neg/12)*100) + '%';
+  document.getElementById('b-arrived').style.width = Math.min(100, (arrived/attending)*100) + '%';
+  document.getElementById('neg-rate').textContent = (0.3 + Math.random()*0.5).toFixed(1) + '/s';
+}
+
+/* REPL */
+const reForm = document.getElementById('repl');
+const reInp = document.getElementById('repl-in');
+const history = [];
+let histIdx = -1;
+
+const HELP = `<b>halo cli</b> · <span class="d">v0.4.2-rc1</span>
+<b>commands</b>
+  <span class="k">help</span>                       show this
+  <span class="k">status</span>                     full system status
+  <span class="k">field</span>                      info about tonight's field
+  <span class="k">peers</span> [n]                  list n peers (default 10)
+  <span class="k">signal</span> "&lt;text&gt;"           tell halo what you're sitting with
+  <span class="k">intros</span>                     show pending intros
+  <span class="k">accept</span> &lt;id&gt;               accept an intro
+  <span class="k">decline</span> &lt;id&gt;              decline an intro
+  <span class="k">why</span> &lt;id&gt;                  ask halo why it suggested an intro
+  <span class="k">privacy</span>                    privacy / data egress
+  <span class="k">protocol</span>                   protocol info
+  <span class="k">ping</span> &lt;peer&gt;                rtt to a peer
+  <span class="k">whoami</span>                     your identity
+  <span class="k">leave</span>                      leave the field
+  <span class="k">clear</span>                      clear repl output
+<b>shortcuts</b>
+  <span class="k">/</span> focus repl   <span class="k">?</span> help   <span class="k">i</span> intros   <span class="k">s</span> signal   <span class="k">a</span>/<span class="k">d</span> accept/decline first intro`;
+
+const PEERS_SAMPLE = [
+  { id:'a3f9', d:'-54dBm', t:'borges, slow software', s:'idle' },
+  { id:'b1c2', d:'-61dBm', t:'djs, rooftops',         s:'negotiating' },
+  { id:'7e4d', d:'-49dBm', t:'le guin, dinner',       s:'idle' },
+  { id:'9f01', d:'-72dBm', t:'field recordings',      s:'listening' },
+  { id:'2c88', d:'-58dBm', t:'small rooms',           s:'idle' },
+  { id:'d3b7', d:'-66dBm', t:'sebald, walking',       s:'negotiating' },
+  { id:'4a2e', d:'-51dBm', t:'c64 demoscene',         s:'idle' },
+  { id:'81fa', d:'-69dBm', t:'letter-writing',        s:'idle' },
+  { id:'5cce', d:'-77dBm', t:'sleep',                 s:'idle' },
+  { id:'6abe', d:'-55dBm', t:'low-stakes friends',    s:'listening' },
+  { id:'c91d', d:'-63dBm', t:'lispector',             s:'idle' },
+  { id:'fd02', d:'-71dBm', t:'warehouse coffee',      s:'idle' },
+];
+
+function output(html){
+  const div = document.createElement('div');
+  div.className = 'repl-out';
+  div.innerHTML = html;
+  reForm.parentNode.insertBefore(div, reForm);
+  const outs = document.querySelectorAll('.repl-out');
+  if (outs.length > 1) for (let i=0;i<outs.length-1;i++) outs[i].remove();
+}
+
+function run(cmd){
+  const raw = cmd.trim();
+  if (!raw) return;
+  history.push(raw); histIdx = history.length;
+  const parts = raw.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+  const op = (parts[0]||'').toLowerCase();
+  const args = parts.slice(1).map(s=>s.replace(/^"|"$/g,''));
+
+  switch(op){
+    case 'help': case '?': output(HELP); break;
+    case 'status':
+      output(
+`<b>halod 0.4.2-rc1</b>  ·  field <span class="k">syn-0518-bk-04</span>  ·  agent <b>halo</b> <span class="d">·</span> idle, listening
+attending  <b>${attending}</b>      online  <b>${online}</b>      arrived  <b>${arrived}</b>      negotiating  <b>${neg}</b>
+intros     <b>${INTROS.length} pending</b>  ·  <b>12 made</b> tonight
+privacy    <span class="g">local-first</span>  ·  egress  <b>0 B</b>
+radio      ble + mesh  ·  rssi  <b>good</b>  ·  hops avg <b>1.4</b>
+uptime     ${document.getElementById('uptime').textContent}    load   ${document.getElementById('load').textContent}`);
+      break;
+    case 'field':
+      output(
+`<b>synthesis</b>  <span class="k">live</span>
+the hex <span class="d">·</span> brooklyn <span class="d">·</span> thu may 18 <span class="d">·</span> doors 20:00
+field id    <b>syn-0518-bk-04</b>
+host        @kava
+protocol    halo/0.4 · mesh+ble+local
+attending   <b>${attending}</b>     online <b>${online}</b>     arrived <b>${arrived}</b>
+basis       music, art, anyone curious. no work talk.
+manifesto   "the room is the algorithm."`);
+      break;
+    case 'peers': {
+      const n = Math.min(parseInt(args[0]||'10',10) || 10, PEERS_SAMPLE.length);
+      let out = `<b>peers</b>  ·  showing ${n} of <b>${online}</b>\n\n`;
+      out += `<span class="d">id      rssi    interests                          state</span>\n`;
+      for (let i=0;i<n;i++){
+        const p = PEERS_SAMPLE[i];
+        out += `<span class="k">${p.id}</span>    ${p.d}   ${p.t.padEnd(33)}  ${p.s==='negotiating'?'<span class="c">negotiating</span>':p.s==='listening'?'<span class="g">listening</span>':'<span class="d">idle</span>'}\n`;
+      }
+      output(out); break;
+    }
+    case 'signal': {
+      const what = args.join(' ') || '';
+      if (!what){ output(`<span class="d">usage:</span> signal "what you're sitting with"`); break; }
+      output(`<b>signal accepted</b> <span class="d">·</span> halo will quietly carry "<span class="k">${what}</span>" into the room.\n<span class="d">staying local until matched. you'll be notified.</span>`);
+      pushLog('ok', `you signaled: "<span class="acc">${what.replace(/</g,'&lt;')}</span>" · halo broadcasting basis hash only`);
+      setTimeout(()=>{
+        const id = 'intr-' + rand(2903, 9999);
+        INTROS.push({
+          id, who:'someone in the room',
+          basis:`also sitting with <span class="acc">"${what.replace(/</g,'&lt;')}"</span>`,
+          conf: rand(76, 95)
+        });
+        renderIntros();
+        pushLog('ok', `new intro <span class="id">${id}</span> proposed · basis matches your signal`);
+      }, 2400 + Math.random()*1800);
+      break;
+    }
+    case 'intros': {
+      if (INTROS.length === 0){ output(`<span class="d">no pending intros. halo is listening.</span>`); break; }
+      let out = `<b>${INTROS.length} pending intros</b>\n\n`;
+      for (const it of INTROS){
+        out += `<span class="k">${it.id}</span>  ${it.conf}%   ${it.who}\n            basis: ${it.basis}\n`;
+      }
+      output(out); break;
+    }
+    case 'accept': {
+      const id = args[0];
+      const it = INTROS.find(x=>x.id===id) || INTROS[0];
+      if (!it){ output(`<span class="d">nothing to accept.</span>`); break; }
+      INTROS.splice(INTROS.indexOf(it),1);
+      renderIntros();
+      output(`<span class="g">accepted</span> <b>${it.id}</b>. halo is whispering basis to the other agent…\n<span class="d">they'll see your name when they accept too.</span>`);
+      pushLog('ok', `you accepted <span class="id">${it.id}</span> · waiting on counterparty`);
+      break;
+    }
+    case 'decline': {
+      const id = args[0];
+      const it = INTROS.find(x=>x.id===id) || INTROS[0];
+      if (!it){ output(`<span class="d">nothing to decline.</span>`); break; }
+      INTROS.splice(INTROS.indexOf(it),1);
+      renderIntros();
+      output(`declined <b>${it.id}</b>. <span class="d">no trace left with the other agent.</span>`);
+      pushLog('warn', `you declined <span class="id">${it.id}</span> · basis withheld`);
+      break;
+    }
+    case 'why': {
+      const id = args[0] || (INTROS[0]&&INTROS[0].id);
+      const it = INTROS.find(x=>x.id===id) || INTROS[0];
+      if (!it){ output(`<span class="d">no intro to explain.</span>`); break; }
+      output(`<b>why ${it.id}?</b>\n  basis      ${it.basis}\n  confidence ${it.conf}%\n  signal age 4m 12s\n  receipts   3/3 signed\n  <span class="d">halo only proposes when basis is mutual and recent.</span>`);
+      break;
+    }
+    case 'privacy':
+      output(
+`<b>privacy</b>
+  mode         <span class="g">local-first</span>
+  egress       0 B since boot
+  storage      sqlite, encrypted at rest, key in secure enclave
+  sharing      only basis <i>hashes</i> leave your device; raw text never does
+  retention    24h rolling, wiped at field end
+  audit        <span class="k">halo audit</span> for a full trace`);
+      break;
+    case 'protocol':
+      output(
+`<b>protocol</b>  halo/0.4
+  transport   ble-mesh (primary) · wifi-aware (fallback) · local rendezvous
+  identity    ed25519 · rotating per-field
+  matching    sealed-PSI on hashed bases · 3-of-3 receipts
+  failure     graceful-quiet: drops never inform peers`);
+      break;
+    case 'ping': {
+      const p = args[0] || 'a3f9';
+      let out = `<b>ping peer#${p}</b>\n`;
+      for (let i=0;i<4;i++){
+        out += `64 bytes from <span class="k">${p}</span>: seq=${i} hops=${rand(1,3)} rtt=<b>${(2+Math.random()*8).toFixed(2)}ms</b>\n`;
+      }
+      out += `\n--- ${p} ping statistics ---\n4 packets, 0 lost, avg <b>${(2+Math.random()*4).toFixed(2)}ms</b>`;
+      output(out); break;
+    }
+    case 'whoami':
+      output(
+`agent       <b>halo</b>  <span class="d">·</span> idle, listening
+identity    ed25519:<b>F3a9…c70b</b>  <span class="d">(rotates at field end)</span>
+display     <b>you</b>  <span class="d">·</span> alias hidden until matched
+field       syn-0518-bk-04`);
+      break;
+    case 'leave':
+      output(`<span class="d">leaving field…</span>  <span class="g">ok.</span>  see you at the next one.`);
+      pushLog('warn', `you left the field · session sealed`);
+      break;
+    case 'clear':
+      document.querySelectorAll('.repl-out').forEach(n=>n.remove());
+      break;
+    case 'sudo':
+      output(`<span class="d">nice try.</span>`); break;
+    case 'exit': case 'quit':
+      output(`<span class="d">the room is the algorithm. you can't exit.</span>`); break;
+    default:
+      output(`<span class="d">unknown:</span> <b>${op}</b>  <span class="d">— try</span> <span class="k">help</span>`);
+  }
+}
+
+reForm.addEventListener('submit', e=>{
+  e.preventDefault();
+  const v = reInp.value;
+  reInp.value = '';
+  run(v);
+});
+
+reInp.addEventListener('keydown', e=>{
+  if (e.key === 'ArrowUp'){
+    if (history.length){ histIdx = Math.max(0, histIdx-1); reInp.value = history[histIdx]||''; e.preventDefault(); }
+  } else if (e.key === 'ArrowDown'){
+    if (history.length){ histIdx = Math.min(history.length, histIdx+1); reInp.value = history[histIdx] || ''; e.preventDefault(); }
+  }
+});
+
+window.addEventListener('keydown', e=>{
+  if (document.activeElement === reInp) return;
+  if (e.key === '/'){ reInp.focus(); e.preventDefault(); }
+  else if (e.key === '?'){ run('help'); }
+  else if (e.key === 'i'){ run('intros'); }
+  else if (e.key === 'p'){ run('peers'); }
+  else if (e.key === 'f'){ run('field'); }
+  else if (e.key === 's'){ reInp.focus(); reInp.value = 'signal "'; }
+  else if (e.key === 'a' && INTROS[0]){ run('accept ' + INTROS[0].id); }
+  else if (e.key === 'd' && INTROS[0]){ run('decline ' + INTROS[0].id); }
+});
+
+function startSystem(){
+  renderIntros();
+  seedLogs();
+  tickHalo();
+  renderRadar();
+  tickClock();
+  tickVitals();
+  setInterval(tickHalo, 90);
+  setInterval(renderRadar, 1200);
+  setInterval(tickClock, 1000);
+  setInterval(tickVitals, 1800);
+  setInterval(()=>{
+    const tpl = NEG_TEMPLATES[Math.floor(Math.random()*NEG_TEMPLATES.length)]();
+    pushLog(tpl[0], tpl[1]);
+  }, 1400);
+  setTimeout(()=> output(`<span class="d">hint:</span> two intros are pending. press <span class="k">i</span> to view, <span class="k">a</span> to accept the top one, or <span class="k">/</span> to type.`), 1800);
+  setTimeout(()=> reInp.focus(), 200);
+}
+</script>
+
+</body>
+</html>

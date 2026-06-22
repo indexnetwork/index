@@ -28,8 +28,8 @@ bun run worktree:setup <type-desc>                             # REQUIRED next s
 
 Raw `git worktree add` alone is **not enough**. `worktree:setup` (`scripts/worktree-setup.sh`):
 
-1. Installs `node_modules` for `backend` + `frontend` (`bun install --frozen-lockfile`).
-2. Symlinks `.env*` (except `.env.example`) into `backend`, `frontend`,
+1. Installs `node_modules` for `services/api` + `apps/web` (`bun install --frozen-lockfile`).
+2. Symlinks `.env*` (except `.env.example`) into `services/api`, `apps/web`,
    `packages/protocol`, `packages/cli` — secrets are linked, never copied.
 3. Symlinks `.claude/settings.local.json`.
 4. Sets `git config core.hooksPath → scripts/hooks` so the **pre-push hook**

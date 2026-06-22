@@ -32,8 +32,8 @@ linear-issue: IND-270
 - packages/protocol/src/opportunity/tests/opportunity.state.dedupAlreadyAccepted.spec.ts
 
 ### Backend tests
-- backend/src/controllers/tests/tool.controller.spec.ts
-- backend/tests/mcp.spec.ts
+- services/api/src/controllers/tests/tool.controller.spec.ts
+- services/api/tests/mcp.spec.ts
 
 ### CLI
 - packages/cli/src/opportunity.command.ts
@@ -42,7 +42,7 @@ linear-issue: IND-270
 - packages/cli/tests/tool-calls.spec.ts
 
 ### Frontend
-- frontend/src/components/chat/ToolCallsDisplay.tsx
+- apps/web/src/components/chat/ToolCallsDisplay.tsx
 
 ### Plugins + skill templates
 - packages/claude-plugin/skills/index-orchestrator/SKILL.md
@@ -92,8 +92,8 @@ Mechanical find-and-replace across ~38 files. No logic, behavior, schema, or que
 - Regenerated SKILL.md files match updated templates
 
 **Version bumps (per CLAUDE.md finishing-a-branch):**
-- backend/package.json
+- services/api/package.json
 - packages/protocol/package.json
 - packages/cli/package.json
 - packages/claude-plugin/package.json
-- frontend/package.json
+- apps/web/package.json

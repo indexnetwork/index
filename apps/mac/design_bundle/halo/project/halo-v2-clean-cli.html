@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>halo · clean cli</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0d0d0e;
+    --panel:#121214;
+    --panel-2:#0f0f11;
+    --line:#1f1f22;
+    --line-2:#2a2a2e;
+    --text:#e8e6e1;
+    --text-2:#9a978f;
+    --dim:#5f5d57;
+    --dimmer:#3a3835;
+    --accent:#d97757;
+    --accent-2:#ffb27a;
+    --accent-dim:#8a4a30;
+    --green:#7bc28f;
+    --cyan:#7aa5c2;
+    --amber:#d4b06a;
+    --magenta:#b48ac2;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size:13px;
+    line-height:1.55;
+    font-weight:400;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+
+  .app{
+    position:fixed; inset:0;
+    display:grid;
+    grid-template-rows: 28px 1fr 26px;
+  }
+
+  /* top bar — single line, restrained */
+  .topbar{
+    display:flex; align-items:center;
+    border-bottom:1px solid var(--line);
+    padding:0 16px;
+    font-size:11.5px; color:var(--text-2);
+    gap:24px;
+  }
+  .topbar .brand{color:var(--text); font-weight:500; letter-spacing:.2px}
+  .topbar .brand .v{color:var(--dim); font-weight:400; margin-left:6px}
+  .topbar .crumb{color:var(--dim)}
+  .topbar .crumb b{color:var(--text); font-weight:400}
+  .topbar .right{margin-left:auto; display:flex; gap:24px}
+  .topbar .right span{color:var(--dim)}
+  .topbar .right b{color:var(--text); font-weight:400; margin-left:6px}
+  .topbar .live{
+    color:var(--accent); font-size:10.5px; letter-spacing:1.5px;
+    text-transform:uppercase; display:inline-flex; align-items:center; gap:6px;
+  }
+  .topbar .live::before{
+    content:""; width:6px; height:6px; border-radius:99px; background:var(--accent);
+    box-shadow:0 0 6px var(--accent);
+  }
+
+  /* main: two columns */
+  .main{
+    display:grid;
+    grid-template-columns: minmax(280px, 360px) 1fr;
+    min-height:0;
+  }
+
+  .col-left{
+    border-right:1px solid var(--line);
+    overflow:auto; padding:28px 28px 20px;
+  }
+  .col-right{
+    display:grid; grid-template-rows: 1fr 1px 1fr;
+    min-height:0;
+  }
+  .pane{
+    overflow:auto; padding:24px 28px;
+    min-height:0;
+  }
+  .pane + .divider{background:var(--line); height:1px}
+
+  /* left column content */
+  .field-name{
+    font-size:22px; font-weight:500; letter-spacing:-.4px;
+    color:var(--text); display:flex; align-items:baseline; gap:10px;
+    margin-bottom:8px;
+  }
+  .field-name .tag{
+    font-size:10px; letter-spacing:2px; color:var(--accent);
+    border:1px solid var(--accent-dim); padding:2px 6px; border-radius:2px;
+    text-transform:uppercase; font-weight:500;
+  }
+  .field-where{
+    color:var(--text-2); font-size:12px; line-height:1.6;
+    margin-bottom:24px;
+  }
+  .field-where .sep{color:var(--dimmer); padding:0 8px}
+
+  .section{margin-top:28px}
+  .section:first-of-type{margin-top:0}
+  .section-label{
+    font-size:10px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--dim); margin-bottom:12px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .section-label .meta{color:var(--dimmer); font-size:10px; letter-spacing:1px}
+
+  .stat-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:6px 0;
+    font-size:12.5px;
+    border-bottom:1px dashed var(--line);
+  }
+  .stat-row:last-child{border-bottom:none}
+  .stat-row .k{color:var(--text-2)}
+  .stat-row .v{color:var(--text); font-variant-numeric:tabular-nums}
+  .stat-row .v small{color:var(--dim); margin-left:4px; font-size:11px}
+
+  .bar{
+    height:3px; background:var(--line); margin-top:8px; position:relative;
+  }
+  .bar > i{display:block; height:100%; background:var(--accent)}
+  .bar.green > i{background:var(--green)}
+  .bar.cyan > i{background:var(--cyan)}
+
+  .agent-card{
+    border:1px solid var(--line);
+    padding:14px 16px;
+    margin-top:16px;
+    background:var(--panel-2);
+  }
+  .agent-card .head{
+    display:flex; align-items:center; gap:8px;
+    font-size:12px; color:var(--text-2);
+    margin-bottom:8px;
+  }
+  .agent-card .head .name{color:var(--text); font-weight:500}
+  .agent-card .head .pill{
+    margin-left:auto;
+    font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--accent); padding:1px 6px;
+    border:1px solid var(--accent-dim);
+  }
+  .agent-card .quote{
+    color:var(--text); font-size:12.5px; line-height:1.55;
+    margin:4px 0 6px;
+  }
+  .agent-card .foot{
+    color:var(--dim); font-size:11px;
+    display:flex; gap:14px;
+  }
+  .agent-card .foot b{color:var(--text-2); font-weight:400}
+
+  /* right: log */
+  .pane-head{
+    display:flex; align-items:baseline; gap:14px;
+    margin-bottom:14px;
+  }
+  .pane-head h2{
+    font-size:11px; letter-spacing:2.5px; text-transform:uppercase;
+    color:var(--text-2); font-weight:500;
+  }
+  .pane-head .count{
+    color:var(--dim); font-size:11px;
+  }
+  .pane-head .right{margin-left:auto; color:var(--dim); font-size:11px}
+  .pane-head .right kbd{
+    color:var(--accent-2); padding:0 4px; margin:0 1px;
+    border:1px solid var(--line-2); font:inherit; font-size:10px;
+    background:var(--panel);
+  }
+
+  .log{
+    font-size:12px; line-height:1.7;
+  }
+  .log .row{
+    display:grid; grid-template-columns: 64px 52px 1fr;
+    gap:14px;
+    padding:3px 0;
+    color:var(--text-2);
+  }
+  .log .ts{color:var(--dimmer); font-variant-numeric:tabular-nums}
+  .log .lv{font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase}
+  .log .lv.info{color:var(--cyan)}
+  .log .lv.neg{color:var(--accent)}
+  .log .lv.ok{color:var(--green)}
+  .log .lv.warn{color:var(--amber)}
+  .log .msg{color:var(--text-2); min-width:0}
+  .log .msg b{color:var(--text); font-weight:500}
+  .log .msg .id{color:var(--magenta)}
+  .log .msg .acc{color:var(--accent)}
+  .log .msg .ok{color:var(--green)}
+  .log .msg .dim{color:var(--dim)}
+
+  /* intros */
+  .intros{display:flex; flex-direction:column; gap:10px}
+  .intro{
+    border:1px solid var(--line);
+    padding:14px 18px;
+    display:grid;
+    grid-template-columns: 1fr auto;
+    gap:8px 16px;
+    align-items:start;
+  }
+  .intro .who{
+    font-size:13px; color:var(--text); font-weight:500;
+    display:flex; align-items:center; gap:10px;
+  }
+  .intro .who .id{color:var(--magenta); font-size:11px; font-weight:400}
+  .intro .basis{
+    color:var(--text-2); font-size:12px; line-height:1.5;
+    grid-column:1;
+  }
+  .intro .basis .acc{color:var(--accent)}
+  .intro .conf{
+    color:var(--accent); font-variant-numeric:tabular-nums;
+    font-size:13px; text-align:right;
+  }
+  .intro .conf small{color:var(--dim); display:block; font-size:10px; letter-spacing:1px; text-transform:uppercase; margin-top:1px}
+  .intro .actions{
+    grid-column:1 / -1; display:flex; gap:6px; margin-top:6px;
+  }
+  .intro .actions .btn{
+    font-size:11px; padding:4px 10px;
+    border:1px solid var(--line-2); color:var(--text-2);
+    cursor:pointer; background:transparent;
+    font-family:inherit;
+  }
+  .intro .actions .btn:hover{border-color:var(--accent-dim); color:var(--text)}
+  .intro .actions .btn b{color:var(--accent); font-weight:600; margin-right:4px}
+  .intro .actions .btn.primary{border-color:var(--accent-dim); color:var(--text)}
+  .intro .actions .btn.primary b{color:var(--accent)}
+
+  /* repl */
+  .repl{
+    border-top:1px solid var(--line);
+    display:flex; align-items:center;
+    padding:0 16px;
+    font-size:12.5px;
+    background:var(--panel-2);
+  }
+  .repl .prompt{
+    color:var(--text-2); display:flex; align-items:center; gap:2px;
+  }
+  .repl .prompt .field{color:var(--accent)}
+  .repl .prompt .arrow{color:var(--accent); margin:0 8px 0 6px}
+  .repl input{
+    flex:1; background:transparent; border:0; outline:0;
+    color:var(--text); font:inherit; padding:0;
+  }
+  .repl .keys{
+    color:var(--dim); font-size:10.5px; letter-spacing:1px;
+    display:flex; gap:14px; padding-left:16px; border-left:1px solid var(--line);
+    margin-left:16px;
+  }
+  .repl .keys kbd{
+    color:var(--accent-2); padding:0 5px;
+    border:1px solid var(--line-2); font:inherit; font-size:10px;
+    background:var(--panel); margin-right:5px;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">halod<span class="v">0.4.2</span></div>
+    <div class="crumb">field <b>syn-0518-bk-04</b></div>
+    <div class="crumb">agent <b>halo</b> · idle, listening</div>
+    <span class="live">live</span>
+    <div class="right">
+      <span>uptime<b>02:14:33</b></span>
+      <span>peers<b>62 / 251</b></span>
+      <span>19:42:11</span>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <aside class="col-left">
+
+      <div class="field-name">
+        synthesis
+        <span class="tag">live</span>
+      </div>
+      <div class="field-where">
+        the hex<span class="sep">·</span>brooklyn<br>
+        thu may 18<span class="sep">·</span>doors 20:00
+      </div>
+
+      <div class="section">
+        <div class="section-label">
+          <span>vitals</span>
+          <span class="meta">updates 1.8s</span>
+        </div>
+        <div class="stat-row">
+          <span class="k">arrived</span>
+          <span class="v">88<small>/ 251</small></span>
+        </div>
+        <div class="bar"><i style="width:35%"></i></div>
+        <div class="stat-row" style="margin-top:14px">
+          <span class="k">online</span>
+          <span class="v">62<small>/ 251</small></span>
+        </div>
+        <div class="bar cyan"><i style="width:62%"></i></div>
+        <div class="stat-row" style="margin-top:14px">
+          <span class="k">negotiating</span>
+          <span class="v">3<small>live</small></span>
+        </div>
+        <div class="bar"><i style="width:25%"></i></div>
+        <div class="stat-row" style="margin-top:14px">
+          <span class="k">intros made tonight</span>
+          <span class="v">12</span>
+        </div>
+        <div class="bar green"><i style="width:14%"></i></div>
+      </div>
+
+      <div class="section">
+        <div class="section-label"><span>your agent</span></div>
+        <div class="agent-card">
+          <div class="head">
+            <span class="name">halo</span>
+            <span>·</span>
+            <span>v3 personality</span>
+            <span class="pill">listening</span>
+          </div>
+          <div class="quote">"the room is the algorithm."</div>
+          <div class="foot">
+            <span>id <b>ed25519:F3a9…c70b</b></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-label"><span>privacy</span></div>
+        <div class="stat-row"><span class="k">mode</span><span class="v" style="color:var(--green)">local-first</span></div>
+        <div class="stat-row"><span class="k">egress</span><span class="v">0 B<small>since boot</small></span></div>
+        <div class="stat-row"><span class="k">retention</span><span class="v">24h<small>rolling</small></span></div>
+      </div>
+
+    </aside>
+
+    <div class="col-right">
+
+      <section class="pane">
+        <div class="pane-head">
+          <h2>negotiations</h2>
+          <span class="count">streaming · 0.4/s</span>
+          <div class="right">tail -f /var/log/halo/field.log</div>
+        </div>
+
+        <div class="log">
+          <div class="row"><span class="ts">19:41:58</span><span class="lv neg">neg</span><span class="msg">peer#<span class="id">a3f9</span> ⇌ peer#<span class="id">b1c2</span> — negotiating common ground</span></div>
+          <div class="row"><span class="ts">19:42:01</span><span class="lv ok">ok</span><span class="msg">intent matched · basis: <span class="acc">both reading le guin</span> · conf <span class="acc">87%</span></span></div>
+          <div class="row"><span class="ts">19:42:03</span><span class="lv info">info</span><span class="msg">gossip: <span class="dim">7 new attendees in last 60s</span></span></div>
+          <div class="row"><span class="ts">19:42:04</span><span class="lv neg">neg</span><span class="msg">agent#<span class="id">7e4d</span> proposed topic <span class="acc">"small rooms"</span> · 4 responses</span></div>
+          <div class="row"><span class="ts">19:42:06</span><span class="lv warn">warn</span><span class="msg">peer#<span class="id">9f01</span> declined — basis withheld <span class="dim">(rate-limit ok)</span></span></div>
+          <div class="row"><span class="ts">19:42:07</span><span class="lv ok">ok</span><span class="msg">handshake: <span class="ok">3/3 receipts signed</span> · intro queued</span></div>
+          <div class="row"><span class="ts">19:42:08</span><span class="lv info">info</span><span class="msg">ble: rssi -54dBm · mesh hops 1.4 avg</span></div>
+          <div class="row"><span class="ts">19:42:09</span><span class="lv neg">neg</span><span class="msg">cluster forming around <span class="acc">"field recordings"</span> · 5 agents</span></div>
+          <div class="row"><span class="ts">19:42:10</span><span class="lv ok">ok</span><span class="msg">you mentioned <span class="acc">"slow software"</span> earlier · 1 peer also did</span></div>
+          <div class="row"><span class="ts">19:42:11</span><span class="lv info">info</span><span class="msg">privacy: <span class="dim">0 bytes egress · all local</span></span></div>
+          <div class="row"><span class="ts">19:42:12</span><span class="lv neg">neg</span><span class="msg">peer#<span class="id">2c88</span> asked: <i>"anyone else come alone?"</i> · 7 silent acks</span></div>
+          <div class="row"><span class="ts">19:42:13</span><span class="lv ok">ok</span><span class="msg">agreement: <span class="ok">intro #2903 confirmed</span> · awaiting your nod</span></div>
+        </div>
+      </section>
+
+      <div class="divider"></div>
+
+      <section class="pane">
+        <div class="pane-head">
+          <h2>intros pending</h2>
+          <span class="count">2</span>
+          <div class="right"><kbd>a</kbd> accept · <kbd>d</kbd> decline · <kbd>?</kbd> why</div>
+        </div>
+
+        <div class="intros">
+
+          <div class="intro">
+            <div class="who">someone @ the bar <span class="id">intr-2901</span></div>
+            <div class="conf">91% <small>match</small></div>
+            <div class="basis">both reading <span class="acc">le guin</span> · both came alone · mutual quiet</div>
+            <div class="actions">
+              <button class="btn primary"><b>a</b>accept</button>
+              <button class="btn"><b>d</b>decline</button>
+              <button class="btn"><b>?</b>ask halo why</button>
+            </div>
+          </div>
+
+          <div class="intro">
+            <div class="who">someone near the speakers <span class="id">intr-2902</span></div>
+            <div class="conf">78% <small>match</small></div>
+            <div class="basis">mentioned <span class="acc">"field recordings"</span> · 2 mutual silent acks</div>
+            <div class="actions">
+              <button class="btn primary"><b>a</b>accept</button>
+              <button class="btn"><b>d</b>decline</button>
+              <button class="btn"><b>?</b>ask halo why</button>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <div class="repl">
+    <span class="prompt"><span class="field">halo</span>·syn-0518-bk-04<span class="arrow">›</span></span>
+    <input placeholder="type a command, or press / · try: signal &quot;...&quot;, peers, intros, why intr-2901" />
+    <div class="keys">
+      <span><kbd>/</kbd>focus</span>
+      <span><kbd>?</kbd>help</span>
+      <span><kbd>s</kbd>signal</span>
+      <span><kbd>i</kbd>intros</span>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

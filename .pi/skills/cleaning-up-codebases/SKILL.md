@@ -1,6 +1,6 @@
 ---
 name: cleaning-up-codebases
-description: "Systematically audit and clean a package in the index monorepo for dead code, unused exports, scope creep, anti-patterns, complexity, coupling, and architectural drift. Asks 'should this exist?' before 'how do I improve this?', fans out a per-dimension audit with hard metric thresholds, classifies findings into tiers (T1 safe deletes through T4 architectural), negotiates scope with the owner, and verifies lint/test/build before and after every change. Use when reviewing or cleaning a backend/frontend/protocol/cli package, removing cruft from a rapidly-developed feature, or doing a pre-refactor audit. Not for greenfield code or single targeted bug fixes."
+description: "Systematically audit and clean a package in the index monorepo for dead code, unused exports, scope creep, anti-patterns, complexity, coupling, and architectural drift. Asks 'should this exist?' before 'how do I improve this?', fans out a per-dimension audit with hard metric thresholds, classifies findings into tiers (T1 safe deletes through T4 architectural), negotiates scope with the owner, and verifies lint/test/build before and after every change. Use when reviewing or cleaning a api/web/protocol/cli package, removing cruft from a rapidly-developed feature, or doing a pre-refactor audit. Not for greenfield code or single targeted bug fixes."
 ---
 
 # cleaning-up-codebases
@@ -23,8 +23,8 @@ at *applying* known patterns but bad at *deciding* what is dead; let determinist
   and is read-only for the assistant. Do all mutating work in a worktree. Create one with
   `git worktree add` + `bun run worktree:setup` per `.pi/skills/git-worktree-workflow/SKILL.md`.
 - **Layer architecture is enforced** by `eslint-plugin-boundaries`. `packages/protocol`
-  never imports backend/frontend; respect the dependency flow when deleting/moving code.
-- **Schema is canonical** at `backend/src/schemas/database.schema.ts`. Removing a column
+  never imports api/web; respect the dependency flow when deleting/moving code.
+- **Schema is canonical** at `services/api/src/schemas/database.schema.ts`. Removing a column
   or table is a destructive migration (T4) — never a casual delete.
 
 ## When to use
@@ -47,8 +47,8 @@ mentioned anywhere is a removal candidate.
 ### 2. Establish a clean baseline
 Run the package's checks and **record numbers** before touching anything:
 - Lint: `bun run lint` (root, `eslint .`) or `cd <pkg> && eslint src/`
-- Test: `cd backend && bun test [path]` · `packages/protocol` and `frontend` have their own suites
-- Build: `bun run build:<pkg>` (e.g. `build:backend`) or `cd <pkg> && bun run build`
+- Test: `cd services/api && bun test [path]` · `packages/protocol` and `apps/web` have their own suites
+- Build: `bun run build:<pkg>` (e.g. `build:api`) or `cd <pkg> && bun run build`
 
 If a check is already broken, **that is your first finding** — fix the baseline before
 adding cleanup on top.

@@ -9,18 +9,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Index Network is a private, intent-driven discovery protocol built on autonomous agents. Users define "intents" and competing Broker Agents work to fulfill them through relevant connections. The system leverages LangChain/LangGraph for agent orchestration, PostgreSQL with pgvector for semantic search, and a monorepo structure with protocol (backend) and frontend (Vite + React Router) workspaces.
+Index Network is a private, intent-driven discovery protocol built on autonomous agents. Users define "intents" and competing Broker Agents work to fulfill them through relevant connections. The system leverages LangChain/LangGraph for agent orchestration, PostgreSQL with pgvector for semantic search, and a monorepo structure with user-facing apps (`apps/web`, `apps/mac`), deployable services (`services/api`), and shared packages.
 
 ## Development Commands
 
-### Protocol (Backend)
+### API Service
 
 ```bash
-cd backend
+cd services/api
 
 # Development
 bun run dev                                 # Start dev server with hot reload (Bun.serve, port 3001)
-bun run dev:prod                            # Start dev server in production mode
 bun run start                               # Start production server
 
 # Database (Drizzle ORM)
@@ -49,14 +48,25 @@ bun run integration-worker                  # Start integration sync worker
 bun run social-worker                       # Start social media sync worker
 ```
 
-### Frontend
+### Web App
 
 ```bash
-cd frontend
+cd apps/web
 bun run dev                                 # Start Vite dev server (with API proxy to protocol)
 bun run build                               # Build blog assets then run Vite production build
 bun run start                               # Start Vite preview server
 bun run lint                                # Run ESLint
+```
+
+### Mac App
+
+```bash
+cd apps/mac/HaloApp
+./build.sh                                  # Assemble HTML and build the macOS WKWebView app
+
+cd ../HaloApp-iOS
+./build.sh assemble                         # Regenerate mobile Resources/index.html without Xcode
+./preview/build-preview.sh                  # Build the macOS preview shell for the mobile UI
 ```
 
 ### CLI
@@ -91,7 +101,7 @@ git push <indexnetwork-remote> main
 
 ### Subtrees
 
-The following packages are git subtrees tracked to external repos. **Syncing is automatic for Index-owned subtrees** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). AgentVillage is Edge-City-owned and is mounted as a git submodule at `packages/edge-city/agentvillage`; `Edge-City/agentvillage` is canonical. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
+The following paths are git subtrees tracked to external repos. **Syncing is automatic for Index-owned subtrees** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). AgentVillage is Edge-City-owned and is mounted as a git submodule at `packages/edge-city/agentvillage`; `Edge-City/agentvillage` is canonical. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
 
 #### packages/protocol/ → indexnetwork/protocol
 
@@ -129,6 +139,18 @@ git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork
 git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git <branch>
 ```
 
+#### apps/mac/ → indexnetwork/mac-client
+
+The native Apple client prototype (macOS + iOS WKWebView shells around self-contained React/HTML bundles). The monorepo path is synced to the standalone `indexnetwork/mac-client` repo on `dev`/`main` pushes.
+
+```bash
+# Manual push if the workflow failed (use dev or main)
+git subtree push --prefix=apps/mac https://github.com/indexnetwork/mac-client.git <branch>
+
+# Pull if the external repo was edited directly
+git subtree pull --squash --prefix=apps/mac https://github.com/indexnetwork/mac-client.git <branch>
+```
+
 #### packages/edge-city/agentvillage/ → Edge-City/agentvillage submodule
 
 The `@edge-city/agentvillage` Agent Village workspace, skills, and installer. Includes skills for edge-esmeralda, index-network, edgeos, and geo-esmeralda. This package is Edge-City-owned; `Edge-City/agentvillage` is canonical and this monorepo records a submodule pointer for local context only. See `docs/guides/agentvillage-submodule.md` for the workflow and migration preservation note. Do not use subtree push/pull for AgentVillage anymore. Make AgentVillage changes inside the submodule, push a branch/fork to `Edge-City/agentvillage`, open the PR there, then update this monorepo's submodule pointer after the canonical PR merges. The nested `skills/` directory syncs from `Edge-City/agentvillage` to `Edge-City/agentvillage-skills` via that repo's workflow.
@@ -160,6 +182,12 @@ bun run worktree:dev <name>                 # Run all dev servers from a worktre
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
 ```
 
+### Deployment Config
+
+- API service: root `railway.toml` watches `services/api/**` and `packages/protocol/**`, runs migrations from `services/api`, and starts `services/api`.
+- Web app: `apps/web/railway.toml` watches `apps/web/**` and starts the Vite/Bun server from `apps/web`.
+- If Railway service settings reference a config path or root directory, update them from the legacy `frontend` path to `apps/web`; the API service continues to use the root `railway.toml`.
+
 ## Architecture Overview
 
 For full architecture details see `docs/design/architecture-overview.md` and `docs/design/protocol-deep-dive.md`.
@@ -168,15 +196,18 @@ For full architecture details see `docs/design/architecture-overview.md` and `do
 
 ```
 index/
-├── backend/           # Backend API & Agent Engine (Bun, TypeScript)
+├── apps/
+│   ├── web/             # Vite + React Router v7 SPA with React 19
+│   └── mac/             # Native Apple client subtree → indexnetwork/mac-client
+├── services/
+│   └── api/             # Backend API & Agent Engine (Bun, TypeScript)
 ├── packages/
 │   ├── protocol/        # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
 │   ├── cli/             # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
 │   ├── claude-plugin/   # @indexnetwork/claude-plugin — index-orchestrator and index-negotiator skills, subtree → indexnetwork/claude-plugin
 │   └── edge-city/       # Edge-City submodules: agentvillage, landing, controlplane
-├── frontend/          # Vite + React Router v7 SPA with React 19
-├── docs/              # Project documentation (design/, domain/, guides/, specs/)
-└── scripts/           # Worktree helpers, hooks, dev launcher
+├── docs/                # Project documentation (design/, domain/, guides/, specs/)
+└── scripts/             # Worktree helpers, hooks, dev launcher
 ```
 
 ### Documentation Directories
@@ -199,20 +230,20 @@ index/
 - `src/queues/` - BullMQ job queue definitions
 - `src/events/` - Event emitters (intent events, index membership events, premise lifecycle events)
 - `src/cli/` - CLI and maintenance scripts
-- `packages/protocol/` - `@indexnetwork/protocol` NPM package — the agent graphs, interfaces, and tools layer. Published independently; `backend/` imports it as a versioned NPM dependency.
+- `packages/protocol/` - `@indexnetwork/protocol` NPM package — the agent graphs, interfaces, and tools layer. Published independently; `services/api/` imports it as a versioned NPM dependency.
 
-**Entry point**: `backend/src/main.ts` -- Bun native server on port 3001, controllers registered via `RouteRegistry`.
+**Entry point**: `services/api/src/main.ts` -- Bun native server on port 3001, controllers registered via `RouteRegistry`.
 
 For full agent/graph/controller listings see `docs/design/protocol-deep-dive.md` and `docs/specs/api-reference.md`.
 
-### Frontend Architecture
+### Web App Architecture
 
 **Framework**: Vite, React Router v7, React 19, Tailwind CSS 4, Radix UI
 
 - `src/app/` - Page components (lazy loaded)
 - `src/components/` - Reusable React components
 - `src/contexts/` - React Context providers
-- `src/services/` - Frontend API clients (typed fetch wrappers)
+- `src/services/` - Web API clients (typed fetch wrappers)
 
 **API Proxy**: Vite proxies `/api/*` to protocol backend (port 3001) in dev. **Auth**: Better Auth (session-based).
 
@@ -229,9 +260,9 @@ Strict layering: **Controllers -> Services -> Adapters**. Dependencies always po
 
 Consult before adding or changing code in each layer:
 
-- `backend/src/controllers/controller.template.md`
-- `backend/src/services/service.template.md`
-- `backend/src/queues/queue.template.md`
+- `services/api/src/controllers/controller.template.md`
+- `services/api/src/services/service.template.md`
+- `services/api/src/queues/queue.template.md`
 
 
 ## Important Patterns
@@ -262,7 +293,7 @@ Intent creation is synchronous; complex processing (indexing, generation) is asy
 
 ### User Contexts & Discovery
 
-Each user has network-scoped **user contexts** (`user_contexts` table) — synthetic paragraph representations generated from their premise graph by `UserContextGenerator` — plus one **global** context row (`networkId = null`, the profile-replacing identity paragraph) enforced unique per user by the partial `user_contexts_user_global_uniq` index. The global row is generated by `UserContextGenerator.generateGlobalColdStart` (a network-agnostic prompt variant) and is always (re)built from active premises even when the user belongs to no non-personal networks; per-network rows use the network-lensed prompt. Contexts are generated during enrichment and regenerated whenever the user's premises change: premise lifecycle events enqueue regeneration via `UserContextQueue` (premise-derived, `premiseHash`-gated, with embeddings + HyDE refreshed) for the global row and each per-network row. (The legacy profile-graph `aggregate` step that preceded this enqueue was removed in WS8/IND-365 along with the `user_profiles` table it wrote.) They are stored with their embeddings. **"Category A" prompt consumers read the global row instead of flattening discrete profile fields** (`identity`/`narrative`/`attributes`) into LLM text: intent HyDE context (`intent.queue.ts`), the QuestionerAgent intent/enrichment/negotiation presets (`questioner.presets.ts`, fed by `intent.graph`/`enrichment.graph`/`negotiation.graph`), the discovery-questioner prompt (`question.prompt.ts`), the network ranker (`network.recommender.ts`), and the intent vague-job role hint (`intent.graph.ts`). The backend `ensureGlobalUserContext(userId)` helper (`backend/src/lib/usercontext/global-context.ts`) is the single read-or-generate entry point — it returns the stored global text or synthesizes it on demand from ACTIVE premises via `generateGlobalColdStart` and upserts it (no HyDE for the global row, since it is excluded from context-to-intent discovery), returning `''` only when the user has no premises. It is injected into chat tool deps as `getUserContextText` (onboarding network ranking) and called directly by the intent HyDE queue and the question-backfill CLIs; protocol graphs read the global row read-only via their injected `getUserContext`. The opportunity graph uses contexts for **context-to-intent discovery**: it loads a user's contexts, then searches for matching intents via `searchIntentsByContextEmbedding()` (or HyDE-enhanced context embeddings). Discovery runs on **context-to-intent + premise similarity**; results are merged via `mergeStrategyCandidates()`. Context discovery candidates carry `discoverySource: 'context-to-intent'`. **Profile-HyDE discovery was retired in WS10 (IND-367)** — the `searchProfiles`/`'profiles'`-corpus reader (the last runtime read of `user_profiles`) was already unreachable (the live `searchWithHydeEmbeddings` path remaps the `profiles` corpus hint to `premises`, and nothing passed `'profiles'` to `embedder.search()`), so it was removed along with the `backfill-profile-hyde` CLI; the `ensure_profile_hyde` enrichment gate now keys on **ACTIVE premises** instead of a `user_profiles` row. Legacy `hyde_documents` rows with `sourceType='profile'` were orphaned (never read) and are deleted in WS8's teardown migration (`0084_drop_user_profiles`).
+Each user has network-scoped **user contexts** (`user_contexts` table) — synthetic paragraph representations generated from their premise graph by `UserContextGenerator` — plus one **global** context row (`networkId = null`, the profile-replacing identity paragraph) enforced unique per user by the partial `user_contexts_user_global_uniq` index. The global row is generated by `UserContextGenerator.generateGlobalColdStart` (a network-agnostic prompt variant) and is always (re)built from active premises even when the user belongs to no non-personal networks; per-network rows use the network-lensed prompt. Contexts are generated during enrichment and regenerated whenever the user's premises change: premise lifecycle events enqueue regeneration via `UserContextQueue` (premise-derived, `premiseHash`-gated, with embeddings + HyDE refreshed) for the global row and each per-network row. (The legacy profile-graph `aggregate` step that preceded this enqueue was removed in WS8/IND-365 along with the `user_profiles` table it wrote.) They are stored with their embeddings. **"Category A" prompt consumers read the global row instead of flattening discrete profile fields** (`identity`/`narrative`/`attributes`) into LLM text: intent HyDE context (`intent.queue.ts`), the QuestionerAgent intent/enrichment/negotiation presets (`questioner.presets.ts`, fed by `intent.graph`/`enrichment.graph`/`negotiation.graph`), the discovery-questioner prompt (`question.prompt.ts`), the network ranker (`network.recommender.ts`), and the intent vague-job role hint (`intent.graph.ts`). The backend `ensureGlobalUserContext(userId)` helper (`services/api/src/lib/usercontext/global-context.ts`) is the single read-or-generate entry point — it returns the stored global text or synthesizes it on demand from ACTIVE premises via `generateGlobalColdStart` and upserts it (no HyDE for the global row, since it is excluded from context-to-intent discovery), returning `''` only when the user has no premises. It is injected into chat tool deps as `getUserContextText` (onboarding network ranking) and called directly by the intent HyDE queue and the question-backfill CLIs; protocol graphs read the global row read-only via their injected `getUserContext`. The opportunity graph uses contexts for **context-to-intent discovery**: it loads a user's contexts, then searches for matching intents via `searchIntentsByContextEmbedding()` (or HyDE-enhanced context embeddings). Discovery runs on **context-to-intent + premise similarity**; results are merged via `mergeStrategyCandidates()`. Context discovery candidates carry `discoverySource: 'context-to-intent'`. **Profile-HyDE discovery was retired in WS10 (IND-367)** — the `searchProfiles`/`'profiles'`-corpus reader (the last runtime read of `user_profiles`) was already unreachable (the live `searchWithHydeEmbeddings` path remaps the `profiles` corpus hint to `premises`, and nothing passed `'profiles'` to `embedder.search()`), so it was removed along with the `backfill-profile-hyde` CLI; the `ensure_profile_hyde` enrichment gate now keys on **ACTIVE premises** instead of a `user_profiles` row. Legacy `hyde_documents` rows with `sourceType='profile'` were orphaned (never read) and are deleted in WS8's teardown migration (`0084_drop_user_profiles`).
 
 **Profile reads are sourced from `users`, not `user_profiles`.** The adapter `getProfile`/`getProfileByUserId`/`getProfileRow` (`database.adapter.ts`) build the `UserIdentity` (WS11/IND-368, replacing the removed `ProfileDocument`/`ProfileRow` — shape `{ identity:{name,bio,location}, context }`) from the `users` table (`name`/`intro`→bio/`location`) via a single `buildProfileFromUser` helper; the typed `attributes.skills[]`/`interests[]` and `narrative.context` are dropped (returned empty) since they have no home on `users` and their content lives in premises + the global context. `getProfile` therefore returns a row for **every existing user** (null only when the user does not exist) — it is a presentation read, not an existence check. Code that needs "has the user been enriched?" must use a real signal instead: the enrichment graph's check node keys on **ACTIVE premises** (`getPremisesForUser`), and `findWithGraph`'s `hasProfile` (the `/me` auto-enrichment gate) keys on the presence of a **global `user_context`** row. The `user_profiles` table was **dropped in WS8 (IND-365)** (migration `0084_drop_user_profiles`); `saveProfile` now persists identity (name / bio→`intro` / location) to `users`, `deleteProfile` is a no-op, the legacy placeholder/backfill writers were removed, and the profile graph's dead `aggregate_profile`→`generate_profile`→`save_profile` tail was deleted (premise creation is now the terminal effect; `ProfileGenerator` survives only for the WS11-scoped onboarding draft tools). The public `read_user_profiles` tool reflects this: single-user reads (self / `userId`) return thin identity (`name`, `bio`, `location`) plus a `context` paragraph (the global `user_context` text, injected in the tool layer via `getUserContextText`); list reads (name search / `networkId` roster) return thin identity only (no per-member context fan-out). The retired `skills`/`interests` arrays are no longer returned by any read path. The onboarding draft tools (`preview_/confirm_/create_user_profile`) still emit a structured draft for user approval. **WS11 (IND-368) eliminated the internal "profile" concept**: the pipeline/files/service/controller/adapter/`profile_tool_runs` table were renamed to `enrichment` (`EnrichmentService`, `enrichment.controller` at `/enrichment/sync`, `EnrichmentDatabaseAdapter`, `enrichment-run.*`, `enrichment_tool_runs`), `ProfileDocument`→`UserIdentity`, `read_user_profiles` returns a flat identity+context payload (no nested `profile` object), and the questioner `profile` mode is now `enrichment`. The MCP tool names (`read_user_profiles`/`*_user_profiles`/`get_profile_run`), the user-facing `index profile` CLI command, the discovery `discoverySource:'profile'` state value, and the questioner `sourceType:'profile'` metadata are retained as frozen/product-facing labels.
 
@@ -324,30 +355,30 @@ PORT=3001
 NODE_ENV=development
 ```
 
-### Optional (see `backend/env.example` for full list)
+### Optional (see `services/api/.env.example` for full list)
 
 `REDIS_URL`, `RESEND_API_KEY`, `UNSTRUCTURED_API_URL`, `COMPOSIO_API_KEY`, `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`, `SENTRY_DSN`, `PARALLELS_API_KEY`, `APP_URL`
 
-Frontend: see `frontend/.env.example`. **Auth origin (`invalid_origin`)**: ensure app origin is in Better Auth `trustedOrigins` when developing locally.
+Web app: see `apps/web/.env.example`. **Auth origin (`invalid_origin`)**: ensure app origin is in Better Auth `trustedOrigins` when developing locally.
 
 ## Testing
 
 Always target specific test files rather than running the full suite. `bun test` in protocol is slow.
 
 ```bash
-cd backend
+cd services/api
 bun test path/to/test.ts                   # Run specific test (PREFERRED)
 bun test --watch                            # Watch mode
 bun test                                    # Run ALL tests (avoid unless necessary)
 ```
 
-**Test locations**: `backend/tests/` (integration/E2E), `backend/src/lib/*/tests/` (unit tests).
+**Test locations**: `services/api/tests/` (integration/E2E), `services/api/src/lib/*/tests/` (unit tests).
 
 **Standards**: Load env at top before imports. Import from `bun:test` (destructured). Use `describe` grouping. Set timeouts (agent: 30s, graph: 60s, LLM: 120s). Clean up in `afterAll`. Mock externals. Test success and error paths. Never commit without running affected tests.
 
 ## Database Workflow
 
-**Schema location**: `backend/src/schemas/database.schema.ts`. Drizzle client: `backend/src/lib/drizzle/drizzle.ts`.
+**Schema location**: `services/api/src/schemas/database.schema.ts`. Drizzle client: `services/api/src/lib/drizzle/drizzle.ts`.
 
 ### Migration Naming
 
@@ -359,7 +390,7 @@ Examples: `0000_initial_schema.sql`, `0001_add_chat_session_share_token.sql`, `0
 
 ### Schema Change Checklist
 
-1. Edit `backend/src/schemas/database.schema.ts`
+1. Edit `services/api/src/schemas/database.schema.ts`
 2. `bun run db:generate`
 3. Rename the `.sql` file and update `_journal.json` tag
 4. `bun run db:migrate`

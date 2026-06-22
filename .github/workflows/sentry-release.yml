@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  backend-release:
-    name: Backend release
+  api-release:
+    name: API release
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -34,6 +34,8 @@ jobs:
             *) environment="${GITHUB_REF_NAME}" ;;
           esac
 
+          # Keep the historical Sentry release prefix so deploys remain grouped
+          # with existing backend/API releases after the directory move.
           release="index-backend@${GITHUB_SHA}"
           enabled="true"
           if [ -z "${SENTRY_AUTH_TOKEN}" ] || [ -z "${SENTRY_ORG}" ] || [ -z "${SENTRY_PROJECT}" ]; then
@@ -52,7 +54,7 @@ jobs:
         with:
           bun-version: "1.2.20"
 
-      - name: Build backend artifacts
+      - name: Build API artifacts
         if: steps.config.outputs.enabled == 'true'
         env:
           SENTRY_RELEASE: ${{ steps.config.outputs.release }}
@@ -62,7 +64,7 @@ jobs:
           cd packages/protocol
           bun install
           bun run build
-          cd ../../backend
+          cd ../../services/api
           bun install
           bun run build
 
@@ -78,7 +80,7 @@ jobs:
         run: |
           sentry-cli releases new "$SENTRY_RELEASE" || true
           sentry-cli releases set-commits "$SENTRY_RELEASE" --auto --ignore-missing
-          sentry-cli sourcemaps inject backend/dist packages/protocol/dist
-          sentry-cli sourcemaps upload --release "$SENTRY_RELEASE" backend/dist packages/protocol/dist
+          sentry-cli sourcemaps inject services/api/dist packages/protocol/dist
+          sentry-cli sourcemaps upload --release "$SENTRY_RELEASE" services/api/dist packages/protocol/dist
           sentry-cli releases finalize "$SENTRY_RELEASE"
           sentry-cli releases deploys "$SENTRY_RELEASE" new --env "$SENTRY_ENVIRONMENT"

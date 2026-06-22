@@ -395,7 +395,7 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 
 This package is adapter-free and owns **no** schema — it accesses data only through the
 interfaces in `shared/interfaces/`. The canonical Drizzle schema lives in the backend at
-`backend/src/schemas/database.schema.ts`.
+`services/api/src/schemas/database.schema.ts`.
 
 Core tables the protocol interfaces read/write:
 

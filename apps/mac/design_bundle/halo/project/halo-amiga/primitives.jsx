@@ -1,0 +1,480 @@
+// Amiga Workbench 1.3 primitives — same API as the Mac version, Amiga chrome.
+
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+const A = {
+  bg:   "#0055AA",
+  fg:   "#000000",
+  paper:"#FFFFFF",
+  accent:"#FF8A00",
+  highlight:"#FFD7A0",
+  shadow:"#8A4500",
+  edge: "#888888",
+  mute: "#555555",
+};
+
+// 3D bevel — "out" looks raised (gadget), "in" looks sunken (inset frame)
+function bevel(kind = "out") {
+  if (kind === "out") {
+    return `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}, 1px 1px 0 ${A.fg}`;
+  }
+  return `inset 1px 1px 0 ${A.edge}, inset -1px -1px 0 ${A.paper}`;
+}
+
+/* ---------- LiveDot — blinking orange dot ---------- */
+function LiveDot({ size = 8 }) {
+  return (
+    <span style={{
+      display:"inline-block", width:size, height:size,
+      background: A.accent, border:`1px solid ${A.fg}`,
+      animation:"mac-blink 1.2s steps(2) infinite",
+      flex:"0 0 auto",
+    }}/>
+  );
+}
+
+/* ---------- StreamText — typewriter ---------- */
+function StreamText({ text, speed = 14, delay = 0, onDone, className, style }) {
+  const [out, setOut] = useState("");
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    setOut(""); setDone(false);
+    let i = 0; let timer;
+    const start = setTimeout(() => {
+      const tick = () => {
+        i++; setOut(text.slice(0, i));
+        if (i >= text.length){ setDone(true); onDone && onDone(); }
+        else timer = setTimeout(tick, speed);
+      };
+      tick();
+    }, delay);
+    return () => { clearTimeout(start); clearTimeout(timer); };
+  }, [text, speed, delay]);
+  return (
+    <span className={(className||"") + (done ? "" : " mac-caret")} style={style}>{out}</span>
+  );
+}
+
+/* ---------- KV — key/value mono row ---------- */
+function KV({ k, v, accent = false }) {
+  return (
+    <div style={{
+      display:"flex", gap:12, fontFamily:"var(--mac-mono)", fontSize:11,
+      color: A.fg, padding:"2px 0", lineHeight:1.3,
+      alignItems:"baseline",
+    }}>
+      <span style={{ minWidth:92, color: A.mute, flex:"0 0 auto" }}>{k}</span>
+      <span style={{
+        color: accent ? A.shadow : A.fg, fontWeight: accent ? 700 : 400,
+        flex:"1 1 auto", minWidth:0,
+        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+      }}>{v}</span>
+    </div>
+  );
+}
+
+/* ---------- Tag — Workbench gadget-style pill ---------- */
+function Tag({ children, inverted = false, style }) {
+  return (
+    <span style={{
+      fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1,
+      textTransform:"uppercase",
+      color: inverted ? A.fg : A.fg,
+      background: inverted ? A.accent : A.paper,
+      border:`1px solid ${A.fg}`,
+      padding:"1px 6px", lineHeight:1.2,
+      whiteSpace:"nowrap",
+      boxShadow: inverted
+        ? `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}`
+        : `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}`,
+      fontWeight: inverted ? 700 : 400,
+      ...style,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+/* ---------- Avatar — Workbench raised square with initials ---------- */
+function Avatar({ name, size = 28, ring = false }) {
+  const initials = (name || "")
+    .split(/\s+/).slice(0,2).map(p => p[0]).join("").toUpperCase();
+  return (
+    <div style={{
+      width:size, height:size, display:"grid", placeItems:"center",
+      background: ring ? A.accent : A.paper,
+      border:`1px solid ${A.fg}`,
+      boxShadow: ring
+        ? `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}, 0 0 0 1px ${A.fg}`
+        : `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}`,
+      color: A.fg,
+      fontFamily:"var(--mac-mono)",
+      fontSize: size * 0.38, letterSpacing:0.5,
+      fontWeight: 700,
+      flex:"0 0 auto",
+    }}>{initials}</div>
+  );
+}
+
+/* ---------- RuleLabel — section header with rule ---------- */
+function RuleLabel({ children }) {
+  return (
+    <div style={{
+      display:"flex", alignItems:"center", gap:10,
+      fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:2,
+      textTransform:"uppercase",
+      color: A.fg, margin:"12px 0 8px",
+      fontWeight: 700,
+    }}>
+      <span>{children}</span>
+      <div style={{ flex:1, height:2,
+        background:`linear-gradient(${A.fg}, ${A.fg}) top/100% 1px no-repeat, linear-gradient(${A.paper}, ${A.paper}) bottom/100% 1px no-repeat`,
+      }}/>
+    </div>
+  );
+}
+
+/* ---------- Btn — Workbench gadget. primary => orange. ---------- */
+function Btn({ children, onClick, primary = false, small = false, style, disabled, type }) {
+  const [active, setActive] = useState(false);
+  const pad = small ? "3px 12px" : "5px 18px";
+  const bg = primary ? A.accent : A.paper;
+  return (
+    <button
+      type={type || "button"}
+      onClick={onClick} disabled={disabled}
+      onMouseDown={() => setActive(true)}
+      onMouseUp={() => setActive(false)}
+      onMouseLeave={() => setActive(false)}
+      style={{
+        padding: pad,
+        fontFamily:"var(--mac-mono)",
+        fontSize: small ? 11 : 12,
+        textTransform:"lowercase",
+        letterSpacing: 0.5,
+        border:`1px solid ${A.fg}`,
+        background: active ? A.fg : bg,
+        color:   active ? bg : A.fg,
+        borderRadius: 0,
+        boxShadow: active
+          ? `inset 1px 1px 0 ${A.edge}, inset -1px -1px 0 ${A.paper}`
+          : primary
+            ? `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}, 1px 1px 0 ${A.fg}`
+            : `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}, 1px 1px 0 ${A.fg}`,
+        transform: active ? "translate(1px,1px)" : "none",
+        fontWeight: primary ? 700 : 500,
+        opacity: disabled ? 0.45 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+        ...style,
+      }}
+    >{children}</button>
+  );
+}
+
+/* ---------- Chip — Workbench mini gadget ---------- */
+function Chip({ children, onClick, active }) {
+  const [down, setDown] = useState(false);
+  const pressed = active || down;
+  return (
+    <button
+      onClick={onClick}
+      onMouseDown={() => setDown(true)}
+      onMouseUp={() => setDown(false)}
+      onMouseLeave={() => setDown(false)}
+      style={{
+        padding:"3px 12px",
+        fontFamily:"var(--mac-mono)", fontSize:11,
+        textTransform:"lowercase", letterSpacing: 0.5,
+        whiteSpace:"nowrap",
+        border:`1px solid ${A.fg}`,
+        background: pressed ? A.accent : A.paper,
+        color: A.fg,
+        borderRadius: 0,
+        boxShadow: pressed
+          ? `inset 1px 1px 0 ${A.shadow}, inset -1px -1px 0 ${A.highlight}`
+          : `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}, 1px 1px 0 ${A.fg}`,
+        transform: pressed ? "translate(1px,1px)" : "none",
+        fontWeight: pressed ? 700 : 400,
+        cursor:"pointer",
+      }}
+    >{children}</button>
+  );
+}
+
+/* ---------- ScoreBar — Workbench progress gauge ---------- */
+function ScoreBar({ value, w = 56 }) {
+  const pct = Math.max(0, Math.min(1, value));
+  return (
+    <div style={{
+      width: w, height: 10, border:`1px solid ${A.fg}`,
+      background: A.paper,
+      boxShadow: `inset 1px 1px 0 ${A.edge}, inset -1px -1px 0 ${A.paper}`,
+      position:"relative", overflow:"hidden", padding: 1,
+    }}>
+      <div style={{
+        width: `${pct*100}%`, height:"100%",
+        background: A.accent,
+        boxShadow: `inset 0 1px 0 ${A.highlight}, inset 0 -1px 0 ${A.shadow}`,
+      }}/>
+    </div>
+  );
+}
+
+/* ---------- Ticker — single rotating mono line ---------- */
+function Ticker({ items, intervalMs = 2200 }) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (!items || !items.length) return;
+    const t = setInterval(() => setI(x => (x + 1) % items.length), intervalMs);
+    return () => clearInterval(t);
+  }, [items, intervalMs]);
+  if (!items || items.length === 0) return null;
+  const cur = items[i % items.length];
+  return (
+    <div style={{
+      fontFamily:"var(--mac-mono)", fontSize:11, color: A.fg,
+      whiteSpace:"nowrap", overflow:"hidden", position:"relative",
+      height:18, maxWidth:380,
+    }}>
+      <div key={i} className="fade-up" style={{ position:"absolute", inset:0,
+        textOverflow:"ellipsis", overflow:"hidden", whiteSpace:"nowrap" }}>
+        <span style={{ marginRight:6, color: A.accent, fontWeight:700 }}>›</span>{cur.text}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Stat — large number + uppercase label ---------- */
+function Stat({ value, label, accent = false }) {
+  return (
+    <div style={{ display:"grid", gap:2 }}>
+      <div style={{
+        fontFamily:"var(--mac-sans)", fontSize:26, fontWeight: 700,
+        letterSpacing:-0.5, lineHeight:1,
+        ...(accent
+          ? {
+              background: A.accent, color: A.fg,
+              padding:"2px 8px",
+              display:"inline-block", width:"fit-content",
+              border:`1px solid ${A.fg}`,
+              boxShadow: `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}`,
+            }
+          : { color: A.fg }),
+      }}>{value}</div>
+      <div style={{
+        fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1.5,
+        textTransform:"uppercase", color: A.fg,
+      }}>{label}</div>
+    </div>
+  );
+}
+
+/* ---------- useInterval ---------- */
+function useInterval(cb, delay) {
+  const saved = useRef(cb);
+  useEffect(() => { saved.current = cb; }, [cb]);
+  useEffect(() => {
+    if (delay == null) return;
+    const id = setInterval(() => saved.current(), delay);
+    return () => clearInterval(id);
+  }, [delay]);
+}
+
+/* ---------- PipelineFunnel — Amiga gadget strip ---------- */
+function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "all" }) {
+  const max = Math.max(1, ...stages.map(s => s.count));
+  const clickable = !!onClickStage;
+  const allActive = activeStage === "all";
+  return (
+    <div style={{
+      display:"grid",
+      gridTemplateColumns:`repeat(${stages.length}, 1fr)`,
+      border:`1px solid ${A.fg}`,
+      background: A.paper,
+      boxShadow: `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}`,
+    }}>
+      {stages.map((s, i) => {
+        const w = Math.max(0.05, s.count / max);
+        const last = i === stages.length - 1;
+        const isActive = activeStage === s.label;
+        const dim = !allActive && !isActive;
+        const handleClick = clickable
+          ? () => onClickStage(isActive ? "all" : s.label)
+          : undefined;
+        return (
+          <button
+            key={s.label}
+            onClick={handleClick}
+            disabled={!clickable}
+            style={{
+              padding:"12px 14px 12px",
+              borderRight: last ? "none" : `1px solid ${A.fg}`,
+              position:"relative",
+              background: isActive ? A.accent : A.paper,
+              color: A.fg,
+              cursor: clickable ? "pointer" : "default",
+              textAlign:"left",
+              opacity: dim ? 0.5 : 1,
+              fontFamily:"var(--mac-sans)",
+              border:"none",
+              borderRight: last ? "none" : `1px solid ${A.fg}`,
+              borderRadius:0,
+              minHeight: 84,
+              display:"flex", flexDirection:"column", justifyContent:"space-between",
+              boxShadow: isActive
+                ? `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}`
+                : "none",
+            }}>
+            <div style={{
+              fontSize:9, letterSpacing:2,
+              textTransform:"uppercase",
+              color: A.fg, fontWeight: 700,
+              marginBottom: 4,
+              fontFamily:"var(--mac-mono)",
+            }}>{s.label}</div>
+            <div style={{
+              fontFamily:"var(--mac-sans)",
+              fontSize: 30, fontWeight: 700,
+              lineHeight: 1, letterSpacing:-0.8,
+              color: A.fg,
+              marginBottom: 6,
+            }}>{s.count}</div>
+            <div style={{
+              height: 6, border: `1px solid ${A.fg}`,
+              background: A.paper,
+              position:"relative", overflow:"hidden",
+              boxShadow: `inset 1px 1px 0 ${A.edge}, inset -1px -1px 0 ${A.paper}`,
+            }}>
+              <div style={{
+                width: `${w * 100}%`, height:"100%",
+                background: isActive ? A.fg : A.accent,
+                boxShadow: isActive ? "none" : `inset 0 1px 0 ${A.highlight}`,
+                transition:"width 600ms cubic-bezier(.2,.7,.2,1)",
+              }}/>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------- SourceBadge ---------- */
+function SourceBadge({ source, sourceMeta }) {
+  const cfg = {
+    agent:      { glyph:"h", label:"from index" },
+    individual: { glyph:"·", label: sourceMeta?.name ? `from ${sourceMeta.name}` : "from another agent" },
+    collective: { glyph:"Σ", label: sourceMeta?.count ? `aggregated · ${sourceMeta.count} ${sourceMeta.of}` : "aggregated signal" },
+    room:       { glyph:"≋", label: sourceMeta?.count ? `the room · ${sourceMeta.count} ${sourceMeta.of}` : "ambient · the room" },
+  }[source] || { glyph:"·", label:"" };
+  return (
+    <div style={{
+      display:"inline-flex", alignItems:"center", gap:6,
+      padding:"2px 8px 2px 4px",
+      border:`1px solid ${A.fg}`,
+      background: A.paper,
+      fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.6,
+      color: A.fg, textTransform:"lowercase",
+      boxShadow: `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}`,
+    }}>
+      <span style={{
+        display:"inline-grid", placeItems:"center",
+        width:14, height:14,
+        background: A.accent, color: A.fg,
+        fontSize:9, fontWeight:700,
+        border:`1px solid ${A.fg}`,
+        boxShadow: `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}`,
+      }}>{cfg.glyph}</span>
+      <span>{cfg.label}</span>
+    </div>
+  );
+}
+
+/* ---------- ModeBadge ---------- */
+function ModeBadge({ mode }) {
+  const cfg = {
+    broad:     { t:"broad scan",   sub:"inspecting widely",       inv:false, anim:true  },
+    expanding: { t:"expanding",    sub:"new candidates incoming", inv:false, anim:true  },
+    narrowing: { t:"narrowing",    sub:"filtering on your input", inv:true,  anim:true  },
+    focused:   { t:"focused",      sub:"watching the few",        inv:true,  anim:false },
+  }[mode] || {};
+  return (
+    <div style={{
+      display:"inline-flex", alignItems:"center", gap:8,
+      padding:"3px 10px",
+      border:`1px solid ${A.fg}`,
+      background: cfg.inv ? A.accent : A.paper,
+      color: A.fg,
+      fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.6,
+      boxShadow: cfg.inv
+        ? `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}`
+        : `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}`,
+      fontWeight: cfg.inv ? 700 : 400,
+    }}>
+      <span style={{
+        width:6, height:6, background: A.fg,
+        animation: cfg.anim ? "mac-blink 1.4s steps(2) infinite" : "none",
+      }}/>
+      <span style={{ textTransform:"lowercase" }}>{cfg.t}</span>
+      <span style={{ opacity:0.7 }}>· {cfg.sub}</span>
+    </div>
+  );
+}
+
+/* ---------- AmigaWindow — title bar with close gadget on left, depth on right ---------- */
+function MacWindow({ title, children, style, bodyStyle, onClose, noShadow }) {
+  return (
+    <div className="amiga-window" style={{
+      display:"flex", flexDirection:"column",
+      ...style,
+    }}>
+      <div className="mac-titlebar">
+        <span className="mac-close" onClick={onClose}/>
+        <span className="mac-title"><span className="t">{title}</span></span>
+        <span className="mac-zoom"/>
+      </div>
+      <div style={{
+        flex:1, minHeight:0, minWidth:0, display:"flex", flexDirection:"column",
+        background: A.paper,
+        ...bodyStyle,
+      }}>{children}</div>
+    </div>
+  );
+}
+
+/* ---------- Workbench segmented control ---------- */
+function MacSegmented({ value, onChange, options }) {
+  return (
+    <div style={{ display:"inline-flex", border:`1px solid ${A.fg}` }}>
+      {options.map((opt, i) => {
+        const sel = value === opt.value;
+        return (
+          <button key={opt.value}
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding:"3px 12px",
+              background: sel ? A.accent : A.paper,
+              color: A.fg,
+              border:"none",
+              borderLeft: i === 0 ? "none" : `1px solid ${A.fg}`,
+              fontFamily:"var(--mac-mono)", fontSize:11,
+              textTransform:"lowercase",
+              cursor:"pointer",
+              boxShadow: sel
+                ? `inset 1px 1px 0 ${A.shadow}, inset -1px -1px 0 ${A.highlight}`
+                : `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}`,
+              fontWeight: sel ? 700 : 400,
+            }}>{opt.label}</button>
+        );
+      })}
+    </div>
+  );
+}
+
+Object.assign(window, {
+  LiveDot, StreamText, KV, Tag, Avatar, RuleLabel, Btn, Chip,
+  ScoreBar, Ticker, Stat, useInterval,
+  PipelineFunnel, SourceBadge, ModeBadge,
+  MacWindow, MacSegmented,
+  AMIGA_PALETTE: A,
+});

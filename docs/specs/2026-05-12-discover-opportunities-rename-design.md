@@ -60,9 +60,9 @@ See IND-270 for the full inventory. High-level groups:
 
 - **Protocol tool layer**: `opportunity/opportunity.tools.ts`, `chat/chat.agent.ts`, `chat/chat.prompt.ts`, `chat/chat.prompt.modules.ts`, `contact/contact.tools.ts`, `intent/intent.tools.ts`, `network/network.tools.ts`, `shared/agent/utility.tools.ts`, `opportunity/opportunity.discover.ts`, `opportunity/opportunity.graph.ts`, `opportunity/opportunity.state.ts`
 - **Protocol tests**: `chat/tests/chat.prompt.modules.spec.ts`, `chat/tests/chat.prompt.spec.ts`, `chat/tests/chat.agent.spec.ts`, `chat/tests/chat.graph.mocks.ts`, `opportunity/tests/opportunity.state.dedupAlreadyAccepted.spec.ts`, `shared/agent/tests/tool.factory.spec.ts`
-- **Backend tests**: `backend/src/controllers/tests/tool.controller.spec.ts`, `backend/tests/mcp.spec.ts`
+- **Backend tests**: `services/api/src/controllers/tests/tool.controller.spec.ts`, `services/api/tests/mcp.spec.ts`
 - **CLI**: `packages/cli/src/opportunity.command.ts`, `packages/cli/src/output/base.ts`, `packages/cli/tests/opportunity.command.spec.ts`, `packages/cli/tests/tool-calls.spec.ts`
-- **Frontend**: `frontend/src/components/chat/ToolCallsDisplay.tsx`
+- **Frontend**: `apps/web/src/components/chat/ToolCallsDisplay.tsx`
 - **Plugins**: `packages/claude-plugin/skills/index-orchestrator/SKILL.md`
 - **Skill templates** (sources of truth for SKILL.md generation): `packages/protocol/skills/claude-plugin/index-orchestrator.template.md`
 - **Docs**: `docs/specs/api-reference.md`, `docs/specs/cli-reference.md`, `docs/design/protocol-deep-dive.md`, `docs/specs/2026-05-06-welcome-message-design.md`, `packages/protocol/src/README.md`, `packages/protocol/src/docs/Latent Opportunity Lifecycle.md`

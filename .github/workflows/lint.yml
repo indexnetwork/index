@@ -35,11 +35,12 @@ jobs:
       - name: Install dependencies
         run: |
           bun install
-          cd backend && bun install
+          cd services/api && bun install
 
       - name: Check architectural boundaries
         run: |
-          cd backend
+          cd services/api
+          # shellcheck disable=SC2016
           bunx eslint src/ --format json 2>/dev/null | bun -e '
             const results = JSON.parse(await Bun.stdin.text());
             const violations = results
@@ -74,13 +75,13 @@ jobs:
           bun install
           cd packages/protocol && bun install
           cd ../..
-          cd backend && bun install
+          cd services/api && bun install
 
       - name: Type check packages/protocol
         run: cd packages/protocol && bun run build
 
-      - name: Type check backend
-        run: cd backend && bun run build
+      - name: Type check API
+        run: cd services/api && bun run build
 
   test:
     # Runs the hermetic pinning/characterization specs that mock all external
@@ -104,13 +105,11 @@ jobs:
           bun-version: "1.3.14"
 
       - name: Install dependencies
-        run: |
-          bun install
-          cd backend && bun install
+        run: bun install --frozen-lockfile
 
       - name: Run hermetic pinning tests
         run: |
-          cd backend
+          cd services/api
           bun test \
             src/adapters/tests/can-actor-see-opportunity.spec.ts \
             src/queues/tests/timeout.queue.spec.ts \

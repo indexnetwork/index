@@ -8,7 +8,7 @@ updated: 2026-04-06
 
 # Getting Started
 
-This guide walks you through setting up a local development environment for Index Network from scratch. By the end you will have the backend server (port 3001) and the frontend dev server running locally, connected to a seeded PostgreSQL database.
+This guide walks you through setting up a local development environment for Index Network from scratch. By the end you will have the API service (port 3001) and the web dev server running locally, connected to a seeded PostgreSQL database.
 
 ## Prerequisites
 
@@ -60,14 +60,17 @@ cd index
 bun install
 ```
 
-`bun install` at the root installs dependencies for all workspaces (protocol, frontend).
+`bun install` at the root installs dependencies for all Bun workspaces (API service, web app, protocol package, CLI, and plugin).
 
 ### Workspace structure
 
 ```
 index/
-├── backend/             # Backend API and agent engine (Bun, TypeScript)
-├── frontend/            # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
+├── apps/
+│   ├── web/             # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
+│   └── mac/             # Native Apple client subtree
+├── services/
+│   └── api/             # Backend API and agent engine (Bun, TypeScript)
 ├── packages/
 │   ├── protocol/        # @indexnetwork/protocol NPM package (graphs, agents, tools)
 │   ├── cli/             # @indexnetwork/cli — CLI client, Bun, TypeScript
@@ -82,13 +85,13 @@ index/
 Copy the example environment files for both workspaces:
 
 ```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
+cp services/api/.env.example services/api/.env
+cp apps/web/.env.example apps/web/.env
 ```
 
-### Backend environment variables (backend/.env)
+### API service environment variables (services/api/.env)
 
-Open `backend/.env` and fill in the required values:
+Open `services/api/.env` and fill in the required values:
 
 **Required:**
 
@@ -110,7 +113,7 @@ NODE_ENV=development
 **Recommended for local development:**
 
 ```bash
-# Allow the frontend dev server origin for auth
+# Allow the web dev server origin for auth
 TRUSTED_ORIGINS=http://localhost:3000
 ```
 
@@ -120,7 +123,7 @@ TRUSTED_ORIGINS=http://localhost:3000
 # Protocol base URL for auth callbacks and email links (required in production)
 # BASE_URL=https://protocol.example.com
 
-# Frontend URL for notification links (required in production)
+# Web app URL for notification links (required in production)
 # FRONTEND_URL=https://index.network
 
 # Redis (defaults to localhost:6379 if omitted)
@@ -167,11 +170,11 @@ TRUSTED_ORIGINS=http://localhost:3000
 # LOG_LEVEL=debug
 ```
 
-See `backend/.env.example` for the full list with inline comments.
+See `services/api/.env.example` for the full list with inline comments.
 
-### Frontend environment variables (frontend/.env)
+### Web app environment variables (apps/web/.env)
 
-The frontend needs no configuration for local development. The Vite dev server proxies `/api/*` requests to the backend server on port 3001 automatically.
+The web app needs no configuration for local development. The Vite dev server proxies `/api/*` requests to the API service on port 3001 automatically.
 
 For production builds you would set:
 
@@ -204,11 +207,11 @@ psql protocol_db -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 ### 3. Run migrations
 
 ```bash
-cd backend
+cd services/api
 bun run db:migrate
 ```
 
-This applies all migration files under `backend/drizzle/` in sequence. The first migration creates the pgvector extension as well, but creating it manually in step 2 avoids permission issues on some setups.
+This applies all migration files under `services/api/drizzle/` in sequence. The first migration creates the pgvector extension as well, but creating it manually in step 2 avoids permission issues on some setups.
 
 ### 4. Seed sample data (optional)
 
@@ -239,12 +242,12 @@ bun run dev
 This opens an interactive selector that lets you pick which workspace to run. Alternatively, start each workspace directly:
 
 ```bash
-# Terminal 1: Backend server (port 3001)
-cd backend
+# Terminal 1: API service (port 3001)
+cd services/api
 bun run dev
 
-# Terminal 2: Frontend dev server (port 3000, proxies /api to 3001)
-cd frontend
+# Terminal 2: Web dev server (port 3000, proxies /api to 3001)
+cd apps/web
 bun run dev
 ```
 
@@ -252,8 +255,8 @@ Once both servers are running, open http://localhost:3000 in your browser.
 
 ### What to expect
 
-- The backend server starts on **port 3001** with hot reload via Bun.serve.
-- The frontend Vite dev server starts on **port 3000** and proxies API requests to the backend.
+- The API service starts on **port 3001** with hot reload via Bun.serve.
+- The web Vite dev server starts on **port 3000** and proxies API requests to the API service.
 - On first visit you will see the authentication flow. If you have not configured Google OAuth, use email-based auth.
 - After login the onboarding flow guides you through profile creation, community selection, and intent definition.
 
@@ -262,7 +265,7 @@ Once both servers are running, open http://localhost:3000 in your browser.
 ### Testing
 
 ```bash
-cd backend
+cd services/api
 
 # Run a specific test file (preferred)
 bun test tests/e2e.spec.ts
@@ -283,14 +286,14 @@ Always target specific test files affected by your changes rather than running t
 bun run lint
 
 # Or per workspace
-cd backend && bun run lint
-cd frontend && bun run lint
+cd services/api && bun run lint
+cd apps/web && bun run lint
 ```
 
 ### Database operations
 
 ```bash
-cd backend
+cd services/api
 
 bun run db:generate     # Generate migrations after schema changes
 bun run db:migrate      # Apply pending migrations
@@ -299,11 +302,11 @@ bun run db:seed         # Seed sample data
 bun run db:flush        # Flush all data (development only)
 ```
 
-After generating a migration, always rename the SQL file to a descriptive name and update the `tag` field in `backend/drizzle/meta/_journal.json` to match.
+After generating a migration, always rename the SQL file to a descriptive name and update the `tag` field in `services/api/drizzle/meta/_journal.json` to match.
 
 ### Queue monitoring
 
-When the backend server is running, Bull Board is available at:
+When the API service is running, Bull Board is available at:
 
 ```
 http://localhost:3001/dev/queues/
@@ -381,13 +384,13 @@ Write the PR description as a changelog with categories: New Features, Bug Fixes
 
 ### "invalid_origin" auth error
 
-The app's origin is not in the allowed list. Set `TRUSTED_ORIGINS` in `backend/.env`:
+The app's origin is not in the allowed list. Set `TRUSTED_ORIGINS` in `services/api/.env`:
 
 ```bash
 TRUSTED_ORIGINS=http://localhost:3000
 ```
 
-Restart the backend server after changing this value.
+Restart the API service after changing this value.
 
 ### pgvector extension missing
 
@@ -405,15 +408,15 @@ On some managed PostgreSQL services, pgvector may need to be enabled through the
 If you see `ECONNREFUSED` errors related to Redis:
 
 1. Verify Redis is running: `redis-cli ping` should return `PONG`.
-2. If Redis is on a non-default host/port, set `REDIS_URL` in `backend/.env`.
-3. The backend server will start without Redis, but job queues and caching will not function.
+2. If Redis is on a non-default host/port, set `REDIS_URL` in `services/api/.env`.
+3. The API service will start without Redis, but job queues and caching will not function.
 
 ### Migrations out of sync
 
 If migrations fail or the database is in an inconsistent state:
 
 ```bash
-cd backend
+cd services/api
 
 # Nuclear option: reset and regenerate (development only)
 bun run maintenance:fix-migrations
@@ -435,8 +438,8 @@ lsof -i :3001
 kill -9 <PID>
 ```
 
-Or change the backend port via the `PORT` variable in `backend/.env`.
+Or change the backend port via the `PORT` variable in `services/api/.env`.
 
-### Frontend proxy not reaching protocol
+### Web proxy not reaching API service
 
-Make sure the backend server is running on port 3001 before starting the frontend. The Vite dev server proxies `/api/*` to `http://localhost:3001`. If you changed the backend port, update `frontend/vite.config.ts` accordingly.
+Make sure the API service is running on port 3001 before starting the web app. The Vite dev server proxies `/api/*` to `http://localhost:3001`. If you changed the API port, update `apps/web/vite.config.ts` accordingly.
