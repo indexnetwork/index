@@ -161,7 +161,7 @@ Foundation phase; creates package identity, workspace registration, and the neut
     "LICENSE"
   ],
   "scripts": {
-    "test": "bun test"
+    "test": "bun test --pass-with-no-tests"
   },
   "devDependencies": {
     "@types/bun": "latest"
