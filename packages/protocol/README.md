@@ -16,6 +16,36 @@ Participants express **signals**: structured statements of what they seek, offer
 
 The protocol is designed for high-signal human and agent coordination. It is not a public people database, keyword search engine, advertising channel, or automated introduction machine. Its purpose is to discover meaningful overlap while preserving context, scope, and human approval.
 
+## Protocol overview
+
+```mermaid
+flowchart LR
+    Participant[Participant] --> Agent[Authorized agent]
+    Participant --> Context[Context]
+    Participant --> Signal[Signal]
+
+    Premises[Premises] --> Context
+    Context --> Scope[Effective scope]
+    Signal --> Scope
+    Community[Community membership and norms] --> Scope
+    AgentScope[Agent permissions] --> Scope
+
+    Scope --> CandidateGeneration[Candidate generation]
+    CandidateGeneration --> Evaluation[Evaluation]
+    Evaluation -->|plausible but uncertain| Negotiation[Bounded negotiation]
+    Evaluation -->|clear fit| Opportunity[Opportunity]
+    Negotiation -->|fit established| Opportunity
+    Negotiation -->|human judgment required| Questions[Structured questions]
+    Questions --> Participant
+    Participant --> Signal
+
+    Opportunity --> Consent{Participant consent?}
+    Consent -->|yes| Connection[Connection]
+    Consent -->|no| Terminal[Declined or expired]
+```
+
+The graph is intentionally consent-centered: agents can construct context, discover candidates, evaluate fit, and negotiate constraints, but relationship-forming transitions terminate at participant approval.
+
 ## Design goals
 
 1. **Intent as the primary primitive** — discovery begins from a participant's current signal, not from static identity alone.
@@ -54,6 +84,48 @@ The protocol does not attempt to be:
 
 Some implementation APIs may expose historical names such as `intent`, `index`, `latent`, or `pending`. Public-facing agents SHOULD translate these into the protocol terms **signal**, **community**, **draft**, and **sent**.
 
+## Object relationship model
+
+```mermaid
+erDiagram
+    PARTICIPANT ||--o{ AGENT : authorizes
+    PARTICIPANT ||--o{ SIGNAL : expresses
+    PARTICIPANT ||--o{ PREMISE : asserts
+    PARTICIPANT ||--o{ CONTEXT : represented_by
+    PARTICIPANT ||--o{ MEMBERSHIP : holds
+    COMMUNITY ||--o{ MEMBERSHIP : contains
+    COMMUNITY ||--o{ SIGNAL : scopes
+    COMMUNITY ||--o{ CONTEXT : lenses
+    SIGNAL ||--o{ CANDIDATE : generates
+    CONTEXT ||--o{ CANDIDATE : generates
+    CANDIDATE ||--o| OPPORTUNITY : promotes_to
+    OPPORTUNITY ||--o{ NEGOTIATION : may_require
+    OPPORTUNITY ||--o| CONNECTION : accepted_as
+
+    PARTICIPANT {
+      string principal
+      string consent_source
+    }
+    AGENT {
+      string authorization
+      string effective_scope
+    }
+    COMMUNITY {
+      string purpose
+      string membership_policy
+    }
+    SIGNAL {
+      string constraints
+      string lifecycle_state
+    }
+    OPPORTUNITY {
+      string explanation
+      string lifecycle_state
+    }
+```
+
+This model is conceptual rather than storage-prescriptive. Implementations MAY choose different table names or internal representations, but MUST preserve the same attribution, scope, and consent semantics.
+
 ## System model
 
 ### Principals
@@ -76,6 +148,30 @@ A scope may include:
 - or a narrower request-time scope selected by the participant.
 
 Agents MUST NOT use access to one community to infer, reveal, or act on information from another community unless the effective scope explicitly permits it.
+
+Effective scope is the intersection of all applicable authority boundaries:
+
+```mermaid
+flowchart TD
+    Request[Request-time scope] --> Intersect[Intersect scopes]
+    ParticipantMemberships[Participant memberships] --> Intersect
+    AgentPermissions[Agent permissions] --> Intersect
+    CommunityPolicy[Community policy] --> Intersect
+    PersonalCommunity[Personal community boundary] --> Intersect
+
+    Intersect --> Empty{Empty intersection?}
+    Empty -->|yes| Deny[Deny discovery]
+    Empty -->|no| EffectiveScope[Effective scope]
+    EffectiveScope --> Reads[Permitted reads]
+    EffectiveScope --> Writes[Permitted writes]
+    EffectiveScope --> Evaluation[Permitted evaluation]
+
+    Reads --> Audit[Attributable audit trail]
+    Writes --> Audit
+    Evaluation --> Audit
+```
+
+A broader credential MUST NOT expand a narrower request. A narrower agent permission MUST clamp a broader participant membership.
 
 ### Public and private surfaces
 
@@ -150,9 +246,69 @@ Opportunity states are participant-facing as follows:
 
 An agent MUST NOT advance a received opportunity to **Connected** without explicit approval from the receiving participant in the current interaction.
 
+### Opportunity lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Draft: candidate promoted
+    Draft --> Sent: sender approves send
+    Draft --> Declined: sender declines
+    Draft --> Expired: TTL or invalidated
+
+    Sent --> Connected: recipient explicitly accepts
+    Sent --> Declined: recipient declines
+    Sent --> Expired: TTL or invalidated
+
+    Connected --> [*]
+    Declined --> [*]
+    Expired --> [*]
+
+    note right of Draft
+      Plausible but not sent.
+      Only visible under role and scope rules.
+    end note
+
+    note right of Sent
+      One side is waiting.
+      Acceptance requires current approval.
+    end note
+
+    note right of Connected
+      Relationship boundary crossed.
+      Conversation or introduction may proceed.
+    end note
+```
+
 ## Discovery procedure
 
 A conforming discovery flow has seven phases.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as Participant
+    participant A as Agent
+    participant PR as Protocol runtime
+    participant C as Community scope
+    participant N as Counterparty agent
+
+    P->>A: Provide context and signal
+    A->>PR: Admit signal and construct context
+    PR->>C: Resolve effective scope
+    C-->>PR: Permitted communities
+    PR->>PR: Generate candidates inside scope
+    PR->>PR: Evaluate role fit and constraints
+    alt Fit is clear
+        PR-->>A: Draft opportunity with explanation
+    else Fit is uncertain
+        PR->>N: Start bounded negotiation
+        N-->>PR: Propose, counter, accept, reject, or question
+        PR-->>A: Draft opportunity or structured question
+    end
+    A->>P: Explain strongest reason and ask for approval
+    P-->>A: Approve, decline, or refine signal
+    A->>PR: Advance lifecycle only if approved
+```
 
 ### 1. Context construction
 
@@ -230,6 +386,25 @@ The following invariants define the protocol's trust boundary:
 ## Interoperability
 
 The reference implementation exposes the protocol to agents through a Model Context Protocol (MCP) server and typed package APIs. MCP is the preferred interoperability surface for external agents because it provides tool discovery, runtime instructions, identity resolution, and bounded tool invocation.
+
+```mermaid
+flowchart LR
+    ExternalAgent[External agent] -->|MCP tools| McpServer[Index Network MCP server]
+    FirstPartyAgent[First-party agent] -->|typed runtime| Runtime[Protocol runtime]
+    PersonalAgent[Personal agent] -->|negotiation turns| McpServer
+
+    McpServer --> Identity[Identity resolution]
+    Identity --> AgentGate[Agent registration and permissions]
+    AgentGate --> ScopedDeps[Scoped protocol dependencies]
+    ScopedDeps --> Runtime
+
+    Runtime --> Tools[Protocol tools]
+    Tools --> Graphs[Discovery, context, signal, negotiation graphs]
+    Graphs --> Results[Bounded results]
+    Results --> Runtime
+    Runtime --> ParticipantOutput[Participant-facing output rules]
+```
+
 
 Implementations MAY expose additional transports, but they SHOULD preserve the same protocol semantics:
 
