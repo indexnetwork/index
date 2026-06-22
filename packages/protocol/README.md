@@ -1,159 +1,248 @@
 # Index Network Protocol
 
-Index Network is a private, intent-driven discovery protocol.
+## Status
 
-It helps people and their agents find the right opportunities through stated intent, contextual signal, shared communities, and consent-gated introductions — without turning human relationships into a public search index.
+This document describes the public protocol model for Index Network: the entities, state transitions, agent obligations, privacy boundaries, and discovery semantics that define interoperable participation in the network.
 
-This repository contains the canonical TypeScript implementation of the protocol, published as `@indexnetwork/protocol`. The README is the protocol surface. Implementation details live in [IMPLEMENTATION.md](./IMPLEMENTATION.md).
+The canonical reference implementation is published as `@indexnetwork/protocol`. Implementation details, package installation, exported APIs, adapter contracts, graph factories, and release mechanics are documented separately in [IMPLEMENTATION.md](./IMPLEMENTATION.md). Public API stability is defined in [STABILITY.md](./STABILITY.md).
 
-## What the protocol is for
+Normative terms such as **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are used in their ordinary protocol-documentation sense.
 
-Most networks ask people to broadcast identity and hope the right person sees it. Index Network inverts that pattern:
+## Abstract
 
-1. A participant states what they are looking for, offering, building, learning, funding, hiring, or exploring.
-2. Their agent turns that statement into a durable signal.
-3. The signal is scoped to one or more communities where it is relevant.
-4. The protocol discovers semantic overlap with other participants' signals and context.
-5. Agents negotiate whether the overlap is real, timely, reciprocal, and worth surfacing.
-6. A draft opportunity is shown to the appropriate participant.
-7. A direct connection happens only after explicit consent.
+Index Network is a private, intent-driven discovery protocol for agent-mediated opportunity discovery.
 
-The goal is not more reach. The goal is higher-quality discovery with less noise, less performative posting, and better timing.
+Participants express **signals**: structured statements of what they seek, offer, are open to, or can credibly support. Agents interpret those signals against participant **context**, constrain discovery to bounded **communities**, evaluate candidate overlaps, negotiate fit when appropriate, and surface **opportunities** only through consent-gated state transitions.
 
-## Protocol vocabulary
+The protocol is designed for high-signal human and agent coordination. It is not a public people database, keyword search engine, advertising channel, or automated introduction machine. Its purpose is to discover meaningful overlap while preserving context, scope, and human approval.
 
-| Protocol term | Meaning |
+## Design goals
+
+1. **Intent as the primary primitive** — discovery begins from a participant's current signal, not from static identity alone.
+2. **Bounded visibility** — communities define the scope in which signals and context may be evaluated.
+3. **Semantic discovery** — matching is based on role fit, constraints, complementarity, and contextual relevance rather than exact keyword overlap.
+4. **Explainable surfacing** — every surfaced opportunity SHOULD include a legible reason: why these participants, why now, and what the next action might be.
+5. **Consent at relationship boundaries** — agents MAY discover and negotiate, but MUST NOT create or accept a relationship without explicit participant approval.
+6. **Agent interoperability** — first-party agents, personal agents, community agents, and external MCP clients SHOULD be able to participate under the same behavioral contract.
+
+## Non-goals
+
+The protocol does not attempt to be:
+
+- a global directory of people,
+- a public search index,
+- a social feed ranking protocol,
+- a marketplace listing format,
+- a replacement for human judgment,
+- or a mechanism for bypassing consent, membership, or community boundaries.
+
+## Terminology
+
+| Term | Definition |
 |---|---|
-| **Participant** | A person using Index Network directly or through an agent. |
-| **Agent** | A software representative that can read, reason, discover, negotiate, and ask for consent on behalf of a participant. |
-| **Signal** | A participant's stated intent: what they want, offer, need, seek, or are open to. |
-| **Context** | The facts, background, constraints, and current work that explain why a signal is meaningful. |
-| **Community** | A bounded discovery space with a purpose, membership, and local norms. |
-| **Opportunity** | A discovered overlap between participants that may justify an introduction, collaboration, exchange, or next conversation. |
-| **Negotiation** | A bounded agent-to-agent exchange that tests fit before an opportunity is surfaced. |
-| **Connection** | A consented channel opened after an opportunity is accepted. |
+| **Participant** | A human principal represented in the network. A participant may act directly or through one or more agents. |
+| **Agent** | A software actor authorized to act for a participant or community within a declared scope. |
+| **Signal** | A participant's actionable expression of intent: what they seek, offer, need, are building, are exploring, or can support. |
+| **Premise** | An atomic contextual claim about a participant, used to ground what signals are plausible or relevant. |
+| **Context** | A synthesized representation of premises, history, constraints, and community-specific relevance. |
+| **Community** | A bounded discovery scope with membership, purpose, norms, and relevance criteria. |
+| **Membership** | The relationship between a participant or agent and a community, including permissions and scope. |
+| **Candidate** | A possible counterpart or opportunity component identified during discovery but not yet surfaced. |
+| **Opportunity** | A candidate overlap that has passed evaluation and may be shown to one or more participants. |
+| **Negotiation** | A bounded agent-to-agent exchange used to test fit, constraints, timing, or consent before surfacing or advancing an opportunity. |
+| **Connection** | A participant-approved communication channel or introduction resulting from an accepted opportunity. |
 
-Some implementation surfaces still expose lower-level or historical names (`intent`, `index`, `latent`, `pending`). Public agents should use the protocol vocabulary above: **signal**, **community**, **context**, **draft**, **sent**, and **connected**.
+Some implementation APIs may expose historical names such as `intent`, `index`, `latent`, or `pending`. Public-facing agents SHOULD translate these into the protocol terms **signal**, **community**, **draft**, and **sent**.
 
-## The discovery loop
+## System model
 
-### 1. Establish context
+### Principals
 
-A participant or agent supplies context: bio, current work, constraints, interests, past activity, links, or other self-descriptive material.
+The protocol distinguishes human principals from software actors.
 
-The protocol decomposes this into atomic premises: claims about who the participant is, what they can credibly do, and what circumstances shape their availability. Context can be global or community-scoped.
+- A **participant** is the source of consent and personal context.
+- An **agent** is an authorized actor. Every agent action MUST be attributable to a participant, a community, or both.
+- A **community** may define local discovery norms, but it does not override participant consent.
 
-### 2. Capture a signal
+### Scope
 
-A signal is not a keyword query. It is a commitment or request with enough shape to be acted on:
+All discovery is scope-bound. A protocol operation MUST resolve an effective scope before reading or evaluating signals, context, or opportunities.
 
-- "I want to meet climate founders raising a pre-seed round in Europe."
-- "I can help early teams turn protocol research into developer documentation."
-- "I am looking for a design partner for privacy-preserving agent infrastructure."
+A scope may include:
 
-Underspecified signals should trigger clarification before discovery. Invalid or insincere signals should not enter the graph.
+- a participant's personal community,
+- one or more shared communities,
+- an agent's assigned community scope,
+- or a narrower request-time scope selected by the participant.
 
-### 3. Scope to communities
+Agents MUST NOT use access to one community to infer, reveal, or act on information from another community unless the effective scope explicitly permits it.
 
-Discovery happens inside communities. A community provides:
+### Public and private surfaces
 
-- membership boundaries,
-- purpose and norms,
-- relevance criteria,
-- privacy expectations,
-- and a shared frame for judging fit.
+The protocol separates internal state from participant-facing language.
 
-A participant's personal community also represents their trusted contacts.
+Internal records MAY contain IDs, embeddings, scores, graph state, and tool names. Participant-facing responses MUST NOT expose these implementation details unless an identifier is directly actionable by the participant, such as a conversation identifier needed to open an accepted connection.
 
-### 4. Discover semantic overlap
+## Core objects
 
-The protocol compares signals and context by meaning, not by exact terms. It looks for complementary roles, adjacent goals, shared constraints, and reciprocal value.
+### Signal
 
-Discovery can happen from multiple directions:
+A signal is an actionable statement of direction. It may represent a need, offer, collaboration interest, hiring intent, funding goal, research direction, introduction request, or other future-oriented constraint.
 
-- signal → context,
-- context → signal,
-- signal → signal,
-- premise → premise,
-- and agent-supplied discovery prompts.
+A signal SHOULD contain enough specificity to support discovery. Underspecified signals SHOULD enter clarification before they are persisted or used for broad discovery.
 
-### 5. Evaluate fit
+Signals have the following conceptual lifecycle:
 
-An overlap is not an opportunity until it passes evaluation. The protocol asks:
-
-- Is there a real role fit?
-- Is the timing plausible?
-- Is the participant credible for this signal?
-- Is the candidate likely to benefit too?
-- Is the overlap specific enough to explain?
-- Is there a safe next action?
-
-Good opportunities are explainable. If the protocol cannot state why something surfaced, it should not be promoted.
-
-### 6. Negotiate before surfacing
-
-Agents may negotiate before a participant sees an opportunity. Negotiation is deliberately bounded: it should test fit, clarify constraints, and decide whether to propose, counter, accept, reject, or ask a question.
-
-If negotiation stalls because human judgment is needed, the agent should ask a small number of structured questions rather than guessing.
-
-### 7. Reveal with consent
-
-Opportunities move through a consent-gated lifecycle:
-
-| Stage | Public meaning |
+| State | Meaning |
 |---|---|
-| **Draft** | The protocol found something plausible, but it has not been sent. |
-| **Sent** | One side has shared or received the opportunity and is waiting for a response. |
-| **Connected** | Both sides accepted and a conversation can begin. |
-| **Declined / expired** | The opportunity should not continue. |
+| **Proposed** | A participant or agent supplied raw intent-like input. |
+| **Clarifying** | The protocol requires additional constraints before discovery. |
+| **Active** | The signal is valid, scoped, and eligible for discovery. |
+| **Updated** | The participant refined or replaced constraints. |
+| **Archived / expired** | The signal should no longer produce new opportunities. |
 
-Agents must never accept a received opportunity without explicit approval in the current conversation.
+A signal MUST NOT be treated as active if it is outside the participant's authority, obviously insincere, unsafe to act on, or too vague to evaluate.
 
-## Agent operating contract
+### Premise and context
 
-Agents connecting to Index Network are expected to follow the protocol's behavioral contract:
+A premise is a small claim about a participant: background, role, current work, capability, location, affiliation, constraint, or declared preference. Premises ground discovery by determining whether a signal is plausible and which communities or counterparts are relevant.
 
-- Be calm, direct, analytical, and concise.
-- Prefer the language of **opportunity**, **overlap**, **signal**, **pattern**, **emerging**, **relevant**, and **adjacency**.
-- Do not say "search". Use **find**, **discover**, **look up**, or **check** depending on the action.
-- Do not expose internal IDs, raw JSON, database fields, or tool names unless an ID is directly actionable for the participant.
-- Do not fabricate data. If the agent lacks information, it should use the appropriate protocol tool or say what is missing.
-- Surface the top 1–3 relevant points by default.
-- Ask for confirmation before sending, accepting, or escalating an opportunity.
-- Treat community scope and participant privacy as hard boundaries.
+Context is derived from premises. Context MAY be global to a participant or specific to a community. Community-specific context SHOULD emphasize facts relevant to that community's purpose and suppress irrelevant detail.
 
-The MCP server exports these rules as canonical runtime instructions for connected agents.
+Premise and context updates SHOULD cause downstream discovery representations to refresh. Stale context SHOULD NOT be used when fresher participant-approved context exists.
 
-## Design principles
+### Community
 
-### Intent before graph
+A community is a bounded discovery environment. It defines who can participate, what kinds of signals are relevant, and which discovery operations are legitimate.
 
-The protocol starts from what someone wants or can offer now, not from static identity alone.
+A community SHOULD have:
 
-### Privacy before reach
+- a purpose or prompt,
+- membership rules,
+- agent permissions,
+- relevance expectations,
+- and privacy expectations.
 
-Discovery should happen in bounded contexts. More visibility is not automatically better.
+The participant's personal community represents trusted contacts and direct relationships. It is not equivalent to a public audience.
 
-### Semantic fit over keyword fit
+### Opportunity
 
-The protocol should find complements, not merely text matches.
+An opportunity is an evaluated overlap between participants. It is not merely a candidate returned by retrieval. It must be specific enough to explain and safe enough to surface.
 
-### Explanation over mystery
+An opportunity SHOULD include:
 
-Every surfaced opportunity should be legible: why this, why now, why these people, and what next.
+- participating roles,
+- the relevant signal or context on each side,
+- a concise explanation of fit,
+- a recommended next action,
+- lifecycle state,
+- and visibility rules for each participant.
 
-### Human consent at the edge
+Opportunity states are participant-facing as follows:
 
-Agents may discover and negotiate, but they do not create relationships without human approval.
+| State | Participant-facing term | Meaning |
+|---|---|---|
+| **Draft** | Draft | The protocol found a plausible opportunity, but it has not been sent to the other side. |
+| **Sent** | Sent | One side has sent or received the opportunity and a response is pending. |
+| **Connected** | Connected | Required participants accepted and a conversation or introduction may proceed. |
+| **Declined** | Declined | A participant rejected the opportunity. |
+| **Expired** | Expired | The opportunity is no longer actionable. |
 
-### Interoperable agents
+An agent MUST NOT advance a received opportunity to **Connected** without explicit approval from the receiving participant in the current interaction.
 
-The protocol assumes multiple agents can participate: first-party agents, personal agents, community agents, and external MCP clients.
+## Discovery procedure
 
-## Canonical implementation
+A conforming discovery flow has seven phases.
 
-`@indexnetwork/protocol` is the canonical implementation of these rules as agent graphs, tools, schemas, and MCP runtime behavior.
+### 1. Context construction
 
-- For package setup, exported APIs, adapter contracts, graph factories, and publishing notes, see [IMPLEMENTATION.md](./IMPLEMENTATION.md).
-- For the public API stability contract, see [STABILITY.md](./STABILITY.md).
-- For release history, see [CHANGELOG.md](./CHANGELOG.md).
+The protocol collects participant-provided or participant-authorized material and turns it into premises and context. Context construction MUST preserve provenance and SHOULD prefer participant-approved information over inferred information.
+
+### 2. Signal admission
+
+The protocol evaluates a proposed signal for specificity, sincerity, authority, and safety. If the signal is too broad, ambiguous, or missing critical constraints, the agent SHOULD ask focused clarification questions before running discovery.
+
+### 3. Scope resolution
+
+The protocol determines the effective communities in which the signal can operate. Scope resolution MUST intersect participant membership, agent permissions, and request-time constraints. If the intersection is empty, discovery MUST NOT proceed.
+
+### 4. Candidate generation
+
+The protocol generates candidates by comparing signals and context inside the effective scope. Candidate generation MAY use multiple strategies, including signal-to-context, context-to-signal, signal-to-signal, and premise-to-premise discovery.
+
+Candidate generation is not surfacing. Candidate data MUST remain internal until evaluation and visibility checks pass.
+
+### 5. Evaluation
+
+The protocol evaluates candidates for role fit, constraint satisfaction, credibility, reciprocity, timing, and explainability. A candidate SHOULD be rejected or retained as internal evidence if the protocol cannot produce a clear reason for surfacing it.
+
+### 6. Negotiation
+
+When fit is plausible but uncertain, agents MAY negotiate. Negotiation MUST be bounded. It SHOULD clarify constraints, test mutual relevance, and decide among a small set of actions: propose, counter, accept, reject, or ask a question.
+
+If negotiation requires human judgment, the agent SHOULD stop and ask the participant a small number of structured questions rather than fabricating preferences.
+
+### 7. Surfacing and acceptance
+
+The protocol surfaces the opportunity according to role and lifecycle visibility. Participant-facing presentation SHOULD include the strongest reason for relevance and a clear next action. Sending, accepting, or connecting MUST require participant consent at the relevant boundary.
+
+## Agent requirements
+
+A conforming agent MUST:
+
+- act only within its authenticated participant and community scope,
+- preserve participant consent at send, accept, and connection boundaries,
+- avoid exposing internal IDs, raw tool results, embeddings, scores, or database field names,
+- distinguish known facts from inferred context,
+- ask for clarification when required information is missing,
+- use the protocol vocabulary in participant-facing output,
+- avoid fabricating participants, opportunities, constraints, or outcomes,
+- and provide concise explanations for surfaced opportunities.
+
+A conforming agent SHOULD:
+
+- surface the top one to three relevant points by default,
+- prefer first names unless disambiguation is required,
+- explain why an opportunity is relevant before asking for action,
+- treat silence, timeouts, or failed negotiation as uncertainty rather than consent,
+- and record enough trace information for later audit by authorized operators.
+
+A conforming agent MUST NOT:
+
+- describe discovery as public search,
+- use community access to leak out-of-scope participant information,
+- accept a received opportunity without explicit current approval,
+- present internal confidence scores as objective truth,
+- or continue negotiation after a terminal decision.
+
+## Privacy and safety invariants
+
+The following invariants define the protocol's trust boundary:
+
+1. **Scope invariant** — discovery reads and writes MUST remain inside the effective scope.
+2. **Consent invariant** — relationship-forming transitions MUST be participant-approved.
+3. **Attribution invariant** — every agent action MUST be attributable to an authorized principal.
+4. **Legibility invariant** — surfaced opportunities SHOULD be explainable in participant-facing language.
+5. **Minimization invariant** — participant-facing output SHOULD reveal only what is needed for the next decision.
+6. **No-fabrication invariant** — agents MUST NOT invent facts to complete an opportunity narrative.
+7. **Terminality invariant** — declined, expired, or otherwise terminal opportunities MUST NOT continue to advance unless explicitly reopened through a valid protocol action.
+
+## Interoperability
+
+The reference implementation exposes the protocol to agents through a Model Context Protocol (MCP) server and typed package APIs. MCP is the preferred interoperability surface for external agents because it provides tool discovery, runtime instructions, identity resolution, and bounded tool invocation.
+
+Implementations MAY expose additional transports, but they SHOULD preserve the same protocol semantics:
+
+- authenticated principal resolution,
+- scoped access,
+- consent-gated opportunity transitions,
+- structured discovery and negotiation operations,
+- and participant-facing output rules.
+
+## Reference implementation
+
+The canonical TypeScript implementation is `@indexnetwork/protocol`.
+
+- [IMPLEMENTATION.md](./IMPLEMENTATION.md) — package installation, adapters, graph factories, MCP server usage, and publishing.
+- [STABILITY.md](./STABILITY.md) — public API contract and SemVer policy.
+- [CHANGELOG.md](./CHANGELOG.md) — release history.
