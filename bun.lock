@@ -81,9 +81,6 @@
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
       "version": "0.1.0",
-      "devDependencies": {
-        "@types/bun": "latest",
-      },
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
