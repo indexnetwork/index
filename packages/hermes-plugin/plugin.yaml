@@ -1,5 +1,11 @@
 name: index-network
-version: 0.1.0
-description: Empty Index Network Hermes plugin starter. Fill in MCP tools and dashboard extensions later.
-provides_tools: []
+version: 0.2.0
+description: Index Network Hermes plugin with native tools backed by the Index MCP server.
+provides_tools:
+  - index_read_intents
 provides_hooks: []
+requires_env:
+  - name: INDEX_API_KEY
+    description: Index Network agent API key used to authenticate MCP tool calls.
+    url: https://index.network/agents
+    secret: true

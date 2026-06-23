@@ -1,18 +1,21 @@
-"""Index Network Hermes plugin starter.
+"""Index Network Hermes plugin.
 
-This file is intentionally minimal. Fill it in as the Index Network Hermes
-plugin grows: MCP-backed tools, dashboard support, hooks, commands, and bundled
-skills should be registered from register(ctx).
+This plugin follows the official Hermes plugin guide: plugin.yaml declares the
+capabilities, schemas.py defines what the LLM sees, tools.py implements handlers
+that always return JSON strings, and register(ctx) wires everything into Hermes.
 """
 
 from pathlib import Path
+
+from . import schemas, tools
 
 
 def _register_skills(ctx):
     """Register bundled plugin skills when skills are added.
 
-    TODO: Add SKILL.md files under skills/<skill-name>/, then keep this helper
-    enabled so Hermes can load them as index-network:<skill-name>.
+    Plugin skills are namespaced and read-only in Hermes; they are not copied
+    into ~/.hermes/skills. Add SKILL.md files under skills/<skill-name>/ and
+    they will load as index-network:<skill-name>.
     """
     skills_dir = Path(__file__).parent / "skills"
     if not skills_dir.exists():
@@ -25,18 +28,11 @@ def _register_skills(ctx):
 
 
 def register(ctx):
-    """Register Index Network plugin capabilities with Hermes.
-
-    TODO: Register future MCP-backed tools here, for example:
-        ctx.register_tool(
-            name="read_index_context",
-            toolset="index-network",
-            schema=schemas.READ_INDEX_CONTEXT,
-            handler=tools.read_index_context,
-            description="Read Index Network context.",
-        )
-
-    TODO: Register hooks, slash commands, or CLI commands here if the plugin
-    needs them later.
-    """
+    """Register Index Network plugin capabilities with Hermes."""
+    ctx.register_tool(
+        name="index_read_intents",
+        toolset="index-network",
+        schema=schemas.INDEX_READ_INTENTS,
+        handler=tools.index_read_intents,
+    )
     _register_skills(ctx)

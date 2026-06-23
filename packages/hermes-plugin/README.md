@@ -1,42 +1,84 @@
 # Index Network Hermes Plugin
 
-An empty Hermes plugin starter for future Index Network integrations.
+Hermes-native plugin for Index Network. It follows the official Hermes plugin layout from [Build a Hermes Plugin](https://hermes-agent.nousresearch.com/docs/guides/build-a-hermes-plugin):
 
-This package is intentionally a fill-in-later Hermes plugin, not a generator. It keeps the official Hermes plugin file shape in place so future work can add Index Network MCP-backed tools and a dashboard view without redoing the package scaffold.
+```text
+plugin.yaml   # manifest: tools, hooks, env requirements
+__init__.py   # register(ctx): schemas -> handlers, plugin skills
+schemas.py    # LLM-facing tool schemas
+tools.py      # JSON-string-returning tool handlers
+```
 
 ## Current status
 
-- `plugin.yaml` declares the plugin.
-- `__init__.py` exposes `register(ctx)` and currently registers bundled skills only when they are added.
-- `schemas.py` is reserved for future LLM-facing tool schemas.
-- `tools.py` is reserved for future JSON-string-returning tool handlers.
-- `skills/` is reserved for bundled Hermes skills.
-- `dashboard/` is reserved for a future Hermes dashboard extension.
+The plugin now provides one native Hermes tool:
 
-No tools, MCP servers, API keys, cron jobs, hooks, commands, or dashboard tabs are wired yet.
+- `index_read_intents` — calls the canonical Index MCP `read_intents` tool using `INDEX_API_KEY`.
 
-## Fill in later
+It also keeps placeholders for future bundled skills and dashboard work:
 
-### MCP-backed tools
+- `skills/` — optional namespaced, read-only Hermes plugin skills registered with `ctx.register_skill()`.
+- `dashboard/` — reserved for a future dashboard extension.
 
-1. Add schemas to `schemas.py`.
-2. Add handlers to `tools.py`.
-3. Import `schemas` and `tools` in `__init__.py`.
-4. Register each handler from `register(ctx)` with `ctx.register_tool()`.
+No hooks, slash commands, CLI commands, cron jobs, or dashboard tabs are wired yet.
 
-### Bundled skills
+## Install / enable in Hermes
 
-Add skill files under:
+A Hermes plugin directory must be installed under `~/.hermes/plugins/<plugin-name>/` or a one-level category path. For local testing, copy or symlink this directory:
+
+```bash
+mkdir -p ~/.hermes/plugins
+ln -s /path/to/index/packages/hermes-plugin ~/.hermes/plugins/index-network
+hermes plugins enable index-network
+```
+
+The manifest declares `requires_env: INDEX_API_KEY`, so `hermes plugins install` can prompt for it and save it to Hermes' `.env`. You can also set it manually:
+
+```bash
+export INDEX_API_KEY="..."
+```
+
+Optional environment variables:
+
+- `INDEX_MCP_URL` — defaults to `https://protocol.index.network/mcp`.
+- `INDEX_MCP_TIMEOUT_SECONDS` — defaults to `30`.
+- `INDEX_TELEGRAM_USERNAME` — forwarded as `x-index-telegram-username` when present.
+
+## Tool contract
+
+Handlers intentionally follow Hermes' plugin rules:
+
+- signature: `def handler(args: dict, **kwargs) -> str`
+- always return a JSON string
+- catch exceptions and return JSON error payloads
+- accept `**kwargs` for forward compatibility
+
+`index_read_intents` accepts:
+
+```json
+{
+  "networkId": "optional Index/network UUID",
+  "userId": "optional user UUID",
+  "limit": 20,
+  "page": 1
+}
+```
+
+With no arguments, it returns the authenticated caller's own active intents as seen through the scoped Index MCP server.
+
+## Bundled skills
+
+Add future plugin skills as:
 
 ```text
 skills/<skill-name>/SKILL.md
 ```
 
-The existing `_register_skills(ctx)` helper registers them with `ctx.register_skill()`.
+`__init__.py` registers each skill directory with `ctx.register_skill()`, so Hermes can load them as `index-network:<skill-name>`. Do not copy plugin skills into `~/.hermes/skills`; Hermes plugin skills are namespaced and read-only.
 
-### Dashboard view
+## Dashboard view
 
-When the dashboard is implemented, add the Hermes dashboard extension files under `dashboard/`:
+When dashboard work starts, add the Hermes dashboard files under `dashboard/`:
 
 ```text
 dashboard/manifest.json
@@ -50,4 +92,11 @@ dashboard/plugin_api.py
 ```bash
 cd packages/hermes-plugin
 bun run test
+```
+
+For Hermes discovery debugging:
+
+```bash
+HERMES_PLUGINS_DEBUG=1 hermes plugins list
+hermes logs --level WARNING | grep -i plugin
 ```
