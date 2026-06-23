@@ -120,7 +120,15 @@ export function createIndexApiClient(options = {}) {
     opportunities: {
       list: (query = {}, options = {}) => request(`/opportunities${toQueryString(query)}`, options),
       home: (query = {}, options = {}) => request(`/opportunities/home${toQueryString(query)}`, options),
+      chatContext: (peerUserId, options = {}) => request(
+        `/opportunities/chat-context${toQueryString({ peerUserId })}`,
+        options,
+      ),
       get: (opportunityId, options = {}) => request(`/opportunities/${encodeURIComponent(opportunityId)}`, options),
+      inviteMessage: (opportunityId, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/invite-message`,
+        options,
+      ),
       updateStatus: (opportunityId, status, options = {}) => request(
         `/opportunities/${encodeURIComponent(opportunityId)}/status`,
         { ...options, method: 'PATCH', body: { status } },
@@ -148,6 +156,7 @@ export function createIndexApiClient(options = {}) {
 
     conversations: {
       list: (options = {}) => request('/conversations', options),
+      negotiations: (options = {}) => request('/conversations/negotiations', options),
       messages: (conversationId, query = {}, options = {}) => request(
         `/conversations/${encodeURIComponent(conversationId)}/messages${toQueryString(query)}`,
         options,
@@ -159,6 +168,14 @@ export function createIndexApiClient(options = {}) {
       getOrCreateDm: (peerUserId, options = {}) => request(
         '/conversations/dm',
         { ...options, method: 'POST', body: { peerUserId } },
+      ),
+      updateMetadata: (conversationId, metadata, options = {}) => request(
+        `/conversations/${encodeURIComponent(conversationId)}/metadata`,
+        { ...options, method: 'PATCH', body: { metadata } },
+      ),
+      delete: (conversationId, options = {}) => request(
+        `/conversations/${encodeURIComponent(conversationId)}`,
+        { ...options, method: 'DELETE' },
       ),
     },
   };
