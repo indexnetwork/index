@@ -50,11 +50,13 @@ Other banned words: leverage, unlock, optimize, scale, disrupt, revolutionary, A
 
 ## Hermes tool availability
 
-This bundled Hermes skill is loaded from the `index-network` plugin namespace. The plugin's native tool surface is intentionally small right now:
+This bundled Hermes skill is loaded from the `index-network` plugin namespace. The plugin's native tool surface is intentionally focused:
 
 - `index_read_intents` — reads Index Network intents through the authenticated Index MCP server using `INDEX_API_KEY`.
+- `index_agent_me` — reads the authenticated personal agent identity.
+- `index_pickup_negotiation` and `index_respond_negotiation` — available when the task is specifically to run the user's autonomous Index negotiator.
 
-If additional Index MCP tools are configured separately in Hermes, you may use them when they are actually available. Do not claim you can create, update, delete, discover, notify, or negotiate unless the corresponding tool is present.
+If additional Index MCP tools are configured separately in Hermes, you may use them when they are actually available. Do not claim you can create, update, delete, discover, notify, or negotiate unless the corresponding tool is present and its response confirms the action.
 
 ## Setup
 
