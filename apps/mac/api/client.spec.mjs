@@ -1,0 +1,78 @@
+import { describe, expect, it } from 'bun:test';
+
+import { createIndexApiClient, normalizeApiBaseUrl, toQueryString } from './client.mjs';
+
+function createRecordingFetch() {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ url, init });
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  return { calls, fetchImpl };
+}
+
+async function expectCall(label, invoke, expected) {
+  const { calls, fetchImpl } = createRecordingFetch();
+  const client = createIndexApiClient({
+    apiBaseUrl: 'https://protocol.example/api/',
+    getToken: () => 'token-1',
+    fetchImpl,
+  });
+
+  await invoke(client);
+
+  expect(calls, label).toHaveLength(1);
+  const call = calls[0];
+  expect(call.url, label).toBe(`https://protocol.example/api${expected.path}`);
+  expect(call.init.method, label).toBe(expected.method || 'GET');
+  expect(call.init.headers.Authorization, label).toBe('Bearer token-1');
+  if ('body' in expected) {
+    expect(call.init.body, label).toBe(JSON.stringify(expected.body));
+  } else {
+    expect(call.init.body, label).toBeUndefined();
+  }
+}
+
+describe('mac Index API client endpoint contract', () => {
+  it('normalizes base URLs and query strings', () => {
+    expect(normalizeApiBaseUrl('https://protocol.example/api///')).toBe('https://protocol.example/api');
+    expect(toQueryString({ status: 'pending', empty: '', nil: null, missing: undefined, limit: 20 })).toBe('?status=pending&limit=20');
+  });
+
+  it('uses controller-backed auth/network/intent endpoints', async () => {
+    await expectCall('auth.me', (client) => client.auth.me(), { path: '/auth/me' });
+    await expectCall('networks.list', (client) => client.networks.list(), { path: '/networks' });
+    await expectCall('networks.overview', (client) => client.networks.overview('net/1'), { path: '/networks/net%2F1/overview' });
+    await expectCall('networks.myIntents', (client) => client.networks.myIntents('net/1'), { path: '/networks/net%2F1/my-intents' });
+    await expectCall('intents.list', (client) => client.intents.list({ page: 1 }), { path: '/intents/list', method: 'POST', body: { page: 1 } });
+    await expectCall('intents.get', (client) => client.intents.get('intent/1'), { path: '/intents/intent%2F1' });
+    await expectCall('intents.archive', (client) => client.intents.archive('intent/1'), { path: '/intents/intent%2F1/archive', method: 'PATCH' });
+  });
+
+  it('uses controller-backed opportunity endpoints', async () => {
+    await expectCall('opportunities.list', (client) => client.opportunities.list({ status: 'pending', limit: 10 }), { path: '/opportunities?status=pending&limit=10' });
+    await expectCall('opportunities.home', (client) => client.opportunities.home({ noCache: true }), { path: '/opportunities/home?noCache=true' });
+    await expectCall('opportunities.chatContext', (client) => client.opportunities.chatContext('user/1'), { path: '/opportunities/chat-context?peerUserId=user%2F1' });
+    await expectCall('opportunities.get', (client) => client.opportunities.get('opp/1'), { path: '/opportunities/opp%2F1' });
+    await expectCall('opportunities.inviteMessage', (client) => client.opportunities.inviteMessage('opp/1'), { path: '/opportunities/opp%2F1/invite-message' });
+    await expectCall('opportunities.updateStatus', (client) => client.opportunities.updateStatus('opp/1', 'accepted'), { path: '/opportunities/opp%2F1/status', method: 'PATCH', body: { status: 'accepted' } });
+    await expectCall('opportunities.startChat', (client) => client.opportunities.startChat('opp/1'), { path: '/opportunities/opp%2F1/start-chat', method: 'POST', body: {} });
+  });
+
+  it('uses controller-backed question and conversation endpoints', async () => {
+    await expectCall('questions.pending', (client) => client.questions.pending({ sourceId: 'intent/1' }), { path: '/questions?status=pending&sourceId=intent%2F1' });
+    await expectCall('questions.answer', (client) => client.questions.answer('question/1', { selectedOptions: ['yes'] }), { path: '/questions/question%2F1/answer', method: 'POST', body: { selectedOptions: ['yes'] } });
+    await expectCall('questions.dismiss', (client) => client.questions.dismiss('question/1'), { path: '/questions/question%2F1/dismiss', method: 'POST', body: {} });
+
+    await expectCall('conversations.list', (client) => client.conversations.list(), { path: '/conversations' });
+    await expectCall('conversations.negotiations', (client) => client.conversations.negotiations(), { path: '/conversations/negotiations' });
+    await expectCall('conversations.messages', (client) => client.conversations.messages('conv/1', { limit: 50 }), { path: '/conversations/conv%2F1/messages?limit=50' });
+    await expectCall('conversations.sendMessage', (client) => client.conversations.sendMessage('conv/1', { parts: [{ text: 'hi' }] }), { path: '/conversations/conv%2F1/messages', method: 'POST', body: { parts: [{ text: 'hi' }] } });
+    await expectCall('conversations.getOrCreateDm', (client) => client.conversations.getOrCreateDm('user/1'), { path: '/conversations/dm', method: 'POST', body: { peerUserId: 'user/1' } });
+    await expectCall('conversations.updateMetadata', (client) => client.conversations.updateMetadata('conv/1', { title: 'hello' }), { path: '/conversations/conv%2F1/metadata', method: 'PATCH', body: { metadata: { title: 'hello' } } });
+    await expectCall('conversations.delete', (client) => client.conversations.delete('conv/1'), { path: '/conversations/conv%2F1', method: 'DELETE' });
+  });
+});
