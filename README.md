@@ -1,7 +1,9 @@
 <h1 align="center">
     <a href="https://index.network">
-    <img style="width:400px" src="apps/web/public/logos/logo-black-full.svg#gh-light-mode-only" alt="Index Network">
-    <img style="width:400px" src="apps/web/public/logos/logo-white-full.svg#gh-dark-mode-only" alt="Index Network">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/logos/logo-white-full.svg">
+      <img width="400" src="apps/web/public/logos/logo-black-full.svg" alt="Index Network">
+    </picture>
     </a>
 </h1>
 
@@ -214,7 +216,7 @@ index/
 │   └── mac/           # Native Apple client subtree → indexnetwork/mac-client
 ├── services/
 │   └── api/           # Backend API and agent engine (Bun, TypeScript)
-├── packages/          # Shared protocol, CLI, and plugin packages
+├── packages/          # Shared protocol, CLI, Claude plugin, and Hermes plugin packages
 ├── docs/              # Project documentation (see Documentation section)
 └── scripts/           # Worktree helpers, hooks, dev launcher
 ```
@@ -268,7 +270,7 @@ Detailed documentation lives in the `docs/` directory:
 - **[Opportunities](docs/domain/opportunities.md)** -- Opportunity detection, evaluation, and persistence
 - **[Negotiation](docs/domain/negotiation.md)** -- Bilateral agent-to-agent negotiation protocol
 - **[Identity and Context](docs/domain/identity-and-context.md)** -- User identity, synthesized context, enrichment, and HyDE document embeddings
-- **[Indexes](docs/domain/indexes.md)** -- Community structure, membership, and access control
+- **[Indexes](docs/domain/networks.md)** -- Community structure, membership, and access control
 - **[HyDE](docs/domain/hyde.md)** -- Hypothetical Document Embedding strategies for semantic search
 - **[Feed and Maintenance](docs/domain/feed-and-maintenance.md)** -- Home feed curation and periodic maintenance
 

@@ -1,42 +1,184 @@
 # Index Network Hermes Plugin
 
-An empty Hermes plugin starter for future Index Network integrations.
+Hermes-native plugin for Index Network. It follows the official Hermes plugin layout from [Build a Hermes Plugin](https://hermes-agent.nousresearch.com/docs/guides/build-a-hermes-plugin):
 
-This package is intentionally a fill-in-later Hermes plugin, not a generator. It keeps the official Hermes plugin file shape in place so future work can add Index Network MCP-backed tools and a dashboard view without redoing the package scaffold.
+```text
+plugin.yaml   # manifest: tools, hooks, env requirements
+__init__.py   # register(ctx): schemas -> handlers, hooks, commands, plugin skills
+schemas.py    # LLM-facing tool schemas
+tools.py      # JSON-string-returning tool handlers
+```
 
 ## Current status
 
-- `plugin.yaml` declares the plugin.
-- `__init__.py` exposes `register(ctx)` and currently registers bundled skills only when they are added.
-- `schemas.py` is reserved for future LLM-facing tool schemas.
-- `tools.py` is reserved for future JSON-string-returning tool handlers.
-- `skills/` is reserved for bundled Hermes skills.
-- `dashboard/` is reserved for a future Hermes dashboard extension.
+The plugin provides these native Hermes tools:
 
-No tools, MCP servers, API keys, cron jobs, hooks, commands, or dashboard tabs are wired yet.
+- `index_read_intents` — calls the canonical Index MCP `read_intents` tool using `INDEX_API_KEY`.
+- `index_agent_me` — calls `GET /api/agents/me` to return the authenticated personal Index agent for the configured key.
+- `index_pickup_negotiation` — calls the personal-agent pickup endpoint to poll and claim one pending negotiation turn.
+- `index_respond_negotiation` — submits an autonomous personal-agent negotiation response with action, message, reasoning, and suggested roles.
 
-## Fill in later
+It also bundles generated, namespaced Hermes plugin skills, an orchestrator hint hook, a slash command, and a dashboard placeholder:
 
-### MCP-backed tools
+- `skills/index-orchestrator/SKILL.md` — signal/intent review and discovery preparation guidance for Hermes.
+- `skills/index-negotiator/SKILL.md` — autonomous personal-agent negotiation guidance for scheduled Hermes runs.
+- `pre_llm_call` hook — nudges Hermes to load `skill_view("index-network:index-orchestrator")` for clear Index/signal/intent/opportunity prompts.
+- `/index` command — returns the same skill-loading hint explicitly.
+- `dashboard/` — reserved for a future dashboard extension.
 
-1. Add schemas to `schemas.py`.
-2. Add handlers to `tools.py`.
-3. Import `schemas` and `tools` in `__init__.py`.
-4. Register each handler from `register(ctx)` with `ctx.register_tool()`.
+## Install / enable in Hermes
 
-### Bundled skills
+A Hermes plugin directory must be installed under `~/.hermes/plugins/<plugin-name>/` or a one-level category path. For local testing, copy or symlink this directory:
 
-Add skill files under:
-
-```text
-skills/<skill-name>/SKILL.md
+```bash
+mkdir -p ~/.hermes/plugins
+ln -s /path/to/index/packages/hermes-plugin ~/.hermes/plugins/index-network
+hermes plugins enable index-network
 ```
 
-The existing `_register_skills(ctx)` helper registers them with `ctx.register_skill()`.
+The manifest declares `requires_env: INDEX_API_KEY`, so `hermes plugins install` can prompt for it and save it to Hermes' `.env`. Use an Index agent-bound API key when running autonomous negotiation tools. You can also set it manually:
 
-### Dashboard view
+```bash
+export INDEX_API_KEY="..."
+```
 
-When the dashboard is implemented, add the Hermes dashboard extension files under `dashboard/`:
+Optional environment variables:
+
+- `INDEX_MCP_URL` — defaults to `https://protocol.index.network/mcp`.
+- `INDEX_API_URL` — defaults to `https://protocol.index.network/api`.
+- `INDEX_MCP_TIMEOUT_SECONDS` — defaults to `30` and is used for both MCP and API requests.
+- `INDEX_TELEGRAM_USERNAME` — forwarded as `x-index-telegram-username` when present.
+
+## Tool contract
+
+Handlers intentionally follow Hermes' plugin rules:
+
+- signature: `def handler(args: dict, **kwargs) -> str`
+- always return a JSON string
+- catch exceptions and return JSON error payloads
+- accept `**kwargs` for forward compatibility
+
+### `index_read_intents`
+
+Accepts:
+
+```json
+{
+  "networkId": "optional Index/network UUID",
+  "userId": "optional user UUID",
+  "limit": 20,
+  "page": 1
+}
+```
+
+With no arguments, it returns the authenticated caller's own active intents as seen through the scoped Index MCP server.
+
+### `index_agent_me`
+
+Accepts no arguments:
+
+```json
+{}
+```
+
+Returns the authenticated personal agent identity for the configured `INDEX_API_KEY`.
+
+### `index_pickup_negotiation`
+
+Accepts:
+
+```json
+{
+  "agentId": "optional personal agent UUID"
+}
+```
+
+If `agentId` is omitted, the handler resolves it with `/api/agents/me`. A 204/no-work pickup returns:
+
+```json
+{ "success": true, "pending": false }
+```
+
+A claimed turn returns `pending: true` plus the backend negotiation payload.
+
+### `index_respond_negotiation`
+
+Accepts:
+
+```json
+{
+  "agentId": "optional personal agent UUID",
+  "negotiationId": "required negotiation UUID from pickup",
+  "action": "propose | accept | reject | counter | question",
+  "message": "required for counter/question; optional but useful for other actions",
+  "reasoning": "required private rationale",
+  "suggestedRoles": {
+    "ownUser": "agent | patient | peer",
+    "otherUser": "agent | patient | peer"
+  }
+}
+```
+
+The handler sends the backend body shape expected by the personal-agent negotiation endpoint:
+
+```json
+{
+  "action": "accept",
+  "message": "...",
+  "assessment": {
+    "reasoning": "...",
+    "suggestedRoles": {
+      "ownUser": "agent",
+      "otherUser": "patient"
+    }
+  }
+}
+```
+
+## Autonomous negotiation setup
+
+Hermes can run as the user's personal Index negotiator by invoking the bundled `index-network:index-negotiator` skill on a schedule through Hermes' gateway/cron mechanism.
+
+A minimal scheduled prompt should instruct Hermes to load the negotiator skill and run one autonomous polling pass, for example:
+
+```text
+Use skill_view("index-network:index-negotiator") and run one scheduled autonomous Index negotiation pass.
+```
+
+The skill's scheduled-run contract is:
+
+1. call `index_pickup_negotiation()`
+2. if `pending=false`, respond exactly `[SILENT]`
+3. inspect returned context/opportunity/turn history/deadline when a turn is pending
+4. choose one cautious action
+5. call `index_respond_negotiation(...)`
+6. report only the tool-confirmed submission
+
+Run the Hermes gateway/cron often enough to keep the personal-agent heartbeat fresh. A 1 minute interval is recommended. The Index dispatcher falls back to the system negotiator when no personal agent has polled recently, so a slow or stopped cron may cause Hermes to miss turns even though the plugin is installed.
+
+## Hook and command behavior
+
+`__init__.py` registers a defensive `pre_llm_call` hook. When the user message clearly mentions Index Network, signals, intents, opportunities, or discovery, the hook injects a short hint telling Hermes to load `skill_view("index-network:index-orchestrator")`. The hook does not run tools by itself.
+
+The `/index` command returns the same hint for explicit activation. Plugin skills are namespaced, so refer to them as `index-network:index-orchestrator` and `index-network:index-negotiator`.
+
+## Bundled skills
+
+The committed Hermes plugin skills are generated from templates in the monorepo:
+
+```text
+packages/protocol/skills/hermes-plugin/<skill-name>.template.md
+        ↓ bun run build:skills
+packages/hermes-plugin/skills/<skill-name>/SKILL.md
+```
+
+Do not edit generated `SKILL.md` files directly. Edit the templates and run `bun run build:skills` from the monorepo root.
+
+`__init__.py` registers each skill directory with `ctx.register_skill()`, so Hermes can load them as `index-network:<skill-name>`. Do not copy plugin skills into `~/.hermes/skills`; Hermes plugin skills are namespaced and read-only.
+
+## Dashboard view
+
+When dashboard work starts, add the Hermes dashboard files under `dashboard/`:
 
 ```text
 dashboard/manifest.json
@@ -47,7 +189,17 @@ dashboard/plugin_api.py
 
 ## Verify
 
+From the monorepo root:
+
 ```bash
-cd packages/hermes-plugin
-bun run test
+bun run build:skills
+bun test scripts/tests/build-skills.spec.ts
+cd packages/hermes-plugin && bun run test
+```
+
+For Hermes discovery debugging:
+
+```bash
+HERMES_PLUGINS_DEBUG=1 hermes plugins list
+hermes logs --level WARNING | grep -i plugin
 ```
