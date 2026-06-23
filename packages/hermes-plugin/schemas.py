@@ -47,6 +47,81 @@ INDEX_READ_INTENTS = {
     },
 }
 
+FORWARDED_MCP_TOOLS = (
+    "register_agent",
+    "list_agents",
+    "update_agent",
+    "delete_agent",
+    "grant_agent_permission",
+    "revoke_agent_permission",
+    "list_conversations",
+    "get_conversation",
+    "import_contacts",
+    "list_contacts",
+    "add_contact",
+    "remove_contact",
+    "search_contacts",
+    "read_user_contexts",
+    "record_onboarding_privacy_consent",
+    "preview_user_context",
+    "confirm_user_context",
+    "create_user_context",
+    "update_user_context",
+    "get_enrichment_run",
+    "cancel_enrichment_run",
+    "complete_onboarding",
+    "import_gmail_contacts",
+    "create_intent",
+    "update_intent",
+    "delete_intent",
+    "create_intent_index",
+    "read_intent_indexes",
+    "delete_intent_index",
+    "search_intents",
+    "list_negotiations",
+    "get_negotiation",
+    "respond_to_negotiation",
+    "read_networks",
+    "read_network_memberships",
+    "update_network",
+    "create_network",
+    "delete_network",
+    "create_network_membership",
+    "delete_network_membership",
+    "discover_opportunities",
+    "get_discovery_run",
+    "cancel_discovery_run",
+    "list_opportunities",
+    "update_opportunity",
+    "confirm_opportunity_delivery",
+    "create_premise",
+    "read_premises",
+    "update_premise",
+    "retract_premise",
+    "read_pending_questions",
+    "scrape_url",
+    "read_docs",
+)
+
+
+def forwarded_mcp_schema(tool_name: str) -> dict:
+    """Build a Hermes schema for a pass-through Index MCP tool wrapper."""
+    return {
+        "name": f"index_{tool_name}",
+        "description": (
+            f"Call the Index MCP `{tool_name}` tool with the provided JSON arguments. "
+            "Use this for Index capabilities that do not have a dedicated Hermes-native wrapper. "
+            "If unsure about arguments or workflow, call index_read_docs with topic='mcp_agent_guide' first."
+        ),
+        "parameters": {
+            "type": "object",
+            "description": f"Arguments passed directly to the Index MCP `{tool_name}` tool.",
+            "additionalProperties": True,
+            "required": [],
+        },
+    }
+
+
 INDEX_AGENT_ME = {
     "name": "index_agent_me",
     "description": (

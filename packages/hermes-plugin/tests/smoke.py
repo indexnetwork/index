@@ -101,21 +101,38 @@ def main() -> None:
     plugin = load_plugin()
     ctx = FakeContext()
     plugin.register(ctx)
+    assert set(plugin.schemas.FORWARDED_MCP_TOOLS) == plugin.tools._FORWARDED_MCP_TOOLS
 
     tool_names = [entry["name"] for entry in ctx.tools]
-    assert tool_names == [
-        "index_read_intents",
-        "index_agent_me",
-        "index_pickup_negotiation",
-        "index_respond_negotiation",
-    ], tool_names
+    expected_tool_names = (
+        ["index_read_intents"]
+        + [f"index_{name}" for name in plugin.schemas.FORWARDED_MCP_TOOLS]
+        + ["index_agent_me", "index_pickup_negotiation", "index_respond_negotiation"]
+    )
+    assert tool_names == expected_tool_names, tool_names
+    assert len(tool_names) == len(set(tool_names))
+    assert "index_create_intent" in tool_names
+    assert "index_discover_opportunities" in tool_names
+    assert "index_read_docs" in tool_names
     assert [entry["schema"]["name"] for entry in ctx.tools] == tool_names
-    assert [entry["handler"] for entry in ctx.tools] == [
-        plugin.tools.index_read_intents,
-        plugin.tools.index_agent_me,
-        plugin.tools.index_pickup_negotiation,
-        plugin.tools.index_respond_negotiation,
-    ]
+    handlers_by_name = {entry["name"]: entry["handler"] for entry in ctx.tools}
+    assert handlers_by_name["index_read_intents"] == plugin.tools.index_read_intents
+    assert handlers_by_name["index_agent_me"] == plugin.tools.index_agent_me
+    assert handlers_by_name["index_pickup_negotiation"] == plugin.tools.index_pickup_negotiation
+    assert handlers_by_name["index_respond_negotiation"] == plugin.tools.index_respond_negotiation
+    assert handlers_by_name["index_create_intent"].__name__ == "index_create_intent"
+
+    manifest_tools = []
+    in_tools = False
+    for line in (ROOT / "plugin.yaml").read_text().splitlines():
+        if line == "provides_tools:":
+            in_tools = True
+            continue
+        if in_tools and line and not line.startswith("  - "):
+            break
+        if in_tools and line.startswith("  - "):
+            manifest_tools.append(line.removeprefix("  - "))
+    assert manifest_tools == tool_names
     assert [name for name, _path in ctx.skills] == ["index-negotiator", "index-orchestrator"]
     for _name, skill_md in ctx.skills:
         assert pathlib.Path(skill_md).name == "SKILL.md"
@@ -173,6 +190,35 @@ def main() -> None:
         assert captured[-1]["body"]["method"] == "tools/call"
         assert captured[-1]["body"]["params"] == {"name": "read_intents", "arguments": {"limit": 10, "page": 1}}
         assert captured[-1]["headers"]["X-api-key"] == "test-key"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": json.dumps({"success": True, "intentId": "intent-1"}),
+                                }
+                            ]
+                        },
+                    }
+                )
+            ],
+            captured,
+        )
+        create_intent = handlers_by_name["index_create_intent"]
+        created = json.loads(create_intent({"description": "Find robotics mentors", "autoApprove": True}))
+        assert created == {"success": True, "intentId": "intent-1"}
+        assert captured[-1]["body"]["params"] == {
+            "name": "create_intent",
+            "arguments": {"description": "Find robotics mentors", "autoApprove": True},
+        }
+        assert json.loads(create_intent([])) == {"success": False, "error": "Arguments must be an object."}
 
         os.environ["INDEX_API_URL"] = "https://api.example.test/api"
         captured = []

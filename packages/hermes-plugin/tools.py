@@ -20,6 +20,63 @@ _DEFAULT_INDEX_API_URL = "https://protocol.index.network/api"
 _MAX_ERROR_BODY_CHARS = 2_000
 _NEGOTIATION_ACTIONS = {"propose", "accept", "reject", "counter", "question"}
 _NEGOTIATION_ROLES = {"agent", "patient", "peer"}
+_FORWARDED_MCP_TOOLS = frozenset(
+    {
+        "register_agent",
+        "list_agents",
+        "update_agent",
+        "delete_agent",
+        "grant_agent_permission",
+        "revoke_agent_permission",
+        "list_conversations",
+        "get_conversation",
+        "import_contacts",
+        "list_contacts",
+        "add_contact",
+        "remove_contact",
+        "search_contacts",
+        "read_user_contexts",
+        "record_onboarding_privacy_consent",
+        "preview_user_context",
+        "confirm_user_context",
+        "create_user_context",
+        "update_user_context",
+        "get_enrichment_run",
+        "cancel_enrichment_run",
+        "complete_onboarding",
+        "import_gmail_contacts",
+        "create_intent",
+        "update_intent",
+        "delete_intent",
+        "create_intent_index",
+        "read_intent_indexes",
+        "delete_intent_index",
+        "search_intents",
+        "list_negotiations",
+        "get_negotiation",
+        "respond_to_negotiation",
+        "read_networks",
+        "read_network_memberships",
+        "update_network",
+        "create_network",
+        "delete_network",
+        "create_network_membership",
+        "delete_network_membership",
+        "discover_opportunities",
+        "get_discovery_run",
+        "cancel_discovery_run",
+        "list_opportunities",
+        "update_opportunity",
+        "confirm_opportunity_delivery",
+        "create_premise",
+        "read_premises",
+        "update_premise",
+        "retract_premise",
+        "read_pending_questions",
+        "scrape_url",
+        "read_docs",
+    }
+)
 
 
 def _json(payload: dict[str, Any]) -> str:
@@ -298,6 +355,29 @@ def _validate_suggested_roles(value: Any) -> tuple[dict[str, str] | None, str | 
     if other_user not in _NEGOTIATION_ROLES:
         return None, "suggestedRoles.otherUser must be one of: agent, patient, peer."
     return {"ownUser": own_user, "otherUser": other_user}, None
+
+
+def index_forwarded_mcp_tool(tool_name: str, args: dict, **kwargs) -> str:
+    """Forward a Hermes tool call to an allowlisted Index MCP tool."""
+    del kwargs
+    if tool_name not in _FORWARDED_MCP_TOOLS:
+        return _error(f"Unsupported Index MCP tool: {tool_name}")
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    return _call_index_mcp(tool_name, args)
+
+
+def make_mcp_tool_handler(tool_name: str):
+    """Create a Hermes handler for an allowlisted pass-through Index MCP tool."""
+    if tool_name not in _FORWARDED_MCP_TOOLS:
+        raise ValueError(f"Unsupported Index MCP tool: {tool_name}")
+
+    def handler(args: dict, **kwargs) -> str:
+        return index_forwarded_mcp_tool(tool_name, args, **kwargs)
+
+    handler.__name__ = f"index_{tool_name}"
+    handler.__doc__ = f"Forward to the Index MCP {tool_name} tool."
+    return handler
 
 
 def index_read_intents(args: dict, **kwargs) -> str:
