@@ -1,9 +1,9 @@
 # Verifies that committed skill files match what build:skills would produce.
 #
-# Skill SKILL.md files are generated from templates in
-# packages/protocol/skills/ by scripts/build-skills.ts. They are committed and
-# subsequently synced via subtree push to consuming repos. If templates change
-# without a fresh build, the synced skills drift silently.
+# Skill SKILL.md files for Claude and Hermes plugins are generated from
+# templates in packages/protocol/skills/ by scripts/build-skills.ts. They are
+# committed and subsequently synced via subtree push to consuming repos. If
+# templates change without a fresh build, the synced skills drift silently.
 #
 # This check fails the PR when committed skill outputs are out of date,
 # forcing the author to run `bun run build:skills` and commit the result.

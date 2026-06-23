@@ -1,14 +1,13 @@
 {
   "name": "@indexnetwork/hermes-plugin",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Hermes-native Index Network plugin with MCP-backed tools",
   "license": "MIT",
   "type": "module",
   "homepage": "https://index.network",
   "repository": {
     "type": "git",
-    "url": "https://github.com/indexnetwork/index.git",
-    "directory": "packages/hermes-plugin"
+    "url": "https://github.com/indexnetwork/hermes-plugin.git"
   },
   "files": [
     "plugin.yaml",

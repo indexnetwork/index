@@ -29,7 +29,7 @@ index/
     protocol/        @indexnetwork/protocol NPM package (agent graphs, interfaces, tools)
     cli/             CLI client (@indexnetwork/cli, Bun, TypeScript)
     claude-plugin/   Claude/Codex plugin distribution, subtree-synced publicly
-    hermes-plugin/   Hermes-native plugin distribution, subtree-synced publicly
+    hermes-plugin/   Hermes-native plugin distribution with generated skills, subtree-synced publicly
 ```
 
 **API service** is a native Bun HTTP server (`Bun.serve`) running on port 3001. It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
