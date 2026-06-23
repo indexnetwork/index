@@ -16,7 +16,10 @@ import urllib.request
 from typing import Any
 
 _DEFAULT_INDEX_MCP_URL = "https://protocol.index.network/mcp"
+_DEFAULT_INDEX_API_URL = "https://protocol.index.network/api"
 _MAX_ERROR_BODY_CHARS = 2_000
+_NEGOTIATION_ACTIONS = {"propose", "accept", "reject", "counter", "question"}
+_NEGOTIATION_ROLES = {"agent", "patient", "peer"}
 
 
 def _json(payload: dict[str, Any]) -> str:
@@ -27,6 +30,12 @@ def _error(message: str, **extra: Any) -> str:
     payload: dict[str, Any] = {"success": False, "error": message}
     payload.update(extra)
     return _json(payload)
+
+
+def _error_payload(message: str, **extra: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {"success": False, "error": message}
+    payload.update(extra)
+    return payload
 
 
 def _clean_string(value: Any) -> str | None:
@@ -63,6 +72,10 @@ def _timeout_seconds() -> float:
 
 def _mcp_url() -> str:
     return os.environ.get("INDEX_MCP_URL", _DEFAULT_INDEX_MCP_URL).strip() or _DEFAULT_INDEX_MCP_URL
+
+
+def _api_url() -> str:
+    return os.environ.get("INDEX_API_URL", _DEFAULT_INDEX_API_URL).strip() or _DEFAULT_INDEX_API_URL
 
 
 def _headers(api_key: str) -> dict[str, str]:
@@ -114,6 +127,13 @@ def _parse_mcp_response(body: bytes, content_type: str) -> Any:
     text = body.decode("utf-8", errors="replace")
     if "text/event-stream" in content_type.lower():
         return _parse_sse(text)
+    return _parse_json(text)
+
+
+def _parse_api_response(body: bytes) -> Any:
+    text = body.decode("utf-8", errors="replace").strip()
+    if not text:
+        return {"success": True, "no_content": True}
     return _parse_json(text)
 
 
@@ -191,6 +211,95 @@ def _call_index_mcp(tool_name: str, arguments: dict[str, Any]) -> str:
         return _error(f"Index MCP response could not be processed: {exc}")
 
 
+def _api_request(
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+    *,
+    no_content_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        return _error_payload(
+            "INDEX_API_KEY is required. Install the plugin with Hermes or set INDEX_API_KEY in the Hermes environment."
+        )
+
+    base_url = _api_url().rstrip("/")
+    request_path = path if path.startswith("/") else f"/{path}"
+    request_body = None if body is None else json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(
+        f"{base_url}{request_path}",
+        data=request_body,
+        headers=_headers(api_key),
+        method=method.upper(),
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=_timeout_seconds()) as response:
+            status = getattr(response, "status", getattr(response, "code", None))
+            if status == 204:
+                return no_content_payload or {"success": True, "no_content": True}
+            parsed = _parse_api_response(response.read())
+            if isinstance(parsed, dict):
+                return parsed
+            return {"success": True, "data": parsed}
+    except urllib.error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8", errors="replace")[:_MAX_ERROR_BODY_CHARS]
+        error_payload: dict[str, Any] = {
+            "success": False,
+            "error": f"Index API HTTP request failed with status {exc.code}.",
+            "status": exc.code,
+        }
+        if body_text:
+            error_payload["body"] = body_text
+            try:
+                parsed_body = _parse_json(body_text)
+            except json.JSONDecodeError:
+                parsed_body = None
+            if isinstance(parsed_body, dict):
+                error_payload["details"] = parsed_body
+        return error_payload
+    except urllib.error.URLError as exc:
+        return _error_payload(f"Index API request failed: {exc.reason}")
+    except Exception as exc:  # noqa: BLE001 - Hermes handlers must not raise.
+        return _error_payload(f"Index API response could not be processed: {exc}")
+
+
+def _agent_id_from_payload(payload: dict[str, Any]) -> str | None:
+    agent_id = _clean_string(payload.get("id"))
+    if agent_id:
+        return agent_id
+    agent = payload.get("agent")
+    if isinstance(agent, dict):
+        return _clean_string(agent.get("id"))
+    return None
+
+
+def _resolve_agent_id(args: dict[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
+    agent_id = _clean_string(args.get("agentId"))
+    if agent_id:
+        return agent_id, None
+    payload = _api_request("GET", "/agents/me")
+    if payload.get("success") is False:
+        return None, payload
+    resolved = _agent_id_from_payload(payload)
+    if not resolved:
+        return None, _error_payload("Could not resolve agent ID from /agents/me response.", response=payload)
+    return resolved, None
+
+
+def _validate_suggested_roles(value: Any) -> tuple[dict[str, str] | None, str | None]:
+    if not isinstance(value, dict):
+        return None, "suggestedRoles must be an object."
+    own_user = _clean_string(value.get("ownUser"))
+    other_user = _clean_string(value.get("otherUser"))
+    if own_user not in _NEGOTIATION_ROLES:
+        return None, "suggestedRoles.ownUser must be one of: agent, patient, peer."
+    if other_user not in _NEGOTIATION_ROLES:
+        return None, "suggestedRoles.otherUser must be one of: agent, patient, peer."
+    return {"ownUser": own_user, "otherUser": other_user}, None
+
+
 def index_read_intents(args: dict, **kwargs) -> str:
     """Read Index Network intents through the canonical MCP read_intents tool."""
     del kwargs
@@ -220,3 +329,88 @@ def index_read_intents(args: dict, **kwargs) -> str:
         arguments["page"] = page
 
     return _call_index_mcp("read_intents", arguments)
+
+
+def index_agent_me(args: dict, **kwargs) -> str:
+    """Return the authenticated Index personal agent for the configured API key."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    payload = _api_request("GET", "/agents/me")
+    if payload.get("success") is False:
+        return _json(payload)
+    merged = {"success": True}
+    merged.update(payload)
+    merged["success"] = True
+    return _json(merged)
+
+
+def index_pickup_negotiation(args: dict, **kwargs) -> str:
+    """Poll and claim one pending Index negotiation turn for this personal agent."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+
+    agent_id, agent_error = _resolve_agent_id(args)
+    if agent_error is not None:
+        return _json(agent_error)
+    if not agent_id:
+        return _error("agentId is required.")
+
+    payload = _api_request(
+        "POST",
+        f"/agents/{agent_id}/negotiations/pickup",
+        no_content_payload={"success": True, "pending": False},
+    )
+    if payload.get("success") is False:
+        return _json(payload)
+    if payload == {"success": True, "pending": False}:
+        return _json(payload)
+    merged = {"success": True, "pending": True}
+    merged.update(payload)
+    merged["success"] = True
+    merged["pending"] = True
+    return _json(merged)
+
+
+def index_respond_negotiation(args: dict, **kwargs) -> str:
+    """Submit a response for a claimed Index negotiation turn."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+
+    negotiation_id = _clean_string(args.get("negotiationId"))
+    if not negotiation_id:
+        return _error("negotiationId is required.")
+
+    action = _clean_string(args.get("action"))
+    if action not in _NEGOTIATION_ACTIONS:
+        return _error("action must be one of: propose, accept, reject, counter, question.")
+
+    message = _clean_string(args.get("message"))
+    if action in {"counter", "question"} and not message:
+        return _error("message is required for counter and question actions.")
+
+    reasoning = _clean_string(args.get("reasoning"))
+    if not reasoning:
+        return _error("reasoning is required.")
+
+    suggested_roles, roles_error = _validate_suggested_roles(args.get("suggestedRoles"))
+    if roles_error:
+        return _error(roles_error)
+
+    agent_id, agent_error = _resolve_agent_id(args)
+    if agent_error is not None:
+        return _json(agent_error)
+    if not agent_id:
+        return _error("agentId is required.")
+
+    request_body = {
+        "action": action,
+        "message": message,
+        "assessment": {
+            "reasoning": reasoning,
+            "suggestedRoles": suggested_roles,
+        },
+    }
+    return _json(_api_request("POST", f"/agents/{agent_id}/negotiations/{negotiation_id}/respond", request_body))

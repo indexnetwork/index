@@ -18,12 +18,20 @@ class FakeContext:
     def __init__(self) -> None:
         self.tools = []
         self.skills = []
+        self.hooks = []
+        self.commands = []
 
     def register_tool(self, **kwargs):
         self.tools.append(kwargs)
 
     def register_skill(self, name, skill_md):
         self.skills.append((name, skill_md))
+
+    def register_hook(self, name, handler):
+        self.hooks.append((name, handler))
+
+    def register_command(self, name, handler, description="", args_hint=""):
+        self.commands.append((name, handler, description, args_hint))
 
 
 def load_plugin():
@@ -40,6 +48,51 @@ def load_plugin():
     return module
 
 
+class FakeResponse:
+    def __init__(self, payload=None, *, status=200, headers=None):
+        self.payload = payload
+        self.status = status
+        self.code = status
+        self.headers = headers or {"Content-Type": "application/json"}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def read(self):
+        if self.payload is None:
+            return b""
+        if isinstance(self.payload, bytes):
+            return self.payload
+        return json.dumps(self.payload).encode()
+
+
+def install_fake_urlopen(responses, captured):
+    queue = list(responses)
+
+    def fake_urlopen(request, timeout):
+        captured.append(
+            {
+                "timeout": timeout,
+                "url": request.full_url,
+                "method": request.get_method(),
+                "headers": dict(request.header_items()),
+                "body": None if request.data is None else json.loads(request.data.decode()),
+            }
+        )
+        if not queue:
+            raise AssertionError("Unexpected urlopen call")
+        response = queue.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    urllib.request.urlopen = fake_urlopen
+    return queue
+
+
 def main() -> None:
     for relative_path in PYTHON_FILES:
         source = (ROOT / relative_path).read_text()
@@ -50,35 +103,54 @@ def main() -> None:
     plugin.register(ctx)
 
     tool_names = [entry["name"] for entry in ctx.tools]
-    assert tool_names == ["index_read_intents"], tool_names
-    assert ctx.tools[0]["schema"]["name"] == "index_read_intents"
-    assert callable(ctx.tools[0]["handler"])
+    assert tool_names == [
+        "index_read_intents",
+        "index_agent_me",
+        "index_pickup_negotiation",
+        "index_respond_negotiation",
+    ], tool_names
+    assert [entry["schema"]["name"] for entry in ctx.tools] == tool_names
+    assert [entry["handler"] for entry in ctx.tools] == [
+        plugin.tools.index_read_intents,
+        plugin.tools.index_agent_me,
+        plugin.tools.index_pickup_negotiation,
+        plugin.tools.index_respond_negotiation,
+    ]
     assert [name for name, _path in ctx.skills] == ["index-negotiator", "index-orchestrator"]
     for _name, skill_md in ctx.skills:
         assert pathlib.Path(skill_md).name == "SKILL.md"
         assert pathlib.Path(skill_md).exists()
 
+    assert len(ctx.hooks) == 1
+    hook_name, hook = ctx.hooks[0]
+    assert hook_name == "pre_llm_call"
+    assert 'skill_view("index-network:index-orchestrator")' in hook(user_message="Show my Index Network intents")
+    assert hook(user_message="What is the weather?") is None
+    assert hook(user_message="I am looking for a cofounder") is None
+    assert hook({"message": "I am looking for a cofounder signal"}) is not None
+    assert [name for name, _handler, _description, _args_hint in ctx.commands] == ["index"]
+    assert ctx.commands[0][2] == "Load Index Network orchestrator guidance"
+    assert 'skill_view("index-network:index-orchestrator")' in ctx.commands[0][1]()
+
     old_api_key = os.environ.pop("INDEX_API_KEY", None)
+    old_api_url = os.environ.pop("INDEX_API_URL", None)
     old_urlopen = urllib.request.urlopen
     try:
         missing_key = json.loads(plugin.tools.index_read_intents({}))
         assert missing_key["success"] is False
         assert "INDEX_API_KEY" in missing_key["error"]
 
+        missing_key_api = json.loads(plugin.tools.index_agent_me({}))
+        assert missing_key_api["success"] is False
+        assert "INDEX_API_KEY" in missing_key_api["error"]
+
         invalid_limit = json.loads(plugin.tools.index_read_intents({"limit": 101}))
         assert invalid_limit == {"success": False, "error": "limit must be at most 100."}
 
-        class FakeResponse:
-            headers = {"Content-Type": "application/json"}
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc, traceback):
-                return False
-
-            def read(self):
-                return json.dumps(
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
                     {
                         "jsonrpc": "2.0",
                         "id": 1,
@@ -91,29 +163,109 @@ def main() -> None:
                             ]
                         },
                     }
-                ).encode()
-
-        captured = {}
-
-        def fake_urlopen(request, timeout):
-            captured["timeout"] = timeout
-            captured["headers"] = dict(request.header_items())
-            captured["body"] = json.loads(request.data.decode())
-            return FakeResponse()
-
-        urllib.request.urlopen = fake_urlopen
+                )
+            ],
+            captured,
+        )
         os.environ["INDEX_API_KEY"] = "test-key"
         ok = json.loads(plugin.tools.index_read_intents({"limit": 10, "page": 1}))
         assert ok == {"success": True, "data": {"intents": [], "count": 0}}
-        assert captured["body"]["method"] == "tools/call"
-        assert captured["body"]["params"] == {"name": "read_intents", "arguments": {"limit": 10, "page": 1}}
-        assert captured["headers"]["X-api-key"] == "test-key"
+        assert captured[-1]["body"]["method"] == "tools/call"
+        assert captured[-1]["body"]["params"] == {"name": "read_intents", "arguments": {"limit": 10, "page": 1}}
+        assert captured[-1]["headers"]["X-api-key"] == "test-key"
+
+        os.environ["INDEX_API_URL"] = "https://api.example.test/api"
+        captured = []
+        install_fake_urlopen([FakeResponse({"agent": {"id": "agent-1", "name": "Hermes"}})], captured)
+        me = json.loads(plugin.tools.index_agent_me({}))
+        assert me == {"success": True, "agent": {"id": "agent-1", "name": "Hermes"}}
+        assert captured[-1]["method"] == "GET"
+        assert captured[-1]["url"] == "https://api.example.test/api/agents/me"
+        assert captured[-1]["headers"]["X-api-key"] == "test-key"
+
+        captured = []
+        install_fake_urlopen([FakeResponse(None, status=204)], captured)
+        pickup_empty = json.loads(plugin.tools.index_pickup_negotiation({"agentId": "agent-1"}))
+        assert pickup_empty == {"success": True, "pending": False}
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/agents/agent-1/negotiations/pickup"
+
+        captured = []
+        pending_payload = {"negotiationId": "neg-1", "turn": {"counterpartyAction": "propose"}}
+        install_fake_urlopen([FakeResponse({"agent": {"id": "agent-2"}}), FakeResponse(pending_payload)], captured)
+        pickup_pending = json.loads(plugin.tools.index_pickup_negotiation({}))
+        assert pickup_pending == {
+            "success": True,
+            "pending": True,
+            "negotiationId": "neg-1",
+            "turn": {"counterpartyAction": "propose"},
+        }
+        assert [entry["url"] for entry in captured] == [
+            "https://api.example.test/api/agents/me",
+            "https://api.example.test/api/agents/agent-2/negotiations/pickup",
+        ]
+
+        captured = []
+        install_fake_urlopen([FakeResponse({"success": True, "status": "recorded"})], captured)
+        response = json.loads(
+            plugin.tools.index_respond_negotiation(
+                {
+                    "agentId": "agent-1",
+                    "negotiationId": "neg-1",
+                    "action": "counter",
+                    "message": "Could we clarify timing first?",
+                    "reasoning": "The opportunity is promising but timing is unclear.",
+                    "suggestedRoles": {"ownUser": "agent", "otherUser": "peer"},
+                }
+            )
+        )
+        assert response == {"success": True, "status": "recorded"}
+        assert captured[-1]["url"] == "https://api.example.test/api/agents/agent-1/negotiations/neg-1/respond"
+        assert captured[-1]["body"] == {
+            "action": "counter",
+            "message": "Could we clarify timing first?",
+            "assessment": {
+                "reasoning": "The opportunity is promising but timing is unclear.",
+                "suggestedRoles": {"ownUser": "agent", "otherUser": "peer"},
+            },
+        }
+
+        assert json.loads(plugin.tools.index_respond_negotiation({"agentId": "agent-1"})) == {
+            "success": False,
+            "error": "negotiationId is required.",
+        }
+        assert json.loads(
+            plugin.tools.index_respond_negotiation(
+                {
+                    "agentId": "agent-1",
+                    "negotiationId": "neg-1",
+                    "action": "pause",
+                    "reasoning": "No valid action.",
+                    "suggestedRoles": {"ownUser": "agent", "otherUser": "peer"},
+                }
+            )
+        ) == {"success": False, "error": "action must be one of: propose, accept, reject, counter, question."}
+        assert json.loads(
+            plugin.tools.index_respond_negotiation(
+                {
+                    "agentId": "agent-1",
+                    "negotiationId": "neg-1",
+                    "action": "question",
+                    "reasoning": "Need more context.",
+                    "suggestedRoles": {"ownUser": "agent", "otherUser": "peer"},
+                }
+            )
+        ) == {"success": False, "error": "message is required for counter and question actions."}
     finally:
         urllib.request.urlopen = old_urlopen
         if old_api_key is not None:
             os.environ["INDEX_API_KEY"] = old_api_key
         else:
             os.environ.pop("INDEX_API_KEY", None)
+        if old_api_url is not None:
+            os.environ["INDEX_API_URL"] = old_api_url
+        else:
+            os.environ.pop("INDEX_API_URL", None)
 
 
 if __name__ == "__main__":
