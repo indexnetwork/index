@@ -1,8 +1,61 @@
 name: index-network
-version: 0.3.0
+version: 0.4.0
 description: Index Network Hermes plugin with native tools backed by Index MCP and personal-agent APIs.
 provides_tools:
   - index_read_intents
+  - index_register_agent
+  - index_list_agents
+  - index_update_agent
+  - index_delete_agent
+  - index_grant_agent_permission
+  - index_revoke_agent_permission
+  - index_list_conversations
+  - index_get_conversation
+  - index_import_contacts
+  - index_list_contacts
+  - index_add_contact
+  - index_remove_contact
+  - index_search_contacts
+  - index_read_user_contexts
+  - index_record_onboarding_privacy_consent
+  - index_preview_user_context
+  - index_confirm_user_context
+  - index_create_user_context
+  - index_update_user_context
+  - index_get_enrichment_run
+  - index_cancel_enrichment_run
+  - index_complete_onboarding
+  - index_import_gmail_contacts
+  - index_create_intent
+  - index_update_intent
+  - index_delete_intent
+  - index_create_intent_index
+  - index_read_intent_indexes
+  - index_delete_intent_index
+  - index_search_intents
+  - index_list_negotiations
+  - index_get_negotiation
+  - index_respond_to_negotiation
+  - index_read_networks
+  - index_read_network_memberships
+  - index_update_network
+  - index_create_network
+  - index_delete_network
+  - index_create_network_membership
+  - index_delete_network_membership
+  - index_discover_opportunities
+  - index_get_discovery_run
+  - index_cancel_discovery_run
+  - index_list_opportunities
+  - index_update_opportunity
+  - index_confirm_opportunity_delivery
+  - index_create_premise
+  - index_read_premises
+  - index_update_premise
+  - index_retract_premise
+  - index_read_pending_questions
+  - index_scrape_url
+  - index_read_docs
   - index_agent_me
   - index_pickup_negotiation
   - index_respond_negotiation
