@@ -158,7 +158,9 @@ Before merging, summarize:
 
 Ask the user for explicit confirmation to merge.
 
-After confirmation, merge using the repository's preferred strategy. If unknown, inspect repo conventions or ask. Common command:
+After confirmation, merge using the repository's preferred strategy. If unknown, inspect repo conventions or ask. In multi-worktree repos where the base branch is checked out in the canonical root, run the merge from that canonical root (not from the feature worktree): `gh pr merge --delete-branch` may complete the server-side merge but fail local branch cleanup if it tries to check out a base branch already used by another worktree.
+
+Common command:
 
 ```bash
 gh pr merge PR_NUMBER --squash --delete-branch
