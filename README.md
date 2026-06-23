@@ -216,7 +216,7 @@ index/
 │   └── mac/           # Native Apple client subtree → indexnetwork/mac-client
 ├── services/
 │   └── api/           # Backend API and agent engine (Bun, TypeScript)
-├── packages/          # Shared protocol, CLI, and plugin packages
+├── packages/          # Shared protocol, CLI, Claude plugin, and Hermes plugin packages
 ├── docs/              # Project documentation (see Documentation section)
 └── scripts/           # Worktree helpers, hooks, dev launcher
 ```
