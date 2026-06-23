@@ -1,7 +1,7 @@
 {
   "name": "@indexnetwork/hermes-plugin",
-  "version": "0.1.0",
-  "description": "Empty Hermes plugin starter for future Index Network MCP and dashboard integrations",
+  "version": "0.2.0",
+  "description": "Hermes-native Index Network plugin with MCP-backed tools",
   "license": "MIT",
   "type": "module",
   "homepage": "https://index.network",
@@ -17,10 +17,11 @@
     "tools.py",
     "skills/",
     "dashboard/",
+    "tests/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "python3 -c \"import ast, pathlib; [ast.parse(pathlib.Path(p).read_text(), filename=p) for p in ['__init__.py', 'schemas.py', 'tools.py']]\""
+    "test": "python3 tests/smoke.py"
   }
 }
