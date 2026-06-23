@@ -15,9 +15,10 @@ The plugin now provides one native Hermes tool:
 
 - `index_read_intents` — calls the canonical Index MCP `read_intents` tool using `INDEX_API_KEY`.
 
-It also keeps placeholders for future bundled skills and dashboard work:
+It also bundles generated, namespaced Hermes plugin skills and keeps a dashboard placeholder:
 
-- `skills/` — optional namespaced, read-only Hermes plugin skills registered with `ctx.register_skill()`.
+- `skills/index-orchestrator/SKILL.md` — signal/intents review and discovery preparation guidance for Hermes.
+- `skills/index-negotiator/SKILL.md` — negotiation review/action workflow guidance for Hermes when full Index negotiation tools are available.
 - `dashboard/` — reserved for a future dashboard extension.
 
 No hooks, slash commands, CLI commands, cron jobs, or dashboard tabs are wired yet.
@@ -68,11 +69,15 @@ With no arguments, it returns the authenticated caller's own active intents as s
 
 ## Bundled skills
 
-Add future plugin skills as:
+The committed Hermes plugin skills are generated from templates in the monorepo:
 
 ```text
-skills/<skill-name>/SKILL.md
+packages/protocol/skills/hermes-plugin/<skill-name>.template.md
+        ↓ bun run build:skills
+packages/hermes-plugin/skills/<skill-name>/SKILL.md
 ```
+
+Do not edit generated `SKILL.md` files directly. Edit the templates and run `bun run build:skills` from the monorepo root.
 
 `__init__.py` registers each skill directory with `ctx.register_skill()`, so Hermes can load them as `index-network:<skill-name>`. Do not copy plugin skills into `~/.hermes/skills`; Hermes plugin skills are namespaced and read-only.
 

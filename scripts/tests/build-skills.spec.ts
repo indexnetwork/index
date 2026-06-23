@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import {
   injectPartials,
   resolveClaudePluginOutputs,
+  resolveHermesPluginOutputs,
   build,
 } from '../build-skills.js';
 
@@ -125,6 +126,18 @@ describe('resolveClaudePluginOutputs', () => {
     ]);
     expect(outputs.negotiator).toEqual([
       '/repo/packages/claude-plugin/skills/index-negotiator/SKILL.md',
+    ]);
+  });
+});
+
+describe('resolveHermesPluginOutputs', () => {
+  test('returns correct paths for orchestrator and negotiator', () => {
+    const outputs = resolveHermesPluginOutputs('/repo');
+    expect(outputs.orchestrator).toEqual([
+      '/repo/packages/hermes-plugin/skills/index-orchestrator/SKILL.md',
+    ]);
+    expect(outputs.negotiator).toEqual([
+      '/repo/packages/hermes-plugin/skills/index-negotiator/SKILL.md',
     ]);
   });
 });

@@ -53,6 +53,10 @@ def main() -> None:
     assert tool_names == ["index_read_intents"], tool_names
     assert ctx.tools[0]["schema"]["name"] == "index_read_intents"
     assert callable(ctx.tools[0]["handler"])
+    assert [name for name, _path in ctx.skills] == ["index-negotiator", "index-orchestrator"]
+    for _name, skill_md in ctx.skills:
+        assert pathlib.Path(skill_md).name == "SKILL.md"
+        assert pathlib.Path(skill_md).exists()
 
     old_api_key = os.environ.pop("INDEX_API_KEY", None)
     old_urlopen = urllib.request.urlopen

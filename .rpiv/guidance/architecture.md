@@ -34,7 +34,7 @@ packages/protocol → shared interfaces only; never imports services/api or apps
 | web | `cd apps/web && bun run build` | production web build |
 | CLI | `cd packages/cli && bun src/main.ts conversation` | run CLI from source |
 | protocol | `cd packages/protocol && bun run build` | compile protocol package |
-| skills | `bun run build:skills` | regenerate Claude plugin skill outputs |
+| skills | `bun run build:skills` | regenerate Claude and Hermes plugin skill outputs |
 
 # Business Context
 Users define signals/intents and indexes; autonomous agents discover relevant people, negotiate possible opportunities, and surface introductions through chat, CLI, MCP, and plugin skills.
@@ -52,9 +52,9 @@ Users define signals/intents and indexes; autonomous agents discover relevant pe
 - Verify with a second `bun run db:generate` showing no pending schema changes.
 </important>
 
-<important if="you are changing generated Claude plugin skills">
-- Edit `packages/protocol/skills/claude-plugin/*.template.md` or `packages/protocol/skills/core-guidance.partial.md`.
-- Run `bun run build:skills` and commit both template/partial changes and generated `packages/claude-plugin/skills/**/SKILL.md` outputs.
+<important if="you are changing generated plugin skills">
+- Edit `packages/protocol/skills/claude-plugin/*.template.md`, `packages/protocol/skills/hermes-plugin/*.template.md`, or `packages/protocol/skills/core-guidance.partial.md`.
+- Run `bun run build:skills` and commit both template/partial changes and generated `packages/claude-plugin/skills/**/SKILL.md` / `packages/hermes-plugin/skills/**/SKILL.md` outputs.
 - Do not hand-edit generated skill files as the source of truth.
 </important>
 
