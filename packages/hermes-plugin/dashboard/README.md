@@ -6,26 +6,31 @@ This directory contains the plugin-local Hermes dashboard tab for the Index Netw
 dashboard/manifest.json   # Hermes dashboard plugin manifest
 dashboard/dist/index.js   # no-build IIFE bundle registered with the Hermes Plugin SDK
 dashboard/dist/style.css  # theme-aware styles scoped to .index-dashboard*
+dashboard/plugin_api.py   # read-only FastAPI routes mounted by Hermes dashboard
 ```
 
 ## Scope
 
-The dashboard is intentionally static and read-only. It gives Hermes users protocol-aligned guidance for Index Network signals, communities, and autonomous negotiator setup without exposing Python dashboard routes or creating a second Index data contract.
+The dashboard is live and read-only. It shows the authenticated Index user's:
+
+- intents;
+- opportunities;
+- negotiation activity summary;
+- joined networks.
+
+The backend route reuses `../tools.py` rather than creating a second Index client. That keeps `INDEX_API_KEY`, `INDEX_MCP_URL`, timeout handling, Telegram forwarding, MCP response decoding, and network-scoped agent visibility in one place.
 
 It does **not**:
 
-- mount Python backend routes;
-- call live Index MCP or REST APIs;
 - claim pending negotiation turns;
 - submit negotiation responses;
 - run discovery;
-- expose raw tool output, internal identifiers, tokens, raw messages, or assistant reasoning.
+- create, update, or delete Index records;
+- expose raw tool envelopes, tokens, raw messages, or assistant reasoning.
 
 ## Runtime behavior
 
-The tab always registers as `index-network` and renders static protocol-aligned guidance through `dist/index.js` and `dist/style.css`.
-
-Live dashboard routes are deliberately deferred until Hermes exposes a documented route-auth mechanism for this plugin source. When that work is reintroduced, route handlers should live behind explicit authentication and continue reusing the native handlers in `../tools.py`; do not add direct Index MCP or REST client code in the dashboard.
+The tab registers as `index-network` and fetches `/api/plugins/index-network/summary` through `SDK.fetchJSON`, so Hermes dashboard session authentication is handled by the host. The summary endpoint calls the existing read-only Index tools for intents, intent-network assignments, opportunities, negotiation activity counts, and networks, then returns dashboard-safe data. Negotiations are intentionally aggregated instead of listed because this dashboard does not render conversation threads.
 
 ## Verify
 
@@ -35,10 +40,10 @@ From the monorepo root:
 cd packages/hermes-plugin && bun run test
 ```
 
-For manual Hermes dashboard testing, refresh plugin discovery after installing or changing dashboard files:
+For manual Hermes dashboard testing, restart `hermes dashboard` after changing `plugin_api.py` (backend routes are mounted at dashboard startup). For asset-only changes, refresh plugin discovery:
 
 ```bash
 curl http://127.0.0.1:9119/api/dashboard/plugins/rescan
 ```
 
-Then open `hermes dashboard` and visit the **Index Network** tab. The tab should render static guidance without requiring Python dashboard routes.
+Then open `hermes dashboard` and visit the **Index Network** tab.
