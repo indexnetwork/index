@@ -181,7 +181,8 @@ def main() -> None:
     subprocess.run(["node", "--check", str(dashboard_js_path)], check=True)
     dashboard_js = dashboard_js_path.read_text()
     assert 'register("index-network"' in dashboard_js
-    assert "Live read-only" in dashboard_js
+    assert "Question answers enabled" in dashboard_js
+    assert "Questions" in dashboard_js
     assert "Intents" in dashboard_js
     assert "Opportunities" in dashboard_js
     assert "Negotiation activity" in dashboard_js
@@ -193,11 +194,11 @@ def main() -> None:
 
     dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
     package_readme = (ROOT / "README.md").read_text()
-    assert "live and read-only" in dashboard_readme
+    assert "write-enabled for pending-question answers" in dashboard_readme
     assert "dashboard/plugin_api.py" in dashboard_readme
     assert "../tools.py" in dashboard_readme
     assert "claim pending negotiation turns" in dashboard_readme
-    assert "live read-only" in package_readme
+    assert "answering pending Index questions" in package_readme
     assert "dashboard/plugin_api.py" in package_readme
     assert "tools.py" in package_readme
 
@@ -397,12 +398,32 @@ def main() -> None:
                     {
                         "success": True,
                         "data": {
+                            "questions": [
+                                {
+                                    "id": "question-1",
+                                    "title": "Robotics focus",
+                                    "prompt": "Which robotics area should Index prioritize?",
+                                    "options": [{"label": "Hiring", "description": "Find mentors for recruiting."}],
+                                    "multiSelect": False,
+                                    "mode": "intent",
+                                    "sourceType": "intent",
+                                }
+                            ],
+                            "count": 1,
+                        },
+                    },
+                    response_id=11,
+                ),
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
                             "found": True,
                             "count": 1,
                             "message": "You have 1 opportunity.\n\n1. Ada\n   Can advise on robotics hiring.\n   status: draft\n   opportunityId: hidden\n\nDo NOT print raw JSON.",
                         },
                     },
-                    response_id=11,
+                    response_id=12,
                 ),
                 mcp_text_response(
                     {
@@ -481,6 +502,9 @@ def main() -> None:
         assert sections["intents"]["items"][0]["title"] == "Find robotics mentors"
         assert sections["intents"]["items"][0]["detail"] == "Looking for mentors in applied robotics."
         assert sections["intents"]["items"][0]["networks"] == ["Robotics Guild"]
+        assert sections["questions"]["count"] == 1
+        assert sections["questions"]["items"][0]["id"] == "question-1"
+        assert sections["questions"]["items"][0]["options"][0]["label"] == "Hiring"
         assert sections["opportunities"]["items"][0]["title"] == "Ada"
         assert sections["negotiations"]["count"] == 7
         assert sections["negotiations"]["summary"] == {
@@ -493,6 +517,7 @@ def main() -> None:
         assert sections["networks"]["count"] == 1
         assert [entry["body"]["params"]["name"] for entry in captured] == [
             "read_intents",
+            "read_pending_questions",
             "list_opportunities",
             "read_networks",
             "read_network_memberships",
@@ -502,6 +527,21 @@ def main() -> None:
             "list_negotiations",
             "list_negotiations",
         ]
+
+        captured = []
+        install_fake_urlopen([FakeResponse({"success": True})], captured)
+        answer_result = dashboard_api.answer_question(
+            "question-1",
+            {"selectedOptions": ["Hiring"], "freeText": "Recruiting mentors matter most."},
+        )
+        assert answer_result == {"success": True}
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/questions/question-1/answer"
+        assert captured[-1]["body"] == {"selectedOptions": ["Hiring"], "freeText": "Recruiting mentors matter most."}
+        assert dashboard_api.answer_question("question-1", {"selectedOptions": []}) == {
+            "success": False,
+            "error": "Choose an option or add a free-text answer.",
+        }
     finally:
         urllib.request.urlopen = old_urlopen
         if old_api_key is not None:
