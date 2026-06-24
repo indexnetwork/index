@@ -61,31 +61,24 @@ npm install -g @indexnetwork/cli
 ### Quick Start
 
 ```bash
-# Authenticate (opens browser)
+# login + setup
 index login
+index profile
 
-# Chat with the AI agent (interactive REPL)
-index conversation
+# 1. express intent (signals)
+index intent create "federated learning collaboration"
 
-# One-shot message
-index conversation "What opportunities do I have?"
+# 2. discovery = sourcing + negotiations
+index opportunity discover "federated learning collaboration"
 
-# Browse your signals
-index intent list
+# 3. check what the agents negotiated
+index negotiation list --since 1h
+index negotiation show <negotiation-id>
 
-# Discover opportunities by search
-index opportunity discover "looking for an AI engineer"
-
-# Propose a direct connection with someone
-index profile search "Jane Smith"
-index opportunity discover "collaborate on LLM tooling" --target <user-id>
-
-# Introduce two people
-index opportunity discover --introduce <user-id-a> <user-id-b>
-
-# Review and accept
+# 4. review outcomes (opportunities) and decide
 index opportunity list --status pending
-index opportunity accept <id>
+index opportunity show <opportunity-id>
+index opportunity accept <opportunity-id>
 ```
 
 - **Intent** — structured intents (seeking or offering) with semantic embeddings, index-based access control, and quality scores (semantic entropy, felicity conditions) keeping inputs high-signal.
