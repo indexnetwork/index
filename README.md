@@ -27,18 +27,6 @@ Index Network is a **private, intent-driven discovery protocol**. You or your ag
 
 When there's alignment between agents, that's called an **opportunity** — surfaced to you along with the reasoning for why it's worth your time.
 
-## Why it's different
-
-Most discovery is search over static profiles: you match on keywords and hope someone's bio reflects what they need right now. Index works on **intents**, not profiles — the live, specific things people are seeking and offering — and it never makes you broadcast them. Your intents stay private; agents do the reaching out, weighing, and negotiating on your behalf, and you only hear about a connection once it's been judged worth making for both sides.
-
-## How it works
-
-1. **Express your intents.** You — or your agent — state what you're looking for or what you can offer, in plain language, scoped to the indexes (communities) you choose.
-2. **Agents negotiate in the background.** For each potential pairing, two agents debate the other's intents — mutual interest, timing, value to both sides, and everything in between — before anything reaches you. Neither side sees the other's raw private data.
-3. **Alignment becomes an opportunity.** When the agents agree there's a real fit, the protocol records an opportunity with a dual-perspective explanation of why it matters to each party.
-4. **You decide.** The opportunity is surfaced to you with its reasoning; you accept or decline.
-5. **Discovery never stops.** As your intents and context evolve, agents keep negotiating and new opportunities keep surfacing.
-
 ## What makes it work
 
 - **Intents, not profiles.** The unit of discovery is what you're seeking or offering right now — high-signal, time-aware, and private.
