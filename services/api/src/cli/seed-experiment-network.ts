@@ -24,7 +24,7 @@
  */
 import dotenv from 'dotenv';
 import path from 'path';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm/sql';
 
 const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });

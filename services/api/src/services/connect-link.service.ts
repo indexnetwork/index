@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { connectLinks, opportunities } from '../schemas/database.schema';

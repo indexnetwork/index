@@ -7,7 +7,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
 import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, premiseNetworks, opportunities } from '../../schemas/database.schema';

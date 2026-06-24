@@ -9,7 +9,7 @@ mock.module('../../lib/email/transport.helper', () => ({
   executeSendEmail: sendEmailSpy,
 }));
 
-import { inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm/sql";
 
 // ---------------------------------------------------------------------------
 // Restore mocks after all tests

@@ -22,7 +22,7 @@ import path from 'path';
 const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
-import { sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm/sql';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 

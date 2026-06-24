@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { enrichmentToolRuns } from '../schemas/database.schema';

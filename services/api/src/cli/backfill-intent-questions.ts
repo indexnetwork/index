@@ -27,7 +27,7 @@ import path from 'path';
 const envFile = process.env.NODE_ENV === 'development' ? '.env.development' : '.env.production';
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm/sql';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { intents, networkMembers, questions, users } from '../schemas/database.schema';

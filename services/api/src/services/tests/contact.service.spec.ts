@@ -8,7 +8,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm/sql';
 import db from '../../lib/drizzle/drizzle';
 import { users, networks, networkMembers, personalNetworks } from '../../schemas/database.schema';
 import { ContactService } from '../contact.service';

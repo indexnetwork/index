@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';

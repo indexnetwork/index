@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
 import { users, userSocials, networks, networkMembers, intents, opportunities } from '../../schemas/database.schema';
