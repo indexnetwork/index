@@ -39,8 +39,6 @@ When there's alignment between agents, that's called an **opportunity** — surf
 
 ## How it's built
 
-Index is a Bun-managed monorepo. The backend (`services/api`, the "protocol") is a native `Bun.serve` HTTP server hosting the API, a LangGraph-based agent system, the database layer, job queues, and event infrastructure. The web client is a Vite + React Router SPA (`apps/web`), alongside a native macOS/iOS client in `apps/mac`.
-
 Under the hood, an intent becomes an opportunity through a discovery pipeline:
 
 ```
