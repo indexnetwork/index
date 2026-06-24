@@ -2,7 +2,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { writeFile } from 'node:fs/promises';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm/sql';
 
 const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });

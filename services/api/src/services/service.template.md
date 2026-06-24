@@ -312,7 +312,7 @@ export class EnrichmentService {
 - **Example**:
   \`\`\`typescript
   // In adapters/embedder.adapter.ts — a new corpus search method on EmbedderAdapter
-  import { sql, isNotNull } from 'drizzle-orm';
+  import { sql, isNotNull } from 'drizzle-orm/sql';
 
   async searchMyEntities<T>(vector: number[], limit = 10): Promise<{ item: T; score: number }[]> {
     const vectorString = JSON.stringify(vector);

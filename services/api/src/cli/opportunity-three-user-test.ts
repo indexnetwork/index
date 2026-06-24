@@ -17,7 +17,7 @@
  */
 import dotenv from 'dotenv';
 import path from 'path';
-import { inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm/sql';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.development') });
 

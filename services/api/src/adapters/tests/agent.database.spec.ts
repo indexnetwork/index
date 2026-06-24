@@ -12,7 +12,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { AgentDatabaseAdapter } from '../agent.database.adapter';
 import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
-import { eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm/sql';
 
 describe('AgentDatabaseAdapter.touchLastSeen', () => {
   const adapter = new AgentDatabaseAdapter();

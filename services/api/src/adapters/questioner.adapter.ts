@@ -11,7 +11,7 @@
  * alignment spec.
  */
 
-import { eq, and, sql, or, isNull } from 'drizzle-orm';
+import { eq, and, sql, or, isNull } from 'drizzle-orm/sql';
 
 import { questions } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';

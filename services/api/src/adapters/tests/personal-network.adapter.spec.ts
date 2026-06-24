@@ -12,7 +12,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import { users, networks, networkMembers, intents, intentNetworks, personalNetworks } from '../../schemas/database.schema';

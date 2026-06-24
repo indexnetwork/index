@@ -3,7 +3,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import { connectLinks, opportunities, users } from '../../schemas/database.schema';

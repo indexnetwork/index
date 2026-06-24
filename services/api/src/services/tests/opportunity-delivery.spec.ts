@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import { agents, opportunities, opportunityDeliveries, users } from '../../schemas/database.schema';

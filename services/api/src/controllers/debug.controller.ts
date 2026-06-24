@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, asc, min, max, count, inArray, gte, lte } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, min, max, count, inArray, gte, lte } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
