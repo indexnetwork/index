@@ -47,21 +47,6 @@ Under the hood, an intent becomes an opportunity through a discovery pipeline:
                    + premise search)     valency roles)       deliberation)       reasoning)
 ```
 
-- **Intent** — structured intents (seeking or offering) with semantic embeddings, index-based access control, and quality scores (semantic entropy, felicity conditions) keeping inputs high-signal.
-- **Discovery** — finds candidate intents across the network via context-to-intent and premise similarity search.
-- **Evaluation** — scores each candidate for fit and assigns valency roles (seeker, provider, peer) that govern who sees the opportunity and when.
-- **Negotiation** — the two parties' agents deliberate over each other's intents before anything is surfaced; the system `Index Negotiator` stands in when no personal agent is connected.
-- **Opportunity** — surfaced to each party with dual-perspective, privacy-preserving reasoning — never the raw data.
-
-**Core infrastructure:**
-
-- **LangGraph** for the agent state machines (chat, intent, enrichment, opportunity, negotiation, and more) orchestrating complex workflows
-- **PostgreSQL with pgvector** for 2000-dimensional semantic search (HNSW indexes)
-- **Drizzle ORM** for type-safe, schema-driven database access
-- **OpenRouter** for LLM-powered agents with Zod-validated structured output
-- **BullMQ (Redis)** for asynchronous job processing and event-driven orchestration
-
-The code follows strict inward-pointing layering — **Controllers -> Services -> Adapters -> Infrastructure** — with the self-contained `@indexnetwork/protocol` package (graphs, agents, tools) receiving all dependencies via constructor injection. See [docs/design/architecture-overview.md](docs/design/architecture-overview.md) for the full picture.
 
 ## CLI
 
@@ -102,6 +87,22 @@ index opportunity discover --introduce <user-id-a> <user-id-b>
 index opportunity list --status pending
 index opportunity accept <id>
 ```
+
+- **Intent** — structured intents (seeking or offering) with semantic embeddings, index-based access control, and quality scores (semantic entropy, felicity conditions) keeping inputs high-signal.
+- **Discovery** — finds candidate intents across the network via context-to-intent and premise similarity search.
+- **Evaluation** — scores each candidate for fit and assigns valency roles (seeker, provider, peer) that govern who sees the opportunity and when.
+- **Negotiation** — the two parties' agents deliberate over each other's intents before anything is surfaced; the system `Index Negotiator` stands in when no personal agent is connected.
+- **Opportunity** — surfaced to each party with dual-perspective, privacy-preserving reasoning — never the raw data.
+
+**Core infrastructure:**
+
+- **LangGraph** for the agent state machines (chat, intent, enrichment, opportunity, negotiation, and more) orchestrating complex workflows
+- **PostgreSQL with pgvector** for 2000-dimensional semantic search (HNSW indexes)
+- **Drizzle ORM** for type-safe, schema-driven database access
+- **OpenRouter** for LLM-powered agents with Zod-validated structured output
+- **BullMQ (Redis)** for asynchronous job processing and event-driven orchestration
+
+The code follows strict inward-pointing layering — **Controllers -> Services -> Adapters -> Infrastructure** — with the self-contained `@indexnetwork/protocol` package (graphs, agents, tools) receiving all dependencies via constructor injection. See [docs/design/architecture-overview.md](docs/design/architecture-overview.md) for the full picture.
 
 ### Commands
 
