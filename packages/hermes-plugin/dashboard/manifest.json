@@ -1,13 +1,14 @@
 {
   "name": "index-network",
   "label": "Index Network",
-  "description": "Read-only Index Network overview for signals, protocol guidance, and autonomous negotiator setup.",
+  "description": "Live read-only Index Network overview for intents, opportunities, negotiations, and joined networks.",
   "icon": "Sparkles",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "tab": {
     "path": "/index-network",
     "position": "after:skills"
   },
   "entry": "dist/index.js",
-  "css": "dist/style.css"
+  "css": "dist/style.css",
+  "api": "plugin_api.py"
 }
