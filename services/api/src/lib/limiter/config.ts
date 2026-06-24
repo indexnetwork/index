@@ -1,4 +1,4 @@
-export type LimiterClass = 'auth_write' | 'read' | 'write';
+export type LimiterClass = 'auth_write' | 'read' | 'write' | 'mcp_http';
 
 export interface ClassConfig {
   /** Maximum requests allowed per `windowSec`. */
@@ -18,6 +18,7 @@ const CLASS_ENV: Record<LimiterClass, { envVar: string; fallback: number }> = {
   auth_write: { envVar: 'LIMITER_AUTH_WRITE_PER_MIN', fallback: 100 },
   read:       { envVar: 'LIMITER_READ_PER_MIN',       fallback: 1200 },
   write:      { envVar: 'LIMITER_WRITE_PER_MIN',      fallback: 600 },
+  mcp_http:   { envVar: 'MCP_HTTP_LIMIT_PER_MIN',     fallback: 240 },
 };
 
 /**
@@ -39,6 +40,7 @@ export const CLASS_CONFIG: Record<LimiterClass, ClassConfig> = {
   auth_write: resolveClassConfig('auth_write'),
   read:       resolveClassConfig('read'),
   write:      resolveClassConfig('write'),
+  mcp_http:   resolveClassConfig('mcp_http'),
 };
 
 export function isLimiterDisabled(): boolean {

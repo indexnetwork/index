@@ -1,6 +1,6 @@
 import { getStorage } from './index';
-import { intEnv, isLimiterDisabled } from './config';
-import { sha256Truncated } from './identifier';
+import { intEnv, isLimiterDisabled, resolveClassConfig } from './config';
+import { resolveIdentifier, sha256Truncated } from './identifier';
 import type { LimiterStorage } from './storage';
 import { log } from '../log';
 
@@ -19,6 +19,22 @@ const logger = log.server.from('limiter');
  */
 
 const WINDOW_SEC = 60;
+
+const PRIVATE_IPV4 = [
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^127\./,
+  /^169\.254\./,
+];
+
+const isPrivateOrLoopbackIp = (ip: string): boolean => {
+  if (ip === 'unknown' || ip === '::1') return true;
+  const lower = ip.toLowerCase();
+  if (lower.startsWith('fc') || lower.startsWith('fd')) return true;
+  if (/^fe[89ab]/.test(lower)) return true;
+  return PRIVATE_IPV4.some((re) => re.test(ip));
+};
 
 /** Per-tool ceiling per principal per minute. `discover_opportunities` is expensive, so it is far tighter. */
 function toolLimit(toolName: string): number {
@@ -49,6 +65,63 @@ export interface McpThrottleDecision {
 
 const retryAfter = (resetAt: number): number =>
   Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
+
+export interface McpHttpThrottleDecision {
+  allowed: boolean;
+  retryAfterSec?: number;
+  limit?: number;
+  remaining?: number;
+  resetAt?: number;
+}
+
+/**
+ * Cheap HTTP-level throttle for the `/mcp` endpoint.
+ *
+ * Runs before MCP server/transport allocation. It intentionally buckets only by
+ * verified JWT user or client IP (same pre-auth posture as RateLimit) so raw
+ * API keys cannot be rotated to create fresh buckets.
+ */
+export async function checkMcpHttpRateLimit(
+  req: Request,
+  storage?: LimiterStorage,
+): Promise<McpHttpThrottleDecision> {
+  if (isLimiterDisabled()) return { allowed: true };
+
+  try {
+    const id = await resolveIdentifier(req);
+    if (id.kind === 'ip' && isPrivateOrLoopbackIp(id.value)) {
+      return { allowed: true };
+    }
+
+    const { perMinute, windowSec } = resolveClassConfig('mcp_http');
+    const bucketValue = id.kind === 'user' ? await sha256Truncated(id.value) : id.value;
+    const store = storage ?? (await getStorage());
+    const hit = await store.hit(`mcp:http:${id.kind}:${bucketValue}`, windowSec, perMinute);
+    const remaining = Math.max(0, hit.limit - hit.count);
+
+    if (!hit.allowed) {
+      return {
+        allowed: false,
+        retryAfterSec: retryAfter(hit.resetAt),
+        limit: hit.limit,
+        remaining,
+        resetAt: hit.resetAt,
+      };
+    }
+
+    return {
+      allowed: true,
+      limit: hit.limit,
+      remaining,
+      resetAt: hit.resetAt,
+    };
+  } catch (err) {
+    logger.error('MCP HTTP limiter storage/identity error — failing open', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { allowed: true };
+  }
+}
 
 /**
  * Check (and consume) the MCP rate budget for one tool call.
