@@ -12,11 +12,12 @@ import sys
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PYTHON_FILES = ["__init__.py", "schemas.py", "tools.py"]
+PYTHON_FILES = ["__init__.py", "schemas.py", "tools.py", "dashboard/plugin_api.py"]
 DASHBOARD_FILES = [
     "dashboard/manifest.json",
     "dashboard/dist/index.js",
     "dashboard/dist/style.css",
+    "dashboard/plugin_api.py",
 ]
 
 
@@ -54,6 +55,19 @@ def load_plugin():
     return module
 
 
+def load_dashboard_api():
+    spec = importlib.util.spec_from_file_location(
+        "index_network_dashboard_api",
+        ROOT / "dashboard" / "plugin_api.py",
+    )
+    if spec is None or spec.loader is None:
+        raise AssertionError("Could not create import spec for dashboard API")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 class FakeResponse:
     def __init__(self, payload=None, *, status=200, headers=None):
         self.payload = payload
@@ -73,6 +87,16 @@ class FakeResponse:
         if isinstance(self.payload, bytes):
             return self.payload
         return json.dumps(self.payload).encode()
+
+
+def mcp_text_response(payload, *, response_id=1):
+    return FakeResponse(
+        {
+            "jsonrpc": "2.0",
+            "id": response_id,
+            "result": {"content": [{"type": "text", "text": json.dumps(payload)}]},
+        }
+    )
 
 
 def install_fake_urlopen(responses, captured):
@@ -148,46 +172,35 @@ def main() -> None:
     assert dashboard_manifest["label"] == "Index Network"
     assert dashboard_manifest["entry"] == "dist/index.js"
     assert dashboard_manifest["css"] == "dist/style.css"
-    assert "api" not in dashboard_manifest
+    assert dashboard_manifest["api"] == "plugin_api.py"
     assert dashboard_manifest["tab"]["path"] == "/index-network"
-    for key in ("entry", "css"):
+    for key in ("entry", "css", "api"):
         assert (ROOT / "dashboard" / dashboard_manifest[key]).exists(), dashboard_manifest[key]
-    assert not (ROOT / "dashboard" / "plugin_api.py").exists()
 
     dashboard_js_path = ROOT / "dashboard" / "dist" / "index.js"
     subprocess.run(["node", "--check", str(dashboard_js_path)], check=True)
     dashboard_js = dashboard_js_path.read_text()
     assert 'register("index-network"' in dashboard_js
-    assert "Static read-only" in dashboard_js
-    assert "Static-only" in dashboard_js
-    assert "Signals" in dashboard_js
-    assert "communities" in dashboard_js
-    assert "internal identifiers" in dashboard_js
-    assert "raw records" in dashboard_js
-    assert "/api/" + "plugins/" not in dashboard_js
-    assert "SDK.fetchJSON" not in dashboard_js
-    assert "Live read-only" not in dashboard_js
-    assert "raw JSON" not in dashboard_js
-    assert "tool_call" not in dashboard_js
-    assert "intentId" not in dashboard_js
-    assert "networkId" not in dashboard_js
-    assert "opportunityId" not in dashboard_js
+    assert "Question answers enabled" in dashboard_js
+    assert "Questions" in dashboard_js
+    assert "Intents" in dashboard_js
+    assert "Opportunities" in dashboard_js
+    assert "Negotiation activity" in dashboard_js
+    assert "Networks" in dashboard_js
+    assert "/api/" + "plugins/index-network" in dashboard_js
+    assert "SDK.fetchJSON" in dashboard_js
     assert "index_pickup_negotiation" not in dashboard_js
     assert "index_respond_negotiation" not in dashboard_js
 
-
-
     dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
     package_readme = (ROOT / "README.md").read_text()
-    assert "static and read-only" in dashboard_readme
-    assert "mount Python backend routes" in dashboard_readme
-    assert "Live dashboard routes are deliberately deferred" in dashboard_readme
+    assert "write-enabled for pending-question answers" in dashboard_readme
+    assert "dashboard/plugin_api.py" in dashboard_readme
     assert "../tools.py" in dashboard_readme
-    assert "static-only" in package_readme
-    assert "never calls live Index APIs" in package_readme
+    assert "claim pending negotiation turns" in dashboard_readme
+    assert "answering pending Index questions" in package_readme
+    assert "dashboard/plugin_api.py" in package_readme
     assert "tools.py" in package_readme
-    forbidden_api_path = "dashboard/" + "plugin_api.py"
-    assert forbidden_api_path not in package_readme
 
     assert [name for name, _path in ctx.skills] == ["index-negotiator", "index-orchestrator"]
     for _name, skill_md in ctx.skills:
@@ -358,6 +371,177 @@ def main() -> None:
                 }
             )
         ) == {"success": False, "error": "message is required for counter and question actions."}
+
+        dashboard_api = load_dashboard_api()
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
+                            "intents": [
+                                {
+                                    "id": "intent-hidden",
+                                    "summary": "Find robotics mentors",
+                                    "description": "Looking for mentors in applied robotics.",
+                                    "status": "active",
+                                    "confidence": 0.91,
+                                }
+                            ],
+                            "count": 1,
+                        },
+                    },
+                    response_id=10,
+                ),
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
+                            "questions": [
+                                {
+                                    "id": "question-1",
+                                    "title": "Robotics focus",
+                                    "prompt": "Which robotics area should Index prioritize?",
+                                    "options": [{"label": "Hiring", "description": "Find mentors for recruiting."}],
+                                    "multiSelect": False,
+                                    "mode": "intent",
+                                    "sourceType": "intent",
+                                }
+                            ],
+                            "count": 1,
+                        },
+                    },
+                    response_id=11,
+                ),
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
+                            "found": True,
+                            "count": 1,
+                            "message": "You have 1 opportunity.\n\n1. Ada\n   Can advise on robotics hiring.\n   status: draft\n   opportunityId: hidden\n\nDo NOT print raw JSON.",
+                        },
+                    },
+                    response_id=12,
+                ),
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
+                            "memberOf": [
+                                {
+                                    "networkId": "network-hidden",
+                                    "title": "Robotics Guild",
+                                    "prompt": "People building robotics companies.",
+                                    "permissions": ["member"],
+                                }
+                            ],
+                            "owns": [],
+                            "publicNetworks": [{"title": "Not joined"}],
+                        },
+                    },
+                    response_id=12,
+                ),
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
+                            "userId": "user-hidden",
+                            "count": 1,
+                            "memberships": [
+                                {
+                                    "networkId": "network-hidden",
+                                    "networkTitle": "Robotics Guild",
+                                    "permissions": ["member"],
+                                }
+                            ],
+                        },
+                    },
+                    response_id=13,
+                ),
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
+                            "links": [
+                                {
+                                    "intentId": "intent-hidden",
+                                    "networkId": "network-hidden",
+                                    "intentTitle": "Looking for mentors in applied robotics.",
+                                    "relevancyScore": 0.94,
+                                }
+                            ],
+                            "count": 1,
+                        },
+                    },
+                    response_id=14,
+                ),
+                mcp_text_response(
+                    {"success": True, "data": {"count": 1, "totalCount": 7, "negotiations": [{"status": "completed"}]}},
+                    response_id=15,
+                ),
+                mcp_text_response(
+                    {"success": True, "data": {"count": 1, "totalCount": 2, "negotiations": [{"status": "active"}]}},
+                    response_id=16,
+                ),
+                mcp_text_response(
+                    {"success": True, "data": {"count": 1, "totalCount": 1, "negotiations": [{"status": "waiting_for_agent"}]}},
+                    response_id=17,
+                ),
+                mcp_text_response(
+                    {"success": True, "data": {"count": 1, "totalCount": 4, "negotiations": [{"status": "completed"}]}},
+                    response_id=18,
+                ),
+            ],
+            captured,
+        )
+        summary = dashboard_api.summary()
+        assert summary["success"] is True
+        sections = summary["sections"]
+        assert sections["intents"]["items"][0]["title"] == "Find robotics mentors"
+        assert sections["intents"]["items"][0]["detail"] == "Looking for mentors in applied robotics."
+        assert sections["intents"]["items"][0]["networks"] == ["Robotics Guild"]
+        assert sections["questions"]["count"] == 1
+        assert sections["questions"]["items"][0]["id"] == "question-1"
+        assert sections["questions"]["items"][0]["options"][0]["label"] == "Hiring"
+        assert sections["opportunities"]["items"][0]["title"] == "Ada"
+        assert sections["negotiations"]["count"] == 7
+        assert sections["negotiations"]["summary"] == {
+            "active": 2,
+            "waitingForAgent": 1,
+            "completed": 4,
+            "needsAttention": 1,
+        }
+        assert sections["networks"]["items"][0]["title"] == "Robotics Guild"
+        assert sections["networks"]["count"] == 1
+        assert [entry["body"]["params"]["name"] for entry in captured] == [
+            "read_intents",
+            "read_pending_questions",
+            "list_opportunities",
+            "read_networks",
+            "read_network_memberships",
+            "read_intent_indexes",
+            "list_negotiations",
+            "list_negotiations",
+            "list_negotiations",
+            "list_negotiations",
+        ]
+
+        captured = []
+        install_fake_urlopen([FakeResponse({"success": True})], captured)
+        answer_result = dashboard_api.answer_question(
+            "question-1",
+            {"selectedOptions": ["Hiring"], "freeText": "Recruiting mentors matter most."},
+        )
+        assert answer_result == {"success": True}
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/questions/question-1/answer"
+        assert captured[-1]["body"] == {"selectedOptions": ["Hiring"], "freeText": "Recruiting mentors matter most."}
+        assert dashboard_api.answer_question("question-1", {"selectedOptions": []}) == {
+            "success": False,
+            "error": "Choose an option or add a free-text answer.",
+        }
     finally:
         urllib.request.urlopen = old_urlopen
         if old_api_key is not None:
