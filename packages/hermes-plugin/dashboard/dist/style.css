@@ -1,0 +1,125 @@
+.index-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.index-dashboard__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 340px);
+  gap: 1rem;
+  align-items: stretch;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: var(--radius, 0.75rem);
+  background:
+    radial-gradient(circle at top left, rgba(79, 209, 197, 0.16), transparent 36rem),
+    var(--color-card, rgba(15, 23, 42, 0.72));
+  color: var(--color-card-foreground, inherit);
+}
+
+.index-dashboard__eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.index-dashboard__title {
+  margin: 0;
+  font-size: clamp(1.75rem, 4vw, 3rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.index-dashboard__subtitle {
+  max-width: 58rem;
+  margin: 0.75rem 0 0;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.index-dashboard__status-card,
+.index-dashboard__card {
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: var(--radius, 0.75rem);
+  background: color-mix(in srgb, var(--color-card, #0f172a) 88%, transparent);
+}
+
+.index-dashboard__status-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.index-dashboard__status-card p,
+.index-dashboard__card p {
+  margin: 0;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  line-height: 1.55;
+}
+
+.index-dashboard__agent {
+  margin: 0.75rem 0 0;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.875rem;
+}
+
+.index-dashboard__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.index-dashboard__card-header {
+  padding-bottom: 0.35rem;
+}
+
+.index-dashboard__card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.index-dashboard__card-title {
+  font-size: 1rem;
+}
+
+.index-dashboard__card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.index-dashboard__badge {
+  white-space: nowrap;
+}
+
+.index-dashboard__list {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__list li::marker {
+  color: var(--color-primary, currentColor);
+}
+
+.index-dashboard__muted {
+  font-size: 0.875rem;
+}
+
+@media (max-width: 900px) {
+  .index-dashboard__hero,
+  .index-dashboard__grid {
+    grid-template-columns: 1fr;
+  }
+}

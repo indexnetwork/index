@@ -7,11 +7,17 @@ import importlib.util
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PYTHON_FILES = ["__init__.py", "schemas.py", "tools.py"]
+DASHBOARD_FILES = [
+    "dashboard/manifest.json",
+    "dashboard/dist/index.js",
+    "dashboard/dist/style.css",
+]
 
 
 class FakeContext:
@@ -133,6 +139,56 @@ def main() -> None:
         if in_tools and line.startswith("  - "):
             manifest_tools.append(line.removeprefix("  - "))
     assert manifest_tools == tool_names
+
+    for relative_path in DASHBOARD_FILES:
+        assert (ROOT / relative_path).exists(), f"missing dashboard file: {relative_path}"
+
+    dashboard_manifest = json.loads((ROOT / "dashboard" / "manifest.json").read_text())
+    assert dashboard_manifest["name"] == "index-network"
+    assert dashboard_manifest["label"] == "Index Network"
+    assert dashboard_manifest["entry"] == "dist/index.js"
+    assert dashboard_manifest["css"] == "dist/style.css"
+    assert "api" not in dashboard_manifest
+    assert dashboard_manifest["tab"]["path"] == "/index-network"
+    for key in ("entry", "css"):
+        assert (ROOT / "dashboard" / dashboard_manifest[key]).exists(), dashboard_manifest[key]
+    assert not (ROOT / "dashboard" / "plugin_api.py").exists()
+
+    dashboard_js_path = ROOT / "dashboard" / "dist" / "index.js"
+    subprocess.run(["node", "--check", str(dashboard_js_path)], check=True)
+    dashboard_js = dashboard_js_path.read_text()
+    assert 'register("index-network"' in dashboard_js
+    assert "Static read-only" in dashboard_js
+    assert "Static-only" in dashboard_js
+    assert "Signals" in dashboard_js
+    assert "communities" in dashboard_js
+    assert "internal identifiers" in dashboard_js
+    assert "raw records" in dashboard_js
+    assert "/api/" + "plugins/" not in dashboard_js
+    assert "SDK.fetchJSON" not in dashboard_js
+    assert "Live read-only" not in dashboard_js
+    assert "raw JSON" not in dashboard_js
+    assert "tool_call" not in dashboard_js
+    assert "intentId" not in dashboard_js
+    assert "networkId" not in dashboard_js
+    assert "opportunityId" not in dashboard_js
+    assert "index_pickup_negotiation" not in dashboard_js
+    assert "index_respond_negotiation" not in dashboard_js
+
+
+
+    dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
+    package_readme = (ROOT / "README.md").read_text()
+    assert "static and read-only" in dashboard_readme
+    assert "mount Python backend routes" in dashboard_readme
+    assert "Live dashboard routes are deliberately deferred" in dashboard_readme
+    assert "../tools.py" in dashboard_readme
+    assert "static-only" in package_readme
+    assert "never calls live Index APIs" in package_readme
+    assert "tools.py" in package_readme
+    forbidden_api_path = "dashboard/" + "plugin_api.py"
+    assert forbidden_api_path not in package_readme
+
     assert [name for name, _path in ctx.skills] == ["index-negotiator", "index-orchestrator"]
     for _name, skill_md in ctx.skills:
         assert pathlib.Path(skill_md).name == "SKILL.md"
