@@ -1,0 +1,2 @@
+{"runId":"2026-06-23_23-30-29-9c3d","workflow":"ship","input":"let's fix it","ts":"2026-06-23T20:30:29.513Z","v":1,"trigger":{"kind":"command","name":"wf"}}
+{"stageNumber":1,"stage":"blueprint","skill":"blueprint","status":"failed","ts":"2026-06-23T20:30:30.621Z","errMsg":"blueprint failed","session":{"id":"019ef62d-608e-76b4-be44-194da256aaa3","file":"/Users/yanek/.pi/agent/sessions/--Users-yanek-Projects-index--/2026-06-23T20-30-29-518Z_019ef62d-608e-76b4-be44-194da256aaa3.jsonl"}}

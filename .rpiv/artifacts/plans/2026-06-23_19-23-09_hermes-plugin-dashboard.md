@@ -1270,9 +1270,9 @@ hermes logs --level WARNING | grep -i plugin
 ### Success Criteria:
 
 #### Automated Verification:
-- [x] Dashboard README mentions optional route support: `grep -q 'live overview routes as optional' packages/hermes-plugin/dashboard/README.md`.
-- [x] Package README documents read-only dashboard scope: `grep -q 'never calls the pickup/respond negotiation tools' packages/hermes-plugin/README.md`.
-- [x] Package README lists all dashboard files: `grep -q 'dashboard/plugin_api.py' packages/hermes-plugin/README.md`.
+- [ ] Dashboard README mentions optional route support: `grep -q 'live overview routes as optional' packages/hermes-plugin/dashboard/README.md`.
+- [ ] Package README documents read-only dashboard scope: `grep -q 'never calls the pickup/respond negotiation tools' packages/hermes-plugin/README.md`.
+- [ ] Package README lists all dashboard files: `grep -q 'dashboard/plugin_api.py' packages/hermes-plugin/README.md`.
 
 #### Manual Verification:
 - [ ] Docs explain that live routes may be unavailable for user-installed plugins and that the tab falls back to static guidance.
@@ -1358,11 +1358,11 @@ DASHBOARD_FILES = [
 ### Success Criteria:
 
 #### Automated Verification:
-- [x] Package smoke test passes: `cd packages/hermes-plugin && bun run test`.
-- [x] Dashboard API syntax is included in smoke parsing: `grep -q 'dashboard/plugin_api.py' packages/hermes-plugin/tests/smoke.py`.
-- [x] Smoke test asserts read-only guard: `grep -q 'index_pickup_negotiation' packages/hermes-plugin/tests/smoke.py && grep -q 'not in dashboard_js' packages/hermes-plugin/tests/smoke.py`.
-- [x] Smoke test asserts manifest file references: `grep -q 'dashboard_manifest\["api"\]' packages/hermes-plugin/tests/smoke.py`.
-- [x] Smoke test syntax-checks dashboard JavaScript: `grep -q 'node", "--check"' packages/hermes-plugin/tests/smoke.py`.
+- [ ] Package smoke test passes: `cd packages/hermes-plugin && bun run test`.
+- [ ] Dashboard API syntax is included in smoke parsing: `grep -q 'dashboard/plugin_api.py' packages/hermes-plugin/tests/smoke.py`.
+- [ ] Smoke test asserts read-only guard: `grep -q 'index_pickup_negotiation' packages/hermes-plugin/tests/smoke.py && grep -q 'not in dashboard_js' packages/hermes-plugin/tests/smoke.py`.
+- [ ] Smoke test asserts manifest file references: `grep -q 'dashboard_manifest\["api"\]' packages/hermes-plugin/tests/smoke.py`.
+- [ ] Smoke test syntax-checks dashboard JavaScript: `grep -q 'node", "--check"' packages/hermes-plugin/tests/smoke.py`.
 
 #### Manual Verification:
 - [ ] Smoke coverage fails if a dashboard manifest file path is missing or renamed.
