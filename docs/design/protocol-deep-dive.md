@@ -544,6 +544,16 @@ The relevant public exports from `@indexnetwork/protocol` for runtime authors bu
 
 The protocol exposes every registered chat tool over the Model Context Protocol via `createMcpServer` in `packages/protocol/src/mcp/mcp.server.ts`. This is the surface that external runtimes — OpenClaw, Claude Code, Codex, Cursor — speak to when they act on behalf of a user.
 
+### HTTP hot-path lifecycle
+
+The HTTP entrypoint for MCP is `services/api/src/controllers/mcp.controller.ts`, dispatched directly from `services/api/src/main.ts` before the decorated `/api/*` router. Because that bypasses controller guards, the controller applies a cheap HTTP-level limiter before expensive work: `checkMcpHttpRateLimit` uses the shared limiter storage and buckets by verified JWT user or client IP under the `mcp_http` class (`MCP_HTTP_LIMIT_PER_MIN`, default 240). Raw API keys are deliberately not bucket keys at this pre-auth layer, matching the normal `RateLimit` guard's credential-rotation defense. The HTTP limiter honors `LIMITER_DISABLE` and fails open on limiter storage/identity errors so Redis incidents do not take down MCP.
+
+MCP also keeps the deeper per-tool limiter: `checkMcpRateLimit` is injected as `ToolDeps.mcpRateLimiter` and runs in `packages/protocol/src/mcp/mcp.server.ts` after identity resolves but before tool DB work. It enforces per-tool and aggregate per-principal buckets, including the tighter `discover_opportunities` budget, so expensive tool cascades remain bounded even when the HTTP request rate is acceptable.
+
+Each accepted MCP HTTP request still gets a fresh `McpServer` and `WebStandardStreamableHTTPServerTransport`. This is intentional: the Streamable HTTP transport tracks response-routing state by JSON-RPC message id, and clients commonly reuse ids such as `2` across independent connections. Pooling a server or transport can route responses or client-capability state across callers, so the controller preserves per-request isolation. The request `finally` path closes both SDK lifecycle objects. Do not hand-write cached MCP/JSON-RPC responses for static-looking methods such as `initialize` or `tools/list`; the SDK owns response envelopes and capability negotiation.
+
+To reduce allocation without changing protocol semantics, `packages/protocol/src/mcp/mcp.server.ts` caches only static tool registration metadata: tool name, description, Zod schema, JSON Schema, and the SDK `fromJsonSchema` input schema wrapper. Request-scoped tool execution still rebuilds the registry after auth with scoped `userDb`/`systemDb`, because tool handlers capture those dependencies when the registry is created.
+
 ### Factory signature
 
 ```typescript

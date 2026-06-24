@@ -21,7 +21,8 @@ import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapte
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
-import { checkMcpRateLimit } from '../lib/limiter/mcp';
+import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
+import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
 import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
@@ -669,6 +670,38 @@ function createMcpServerInstance(): McpServer {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * Per-request MCP server and transport connection.
+ * Both objects must be closed after the response to release SDK callback/state
+ * references and prevent accumulation of routed response envelopes for clients
+ * that reuse JSON-RPC message IDs across connections.
+ */
+type PerRequestMcpConnection = {
+  server: McpServer;
+  transport: WebStandardStreamableHTTPServerTransport;
+};
+
+/**
+ * Safely closes both MCP SDK lifecycle objects for a per-request connection.
+ * Swallows individual close failures so one failing close does not mask others.
+ */
+async function closePerRequestMcpConnection(
+  connection: Partial<PerRequestMcpConnection> | undefined,
+): Promise<void> {
+  if (!connection) return;
+
+  const closeOps: Promise<void>[] = [];
+  if (connection.transport) {
+    closeOps.push(connection.transport.close());
+  }
+  if (connection.server) {
+    closeOps.push(connection.server.close());
+  }
+
+  if (closeOps.length === 0) return;
+  await Promise.allSettled(closeOps);
+}
+
+/**
  * Creates a fresh MCP server and transport for each HTTP request. The transport
  * keeps response-routing state keyed by JSON-RPC message.id, and McpServer keeps
  * a single active transport reference. Reusing either object across concurrent
@@ -679,14 +712,20 @@ function createMcpServerInstance(): McpServer {
  * enableJsonResponse makes handleRequest resolve only after the tool response is
  * ready, so the handler can safely close the per-request transport afterwards.
  */
-async function createPerRequestTransport(): Promise<WebStandardStreamableHTTPServerTransport> {
+async function createPerRequestTransport(): Promise<PerRequestMcpConnection> {
   const server = createMcpServerInstance();
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
   });
-  await server.connect(transport);
-  return transport;
+
+  try {
+    await server.connect(transport);
+    return { server, transport };
+  } catch (err) {
+    await closePerRequestMcpConnection({ server, transport });
+    throw err;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -707,16 +746,49 @@ function requestTooLargeResponse(maxRequestBytes: number, corsHeaders: Record<st
   );
 }
 
+function rejectMcpContentLengthTooLarge(
+  req: Request,
+  maxRequestBytes: number,
+  corsHeaders: Record<string, string>,
+): Response | null {
+  const contentLength = req.headers.get('content-length');
+  if (contentLength && Number.parseInt(contentLength, 10) > maxRequestBytes) {
+    return requestTooLargeResponse(maxRequestBytes, corsHeaders);
+  }
+  return null;
+}
+
+function mcpHttpRateLimitResponse(
+  decision: McpHttpThrottleDecision,
+  corsHeaders: Record<string, string>,
+): Response {
+  const retryAfterSeconds = decision.retryAfterSec ?? 60;
+  return new Response(
+    JSON.stringify({
+      error: 'Too Many Requests',
+      code: 'RATE_LIMITED',
+      class: 'mcp_http',
+      retryAfterSeconds,
+    }),
+    {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(decision.limit !== undefined ? { 'ratelimit-limit': String(decision.limit) } : {}),
+        'ratelimit-remaining': String(decision.remaining ?? 0),
+        'ratelimit-reset': String(retryAfterSeconds),
+        'retry-after': String(retryAfterSeconds),
+        ...corsHeaders,
+      },
+    },
+  );
+}
+
 async function enforceMcpRequestSize(
   req: Request,
   maxRequestBytes: number,
   corsHeaders: Record<string, string>,
 ): Promise<Request | Response> {
-  const contentLength = req.headers.get('content-length');
-  if (contentLength && Number.parseInt(contentLength, 10) > maxRequestBytes) {
-    return requestTooLargeResponse(maxRequestBytes, corsHeaders);
-  }
-
   if (!req.body) return req;
 
   const reader = req.body.getReader();
@@ -760,11 +832,18 @@ export async function mcpHandler(
   corsHeaders: Record<string, string>,
 ): Promise<Response> {
   const maxRequestBytes = getMcpMaxRequestBytes();
-  const sizeCheckedRequest = await enforceMcpRequestSize(req, maxRequestBytes, corsHeaders);
-  if (sizeCheckedRequest instanceof Response) return sizeCheckedRequest;
-  req = sizeCheckedRequest;
 
-  // Reject unauthenticated requests at the HTTP level before they reach the MCP transport.
+  // 1. Cheap content-length precheck before any body draining
+  const contentLengthResponse = rejectMcpContentLengthTooLarge(req, maxRequestBytes, corsHeaders);
+  if (contentLengthResponse) return contentLengthResponse;
+
+  // 2. Cheap HTTP-level limiter before body draining and MCP server allocation
+  const httpLimitDecision = await checkMcpHttpRateLimit(req);
+  if (!httpLimitDecision.allowed) {
+    return mcpHttpRateLimitResponse(httpLimitDecision, corsHeaders);
+  }
+
+  // 3. Reject unauthenticated requests at the HTTP level before they reach the MCP transport.
   // The transport catches errors and wraps them as HTTP 200 isError responses, which means
   // Claude Code never sees a 401 and never triggers OAuth. By checking here, we return a
   // proper HTTP 401 + WWW-Authenticate so Claude Code can initiate the OAuth flow.
@@ -783,10 +862,15 @@ export async function mcpHandler(
     );
   }
 
-  let transport: WebStandardStreamableHTTPServerTransport | undefined;
+  // 4. Drain and validate request body size
+  const sizeCheckedRequest = await enforceMcpRequestSize(req, maxRequestBytes, corsHeaders);
+  if (sizeCheckedRequest instanceof Response) return sizeCheckedRequest;
+  req = sizeCheckedRequest;
+
+  let connection: PerRequestMcpConnection | undefined;
   try {
-    transport = await createPerRequestTransport();
-    const response = await transport.handleRequest(req);
+    connection = await createPerRequestTransport();
+    const response = await connection.transport.handleRequest(req);
 
     const newHeaders = new Headers(response.headers);
     for (const [key, value] of Object.entries(corsHeaders)) {
@@ -854,9 +938,7 @@ export async function mcpHandler(
       },
     );
   } finally {
-    // Close the per-request transport to release accumulated state and prevent memory leaks
-    if (transport) {
-      await transport.close().catch(() => {});
-    }
+    // Close both SDK lifecycle objects to release accumulated routing/callback state
+    await closePerRequestMcpConnection(connection);
   }
 }
