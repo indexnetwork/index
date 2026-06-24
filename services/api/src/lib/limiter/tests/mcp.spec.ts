@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { MemoryStorage } from '../storage.memory';
-import { checkMcpRateLimit } from '../mcp';
+import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../mcp';
 
 describe('checkMcpRateLimit', () => {
   const originalEnv = { ...process.env };
@@ -77,5 +77,82 @@ describe('checkMcpRateLimit', () => {
       expect(d.allowed).toBe(true);
     }
     delete process.env.LIMITER_DISABLE;
+  });
+});
+
+describe('checkMcpHttpRateLimit', () => {
+  const originalEnv = { ...process.env };
+  let s: MemoryStorage;
+
+  const req = (ip: string, headers: Record<string, string> = {}): Request =>
+    new Request('https://protocol.index.network/mcp', {
+      headers: { 'x-forwarded-for': ip, ...headers },
+    });
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    s = new MemoryStorage();
+    process.env.MCP_HTTP_LIMIT_PER_MIN = '3';
+    process.env.RAILWAY_ENVIRONMENT = 'test';
+    delete process.env.LIMITER_DISABLE;
+  });
+
+  afterEach(() => {
+    s.stop();
+    process.env = originalEnv;
+  });
+
+  test('allows up to the MCP HTTP limit, then blocks', async () => {
+    const ip = '203.0.113.80';
+    for (let i = 0; i < 3; i++) {
+      const d = await checkMcpHttpRateLimit(req(ip), s);
+      expect(d.allowed).toBe(true);
+      expect(d.limit).toBe(3);
+    }
+
+    const blocked = await checkMcpHttpRateLimit(req(ip), s);
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.retryAfterSec).toBeGreaterThan(0);
+    expect(blocked.limit).toBe(3);
+    expect(blocked.remaining).toBe(0);
+  });
+
+  test('buckets raw API-key requests by IP, not key value', async () => {
+    process.env.MCP_HTTP_LIMIT_PER_MIN = '2';
+    const ip = '203.0.113.81';
+
+    expect((await checkMcpHttpRateLimit(req(ip, { 'x-api-key': 'key-one' }), s)).allowed).toBe(true);
+    expect((await checkMcpHttpRateLimit(req(ip, { 'x-api-key': 'key-two' }), s)).allowed).toBe(true);
+
+    const blocked = await checkMcpHttpRateLimit(req(ip, { 'x-api-key': 'key-three' }), s);
+    expect(blocked.allowed).toBe(false);
+  });
+
+  test('bypasses private/local IPs for local development', async () => {
+    process.env.MCP_HTTP_LIMIT_PER_MIN = '1';
+    for (let i = 0; i < 5; i++) {
+      const d = await checkMcpHttpRateLimit(req('10.0.0.1'), s);
+      expect(d.allowed).toBe(true);
+    }
+  });
+
+  test('respects LIMITER_DISABLE escape hatch', async () => {
+    process.env.LIMITER_DISABLE = '1';
+    process.env.MCP_HTTP_LIMIT_PER_MIN = '1';
+    const ip = '203.0.113.82';
+    for (let i = 0; i < 5; i++) {
+      const d = await checkMcpHttpRateLimit(req(ip), s);
+      expect(d.allowed).toBe(true);
+    }
+    delete process.env.LIMITER_DISABLE;
+  });
+
+  test('fails OPEN when storage throws', async () => {
+    const throwing = {
+      async hit() { throw new Error('redis down'); },
+    } as unknown as MemoryStorage;
+
+    const d = await checkMcpHttpRateLimit(req('203.0.113.83'), throwing);
+    expect(d.allowed).toBe(true);
   });
 });

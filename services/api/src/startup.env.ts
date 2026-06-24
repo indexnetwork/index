@@ -111,6 +111,7 @@ const envSchema = z.object({
   LIMITER_AUTH_WRITE_PER_MIN: optionalInt,
   LIMITER_READ_PER_MIN: optionalInt,
   LIMITER_WRITE_PER_MIN: optionalInt,
+  MCP_HTTP_LIMIT_PER_MIN: optionalInt,
   LIMITER_IP_HEADERS: z.string().optional(),
   LIMITER_DISABLE: optionalOne,
 
