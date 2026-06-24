@@ -176,6 +176,10 @@ After merge, identify the merge/base branch commit:
 gh pr view PR_NUMBER --json state,mergedAt,mergeCommit,url
 ```
 
+#### Release PR ancestry reconciliation
+
+For `dev` → `main` release PRs that are squash-merged, reconcile `main` back into `dev` after the main-branch checks pass. Otherwise `main` contains only the release squash commit while `dev` still contains the individual commits, and the next release PR can re-include already-shipped changes with merge conflicts. Follow `../_shared/squash-release-reconciliation.md`: verify matching trees + clean merge simulation, create the no-content merge, push `dev`, then wait for the normal `dev` workflows triggered by that push.
+
 Check workflow runs for the target branch/commit:
 
 ```bash
