@@ -1,6 +1,7 @@
 import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
-import { relations, sql } from 'drizzle-orm';
+import { relations } from 'drizzle-orm/relations';
+import { sql } from 'drizzle-orm/sql';
 import type { Id } from '../types/common.types';
 
 // Enums
