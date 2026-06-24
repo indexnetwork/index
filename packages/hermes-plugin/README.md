@@ -19,7 +19,7 @@ The plugin provides these native Hermes tools:
 - `index_pickup_negotiation` — calls the personal-agent pickup endpoint to poll and claim one pending negotiation turn.
 - `index_respond_negotiation` — submits an autonomous personal-agent negotiation response with action, message, reasoning, and suggested roles.
 
-It also bundles generated, namespaced Hermes plugin skills, an orchestrator hint hook, a slash command, and a live read-only dashboard tab:
+It also bundles generated, namespaced Hermes plugin skills, an orchestrator hint hook, a slash command, and a live dashboard tab:
 
 - `skills/index-orchestrator/SKILL.md` — signal/intent review and discovery preparation guidance for Hermes.
 - `skills/index-negotiator/SKILL.md` — autonomous personal-agent negotiation guidance for scheduled Hermes runs.
@@ -209,7 +209,7 @@ dashboard/dist/style.css
 dashboard/plugin_api.py
 ```
 
-The tab appears as **Index Network** in Hermes and is live read-only. It shows the authenticated user's own intents, actionable opportunities, negotiation activity summary, and joined networks. The dashboard backend reuses `tools.py` for Index authentication, scoped MCP forwarding, timeouts, and response decoding instead of creating a second Index client.
+The tab appears as **Index Network** in Hermes and is live with one write-enabled workflow: answering pending Index questions. It shows the authenticated user's pending questions, own intents, actionable opportunities, negotiation activity summary, and joined networks. The dashboard backend reuses `tools.py` for Index authentication, scoped MCP forwarding, API writes, timeouts, and response decoding instead of creating a second Index client.
 
 The dashboard never claims pending negotiation turns or submits negotiation responses. Those actions remain explicit Hermes tool/skill flows.
 
@@ -223,7 +223,7 @@ bun test scripts/tests/build-skills.spec.ts
 cd packages/hermes-plugin && bun run test
 ```
 
-For manual dashboard checks, restart `hermes dashboard` after changing `plugin_api.py` (or run `curl http://127.0.0.1:9119/api/dashboard/plugins/rescan` after asset-only changes), then open the **Index Network** tab. The tab should load `/api/plugins/index-network/summary` through `SDK.fetchJSON` and render scoped Index data.
+For manual dashboard checks, restart `hermes dashboard` after changing `plugin_api.py` (or run `curl http://127.0.0.1:9119/api/dashboard/plugins/rescan` after asset-only changes), then open the **Index Network** tab. The tab should load `/api/plugins/index-network/summary` through `SDK.fetchJSON`, render scoped Index data, and submit pending-question answers through `/api/plugins/index-network/questions/:id/answer`.
 
 For Hermes discovery debugging:
 

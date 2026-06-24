@@ -1,8 +1,8 @@
 """Index Network Hermes dashboard plugin backend.
 
-Mounted at /api/plugins/index-network/ by Hermes dashboard. The routes are
-read-only and reuse the plugin's native Index MCP tool handlers so dashboard
-visibility stays scoped to the configured INDEX_API_KEY principal.
+Mounted at /api/plugins/index-network/ by Hermes dashboard. The routes reuse
+the plugin's native Index tool handlers so dashboard visibility and
+question-answer writes stay scoped to the configured INDEX_API_KEY principal.
 """
 
 from __future__ import annotations
@@ -12,12 +12,19 @@ import json
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 try:
-    from fastapi import APIRouter
+    from fastapi import APIRouter, Body
 except Exception:  # Allows local smoke tests without dashboard dependencies.
+    def Body(default=None, **_kwargs):  # type: ignore
+        return default
+
     class APIRouter:  # type: ignore
         def get(self, *_args, **_kwargs):
+            return lambda fn: fn
+
+        def post(self, *_args, **_kwargs):
             return lambda fn: fn
 
 router = APIRouter()
@@ -57,6 +64,14 @@ def _call_read_intents() -> dict[str, Any]:
 
 def _call_mcp(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
     return _parse_tool_json(tools.index_forwarded_mcp_tool(tool_name, args or {}))
+
+
+def _call_pending_questions() -> dict[str, Any]:
+    return _call_mcp("read_pending_questions", {"limit": 6})
+
+
+def _call_answer_question(question_id: str, answer: dict[str, Any]) -> dict[str, Any]:
+    return tools._api_request("POST", f"/questions/{quote(question_id, safe='')}/answer", answer)
 
 
 def _data(payload: dict[str, Any]) -> Any:
@@ -199,6 +214,77 @@ def _normalize_opportunities(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_question_options(value: Any) -> list[dict[str, str]]:
+    options: list[dict[str, str]] = []
+    for option in _list(value):
+        if isinstance(option, str):
+            label = _text(option)
+            if label:
+                options.append({"label": label, "description": ""})
+            continue
+        if not isinstance(option, dict):
+            continue
+        label = _text(option.get("label"))
+        if not label:
+            continue
+        options.append({"label": label, "description": _text(option.get("description"))})
+    return options
+
+
+def _normalize_questions(payload: dict[str, Any]) -> dict[str, Any]:
+    data = _data(payload)
+    if not isinstance(data, dict):
+        return {"items": [], "count": 0, "error": _section_error(payload)}
+    questions = _list(data.get("questions"))
+    items = []
+    for question in questions[:6]:
+        if not isinstance(question, dict):
+            continue
+        question_id = _text(question.get("id"))
+        if not question_id:
+            continue
+        mode = _text(question.get("mode"))
+        source_type = _text(question.get("sourceType"))
+        meta_parts = [part for part in (mode, source_type) if part]
+        item: dict[str, Any] = {
+            "id": question_id,
+            "title": _text(question.get("title"), "Question"),
+            "prompt": _text(question.get("prompt")),
+            "options": _normalize_question_options(question.get("options")),
+            "multiSelect": bool(question.get("multiSelect")),
+        }
+        if mode:
+            item["mode"] = mode
+        if question.get("createdAt"):
+            item["createdAt"] = _text(question.get("createdAt"))
+        if question.get("expiresAt"):
+            item["expiresAt"] = _text(question.get("expiresAt"))
+        if meta_parts:
+            item["meta"] = " · ".join(meta_parts)
+        items.append(item)
+    total = data.get("count", len(items))
+    return {"items": items, "count": total if isinstance(total, int) else len(items), "error": _section_error(payload)}
+
+
+def _sanitize_answer_payload(body: Any) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(body, dict):
+        return None, "Answer body must be an object."
+    selected_options = body.get("selectedOptions")
+    if not isinstance(selected_options, list) or not all(isinstance(option, str) for option in selected_options):
+        return None, "selectedOptions must be an array of strings."
+    answer: dict[str, Any] = {"selectedOptions": [option.strip() for option in selected_options if option.strip()]}
+    free_text = body.get("freeText")
+    if free_text is not None:
+        if not isinstance(free_text, str):
+            return None, "freeText must be a string."
+        free_text = free_text.strip()
+        if free_text:
+            answer["freeText"] = free_text
+    if not answer["selectedOptions"] and not answer.get("freeText"):
+        return None, "Choose an option or add a free-text answer."
+    return answer, None
+
+
 def _count_from_negotiation_payload(payload: dict[str, Any]) -> int:
     data = _data(payload)
     if not isinstance(data, dict):
@@ -222,7 +308,7 @@ def _normalize_negotiation_activity(payloads: dict[str, dict[str, Any]]) -> dict
             "completed": completed,
             "needsAttention": waiting,
         },
-        "note": "No negotiation conversations are rendered in this read-only dashboard.",
+        "note": "No negotiation conversations are rendered in this dashboard.",
         "error": first_error,
     }
 
@@ -325,8 +411,9 @@ def _normalize_networks(payload: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/summary")
 def summary() -> dict[str, Any]:
-    """Return a read-only, user-scoped dashboard summary."""
+    """Return a user-scoped dashboard summary."""
     intents_payload = _call_read_intents()
+    questions_payload = _call_pending_questions()
     opportunities_payload = _call_mcp("list_opportunities")
     networks_payload = _call_mcp("read_networks")
     memberships_payload = _call_mcp("read_network_memberships")
@@ -342,8 +429,21 @@ def summary() -> dict[str, Any]:
         "success": True,
         "sections": {
             "intents": _normalize_intents(intents_payload, intent_networks),
+            "questions": _normalize_questions(questions_payload),
             "opportunities": _normalize_opportunities(opportunities_payload),
             "negotiations": _normalize_negotiation_activity(negotiation_payloads),
             "networks": _normalize_networks(networks_payload),
         },
     }
+
+
+@router.post("/questions/{question_id}/answer")
+def answer_question(question_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Submit an answer for a pending Index question owned by this API-key principal."""
+    answer, validation_error = _sanitize_answer_payload(body)
+    if validation_error:
+        return {"success": False, "error": validation_error}
+    payload = _call_answer_question(question_id, answer or {})
+    if payload.get("success") is False:
+        return payload
+    return {"success": True}

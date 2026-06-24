@@ -164,7 +164,8 @@
   text-transform: capitalize;
 }
 
-.index-dashboard__items {
+.index-dashboard__items,
+.index-dashboard__stack {
   display: grid;
   gap: 0.65rem;
 }
@@ -237,6 +238,87 @@
 
 .index-dashboard__item-networks > span:first-child {
   margin-right: 0.1rem;
+}
+
+.index-dashboard__question {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary, #4fd1c5) 34%, var(--color-border, rgba(148, 163, 184, 0.24)));
+  border-radius: calc(var(--radius, 0.75rem) * 0.75);
+  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 7%, transparent);
+}
+
+.index-dashboard__question-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.index-dashboard__question-prompt {
+  color: var(--color-card-foreground, inherit) !important;
+  font-size: 0.94rem;
+}
+
+.index-dashboard__question-options {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.index-dashboard__option {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 72%, transparent);
+  border-radius: calc(var(--radius, 0.75rem) * 0.65);
+  cursor: pointer;
+  background: color-mix(in srgb, var(--color-background, #020617) 34%, transparent);
+}
+
+.index-dashboard__option--selected {
+  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 68%, var(--color-border, rgba(148, 163, 184, 0.24)));
+  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 13%, transparent);
+}
+
+.index-dashboard__option input {
+  margin-top: 0.2rem;
+}
+
+.index-dashboard__option span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.index-dashboard__option strong {
+  color: var(--color-card-foreground, inherit);
+  font-size: 0.86rem;
+}
+
+.index-dashboard__option em {
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.78rem;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.index-dashboard__textarea {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: calc(var(--radius, 0.75rem) * 0.65);
+  background: color-mix(in srgb, var(--color-background, #020617) 52%, transparent);
+  color: var(--color-card-foreground, inherit);
+  font: inherit;
+  resize: vertical;
+}
+
+.index-dashboard__question-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .index-dashboard__activity {
