@@ -19,13 +19,13 @@ The plugin provides these native Hermes tools:
 - `index_pickup_negotiation` — calls the personal-agent pickup endpoint to poll and claim one pending negotiation turn.
 - `index_respond_negotiation` — submits an autonomous personal-agent negotiation response with action, message, reasoning, and suggested roles.
 
-It also bundles generated, namespaced Hermes plugin skills, an orchestrator hint hook, a slash command, and a dashboard placeholder:
+It also bundles generated, namespaced Hermes plugin skills, an orchestrator hint hook, a slash command, and a static read-only dashboard tab:
 
 - `skills/index-orchestrator/SKILL.md` — signal/intent review and discovery preparation guidance for Hermes.
 - `skills/index-negotiator/SKILL.md` — autonomous personal-agent negotiation guidance for scheduled Hermes runs.
 - `pre_llm_call` hook — nudges Hermes to load `skill_view("index-network:index-orchestrator")` for clear Index/signal/intent/opportunity prompts.
 - `/index` command — returns the same skill-loading hint explicitly.
-- `dashboard/` — reserved for a future dashboard extension.
+- `dashboard/` — Hermes dashboard tab with static read-only guidance for Index signals, protocol usage, and autonomous negotiator setup.
 
 ## Install / enable in Hermes
 
@@ -200,14 +200,17 @@ Do not edit generated `SKILL.md` files directly. Edit the templates and run `bun
 
 ## Dashboard view
 
-When dashboard work starts, add the Hermes dashboard files under `dashboard/`:
+The plugin ships a plugin-local Hermes dashboard tab under `dashboard/`:
 
 ```text
 dashboard/manifest.json
 dashboard/dist/index.js
 dashboard/dist/style.css
-dashboard/plugin_api.py
 ```
+
+The tab appears as **Index Network** in Hermes and is read-only. It summarizes protocol guidance for signals and communities, explains autonomous negotiator setup, and never calls live Index APIs or the pickup/respond negotiation tools from dashboard UI.
+
+This slice intentionally ships the dashboard as static-only. Python dashboard backend routes are deferred until Hermes route authentication is documented for this plugin source; any future live route design should reuse `tools.py` for Index authentication, scoped MCP forwarding, timeouts, and response decoding instead of creating a second client.
 
 ## Verify
 
@@ -218,6 +221,8 @@ bun run build:skills
 bun test scripts/tests/build-skills.spec.ts
 cd packages/hermes-plugin && bun run test
 ```
+
+For manual dashboard checks, run `curl http://127.0.0.1:9119/api/dashboard/plugins/rescan` or restart `hermes dashboard`, then open the **Index Network** tab. The tab should render static guidance without requiring `/api/plugins/index-network/*` backend routes.
 
 For Hermes discovery debugging:
 
