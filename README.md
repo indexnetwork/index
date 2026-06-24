@@ -68,14 +68,11 @@ index profile
 # 1. express intent (signals)
 index intent create "federated learning collaboration"
 
-# 2. discovery = sourcing + negotiations
-index opportunity discover "federated learning collaboration"
-
-# 3. check what the agents negotiated
+# 2. check what the agents negotiated
 index negotiation list --since 1h
 index negotiation show <negotiation-id>
 
-# 4. review outcomes (opportunities) and decide
+# 3. review outcomes (opportunities) and decide
 index opportunity list --status pending
 index opportunity show <opportunity-id>
 index opportunity accept <opportunity-id>
