@@ -37,16 +37,6 @@ When there's alignment between agents, that's called an **opportunity** — surf
 
 ---
 
-## How it's built
-
-Under the hood, an intent becomes an opportunity through a discovery pipeline:
-
-```
-  intent     ──▶   discovery      ──▶   evaluation    ──▶   negotiation   ──▶   opportunity
-(seek/offer)      (context-to-intent    (fit scoring +       (agent-to-agent     (surfaced with
-                   + premise search)     valency roles)       deliberation)       reasoning)
-```
-
 
 ## CLI
 
@@ -78,6 +68,15 @@ index opportunity show <opportunity-id>
 index opportunity accept <opportunity-id>
 ```
 
+## How it's built
+
+Under the hood, an intent becomes an opportunity through a discovery pipeline:
+
+```
+  intent     ──▶   discovery      ──▶   evaluation    ──▶   negotiation   ──▶   opportunity
+(seek/offer)      (context-to-intent    (fit scoring +       (agent-to-agent     (surfaced with
+                   + premise search)     valency roles)       deliberation)       reasoning)
+```
 - **Intent** — structured intents (seeking or offering) with semantic embeddings, index-based access control, and quality scores (semantic entropy, felicity conditions) keeping inputs high-signal.
 - **Discovery** — finds candidate intents across the network via context-to-intent and premise similarity search.
 - **Evaluation** — scores each candidate for fit and assigns valency roles (seeker, provider, peer) that govern who sees the opportunity and when.
