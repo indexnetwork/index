@@ -1,6 +1,6 @@
 import '../src/startup.env';
 import { describe, it, expect } from 'bun:test';
-import { createMcpServer } from '../../../packages/protocol/src/mcp/mcp.server';
+import { createMcpServer, clearMcpToolMetadataCacheForTests, getCachedMcpToolMetadata } from '../../../packages/protocol/src/mcp/mcp.server';
 import { createAgentTools } from '../../../packages/protocol/src/agent/agent.tools';
 import { createToolRegistry } from '../../../packages/protocol/src/shared/agent/tool.registry';
 import type { ToolDeps } from '../../../packages/protocol/src/shared/agent/tool.helpers';
@@ -209,6 +209,23 @@ describe('MCP Server Factory', () => {
         'not from within an existing agent context. To register a new agent, visit the Index web app.',
     });
     expect(createAgentCalls).toEqual([]);
+  });
+
+  it('caches static MCP tool metadata by registry-shaping dependencies', () => {
+    clearMcpToolMetadataCacheForTests();
+
+    const first = getCachedMcpToolMetadata(mockDeps);
+    const second = getCachedMcpToolMetadata(mockDeps);
+    const registry = createToolRegistry(mockDeps);
+
+    expect(second).toBe(first);
+    expect(first.length).toBe(registry.size);
+    expect(first.some((tool) => tool.name === 'list_agents')).toBe(true);
+    expect(first.every((tool) => tool.schema && tool.jsonSchema && tool.inputSchema)).toBe(true);
+
+    const withoutAgentTools = getCachedMcpToolMetadata(mockDepsWithoutAgentDb);
+    expect(withoutAgentTools).not.toBe(first);
+    expect(withoutAgentTools.some((tool) => tool.name === 'list_agents')).toBe(false);
   });
 
   it('register_agent rolls back the created agent when later setup fails', async () => {

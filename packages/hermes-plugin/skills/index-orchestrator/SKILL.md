@@ -50,13 +50,14 @@ Other banned words: leverage, unlock, optimize, scale, disrupt, revolutionary, A
 
 ## Hermes tool availability
 
-This bundled Hermes skill is loaded from the `index-network` plugin namespace. The plugin's native tool surface is intentionally focused:
+This bundled Hermes skill is loaded from the `index-network` plugin namespace. The plugin provides:
 
-- `index_read_intents` — reads Index Network intents through the authenticated Index MCP server using `INDEX_API_KEY`.
+- `index_read_intents` — a dedicated, validated wrapper for the Index MCP `read_intents` tool.
+- `index_<mcp_tool_name>` wrappers for the rest of the Index MCP surface, such as `index_create_intent`, `index_read_networks`, `index_discover_opportunities`, `index_get_discovery_run`, `index_list_opportunities`, and `index_read_docs`.
 - `index_agent_me` — reads the authenticated personal agent identity.
 - `index_pickup_negotiation` and `index_respond_negotiation` — available when the task is specifically to run the user's autonomous Index negotiator.
 
-If additional Index MCP tools are configured separately in Hermes, you may use them when they are actually available. Do not claim you can create, update, delete, discover, notify, or negotiate unless the corresponding tool is present and its response confirms the action.
+Do not claim you created, updated, deleted, discovered, notified, or negotiated anything unless the corresponding tool response confirms the action. If unsure about arguments or workflow for a forwarded MCP wrapper, call `index_read_docs(topic="mcp_agent_guide")` first.
 
 ## Setup
 
@@ -89,23 +90,24 @@ index_read_intents(networkId=..., userId=..., limit=20, page=1)
 
 Only use IDs the user provided or that a prior tool call returned. Do not invent IDs.
 
-## Pattern 3: Prepare a new signal draft
+## Pattern 3: Prepare or save a signal
 
-When the user wants to add or improve a signal but no create/update tool is available:
+When the user wants to add or improve a signal:
 
 1. Draft a concise signal description in plain text.
-2. Say that this Hermes plugin version can draft it but cannot save it unless an Index create/update tool is available.
-3. If a create/update tool is available separately, ask for confirmation before calling it.
+2. Ask for confirmation before creating, updating, or deleting a signal.
+3. After confirmation, use `index_create_intent`, `index_update_intent`, or `index_delete_intent` as appropriate.
+4. Report only what the tool response confirms.
 
-Specificity test: a good signal names a domain, desired counterpart, concrete action, constraint, or timing.
+Specificity test: a good signal names a domain, desired counterpart, concrete action, constraint, or timing. MCP agents should pass `autoApprove=true` when creating a confirmed signal because Hermes has no Index web-card UI.
 
 ## Pattern 4: Broader discovery requests
 
 For requests like "find people who can help with X" or "who should I meet":
 
-- First inspect existing signals with `index_read_intents`.
-- If no discovery tool is available, explain that this Hermes plugin version can review signals but cannot run discovery yet.
-- If an Index discovery tool is available separately, use it only after you understand the user's goal.
+- First inspect existing signals with `index_read_intents` unless the user supplied a fresh search query directly.
+- Use `index_discover_opportunities` for discovery and `index_get_discovery_run` when the response returns an async run id.
+- Use `index_list_opportunities` to review existing actionable opportunities.
 
 ## Presentation rules
 

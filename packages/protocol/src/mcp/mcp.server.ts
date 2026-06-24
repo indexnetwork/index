@@ -11,7 +11,7 @@ import type { ServerContext, JsonSchemaType } from '@modelcontextprotocol/server
 
 import type { McpAuthResolver } from '../shared/interfaces/auth.interface.js';
 import type { McpAuthInput } from '../shared/schemas/mcp-auth.schema.js';
-import type { ToolDeps, ResolvedToolContext } from '../shared/agent/tool.helpers.js';
+import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
 import type { Question } from '../shared/schemas/question.schema.js';
 import { QuestionSchema } from '../shared/schemas/question.schema.js';
@@ -22,6 +22,77 @@ import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('McpServer');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// STATIC TOOL METADATA CACHE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Static registration metadata for one MCP tool — schema conversion artifacts
+ * that depend only on registry-shaping feature flags, not on per-request
+ * database scope.
+ */
+type McpToolRegistrationMetadata = Pick<RawToolDefinition, 'name' | 'description' | 'schema'> & {
+  jsonSchema: JsonSchemaType;
+  inputSchema: ReturnType<typeof fromJsonSchema>;
+};
+
+const mcpToolMetadataCache = new Map<string, McpToolRegistrationMetadata[]>();
+
+/**
+ * Builds a cache key from registry-shaping dependency booleans.
+ * When a feature flag changes the tool set, the cache key changes so
+ * the cached metadata set is automatically invalidated.
+ */
+export function getMcpToolMetadataCacheKey(deps: Pick<ToolDeps,
+  'contactsEnabled' | 'chatSession' | 'agentDatabase' | 'agentDispatcher' | 'questionerEnqueue'
+>): string {
+  return [
+    `contacts:${deps.contactsEnabled === true ? '1' : '0'}`,
+    `chat:${deps.chatSession ? '1' : '0'}`,
+    `agent:${deps.agentDatabase ? '1' : '0'}`,
+    `negotiation:${deps.agentDispatcher ? '1' : '0'}`,
+    `questioner:${deps.questionerEnqueue ? '1' : '0'}`,
+  ].join('|');
+}
+
+/**
+ * Clears the metadata cache. Used in tests to ensure fresh state between cases.
+ */
+export function clearMcpToolMetadataCacheForTests(): void {
+  mcpToolMetadataCache.clear();
+}
+
+/**
+ * Returns cached (or builds and caches) static MCP tool registration metadata.
+ * The first call per cache key runs the full registry creation + schema
+ * conversion; subsequent calls return the cached metadata array for the same
+ * registry-shaping dependency profile.
+ *
+ * Does NOT store tool handlers — those remain request-scoped because they
+ * capture per-request userDb/systemDb.
+ */
+export function getCachedMcpToolMetadata(deps: ToolDeps): readonly McpToolRegistrationMetadata[] {
+  const cacheKey = getMcpToolMetadataCacheKey(deps);
+  const cached = mcpToolMetadataCache.get(cacheKey);
+  if (cached) return cached;
+
+  const registry = createToolRegistry(deps);
+  const metadata = Array.from(registry.values()).map((toolDef): McpToolRegistrationMetadata => {
+    const jsonSchema = zodToJsonSchema(toolDef.schema) as JsonSchemaType;
+    return {
+      name: toolDef.name,
+      description: toolDef.description,
+      schema: toolDef.schema,
+      jsonSchema,
+      inputSchema: fromJsonSchema(jsonSchema),
+    };
+  });
+
+  mcpToolMetadataCache.set(cacheKey, metadata);
+  logger.verbose(`MCP tool metadata cached with ${metadata.length} tools`, { cacheKey });
+  return metadata;
+}
 
 function isExpectedMcpAuthError(message: string): boolean {
   return message.includes('Authentication required') ||
@@ -461,19 +532,16 @@ export function createMcpServer(
     { instructions: MCP_INSTRUCTIONS },
   );
 
-  const registry = createToolRegistry(deps);
+  const toolMetadata = getCachedMcpToolMetadata(deps);
 
-  for (const [toolName, toolDef] of registry) {
-    // Convert Zod 3 schema to JSON Schema, then wrap with fromJsonSchema
-    // for MCP SDK's StandardSchemaWithJSON compatibility
-    const jsonSchema = zodToJsonSchema(toolDef.schema) as JsonSchemaType;
-    const mcpSchema = fromJsonSchema(jsonSchema);
+  for (const toolDef of toolMetadata) {
+    const toolName = toolDef.name;
 
     server.registerTool(
       toolName,
       {
         description: toolDef.description,
-        inputSchema: mcpSchema,
+        inputSchema: toolDef.inputSchema,
       },
       async (args: unknown, ctx: ServerContext) => {
         let reportDeps = deps;
@@ -612,7 +680,9 @@ export function createMcpServer(
           const requestDeps: ToolDeps = { ...deps, ...scopedDbs };
           reportDeps = requestDeps;
 
-          // Re-create registry with per-request deps for scoped database access
+          // Re-create registry with per-request deps for scoped database access.
+          // Do not use cached registration metadata handlers here: tool handlers
+          // close over userDb/systemDb when the registry is created.
           const requestRegistry = createToolRegistry(requestDeps);
           const requestTool = requestRegistry.get(toolName);
 
@@ -720,6 +790,6 @@ export function createMcpServer(
     );
   }
 
-  logger.verbose(`MCP server created with ${registry.size} tools`);
+  logger.verbose(`MCP server created with ${toolMetadata.length} tools`);
   return server;
 }

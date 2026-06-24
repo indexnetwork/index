@@ -7,11 +7,17 @@ import importlib.util
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PYTHON_FILES = ["__init__.py", "schemas.py", "tools.py"]
+DASHBOARD_FILES = [
+    "dashboard/manifest.json",
+    "dashboard/dist/index.js",
+    "dashboard/dist/style.css",
+]
 
 
 class FakeContext:
@@ -101,21 +107,88 @@ def main() -> None:
     plugin = load_plugin()
     ctx = FakeContext()
     plugin.register(ctx)
+    assert set(plugin.schemas.FORWARDED_MCP_TOOLS) == plugin.tools._FORWARDED_MCP_TOOLS
 
     tool_names = [entry["name"] for entry in ctx.tools]
-    assert tool_names == [
-        "index_read_intents",
-        "index_agent_me",
-        "index_pickup_negotiation",
-        "index_respond_negotiation",
-    ], tool_names
+    expected_tool_names = (
+        ["index_read_intents"]
+        + [f"index_{name}" for name in plugin.schemas.FORWARDED_MCP_TOOLS]
+        + ["index_agent_me", "index_pickup_negotiation", "index_respond_negotiation"]
+    )
+    assert tool_names == expected_tool_names, tool_names
+    assert len(tool_names) == len(set(tool_names))
+    assert "index_create_intent" in tool_names
+    assert "index_discover_opportunities" in tool_names
+    assert "index_read_docs" in tool_names
     assert [entry["schema"]["name"] for entry in ctx.tools] == tool_names
-    assert [entry["handler"] for entry in ctx.tools] == [
-        plugin.tools.index_read_intents,
-        plugin.tools.index_agent_me,
-        plugin.tools.index_pickup_negotiation,
-        plugin.tools.index_respond_negotiation,
-    ]
+    handlers_by_name = {entry["name"]: entry["handler"] for entry in ctx.tools}
+    assert handlers_by_name["index_read_intents"] == plugin.tools.index_read_intents
+    assert handlers_by_name["index_agent_me"] == plugin.tools.index_agent_me
+    assert handlers_by_name["index_pickup_negotiation"] == plugin.tools.index_pickup_negotiation
+    assert handlers_by_name["index_respond_negotiation"] == plugin.tools.index_respond_negotiation
+    assert handlers_by_name["index_create_intent"].__name__ == "index_create_intent"
+
+    manifest_tools = []
+    in_tools = False
+    for line in (ROOT / "plugin.yaml").read_text().splitlines():
+        if line == "provides_tools:":
+            in_tools = True
+            continue
+        if in_tools and line and not line.startswith("  - "):
+            break
+        if in_tools and line.startswith("  - "):
+            manifest_tools.append(line.removeprefix("  - "))
+    assert manifest_tools == tool_names
+
+    for relative_path in DASHBOARD_FILES:
+        assert (ROOT / relative_path).exists(), f"missing dashboard file: {relative_path}"
+
+    dashboard_manifest = json.loads((ROOT / "dashboard" / "manifest.json").read_text())
+    assert dashboard_manifest["name"] == "index-network"
+    assert dashboard_manifest["label"] == "Index Network"
+    assert dashboard_manifest["entry"] == "dist/index.js"
+    assert dashboard_manifest["css"] == "dist/style.css"
+    assert "api" not in dashboard_manifest
+    assert dashboard_manifest["tab"]["path"] == "/index-network"
+    for key in ("entry", "css"):
+        assert (ROOT / "dashboard" / dashboard_manifest[key]).exists(), dashboard_manifest[key]
+    assert not (ROOT / "dashboard" / "plugin_api.py").exists()
+
+    dashboard_js_path = ROOT / "dashboard" / "dist" / "index.js"
+    subprocess.run(["node", "--check", str(dashboard_js_path)], check=True)
+    dashboard_js = dashboard_js_path.read_text()
+    assert 'register("index-network"' in dashboard_js
+    assert "Static read-only" in dashboard_js
+    assert "Static-only" in dashboard_js
+    assert "Signals" in dashboard_js
+    assert "communities" in dashboard_js
+    assert "internal identifiers" in dashboard_js
+    assert "raw records" in dashboard_js
+    assert "/api/" + "plugins/" not in dashboard_js
+    assert "SDK.fetchJSON" not in dashboard_js
+    assert "Live read-only" not in dashboard_js
+    assert "raw JSON" not in dashboard_js
+    assert "tool_call" not in dashboard_js
+    assert "intentId" not in dashboard_js
+    assert "networkId" not in dashboard_js
+    assert "opportunityId" not in dashboard_js
+    assert "index_pickup_negotiation" not in dashboard_js
+    assert "index_respond_negotiation" not in dashboard_js
+
+
+
+    dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
+    package_readme = (ROOT / "README.md").read_text()
+    assert "static and read-only" in dashboard_readme
+    assert "mount Python backend routes" in dashboard_readme
+    assert "Live dashboard routes are deliberately deferred" in dashboard_readme
+    assert "../tools.py" in dashboard_readme
+    assert "static-only" in package_readme
+    assert "never calls live Index APIs" in package_readme
+    assert "tools.py" in package_readme
+    forbidden_api_path = "dashboard/" + "plugin_api.py"
+    assert forbidden_api_path not in package_readme
+
     assert [name for name, _path in ctx.skills] == ["index-negotiator", "index-orchestrator"]
     for _name, skill_md in ctx.skills:
         assert pathlib.Path(skill_md).name == "SKILL.md"
@@ -173,6 +246,35 @@ def main() -> None:
         assert captured[-1]["body"]["method"] == "tools/call"
         assert captured[-1]["body"]["params"] == {"name": "read_intents", "arguments": {"limit": 10, "page": 1}}
         assert captured[-1]["headers"]["X-api-key"] == "test-key"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": json.dumps({"success": True, "intentId": "intent-1"}),
+                                }
+                            ]
+                        },
+                    }
+                )
+            ],
+            captured,
+        )
+        create_intent = handlers_by_name["index_create_intent"]
+        created = json.loads(create_intent({"description": "Find robotics mentors", "autoApprove": True}))
+        assert created == {"success": True, "intentId": "intent-1"}
+        assert captured[-1]["body"]["params"] == {
+            "name": "create_intent",
+            "arguments": {"description": "Find robotics mentors", "autoApprove": True},
+        }
+        assert json.loads(create_intent([])) == {"success": False, "error": "Arguments must be an object."}
 
         os.environ["INDEX_API_URL"] = "https://api.example.test/api"
         captured = []

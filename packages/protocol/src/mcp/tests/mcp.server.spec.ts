@@ -10,7 +10,7 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, test, expect } from "bun:test";
-import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError, extractBearerToken, parseClientSurface } from "../mcp.server.js";
+import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError, extractBearerToken, parseClientSurface, getMcpToolMetadataCacheKey } from "../mcp.server.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import { ToolRuntimeError } from "../../shared/agent/tool.runtime.js";
 
@@ -236,6 +236,26 @@ describe("extractBearerToken", () => {
   test("rejects wrong schemes and missing tokens", () => {
     expect(extractBearerToken(requestWithAuthorization("Basic token-123"))).toBeUndefined();
     expect(extractBearerToken(requestWithAuthorization("Bearer"))).toBeUndefined();
+  });
+});
+
+describe('getMcpToolMetadataCacheKey', () => {
+  const baseDeps = {
+    contactsEnabled: false,
+    chatSession: undefined,
+    agentDatabase: undefined,
+    agentDispatcher: undefined,
+    questionerEnqueue: undefined,
+  };
+
+  test('changes when registry-shaping dependencies change', () => {
+    const base = getMcpToolMetadataCacheKey(baseDeps);
+
+    expect(getMcpToolMetadataCacheKey({ ...baseDeps, contactsEnabled: true })).not.toBe(base);
+    expect(getMcpToolMetadataCacheKey({ ...baseDeps, chatSession: {} as never })).not.toBe(base);
+    expect(getMcpToolMetadataCacheKey({ ...baseDeps, agentDatabase: {} as never })).not.toBe(base);
+    expect(getMcpToolMetadataCacheKey({ ...baseDeps, agentDispatcher: {} as never })).not.toBe(base);
+    expect(getMcpToolMetadataCacheKey({ ...baseDeps, questionerEnqueue: (async () => undefined) as never })).not.toBe(base);
   });
 });
 

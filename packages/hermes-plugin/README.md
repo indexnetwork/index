@@ -13,22 +13,31 @@ tools.py      # JSON-string-returning tool handlers
 
 The plugin provides these native Hermes tools:
 
-- `index_read_intents` — calls the canonical Index MCP `read_intents` tool using `INDEX_API_KEY`.
+- `index_read_intents` — calls the canonical Index MCP `read_intents` tool using `INDEX_API_KEY` with argument validation.
+- `index_<mcp_tool_name>` — generated pass-through wrappers for the rest of the Index MCP surface, including `index_read_docs`, `index_create_intent`, `index_read_networks`, `index_discover_opportunities`, `index_get_discovery_run`, and `index_list_opportunities`.
 - `index_agent_me` — calls `GET /api/agents/me` to return the authenticated personal Index agent for the configured key.
 - `index_pickup_negotiation` — calls the personal-agent pickup endpoint to poll and claim one pending negotiation turn.
 - `index_respond_negotiation` — submits an autonomous personal-agent negotiation response with action, message, reasoning, and suggested roles.
 
-It also bundles generated, namespaced Hermes plugin skills, an orchestrator hint hook, a slash command, and a dashboard placeholder:
+It also bundles generated, namespaced Hermes plugin skills, an orchestrator hint hook, a slash command, and a static read-only dashboard tab:
 
 - `skills/index-orchestrator/SKILL.md` — signal/intent review and discovery preparation guidance for Hermes.
 - `skills/index-negotiator/SKILL.md` — autonomous personal-agent negotiation guidance for scheduled Hermes runs.
 - `pre_llm_call` hook — nudges Hermes to load `skill_view("index-network:index-orchestrator")` for clear Index/signal/intent/opportunity prompts.
 - `/index` command — returns the same skill-loading hint explicitly.
-- `dashboard/` — reserved for a future dashboard extension.
+- `dashboard/` — Hermes dashboard tab with static read-only guidance for Index signals, protocol usage, and autonomous negotiator setup.
 
 ## Install / enable in Hermes
 
-A Hermes plugin directory must be installed under `~/.hermes/plugins/<plugin-name>/` or a one-level category path. For local testing, copy or symlink this directory:
+Install the public plugin with Hermes:
+
+```bash
+hermes plugins install indexnetwork/hermes-plugin
+```
+
+The manifest declares `requires_env: INDEX_API_KEY`, so `hermes plugins install` prompts for it and saves it to Hermes' `.env`. Use an Index agent-bound API key when running autonomous negotiation tools.
+
+For local development, a Hermes plugin directory must be installed under `~/.hermes/plugins/<plugin-name>/` or a one-level category path. Copy or symlink this directory:
 
 ```bash
 mkdir -p ~/.hermes/plugins
@@ -36,7 +45,7 @@ ln -s /path/to/index/packages/hermes-plugin ~/.hermes/plugins/index-network
 hermes plugins enable index-network
 ```
 
-The manifest declares `requires_env: INDEX_API_KEY`, so `hermes plugins install` can prompt for it and save it to Hermes' `.env`. Use an Index agent-bound API key when running autonomous negotiation tools. You can also set it manually:
+You can also set the key manually:
 
 ```bash
 export INDEX_API_KEY="..."
@@ -72,6 +81,19 @@ Accepts:
 ```
 
 With no arguments, it returns the authenticated caller's own active intents as seen through the scoped Index MCP server.
+
+### `index_<mcp_tool_name>` forwarded wrappers
+
+The plugin registers Hermes wrappers for each canonical Index MCP tool that does not already have a dedicated wrapper. Examples:
+
+- `index_read_docs({"topic":"mcp_agent_guide"})`
+- `index_create_intent({"description":"...","autoApprove":true})`
+- `index_read_networks({})`
+- `index_discover_opportunities({"searchQuery":"..."})`
+- `index_get_discovery_run({"discoveryRunId":"..."})`
+- `index_list_opportunities({})`
+
+Wrapper names are formed by prefixing the MCP tool name with `index_`; arguments are passed through unchanged to the underlying MCP tool. Tool responses are decoded from the MCP envelope and returned as JSON strings to Hermes.
 
 ### `index_agent_me`
 
@@ -178,14 +200,17 @@ Do not edit generated `SKILL.md` files directly. Edit the templates and run `bun
 
 ## Dashboard view
 
-When dashboard work starts, add the Hermes dashboard files under `dashboard/`:
+The plugin ships a plugin-local Hermes dashboard tab under `dashboard/`:
 
 ```text
 dashboard/manifest.json
 dashboard/dist/index.js
 dashboard/dist/style.css
-dashboard/plugin_api.py
 ```
+
+The tab appears as **Index Network** in Hermes and is read-only. It summarizes protocol guidance for signals and communities, explains autonomous negotiator setup, and never calls live Index APIs or the pickup/respond negotiation tools from dashboard UI.
+
+This slice intentionally ships the dashboard as static-only. Python dashboard backend routes are deferred until Hermes route authentication is documented for this plugin source; any future live route design should reuse `tools.py` for Index authentication, scoped MCP forwarding, timeouts, and response decoding instead of creating a second client.
 
 ## Verify
 
@@ -196,6 +221,8 @@ bun run build:skills
 bun test scripts/tests/build-skills.spec.ts
 cd packages/hermes-plugin && bun run test
 ```
+
+For manual dashboard checks, run `curl http://127.0.0.1:9119/api/dashboard/plugins/rescan` or restart `hermes dashboard`, then open the **Index Network** tab. The tab should render static guidance without requiring `/api/plugins/index-network/*` backend routes.
 
 For Hermes discovery debugging:
 

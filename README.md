@@ -27,18 +27,6 @@ Index Network is a **private, intent-driven discovery protocol**. You or your ag
 
 When there's alignment between agents, that's called an **opportunity** — surfaced to you along with the reasoning for why it's worth your time.
 
-## Why it's different
-
-Most discovery is search over static profiles: you match on keywords and hope someone's bio reflects what they need right now. Index works on **intents**, not profiles — the live, specific things people are seeking and offering — and it never makes you broadcast them. Your intents stay private; agents do the reaching out, weighing, and negotiating on your behalf, and you only hear about a connection once it's been judged worth making for both sides.
-
-## How it works
-
-1. **Express your intents.** You — or your agent — state what you're looking for or what you can offer, in plain language, scoped to the indexes (communities) you choose.
-2. **Agents negotiate in the background.** For each potential pairing, two agents debate the other's intents — mutual interest, timing, value to both sides, and everything in between — before anything reaches you. Neither side sees the other's raw private data.
-3. **Alignment becomes an opportunity.** When the agents agree there's a real fit, the protocol records an opportunity with a dual-perspective explanation of why it matters to each party.
-4. **You decide.** The opportunity is surfaced to you with its reasoning; you accept or decline.
-5. **Discovery never stops.** As your intents and context evolve, agents keep negotiating and new opportunities keep surfacing.
-
 ## What makes it work
 
 - **Intents, not profiles.** The unit of discovery is what you're seeking or offering right now — high-signal, time-aware, and private.
@@ -49,9 +37,38 @@ Most discovery is search over static profiles: you match on keywords and hope so
 
 ---
 
-## How it's built
 
-Index is a Bun-managed monorepo. The backend (`services/api`, the "protocol") is a native `Bun.serve` HTTP server hosting the API, a LangGraph-based agent system, the database layer, job queues, and event infrastructure. The web client is a Vite + React Router SPA (`apps/web`), alongside a native macOS/iOS client in `apps/mac`.
+## CLI
+
+The Index CLI lets you interact with the protocol directly from your terminal — chat with the AI agent, manage signals, review opportunities, and message other users.
+
+### Installation
+
+```bash
+npm install -g @indexnetwork/cli
+```
+
+### Quick Start
+
+```bash
+# login + setup
+index login
+index profile
+
+# 1. express intent (signals)
+index intent create "federated learning collaboration"
+
+# 2. check what the agents negotiated
+index negotiation list --since 1h
+index negotiation show <negotiation-id>
+
+# 3. review outcomes (opportunities) and decide
+index opportunity list --status pending
+index opportunity show <opportunity-id>
+index opportunity accept <opportunity-id>
+```
+
+## How it's built
 
 Under the hood, an intent becomes an opportunity through a discovery pipeline:
 
@@ -60,7 +77,6 @@ Under the hood, an intent becomes an opportunity through a discovery pipeline:
 (seek/offer)      (context-to-intent    (fit scoring +       (agent-to-agent     (surfaced with
                    + premise search)     valency roles)       deliberation)       reasoning)
 ```
-
 - **Intent** — structured intents (seeking or offering) with semantic embeddings, index-based access control, and quality scores (semantic entropy, felicity conditions) keeping inputs high-signal.
 - **Discovery** — finds candidate intents across the network via context-to-intent and premise similarity search.
 - **Evaluation** — scores each candidate for fit and assigns valency roles (seeker, provider, peer) that govern who sees the opportunity and when.
@@ -76,46 +92,6 @@ Under the hood, an intent becomes an opportunity through a discovery pipeline:
 - **BullMQ (Redis)** for asynchronous job processing and event-driven orchestration
 
 The code follows strict inward-pointing layering — **Controllers -> Services -> Adapters -> Infrastructure** — with the self-contained `@indexnetwork/protocol` package (graphs, agents, tools) receiving all dependencies via constructor injection. See [docs/design/architecture-overview.md](docs/design/architecture-overview.md) for the full picture.
-
-## CLI
-
-The Index CLI lets you interact with the protocol directly from your terminal — chat with the AI agent, manage signals, review opportunities, and message other users.
-
-### Installation
-
-```bash
-npm install -g @indexnetwork/cli
-```
-
-### Quick Start
-
-```bash
-# Authenticate (opens browser)
-index login
-
-# Chat with the AI agent (interactive REPL)
-index conversation
-
-# One-shot message
-index conversation "What opportunities do I have?"
-
-# Browse your signals
-index intent list
-
-# Discover opportunities by search
-index opportunity discover "looking for an AI engineer"
-
-# Propose a direct connection with someone
-index profile search "Jane Smith"
-index opportunity discover "collaborate on LLM tooling" --target <user-id>
-
-# Introduce two people
-index opportunity discover --introduce <user-id-a> <user-id-b>
-
-# Review and accept
-index opportunity list --status pending
-index opportunity accept <id>
-```
 
 ### Commands
 
