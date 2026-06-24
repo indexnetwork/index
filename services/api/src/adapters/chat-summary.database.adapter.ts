@@ -2,7 +2,7 @@
  * Drizzle-backed I/O for the chat_session_summaries table. Pure persistence;
  * no business logic. Wrapped by ChatSummaryService.
  */
-import { and, asc, desc, eq, gt, ne, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ne, or } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';

@@ -1,5 +1,5 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import { eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';

@@ -5,7 +5,7 @@
  * ChatDatabaseAdapter do not interfere with ContactService integration tests.
  */
 
-import { asc, eq, and, inArray, isNull, isNotNull, or, ilike, sql } from 'drizzle-orm';
+import { asc, eq, and, inArray, isNull, isNotNull, or, ilike, sql } from 'drizzle-orm/sql';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 

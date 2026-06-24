@@ -1,5 +1,5 @@
 import { Job } from 'bullmq';
-import { and, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import * as convSchema from '../../schemas/conversation.schema';

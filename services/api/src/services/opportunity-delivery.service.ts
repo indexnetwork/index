@@ -12,7 +12,7 @@
  *      committed row for the same (user, opportunity, channel, deliveredAtStatus) tuple.
  */
 
-import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm/sql';
 import { randomUUID } from 'node:crypto';
 
 import { OpportunityPresenter, canUserSeeOpportunity, classifyOpportunity, gatherPresenterContext, getOrCreateDeliveryCardBatch, isActionableForViewer, type PresenterDatabase } from '@indexnetwork/protocol';

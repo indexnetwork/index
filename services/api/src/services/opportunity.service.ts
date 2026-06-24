@@ -3,7 +3,7 @@ import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
 import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, stripUuids, stripIntroducerMentions } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, HydeCache, OpportunityCache } from '@indexnetwork/protocol';
-import { and, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm/sql';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';

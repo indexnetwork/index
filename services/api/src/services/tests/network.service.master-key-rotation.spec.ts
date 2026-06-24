@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm/sql';
 
 const sendSpy = mock(async (_args: { to: string; subject: string; html: string; text: string }) => ({ data: null, skipped: false }));
 mock.module('../../lib/email/transport.helper', () => ({

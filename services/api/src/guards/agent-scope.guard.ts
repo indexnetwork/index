@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { agentPermissions } from '../schemas/database.schema';

@@ -2,7 +2,7 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, it, expect, afterAll, mock } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq } from "drizzle-orm/sql";
 import db from "../../lib/drizzle/drizzle";
 import * as schema from "../../schemas/database.schema";
 import { ChatSummaryDatabaseAdapter } from "../../adapters/chat-summary.database.adapter";

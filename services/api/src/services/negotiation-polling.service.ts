@@ -1,4 +1,4 @@
-import { eq, and, sql, asc, isNull } from 'drizzle-orm';
+import { eq, and, sql, asc, isNull } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import * as convSchema from '../schemas/conversation.schema';

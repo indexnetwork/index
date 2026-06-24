@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq } from "drizzle-orm/sql";
 import { ChatController } from "../chat.controller";
 import { ChatDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, IntentDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import { chatSessionService } from "../../services/chat.service";

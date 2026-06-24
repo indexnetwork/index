@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { hashMasterKey } from '../lib/experiment/master-key';

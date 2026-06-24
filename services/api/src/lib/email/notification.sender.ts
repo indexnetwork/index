@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm/sql';
 
 import db from '../drizzle/drizzle';
 import { userNotificationSettings, users } from '../../schemas/database.schema';

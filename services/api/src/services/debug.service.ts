@@ -1,4 +1,4 @@
-import { eq, and, sql, ne, isNull, isNotNull, count, inArray } from 'drizzle-orm';
+import { eq, and, sql, ne, isNull, isNotNull, count, inArray } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { intents, intentNetworks, networks, networkMembers, userContexts } from '../schemas/database.schema';
